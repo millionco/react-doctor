@@ -50,7 +50,7 @@ describe("toJsonReport (Node API helper)", () => {
     const result = buildDiagnoseResult();
     const report = toJsonReport(result, { version: "1.2.3" });
 
-    expect(report.schemaVersion).toBe(1);
+    expect(report.schemaVersion).toBe(3);
     expect(report.ok).toBe(true);
     expect(report.version).toBe("1.2.3");
     expect(report.directory).toBe("/virtual");
@@ -58,6 +58,19 @@ describe("toJsonReport (Node API helper)", () => {
     expect(report.projects).toHaveLength(1);
     expect(report.projects[0].project).toBe(result.project);
     expect(report.diagnostics).toEqual(report.projects[0].diagnostics);
+    expect(report.projects[0]).toMatchObject({
+      packageRoot: "/virtual",
+      framework: "vite",
+      analyzedFiles: [],
+      analyzedFileCount: 0,
+      complete: false,
+    });
+    expect(report.diagnostics[0]).toMatchObject({
+      id: "src/App.tsx::7:1::react/no-danger",
+      normalizedFilePath: "src/App.tsx",
+      filePath: "/virtual/src/App.tsx",
+      tags: [],
+    });
     expect(report.summary).toMatchObject({
       errorCount: 0,
       warningCount: 1,

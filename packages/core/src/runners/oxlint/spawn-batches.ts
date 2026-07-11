@@ -46,6 +46,7 @@ export interface SpawnLintBatchesInput {
   readonly nodeBinaryPath: string;
   readonly project: ProjectInfo;
   readonly onPartialFailure?: (reason: string) => void;
+  readonly onAnalyzedFiles?: (filePaths: ReadonlyArray<string>) => void;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
   /** Per-batch wall-clock budget (from `OxlintSpawnTimeoutMs`). */
   readonly spawnTimeoutMs?: number;
@@ -420,6 +421,10 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     outcome.deadlineSkippedFiles,
     (fileListPreview) =>
       `${outcome.deadlineSkippedFiles.length} file(s) skipped — max scan duration reached before they were linted (${fileListPreview})`,
+  );
+  const unavailableFiles = new Set([...droppedFiles, ...outcome.deadlineSkippedFiles]);
+  input.onAnalyzedFiles?.(
+    [...new Set(fileBatches.flat().filter((filePath) => !unavailableFiles.has(filePath)))].sort(),
   );
   return dedupeDiagnostics(diagnostics);
 };

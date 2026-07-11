@@ -1,6 +1,7 @@
 import {
   filterDiagnosticsForSurface,
   isReactDoctorError,
+  isScanComplete,
   resolveGithubActionsScoreMetadata,
   summarizeDiagnostics,
 } from "@react-doctor/core";
@@ -224,6 +225,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     return withNamespace("outcome", {
       status: "error",
       exitCode: 1,
+      complete: false,
       knownError: known,
       errorTag: known ? error.reason._tag : error instanceof Error ? error.name : null,
     });
@@ -248,6 +250,12 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   const wouldBlock =
     !input.scoreOnly && !input.gateExempt && shouldBlockCi(gateDiagnostics, blockingLevel);
   const hasSkippedChecks = result.skippedChecks.length > 0;
+  const complete = isScanComplete({
+    analyzedFileCount: result.analyzedFiles?.length,
+    scannedFileCount: result.scannedFileCount,
+    skippedCheckCount: result.skippedChecks.length,
+    skippedCheckReasonCount: Object.keys(result.skippedCheckReasons ?? {}).length,
+  });
   const isClean = result.diagnostics.length === 0 && !hasSkippedChecks;
   const outcome = wouldBlock ? "blocked" : isClean ? "clean" : "ok";
 
@@ -330,6 +338,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
       wouldBlock,
       blocking: blockingLevel,
       clean: isClean,
+      complete,
       skippedChecks: result.skippedChecks.length,
     }),
     ...withNamespace("diag", {

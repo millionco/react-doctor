@@ -156,7 +156,7 @@ describe("json-mode lifecycle", () => {
     expect(() => JSON.parse(written.trim())).not.toThrow();
     const parsed = JSON.parse(written.trim());
     expect(parsed.ok).toBe(false);
-    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.schemaVersion).toBe(3);
   });
 
   it("writeJsonReport writes to a file when outputFile is provided", () => {

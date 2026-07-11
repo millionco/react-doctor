@@ -34,11 +34,16 @@ export type {
   InspectOptions,
   InspectResult,
   JsonReport,
+  JsonReportDiagnosticV3,
   JsonReportDiffInfo,
   JsonReportError,
   JsonReportMode,
   JsonReportProjectEntry,
+  JsonReportProjectEntryV3,
   JsonReportSummary,
+  JsonReportV1,
+  JsonReportV2,
+  JsonReportV3,
 } from "./inspect.js";
 export type {
   DependencyInfo,

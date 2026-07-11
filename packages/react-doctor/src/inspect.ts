@@ -772,6 +772,7 @@ const runInspectWithRuntime = async (
     directory: output.resolvedDirectory,
     scannedFileCount: output.scannedFileCount,
     scannedFilePaths: output.scannedFilePaths,
+    analyzedFiles: output.analyzedFiles,
     scanElapsedMilliseconds: output.scanElapsedMilliseconds,
     scanConcurrency: output.scanConcurrency,
     baselineDelta,
@@ -829,9 +830,12 @@ interface FinalizeInput {
   lintPartialFailures: ReadonlyArray<string>;
   didDeadCodeFail: boolean;
   deadCodeFailureReason: string | null;
+  supplyChainOverlapTimedOut: boolean;
+  securityScanFailed: boolean;
   directory: string;
   scannedFileCount: number;
   scannedFilePaths: ReadonlyArray<string>;
+  analyzedFiles: ReadonlyArray<string>;
   scanElapsedMilliseconds: number;
   lintCacheHitFileCount: number | null;
   lintCacheTotalFileCount: number | null;
@@ -934,9 +938,12 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     lintPartialFailures: input.payload.lintPartialFailures,
     didDeadCodeFail: input.payload.didDeadCodeFail,
     deadCodeFailureReason: input.payload.deadCodeFailureReason,
+    supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
+    securityScanFailed: input.payload.securityScanFailed ?? false,
     directory: input.payload.directory,
     scannedFileCount: input.payload.scannedFileCount,
     scannedFilePaths: input.payload.scannedFilePaths,
+    analyzedFiles: input.payload.analyzedFiles ?? [],
     scanElapsedMilliseconds: input.payload.scanElapsedMilliseconds,
     lintCacheHitFileCount: input.lintCacheHitFileCount ?? null,
     lintCacheTotalFileCount: input.lintCacheTotalFileCount ?? null,
@@ -1012,9 +1019,12 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       lintPartialFailures,
       didDeadCodeFail,
       deadCodeFailureReason,
+      supplyChainOverlapTimedOut,
+      securityScanFailed,
       directory,
       scannedFileCount,
       scannedFilePaths,
+      analyzedFiles,
       scanElapsedMilliseconds,
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
@@ -1032,6 +1042,8 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       lintPartialFailures,
       didDeadCodeFail,
       deadCodeFailureReason,
+      supplyChainOverlapTimedOut,
+      securityScanFailed,
     });
     const hasSkippedChecks = skippedChecks.length > 0;
 
@@ -1046,6 +1058,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       elapsedMilliseconds,
       scannedFileCount,
       scannedFilePaths,
+      analyzedFiles,
       scanElapsedMilliseconds,
       ...(lintCacheTotalFileCount !== null
         ? { lintCacheHitFileCount, lintCacheTotalFileCount }

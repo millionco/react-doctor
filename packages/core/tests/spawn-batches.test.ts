@@ -203,6 +203,21 @@ describe("spawnLintBatches — LPT batch-order invariance", () => {
       "src/c.tsx",
     ]);
   });
+
+  it("reports the exact sorted, deduplicated files analyzed successfully", async () => {
+    let analyzedFiles: ReadonlyArray<string> = [];
+    await spawnLintBatches({
+      baseArgs: ["-e", EMIT_ONE_DIAGNOSTIC_PER_FILE_SCRIPT],
+      fileBatches: [["src/b.tsx", "src/a.tsx"], ["src/a.tsx"]],
+      rootDirectory: process.cwd(),
+      nodeBinaryPath: process.execPath,
+      project,
+      onAnalyzedFiles: (filePaths) => {
+        analyzedFiles = filePaths;
+      },
+    });
+    expect(analyzedFiles).toEqual(["src/a.tsx", "src/b.tsx"]);
+  });
 });
 
 /**
@@ -214,6 +229,7 @@ describe("spawnLintBatches — LPT batch-order invariance", () => {
  */
 const lintFileBatchesWithDeadline = (fileBatches: string[][], deadlineEpochMs: number) => {
   const partialFailures: string[] = [];
+  let analyzedFiles: ReadonlyArray<string> = [];
   const diagnostics = spawnLintBatches({
     baseArgs: ["-e", EMIT_ONE_DIAGNOSTIC_PER_FILE_SCRIPT],
     fileBatches,
@@ -222,13 +238,16 @@ const lintFileBatchesWithDeadline = (fileBatches: string[][], deadlineEpochMs: n
     project,
     deadlineEpochMs,
     onPartialFailure: (reason) => partialFailures.push(reason),
+    onAnalyzedFiles: (filePaths) => {
+      analyzedFiles = filePaths;
+    },
   });
-  return { diagnostics, partialFailures };
+  return { diagnostics, partialFailures, readAnalyzedFiles: () => analyzedFiles };
 };
 
 describe("spawnLintBatches — max-duration deadline", () => {
   it("skips remaining batches past the deadline and reports the skipped files", async () => {
-    const { diagnostics, partialFailures } = lintFileBatchesWithDeadline(
+    const { diagnostics, partialFailures, readAnalyzedFiles } = lintFileBatchesWithDeadline(
       [["src/a.tsx"], ["src/b.tsx"], ["src/c.tsx"]],
       Date.now() - 1,
     );
@@ -238,6 +257,7 @@ describe("spawnLintBatches — max-duration deadline", () => {
     expect(partialFailures[0]).toContain("3 file(s) skipped");
     expect(partialFailures[0]).toContain("max scan duration reached");
     expect(partialFailures[0]).toContain("src/a.tsx");
+    expect(readAnalyzedFiles()).toEqual([]);
   });
 
   it("stops binary-split retries once the deadline passes mid-batch", async () => {

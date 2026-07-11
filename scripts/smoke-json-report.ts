@@ -22,7 +22,7 @@ if (!fs.existsSync(FIXTURE_DIRECTORY)) {
 
 // `--no-score --no-lint --no-dead-code` keeps the run fast and
 // deterministic — we're checking that the CLI plumbing produces a
-// schema-valid v1 JsonReport, not that any particular rule fires.
+// schema-valid v3 JsonReport, not that any particular rule fires.
 // The eval harness (react-doctor-evals parity check) is the right
 // tool for diagnostic-set comparison; this smoke catches structural
 // regressions to the JSON output across refactor PRs.
@@ -57,8 +57,8 @@ try {
   process.exit(1);
 }
 
-if (decoded.schemaVersion !== 1) {
-  console.error(`Expected schemaVersion 1, got ${decoded.schemaVersion}`);
+if (decoded.schemaVersion !== 3) {
+  console.error(`Expected schemaVersion 3, got ${decoded.schemaVersion}`);
   process.exit(1);
 }
 

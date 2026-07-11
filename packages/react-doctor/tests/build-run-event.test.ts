@@ -159,6 +159,39 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["migration.largestRuleBucketRule"]).toBeUndefined();
   });
 
+  it("records exact scan completeness as one low-cardinality outcome attribute", () => {
+    const completeAttributes = buildRunEventAttributes(
+      baseInput({
+        result: buildResult({
+          analyzedFiles: Array.from({ length: 10 }, (_unused, index) => `src/${index}.tsx`),
+        }),
+      }),
+    );
+    expect(completeAttributes["outcome.complete"]).toBe(true);
+    expect(completeAttributes["scan.complete"]).toBeUndefined();
+
+    const incompleteAttributes = buildRunEventAttributes(
+      baseInput({
+        result: buildResult({ analyzedFiles: ["src/0.tsx"] }),
+      }),
+    );
+    expect(incompleteAttributes["outcome.complete"]).toBe(false);
+    const partialCheckAttributes = buildRunEventAttributes(
+      baseInput({
+        result: buildResult({
+          analyzedFiles: Array.from({ length: 10 }, (_unused, index) => `src/${index}.tsx`),
+          skippedCheckReasons: {
+            "lint:partial": "React Hooks rules were skipped after their plugin failed to load.",
+          },
+        }),
+      }),
+    );
+    expect(partialCheckAttributes["outcome.complete"]).toBe(false);
+    expect(
+      buildRunEventAttributes(baseInput({ error: new Error("boom") }))["outcome.complete"],
+    ).toBe(false);
+  });
+
   it("records the widest-blast-radius rule for migration-scale calibration", () => {
     const diagnostics: Diagnostic[] = [];
     for (let fileIndex = 0; fileIndex < 45; fileIndex += 1) {

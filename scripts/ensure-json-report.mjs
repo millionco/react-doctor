@@ -8,7 +8,7 @@ if (!reportPath) {
 }
 
 const fallbackReport = {
-  schemaVersion: 1,
+  schemaVersion: 3,
   version: "unknown",
   ok: false,
   directory: process.cwd(),
@@ -32,10 +32,9 @@ const fallbackReport = {
   },
 };
 
-// Known JsonReport schema versions: 1 (full/diff/staged) and 2 (baseline /
-// PR-introduced-issues-only). Both are valid CLI output; only an unparseable or
-// unrecognized payload is treated as a failed scan.
-const KNOWN_SCHEMA_VERSIONS = new Set([1, 2]);
+// Known JsonReport schema versions remain valid CLI output; only an
+// unparseable or unrecognized payload is treated as a failed scan.
+const KNOWN_SCHEMA_VERSIONS = new Set([1, 2, 3]);
 
 try {
   const raw = fs.readFileSync(reportPath, "utf8").trim();

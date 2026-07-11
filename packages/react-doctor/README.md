@@ -55,6 +55,14 @@ You can configure which rules to run and how to run them in `doctor.config.ts`.
 
 [Learn more →](https://react.doctor/docs/configuration/config-files)
 
+### 5. Consume JSON
+
+Use `--json` for stdout or `--json-out <path>` for a file. The default
+`schemaVersion: 3` report includes deterministic diagnostic IDs and exact
+per-project scan coverage.
+
+[JSON report contract →](./docs/json-report.md)
+
 ## Telemetry
 
 The CLI reports crashes, basic run traces, and anonymous usage counters to [Sentry](https://sentry.io/) to help us fix bugs and prioritize work.

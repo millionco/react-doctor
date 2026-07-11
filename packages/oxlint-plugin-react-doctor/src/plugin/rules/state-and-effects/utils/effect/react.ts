@@ -16,6 +16,7 @@ import {
   resolvesToAsyncFunction,
   resolveToFunction,
 } from "./ast.js";
+import { getAstChildKeys } from "./get-ast-child-keys.js";
 import { getScopeForNode, type ProgramAnalysis } from "./get-program-analysis.js";
 
 // 1:1 port of upstream `src/util/react.js` from
@@ -73,7 +74,7 @@ const isReactFunctionalHOC = (
   const isWrappedSeparately = (): boolean => {
     if (!isNodeOfType(node.id, "Identifier")) return false;
     const bindingName = node.id.name;
-    const containingScope = getScopeForNode(node as unknown as EsTreeNode, analysis.scopeManager);
+    const containingScope = getScopeForNode(node as unknown as EsTreeNode, analysis);
     if (!containingScope) return false;
     const variable = containingScope.variables.find((v) => v.name === bindingName);
     if (!variable) return false;
@@ -478,17 +479,15 @@ const hasCleanupReturn = (
   }
   if (!isNodeOfType(node, "BlockStatement") && isFunctionLike(node)) return false;
   const record = node as unknown as Record<string, unknown>;
-  for (const [key, value] of Object.entries(record)) {
-    if (key === "parent") continue;
+  const childKeys = getAstChildKeys(node);
+  for (let keyIndex = 0; keyIndex < childKeys.length; keyIndex += 1) {
+    const value = record[childKeys[keyIndex]];
     if (Array.isArray(value)) {
-      if (
-        value.some(
-          (item) => isAstNode(item) && hasCleanupReturn(analysis, item as EsTreeNode, visited),
-        )
-      ) {
-        return true;
+      for (let itemIndex = 0; itemIndex < value.length; itemIndex += 1) {
+        const item = value[itemIndex];
+        if (isAstNode(item) && hasCleanupReturn(analysis, item, visited)) return true;
       }
-    } else if (isAstNode(value) && hasCleanupReturn(analysis, value as EsTreeNode, visited)) {
+    } else if (isAstNode(value) && hasCleanupReturn(analysis, value, visited)) {
       return true;
     }
   }

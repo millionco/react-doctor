@@ -108,6 +108,28 @@ describe("closureCaptures", () => {
     expect(closureCaptures(useOuter, scopes)).toEqual([]);
   });
 
+  it("preserves source order across nested scopes", () => {
+    const { scopes, program } = analyze(`
+      const firstValue = 1;
+      const nestedValue = 2;
+      const lastValue = 3;
+      const callback = () => {
+        consume(firstValue);
+        const nested = () => nestedValue;
+        consume(lastValue);
+        return nested;
+      };
+    `);
+    const callback = findFunctionNode(program, "callback")!;
+    const captures = closureCaptures(callback, scopes);
+
+    expect(captures.map((capture) => capture.resolvedSymbol?.name)).toEqual([
+      "firstValue",
+      "nestedValue",
+      "lastValue",
+    ]);
+  });
+
   it("excludes globals (unresolved references)", () => {
     const { scopes, program } = analyze(`
       const report = () => {

@@ -132,20 +132,11 @@ export const findDownstreamNodes = (topNode: EsTreeNode, type: string): EsTreeNo
   return nodes;
 };
 
-// Reference identity is stable per analysis, so the scope + reference scan
-// runs once per identifier; `has()` distinguishes a cached null resolution
-// from a miss (same WeakMap shape as downstreamRefsCache below).
-const refByIdentifierCache = new WeakMap<ProgramAnalysis, WeakMap<EsTreeNode, Reference | null>>();
-
 export const getRef = (analysis: ProgramAnalysis, identifier: EsTreeNode): Reference | null => {
-  let refByIdentifier = refByIdentifierCache.get(analysis);
-  if (!refByIdentifier) {
-    refByIdentifier = new WeakMap();
-    refByIdentifierCache.set(analysis, refByIdentifier);
-  }
+  const refByIdentifier = analysis.referenceByIdentifier;
   if (refByIdentifier.has(identifier)) return refByIdentifier.get(identifier) ?? null;
   let resolvedReference: Reference | null = null;
-  const scope = getScopeForNode(identifier, analysis.scopeManager);
+  const scope = getScopeForNode(identifier, analysis);
   if (scope) {
     for (const reference of scope.references) {
       if (reference.identifier === identifier) {

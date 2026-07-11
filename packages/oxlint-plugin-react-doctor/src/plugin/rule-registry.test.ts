@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import plugin from "./react-doctor-plugin.js";
 import { ruleRegistry } from "./rule-registry.js";
 
 const REANIMATED_LAYOUT_RULE_ID = "rn-animate-layout-property";
@@ -74,6 +75,17 @@ describe("rule registry", () => {
       } else {
         expect(rule.scan, `${ruleId} should not carry a scan`).toBeUndefined();
       }
+    }
+  });
+
+  it("only wraps global rules that require semantic context", () => {
+    for (const [ruleId, rule] of Object.entries(ruleRegistry)) {
+      if (rule.framework !== "global") continue;
+      const hostRule = plugin.rules[ruleId];
+      expect(hostRule, `${ruleId} should be registered`).toBeDefined();
+      expect(hostRule?.create === rule.create, `${ruleId} semantic wrapper`).toBe(
+        !rule.requiresSemanticContext,
+      );
     }
   });
 });

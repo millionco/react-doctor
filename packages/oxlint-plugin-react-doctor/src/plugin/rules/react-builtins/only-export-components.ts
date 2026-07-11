@@ -3,12 +3,12 @@ import { isFrameworkRouteOrSpecialFilename } from "../../utils/is-framework-rout
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import {
   ENTRY_POINT_BASENAMES,
@@ -340,36 +340,6 @@ const classifyExport = (
     : { kind: "non-component", reportNode };
 };
 
-interface RelevantNodes {
-  exportNodes: EsTreeNode[];
-  componentCandidates: EsTreeNode[];
-}
-
-// One walk collecting only the node kinds the two analysis passes below
-// consume — materializing every node of the program cost more than the
-// passes themselves.
-const collectRelevantNodes = (programRoot: EsTreeNode): RelevantNodes => {
-  const exportNodes: EsTreeNode[] = [];
-  const componentCandidates: EsTreeNode[] = [];
-  walkAst(programRoot, (child) => {
-    const childType = child.type;
-    if (
-      childType === "ExportAllDeclaration" ||
-      childType === "ExportDefaultDeclaration" ||
-      childType === "ExportNamedDeclaration"
-    ) {
-      exportNodes.push(child);
-    } else if (
-      childType === "FunctionDeclaration" ||
-      childType === "VariableDeclarator" ||
-      childType === "ClassDeclaration"
-    ) {
-      componentCandidates.push(child);
-    }
-  });
-  return { exportNodes, componentCandidates };
-};
-
 const isEntryPointFile = (filename: string): boolean => {
   // Match the last path segment regardless of separator (`/` on POSIX,
   // `\\` on Windows — `path.basename`-style logic without depending on
@@ -485,14 +455,32 @@ export const onlyExportComponents = defineRule({
   recommendation:
     "Move non-component exports out of component files so Fast Refresh can preserve component state instead of full-reloading.",
   category: "Architecture",
-  create: (context) => {
+  create: (context): RuleVisitors => {
     const settings = resolveSettings(context.settings);
+    const filename = normalizeFilename(context.filename ?? "");
+    if (!isFileNameAllowed(filename, settings.checkJS)) return {};
+    const exportNodes: EsTreeNode[] = [];
+    const componentCandidates: EsTreeNode[] = [];
     return {
-      Program(node: EsTreeNodeOfType<"Program">) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!isFileNameAllowed(filename, settings.checkJS)) return;
-        const { exportNodes, componentCandidates } = collectRelevantNodes(node as EsTreeNode);
-
+      ExportAllDeclaration(node: EsTreeNodeOfType<"ExportAllDeclaration">) {
+        exportNodes.push(node);
+      },
+      ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {
+        exportNodes.push(node);
+      },
+      ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
+        exportNodes.push(node);
+      },
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
+        componentCandidates.push(node);
+      },
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
+        componentCandidates.push(node);
+      },
+      ClassDeclaration(node: EsTreeNodeOfType<"ClassDeclaration">) {
+        componentCandidates.push(node);
+      },
+      "Program:exit"() {
         // Module-scope component bindings (exported or not) — a component
         // declared inside another function is never a Fast Refresh
         // boundary, so only top-level names participate.

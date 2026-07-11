@@ -46,6 +46,7 @@ interface CfgBuilder {
   blocks: BasicBlock[];
   entry: BasicBlock;
   exit: BasicBlock;
+  nestedFunctions: EsTreeNode[];
   // Map every AST node visited inside this function to the block it
   // was appended to.
   nodeBlock: Map<EsTreeNode, BasicBlock>;
@@ -94,7 +95,10 @@ const appendNode = (builder: CfgBuilder, block: BasicBlock, node: EsTreeNode): v
 // crossing a function boundary (inner functions get their own CFG).
 const mapDescendantsToBlock = (builder: CfgBuilder, node: EsTreeNode, block: BasicBlock): void => {
   builder.nodeBlock.set(node, block);
-  if (isFunctionLike(node)) return;
+  if (isFunctionLike(node)) {
+    builder.nestedFunctions.push(node);
+    return;
+  }
   const record = node as unknown as Record<string, unknown>;
   for (const key of Object.keys(record)) {
     if (key === "parent") continue;
@@ -403,11 +407,17 @@ const buildStatement = (
   return current;
 };
 
-const buildFunctionCfg = (functionNode: EsTreeNode, body: EsTreeNode): FunctionCfg => {
+interface BuiltFunctionCfg {
+  cfg: FunctionCfg;
+  nestedFunctions: EsTreeNode[];
+}
+
+const buildFunctionCfg = (functionNode: EsTreeNode, body: EsTreeNode): BuiltFunctionCfg => {
   const builder: CfgBuilder = {
     blocks: [],
     entry: null as unknown as BasicBlock,
     exit: null as unknown as BasicBlock,
+    nestedFunctions: [],
     nodeBlock: new Map(),
     loopStack: [],
     switchStack: [],
@@ -433,11 +443,14 @@ const buildFunctionCfg = (functionNode: EsTreeNode, body: EsTreeNode): FunctionC
   const blockOf = (node: EsTreeNode): BasicBlock | null => builder.nodeBlock.get(node) ?? null;
 
   return {
-    owner: functionNode,
-    entry,
-    exit,
-    blocks: builder.blocks,
-    blockOf,
+    cfg: {
+      owner: functionNode,
+      entry,
+      exit,
+      blocks: builder.blocks,
+      blockOf,
+    },
+    nestedFunctions: builder.nestedFunctions,
   };
 };
 
@@ -499,19 +512,23 @@ interface FunctionCfgEntry {
   unconditionalSet: Set<BasicBlock>;
 }
 
-// Walks the AST building a CFG for every function-like node + the
-// program. Lookups for an arbitrary AST node find the enclosing
-// function and consult that function's CFG.
+// Builds a CFG for the program and every function discovered while
+// mapping its descendants. Functions outside a mapped body, such as
+// parameter defaults, are built on demand.
 export const analyzeControlFlow = (program: EsTreeNode): ControlFlowAnalysis => {
   nextBlockId = 0;
   const functionCfgs = new Map<EsTreeNode, FunctionCfgEntry>();
+  const pendingFunctions: EsTreeNode[] = [];
 
   const buildFor = (functionNode: EsTreeNode, body: EsTreeNode): void => {
-    const cfg = buildFunctionCfg(functionNode, body);
+    const { cfg, nestedFunctions } = buildFunctionCfg(functionNode, body);
     functionCfgs.set(functionNode, {
       cfg,
       unconditionalSet: computeUnconditionalSet(cfg),
     });
+    for (const nestedFunction of nestedFunctions) {
+      pendingFunctions.push(nestedFunction);
+    }
   };
 
   // Build CFG for the program itself (treat as a "function" for
@@ -521,27 +538,21 @@ export const analyzeControlFlow = (program: EsTreeNode): ControlFlowAnalysis => 
     // buildFunctionCfg can iterate it.
     const synthBody = { type: "BlockStatement", body: program.body } as unknown as EsTreeNode;
     buildFor(program, synthBody);
-    // Also walk into every nested function-like node and build its own CFG.
   }
 
-  // Walk every function-like node, build its CFG.
-  const visit = (node: EsTreeNode): void => {
-    if (isFunctionLike(node)) {
-      const body = (node as { body: EsTreeNode }).body;
-      if (body) buildFor(node, body);
-    }
-    const record = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
-    }
+  for (let functionIndex = 0; functionIndex < pendingFunctions.length; functionIndex += 1) {
+    const functionNode = pendingFunctions[functionIndex];
+    if (!isFunctionLike(functionNode) || functionCfgs.has(functionNode)) continue;
+    buildFor(functionNode, functionNode.body);
+  }
+
+  const getFunctionEntry = (functionNode: EsTreeNode): FunctionCfgEntry | null => {
+    const existingEntry = functionCfgs.get(functionNode);
+    if (existingEntry) return existingEntry;
+    if (!isFunctionLike(functionNode)) return null;
+    buildFor(functionNode, functionNode.body);
+    return functionCfgs.get(functionNode) ?? null;
   };
-  visit(program);
 
   const enclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
     let current: EsTreeNode | null | undefined = node;
@@ -554,13 +565,13 @@ export const analyzeControlFlow = (program: EsTreeNode): ControlFlowAnalysis => 
   };
 
   const cfgFor = (functionLike: EsTreeNode): FunctionCfg | null => {
-    return functionCfgs.get(functionLike)?.cfg ?? null;
+    return getFunctionEntry(functionLike)?.cfg ?? null;
   };
 
   const isUnconditionalFromEntry = (node: EsTreeNode): boolean => {
     const owner = enclosingFunction(node);
     if (!owner) return true;
-    const entry = functionCfgs.get(owner);
+    const entry = getFunctionEntry(owner);
     if (!entry) return true;
     const block = entry.cfg.blockOf(node);
     if (!block) return true;

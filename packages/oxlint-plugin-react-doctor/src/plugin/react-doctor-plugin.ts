@@ -15,9 +15,8 @@ import { wrapWithSemanticContext } from "./utils/wrap-with-semantic-context.js";
 // same gate — it just lands in its bucket directory and the registry
 // takes care of the rest. Other rules pass through unchanged.
 //
-// Then wraps EVERY rule with the semantic-context wrapper, which
-// builds a scope tree and CFG for the file lazily on first access.
-// Rules that never read `context.scopes` / `context.cfg` pay nothing.
+// Codegen marks rules that read `context.scopes` / `context.cfg`, so only
+// those rules receive the lazy scope-tree and CFG wrapper.
 const applyFrameworkGate = (rule: Rule): Rule => {
   if (rule.framework === "react-native") return wrapReactNativeRule(rule);
   if (rule.framework === "nextjs") return wrapNextjsRule(rule);
@@ -27,7 +26,11 @@ const applyFrameworkGate = (rule: Rule): Rule => {
 const applyFrameworkRuleWrappers = (registry: Record<string, Rule>): Record<string, HostRule> => {
   const wrapped: Record<string, HostRule> = {};
   for (const [ruleId, rule] of Object.entries(registry)) {
-    wrapped[ruleId] = wrapWithSemanticContext(applyFrameworkGate(rule));
+    const frameworkRule = applyFrameworkGate(rule);
+    // HACK: Codegen proves unmarked rules only consume BaseRuleContext.
+    wrapped[ruleId] = frameworkRule.requiresSemanticContext
+      ? wrapWithSemanticContext(frameworkRule)
+      : (frameworkRule as HostRule);
   }
   return wrapped;
 };

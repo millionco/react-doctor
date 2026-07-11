@@ -1,6 +1,6 @@
-import { KEYS } from "eslint-visitor-keys";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isAstNode } from "./is-ast-node.js";
+import { RUNTIME_VISITOR_KEYS } from "./runtime-visitor-keys.js";
 
 // HACK: AST is acyclic except for `parent` back-references, which we skip.
 // Visitors may return `false` to prune the subtree below `node` (e.g. to
@@ -10,7 +10,7 @@ import { isAstNode } from "./is-ast-node.js";
 export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => boolean | void): void => {
   if (visitor(node) === false) return;
   const nodeRecord = node as unknown as Record<string, unknown>;
-  const childKeys = KEYS[node.type];
+  const childKeys = RUNTIME_VISITOR_KEYS[node.type];
   if (childKeys !== undefined) {
     for (let keyIndex = 0; keyIndex < childKeys.length; keyIndex += 1) {
       const child = nodeRecord[childKeys[keyIndex]];

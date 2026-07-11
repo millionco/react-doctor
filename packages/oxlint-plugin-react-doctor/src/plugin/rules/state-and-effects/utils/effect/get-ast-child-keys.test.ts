@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
+import { VISITOR_KEYS } from "./constants.js";
 import { getAstChildKeys } from "./get-ast-child-keys.js";
 
 describe("getAstChildKeys", () => {
@@ -22,5 +23,10 @@ describe("getAstChildKeys", () => {
     } as unknown as EsTreeNode;
 
     expect(getAstChildKeys(unknownNode)).toEqual(["type", "firstChild", "secondChild"]);
+  });
+
+  it("keeps runtime decorator expressions in scope traversal", () => {
+    expect(VISITOR_KEYS.ClassDeclaration?.[0]).toBe("decorators");
+    expect(VISITOR_KEYS.Identifier?.[0]).toBe("decorators");
   });
 });

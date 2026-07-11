@@ -36,6 +36,26 @@ describe("react-builtins/no-unstable-nested-components — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not attribute JSX across a nested function boundary", () => {
+    const result = run(`
+      function Parent() {
+        const Child = () => <div>child</div>;
+        return Child;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("detects JSX behind a TypeScript value wrapper", () => {
+    const result = run(`
+      const Parent = () => {
+        const Child = () => (<div>child</div> as React.ReactElement);
+        return <Child />;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   // The instantiation gate is keyed by SYMBOL: a same-named JSX usage of
   // a DIFFERENT binding (an import rendered elsewhere in the file) must
   // not count as instantiation of the nested inline helper.

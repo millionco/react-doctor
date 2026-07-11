@@ -55,4 +55,21 @@ describe("walkAst", () => {
       "CallExpression",
     ]);
   });
+
+  it("visits runtime decorator expressions", () => {
+    const program = parseSourceText({
+      filename: "/tmp/walk-ast-decorator.ts",
+      sourceText: "@register(() => value)\nclass Example {}",
+      shouldAttachParentReferences: true,
+    });
+    if (program === null) throw new Error("Expected decorator source to parse");
+
+    const visitedNodeTypes: string[] = [];
+    walkAst(program, (node) => {
+      visitedNodeTypes.push(node.type);
+    });
+
+    expect(visitedNodeTypes).toContain("Decorator");
+    expect(visitedNodeTypes).toContain("ArrowFunctionExpression");
+  });
 });

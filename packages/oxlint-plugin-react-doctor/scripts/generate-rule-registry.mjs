@@ -240,6 +240,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
         .replace(/\.ts$/, ".js");
     const autoTags = BUCKET_TO_AUTO_TAGS[bucket.name] ?? [];
     const requiresReact = BUCKETS_REQUIRING_REACT.has(bucket.name);
+    const requiresSemanticContext = /\bcontext\.(?:scopes|cfg)\b/.test(source);
     const originallyExternal =
       !RULES_NOT_PORTED_FROM_EXTERNAL.has(ruleId) &&
       (BUCKETS_PORTED_FROM_EXTERNAL.has(bucket.name) ||
@@ -253,6 +254,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       severity,
       autoTags,
       requiresReact,
+      requiresSemanticContext,
       originallyExternal,
     });
   }
@@ -317,6 +319,9 @@ const formatRequiresLine = (entry) => {
   );
 };
 
+const formatRequiresSemanticContextLine = (entry) =>
+  entry.requiresSemanticContext ? "      requiresSemanticContext: true,\n" : "";
+
 // Per-entry shape:
 //   { key, id, source, originallyExternal, rule: { ...sourceRule, framework, category, tags? } }
 //
@@ -339,6 +344,7 @@ const ruleLines = ruleEntries
       `      category: "${entry.category}",\n` +
       formatAutoTagsLine(entry) +
       formatRequiresLine(entry) +
+      formatRequiresSemanticContextLine(entry) +
       `    },\n` +
       `  },`,
   )

@@ -9,6 +9,7 @@ import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
+import { RUNTIME_VISITOR_KEYS } from "../../utils/runtime-visitor-keys.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { REACT_HOC_NAMES } from "../../constants/react.js";
 
@@ -443,8 +444,23 @@ const recordComponent = (
 
 const walkChildren = (node: EsTreeNode, context: VisitContext): void => {
   const record = node as unknown as Record<string, unknown>;
-  for (const key of Object.keys(record)) {
-    if (key === "parent") continue;
+  const childKeys = RUNTIME_VISITOR_KEYS[node.type];
+  if (childKeys !== undefined) {
+    for (let keyIndex = 0; keyIndex < childKeys.length; keyIndex += 1) {
+      const child = record[childKeys[keyIndex]];
+      if (Array.isArray(child)) {
+        for (let itemIndex = 0; itemIndex < child.length; itemIndex += 1) {
+          const item = child[itemIndex];
+          if (isAstNode(item)) walkComponentSearch(item, context);
+        }
+      } else if (isAstNode(child)) {
+        walkComponentSearch(child, context);
+      }
+    }
+    return;
+  }
+  for (const key in record) {
+    if (key === "parent" || !Object.hasOwn(record, key)) continue;
     const child = record[key];
     if (Array.isArray(child)) {
       for (const item of child) if (isAstNode(item)) walkComponentSearch(item, context);

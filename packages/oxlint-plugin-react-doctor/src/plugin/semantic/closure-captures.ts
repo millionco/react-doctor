@@ -1,9 +1,8 @@
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import type { ReferenceDescriptor, ScopeAnalysis } from "./scope-analysis.js";
 import { isDescendantScope } from "./scope-analysis.js";
-import { TYPE_POSITION_CHILD_KEYS } from "../constants/ts-type-position-keys.js";
-import { isAstNode } from "../utils/is-ast-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";
+import { walkAst } from "../utils/walk-ast.js";
 
 const computeClosureCaptures = (
   functionNode: EsTreeNode,
@@ -19,7 +18,7 @@ const computeClosureCaptures = (
   // Walk the AST descendants of functionNode, NOT the scope tree —
   // because scopeFor returns the parent scope for a function node and
   // we want references located AT OR BELOW the function.
-  const visit = (node: EsTreeNode): void => {
+  walkAst(functionNode, (node: EsTreeNode): boolean | void => {
     if (node !== functionNode && isFunctionLike(node)) {
       // Recurse into inner functions — their captures bubble up too if
       // their resolution is outside `functionNode`'s scope.
@@ -35,7 +34,7 @@ const computeClosureCaptures = (
           }
         }
       }
-      return;
+      return false;
     }
     const reference = scopes.referenceFor(node);
     if (reference && reference.resolvedSymbol) {
@@ -47,19 +46,7 @@ const computeClosureCaptures = (
         }
       }
     }
-    const record = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      if (TYPE_POSITION_CHILD_KEYS.has(key)) continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
-    }
-  };
-  visit(functionNode);
+  });
 
   // Every collected reference's identifier IS a walked descendant of
   // `functionNode` (`referenceFor` is keyed by the identifier node, and

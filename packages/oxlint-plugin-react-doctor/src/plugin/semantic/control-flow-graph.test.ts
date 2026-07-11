@@ -188,6 +188,19 @@ describe("control-flow-graph", () => {
       ).toBe(true);
     });
 
+    it("builds a CFG on demand for a function in a default parameter", () => {
+      const analysis = analyze(`
+        function outer(callback = () => {
+          insideDefault();
+        }) {}
+      `);
+      const callNode = findCalleeNode(analysis.program, "insideDefault")!;
+      const owner = analysis.enclosingFunction(callNode)!;
+
+      expect(analysis.cfgFor(owner)).not.toBeNull();
+      expect(analysis.isUnconditionalFromEntry(callNode)).toBe(true);
+    });
+
     it("switch case body is conditional", () => {
       const analysis = analyze(`
         function fn(x) {

@@ -2,12 +2,12 @@ import { compileGlob } from "../../utils/compile-glob.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isAstNode } from "../../utils/is-ast-node.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const buildMessage = (parentName: string | null): string => {
   let message =
@@ -56,37 +56,18 @@ const resolveSettings = (
 // React.createElement call.
 const expressionContainsJsxOrCreateElement = (root: EsTreeNode): boolean => {
   let found = false;
-  const visit = (node: EsTreeNode): void => {
-    if (found) return;
+  walkAst(root, (node: EsTreeNode): boolean | void => {
+    if (found) return false;
+    if (node !== root && NESTED_FUNCTION_TYPES.has(node.type)) return false;
     if (node.type === "JSXElement" || node.type === "JSXFragment") {
       found = true;
-      return;
+      return false;
     }
     if (isNodeOfType(node, "CallExpression") && isCreateElementCall(node as EsTreeNode)) {
       found = true;
-      return;
+      return false;
     }
-    const record = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) {
-          if (!isAstNode(item)) continue;
-          // Don't cross into a nested function body — its JSX belongs
-          // to the inner component candidate, not this one.
-          if (NESTED_FUNCTION_TYPES.has(item.type)) continue;
-          visit(item);
-          if (found) return;
-        }
-      } else if (isAstNode(child)) {
-        if (NESTED_FUNCTION_TYPES.has(child.type)) continue;
-        visit(child);
-      }
-      if (found) return;
-    }
-  };
-  visit(root);
+  });
   return found;
 };
 

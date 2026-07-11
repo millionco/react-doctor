@@ -68,6 +68,7 @@ const MUTATING_ARRAY_METHOD_NAMES = new Set([
 const TYPE_RESOLUTION_DEPTH_LIMIT = 4;
 
 const ARITHMETIC_KEY_OPERATORS = new Set(["+", "-", "*", "/", "%"]);
+const bindingMutationResultsByProgram = new WeakMap<EsTreeNode, Map<string, boolean>>();
 
 // The identifiers a key expression could get its value from — the bare
 // identifier, template-literal slots, `x.toString()`, `String(x)` /
@@ -188,6 +189,13 @@ const isArrayFromCall = (node: EsTreeNode | null | undefined): boolean => {
 const isBindingReassignedOrMutated = (referenceNode: EsTreeNode, bindingName: string): boolean => {
   const programRoot = findProgramRoot(referenceNode);
   if (!programRoot) return false;
+  let mutationResultsByBindingName = bindingMutationResultsByProgram.get(programRoot);
+  if (!mutationResultsByBindingName) {
+    mutationResultsByBindingName = new Map();
+    bindingMutationResultsByProgram.set(programRoot, mutationResultsByBindingName);
+  }
+  const cachedResult = mutationResultsByBindingName.get(bindingName);
+  if (cachedResult !== undefined) return cachedResult;
   let didFindWrite = false;
   walkAst(programRoot, (child: EsTreeNode): boolean | void => {
     if (didFindWrite) return false;
@@ -219,6 +227,7 @@ const isBindingReassignedOrMutated = (referenceNode: EsTreeNode, bindingName: st
       return false;
     }
   });
+  mutationResultsByBindingName.set(bindingName, didFindWrite);
   return didFindWrite;
 };
 

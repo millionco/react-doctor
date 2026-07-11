@@ -45,6 +45,8 @@ export interface Rule {
   // calls. Reading `rule.framework` at runtime works because the registry
   // is what consumers iterate.
   framework?: RuleFramework;
+  // Synthesized when a rule reads the scope tree or CFG.
+  requiresSemanticContext?: boolean;
   // Activation predicates: list of project capability tokens (e.g.
   // `"react:19"`, `"nextjs"`, `"tailwind:3.4"`) that ALL must be satisfied
   // for the rule to be enabled. Omit for rules that always apply once

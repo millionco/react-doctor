@@ -6,7 +6,6 @@ import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
@@ -162,6 +161,7 @@ const producesOpaqueInstanceValue = (expression: EsTreeNode): boolean => {
 interface SetterValueObservations {
   plainFedSetterNames: ReadonlySet<string>;
   opaqueFedSetterNames: ReadonlySet<string>;
+  callbackRefSetterNames: ReadonlySet<string>;
 }
 
 const collectSetterValueObservations = (
@@ -170,6 +170,7 @@ const collectSetterValueObservations = (
 ): SetterValueObservations => {
   const plainFedSetterNames = new Set<string>();
   const opaqueFedSetterNames = new Set<string>();
+  const callbackRefSetterNames = new Set<string>();
   // Shadow-respecting walk: a nested function whose param or local re-binds
   // the setter name calls its OWN function, so its argument shapes are not
   // evidence about the state binding.
@@ -177,6 +178,21 @@ const collectSetterValueObservations = (
     componentBody,
     new Set(),
     (node: EsTreeNode, currentlyShadowed: ReadonlySet<string>): void => {
+      if (isNodeOfType(node, "JSXAttribute")) {
+        const attributeName = node.name;
+        if (
+          isNodeOfType(attributeName, "JSXIdentifier") &&
+          attributeName.name === "ref" &&
+          node.value &&
+          isNodeOfType(node.value, "JSXExpressionContainer")
+        ) {
+          const expression = stripParenExpression(node.value.expression);
+          if (isNodeOfType(expression, "Identifier") && setterNames.has(expression.name)) {
+            callbackRefSetterNames.add(expression.name);
+          }
+        }
+        return;
+      }
       if (!isNodeOfType(node, "CallExpression")) return;
       if (!isNodeOfType(node.callee, "Identifier")) return;
       const setterName = node.callee.name;
@@ -184,9 +200,6 @@ const collectSetterValueObservations = (
       const argument = node.arguments?.[0];
       if (!argument) return;
       const unwrapped = stripParenExpression(argument as EsTreeNode);
-      // Nullish resets (`setNode(null)`) carry no shape information, and
-      // updater functions / identifiers stay unclassified — only concrete
-      // value shapes count as evidence.
       if (isNullOrUndefinedExpression(unwrapped)) return;
       if (producesPlainStateValue(unwrapped)) {
         plainFedSetterNames.add(setterName);
@@ -198,33 +211,7 @@ const collectSetterValueObservations = (
     },
     true,
   );
-  return { plainFedSetterNames, opaqueFedSetterNames };
-};
-
-// Setter names passed straight to a JSX `ref` attribute (`ref={setNode}`) are
-// callback refs, so their paired state holds a DOM element / component
-// instance — not React render data. Writing to its fields
-// (`node.dataset.x = ...`, `node.style.x = ...`) is deliberate imperative DOM
-// work, not a lost state update, so those bindings must not be treated as
-// plain-object state.
-const collectCallbackRefSetterNames = (componentBody: EsTreeNode): Set<string> => {
-  const callbackRefSetterNames = new Set<string>();
-  walkAst(componentBody, (node: EsTreeNode): void => {
-    if (!isNodeOfType(node, "JSXAttribute")) return;
-    const attributeName = node.name;
-    if (
-      isNodeOfType(attributeName, "JSXIdentifier") &&
-      attributeName.name === "ref" &&
-      node.value &&
-      isNodeOfType(node.value, "JSXExpressionContainer")
-    ) {
-      const expression = stripParenExpression(node.value.expression);
-      if (isNodeOfType(expression, "Identifier")) {
-        callbackRefSetterNames.add(expression.name);
-      }
-    }
-  });
-  return callbackRefSetterNames;
+  return { plainFedSetterNames, opaqueFedSetterNames, callbackRefSetterNames };
 };
 
 const collectFunctionLocalBindings = (functionNode: EsTreeNode): Set<string> => {
@@ -253,9 +240,9 @@ const collectFunctionLocalBindings = (functionNode: EsTreeNode): Set<string> => 
 // `const books = []` inside a `for`/`if` block (or a `for (const book of
 // ...)` binding) shadows the state name for everything nested in that
 // block, exactly like a function-body declaration does.
-const collectBlockScopedBindings = (node: EsTreeNode): Set<string> => {
-  const blockBindings = new Set<string>();
+const collectBlockScopedBindings = (node: EsTreeNode): Set<string> | null => {
   if (isNodeOfType(node, "BlockStatement")) {
+    const blockBindings = new Set<string>();
     for (const statement of node.body ?? []) {
       if (!isNodeOfType(statement, "VariableDeclaration")) continue;
       for (const declarator of statement.declarations ?? []) {
@@ -265,6 +252,7 @@ const collectBlockScopedBindings = (node: EsTreeNode): Set<string> => {
     return blockBindings;
   }
   if (isNodeOfType(node, "ForStatement") && isNodeOfType(node.init, "VariableDeclaration")) {
+    const blockBindings = new Set<string>();
     for (const declarator of node.init.declarations ?? []) {
       collectPatternNames(declarator.id, blockBindings);
     }
@@ -274,11 +262,13 @@ const collectBlockScopedBindings = (node: EsTreeNode): Set<string> => {
     (isNodeOfType(node, "ForOfStatement") || isNodeOfType(node, "ForInStatement")) &&
     isNodeOfType(node.left, "VariableDeclaration")
   ) {
+    const blockBindings = new Set<string>();
     for (const declarator of node.left.declarations ?? []) {
       collectPatternNames(declarator.id, blockBindings);
     }
+    return blockBindings;
   }
-  return blockBindings;
+  return null;
 };
 
 // HACK: walks the component AST while tracking which state names are
@@ -301,11 +291,11 @@ const walkComponentRespectingShadows = (
   // The component body's own declarations ARE the state bindings, not
   // shadows of them — only nested blocks/functions can shadow.
   const localBindings = isComponentBodyRoot
-    ? new Set<string>()
+    ? null
     : isFunctionLike(node)
       ? collectFunctionLocalBindings(node)
       : collectBlockScopedBindings(node);
-  if (localBindings.size > 0) {
+  if (localBindings && localBindings.size > 0) {
     const merged = new Set(shadowedStateNames);
     for (const localName of localBindings) merged.add(localName);
     nextShadowedStateNames = merged;
@@ -349,14 +339,13 @@ export const noDirectStateMutation = defineRule({
       // is only React-owned-state mutation when the state plausibly holds
       // React-managed data — see `initializerMarksPlainState` for the exact
       // boundary between plain data and opaque third-party instances.
-      const callbackRefSetterNames = collectCallbackRefSetterNames(componentBody);
       const setterValueObservations = collectSetterValueObservations(
         componentBody,
         new Set(bindings.map((binding) => binding.setterName)),
       );
       const plainObjectStateValueNames = new Set<string>();
       for (const binding of bindings) {
-        if (callbackRefSetterNames.has(binding.setterName)) continue;
+        if (setterValueObservations.callbackRefSetterNames.has(binding.setterName)) continue;
         if (!isNodeOfType(binding.declarator.init, "CallExpression")) continue;
         const initializerArgument = binding.declarator.init.arguments?.[0];
         if (!initializerMarksPlainState(initializerArgument)) continue;

@@ -22,6 +22,7 @@ import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
@@ -1218,6 +1219,40 @@ const fileContainsReleaseForUsage = (usage: SubscribeLikeUsage, context: RuleCon
   return didFindRelease;
 };
 
+const isUseSyncExternalStoreSubscribeFunction = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  if (!bindingIdentifier) return false;
+  const visitedSymbolIds = new Set<number>();
+  const isSubscribeBinding = (candidateBinding: EsTreeNode): boolean => {
+    const symbol = context.scopes.symbolFor(candidateBinding);
+    if (!symbol || visitedSymbolIds.has(symbol.id) || symbol.references.length === 0) return false;
+    visitedSymbolIds.add(symbol.id);
+    return symbol.references.every((reference) => {
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const referenceParent = referenceRoot.parent;
+      if (
+        isNodeOfType(referenceParent, "CallExpression") &&
+        referenceParent.arguments?.[0] === referenceRoot
+      ) {
+        return isReactApiCall(referenceParent, "useSyncExternalStore", context.scopes);
+      }
+      const aliasDeclaration = referenceParent?.parent;
+      return Boolean(
+        isNodeOfType(referenceParent, "VariableDeclarator") &&
+        referenceParent.init === referenceRoot &&
+        isNodeOfType(referenceParent.id, "Identifier") &&
+        isNodeOfType(aliasDeclaration, "VariableDeclaration") &&
+        aliasDeclaration.kind === "const" &&
+        isSubscribeBinding(referenceParent.id),
+      );
+    });
+  };
+  return isSubscribeBinding(bindingIdentifier);
+};
+
 const doesResourceResultEscape = (
   resourceNode: EsTreeNode,
   allowConciseReturnEscape: boolean,
@@ -1261,6 +1296,14 @@ const findRetainedFunctionLeak = (
   // caller, which owns the handle.
   let leak: SubscribeLikeUsage | null = null;
   const allowConciseReturnEscape = !isInlineRetainedHandlerFunction(retainedFunction, context);
+  const isExternalStoreSubscribeFunction = isUseSyncExternalStoreSubscribeFunction(
+    retainedFunction,
+    context,
+  );
+  const hasReleaseForUsage = (usage: SubscribeLikeUsage): boolean =>
+    isExternalStoreSubscribeFunction
+      ? effectHasCleanupForUsage(retainedFunction, usage, context)
+      : fileContainsReleaseForUsage(usage, context);
   walkAst(body, (child: EsTreeNode) => {
     if (leak !== null) return false;
     if (isFunctionLike(child)) return false;
@@ -1276,7 +1319,7 @@ const findRetainedFunctionLeak = (
         eventKey: null,
         handlerKey: null,
       };
-      if (!fileContainsReleaseForUsage(socketUsage, context)) {
+      if (!hasReleaseForUsage(socketUsage)) {
         leak = socketUsage;
         return false;
       }
@@ -1299,7 +1342,7 @@ const findRetainedFunctionLeak = (
         eventKey: null,
         handlerKey: null,
       };
-      if (!fileContainsReleaseForUsage(timerUsage, context)) {
+      if (!hasReleaseForUsage(timerUsage)) {
         leak = timerUsage;
         return false;
       }
@@ -1320,7 +1363,7 @@ const findRetainedFunctionLeak = (
       };
       if (
         !hasSelfReleasingListenerOptions(child, context) &&
-        !fileContainsReleaseForUsage(subscriptionUsage, context)
+        !hasReleaseForUsage(subscriptionUsage)
       ) {
         leak = subscriptionUsage;
       }

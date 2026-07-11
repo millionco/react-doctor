@@ -2050,3 +2050,120 @@ export const Feed = ({ url }) => (
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("effect-needs-cleanup useSyncExternalStore subscription cleanup", () => {
+  it("accepts the TaskTrove i18next subscription with its matching returned disposer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+import i18next from "i18next";
+export const LanguageProvider = () => {
+  const subscribeToLanguage = useCallback((onStoreChange: () => void) => {
+    i18next.on("languageChanged", onStoreChange);
+    return () => {
+      i18next.off("languageChanged", onStoreChange);
+    };
+  }, []);
+  const language = useSyncExternalStore(
+    subscribeToLanguage,
+    () => i18next.resolvedLanguage,
+    () => "en",
+  );
+  return language;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "receiver",
+      cleanup: `otherI18next.off("languageChanged", onStoreChange);`,
+    },
+    {
+      name: "event",
+      cleanup: `i18next.off("loaded", onStoreChange);`,
+    },
+    {
+      name: "handler",
+      cleanup: `i18next.off("languageChanged", otherHandler);`,
+    },
+  ])("rejects a returned disposer with the wrong $name", ({ cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const LanguageProvider = ({ i18next, otherI18next, otherHandler }) => {
+  const subscribeToLanguage = useCallback((onStoreChange) => {
+    i18next.on("languageChanged", onStoreChange);
+    return () => {
+      ${cleanup}
+    };
+  }, [i18next, otherI18next, otherHandler]);
+  useSyncExternalStore(subscribeToLanguage, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects cleanup returned on only one path after subscribing", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const LanguageProvider = ({ i18next, shouldCleanup }) => {
+  const subscribeToLanguage = useCallback((onStoreChange) => {
+    i18next.on("languageChanged", onStoreChange);
+    if (shouldCleanup) {
+      return () => i18next.off("languageChanged", onStoreChange);
+    }
+    return undefined;
+  }, [i18next, shouldCleanup]);
+  useSyncExternalStore(subscribeToLanguage, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts matching receiver, event, and handler aliases", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore as useStore } from "react";
+export const LanguageProvider = ({ i18next }) => {
+  const subscribeToLanguage = useCallback((onStoreChange) => {
+    const emitter = i18next;
+    const eventName = "languageChanged";
+    const handler = onStoreChange;
+    emitter.on(eventName, handler);
+    return () => emitter.off(eventName, handler);
+  }, [i18next]);
+  const subscribe = subscribeToLanguage;
+  useStore(subscribe, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a shadowed useSyncExternalStore call as a cleanup contract", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const LanguageProvider = ({ i18next }) => {
+  const useSyncExternalStore = (subscribe) => subscribe;
+  const subscribeToLanguage = useCallback((onStoreChange) => {
+    i18next.on("languageChanged", onStoreChange);
+    return () => i18next.off("languageChanged", onStoreChange);
+  }, [i18next]);
+  useSyncExternalStore(subscribeToLanguage);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

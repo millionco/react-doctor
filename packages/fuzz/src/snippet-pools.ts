@@ -142,6 +142,7 @@ export const GUARD_SNIPPET_POOL = [
 
 // Library idioms — tanstack, mobx, styled-components, next/dynamic, redux.
 export const LIBRARY_SNIPPET_POOL = [
+  `const subscribeStore = useCallback((onStoreChange) => { store.on("change", onStoreChange); return () => store.off("change", onStoreChange); }, [store]); const snapshot = useSyncExternalStore(subscribeStore, getSnapshot);`,
   `const { data: queryData, isPending } = useQuery({ queryKey: ["items", value], queryFn: () => fetch(url).then((response) => response.json()) });`,
   `const mutation = useMutation({ mutationFn: (payload) => api.post(url, payload) });`,
   `const { mutate, mutateAsync } = useMutation({ mutationFn: (payload) => api.post(url, payload) });`,
@@ -319,7 +320,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 export const IMPORT_LINE_POOL = [
   `import React from "react";`,
   `import * as React from "react";`,
-  `import { useState, useEffect, useMemo, useCallback, useRef, useContext, useReducer, useTransition, useDeferredValue, useId, useLayoutEffect } from "react";`,
+  `import { useState, useEffect, useMemo, useCallback, useRef, useContext, useReducer, useTransition, useDeferredValue, useId, useLayoutEffect, useSyncExternalStore } from "react";`,
   `import { useState as useLocalState } from "react";`,
   `import { createPortal } from "react-dom";`,
   `import Link from "next/link";`,

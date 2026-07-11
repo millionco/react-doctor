@@ -52,25 +52,31 @@ const isDocumentedLazyInitialization = (
   ) {
     return false;
   }
-  const parent = assignmentExpression.parent;
-  if (!isNodeOfType(parent, "ExpressionStatement")) return false;
-  const consequent = parent.parent;
-  const ifStatement = isNodeOfType(consequent, "BlockStatement") ? consequent.parent : consequent;
-  if (!isNodeOfType(ifStatement, "IfStatement")) return false;
-  const isDirectConsequent =
-    ifStatement.consequent === parent ||
-    (ifStatement.consequent === consequent && isNodeOfType(consequent, "BlockStatement"));
-  if (!isDirectConsequent || !isNodeOfType(ifStatement.test, "BinaryExpression")) return false;
-  if (ifStatement.test.operator !== "===" && ifStatement.test.operator !== "==") return false;
-  const { left, right } = ifStatement.test;
-  return (
-    (isSameRefCurrentMember(left, refSymbol, scopes) &&
-      isNodeOfType(right, "Literal") &&
-      right.value === null) ||
-    (isSameRefCurrentMember(right, refSymbol, scopes) &&
-      isNodeOfType(left, "Literal") &&
-      left.value === null)
-  );
+  let descendant: EsTreeNode = assignmentExpression;
+  let ancestor = descendant.parent;
+  while (ancestor) {
+    if (
+      isNodeOfType(ancestor, "IfStatement") &&
+      ancestor.consequent === descendant &&
+      isNodeOfType(ancestor.test, "BinaryExpression") &&
+      (ancestor.test.operator === "===" || ancestor.test.operator === "==")
+    ) {
+      const { left, right } = ancestor.test;
+      if (
+        (isSameRefCurrentMember(left, refSymbol, scopes) &&
+          isNodeOfType(right, "Literal") &&
+          right.value === null) ||
+        (isSameRefCurrentMember(right, refSymbol, scopes) &&
+          isNodeOfType(left, "Literal") &&
+          left.value === null)
+      ) {
+        return true;
+      }
+    }
+    descendant = ancestor;
+    ancestor = descendant.parent;
+  }
+  return false;
 };
 
 export const noRefCurrentInRender = defineRule({

@@ -48,6 +48,19 @@ describe("no-ref-current-in-render", () => {
        };`,
     ],
     [
+      "a replacement in the null guard alternate",
+      `import { useRef } from "react";
+       const Video = () => {
+         const playerRef = useRef(null);
+         if (playerRef.current === null) {
+           preparePlayer();
+         } else {
+           playerRef.current = new VideoPlayer();
+         }
+         return <video />;
+       };`,
+    ],
+    [
       "an IIFE executed during render",
       `import { useRef } from "react";
        const Panel = ({ value }) => {
@@ -88,6 +101,19 @@ describe("no-ref-current-in-render", () => {
          const playerRef = useRef(null);
          if (playerRef.current === null) {
            playerRef.current = new VideoPlayer();
+         }
+         return <video />;
+       };`,
+    ],
+    [
+      "documented lazy initialization behind a nested wrapper",
+      `import { useRef } from "react";
+       const Video = ({ shouldInitialize }) => {
+         const playerRef = useRef(null);
+         if (playerRef.current === null) {
+           if (shouldInitialize) {
+             playerRef.current = new VideoPlayer();
+           }
          }
          return <video />;
        };`,

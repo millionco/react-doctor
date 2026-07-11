@@ -257,7 +257,11 @@ const findFollowingReturnValue = (
   if (!isNodeOfType(parentNode, "BlockStatement")) return null;
   const statementIndex = parentNode.body.findIndex((statement) => statement === ifStatement);
   if (statementIndex < 0) return null;
-  return getReturnedValue(parentNode.body[statementIndex + 1]);
+  for (const statement of parentNode.body.slice(statementIndex + 1)) {
+    const returnedValue = getReturnedValue(statement);
+    if (returnedValue) return returnedValue;
+  }
+  return null;
 };
 
 const branchHasSuppression = (branch: EsTreeNode): boolean => {

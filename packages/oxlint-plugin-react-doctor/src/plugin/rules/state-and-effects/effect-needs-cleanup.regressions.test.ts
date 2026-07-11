@@ -432,7 +432,7 @@ export const Toast = () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a captured subscription disposer in a useCallback", () => {
+  it("flags a captured subscription disposer in a useCallback when it is never released", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useCallback, useRef } from "react";
@@ -445,7 +445,7 @@ export const StoreBridge = ({ store }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags a `{ once: false }` listener registered in a handler", () => {
@@ -523,7 +523,7 @@ export const StoreBridge = ({ store }) => {
     expect(result.diagnostics[0].message).toContain("setInterval");
   });
 
-  it("does not flag a discarded setInterval in a handler that also clears an interval", () => {
+  it("flags a discarded setInterval when the handler clears an unrelated interval", () => {
     const result = runRule(
       effectNeedsCleanup,
       `export const Ticker = ({ tickIdRef }) => {
@@ -535,7 +535,7 @@ export const StoreBridge = ({ store }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags a WebSocket constructed as a concise useCallback body", () => {
@@ -565,7 +565,7 @@ export const LiveFeed = ({ url }) => {
     expect(result.diagnostics[0].message).toContain("EventSource");
   });
 
-  it("does not flag a concise-body socket whose handle is stored in a ref", () => {
+  it("flags a concise-body socket whose handle is stored in a ref but never closed", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useCallback, useRef } from "react";
@@ -576,7 +576,7 @@ export const LiveFeed = ({ url }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not attribute a setInterval inside a nested inner callback to the retained handler", () => {
@@ -892,7 +892,7 @@ export const Computed = ({ el }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a retained function whose setInterval id flows into a setter", () => {
+  it("flags a retained function whose setInterval id is captured but never cleared", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useState } from "react";
@@ -905,7 +905,7 @@ export const Poller = () => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a concise-body interval factory — the id escapes to the caller", () => {
@@ -975,5 +975,123 @@ export const Poller = () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("effect-needs-cleanup retained-resource correlation", () => {
+  it("checks useInsertionEffect for retained resources", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useInsertionEffect } from "react";
+export const Styles = ({ registry }) => {
+  useInsertionEffect(() => {
+    registry.subscribe(syncStyles);
+  }, [registry]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a matching useInsertionEffect cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useInsertionEffect } from "react";
+export const Styles = ({ registry }) => {
+  useInsertionEffect(() => {
+    const unsubscribe = registry.subscribe(syncStyles);
+    return unsubscribe;
+  }, [registry]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let cleanup for one socket hide another socket", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ primaryUrl, secondaryUrl }) => {
+  useEffect(() => {
+    const primary = new WebSocket(primaryUrl);
+    const secondary = new WebSocket(secondaryUrl);
+    return () => primary.close();
+  }, [primaryUrl, secondaryUrl]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("WebSocket");
+  });
+
+  it("does not let an unrelated timer cleanup suppress a recurring timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Poller = () => {
+  useEffect(() => {
+    const pollingId = setInterval(poll, 1000);
+    const animationId = setInterval(animate, 16);
+    return () => clearInterval(animationId);
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let an unrelated listener removal suppress a registration", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = ({ firstTarget, secondTarget, handler }) => {
+  useEffect(() => {
+    firstTarget.addEventListener("change", handler);
+    return () => secondTarget.removeEventListener("change", handler);
+  }, [firstTarget, secondTarget, handler]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a recurring timer in an inline JSX handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Poller = () => (
+  <button onClick={() => setInterval(poll, 1000)}>start</button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a recurring timer in an inline config handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Feed = () => {
+  useConnection({ onOpen: () => setInterval(poll, 1000) });
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves the one-shot setTimeout exemption for inline handlers", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Toast = () => (
+  <button onClick={() => setTimeout(hideToast, 3000)}>show</button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
   });
 });

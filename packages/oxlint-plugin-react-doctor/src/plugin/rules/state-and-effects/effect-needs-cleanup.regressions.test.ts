@@ -149,6 +149,25 @@ export const Listener = ({ target }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a listener released through an aliased destructured abort signal", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = () => {
+  useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    const listenerSignal = signal;
+    window.addEventListener("resize", update, { signal: listenerSignal });
+    return () => controller.abort();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag an `.off(name)` remove-all cleanup with no handler argument", () => {
     const result = runRule(
       effectNeedsCleanup,

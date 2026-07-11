@@ -86,6 +86,21 @@ const resolveExpressionKey = (
     }
     if (visitedSymbolIds.has(symbol.id)) return `symbol:${symbol.id}`;
     visitedSymbolIds.add(symbol.id);
+    const bindingProperty = symbol.bindingIdentifier.parent;
+    const bindingPattern = bindingProperty?.parent;
+    const variableDeclarator = bindingPattern?.parent;
+    const bindingPropertyName = isNodeOfType(bindingProperty, "Property")
+      ? getStaticPropertyKeyName(bindingProperty)
+      : null;
+    if (
+      bindingPropertyName &&
+      isNodeOfType(bindingPattern, "ObjectPattern") &&
+      isNodeOfType(variableDeclarator, "VariableDeclarator") &&
+      variableDeclarator.id === bindingPattern
+    ) {
+      const objectKey = resolveExpressionKey(variableDeclarator.init, context, visitedSymbolIds);
+      return objectKey ? `${objectKey}.${bindingPropertyName}` : `symbol:${symbol.id}`;
+    }
     const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
     if (
       symbol.kind === "const" &&

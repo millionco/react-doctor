@@ -124,6 +124,7 @@ export const GUARD_SNIPPET_POOL = [
   `const keys = Object.keys(config ?? {});`,
   `const entries = Object.entries(config);`,
   `if (!items.length) return null;`,
+  `if (value) onSelect(value);`,
   `if (items.length === 0) { return <p>No items</p>; }`,
   `const parsed = JSON.parse(String(value)).settings;`,
   `let parsed = {}; try { parsed = JSON.parse(String(value)); } catch { parsed = {}; }`,

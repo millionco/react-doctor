@@ -232,6 +232,7 @@ import { noPermanentWillChange } from "./rules/performance/no-permanent-will-cha
 import { noPolymorphicChildren } from "./rules/correctness/no-polymorphic-children.js";
 import { noPreventDefault } from "./rules/correctness/no-prevent-default.js";
 import { noPropCallbackInEffect } from "./rules/state-and-effects/no-prop-callback-in-effect.js";
+import { noPropCallbackInRender } from "./rules/state-and-effects/no-prop-callback-in-render.js";
 import { noPropTypes } from "./rules/architecture/no-prop-types.js";
 import { noPureBlackBackground } from "./rules/design/no-pure-black-background.js";
 import { noRandomKey } from "./rules/correctness/no-random-key.js";
@@ -3056,6 +3057,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noPropCallbackInEffect.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-prop-callback-in-render",
+    id: "no-prop-callback-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPropCallbackInRender,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noPropCallbackInRender.requires ?? [])])],
     },
   },
   {

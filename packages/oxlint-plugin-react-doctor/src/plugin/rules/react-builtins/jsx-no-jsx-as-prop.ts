@@ -349,11 +349,11 @@ export const jsxNoJsxAsProp = defineRule({
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);
     let memoRegistry: Map<string, MemoStatus> | null = null;
-    let jsxSlotPropRegistry: Map<string, ReadonlySet<string>> | null = null;
+    let jsxSlotPropRegistry: Map<number, ReadonlySet<string>> | null = null;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         memoRegistry = buildSameFileMemoRegistry(node as EsTreeNode);
-        jsxSlotPropRegistry = buildSameFileJsxSlotPropRegistry(node, memoRegistry);
+        jsxSlotPropRegistry = buildSameFileJsxSlotPropRegistry(node, memoRegistry, context.scopes);
       },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         if (isTestlikeFile) return;
@@ -371,11 +371,14 @@ export const jsxNoJsxAsProp = defineRule({
             : null;
         const memoStatus = memoStatusForJsxOpeningName(memoRegistry, openingName);
         if (memoStatus !== "memoised") return;
+        const openingSymbol =
+          openingName && isNodeOfType(openingName, "JSXIdentifier")
+            ? context.scopes.symbolFor(openingName)
+            : null;
         if (
-          openingName &&
-          isNodeOfType(openingName, "JSXIdentifier") &&
+          openingSymbol &&
           isNodeOfType(node.name, "JSXIdentifier") &&
-          jsxSlotPropRegistry?.get(openingName.name)?.has(node.name.name)
+          jsxSlotPropRegistry?.get(openingSymbol.id)?.has(node.name.name)
         ) {
           return;
         }

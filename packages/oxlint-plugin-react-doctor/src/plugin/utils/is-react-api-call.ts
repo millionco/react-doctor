@@ -63,16 +63,17 @@ export const isReactApiCall = (
   if (
     !isNodeOfType(callee, "MemberExpression") ||
     callee.computed ||
-    !isNodeOfType(callee.object, "Identifier") ||
     !isNodeOfType(callee.property, "Identifier") ||
     !includesApiName(apiNames, callee.property.name)
   ) {
     return false;
   }
-  if (isReactNamespaceImport(callee.object, scopes)) return true;
+  const receiver = stripParenExpression(callee.object);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  if (isReactNamespaceImport(receiver, scopes)) return true;
   return Boolean(
     options.allowGlobalReactNamespace &&
-    callee.object.name === "React" &&
-    scopes.isGlobalReference(callee.object),
+    receiver.name === "React" &&
+    scopes.isGlobalReference(receiver),
   );
 };

@@ -319,6 +319,64 @@ ${INK_STATUS_BAR_USAGE}
     expect(result.diagnostics[0]?.message).toContain("brand new JSX");
   });
 
+  it("resolves memo references to same-file component implementations", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import { memo, type ReactNode } from "react";
+      interface ChildProps {
+        payload: ReactNode;
+      }
+      const ChildImplementation = ({ payload }: ChildProps) => <>{payload}</>;
+      const MemoChild = memo(ChildImplementation);
+      const Parent = () => <MemoChild payload={<Heavy />} />;
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("uses the JSX component binding when applying same-file slot contracts", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import { memo, type ReactNode } from "react";
+      const MemoChild = memo(({ payload }: { payload: ReactNode }) => <>{payload}</>);
+      const Parent = () => {
+        const MemoChild = memo(
+          ({ payload }: { payload: unknown }) => <span>{String(payload)}</span>,
+        );
+        return <MemoChild payload={<Heavy />} />;
+      };
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("brand new JSX");
+  });
+
+  it("does not treat arbitrary wrappers as transparent component contracts", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import { memo, type ReactNode } from "react";
+      interface ChildProps {
+        payload: ReactNode;
+      }
+      const adapt = (render: (props: ChildProps) => JSX.Element) =>
+        ({ payload }: { payload: unknown }) => render({ payload: String(payload) });
+      const MemoChild = memo(adapt(({ payload }: ChildProps) => <>{payload}</>));
+      const Parent = () => <MemoChild payload={<Heavy />} />;
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("brand new JSX");
+  });
+
   it("resolves renamed React slot type imports and same-file type aliases", () => {
     const result = runRule(
       jsxNoJsxAsProp,

@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findEnclosingJsxOpeningElement } from "../../utils/find-enclosing-jsx-opening-element.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
@@ -140,9 +141,14 @@ const isInsideAvailabilityGuard = (
     if (isFunctionLike(parentNode) && !executesDuringRender(parentNode)) break;
     if (
       isNodeOfType(parentNode, "LogicalExpression") &&
-      parentNode.operator === "&&" &&
+      (parentNode.operator === "&&" || parentNode.operator === "||") &&
       parentNode.right === currentNode &&
-      readAvailabilityWhenPredicate(parentNode.left, browserGlobalName, context, true) === true
+      readAvailabilityWhenPredicate(
+        parentNode.left,
+        browserGlobalName,
+        context,
+        parentNode.operator === "&&",
+      ) === true
     ) {
       return true;
     }
@@ -215,11 +221,12 @@ const isAfterAvailabilityEarlyExit = (
 };
 
 const isTypeofProbe = (node: EsTreeNode): boolean => {
-  const parentNode = node.parent;
+  const expressionRoot = findTransparentExpressionRoot(node);
+  const parentNode = expressionRoot.parent;
   return (
     isNodeOfType(parentNode, "UnaryExpression") &&
     parentNode.operator === "typeof" &&
-    parentNode.argument === node
+    parentNode.argument === expressionRoot
   );
 };
 

@@ -96,27 +96,40 @@ const readAvailabilityWhenPredicate = (
   if (!isNodeOfType(unwrappedExpression, "BinaryExpression")) return null;
   const leftTypeofName = getTypeofBrowserGlobalName(unwrappedExpression.left, context);
   const rightTypeofName = getTypeofBrowserGlobalName(unwrappedExpression.right, context);
-  const leftIsUndefined =
+  const leftComparedType =
     isNodeOfType(unwrappedExpression.left, "Literal") &&
-    unwrappedExpression.left.value === "undefined";
-  const rightIsUndefined =
+    typeof unwrappedExpression.left.value === "string"
+      ? unwrappedExpression.left.value
+      : null;
+  const rightComparedType =
     isNodeOfType(unwrappedExpression.right, "Literal") &&
-    unwrappedExpression.right.value === "undefined";
+    typeof unwrappedExpression.right.value === "string"
+      ? unwrappedExpression.right.value
+      : null;
   const guardName =
-    leftTypeofName && rightIsUndefined
+    leftTypeofName && rightComparedType
       ? leftTypeofName
-      : rightTypeofName && leftIsUndefined
+      : rightTypeofName && leftComparedType
         ? rightTypeofName
         : null;
-  if (!guardName || !browserGuardCoversGlobal(guardName, browserGlobalName)) return null;
-  const availabilityWhenTrue =
-    unwrappedExpression.operator === "!==" || unwrappedExpression.operator === "!="
-      ? true
-      : unwrappedExpression.operator === "===" || unwrappedExpression.operator === "=="
-        ? false
+  const comparedType =
+    leftTypeofName && rightComparedType
+      ? rightComparedType
+      : rightTypeofName && leftComparedType
+        ? leftComparedType
         : null;
-  if (availabilityWhenTrue === null) return null;
-  return predicateResult ? availabilityWhenTrue : !availabilityWhenTrue;
+  if (!guardName || !browserGuardCoversGlobal(guardName, browserGlobalName)) return null;
+  if (!comparedType) return null;
+  const isEquality =
+    unwrappedExpression.operator === "===" || unwrappedExpression.operator === "==";
+  const isInequality =
+    unwrappedExpression.operator === "!==" || unwrappedExpression.operator === "!=";
+  if (!isEquality && !isInequality) return null;
+  const browserType = guardName === "matchMedia" ? "function" : "object";
+  const browserResult = isEquality ? browserType === comparedType : browserType !== comparedType;
+  const serverResult = isEquality ? comparedType === "undefined" : comparedType !== "undefined";
+  if (browserResult === serverResult) return null;
+  return predicateResult === browserResult;
 };
 
 const statementAlwaysExits = (statement: EsTreeNode): boolean => {

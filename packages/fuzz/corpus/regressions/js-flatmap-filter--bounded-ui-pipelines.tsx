@@ -1,3 +1,6 @@
+// rule: js-flatmap-filter
+// weakness: cost-model
+// source: ISSUES_TO_FIX_ASAP.md (bounded ancestry and URL-token pipelines)
 interface Level {
   selected?: string;
 }

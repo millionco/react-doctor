@@ -13,6 +13,7 @@ import { isAstNode } from "../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isInsideClientOnlyGuard } from "../../utils/is-inside-client-only-guard.js";
+import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
@@ -190,9 +191,6 @@ const findEnclosingJsxAttribute = (node: EsTreeNode): EsTreeNodeOfType<"JSXAttri
   }
   return null;
 };
-
-const isEventHandlerAttribute = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean =>
-  isNodeOfType(attribute.name, "JSXIdentifier") && /^on[A-Z]/.test(attribute.name.name);
 
 const isInRenderedOutput = (node: EsTreeNode, componentOrHookNode: EsTreeNode): boolean => {
   let currentNode = node;

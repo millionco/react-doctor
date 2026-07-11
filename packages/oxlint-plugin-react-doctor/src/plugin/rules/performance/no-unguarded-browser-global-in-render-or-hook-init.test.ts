@@ -53,6 +53,18 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `"use client"; export const Page = () => <div>{typeof document !== "undefined" && document.title}</div>;`,
     ],
     [
+      "a compound availability guard",
+      `"use client"; export const Page = ({ ready }) => <div>{typeof window !== "undefined" && ready ? window.innerWidth : 0}</div>;`,
+    ],
+    [
+      "a guard around a synchronous render callback",
+      `"use client"; export const Page = ({ rows }) => { if (typeof window !== "undefined") return <>{rows.map(() => window.innerWidth)}</>; return null; };`,
+    ],
+    [
+      "a matchMedia availability guard",
+      `"use client"; export const Page = () => <div>{typeof matchMedia !== "undefined" ? String(matchMedia("(max-width: 600px)").matches) : "false"}</div>;`,
+    ],
+    [
       "an early-return guard",
       `"use client"; export const Page = () => { if (typeof window === "undefined") return null; return <div>{window.innerWidth}</div>; };`,
     ],

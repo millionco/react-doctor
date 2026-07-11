@@ -73,6 +73,26 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       "a browser read behind an initially false OR operand",
       `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); return mounted || window.innerWidth; };`,
     ],
+    [
+      "a browser read whose availability exit is in a sibling useMemo factory",
+      `import { useMemo } from "react"; export const Page = () => { useMemo(() => { if (typeof window === "undefined") return 0; return 1; }, []); return useMemo(() => window.innerWidth, []); };`,
+    ],
+    [
+      "a browser read after an exit in an unrelated inner function",
+      `import { useMemo } from "react"; export const Page = () => useMemo(() => { const guard = () => { if (typeof window === "undefined") return; }; return window.innerWidth; }, []);`,
+    ],
+    [
+      "a nested render callback whose own body has no availability exit",
+      `import { useMemo } from "react"; export const Page = () => { if (typeof window === "undefined") return null; return useMemo(() => window.innerWidth, []); };`,
+    ],
+    [
+      "a render read after an availability exit in a timer callback",
+      `"use client"; export const Page = () => { setTimeout(() => { if (typeof window === "undefined") return; }, 0); return window.innerWidth; };`,
+    ],
+    [
+      "a render read after an availability exit in a promise callback",
+      `"use client"; export const Page = () => { Promise.resolve().then(() => { if (typeof document === "undefined") return; }); return document.title; };`,
+    ],
   ])("reports an unguarded browser read in %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -141,6 +161,30 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `"use client"; export const Page = ({ shouldThrow }) => { if (typeof window === "undefined") { if (shouldThrow) throw new Error("server"); else return null; } return <div>{window.innerWidth}</div>; };`,
     ],
     [
+      "an availability exit in a lazy useState initializer",
+      `import { useState } from "react"; export const Page = () => { const [width] = useState(() => { if (typeof window === "undefined") return 0; return window.innerWidth; }); return <div>{width}</div>; };`,
+    ],
+    [
+      "an availability exit in a useMemo factory",
+      `import { useMemo } from "react"; export const Page = () => { const width = useMemo(() => { if (typeof window === "undefined") return 0; return window.innerWidth; }, []); return <div>{width}</div>; };`,
+    ],
+    [
+      "an availability exit in an IIFE",
+      `"use client"; export const Page = () => <div>{(() => { if (typeof window === "undefined") return 0; return window.innerWidth; })()}</div>;`,
+    ],
+    [
+      "an availability exit in a synchronous map callback",
+      `"use client"; export const Page = ({ rows }) => <ul>{rows.map(() => { if (typeof window === "undefined") return null; return <li>{window.innerWidth}</li>; })}</ul>;`,
+    ],
+    [
+      "an availability exit in an Array.from callback",
+      `"use client"; export const Page = ({ rows }) => <ul>{Array.from(rows, () => { if (typeof window === "undefined") return null; return <li>{window.innerWidth}</li>; })}</ul>;`,
+    ],
+    [
+      "an availability exit in a nested render-phase block",
+      `import { useMemo } from "react"; export const Page = ({ ready }) => useMemo(() => { if (ready) { if (typeof window === "undefined") return 0; return window.innerWidth; } return 0; }, [ready]);`,
+    ],
+    [
       "a shadowed binding",
       `"use client"; export const Page = ({ window }) => <div>{window.innerWidth}</div>;`,
     ],
@@ -179,6 +223,14 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
     [
       "a falsy state gate with an immutable initializer alias",
       `import { useState } from "react"; export const Page = () => { const initialMounted = false; const [mounted] = useState(initialMounted); return <div>{mounted && window.innerWidth}</div>; };`,
+    ],
+    [
+      "a browser read in a timer callback",
+      `"use client"; export const Page = () => { setTimeout(() => window.innerWidth, 0); return null; };`,
+    ],
+    [
+      "a browser read in a promise callback",
+      `"use client"; export const Page = () => { Promise.resolve().then(() => document.title); return null; };`,
     ],
     [
       "a shadowed Array.from lookalike",

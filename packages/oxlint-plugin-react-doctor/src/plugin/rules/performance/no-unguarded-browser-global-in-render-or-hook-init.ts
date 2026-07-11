@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findEnclosingJsxOpeningElement } from "../../utils/find-enclosing-jsx-opening-element.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
@@ -51,22 +52,47 @@ const browserGuardCoversGlobal = (guardName: string, browserGlobalName: string):
   guardName === "window" ||
   (guardName === "document" && browserGlobalName === "document");
 
-const readAvailabilityWhenPredicateTrue = (
+const mergeAvailability = (
+  leftAvailability: boolean | null,
+  rightAvailability: boolean | null,
+): boolean | null => {
+  if (leftAvailability === null) return rightAvailability;
+  if (rightAvailability === null) return leftAvailability;
+  return leftAvailability === rightAvailability ? leftAvailability : null;
+};
+
+const readAvailabilityWhenPredicate = (
   expression: EsTreeNode,
   browserGlobalName: string,
   context: RuleContext,
+  predicateResult: boolean,
 ): boolean | null => {
   const unwrappedExpression = stripParenExpression(expression);
   if (
     isNodeOfType(unwrappedExpression, "UnaryExpression") &&
     unwrappedExpression.operator === "!"
   ) {
-    const innerAvailability = readAvailabilityWhenPredicateTrue(
+    return readAvailabilityWhenPredicate(
       unwrappedExpression.argument,
       browserGlobalName,
       context,
+      !predicateResult,
     );
-    return innerAvailability === null ? null : !innerAvailability;
+  }
+  if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
+    if (unwrappedExpression.operator === "&&" && predicateResult) {
+      return mergeAvailability(
+        readAvailabilityWhenPredicate(unwrappedExpression.left, browserGlobalName, context, true),
+        readAvailabilityWhenPredicate(unwrappedExpression.right, browserGlobalName, context, true),
+      );
+    }
+    if (unwrappedExpression.operator === "||" && !predicateResult) {
+      return mergeAvailability(
+        readAvailabilityWhenPredicate(unwrappedExpression.left, browserGlobalName, context, false),
+        readAvailabilityWhenPredicate(unwrappedExpression.right, browserGlobalName, context, false),
+      );
+    }
+    return null;
   }
   if (!isNodeOfType(unwrappedExpression, "BinaryExpression")) return null;
   const leftTypeofName = getTypeofBrowserGlobalName(unwrappedExpression.left, context);
@@ -84,9 +110,14 @@ const readAvailabilityWhenPredicateTrue = (
         ? rightTypeofName
         : null;
   if (!guardName || !browserGuardCoversGlobal(guardName, browserGlobalName)) return null;
-  if (unwrappedExpression.operator === "!==" || unwrappedExpression.operator === "!=") return true;
-  if (unwrappedExpression.operator === "===" || unwrappedExpression.operator === "==") return false;
-  return null;
+  const availabilityWhenTrue =
+    unwrappedExpression.operator === "!==" || unwrappedExpression.operator === "!="
+      ? true
+      : unwrappedExpression.operator === "===" || unwrappedExpression.operator === "=="
+        ? false
+        : null;
+  if (availabilityWhenTrue === null) return null;
+  return predicateResult ? availabilityWhenTrue : !availabilityWhenTrue;
 };
 
 const statementAlwaysExits = (statement: EsTreeNode): boolean => {
@@ -106,37 +137,35 @@ const isInsideAvailabilityGuard = (
   let currentNode = node;
   let parentNode = currentNode.parent;
   while (parentNode) {
-    if (isFunctionLike(parentNode)) break;
+    if (isFunctionLike(parentNode) && !executesDuringRender(parentNode)) break;
     if (
       isNodeOfType(parentNode, "LogicalExpression") &&
       parentNode.operator === "&&" &&
       parentNode.right === currentNode &&
-      readAvailabilityWhenPredicateTrue(parentNode.left, browserGlobalName, context) === true
+      readAvailabilityWhenPredicate(parentNode.left, browserGlobalName, context, true) === true
     ) {
       return true;
     }
     if (isNodeOfType(parentNode, "ConditionalExpression")) {
-      const availability = readAvailabilityWhenPredicateTrue(
-        parentNode.test,
-        browserGlobalName,
-        context,
-      );
       if (
-        (parentNode.consequent === currentNode && availability === true) ||
-        (parentNode.alternate === currentNode && availability === false)
+        (parentNode.consequent === currentNode &&
+          readAvailabilityWhenPredicate(parentNode.test, browserGlobalName, context, true) ===
+            true) ||
+        (parentNode.alternate === currentNode &&
+          readAvailabilityWhenPredicate(parentNode.test, browserGlobalName, context, false) ===
+            true)
       ) {
         return true;
       }
     }
     if (isNodeOfType(parentNode, "IfStatement")) {
-      const availability = readAvailabilityWhenPredicateTrue(
-        parentNode.test,
-        browserGlobalName,
-        context,
-      );
       if (
-        (parentNode.consequent === currentNode && availability === true) ||
-        (parentNode.alternate === currentNode && availability === false)
+        (parentNode.consequent === currentNode &&
+          readAvailabilityWhenPredicate(parentNode.test, browserGlobalName, context, true) ===
+            true) ||
+        (parentNode.alternate === currentNode &&
+          readAvailabilityWhenPredicate(parentNode.test, browserGlobalName, context, false) ===
+            true)
       ) {
         return true;
       }
@@ -168,13 +197,17 @@ const isAfterAvailabilityEarlyExit = (
   for (const statement of componentOrHookNode.body.body) {
     if (ancestors.has(statement)) return false;
     if (!isNodeOfType(statement, "IfStatement")) continue;
-    const availability = readAvailabilityWhenPredicateTrue(
-      statement.test,
-      browserGlobalName,
-      context,
-    );
-    if (availability === false && statementAlwaysExits(statement.consequent)) return true;
-    if (availability === true && statement.alternate && statementAlwaysExits(statement.alternate)) {
+    if (
+      readAvailabilityWhenPredicate(statement.test, browserGlobalName, context, false) === true &&
+      statementAlwaysExits(statement.consequent)
+    ) {
+      return true;
+    }
+    if (
+      readAvailabilityWhenPredicate(statement.test, browserGlobalName, context, true) === true &&
+      statement.alternate &&
+      statementAlwaysExits(statement.alternate)
+    ) {
       return true;
     }
   }
@@ -204,7 +237,11 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
     let fileIsEmailTemplate = false;
     const reportedNodes = new Set<EsTreeNode>();
 
-    const reportBrowserRead = (node: EsTreeNode, browserGlobalName: string): void => {
+    const reportBrowserRead = (
+      node: EsTreeNode,
+      browserGlobalName: string,
+      reportedBrowserGlobalName = browserGlobalName,
+    ): void => {
       if (reportedNodes.has(node) || isTypeofProbe(node)) return;
       const componentOrHookNode = findRenderPhaseComponentOrHook(node);
       if (!componentOrHookNode) return;
@@ -219,7 +256,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
       reportedNodes.add(node);
       context.report({
         node,
-        message: `\`${browserGlobalName}\` is read while React is rendering on the server, where browser globals are unavailable. Move the read into an effect or event, or provide a stable server snapshot.`,
+        message: `\`${reportedBrowserGlobalName}\` is read while React is rendering on the server, where browser globals are unavailable. Move the read into an effect or event, or provide a stable server snapshot.`,
       });
     };
 
@@ -230,7 +267,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
       Identifier(node: EsTreeNodeOfType<"Identifier">) {
         if (!BROWSER_GLOBAL_NAMES.has(node.name)) return;
         if (!context.scopes.isGlobalReference(node)) return;
-        reportBrowserRead(node, node.name === "matchMedia" ? "window" : node.name);
+        reportBrowserRead(node, node.name, node.name === "matchMedia" ? "window" : node.name);
       },
       MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
         if (node.computed) return;
@@ -246,6 +283,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
         }
         reportBrowserRead(
           node,
+          node.property.name,
           node.property.name === "matchMedia" ? "window" : node.property.name,
         );
       },

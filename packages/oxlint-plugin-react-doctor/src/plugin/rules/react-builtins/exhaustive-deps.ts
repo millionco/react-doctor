@@ -500,6 +500,7 @@ const resolveIdentitySourceKeysFromExpression = (
     const rootSymbol = rootIdentifier ? scopes.symbolFor(rootIdentifier) : null;
     if (!sourceKey || !rootSymbol) return null;
     if (isOutsideAllFunctions(rootSymbol)) return new Set();
+    if (isStableRefContainerCapture(rootSymbol, sourceKey, scopes)) return new Set();
     if (symbolHasStableValue(rootSymbol, scopes)) return null;
     return new Set([sourceKey]);
   }

@@ -1042,6 +1042,22 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("accepts a stable object ref member as a ref alias fallback", () => {
+      const code = `
+        function EditorSurface({ pendingMappingOperationsRef }) {
+          const fallbackRefs = { operations: useRef([]) };
+          const pendingOpsRef = pendingMappingOperationsRef ?? fallbackRefs.operations;
+          useLayoutEffect(() => {
+            consumeOperations(pendingOpsRef.current);
+          }, [pendingMappingOperationsRef]);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("resolves wrapped optional member identity sources", () => {
       const code = `
         function EditorSurface(props) {

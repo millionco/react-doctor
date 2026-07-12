@@ -1149,6 +1149,64 @@ return <div dangerouslySetInnerHTML={{ __html: content }} />;
     expect(findings).toHaveLength(1);
   });
 
+  it.each(["DOMPurify.sanitize(props.safeHtml)", "highlighter.codeToHtml(source)"])(
+    "does not trust a mutable binding initialized from trusted HTML: %s",
+    (initializer) => {
+      const content = [
+        `let renderedHtml = ${initializer};`,
+        "renderedHtml = props.userHtml;",
+        "element.innerHTML = renderedHtml;",
+      ].join("\n");
+      const findings = runScanRule(dangerousHtmlSink, {
+        relativePath: "src/components/preview.ts",
+        content,
+      });
+      expect(findings).toHaveLength(1);
+    },
+  );
+
+  it("keeps an unmodified mutable sanitized binding trusted", () => {
+    const content = [
+      "let renderedHtml = DOMPurify.sanitize(props.safeHtml);",
+      "other.renderedHtml = props.userHtml;",
+      "element.innerHTML = renderedHtml;",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when a trusted helper parameter passes through a taint-named alias", () => {
+    const content = [
+      "const renderPreview = (element, html) => {",
+      "  const content = html;",
+      "  element.innerHTML = content;",
+      "};",
+      'renderPreview(firstPreview, "<p>Static preview</p>");',
+      "renderPreview(secondPreview, DOMPurify.sanitize(loadPreview()));",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a taint-named alias reached through an opaque local alias", () => {
+    const content = [
+      "const value = loadPage();",
+      "const content = value;",
+      "element.innerHTML = content;",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("keeps a trusted helper argument containing parentheses intact", () => {
     const content = [
       "const renderPreview = (element, html) => {",

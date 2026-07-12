@@ -32,6 +32,19 @@ describe("no-impure-state-updater", () => {
        };`,
     ],
     [
+      "a notification package subpath",
+      `import { useState } from "react";
+       import message from "antd/es/message";
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         const increment = () => setCount((previousCount) => {
+           message.error("Try again");
+           return previousCount + 1;
+         });
+         return <button onClick={increment}>{count}</button>;
+       };`,
+    ],
+    [
       "a DOM measurement",
       `import { useRef, useState } from "react";
        const Gallery = () => {

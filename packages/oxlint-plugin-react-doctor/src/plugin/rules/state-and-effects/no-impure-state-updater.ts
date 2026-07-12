@@ -53,12 +53,13 @@ const NOTIFICATION_MODULE_SOURCES = new Set([
   "sonner",
 ]);
 
-const isNotificationModuleSource = (source: string | null): boolean =>
-  Boolean(
-    source &&
-    (NOTIFICATION_MODULE_SOURCES.has(source) ||
-      /(?:^|[/_.-])(?:notification|toast)s?(?:$|[/_.-])/i.test(source)),
-  );
+const isNotificationModuleSource = (source: string | null): boolean => {
+  if (!source) return false;
+  for (const moduleSource of NOTIFICATION_MODULE_SOURCES) {
+    if (source === moduleSource || source.startsWith(`${moduleSource}/`)) return true;
+  }
+  return /(?:^|[/_.-])(?:notification|toast)s?(?:$|[/_.-])/i.test(source);
+};
 
 const getMemberCall = (node: EsTreeNode): MemberCall | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;

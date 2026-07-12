@@ -42,6 +42,19 @@ describe("no-impure-state-updater", () => {
        };`,
     ],
     [
+      "a DOM measurement through a local alias",
+      `import { useRef, useState } from "react";
+       const Gallery = () => {
+         const containerRef = useRef(null);
+         const [width, setWidth] = useState(0);
+         const measure = () => setWidth(() => {
+           const container = containerRef.current;
+           return container.getBoundingClientRect().width;
+         });
+         return <div ref={containerRef} onClick={measure}>{width}</div>;
+       };`,
+    ],
+    [
       "a nested state update",
       `import { useState } from "react";
        const Form = () => {
@@ -154,6 +167,37 @@ describe("no-impure-state-updater", () => {
            setCount((previousCount) => previousCount + 1);
          };
          return <button onClick={increment}>{count}</button>;
+       };`,
+    ],
+    [
+      "a pure userland geometry method",
+      `import { useState } from "react";
+       const geometry = { getBoundingClientRect: () => ({ width: 10 }) };
+       const Panel = () => {
+         const [width, setWidth] = useState(0);
+         setWidth(() => geometry.getBoundingClientRect().width);
+         return width;
+       };`,
+    ],
+    [
+      "an unrelated imported message object",
+      `import { message } from "./domain-message";
+       import { useState } from "react";
+       const Panel = () => {
+         const [value, setValue] = useState(0);
+         setValue(() => message.info());
+         return value;
+       };`,
+    ],
+    [
+      "a local hook with a notification-shaped name",
+      `import { useState } from "react";
+       const useToast = () => ({ success: () => 1 });
+       const Panel = () => {
+         const toast = useToast();
+         const [value, setValue] = useState(0);
+         setValue(() => toast.success());
+         return value;
        };`,
     ],
   ])("stays silent for %s", (_name, code) => {

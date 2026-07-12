@@ -4,36 +4,9 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-
-const resolveReactRefSymbol = (
-  memberExpression: EsTreeNode,
-  scopes: ScopeAnalysis,
-): SymbolDescriptor | null => {
-  const receiver = isNodeOfType(memberExpression, "MemberExpression")
-    ? stripParenExpression(memberExpression.object)
-    : null;
-  if (
-    !isNodeOfType(memberExpression, "MemberExpression") ||
-    memberExpression.computed ||
-    !isNodeOfType(memberExpression.property, "Identifier") ||
-    memberExpression.property.name !== "current" ||
-    !isNodeOfType(receiver, "Identifier")
-  ) {
-    return null;
-  }
-  const symbol = resolveConstIdentifierAlias(receiver, scopes);
-  if (!symbol?.initializer) return null;
-  const initializer = stripParenExpression(symbol.initializer);
-  if (!isNodeOfType(initializer, "CallExpression")) return null;
-  return isReactApiCall(initializer, "useRef", scopes, {
-    allowGlobalReactNamespace: true,
-  })
-    ? symbol
-    : null;
-};
 
 const isSameRefCurrentMember = (
   node: EsTreeNode,
@@ -60,32 +33,35 @@ const isDocumentedLazyInitialization = (
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
 ): boolean => {
-  if (
-    assignmentExpression.operator !== "=" ||
-    !isNodeOfType(assignmentExpression.right, "NewExpression")
-  ) {
-    return false;
-  }
+  if (assignmentExpression.operator === "??=") return true;
+  if (assignmentExpression.operator !== "=") return false;
   let descendant: EsTreeNode = assignmentExpression;
   let ancestor = descendant.parent;
   while (ancestor) {
     if (
       isNodeOfType(ancestor, "IfStatement") &&
-      ancestor.consequent === descendant &&
       isNodeOfType(ancestor.test, "BinaryExpression") &&
-      (ancestor.test.operator === "===" || ancestor.test.operator === "==")
+      ["===", "==", "!==", "!="].includes(ancestor.test.operator)
     ) {
       const { left, right } = ancestor.test;
-      if (
+      const comparesEmptySentinel =
         (isSameRefCurrentMember(left, refSymbol, scopes) &&
-          isNodeOfType(right, "Literal") &&
-          right.value === null) ||
+          ((isNodeOfType(right, "Literal") && right.value === null) ||
+            (isNodeOfType(right, "Identifier") &&
+              right.name === "undefined" &&
+              scopes.isGlobalReference(right)))) ||
         (isSameRefCurrentMember(right, refSymbol, scopes) &&
-          isNodeOfType(left, "Literal") &&
-          left.value === null)
-      ) {
+          ((isNodeOfType(left, "Literal") && left.value === null) ||
+            (isNodeOfType(left, "Identifier") &&
+              left.name === "undefined" &&
+              scopes.isGlobalReference(left))));
+      const isEquality = ancestor.test.operator === "===" || ancestor.test.operator === "==";
+      if (
+        comparesEmptySentinel &&
+        ((isEquality && ancestor.consequent === descendant) ||
+          (!isEquality && ancestor.alternate === descendant))
+      )
         return true;
-      }
     }
     descendant = ancestor;
     ancestor = descendant.parent;

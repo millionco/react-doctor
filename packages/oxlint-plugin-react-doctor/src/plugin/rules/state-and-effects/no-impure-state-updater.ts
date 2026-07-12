@@ -4,9 +4,11 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
+import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { hasReactRefCurrentOrigin } from "../../utils/react-ref-origin.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getRef } from "./utils/effect/ast.js";
@@ -41,6 +43,22 @@ const NOTIFICATION_METHOD_NAMES = new Set([
   "success",
   "warning",
 ]);
+const NOTIFICATION_MODULE_SOURCES = new Set([
+  "@chakra-ui/react",
+  "@heroui/react",
+  "@mantine/notifications",
+  "antd",
+  "react-hot-toast",
+  "react-toastify",
+  "sonner",
+]);
+
+const isNotificationModuleSource = (source: string | null): boolean =>
+  Boolean(
+    source &&
+    (NOTIFICATION_MODULE_SOURCES.has(source) ||
+      /(?:^|[/_.-])(?:notification|toast)s?(?:$|[/_.-])/i.test(source)),
+  );
 
 const getMemberCall = (node: EsTreeNode): MemberCall | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
@@ -55,13 +73,17 @@ const getMemberCall = (node: EsTreeNode): MemberCall | null => {
 const isNotificationReceiver = (receiver: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   if (!isNodeOfType(receiver, "Identifier")) return false;
   if (!NOTIFICATION_RECEIVER_NAMES.has(receiver.name)) return false;
+  const importSource = getImportSourceForName(receiver, receiver.name);
+  if (importSource) return isNotificationModuleSource(importSource);
   const symbol = scopes.symbolFor(receiver);
-  if (symbol?.kind === "import") return true;
   if (!isNodeOfType(symbol?.initializer, "CallExpression")) return false;
   const callee = symbol.initializer.callee;
-  return (
-    isNodeOfType(callee, "Identifier") && /^use(?:Message|Notification|Toast)$/.test(callee.name)
-  );
+  if (
+    !isNodeOfType(callee, "Identifier") ||
+    !/^use(?:Message|Notification|Toast)$/.test(callee.name)
+  )
+    return false;
+  return isNotificationModuleSource(getImportSourceForName(callee, callee.name));
 };
 
 const getKnownImpureCall = (
@@ -87,7 +109,9 @@ const getKnownImpureCall = (
   ) {
     return `${receiver.name}.${methodName}()`;
   }
-  if (EXTERNAL_READ_METHOD_NAMES.has(methodName)) return `.${methodName}()`;
+  if (EXTERNAL_READ_METHOD_NAMES.has(methodName) && hasReactRefCurrentOrigin(receiver, scopes)) {
+    return `.${methodName}()`;
+  }
   if (
     NOTIFICATION_METHOD_NAMES.has(methodName) &&
     isNodeOfType(receiver, "Identifier") &&

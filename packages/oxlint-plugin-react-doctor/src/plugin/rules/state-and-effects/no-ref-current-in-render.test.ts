@@ -166,6 +166,50 @@ describe("no-ref-current-in-render", () => {
        };`,
     ],
     [
+      "lazy initialization from a factory",
+      `import { useRef } from "react";
+       const Video = () => {
+         const playerRef = useRef(null);
+         if (playerRef.current === null) {
+           playerRef.current = createVideoPlayer();
+         }
+         return <video />;
+       };`,
+    ],
+    [
+      "lazy initialization with an undefined sentinel",
+      `import { useRef } from "react";
+       const Video = () => {
+         const playerRef = useRef();
+         if (playerRef.current === undefined) {
+           playerRef.current = createVideoPlayer();
+         }
+         return <video />;
+       };`,
+    ],
+    [
+      "lazy initialization in an inequality alternate",
+      `import { useRef } from "react";
+       const Video = () => {
+         const playerRef = useRef(null);
+         if (playerRef.current !== null) {
+           preparePlayer(playerRef.current);
+         } else {
+           playerRef.current = createVideoPlayer();
+         }
+         return <video />;
+       };`,
+    ],
+    [
+      "lazy initialization with nullish assignment",
+      `import { useRef } from "react";
+       const Video = () => {
+         const playerRef = useRef(null);
+         playerRef.current ??= createVideoPlayer();
+         return <video />;
+       };`,
+    ],
+    [
       "an event handler",
       `import { useRef } from "react";
        const Button = () => {

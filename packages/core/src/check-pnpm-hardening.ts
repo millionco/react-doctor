@@ -3,12 +3,12 @@ import * as path from "node:path";
 import { RECOMMENDED_PNPM_MINIMUM_RELEASE_AGE_MINUTES } from "./constants.js";
 import { isFile, findMonorepoRoot } from "./project-info/index.js";
 import type { Diagnostic } from "./types/index.js";
+import { stripUtf8Bom } from "./utils/strip-utf8-bom.js";
 
 const PNPM_WORKSPACE_FILE = "pnpm-workspace.yaml";
 const PNPM_LOCKFILE = "pnpm-lock.yaml";
 const PACKAGE_JSON_FILE = "package.json";
 const PNPM_HARDENING_RULE_KEY = "require-pnpm-hardening";
-const UTF8_BOM_CHAR = "\uFEFF";
 
 interface PnpmWorkspaceScalar {
   readonly value: string;
@@ -47,15 +47,12 @@ const stripInlineComment = (rawValue: string): string => {
 
 const unquote = (rawValue: string): string => rawValue.replace(/^["']|["']$/g, "");
 
-const stripBom = (rawContent: string): string =>
-  rawContent.startsWith(UTF8_BOM_CHAR) ? rawContent.slice(UTF8_BOM_CHAR.length) : rawContent;
-
 const parseHardeningSettings = (content: string): PnpmWorkspaceHardeningSettings => {
   let minimumReleaseAge: PnpmWorkspaceScalar | null = null;
   let blockExoticSubdeps: PnpmWorkspaceScalar | null = null;
   let trustPolicy: PnpmWorkspaceScalar | null = null;
 
-  const lines = stripBom(content).split(/\r?\n/);
+  const lines = stripUtf8Bom(content).split(/\r?\n/);
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const lineText = lines[lineIndex];
     if (lineText === undefined) continue;
@@ -86,7 +83,7 @@ const isPnpmManagedProject = (rootDirectory: string): boolean => {
   const packageJsonPath = path.join(rootDirectory, PACKAGE_JSON_FILE);
   if (!isFile(packageJsonPath)) return false;
   try {
-    const packageJsonRaw = fs.readFileSync(packageJsonPath, "utf-8");
+    const packageJsonRaw = stripUtf8Bom(fs.readFileSync(packageJsonPath, "utf-8"));
     const packageJson: unknown = JSON.parse(packageJsonRaw);
     if (
       packageJson !== null &&

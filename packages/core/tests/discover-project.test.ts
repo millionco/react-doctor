@@ -19,6 +19,22 @@ describe("discoverProject", () => {
     expect(projectInfo.reactVersion).toBe("^19.0.0");
   });
 
+  it("detects React from a UTF-8 BOM-prefixed package.json", () => {
+    const projectDirectory = path.join(tempDirectory, "bom-prefixed-package-json");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      `\uFEFF${JSON.stringify({
+        name: "bom-prefixed-package-json",
+        dependencies: { react: "^18.3.1" },
+      })}`,
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactVersion).toBe("^18.3.1");
+    expect(projectInfo.reactMajorVersion).toBe(18);
+  });
+
   it("returns a valid framework", () => {
     const projectInfo = discoverProject(path.join(FIXTURES_DIRECTORY, "basic-react"));
     expect(VALID_FRAMEWORKS).toContain(projectInfo.framework);

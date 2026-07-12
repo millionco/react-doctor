@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PackageJson } from "../types/index.js";
 import { isErrnoException } from "../utils/is-errno-exception.js";
+import { stripUtf8Bom } from "../utils/strip-utf8-bom.js";
 
 const cachedPackageJsons = new Map<string, PackageJson>();
 
@@ -15,7 +16,7 @@ export const clearPackageJsonCache = (): void => {
 
 const readPackageJsonUncached = (packageJsonPath: string): PackageJson => {
   try {
-    return JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+    return JSON.parse(stripUtf8Bom(fs.readFileSync(packageJsonPath, "utf-8")));
   } catch (error) {
     if (error instanceof SyntaxError) {
       return {};

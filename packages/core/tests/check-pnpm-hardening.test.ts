@@ -513,6 +513,23 @@ describe("checkPnpmHardening (monorepo sub-packages)", () => {
     expectMissingHardeningWarnings(diagnostics);
   });
 
+  it("detects packageManager in a UTF-8 BOM-prefixed package.json", () => {
+    const projectDirectory = path.join(temporaryRoot, "bom-prefixed-package-manager");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      `\uFEFF${JSON.stringify({
+        name: "bom-prefixed-package-manager",
+        packageManager: "pnpm@9.0.0",
+        dependencies: { react: "^19.0.0" },
+      })}`,
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expectMissingHardeningWarnings(diagnostics);
+  });
+
   it("returns diagnostics for a standalone pnpm project with pnpm-lock.yaml only (no workspace)", () => {
     const standaloneWithLock = path.join(temporaryRoot, "standalone-lock");
     fs.mkdirSync(standaloneWithLock, { recursive: true });

@@ -1,7 +1,7 @@
-import fs from "node:fs";
 import path from "node:path";
 import {
   computeConfigFingerprint,
+  hashFileContents,
   runEditorScan,
   type Diagnostic as CoreDiagnostic,
 } from "@react-doctor/core";
@@ -16,7 +16,7 @@ import {
 } from "../types.js";
 import { normalizeFsPath } from "../text/uri.js";
 import { toProjectRelative } from "../utils/to-project-relative.js";
-import { createLintCache, type FileStat, type LintCache } from "./lint-cache.js";
+import { createLintCache, type FileIdentity, type LintCache } from "./lint-cache.js";
 import { materializeOverlay, type OverlaySnapshot } from "./overlay.js";
 
 export interface ScanRunnerOptions {
@@ -73,13 +73,9 @@ const resolveDiagnosticFsPath = (
   return normalizeFsPath(absolute);
 };
 
-const statSafe = (fsPath: string): FileStat | null => {
-  try {
-    const stat = fs.statSync(fsPath);
-    return { mtimeMs: stat.mtimeMs, size: stat.size };
-  } catch {
-    return null;
-  }
+const readFileIdentity = (fsPath: string): FileIdentity | null => {
+  const contentHash = hashFileContents(fsPath);
+  return contentHash === null ? null : { contentHash };
 };
 
 /**
@@ -111,7 +107,7 @@ const outcomeWithoutScan = (
  * overlay tree (unsaved buffers) or disk, groups diagnostics by canonical
  * absolute path, and reports stale-detection metadata.
  *
- * A persistent per-file lint cache (keyed by mtime + size, namespaced by a
+ * A persistent per-file lint cache (keyed by content, namespaced by a
  * config fingerprint) short-circuits unchanged files so a re-opened editor
  * or repeated workspace scan skips the oxlint subprocess for everything it
  * hasn't edited. The cache applies only to disk-based, lint-only, per-file
@@ -157,15 +153,15 @@ export const createScanRunner = (options: ScanRunnerOptions): ScanRunner => {
     // Partition into cache hits (skip oxlint) and files that need scanning.
     // Fresh results are merged into `byFile` after the scan below.
     const byFile = new Map<string, CoreDiagnostic[]>();
-    const statByPath = new Map<string, FileStat>();
+    const identityByPath = new Map<string, FileIdentity>();
     let filesToScan = requestedPaths;
     if (cache) {
       const uncached: string[] = [];
       for (const fsPath of requestedPaths) {
-        const stat = statSafe(fsPath);
-        if (stat) {
-          statByPath.set(fsPath, stat);
-          const hit = cache.lookup(fsPath, stat);
+        const identity = readFileIdentity(fsPath);
+        if (identity) {
+          identityByPath.set(fsPath, identity);
+          const hit = cache.lookup(fsPath, identity);
           if (hit !== null) {
             if (hit.length > 0) byFile.set(fsPath, hit);
             continue;
@@ -247,9 +243,9 @@ export const createScanRunner = (options: ScanRunnerOptions): ScanRunner => {
         result.lintPartialFailures.length === 0
       ) {
         for (const fsPath of filesToScan) {
-          const stat = statByPath.get(fsPath);
-          if (!stat) continue;
-          cache.store(fsPath, stat, byFile.get(fsPath) ?? []);
+          const identity = identityByPath.get(fsPath);
+          if (!identity) continue;
+          cache.store(fsPath, identity, byFile.get(fsPath) ?? []);
         }
         cache.schedulePersist();
       }

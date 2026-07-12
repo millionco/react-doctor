@@ -59,7 +59,7 @@ export const WORKSPACE_SCAN_CHUNK_SIZE = 100;
  * On-disk lint-cache schema version. Bump to invalidate every persisted
  * cache after a format change.
  */
-export const LINT_CACHE_VERSION = 1;
+export const LINT_CACHE_VERSION = 2;
 
 /**
  * Debounce before the in-memory lint cache is written to disk. A whole

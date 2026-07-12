@@ -11,7 +11,10 @@ import {
   shouldStoreScanPayload,
   type CachedScanPayload,
 } from "../src/cli/utils/scan-result-cache.js";
-import { SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT } from "../src/cli/utils/constants.js";
+import {
+  SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT,
+  SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES,
+} from "../src/cli/utils/constants.js";
 import { runGit } from "../src/cli/utils/git-hook-shared.js";
 import { VERSION } from "../src/cli/utils/version.js";
 import { commitAll, initGitRepo, setupReactProject } from "./regressions/_helpers.js";
@@ -502,6 +505,19 @@ describe("scan result cache", () => {
       ) {
         fs.writeFileSync(path.join(scratchDirectory, `file-${fileIndex}.txt`), String(fileIndex));
       }
+      expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+    });
+
+    it("disables caching when an oversized dirty file cannot be content-hashed", () => {
+      const projectDirectory = setupCleanProject("oversized-file");
+      const pluginPath = path.join(projectDirectory, "custom-rule.cjs");
+      const fileSize = SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES + 1;
+      fs.writeFileSync(pluginPath, "a".repeat(fileSize));
+      const originalStat = fs.statSync(pluginPath);
+      expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+
+      fs.writeFileSync(pluginPath, "b".repeat(fileSize));
+      fs.utimesSync(pluginPath, originalStat.atime, originalStat.mtime);
       expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
     });
 

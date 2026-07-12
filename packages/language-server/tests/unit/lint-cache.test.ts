@@ -30,43 +30,45 @@ const diagnostic = (rule: string): CoreDiagnostic => ({
   category: "Correctness",
 });
 
+const fileIdentity = (contentHash: string) => ({ contentHash });
+
 describe("createLintCache", () => {
-  it("returns a hit only when path + mtime + size all match", () => {
+  it("returns a hit only when path and content hash match", () => {
     const cache = createLintCache({ projectDirectory: projectDir, fingerprint: "fp1" });
     const diagnostics = [diagnostic("no-array-index-key")];
-    cache.store("/p/a.tsx", { mtimeMs: 1000, size: 50 }, diagnostics);
+    cache.store("/p/a.tsx", fileIdentity("hash-a"), diagnostics);
 
-    expect(cache.lookup("/p/a.tsx", { mtimeMs: 1000, size: 50 })).toEqual(diagnostics);
-    expect(cache.lookup("/p/a.tsx", { mtimeMs: 1001, size: 50 })).toBeNull(); // mtime changed
-    expect(cache.lookup("/p/a.tsx", { mtimeMs: 1000, size: 51 })).toBeNull(); // size changed
-    expect(cache.lookup("/p/unknown.tsx", { mtimeMs: 1000, size: 50 })).toBeNull();
+    expect(cache.lookup("/p/a.tsx", fileIdentity("hash-a"))).toEqual(diagnostics);
+    expect(cache.lookup("/p/a.tsx", fileIdentity("hash-b"))).toBeNull();
+    expect(cache.lookup("/p/unknown.tsx", fileIdentity("hash-a"))).toBeNull();
   });
 
   it("distinguishes a cached-clean file ([]) from a miss (null)", () => {
     const cache = createLintCache({ projectDirectory: projectDir, fingerprint: "fp1" });
-    cache.store("/p/clean.tsx", { mtimeMs: 1, size: 1 }, []);
-    expect(cache.lookup("/p/clean.tsx", { mtimeMs: 1, size: 1 })).toEqual([]);
-    expect(cache.lookup("/p/never.tsx", { mtimeMs: 1, size: 1 })).toBeNull();
+    const identity = fileIdentity("clean");
+    cache.store("/p/clean.tsx", identity, []);
+    expect(cache.lookup("/p/clean.tsx", identity)).toEqual([]);
+    expect(cache.lookup("/p/never.tsx", identity)).toBeNull();
   });
 
   it("persists to disk and reloads under the same fingerprint", () => {
     const first = createLintCache({ projectDirectory: projectDir, fingerprint: "fp1" });
-    first.store("/p/a.tsx", { mtimeMs: 7, size: 8 }, [diagnostic("rule-a")]);
-    first.store("/p/clean.tsx", { mtimeMs: 9, size: 10 }, []);
+    first.store("/p/a.tsx", fileIdentity("hash-a"), [diagnostic("rule-a")]);
+    first.store("/p/clean.tsx", fileIdentity("clean"), []);
     first.flush();
 
     const reloaded = createLintCache({ projectDirectory: projectDir, fingerprint: "fp1" });
-    expect(reloaded.lookup("/p/a.tsx", { mtimeMs: 7, size: 8 })).toEqual([diagnostic("rule-a")]);
-    expect(reloaded.lookup("/p/clean.tsx", { mtimeMs: 9, size: 10 })).toEqual([]);
+    expect(reloaded.lookup("/p/a.tsx", fileIdentity("hash-a"))).toEqual([diagnostic("rule-a")]);
+    expect(reloaded.lookup("/p/clean.tsx", fileIdentity("clean"))).toEqual([]);
   });
 
   it("discards a persisted cache when the fingerprint changes", () => {
     const first = createLintCache({ projectDirectory: projectDir, fingerprint: "fp1" });
-    first.store("/p/a.tsx", { mtimeMs: 7, size: 8 }, [diagnostic("rule-a")]);
+    first.store("/p/a.tsx", fileIdentity("hash-a"), [diagnostic("rule-a")]);
     first.flush();
 
     const reloaded = createLintCache({ projectDirectory: projectDir, fingerprint: "fp2" });
-    expect(reloaded.lookup("/p/a.tsx", { mtimeMs: 7, size: 8 })).toBeNull();
+    expect(reloaded.lookup("/p/a.tsx", fileIdentity("hash-a"))).toBeNull();
   });
 });
 

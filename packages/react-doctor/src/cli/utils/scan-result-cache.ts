@@ -220,7 +220,7 @@ const buildDirtyPathContentFingerprint = (
   // serving a stale payload for an unfingerprintable state.
   if (!stats.isFile()) return null;
   if (stats.size > SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES) {
-    return `stat:${stats.mtimeMs}:${stats.size}`;
+    return null;
   }
   return hashFileContents(absolutePath);
 };

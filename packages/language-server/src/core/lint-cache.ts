@@ -10,13 +10,11 @@ import {
 } from "../constants.js";
 import { SILENT_LOGGER, type Logger } from "../types.js";
 
-/** The file metadata the lint cache keys on (a stable content proxy). */
-export interface FileStat {
-  readonly mtimeMs: number;
-  readonly size: number;
+export interface FileIdentity {
+  readonly contentHash: string;
 }
 
-interface LintCacheEntry extends FileStat {
+interface LintCacheEntry extends FileIdentity {
   readonly diagnostics: CoreDiagnostic[];
 }
 
@@ -28,16 +26,16 @@ interface PersistedCache {
 
 /**
  * Per-project, content-aware lint result cache. Keyed by absolute file
- * path + (mtime, size) so an unchanged file skips the oxlint subprocess
+ * path + content hash so an unchanged file skips the oxlint subprocess
  * entirely on re-scan. Namespaced by a config fingerprint so a config /
  * dependency change starts fresh. Persisted to disk so a re-opened editor
  * gets near-instant diagnostics for everything it hasn't edited.
  */
 export interface LintCache {
-  /** Cached diagnostics for `fsPath` if its `FileStat` matches, else `null`. */
-  readonly lookup: (fsPath: string, stat: FileStat) => CoreDiagnostic[] | null;
+  /** Cached diagnostics for `fsPath` if its identity matches, else `null`. */
+  readonly lookup: (fsPath: string, identity: FileIdentity) => CoreDiagnostic[] | null;
   /** Record the diagnostics for a freshly-scanned file (empty = clean). */
-  readonly store: (fsPath: string, stat: FileStat, diagnostics: CoreDiagnostic[]) => void;
+  readonly store: (fsPath: string, identity: FileIdentity, diagnostics: CoreDiagnostic[]) => void;
   /** Debounced write-back to disk. */
   readonly schedulePersist: () => void;
   /** Write to disk now (cancels any pending debounce). */
@@ -106,15 +104,15 @@ export const createLintCache = (input: {
   };
 
   return {
-    lookup: (fsPath, stat) => {
+    lookup: (fsPath, identity) => {
       const entry = entries.get(fsPath);
-      if (entry !== undefined && entry.mtimeMs === stat.mtimeMs && entry.size === stat.size) {
+      if (entry !== undefined && entry.contentHash === identity.contentHash) {
         return entry.diagnostics;
       }
       return null;
     },
-    store: (fsPath, stat, diagnostics) => {
-      entries.set(fsPath, { ...stat, diagnostics });
+    store: (fsPath, identity, diagnostics) => {
+      entries.set(fsPath, { ...identity, diagnostics });
       dirty = true;
     },
     schedulePersist: () => {

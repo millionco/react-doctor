@@ -407,17 +407,16 @@ const buildStatement = (
   return current;
 };
 
-interface BuiltFunctionCfg {
-  cfg: FunctionCfg;
-  nestedFunctions: EsTreeNode[];
-}
-
-const buildFunctionCfg = (functionNode: EsTreeNode, body: EsTreeNode): BuiltFunctionCfg => {
+const buildFunctionCfg = (
+  functionNode: EsTreeNode,
+  body: EsTreeNode,
+  nestedFunctionSink: EsTreeNode[],
+): FunctionCfg => {
   const builder: CfgBuilder = {
     blocks: [],
     entry: null as unknown as BasicBlock,
     exit: null as unknown as BasicBlock,
-    nestedFunctions: [],
+    nestedFunctions: nestedFunctionSink,
     nodeBlock: new Map(),
     loopStack: [],
     switchStack: [],
@@ -440,17 +439,12 @@ const buildFunctionCfg = (functionNode: EsTreeNode, body: EsTreeNode): BuiltFunc
   // Implicit return / fall-off the end of the function body.
   addEdge(bodyEnd, exit, "uncond");
 
-  const blockOf = (node: EsTreeNode): BasicBlock | null => builder.nodeBlock.get(node) ?? null;
-
   return {
-    cfg: {
-      owner: functionNode,
-      entry,
-      exit,
-      blocks: builder.blocks,
-      blockOf,
-    },
-    nestedFunctions: builder.nestedFunctions,
+    owner: functionNode,
+    entry,
+    exit,
+    blocks: builder.blocks,
+    blockOf: (node: EsTreeNode): BasicBlock | null => builder.nodeBlock.get(node) ?? null,
   };
 };
 
@@ -521,14 +515,11 @@ export const analyzeControlFlow = (program: EsTreeNode): ControlFlowAnalysis => 
   const pendingFunctions: EsTreeNode[] = [];
 
   const buildFor = (functionNode: EsTreeNode, body: EsTreeNode): void => {
-    const { cfg, nestedFunctions } = buildFunctionCfg(functionNode, body);
+    const cfg = buildFunctionCfg(functionNode, body, pendingFunctions);
     functionCfgs.set(functionNode, {
       cfg,
       unconditionalSet: computeUnconditionalSet(cfg),
     });
-    for (const nestedFunction of nestedFunctions) {
-      pendingFunctions.push(nestedFunction);
-    }
   };
 
   // Build CFG for the program itself (treat as a "function" for

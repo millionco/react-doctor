@@ -1,12 +1,20 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Command } from "commander";
-import { BYTES_PER_MEBIBYTE, PERCENT_MULTIPLIER, PROFILE_TOP_FRAME_COUNT } from "./constants.ts";
-import { collectProfilePaths } from "./collect-profile-paths.ts";
-import { profileFrameKey } from "./profile-frame-key.ts";
-import { resolveProfileProcessRole } from "./resolve-profile-process-role.ts";
-import { runCommanderMain } from "./run-commander-main.ts";
+import { BYTES_PER_MEBIBYTE, PROFILE_TOP_FRAME_COUNT } from "./constants.ts";
+import { isRecord, isRecordWithFields } from "./is-record-with-fields.ts";
+import {
+  addFrameChainTotals,
+  collectProfilePaths,
+  aggregateFrameValues,
+  getFrameValue,
+  isCallFrame,
+  profileFrameKey,
+  resolveProfileProcessRole,
+  toRankedFrames,
+} from "./profile-frames.ts";
+import type { MutableFrameValue } from "./profile-frames.ts";
+import { runProfileAnalysisMain } from "./run-commander-main.ts";
 import type {
   HeapProfile,
   HeapProfileAnalysis,
@@ -15,50 +23,19 @@ import type {
   HeapProfileProcessSummary,
 } from "./types.ts";
 
-interface MutableFrameAllocation {
-  callFrame: HeapProfileNode["callFrame"];
-  selfBytes: number;
-  totalBytes: number;
-}
-
 interface AnalyzedHeapProfile {
   processSummary: HeapProfileProcessSummary;
-  allocations: Map<string, MutableFrameAllocation>;
+  allocations: Map<string, MutableFrameValue>;
 }
 
-interface HeapProfileCommandOptions {
-  out?: string;
-}
-
-const isCallFrame = (value: unknown): value is HeapProfileNode["callFrame"] =>
-  typeof value === "object" &&
-  value !== null &&
-  "functionName" in value &&
-  typeof value.functionName === "string" &&
-  "url" in value &&
-  typeof value.url === "string" &&
-  "lineNumber" in value &&
-  typeof value.lineNumber === "number" &&
-  "columnNumber" in value &&
-  typeof value.columnNumber === "number";
-
-const isHeapProfileNode = (value: unknown): value is HeapProfileNode => {
-  if (typeof value !== "object" || value === null) return false;
-  return (
-    "callFrame" in value &&
-    isCallFrame(value.callFrame) &&
-    "selfSize" in value &&
-    typeof value.selfSize === "number" &&
-    "id" in value &&
-    typeof value.id === "number" &&
-    "children" in value &&
-    Array.isArray(value.children) &&
-    value.children.every(isHeapProfileNode)
-  );
-};
+const isHeapProfileNode = (value: unknown): value is HeapProfileNode =>
+  isRecordWithFields(value, { selfSize: "number", id: "number" }) &&
+  isCallFrame(value.callFrame) &&
+  Array.isArray(value.children) &&
+  value.children.every(isHeapProfileNode);
 
 const isHeapProfile = (value: unknown): value is HeapProfile =>
-  typeof value === "object" && value !== null && "head" in value && isHeapProfileNode(value.head);
+  isRecord(value) && isHeapProfileNode(value.head);
 
 const collectNodes = (rootNode: HeapProfileNode): HeapProfileNode[] => {
   const nodes: HeapProfileNode[] = [];
@@ -73,25 +50,14 @@ const collectNodes = (rootNode: HeapProfileNode): HeapProfileNode[] => {
 };
 
 const toFrameSummaries = (
-  allocations: Map<string, MutableFrameAllocation>,
+  allocations: Map<string, MutableFrameValue>,
   sampledBytes: number,
 ): HeapProfileFrameSummary[] =>
-  [...allocations.values()]
-    .map((allocation) => ({
-      functionName: allocation.callFrame.functionName || "(anonymous)",
-      url: allocation.callFrame.url,
-      lineNumber: allocation.callFrame.lineNumber + 1,
-      selfBytes: allocation.selfBytes,
-      totalBytes: allocation.totalBytes,
-      selfPercent:
-        sampledBytes === 0 ? 0 : (allocation.selfBytes / sampledBytes) * PERCENT_MULTIPLIER,
-      totalPercent:
-        sampledBytes === 0 ? 0 : (allocation.totalBytes / sampledBytes) * PERCENT_MULTIPLIER,
-    }))
-    .toSorted(
-      (leftFrame, rightFrame) =>
-        rightFrame.selfBytes - leftFrame.selfBytes || rightFrame.totalBytes - leftFrame.totalBytes,
-    );
+  toRankedFrames(allocations, sampledBytes).map(({ self, total, ...frame }) => ({
+    ...frame,
+    selfBytes: self,
+    totalBytes: total,
+  }));
 
 const analyzeProfile = (profilePath: string): AnalyzedHeapProfile => {
   const parsedProfile: unknown = JSON.parse(fs.readFileSync(profilePath, "utf8"));
@@ -114,42 +80,23 @@ const analyzeProfile = (profilePath: string): AnalyzedHeapProfile => {
       parentById.set(child.id, node.id);
     }
   }
-  const allocations = new Map<string, MutableFrameAllocation>();
+  const allocations = new Map<string, MutableFrameValue>();
   let sampledBytes = 0;
   for (const node of nodes) {
     if (node.selfSize <= 0) continue;
     sampledBytes += node.selfSize;
     const selfKey = frameKeysByNodeId.get(node.id);
     if (selfKey === undefined) continue;
-    const selfAllocation = allocations.get(selfKey) ?? {
-      callFrame: node.callFrame,
-      selfBytes: 0,
-      totalBytes: 0,
-    };
-    selfAllocation.selfBytes += node.selfSize;
-    allocations.set(selfKey, selfAllocation);
-    const visitedFrameKeys = new Set<string>();
-    const visitedNodeIds = new Set<number>();
-    let currentNode: HeapProfileNode | undefined = node;
-    while (currentNode !== undefined) {
-      if (visitedNodeIds.has(currentNode.id)) {
-        throw new Error(`Invalid heap profile with cyclic nodes: ${profilePath}`);
-      }
-      visitedNodeIds.add(currentNode.id);
-      const currentFrameKey = frameKeysByNodeId.get(currentNode.id);
-      if (currentFrameKey !== undefined && !visitedFrameKeys.has(currentFrameKey)) {
-        const allocation = allocations.get(currentFrameKey) ?? {
-          callFrame: currentNode.callFrame,
-          selfBytes: 0,
-          totalBytes: 0,
-        };
-        allocation.totalBytes += node.selfSize;
-        allocations.set(currentFrameKey, allocation);
-        visitedFrameKeys.add(currentFrameKey);
-      }
-      const parentId = parentById.get(currentNode.id);
-      currentNode = parentId === undefined ? undefined : nodesById.get(parentId);
-    }
+    getFrameValue(allocations, selfKey, node.callFrame).self += node.selfSize;
+    addFrameChainTotals({
+      startNode: node,
+      amount: node.selfSize,
+      nodesById,
+      parentById,
+      frameKeysByNodeId,
+      frames: allocations,
+      profilePath,
+    });
   }
   return {
     processSummary: {
@@ -201,19 +148,9 @@ export const analyzeHeapProfiles = (profileDirectory: string): HeapProfileAnalys
     (total, analyzedProfile) => total + analyzedProfile.processSummary.sampledBytes,
     0,
   );
-  const aggregateAllocations = new Map<string, MutableFrameAllocation>();
-  for (const analyzedProfile of analyzedProfiles) {
-    for (const [key, profileAllocation] of analyzedProfile.allocations) {
-      const allocation = aggregateAllocations.get(key) ?? {
-        callFrame: profileAllocation.callFrame,
-        selfBytes: 0,
-        totalBytes: 0,
-      };
-      allocation.selfBytes += profileAllocation.selfBytes;
-      allocation.totalBytes += profileAllocation.totalBytes;
-      aggregateAllocations.set(key, allocation);
-    }
-  }
+  const aggregateAllocations = aggregateFrameValues(
+    analyzedProfiles.map((analyzedProfile) => analyzedProfile.allocations),
+  );
   return {
     generatedAt: new Date().toISOString(),
     profileDirectory,
@@ -226,25 +163,12 @@ export const analyzeHeapProfiles = (profileDirectory: string): HeapProfileAnalys
   };
 };
 
-const main = (): void => {
-  const commandArguments = process.argv.slice(2);
-  const normalizedArguments =
-    commandArguments[0] === "--" ? commandArguments.slice(1) : commandArguments;
-  const command = new Command()
-    .name("react-doctor-performance-memory")
-    .description("Aggregate V8 heap profiles captured by the performance harness")
-    .argument("<profile-directory>", "directory containing .heapprofile files")
-    .option("--out <output-prefix>", "JSON and Markdown output prefix")
-    .parse(normalizedArguments, { from: "user" });
-  const commandOptions = command.opts<HeapProfileCommandOptions>();
-  const profileDirectoryArgument = command.processedArgs[0];
-  if (typeof profileDirectoryArgument !== "string") throw new Error("Missing profile directory");
-  const profileDirectory = path.resolve(profileDirectoryArgument);
-  const outputPrefix = path.resolve(commandOptions.out ?? path.join(profileDirectory, "memory"));
-  const analysis = analyzeHeapProfiles(profileDirectory);
-  fs.writeFileSync(`${outputPrefix}.json`, `${JSON.stringify(analysis, null, 2)}\n`);
-  fs.writeFileSync(`${outputPrefix}.md`, renderAnalysisMarkdown(analysis));
-  process.stdout.write(`${outputPrefix}.md\n`);
-};
-
-if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) runCommanderMain(main);
+if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
+  runProfileAnalysisMain({
+    name: "react-doctor-performance-memory",
+    description: "Aggregate V8 heap profiles captured by the performance harness",
+    defaultOutputName: "memory",
+    analyze: analyzeHeapProfiles,
+    renderMarkdown: renderAnalysisMarkdown,
+  });
+}

@@ -14,6 +14,7 @@ export const REACT_RUNTIME_MODULE_SOURCES = new Set([
   "react-dom",
   "preact/compat",
   "preact/hooks",
+  "@wordpress/element",
 ]);
 
 // React-ecosystem packages whose use*-named exports are REAL React hooks

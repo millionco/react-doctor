@@ -1,18 +1,21 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isAstNode } from "../../utils/is-ast-node.js";
 import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import {
+  isImportedFromReact,
+  isReactApiCall,
+  isReactNamespaceImport,
+} from "../../utils/is-react-api-call.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
-import { RUNTIME_VISITOR_KEYS } from "../../utils/runtime-visitor-keys.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { REACT_HOC_NAMES } from "../../constants/react.js";
+import { forEachChildNode, walkAst } from "../../utils/walk-ast.js";
+import { REACT_HOC_NAMES, REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
 
 const MESSAGE =
   "This file declares several components, so each component is harder to find, test, and change.";
@@ -58,16 +61,6 @@ const isHocCall = (call: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   return symbolMapsToHoc(symbol, scopes, new Set());
 };
 
-const isImportedFromReact = (symbol: SymbolDescriptor): boolean => {
-  if (symbol.kind !== "import") return false;
-  const importDeclaration = symbol.declarationNode.parent;
-  return Boolean(
-    importDeclaration &&
-    isNodeOfType(importDeclaration, "ImportDeclaration") &&
-    importDeclaration.source.value === "react",
-  );
-};
-
 const isReactImportEquals = (symbol: SymbolDescriptor): boolean => {
   if (
     symbol.kind !== "ts-import-equals" ||
@@ -79,7 +72,8 @@ const isReactImportEquals = (symbol: SymbolDescriptor): boolean => {
   return Boolean(
     isNodeOfType(moduleReference, "TSExternalModuleReference") &&
     isNodeOfType(moduleReference.expression, "Literal") &&
-    moduleReference.expression.value === "react",
+    typeof moduleReference.expression.value === "string" &&
+    REACT_RUNTIME_MODULE_SOURCES.has(moduleReference.expression.value),
   );
 };
 
@@ -96,7 +90,8 @@ const isRequireReactCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
   return Boolean(
     moduleSpecifier &&
     isNodeOfType(moduleSpecifier, "Literal") &&
-    moduleSpecifier.value === "react",
+    typeof moduleSpecifier.value === "string" &&
+    REACT_RUNTIME_MODULE_SOURCES.has(moduleSpecifier.value),
   );
 };
 
@@ -107,11 +102,7 @@ const isReactNamespaceExpression = (node: EsTreeNode, scopes: ScopeAnalysis): bo
   if (!symbol) return node.name === "React" && scopes.isGlobalReference(node);
   if (symbol.initializer && isRequireReactCall(symbol.initializer, scopes)) return true;
   if (isReactImportEquals(symbol)) return true;
-  return (
-    isImportedFromReact(symbol) &&
-    (isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier") ||
-      isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier"))
-  );
+  return isReactNamespaceImport(node, scopes);
 };
 
 const isReactHocMemberReference = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
@@ -269,45 +260,29 @@ const isHocComponent = (call: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   return false;
 };
 
-// Walks `root` looking for any JSX. By default DOESN'T descend into
-// nested function/class bodies — the caller passes the function/arrow
-// they want to inspect AS the root, so the first traversal step still
-// enters its body. Set `crossFunctionBoundaries` to walk through
-// nested fn boundaries (used by `expression_contains_jsx` mode below).
+// Walks `root` looking for any JSX. DOESN'T descend into nested
+// function/class bodies — the caller passes the function/arrow they
+// want to inspect AS the root, so the first traversal step still
+// enters its body.
 const containsJsx = (root: EsTreeNode): boolean => {
   let found = false;
-  const visit = (node: EsTreeNode): void => {
-    if (found) return;
+  walkAst(root, (node) => {
+    if (found) return false;
     if (node.type === "JSXElement" || node.type === "JSXFragment") {
       found = true;
-      return;
+      return false;
     }
-    // Don't recurse into nested function/class boundaries (other than
-    // root itself).
-    if (node !== root) {
-      if (
-        node.type === "FunctionDeclaration" ||
+    if (
+      node !== root &&
+      (node.type === "FunctionDeclaration" ||
         node.type === "FunctionExpression" ||
         node.type === "ArrowFunctionExpression" ||
         node.type === "ClassDeclaration" ||
-        node.type === "ClassExpression"
-      ) {
-        return;
-      }
+        node.type === "ClassExpression")
+    ) {
+      return false;
     }
-    const record = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
-      if (found) return;
-    }
-  };
-  visit(root);
+  });
   return found;
 };
 
@@ -524,6 +499,7 @@ interface VisitContext {
   componentDepth: number;
   currentVarName: string | null;
   scopes: ScopeAnalysis;
+  visitChild: (child: EsTreeNode) => void;
 }
 
 const recordComponent = (
@@ -537,33 +513,8 @@ const recordComponent = (
   }
 };
 
-const walkChildren = (node: EsTreeNode, context: VisitContext): void => {
-  const record = node as unknown as Record<string, unknown>;
-  const childKeys = RUNTIME_VISITOR_KEYS[node.type];
-  if (childKeys !== undefined) {
-    for (let keyIndex = 0; keyIndex < childKeys.length; keyIndex += 1) {
-      const child = record[childKeys[keyIndex]];
-      if (Array.isArray(child)) {
-        for (let itemIndex = 0; itemIndex < child.length; itemIndex += 1) {
-          const item = child[itemIndex];
-          if (isAstNode(item)) walkComponentSearch(item, context);
-        }
-      } else if (isAstNode(child)) {
-        walkComponentSearch(child, context);
-      }
-    }
-    return;
-  }
-  for (const key in record) {
-    if (key === "parent" || !Object.hasOwn(record, key)) continue;
-    const child = record[key];
-    if (Array.isArray(child)) {
-      for (const item of child) if (isAstNode(item)) walkComponentSearch(item, context);
-    } else if (isAstNode(child)) {
-      walkComponentSearch(child, context);
-    }
-  }
-};
+const walkChildren = (node: EsTreeNode, context: VisitContext): void =>
+  forEachChildNode(node, context.visitChild);
 
 const walkComponentSearch = (node: EsTreeNode, context: VisitContext): void => {
   // ES6 class component
@@ -744,6 +695,7 @@ export const noMultiComp = defineRule({
           componentDepth: 0,
           currentVarName: null,
           scopes: context.scopes,
+          visitChild: (child) => walkComponentSearch(child, visitContext),
         };
         for (const statement of node.body)
           walkComponentSearch(statement as EsTreeNode, visitContext);

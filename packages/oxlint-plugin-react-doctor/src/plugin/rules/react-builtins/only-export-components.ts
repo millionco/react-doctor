@@ -461,25 +461,19 @@ export const onlyExportComponents = defineRule({
     if (!isFileNameAllowed(filename, settings.checkJS)) return {};
     const exportNodes: EsTreeNode[] = [];
     const componentCandidates: EsTreeNode[] = [];
+    const pushExportNode = (node: EsTreeNode): void => {
+      exportNodes.push(node);
+    };
+    const pushComponentCandidate = (node: EsTreeNode): void => {
+      componentCandidates.push(node);
+    };
     return {
-      ExportAllDeclaration(node: EsTreeNodeOfType<"ExportAllDeclaration">) {
-        exportNodes.push(node);
-      },
-      ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {
-        exportNodes.push(node);
-      },
-      ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
-        exportNodes.push(node);
-      },
-      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
-        componentCandidates.push(node);
-      },
-      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
-        componentCandidates.push(node);
-      },
-      ClassDeclaration(node: EsTreeNodeOfType<"ClassDeclaration">) {
-        componentCandidates.push(node);
-      },
+      ExportAllDeclaration: pushExportNode,
+      ExportDefaultDeclaration: pushExportNode,
+      ExportNamedDeclaration: pushExportNode,
+      FunctionDeclaration: pushComponentCandidate,
+      VariableDeclarator: pushComponentCandidate,
+      ClassDeclaration: pushComponentCandidate,
       "Program:exit"() {
         // Module-scope component bindings (exported or not) — a component
         // declared inside another function is never a Fast Refresh

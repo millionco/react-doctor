@@ -3,15 +3,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as Schema from "effect/Schema";
 import { JsonReport } from "@react-doctor/core/schemas";
+import { isRecord } from "./is-record-with-fields.ts";
 import type { ReadBenchmarkReportInput, ValidatedBenchmarkReport } from "./types.ts";
 
 const projectSourceFileCount = (project: unknown): number => {
-  if (
-    typeof project === "object" &&
-    project !== null &&
-    "sourceFileCount" in project &&
-    typeof project.sourceFileCount === "number"
-  ) {
+  if (isRecord(project) && typeof project.sourceFileCount === "number") {
     return project.sourceFileCount;
   }
   throw new Error("Benchmark report project has no sourceFileCount");

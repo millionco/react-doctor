@@ -105,6 +105,28 @@ describe("react-builtins/no-multi-comp — regressions", () => {
     );
   });
 
+  // React-compat runtimes (preact/compat, @wordpress/element) re-export
+  // React's own memo/forwardRef — their HoC wrappers must behave exactly
+  // like imports from "react" in both directions.
+  it("traces a memo export wrapper imported from a React-compat runtime", () => {
+    expectPass(
+      `import { memo } from "preact/compat";
+       function RowCard() { return <div />; }
+       function HeaderCard() { return <div />; }
+       function GridComponent() { return <div><RowCard /><HeaderCard /></div>; }
+       export const Grid = memo(GridComponent);`,
+    );
+  });
+
+  it("counts memo-wrapped components imported from a React-compat runtime", () => {
+    expectFail(
+      `import { memo } from "@wordpress/element";
+       const Alpha = memo(() => <div />);
+       const Beta = () => <div />;
+       const Gamma = () => <div />;`,
+    );
+  });
+
   it("does not treat an alias of a shadowed memo function as a React export wrapper", () => {
     expectFail(
       `const memo = (_component) => 0;

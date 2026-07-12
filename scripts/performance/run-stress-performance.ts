@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { BENCHMARK_RUNS_DIRECTORY_NAME } from "./constants.ts";
 import { createStressProject } from "./create-stress-project.ts";
 import { isPathWithin } from "./is-path-within.ts";
-import { parsePerformanceArguments } from "./parse-performance-arguments.ts";
+import { toBenchmarkCliOptions } from "./parse-performance-arguments.ts";
 import { parseStressPerformanceArguments } from "./parse-stress-performance-arguments.ts";
 import { runPerformance } from "./run-performance.ts";
 import { runCommanderMain } from "./run-commander-main.ts";
@@ -21,26 +21,7 @@ export const runStressPerformance = (argumentsList: string[]): PerformanceResult
   ) {
     throw new Error("Stress project and benchmark runs directories cannot overlap");
   }
-  const benchmarkOptions = parsePerformanceArguments([
-    projectDirectory,
-    "--samples",
-    String(stressOptions.samples),
-    "--warmups",
-    String(stressOptions.warmups),
-    "--workers",
-    stressOptions.workers,
-    "--mode",
-    stressOptions.mode,
-    "--cache",
-    stressOptions.cache,
-    "--out",
-    outputDirectory,
-    "--cli",
-    stressOptions.cli,
-    ...(stressOptions.compare ? ["--compare", stressOptions.compare] : []),
-    ...(stressOptions.profile ? ["--profile"] : []),
-    ...(stressOptions.heapProfile ? ["--heap-profile"] : []),
-  ]);
+  const benchmarkOptions = toBenchmarkCliOptions(stressOptions, [projectDirectory]);
   const stressProject = createStressProject({
     directory: projectDirectory,
     fileCount: stressOptions.files,

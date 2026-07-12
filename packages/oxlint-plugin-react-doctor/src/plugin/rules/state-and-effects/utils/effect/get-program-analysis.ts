@@ -2,7 +2,7 @@ import { analyze, type Reference, type Scope, type ScopeManager } from "eslint-s
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../../utils/es-tree-node-of-type.js";
 import { findProgramRoot } from "../../../../utils/find-program-root.js";
-import { VISITOR_KEYS } from "./constants.js";
+import { RUNTIME_VISITOR_KEYS } from "../../../../utils/runtime-visitor-keys.js";
 import { getAstChildKeys } from "./get-ast-child-keys.js";
 
 export interface ProgramAnalysis {
@@ -37,7 +37,7 @@ export const getProgramAnalysis = (anyNode: EsTreeNode): ProgramAnalysis | null 
     {
       ecmaVersion: 2024,
       sourceType: "module",
-      childVisitorKeys: VISITOR_KEYS,
+      childVisitorKeys: RUNTIME_VISITOR_KEYS,
       fallback: getAstChildKeys,
     } as Parameters<typeof analyze>[1],
   );

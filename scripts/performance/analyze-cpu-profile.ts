@@ -1,16 +1,20 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Command } from "commander";
+import { MICROSECONDS_PER_SECOND, PROFILE_TOP_FRAME_COUNT } from "./constants.ts";
+import { isRecord, isRecordWithFields } from "./is-record-with-fields.ts";
 import {
-  MICROSECONDS_PER_SECOND,
-  PERCENT_MULTIPLIER,
-  PROFILE_TOP_FRAME_COUNT,
-} from "./constants.ts";
-import { collectProfilePaths } from "./collect-profile-paths.ts";
-import { profileFrameKey } from "./profile-frame-key.ts";
-import { resolveProfileProcessRole } from "./resolve-profile-process-role.ts";
-import { runCommanderMain } from "./run-commander-main.ts";
+  addFrameChainTotals,
+  collectProfilePaths,
+  aggregateFrameValues,
+  getFrameValue,
+  isCallFrame,
+  profileFrameKey,
+  resolveProfileProcessRole,
+  toRankedFrames,
+} from "./profile-frames.ts";
+import type { MutableFrameValue } from "./profile-frames.ts";
+import { runProfileAnalysisMain } from "./run-commander-main.ts";
 import type {
   CpuProfile,
   CpuProfileAnalysis,
@@ -19,86 +23,38 @@ import type {
   CpuProfileProcessSummary,
 } from "./types.ts";
 
-interface MutableFrameTiming {
-  callFrame: CpuProfileNode["callFrame"];
-  selfMicroseconds: number;
-  totalMicroseconds: number;
-}
-
 interface AnalyzedProfile {
   processSummary: CpuProfileProcessSummary;
-  timings: Map<string, MutableFrameTiming>;
+  timings: Map<string, MutableFrameValue>;
 }
 
-interface CpuProfileCommandOptions {
-  out?: string;
-}
+const isCpuProfileNode = (value: unknown): value is CpuProfileNode =>
+  isRecordWithFields(value, { id: "number" }) &&
+  isCallFrame(value.callFrame) &&
+  (!("children" in value) ||
+    (Array.isArray(value.children) &&
+      value.children.every((childId) => typeof childId === "number")));
 
-const isCpuProfileNode = (value: unknown): value is CpuProfileNode => {
-  if (typeof value !== "object" || value === null) return false;
-  if (!("id" in value) || typeof value.id !== "number") return false;
-  if (!("callFrame" in value) || typeof value.callFrame !== "object" || value.callFrame === null) {
-    return false;
-  }
-  if (
-    "children" in value &&
-    (!Array.isArray(value.children) ||
-      !value.children.every((childId) => typeof childId === "number"))
-  ) {
-    return false;
-  }
-  return (
-    "functionName" in value.callFrame &&
-    typeof value.callFrame.functionName === "string" &&
-    "url" in value.callFrame &&
-    typeof value.callFrame.url === "string" &&
-    "lineNumber" in value.callFrame &&
-    typeof value.callFrame.lineNumber === "number" &&
-    "columnNumber" in value.callFrame &&
-    typeof value.callFrame.columnNumber === "number"
-  );
-};
-
-const isCpuProfile = (value: unknown): value is CpuProfile => {
-  if (typeof value !== "object" || value === null) return false;
-  if (!("nodes" in value) || !Array.isArray(value.nodes) || !value.nodes.every(isCpuProfileNode)) {
-    return false;
-  }
-  return (
-    (!("samples" in value) ||
-      (Array.isArray(value.samples) &&
-        value.samples.every((sample) => typeof sample === "number"))) &&
-    (!("timeDeltas" in value) ||
-      (Array.isArray(value.timeDeltas) &&
-        value.timeDeltas.every((delta) => typeof delta === "number")))
-  );
-};
+const isCpuProfile = (value: unknown): value is CpuProfile =>
+  isRecord(value) &&
+  Array.isArray(value.nodes) &&
+  value.nodes.every(isCpuProfileNode) &&
+  (!("samples" in value) ||
+    (Array.isArray(value.samples) &&
+      value.samples.every((sample) => typeof sample === "number"))) &&
+  (!("timeDeltas" in value) ||
+    (Array.isArray(value.timeDeltas) &&
+      value.timeDeltas.every((delta) => typeof delta === "number")));
 
 const toFrameSummaries = (
-  timings: Map<string, MutableFrameTiming>,
+  timings: Map<string, MutableFrameValue>,
   sampledMicroseconds: number,
 ): CpuProfileFrameSummary[] =>
-  [...timings.values()]
-    .map((timing) => ({
-      functionName: timing.callFrame.functionName || "(anonymous)",
-      url: timing.callFrame.url,
-      lineNumber: timing.callFrame.lineNumber + 1,
-      selfMicroseconds: timing.selfMicroseconds,
-      totalMicroseconds: timing.totalMicroseconds,
-      selfPercent:
-        sampledMicroseconds === 0
-          ? 0
-          : (timing.selfMicroseconds / sampledMicroseconds) * PERCENT_MULTIPLIER,
-      totalPercent:
-        sampledMicroseconds === 0
-          ? 0
-          : (timing.totalMicroseconds / sampledMicroseconds) * PERCENT_MULTIPLIER,
-    }))
-    .toSorted(
-      (leftFrame, rightFrame) =>
-        rightFrame.selfMicroseconds - leftFrame.selfMicroseconds ||
-        rightFrame.totalMicroseconds - leftFrame.totalMicroseconds,
-    );
+  toRankedFrames(timings, sampledMicroseconds).map(({ self, total, ...frame }) => ({
+    ...frame,
+    selfMicroseconds: self,
+    totalMicroseconds: total,
+  }));
 
 const analyzeProfile = (profilePath: string): AnalyzedProfile => {
   const parsedProfile: unknown = JSON.parse(fs.readFileSync(profilePath, "utf8"));
@@ -123,9 +79,7 @@ const analyzeProfile = (profilePath: string): AnalyzedProfile => {
       parentById.set(childId, node.id);
     }
   }
-  const timings = new Map<string, MutableFrameTiming>();
-  const visitedFrameKeyAtSample = new Map<string, number>();
-  const visitedNodeIdAtSample = new Map<number, number>();
+  const timings = new Map<string, MutableFrameValue>();
   let sampledMicroseconds = 0;
   const samples = parsedProfile.samples ?? [];
   const timeDeltas = parsedProfile.timeDeltas ?? [];
@@ -136,33 +90,16 @@ const analyzeProfile = (profilePath: string): AnalyzedProfile => {
     sampledMicroseconds += deltaMicroseconds;
     const selfKey = frameKeysByNodeId.get(sampleNode.id);
     if (selfKey === undefined) continue;
-    const selfTiming = timings.get(selfKey) ?? {
-      callFrame: sampleNode.callFrame,
-      selfMicroseconds: 0,
-      totalMicroseconds: 0,
-    };
-    selfTiming.selfMicroseconds += deltaMicroseconds;
-    timings.set(selfKey, selfTiming);
-    let currentNode: CpuProfileNode | undefined = sampleNode;
-    while (currentNode !== undefined) {
-      if (visitedNodeIdAtSample.get(currentNode.id) === index) {
-        throw new Error(`Invalid CPU profile with cyclic nodes: ${profilePath}`);
-      }
-      visitedNodeIdAtSample.set(currentNode.id, index);
-      const currentFrameKey = frameKeysByNodeId.get(currentNode.id);
-      if (currentFrameKey !== undefined && visitedFrameKeyAtSample.get(currentFrameKey) !== index) {
-        const timing = timings.get(currentFrameKey) ?? {
-          callFrame: currentNode.callFrame,
-          selfMicroseconds: 0,
-          totalMicroseconds: 0,
-        };
-        timing.totalMicroseconds += deltaMicroseconds;
-        timings.set(currentFrameKey, timing);
-        visitedFrameKeyAtSample.set(currentFrameKey, index);
-      }
-      const parentId = parentById.get(currentNode.id);
-      currentNode = parentId === undefined ? undefined : nodesById.get(parentId);
-    }
+    getFrameValue(timings, selfKey, sampleNode.callFrame).self += deltaMicroseconds;
+    addFrameChainTotals({
+      startNode: sampleNode,
+      amount: deltaMicroseconds,
+      nodesById,
+      parentById,
+      frameKeysByNodeId,
+      frames: timings,
+      profilePath,
+    });
   }
   return {
     processSummary: {
@@ -214,19 +151,9 @@ export const analyzeCpuProfiles = (profileDirectory: string): CpuProfileAnalysis
     (total, analyzedProfile) => total + analyzedProfile.processSummary.sampledMicroseconds,
     0,
   );
-  const aggregateTimings = new Map<string, MutableFrameTiming>();
-  for (const analyzedProfile of analyzedProfiles) {
-    for (const [key, profileTiming] of analyzedProfile.timings) {
-      const timing = aggregateTimings.get(key) ?? {
-        callFrame: profileTiming.callFrame,
-        selfMicroseconds: 0,
-        totalMicroseconds: 0,
-      };
-      timing.selfMicroseconds += profileTiming.selfMicroseconds;
-      timing.totalMicroseconds += profileTiming.totalMicroseconds;
-      aggregateTimings.set(key, timing);
-    }
-  }
+  const aggregateTimings = aggregateFrameValues(
+    analyzedProfiles.map((analyzedProfile) => analyzedProfile.timings),
+  );
   return {
     generatedAt: new Date().toISOString(),
     profileDirectory,
@@ -239,25 +166,12 @@ export const analyzeCpuProfiles = (profileDirectory: string): CpuProfileAnalysis
   };
 };
 
-const main = (): void => {
-  const commandArguments = process.argv.slice(2);
-  const normalizedArguments =
-    commandArguments[0] === "--" ? commandArguments.slice(1) : commandArguments;
-  const command = new Command()
-    .name("react-doctor-performance-profile")
-    .description("Aggregate V8 CPU profiles captured by the performance harness")
-    .argument("<profile-directory>", "directory containing .cpuprofile files")
-    .option("--out <output-prefix>", "JSON and Markdown output prefix")
-    .parse(normalizedArguments, { from: "user" });
-  const commandOptions = command.opts<CpuProfileCommandOptions>();
-  const profileDirectoryArgument = command.processedArgs[0];
-  if (typeof profileDirectoryArgument !== "string") throw new Error("Missing profile directory");
-  const profileDirectory = path.resolve(profileDirectoryArgument);
-  const outputPrefix = path.resolve(commandOptions.out ?? path.join(profileDirectory, "analysis"));
-  const analysis = analyzeCpuProfiles(profileDirectory);
-  fs.writeFileSync(`${outputPrefix}.json`, `${JSON.stringify(analysis, null, 2)}\n`);
-  fs.writeFileSync(`${outputPrefix}.md`, renderAnalysisMarkdown(analysis));
-  process.stdout.write(`${outputPrefix}.md\n`);
-};
-
-if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) runCommanderMain(main);
+if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
+  runProfileAnalysisMain({
+    name: "react-doctor-performance-profile",
+    description: "Aggregate V8 CPU profiles captured by the performance harness",
+    defaultOutputName: "analysis",
+    analyze: analyzeCpuProfiles,
+    renderMarkdown: renderAnalysisMarkdown,
+  });
+}

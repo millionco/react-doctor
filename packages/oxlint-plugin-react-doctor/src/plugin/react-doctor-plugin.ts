@@ -26,8 +26,7 @@ const applyFrameworkGate = (rule: Rule): Rule => {
 const applyFrameworkRuleWrappers = (registry: Record<string, Rule>): Record<string, HostRule> => {
   const wrapped: Record<string, HostRule> = {};
   for (const [ruleId, rule] of Object.entries(registry)) {
-    const frameworkRule = applyFrameworkGate(rule);
-    wrapped[ruleId] = wrapWithSemanticContext(frameworkRule);
+    wrapped[ruleId] = wrapWithSemanticContext(applyFrameworkGate(rule));
   }
   return wrapped;
 };

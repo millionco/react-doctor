@@ -107,12 +107,15 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
     // capture-then-forward closure added a call per (node × rule) for
     // nothing. A handler that somehow ran without a Program visit falls back
     // to the conservative stubs above, same as before capture happened.
+    // Copy instead of mutating: `create` may return a shared visitors
+    // object (e.g. a module-level empty-visitors constant).
     const innerProgramHandler = visitors.Program;
-    visitors.Program = ((node: EsTreeNode) => {
-      programRoot = node;
-      if (innerProgramHandler) innerProgramHandler(node);
-    }) as RuleVisitors[string];
-
-    return visitors;
+    return {
+      ...visitors,
+      Program: ((node: EsTreeNode) => {
+        programRoot = node;
+        if (innerProgramHandler) innerProgramHandler(node);
+      }) as RuleVisitors[string],
+    };
   },
 });

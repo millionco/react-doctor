@@ -21,6 +21,8 @@ import { summarizeDistribution } from "../../../scripts/performance/summarize-di
 import type { BenchmarkSeries, PerformanceResult } from "../../../scripts/performance/types.ts";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "../../..");
+const builtCliPath = path.join(REPOSITORY_ROOT, "packages/react-doctor/dist/cli.js");
+const hasBuiltCli = fs.existsSync(builtCliPath);
 const temporaryDirectories: string[] = [];
 
 const createTemporaryDirectory = (): string => {
@@ -29,7 +31,10 @@ const createTemporaryDirectory = (): string => {
   return directory;
 };
 
-const createSeries = (medianMilliseconds: number): BenchmarkSeries => ({
+const createSeries = (
+  medianMilliseconds: number,
+  targetOverrides: Partial<BenchmarkSeries["target"]> = {},
+): BenchmarkSeries => ({
   target: {
     targetId: "0",
     directory: "/tmp/app",
@@ -39,6 +44,7 @@ const createSeries = (medianMilliseconds: number): BenchmarkSeries => ({
     sourceFileCount: 10,
     sourceByteCount: 1_024,
     sourceFingerprint: "source-hash",
+    ...targetOverrides,
   },
   mode: "lint",
   cacheCohort: "no-cache",
@@ -151,7 +157,7 @@ describe("performance harness", () => {
         REACT_DOCTOR_NO_CACHE: "1",
         REACT_DOCTOR_NO_FILE_CACHE: "1",
       },
-      cacheDirectory: "/tmp/cache",
+      cacheDirectory: path.join(createTemporaryDirectory(), "cache"),
       workerCount: "auto",
       cpuProfile: true,
       heapProfile: true,
@@ -185,38 +191,22 @@ describe("performance harness", () => {
         `--heap-prof-dir=${JSON.stringify(profileDirectory)}`,
       );
     }
-    if (
-      process.allowedNodeEnvironmentFlags.has("--cpu-prof-dir") &&
-      process.allowedNodeEnvironmentFlags.has("--heap-prof-dir")
-    ) {
+    if (coldEnvironment.NODE_OPTIONS !== undefined) {
       const environmentProfileProbe = spawnSync(process.execPath, ["-e", ""], {
         encoding: "utf8",
         env: coldEnvironment,
       });
       expect(environmentProfileProbe.status, environmentProfileProbe.stderr).toBe(0);
+      const areFlagsAllowed = (...flagNames: string[]): boolean =>
+        flagNames.every((flagName) => process.allowedNodeEnvironmentFlags.has(flagName));
+      const profileFilenames = fs.readdirSync(profileDirectory);
+      expect(profileFilenames.some((filename) => filename.endsWith(".cpuprofile"))).toBe(
+        areFlagsAllowed("--cpu-prof", "--cpu-prof-dir"),
+      );
+      expect(profileFilenames.some((filename) => filename.endsWith(".heapprofile"))).toBe(
+        areFlagsAllowed("--heap-prof", "--heap-prof-dir"),
+      );
     }
-    const profileProbe = spawnSync(
-      process.execPath,
-      [
-        "--cpu-prof",
-        `--cpu-prof-dir=${profileDirectory}`,
-        "--heap-prof",
-        `--heap-prof-dir=${profileDirectory}`,
-        "-e",
-        "",
-      ],
-      {
-        encoding: "utf8",
-        env: {
-          ...coldEnvironment,
-          NODE_OPTIONS: undefined,
-        },
-      },
-    );
-    expect(profileProbe.status, profileProbe.stderr).toBe(0);
-    const profileFilenames = fs.readdirSync(profileDirectory);
-    expect(profileFilenames.some((filename) => filename.endsWith(".cpuprofile"))).toBe(true);
-    expect(profileFilenames.some((filename) => filename.endsWith(".heapprofile"))).toBe(true);
   });
 
   it("preserves zero-valued process resource measurements", () => {
@@ -398,79 +388,81 @@ describe("performance harness", () => {
     expect(fs.readFileSync(sentinelPath, "utf8")).toBe("keep");
   });
 
-  it("runs the benchmark against a generated stress project with stable diagnostics", () => {
-    const directory = createTemporaryDirectory();
-    const projectDirectory = path.join(directory, "project");
-    const outputDirectory = path.join(directory, "results");
-    const stressProject = createStressProject({
-      directory: projectDirectory,
-      fileCount: 4,
-      componentsPerFileCount: 1,
-    });
-    const result = runPerformance({
-      directories: [projectDirectory],
-      samples: 2,
-      warmups: 0,
-      workerCounts: [1],
-      modes: ["lint"],
-      cacheCohorts: ["no-cache"],
-      outputDirectory,
-      comparePath: null,
-      cliPath: path.join(REPOSITORY_ROOT, "packages/react-doctor/dist/cli.js"),
-      profile: false,
-      heapProfile: false,
+  describe.skipIf(!hasBuiltCli)("with the built CLI", () => {
+    it("runs the benchmark against a generated stress project with stable diagnostics", () => {
+      const directory = createTemporaryDirectory();
+      const projectDirectory = path.join(directory, "project");
+      const outputDirectory = path.join(directory, "results");
+      const stressProject = createStressProject({
+        directory: projectDirectory,
+        fileCount: 4,
+        componentsPerFileCount: 1,
+      });
+      const result = runPerformance({
+        directories: [projectDirectory],
+        samples: 2,
+        warmups: 0,
+        workerCounts: [1],
+        modes: ["lint"],
+        cacheCohorts: ["no-cache"],
+        outputDirectory,
+        comparePath: null,
+        cliPath: builtCliPath,
+        profile: false,
+        heapProfile: false,
+      });
+
+      expect(result.series).toHaveLength(1);
+      expect(result.series[0]?.samples).toHaveLength(2);
+      expect(result.series[0]?.diagnosticHash).toHaveLength(64);
+      expect(result.series[0]?.samples[0]?.diagnosticCount).toBeGreaterThan(0);
+      expect(result.series[0]?.samples[1]?.diagnosticHash).toBe(
+        result.series[0]?.samples[0]?.diagnosticHash,
+      );
+      expect(result.series[0]?.samples[0]?.scannedFileCount).toBe(
+        stressProject.generatedSourceFileCount,
+      );
     });
 
-    expect(result.series).toHaveLength(1);
-    expect(result.series[0]?.samples).toHaveLength(2);
-    expect(result.series[0]?.diagnosticHash).toHaveLength(64);
-    expect(result.series[0]?.samples[0]?.diagnosticCount).toBeGreaterThan(0);
-    expect(result.series[0]?.samples[1]?.diagnosticHash).toBe(
-      result.series[0]?.samples[0]?.diagnosticHash,
-    );
-    expect(result.series[0]?.samples[0]?.scannedFileCount).toBe(
-      stressProject.generatedSourceFileCount,
-    );
-  });
+    it("captures and aggregates profiles across the benchmark process tree", () => {
+      const directory = createTemporaryDirectory();
+      const projectDirectory = path.join(directory, "project");
+      const outputDirectory = path.join(directory, "profile results");
+      createStressProject({
+        directory: projectDirectory,
+        fileCount: 1,
+        componentsPerFileCount: 1,
+      });
+      runPerformance({
+        directories: [projectDirectory],
+        samples: 1,
+        warmups: 0,
+        workerCounts: [1],
+        modes: ["full"],
+        cacheCohorts: ["no-cache"],
+        outputDirectory,
+        comparePath: null,
+        cliPath: builtCliPath,
+        profile: true,
+        heapProfile: true,
+      });
 
-  it("captures and aggregates profiles across the benchmark process tree", () => {
-    const directory = createTemporaryDirectory();
-    const projectDirectory = path.join(directory, "project");
-    const outputDirectory = path.join(directory, "profile results");
-    createStressProject({
-      directory: projectDirectory,
-      fileCount: 1,
-      componentsPerFileCount: 1,
+      const cpuAnalysis = analyzeCpuProfiles(outputDirectory);
+      const heapAnalysis = analyzeHeapProfiles(outputDirectory);
+      const cpuProcessRoles = new Set(
+        cpuAnalysis.processes.map((processSummary) => processSummary.role),
+      );
+      expect(cpuProcessRoles).toContain("react-doctor");
+      expect(cpuProcessRoles).toContain("oxlint");
+      if (process.allowedNodeEnvironmentFlags.has("--cpu-prof")) {
+        expect(cpuProcessRoles).toContain("dead-code");
+      } else {
+        expect(cpuProcessRoles.size).toBeGreaterThanOrEqual(2);
+      }
+      expect(heapAnalysis.processes.length).toBeGreaterThanOrEqual(
+        process.allowedNodeEnvironmentFlags.has("--heap-prof") ? 3 : 2,
+      );
     });
-    runPerformance({
-      directories: [projectDirectory],
-      samples: 1,
-      warmups: 0,
-      workerCounts: [1],
-      modes: ["full"],
-      cacheCohorts: ["no-cache"],
-      outputDirectory,
-      comparePath: null,
-      cliPath: path.join(REPOSITORY_ROOT, "packages/react-doctor/dist/cli.js"),
-      profile: true,
-      heapProfile: true,
-    });
-
-    const cpuAnalysis = analyzeCpuProfiles(outputDirectory);
-    const heapAnalysis = analyzeHeapProfiles(outputDirectory);
-    const cpuProcessRoles = new Set(
-      cpuAnalysis.processes.map((processSummary) => processSummary.role),
-    );
-    expect(cpuProcessRoles).toContain("react-doctor");
-    expect(cpuProcessRoles).toContain("oxlint");
-    if (process.allowedNodeEnvironmentFlags.has("--cpu-prof")) {
-      expect(cpuProcessRoles).toContain("dead-code");
-    } else {
-      expect(cpuProcessRoles.size).toBeGreaterThanOrEqual(2);
-    }
-    expect(heapAnalysis.processes.length).toBeGreaterThanOrEqual(
-      process.allowedNodeEnvironmentFlags.has("--heap-prof") ? 3 : 2,
-    );
   });
 
   it("summarizes distributions with a robust median and MAD", () => {
@@ -484,9 +476,7 @@ describe("performance harness", () => {
 
   it("validates reports and hashes diagnostics", () => {
     const directory = createTemporaryDirectory();
-    const reportPath = path.join(directory, "report.json");
-    fs.writeFileSync(
-      reportPath,
+    const buildReportJson = (projectOverrides: Record<string, unknown>): string =>
       JSON.stringify({
         schemaVersion: 1,
         version: "0.0.0",
@@ -501,10 +491,10 @@ describe("performance harness", () => {
             directory,
             elapsedMilliseconds: 120,
             skippedChecks: [],
-            scannedFileCount: 7,
             project: { sourceFileCount: 10 },
             diagnostics: [],
             score: null,
+            ...projectOverrides,
           },
         ],
         summary: {
@@ -516,8 +506,9 @@ describe("performance harness", () => {
           scoreLabel: null,
         },
         error: null,
-      }),
-    );
+      });
+    const reportPath = path.join(directory, "report.json");
+    fs.writeFileSync(reportPath, buildReportJson({ scannedFileCount: 7 }));
     expect(readBenchmarkReport({ reportPath, targetDirectory: directory })).toMatchObject({
       elapsedMilliseconds: 123,
       diagnosticCount: 0,
@@ -527,38 +518,7 @@ describe("performance harness", () => {
       readBenchmarkReport({ reportPath, targetDirectory: path.join(directory, "other") }),
     ).toThrow("target mismatch");
     const degradedReportPath = path.join(directory, "degraded.json");
-    fs.writeFileSync(
-      degradedReportPath,
-      JSON.stringify({
-        schemaVersion: 1,
-        version: "0.0.0",
-        ok: true,
-        directory,
-        mode: "full",
-        diff: null,
-        elapsedMilliseconds: 123,
-        diagnostics: [],
-        projects: [
-          {
-            directory,
-            elapsedMilliseconds: 120,
-            skippedChecks: ["lint"],
-            project: { sourceFileCount: 10 },
-            diagnostics: [],
-            score: null,
-          },
-        ],
-        summary: {
-          errorCount: 0,
-          warningCount: 0,
-          affectedFileCount: 0,
-          totalDiagnosticCount: 0,
-          score: null,
-          scoreLabel: null,
-        },
-        error: null,
-      }),
-    );
+    fs.writeFileSync(degradedReportPath, buildReportJson({ skippedChecks: ["lint"] }));
     expect(() =>
       readBenchmarkReport({ reportPath: degradedReportPath, targetDirectory: directory }),
     ).toThrow("degraded");
@@ -580,34 +540,17 @@ describe("performance harness", () => {
   });
 
   it("matches comparison targets across checkout paths", () => {
-    const baselineSeries = {
-      ...createSeries(1_000),
-      target: {
-        ...createSeries(1_000).target,
-        directory: "/tmp/baseline/app",
-        label: undefined,
-      },
-    };
-    const currentSeries = {
-      ...createSeries(900),
-      target: {
-        ...createSeries(900).target,
-        directory: "/tmp/current/app",
-        label: undefined,
-      },
-    };
+    const baselineSeries = createSeries(1_000, {
+      directory: "/tmp/baseline/app",
+      label: undefined,
+    });
+    const currentSeries = createSeries(900, { directory: "/tmp/current/app", label: undefined });
 
     expect(buildBenchmarkComparisons([currentSeries], [baselineSeries])).toHaveLength(1);
   });
 
   it("rejects comparisons with no matching baseline series", () => {
-    const baselineSeries = {
-      ...createSeries(1_000),
-      target: {
-        ...createSeries(1_000).target,
-        label: "other-app",
-      },
-    };
+    const baselineSeries = createSeries(1_000, { label: "other-app" });
 
     expect(() => buildBenchmarkComparisons([createSeries(900)], [baselineSeries])).toThrow(
       "no matching series",
@@ -615,13 +558,7 @@ describe("performance harness", () => {
   });
 
   it("rejects comparisons between different source workloads", () => {
-    const currentSeries = {
-      ...createSeries(900),
-      target: {
-        ...createSeries(900).target,
-        sourceFingerprint: "changed-source",
-      },
-    };
+    const currentSeries = createSeries(900, { sourceFingerprint: "changed-source" });
 
     expect(() => buildBenchmarkComparisons([currentSeries], [createSeries(1_000)])).toThrow(
       "no matching series",

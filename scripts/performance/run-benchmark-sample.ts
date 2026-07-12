@@ -124,6 +124,5 @@ export const runBenchmarkSample = (input: RunBenchmarkSampleInput): BenchmarkSam
     diagnosticCount: report.diagnosticCount,
     diagnosticHash: report.diagnosticHash,
     scannedFileCount: report.scannedFileCount,
-    profileDirectory,
   };
 };

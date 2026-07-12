@@ -78,8 +78,8 @@ export const declaresAnyDependency = (manifest: PackageManifest): boolean =>
     return typeof section === "object" && section !== null && Object.keys(section).length > 0;
   });
 
-export const declaresDependency = (manifest: PackageManifest, dependencyName: string): boolean => {
-  return DEPENDENCY_SECTION_NAMES.some((sectionName) => {
+export const declaresDependency = (manifest: PackageManifest, dependencyName: string): boolean =>
+  DEPENDENCY_SECTION_NAMES.some((sectionName) => {
     const section = manifest[sectionName];
     return (
       typeof section === "object" &&
@@ -87,7 +87,6 @@ export const declaresDependency = (manifest: PackageManifest, dependencyName: st
       Object.prototype.propertyIsEnumerable.call(section, dependencyName)
     );
   });
-};
 
 export type PackagePlatform = "expo" | "react-native" | "web" | "neutral" | "unknown";
 

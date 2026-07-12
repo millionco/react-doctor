@@ -33,13 +33,13 @@ interface CacheEntry {
 export interface ParseSourceTextInput {
   readonly filename: string;
   readonly sourceText: string;
-  readonly shouldAttachParentReferences: boolean;
+  readonly shouldAttachParentReferences?: boolean;
 }
 
 export const parseSourceText = ({
   filename,
   sourceText,
-  shouldAttachParentReferences,
+  shouldAttachParentReferences = true,
 }: ParseSourceTextInput): EsTreeNode | null => {
   try {
     const result = parseSync(filename, sourceText, {
@@ -130,7 +130,6 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
   const parsedProgram = parseSourceText({
     filename: absoluteFilePath,
     sourceText,
-    shouldAttachParentReferences: true,
   });
 
   parseCache.set(absoluteFilePath, {

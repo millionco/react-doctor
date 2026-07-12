@@ -6,13 +6,15 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildBenchmarkComparisons } from "./build-benchmark-comparisons.ts";
 import { clearBenchmarkRunArtifacts } from "./clear-benchmark-run-artifacts.ts";
-import { collectTargetMetadata } from "./collect-target-metadata.ts";
 import {
   BENCHMARK_RUNS_DIRECTORY_NAME,
   BYTES_PER_MEBIBYTE,
+  FALLBACK_IGNORED_DIRECTORY_NAMES,
   MILLISECONDS_PER_SECOND,
+  SOURCE_FILE_EXTENSIONS,
 } from "./constants.ts";
 import { isPathWithin } from "./is-path-within.ts";
+import { isRecordWithFields } from "./is-record-with-fields.ts";
 import { parsePerformanceArguments } from "./parse-performance-arguments.ts";
 import { renderPerformanceMarkdown } from "./render-performance-markdown.ts";
 import { runBenchmarkSample } from "./run-benchmark-sample.ts";
@@ -33,12 +35,72 @@ import type {
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "../..");
 
-const runGit = (argumentsList: string[]): string | null => {
+const runGit = (directory: string, argumentsList: string[]): string | null => {
   const result = spawnSync("git", argumentsList, {
-    cwd: REPOSITORY_ROOT,
+    cwd: directory,
     encoding: "utf8",
   });
-  return result.status === 0 ? result.stdout.trim() : null;
+  return result.status === 0 ? result.stdout : null;
+};
+
+const collectFallbackSourceFiles = (directory: string): string[] => {
+  const sourceFiles: string[] = [];
+  const pendingDirectories = [directory];
+  while (pendingDirectories.length > 0) {
+    const currentDirectory = pendingDirectories.pop();
+    if (currentDirectory === undefined) continue;
+    for (const entry of fs.readdirSync(currentDirectory, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const entryPath = path.join(currentDirectory, entry.name);
+      if (entry.isDirectory()) {
+        if (!FALLBACK_IGNORED_DIRECTORY_NAMES.has(entry.name)) {
+          pendingDirectories.push(entryPath);
+        }
+      } else if (SOURCE_FILE_EXTENSIONS.has(path.extname(entry.name))) {
+        sourceFiles.push(entryPath);
+      }
+    }
+  }
+  return sourceFiles;
+};
+
+const collectTargetMetadata = (directory: string, targetId: string): BenchmarkTargetMetadata => {
+  const directoryStats = fs.statSync(directory);
+  if (!directoryStats.isDirectory())
+    throw new Error(`Benchmark target is not a directory: ${directory}`);
+  const gitFilesOutput = runGit(directory, ["ls-files", "-co", "--exclude-standard", "-z"]);
+  const sourceFiles =
+    gitFilesOutput === null
+      ? collectFallbackSourceFiles(directory)
+      : gitFilesOutput
+          .split("\0")
+          .filter((relativePath) => SOURCE_FILE_EXTENSIONS.has(path.extname(relativePath)))
+          .map((relativePath) => path.resolve(directory, relativePath))
+          .filter((filePath) => fs.existsSync(filePath) && fs.statSync(filePath).isFile());
+  sourceFiles.sort();
+  const sourceByteCount = sourceFiles.reduce(
+    (totalBytes, filePath) => totalBytes + fs.statSync(filePath).size,
+    0,
+  );
+  const sourceFingerprintHash = createHash("sha256");
+  for (const filePath of sourceFiles) {
+    sourceFingerprintHash.update(path.relative(directory, filePath));
+    sourceFingerprintHash.update("\0");
+    sourceFingerprintHash.update(fs.readFileSync(filePath));
+    sourceFingerprintHash.update("\0");
+  }
+  const gitSha = runGit(directory, ["rev-parse", "HEAD"])?.trim() || null;
+  const gitStatus = runGit(directory, ["status", "--short", "--untracked-files=normal", "--", "."]);
+  return {
+    targetId,
+    directory,
+    label: path.basename(directory),
+    gitSha,
+    isGitDirty: gitStatus === null ? null : gitStatus.trim().length > 0,
+    sourceFileCount: sourceFiles.length,
+    sourceByteCount,
+    sourceFingerprint: sourceFingerprintHash.digest("hex"),
+  };
 };
 
 const seriesSlug = (
@@ -52,73 +114,34 @@ const seriesSlug = (
   return `${safeLabel}-${directoryHash}-${mode}-${cacheCohort}-workers-${workerCount}`;
 };
 
-const isComparisonSeries = (value: unknown): value is BenchmarkComparisonSeries => {
-  if (typeof value !== "object" || value === null) return false;
-  if (!("target" in value) || typeof value.target !== "object" || value.target === null) {
-    return false;
-  }
-  if (!("targetId" in value.target) || typeof value.target.targetId !== "string") return false;
-  if (!("directory" in value.target) || typeof value.target.directory !== "string") return false;
-  if ("label" in value.target && typeof value.target.label !== "string") return false;
-  if (
-    !("sourceFileCount" in value.target) ||
-    typeof value.target.sourceFileCount !== "number" ||
-    !("sourceByteCount" in value.target) ||
-    typeof value.target.sourceByteCount !== "number" ||
-    !("sourceFingerprint" in value.target) ||
-    typeof value.target.sourceFingerprint !== "string"
-  ) {
-    return false;
-  }
-  if (!("mode" in value) || (value.mode !== "lint" && value.mode !== "full")) return false;
-  if (
-    !("cacheCohort" in value) ||
-    (value.cacheCohort !== "no-cache" &&
-      value.cacheCohort !== "cold" &&
-      value.cacheCohort !== "hot")
-  ) {
-    return false;
-  }
-  if (
-    !("workerCount" in value) ||
-    (value.workerCount !== "auto" && typeof value.workerCount !== "number")
-  ) {
-    return false;
-  }
-  if (
-    !("wallMilliseconds" in value) ||
-    typeof value.wallMilliseconds !== "object" ||
-    value.wallMilliseconds === null
-  ) {
-    return false;
-  }
-  return (
-    "median" in value.wallMilliseconds &&
-    typeof value.wallMilliseconds.median === "number" &&
-    "diagnosticHash" in value &&
-    typeof value.diagnosticHash === "string"
-  );
-};
+const isComparisonSeries = (value: unknown): value is BenchmarkComparisonSeries =>
+  isRecordWithFields(value, { diagnosticHash: "string" }) &&
+  isRecordWithFields(value.target, {
+    targetId: "string",
+    directory: "string",
+    sourceFileCount: "number",
+    sourceByteCount: "number",
+    sourceFingerprint: "string",
+  }) &&
+  (!("label" in value.target) || typeof value.target.label === "string") &&
+  (value.mode === "lint" || value.mode === "full") &&
+  (value.cacheCohort === "no-cache" ||
+    value.cacheCohort === "cold" ||
+    value.cacheCohort === "hot") &&
+  (value.workerCount === "auto" || typeof value.workerCount === "number") &&
+  isRecordWithFields(value.wallMilliseconds, { median: "number" });
 
 const isHostMetadata = (value: unknown): value is HostMetadata =>
-  typeof value === "object" &&
-  value !== null &&
-  "platform" in value &&
-  typeof value.platform === "string" &&
-  "architecture" in value &&
-  typeof value.architecture === "string" &&
-  "nodeVersion" in value &&
-  typeof value.nodeVersion === "string" &&
-  "v8Version" in value &&
-  typeof value.v8Version === "string" &&
-  "cpuModel" in value &&
-  typeof value.cpuModel === "string" &&
-  "cpuCount" in value &&
-  typeof value.cpuCount === "number" &&
-  "totalMemoryBytes" in value &&
-  typeof value.totalMemoryBytes === "number" &&
-  "hostname" in value &&
-  typeof value.hostname === "string";
+  isRecordWithFields(value, {
+    platform: "string",
+    architecture: "string",
+    nodeVersion: "string",
+    v8Version: "string",
+    cpuModel: "string",
+    cpuCount: "number",
+    totalMemoryBytes: "number",
+    hostname: "string",
+  });
 
 const readBaseline = (
   baselinePath: string | null,
@@ -176,26 +199,13 @@ const runSeries = (
   process.stderr.write(
     `[${target.label}] ${mode}/${cacheCohort}/workers=${workerCount}: ${options.warmups} warmup, ${options.samples} samples\n`,
   );
-  for (let warmupIndex = 0; warmupIndex < options.warmups; warmupIndex += 1) {
-    const sampleName = `warmup-${warmupIndex + 1}`;
+  const runSample = (
+    sampleName: string,
+    sampleIndex: number,
+    cpuProfile: boolean,
+    heapProfile: boolean,
+  ): BenchmarkSample =>
     runBenchmarkSample({
-      repositoryRoot: REPOSITORY_ROOT,
-      cliPath: options.cliPath,
-      targetDirectory: target.directory,
-      artifactDirectory: path.join(seriesDirectory, sampleName),
-      cacheDirectory: cacheDirectoryForSample(seriesDirectory, cacheCohort, sampleName),
-      mode,
-      cacheCohort,
-      workerCount,
-      sampleIndex: warmupIndex + 1,
-      cpuProfile: false,
-      heapProfile: false,
-    });
-  }
-  const samples: BenchmarkSample[] = [];
-  for (let sampleIndex = 1; sampleIndex <= options.samples; sampleIndex += 1) {
-    const sampleName = `sample-${sampleIndex}`;
-    const sample = runBenchmarkSample({
       repositoryRoot: REPOSITORY_ROOT,
       cliPath: options.cliPath,
       targetDirectory: target.directory,
@@ -205,29 +215,22 @@ const runSeries = (
       cacheCohort,
       workerCount,
       sampleIndex,
-      cpuProfile: false,
-      heapProfile: false,
+      cpuProfile,
+      heapProfile,
     });
+  for (let warmupIndex = 0; warmupIndex < options.warmups; warmupIndex += 1) {
+    runSample(`warmup-${warmupIndex + 1}`, warmupIndex + 1, false, false);
+  }
+  const samples: BenchmarkSample[] = [];
+  for (let sampleIndex = 1; sampleIndex <= options.samples; sampleIndex += 1) {
+    const sample = runSample(`sample-${sampleIndex}`, sampleIndex, false, false);
     samples.push(sample);
     process.stderr.write(
       `[${target.label}] sample ${sampleIndex}/${options.samples}: ${sample.wallMilliseconds.toFixed(1)} ms\n`,
     );
   }
   if (options.profile || options.heapProfile) {
-    const sampleName = "profile";
-    runBenchmarkSample({
-      repositoryRoot: REPOSITORY_ROOT,
-      cliPath: options.cliPath,
-      targetDirectory: target.directory,
-      artifactDirectory: path.join(seriesDirectory, sampleName),
-      cacheDirectory: cacheDirectoryForSample(seriesDirectory, cacheCohort, sampleName),
-      mode,
-      cacheCohort,
-      workerCount,
-      sampleIndex: 0,
-      cpuProfile: options.profile,
-      heapProfile: options.heapProfile,
-    });
+    runSample("profile", 0, options.profile, options.heapProfile);
   }
   const diagnosticHashes = new Set(samples.map((sample) => sample.diagnosticHash));
   if (diagnosticHashes.size !== 1) {
@@ -308,12 +311,16 @@ export const runPerformance = (options: BenchmarkCliOptions): PerformanceResult 
     }
   }
   assertCrossSeriesCorrectness(series);
-  const reactDoctorStatus = runGit(["status", "--short", "--untracked-files=normal"]);
+  const reactDoctorStatus = runGit(REPOSITORY_ROOT, [
+    "status",
+    "--short",
+    "--untracked-files=normal",
+  ]);
   const result: PerformanceResult = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
-    reactDoctorGitSha: runGit(["rev-parse", "HEAD"]),
-    reactDoctorIsDirty: reactDoctorStatus === null ? null : reactDoctorStatus.length > 0,
+    reactDoctorGitSha: runGit(REPOSITORY_ROOT, ["rev-parse", "HEAD"])?.trim() || null,
+    reactDoctorIsDirty: reactDoctorStatus === null ? null : reactDoctorStatus.trim().length > 0,
     host,
     options: {
       samples: options.samples,

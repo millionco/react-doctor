@@ -78,9 +78,8 @@ describe("rule registry", () => {
     }
   });
 
-  it("wraps global rules for host context compatibility", () => {
+  it("wraps rules for host context compatibility", () => {
     for (const [ruleId, rule] of Object.entries(ruleRegistry)) {
-      if (rule.framework !== "global") continue;
       const hostRule = plugin.rules[ruleId];
       expect(hostRule, `${ruleId} should be registered`).toBeDefined();
       expect(hostRule?.create, `${ruleId} host context wrapper`).not.toBe(rule.create);

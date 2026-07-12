@@ -24,20 +24,23 @@ export interface StressProjectMetadata {
   readonly componentCount: number;
 }
 
-export interface StressPerformanceCommandOptions {
-  readonly files: number;
-  readonly componentsPerFile: number;
+export interface PerformanceCommandOptions {
   readonly samples: number;
   readonly warmups: number;
   readonly workers: string;
   readonly mode: string;
   readonly cache: string;
   readonly out: string;
-  readonly project: string;
   readonly cli: string;
   readonly compare?: string;
   readonly profile: boolean;
   readonly heapProfile: boolean;
+}
+
+export interface StressPerformanceCommandOptions extends PerformanceCommandOptions {
+  readonly files: number;
+  readonly componentsPerFile: number;
+  readonly project: string;
 }
 
 export interface BenchmarkTargetMetadata {
@@ -90,7 +93,6 @@ export interface BenchmarkSample {
   diagnosticCount: number;
   diagnosticHash: string;
   scannedFileCount: number;
-  profileDirectory: string | null;
 }
 
 export interface DistributionSummary {

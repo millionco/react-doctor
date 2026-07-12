@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@voidzero-dev/vite-plus-test";
+import { describe, expect, it } from "vite-plus/test";
 import { wrapWithSemanticContext } from "./wrap-with-semantic-context.js";
 import type { Rule } from "./rule.js";
 

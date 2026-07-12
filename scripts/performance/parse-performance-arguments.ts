@@ -8,41 +8,39 @@ import {
   DEFAULT_WARMUP_COUNT,
   DEFAULT_WORKER_COUNTS,
 } from "./constants.ts";
-import { parsePositiveInteger } from "./parse-positive-integer.ts";
-import type { BenchmarkCacheCohort, BenchmarkCliOptions, BenchmarkMode } from "./types.ts";
+import type {
+  BenchmarkCacheCohort,
+  BenchmarkCliOptions,
+  BenchmarkMode,
+  PerformanceCommandOptions,
+} from "./types.ts";
 
-interface PerformanceCommandOptions {
-  samples: number;
-  warmups: number;
-  workers: string;
-  mode: string;
-  cache: string;
-  out: string;
-  compare?: string;
-  cli: string;
-  profile: boolean;
-  heapProfile: boolean;
-}
+export const parsePositiveInteger = (name: string, value: string, allowZero: boolean): number => {
+  const parsedValue = Number(value);
+  const minimumValue = allowZero ? 0 : 1;
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(parsedValue) || parsedValue < minimumValue) {
+    throw new Error(`${name} must be an integer greater than or equal to ${minimumValue}`);
+  }
+  return parsedValue;
+};
 
 const parseModes = (value: string): BenchmarkMode[] => {
   if (value === "all" || value === "both") return ["lint", "full"];
-  const modes = value.split(",");
-  for (const mode of modes) {
-    if (mode !== "lint" && mode !== "full") {
-      throw new Error(`Unknown benchmark mode: ${mode}`);
-    }
-  }
+  const modes = value.split(",").map((mode) => {
+    if (mode !== "lint" && mode !== "full") throw new Error(`Unknown benchmark mode: ${mode}`);
+    return mode;
+  });
   return [...new Set(modes)];
 };
 
 const parseCacheCohorts = (value: string): BenchmarkCacheCohort[] => {
   if (value === "all") return ["no-cache", "cold", "hot"];
-  const cacheCohorts = value.split(",");
-  for (const cacheCohort of cacheCohorts) {
+  const cacheCohorts = value.split(",").map((cacheCohort) => {
     if (cacheCohort !== "no-cache" && cacheCohort !== "cold" && cacheCohort !== "hot") {
       throw new Error(`Unknown cache cohort: ${cacheCohort}`);
     }
-  }
+    return cacheCohort;
+  });
   return [...new Set(cacheCohorts)];
 };
 
@@ -58,12 +56,17 @@ const parseWorkerCounts = (value: string): Array<number | "auto"> => {
   return [...new Set(workerCounts)];
 };
 
-export const parsePerformanceArguments = (argumentsList: string[]): BenchmarkCliOptions => {
-  const normalizedArguments = argumentsList[0] === "--" ? argumentsList.slice(1) : argumentsList;
-  const command = new Command()
-    .name("react-doctor-performance")
-    .description("Benchmark the built React Doctor CLI against arbitrary directories")
-    .argument("<directories...>", "directories to benchmark")
+export interface SharedBenchmarkCommandInput {
+  readonly name: string;
+  readonly description: string;
+  readonly outputDirectoryDefault: string;
+  readonly cacheCohortsDefault: readonly string[];
+}
+
+export const buildSharedBenchmarkCommand = (input: SharedBenchmarkCommandInput): Command =>
+  new Command()
+    .name(input.name)
+    .description(input.description)
     .addOption(
       new Option("--samples <count>", "measured samples per series")
         .default(DEFAULT_SAMPLE_COUNT)
@@ -87,9 +90,9 @@ export const parsePerformanceArguments = (argumentsList: string[]): BenchmarkCli
     .option(
       "--cache <cohorts>",
       "no-cache, cold, hot, all, or a comma-separated list",
-      DEFAULT_CACHE_COHORTS.join(","),
+      input.cacheCohortsDefault.join(","),
     )
-    .option("--out <directory>", "artifact directory", DEFAULT_OUTPUT_DIRECTORY)
+    .option("--out <directory>", "artifact directory", input.outputDirectoryDefault)
     .option(
       "--cli <path>",
       "built React Doctor CLI to benchmark",
@@ -101,26 +104,40 @@ export const parsePerformanceArguments = (argumentsList: string[]): BenchmarkCli
     .showHelpAfterError()
     .allowExcessArguments(false)
     .exitOverride();
-  command.parse(normalizedArguments, { from: "user" });
-  const commandOptions = command.opts<PerformanceCommandOptions>();
-  const directories = command.processedArgs.flatMap((argument) =>
-    Array.isArray(argument)
-      ? argument.filter((entry) => typeof entry === "string")
-      : typeof argument === "string"
-        ? [argument]
-        : [],
-  );
-  return {
-    directories: [...new Set(directories.map((directory) => path.resolve(directory)))],
-    samples: commandOptions.samples,
-    warmups: commandOptions.warmups,
-    workerCounts: parseWorkerCounts(commandOptions.workers),
-    modes: parseModes(commandOptions.mode),
-    cacheCohorts: parseCacheCohorts(commandOptions.cache),
-    outputDirectory: path.resolve(commandOptions.out),
-    comparePath: commandOptions.compare ? path.resolve(commandOptions.compare) : null,
-    cliPath: path.resolve(commandOptions.cli),
-    profile: commandOptions.profile,
-    heapProfile: commandOptions.heapProfile,
-  };
+
+export const parseUserArguments = (command: Command, argumentsList: string[]): Command =>
+  command.parse(argumentsList[0] === "--" ? argumentsList.slice(1) : argumentsList, {
+    from: "user",
+  });
+
+export const toBenchmarkCliOptions = (
+  commandOptions: PerformanceCommandOptions,
+  directories: string[],
+): BenchmarkCliOptions => ({
+  directories: [...new Set(directories.map((directory) => path.resolve(directory)))],
+  samples: commandOptions.samples,
+  warmups: commandOptions.warmups,
+  workerCounts: parseWorkerCounts(commandOptions.workers),
+  modes: parseModes(commandOptions.mode),
+  cacheCohorts: parseCacheCohorts(commandOptions.cache),
+  outputDirectory: path.resolve(commandOptions.out),
+  comparePath: commandOptions.compare ? path.resolve(commandOptions.compare) : null,
+  cliPath: path.resolve(commandOptions.cli),
+  profile: commandOptions.profile,
+  heapProfile: commandOptions.heapProfile,
+});
+
+export const parsePerformanceArguments = (argumentsList: string[]): BenchmarkCliOptions => {
+  const command = buildSharedBenchmarkCommand({
+    name: "react-doctor-performance",
+    description: "Benchmark the built React Doctor CLI against arbitrary directories",
+    outputDirectoryDefault: DEFAULT_OUTPUT_DIRECTORY,
+    cacheCohortsDefault: DEFAULT_CACHE_COHORTS,
+  }).argument("<directories...>", "directories to benchmark");
+  parseUserArguments(command, argumentsList);
+  const directoriesArgument: unknown = command.processedArgs[0];
+  const directories = Array.isArray(directoriesArgument)
+    ? directoriesArgument.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  return toBenchmarkCliOptions(command.opts<PerformanceCommandOptions>(), directories);
 };

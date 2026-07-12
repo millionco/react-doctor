@@ -3,6 +3,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+import { statementAlwaysExits } from "./statement-always-exits.js";
 import { walkAst } from "./walk-ast.js";
 
 const collectReturnedExpressions = (functionNode: EsTreeNode): EsTreeNode[] => {
@@ -27,10 +28,24 @@ const collectReturnedExpressions = (functionNode: EsTreeNode): EsTreeNode[] => {
   return returnedExpressions;
 };
 
+const functionHasBareReturn = (functionNode: EsTreeNode): boolean => {
+  if (!isFunctionLike(functionNode) || !isNodeOfType(functionNode.body, "BlockStatement")) {
+    return false;
+  }
+  let didFindBareReturn = false;
+  walkAst(functionNode.body, (node) => {
+    if (didFindBareReturn) return false;
+    if (node !== functionNode.body && isFunctionLike(node)) return false;
+    if (isNodeOfType(node, "ReturnStatement") && !node.argument) didFindBareReturn = true;
+  });
+  return didFindBareReturn;
+};
+
 export const functionReturnsMatchingExpression = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
   matchesExpression: (expression: EsTreeNode) => boolean,
+  matchMode: "some" | "every" = "some",
 ): boolean => {
   const visitedExpressions = new Set<EsTreeNode>();
   const visitedFunctions = new Set<EsTreeNode>();
@@ -38,7 +53,21 @@ export const functionReturnsMatchingExpression = (
   const functionMatches = (candidateFunction: EsTreeNode): boolean => {
     if (visitedFunctions.has(candidateFunction)) return false;
     visitedFunctions.add(candidateFunction);
-    return collectReturnedExpressions(candidateFunction).some(expressionMatches);
+    const returnedExpressions = collectReturnedExpressions(candidateFunction);
+    if (
+      matchMode === "every" &&
+      isFunctionLike(candidateFunction) &&
+      isNodeOfType(candidateFunction.body, "BlockStatement") &&
+      (!statementAlwaysExits(candidateFunction.body) || functionHasBareReturn(candidateFunction))
+    ) {
+      return false;
+    }
+    return (
+      returnedExpressions.length > 0 &&
+      (matchMode === "every"
+        ? returnedExpressions.every(expressionMatches)
+        : returnedExpressions.some(expressionMatches))
+    );
   };
 
   const expressionMatches = (expression: EsTreeNode): boolean => {
@@ -78,15 +107,18 @@ export const functionReturnsMatchingExpression = (
     }
 
     if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
-      return (
-        expressionMatches(unwrappedExpression.consequent) ||
-        expressionMatches(unwrappedExpression.alternate)
-      );
+      const branchMatches = [
+        expressionMatches(unwrappedExpression.consequent),
+        expressionMatches(unwrappedExpression.alternate),
+      ];
+      return matchMode === "every" ? branchMatches.every(Boolean) : branchMatches.some(Boolean);
     }
     if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
-      return (
-        expressionMatches(unwrappedExpression.left) || expressionMatches(unwrappedExpression.right)
-      );
+      const operandMatches = [
+        expressionMatches(unwrappedExpression.left),
+        expressionMatches(unwrappedExpression.right),
+      ];
+      return matchMode === "every" ? operandMatches.every(Boolean) : operandMatches.some(Boolean);
     }
     return false;
   };

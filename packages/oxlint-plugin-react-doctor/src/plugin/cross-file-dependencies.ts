@@ -339,6 +339,7 @@ const collectLegacyArchDependencies: CrossFileDependencyCollector = ({ absoluteF
 
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
+    ["client-passive-event-listeners", collectEffectValueHelperDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],

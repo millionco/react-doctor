@@ -7,7 +7,7 @@ import { functionReturnsMatchingExpression } from "./function-returns-matching-e
 import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 
-const mainFunctionReturnsJsx = (code: string): boolean => {
+const mainFunctionReturnsJsx = (code: string, matchMode: "some" | "every" = "some"): boolean => {
   const parsed = parseFixture(code);
   expect(parsed.errors).toEqual([]);
   attachParentReferences(parsed.program);
@@ -23,6 +23,7 @@ const mainFunctionReturnsJsx = (code: string): boolean => {
     analyzeScopes(parsed.program),
     (expression) =>
       isNodeOfType(expression, "JSXElement") || isNodeOfType(expression, "JSXFragment"),
+    matchMode,
   );
 };
 
@@ -72,6 +73,33 @@ describe("functionReturnsMatchingExpression", () => {
     expect(
       mainFunctionReturnsJsx(
         `function Main() { const render = async () => <main />; return render(); }`,
+      ),
+    ).toBe(false);
+  });
+
+  it("requires every reachable return in every mode", () => {
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main(condition) { return condition ? <main /> : null; }`,
+        "every",
+      ),
+    ).toBe(false);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main(condition) { if (condition) return <main />; return <aside />; }`,
+        "every",
+      ),
+    ).toBe(true);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main(condition) { if (condition) return <main />; }`,
+        "every",
+      ),
+    ).toBe(false);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main(condition) { if (condition) return <main />; return; }`,
+        "every",
       ),
     ).toBe(false);
   });

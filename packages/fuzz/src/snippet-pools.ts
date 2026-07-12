@@ -10,7 +10,8 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
-  `useEffect(() => { window.addEventListener("wheel", handle); return () => window.removeEventListener("wheel", handle); }, []);`,
+  `useEffect(() => { const handleWheel = () => handle(); window.addEventListener("wheel", handleWheel); return () => window.removeEventListener("wheel", handleWheel); }, []);`,
+  `useEffect(() => { const handleWheel = (event) => handle(event); window.addEventListener("wheel", handleWheel); return () => window.removeEventListener("wheel", handleWheel); }, []);`,
   `useEffect(() => { window.addEventListener("resize", handle); return () => window.removeEventListener("resize", handle); }, []);`,
   `useEffect(() => { window.addEventListener("scroll", handle, { passive: true, capture: true }); return () => window.removeEventListener("scroll", handle, { capture: true }); }, []);`,
   `useEffect(() => { document.addEventListener("keydown", handle); return () => document.removeEventListener("keydown", handle); }, []);`,
@@ -370,6 +371,7 @@ export const FUZZ_FILENAME_POOL = [
   "src/fuzz-widget.server.tsx",
   "next.config.js",
   "src/utils/fuzz-helper.ts",
+  "packages/docs/archive/v1/static/docs.js",
 ] as const;
 
 // Identifiers rules key on by NAME (guard aliases, visibility gates,

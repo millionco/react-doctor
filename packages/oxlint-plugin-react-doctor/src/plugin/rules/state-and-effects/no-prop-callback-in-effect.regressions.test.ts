@@ -99,6 +99,82 @@ describe("no-prop-callback-in-effect — must-detect regressions", () => {
 });
 
 describe("no-prop-callback-in-effect — regressions", () => {
+  it("treats inline and named prop-derived dependencies identically", () => {
+    const inlineResult = runRule(
+      noPropCallbackInEffect,
+      `function MultiSelectField({ values, onPendingChange }) {
+        useEffect(() => {
+          onPendingChange(values);
+        }, [JSON.stringify(values)]);
+        return null;
+      }`,
+    );
+    const namedResult = runRule(
+      noPropCallbackInEffect,
+      `function MultiSelectField({ values, onPendingChange }) {
+        const valuesKey = JSON.stringify(values);
+        useEffect(() => {
+          onPendingChange(values);
+        }, [valuesKey]);
+        return null;
+      }`,
+    );
+
+    expect(inlineResult.parseErrors).toEqual([]);
+    expect(namedResult.parseErrors).toEqual([]);
+    expect(inlineResult.diagnostics).toEqual([]);
+    expect(namedResult.diagnostics).toEqual([]);
+  });
+
+  it("flags a genuine local-state mirror through direct and callback-ref calls", () => {
+    const directResult = runRule(
+      noPropCallbackInEffect,
+      `function MultiSelectField({ onPendingChange }) {
+        const [draft, setDraft] = useState([]);
+        const draftKey = JSON.stringify(draft);
+        useEffect(() => {
+          onPendingChange(draft);
+        }, [draftKey]);
+        return null;
+      }`,
+    );
+    const refResult = runRule(
+      noPropCallbackInEffect,
+      `function MultiSelectField({ onPendingChange }) {
+        const [draft, setDraft] = useState([]);
+        const draftKey = JSON.stringify(draft);
+        const onPendingChangeRef = useRef(onPendingChange);
+        useEffect(() => {
+          onPendingChangeRef.current?.(draft);
+        }, [draftKey]);
+        return null;
+      }`,
+    );
+
+    expect(directResult.parseErrors).toEqual([]);
+    expect(refResult.parseErrors).toEqual([]);
+    expect(directResult.diagnostics).toHaveLength(1);
+    expect(refResult.diagnostics).toHaveLength(1);
+  });
+
+  it("flags callback-ref mirrors through transparent receiver wrappers", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `function MultiSelectField({ onPendingChange }) {
+        const [draft, setDraft] = useState([]);
+        const onPendingChangeRef = useRef(onPendingChange);
+        useEffect(() => {
+          (onPendingChangeRef as any).current(draft);
+          (onPendingChangeRef!).current(draft);
+        }, [draft]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("stays silent when the prop is a pure transform consumed locally", () => {
     const result = runRule(
       noPropCallbackInEffect,

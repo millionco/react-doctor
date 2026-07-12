@@ -93,6 +93,71 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
+  it.each([
+    `function f(users, roles){ for(const user of users){ roles.includes(user.role, 0); } }`,
+    `function f(users, roles){ for(const user of users){ roles.includes(user.role, -1); } }`,
+    `function f(users, roles){ for(const user of users){ roles.includes(user.role, undefined); } }`,
+    `function f(users, roles, fromIndex){ for(const user of users){ roles.includes(user.role, fromIndex); } }`,
+    `function f(users, roles, args){ for(const user of users){ roles.includes(...args); } }`,
+  ])("does not flag a lookup that can supply a fromIndex", (code) => {
+    expectPass(code);
+  });
+
+  it.each([
+    `function f(users, roles){ for(const user of users){ roles?.includes(user.role); } }`,
+    `function f(users, roles){ for(const user of users){ roles.includes?.(user.role); } }`,
+    `function f(users, roles){ for(const user of users){ roles["includes"](user.role); } }`,
+  ])("does not flag optional or computed method access", (code) => {
+    expectPass(code);
+  });
+
+  it.each([
+    `interface Bag { includes(value: number): boolean } function f(values: Bag, candidates: number[]){ for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(values: { includes(value: number): boolean }, candidates: number[]){ for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates){ const values = { includes(value){ return value > 0; } }; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `class Bag { includes(value){ return value > 0; } } function f(candidates){ const values = new Bag(); for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function makeBag(){ return { includes(value){ return value > 0; } }; } function f(candidates){ for(const candidate of candidates){ makeBag().includes(candidate); } }`,
+    `function f(candidates, collection){ for(const candidate of candidates){ collection.map(candidate).includes(candidate); } }`,
+    `function f(candidates){ const source = { includes(value){ return value > 0; } }; const firstAlias = source; const values = firstAlias; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates){ const Array = class { includes(value){ return value > 0; } }; const values = new Array(); for(const candidate of candidates){ values.includes(candidate); } }`,
+  ])("does not flag a proven userland includes receiver", (code) => {
+    expectPass(code);
+  });
+
+  it.each([
+    `function f(candidates: number[], values: number[]){ for(const candidate of candidates){ values.filter(Boolean).includes(candidate); } }`,
+    `function f(candidates: number[], values: number[]){ for(const candidate of candidates){ values.slice().includes(candidate); } }`,
+    `function f(candidates: number[]){ for(const candidate of candidates){ new Uint8Array(20).includes(candidate); } }`,
+  ])("does not flag a collection rebuilt for each lookup", (code) => {
+    expectPass(code);
+  });
+
+  it.each([
+    `function f(values: string, candidates: string[]){ for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(source: string, candidates: string[]){ const values = source; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(source: String, candidates: string[]){ for(const candidate of candidates){ source.includes(candidate); } }`,
+    `function f(candidates){ const values = new String("abc"); for(const candidate of candidates){ values.includes(candidate); } }`,
+  ])("does not flag a string receiver regardless of its name", (code) => {
+    expectPass(code);
+  });
+
+  it.each([
+    `function f(candidates: number[], allowedValues: readonly number[]){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
+    `function f(candidates: number[], allowedValues: readonly number[]){ const values = allowedValues; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[], allowedValues: readonly number[]){ for(const candidate of candidates){ (allowedValues as readonly number[]).includes(candidate); } }`,
+    `function f(candidates: number[], allowedValues: readonly number[]){ for(const candidate of candidates){ allowedValues!.includes(candidate); } }`,
+    `function f(candidates: number[], allowedValues: Uint8Array){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
+    `function f(candidates: number[]){ const allowedValues = Array(20); for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
+  ])("flags a one-argument SameValueZero lookup on a native receiver", (code) => {
+    expectFail(code);
+  });
+
+  it("flags NaN and sparse-hole lookups because Set preserves includes semantics", () => {
+    expectFail(
+      `function f(candidates: number[], allowedValues: readonly number[]){ const sparseValues = Array(20); for(const candidate of candidates){ allowedValues.includes(NaN); sparseValues.includes(undefined); } }`,
+    );
+  });
+
   it("does not flag `.indexOf()` assigned as an index position in a loop", () => {
     expectPass(
       `function f(rows, order){ for (const row of rows){ const position = order.indexOf(row.id); row.rank = position; } }`,
@@ -253,7 +318,7 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
 
   it("still flags a receiver resolving to a `.flat()` of an unbounded array", () => {
     expectFail(
-      `function f(elements, groups) {
+      `function f(elements: readonly unknown[], groups: readonly (readonly unknown[])[]) {
         const types = groups.flat();
         return elements.filter((element) => types.includes(element.type));
       }`,

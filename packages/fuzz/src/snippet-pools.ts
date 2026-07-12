@@ -393,6 +393,7 @@ export const JSX_LEAF_POOL = [
 // trace-mined oddities (unicode, globalThis gymnastics, labels).
 export const EDGE_CASE_STATEMENT_POOL = [
   `const contextCallback = config.onSelect; const effectiveCallback = onSelect ?? contextCallback; const derivedHandler = useCallback(() => effectiveCallback?.(), [effectiveCallback]);`,
+  `const membershipCandidates = [1, 2, 3, 4, 5, 6, 7, 8, 9]; const membershipValues = [1, 2, 3, 4, 5, 6, 7, 8, 9]; for (const membershipCandidate of membershipCandidates) { membershipValues.includes(membershipCandidate); }`,
   `const localeOptionsBase = { timeZone: "UTC" }; const localeOptionsAlias = localeOptionsBase; const { timeZone: localeTimeZone } = localeOptionsAlias;`,
   `const useState = () => [0, () => {}] as const;`,
   `const { useEffect: renamedEffect } = React;`,

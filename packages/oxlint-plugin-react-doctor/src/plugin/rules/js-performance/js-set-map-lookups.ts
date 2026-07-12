@@ -522,6 +522,139 @@ const isSubstringSearchLiteral = (callArgument: EsTreeNode | null | undefined): 
   return callArgument.value.length > 0 && SUBSTRING_PUNCTUATION_PATTERN.test(callArgument.value);
 };
 
+const NATIVE_ARRAY_TYPE_NAMES: ReadonlySet<string> = new Set([
+  "Array",
+  "ReadonlyArray",
+  "Int8Array",
+  "Uint8Array",
+  "Uint8ClampedArray",
+  "Int16Array",
+  "Uint16Array",
+  "Int32Array",
+  "Uint32Array",
+  "Float16Array",
+  "Float32Array",
+  "Float64Array",
+  "BigInt64Array",
+  "BigUint64Array",
+]);
+
+const NATIVE_ARRAY_RETURNING_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "concat",
+  "filter",
+  "flat",
+  "flatMap",
+  "map",
+  "slice",
+  "splice",
+  "toReversed",
+  "toSorted",
+  "toSpliced",
+  "with",
+]);
+
+const isNativeArrayType = (typeNode: EsTreeNode | null | undefined): boolean => {
+  if (!typeNode) return false;
+  if (isNodeOfType(typeNode, "TSArrayType") || isNodeOfType(typeNode, "TSTupleType")) return true;
+  if (isNodeOfType(typeNode, "TSTypeOperator")) {
+    return isNativeArrayType(typeNode.typeAnnotation);
+  }
+  return (
+    isNodeOfType(typeNode, "TSTypeReference") &&
+    isNodeOfType(typeNode.typeName, "Identifier") &&
+    NATIVE_ARRAY_TYPE_NAMES.has(typeNode.typeName.name)
+  );
+};
+
+const hasProvenNonArrayType = (receiver: EsTreeNode): boolean => {
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const binding = findVariableInitializer(receiver, receiver.name);
+  if (!binding || !isNodeOfType(binding.bindingIdentifier, "Identifier")) return false;
+  const typeAnnotation = binding.bindingIdentifier.typeAnnotation;
+  return Boolean(typeAnnotation) && !isNativeArrayType(typeAnnotation?.typeAnnotation);
+};
+
+const isUnshadowedNativeArrayConstructor = (callee: EsTreeNode): boolean =>
+  isNodeOfType(callee, "Identifier") &&
+  NATIVE_ARRAY_TYPE_NAMES.has(callee.name) &&
+  findVariableInitializer(callee, callee.name) === null;
+
+const isProvenNativeArrayReceiver = (
+  receiver: EsTreeNode,
+  visitedBindings = new Set<EsTreeNode>(),
+): boolean => {
+  const strippedReceiver = stripParenExpression(receiver);
+  if (isNodeOfType(strippedReceiver, "ArrayExpression")) return true;
+  if (isNodeOfType(strippedReceiver, "NewExpression")) {
+    return isUnshadowedNativeArrayConstructor(strippedReceiver.callee);
+  }
+  if (isNodeOfType(strippedReceiver, "CallExpression")) {
+    return isNativeArrayReturningCall(strippedReceiver, visitedBindings);
+  }
+  if (!isNodeOfType(strippedReceiver, "Identifier")) return false;
+  const binding = findVariableInitializer(strippedReceiver, strippedReceiver.name);
+  if (!binding || visitedBindings.has(binding.bindingIdentifier)) return false;
+  if (
+    isNodeOfType(binding.bindingIdentifier, "Identifier") &&
+    isNativeArrayType(binding.bindingIdentifier.typeAnnotation?.typeAnnotation)
+  ) {
+    return true;
+  }
+  visitedBindings.add(binding.bindingIdentifier);
+  return Boolean(
+    binding.initializer && isProvenNativeArrayReceiver(binding.initializer, visitedBindings),
+  );
+};
+
+const isNativeArrayReturningCall = (
+  receiver: EsTreeNodeOfType<"CallExpression">,
+  visitedBindings = new Set<EsTreeNode>(),
+): boolean => {
+  const callee = stripParenExpression(receiver.callee);
+  if (isNodeOfType(callee, "Identifier")) {
+    return callee.name === "Array" && findVariableInitializer(callee, callee.name) === null;
+  }
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  if (!isNodeOfType(callee.property, "Identifier")) return false;
+  if (
+    isNodeOfType(callee.object, "Identifier") &&
+    callee.object.name === "Array" &&
+    callee.property.name === "from" &&
+    findVariableInitializer(callee.object, callee.object.name) === null
+  ) {
+    return true;
+  }
+  return (
+    NATIVE_ARRAY_RETURNING_METHOD_NAMES.has(callee.property.name) &&
+    isProvenNativeArrayReceiver(callee.object, visitedBindings)
+  );
+};
+
+const isProvenUserlandIncludesReceiver = (
+  receiver: EsTreeNode,
+  visitedBindings = new Set<EsTreeNode>(),
+): boolean => {
+  const strippedReceiver = stripParenExpression(receiver);
+  if (isProvenNativeArrayReceiver(strippedReceiver)) return false;
+  if (hasProvenNonArrayType(strippedReceiver)) return true;
+  if (isNodeOfType(strippedReceiver, "ObjectExpression")) return true;
+  if (isNodeOfType(strippedReceiver, "NewExpression")) {
+    return !isUnshadowedNativeArrayConstructor(strippedReceiver.callee);
+  }
+  if (isNodeOfType(strippedReceiver, "CallExpression")) {
+    return !isNativeArrayReturningCall(strippedReceiver);
+  }
+  if (isNodeOfType(strippedReceiver, "Identifier")) {
+    const binding = findVariableInitializer(strippedReceiver, strippedReceiver.name);
+    if (!binding || visitedBindings.has(binding.bindingIdentifier)) return false;
+    visitedBindings.add(binding.bindingIdentifier);
+    if (binding.initializer) {
+      return isProvenUserlandIncludesReceiver(binding.initializer, visitedBindings);
+    }
+  }
+  return false;
+};
+
 // `.filter(option => value.includes(option.value))` iterates like a loop —
 // the callback runs once per element, so a linear `.includes` inside it is
 // the same O(n·m) scan as inside a `for` statement.
@@ -713,15 +846,23 @@ export const jsSetMapLookups = defineRule({
     const inspectLookupCall = (node: EsTreeNodeOfType<"CallExpression">): void => {
       if (
         !isNodeOfType(node.callee, "MemberExpression") ||
+        node.callee.computed ||
+        node.callee.optional ||
+        node.optional ||
         !isNodeOfType(node.callee.property, "Identifier")
       )
         return;
       const methodName = node.callee.property.name;
       if (methodName !== "includes" || node.arguments.length !== 1) return;
+      if (isNodeOfType(node.arguments[0], "SpreadElement")) return;
       const rawReceiver = node.callee.object;
       if (!rawReceiver) return;
       const receiver = stripParenExpression(rawReceiver);
+      if (isNodeOfType(receiver, "CallExpression") || isNodeOfType(receiver, "NewExpression")) {
+        return;
+      }
       if (isLikelyStringReceiver(receiver)) return;
+      if (isProvenUserlandIncludesReceiver(receiver)) return;
       if (isSmallInlineLiteralArray(receiver)) return;
       if (isScreamingSnakeCaseConstantReceiver(receiver)) return;
       if (isSmallFixedListMember(receiver)) return;
@@ -748,15 +889,6 @@ export const jsSetMapLookups = defineRule({
       if (isReceiverDeclaredInNearestLoop(receiver, node)) return;
       if (isPerIterationReceiver(receiver, node)) return;
       if (isLookupBoundedByConstantIteration(node)) return;
-      // `splitHotkeyBinding(b).includes(k)` — the array is rebuilt on
-      // every call, so there is nothing to hoist into a Set.
-      if (
-        isNodeOfType(receiver, "CallExpression") &&
-        isNodeOfType(receiver.callee, "Identifier") &&
-        receiver.callee.name.startsWith("split")
-      ) {
-        return;
-      }
       context.report({
         node,
         message: `This scales poorly because \`array.${methodName}()\` inside a loop scans the whole list every time. Use a Set for constant-time lookups.`,

@@ -435,6 +435,58 @@ describe("derived-state family contracts", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    ["structuredClone", "structuredClone(value)"],
+    ["Object.assign", "Object.assign({}, value)"],
+    ["Array.from", "Array.from(value)"],
+    ["Date construction", "new Date(value)"],
+    ["Set construction", "new Set(value)"],
+    ["slice", "value.slice()"],
+    ["replace", 'value.replace("a", "b")'],
+    ["reduce", "value.reduce((total, item) => total + item, 0)"],
+    ["flatMap", "value.flatMap((item) => [item])"],
+    ["toSorted", "value.toSorted()"],
+    ["encodeURIComponent", "encodeURIComponent(value)"],
+  ])("preserves render ownership through %s", (_name, expression) => {
+    const transformCode = `function Example({ value }) {
+      const [mirror, setMirror] = useState(null);
+      useEffect(() => {
+        setMirror(${expression});
+      }, [value]);
+      return <div>{String(mirror)}</div>;
+    }`;
+    for (const rule of [noDerivedState, noDerivedStateEffect, noAdjustStateOnPropChange]) {
+      const result = runRule(rule, transformCode, { forceJsx: true });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("does not trust shadowed deterministic global transforms", () => {
+    const transformCode = `function Example({ Array, Date, Object, Set, encodeURIComponent, structuredClone, value }) {
+      const [first, setFirst] = useState(null);
+      const [second, setSecond] = useState(null);
+      const [third, setThird] = useState(null);
+      const [fourth, setFourth] = useState(null);
+      const [fifth, setFifth] = useState(null);
+      const [sixth, setSixth] = useState(null);
+      useEffect(() => {
+        setFirst(structuredClone(value));
+        setSecond(Object.assign({}, value));
+        setThird(Array.from(value));
+        setFourth(new Date(value));
+        setFifth(new Set(value));
+        setSixth(encodeURIComponent(value));
+      }, [Array, Date, Object, Set, encodeURIComponent, structuredClone, value]);
+      return <>{first}{second}{third}{fourth}{fifth}{sixth}</>;
+    }`;
+    for (const rule of [noDerivedState, noDerivedStateEffect, noAdjustStateOnPropChange]) {
+      const result = runRule(rule, transformCode, { forceJsx: true });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
   it("stays silent for a debounced copy of render state", () => {
     const debouncedCode = `function useDebouncedState(value, delay) {
       const [state, setState] = useState(value);

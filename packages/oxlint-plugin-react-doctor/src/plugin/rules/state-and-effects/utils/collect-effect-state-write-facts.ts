@@ -108,16 +108,19 @@ const PURE_GLOBAL_CALLEE_NAMES: ReadonlySet<string> = new Set([
   "Array",
   "BigInt",
   "Boolean",
+  "encodeURIComponent",
   "Number",
   "Object",
   "String",
   "parseFloat",
   "parseInt",
+  "structuredClone",
 ]);
 
-const PURE_GLOBAL_NAMESPACE_NAMES: ReadonlySet<string> = new Set(["JSON", "Math"]);
+const PURE_GLOBAL_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set(["Date", "Set"]);
 
 const PURE_HELPER_NAMESPACE_MEMBER_NAMES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["Array", new Set(["from"])],
   ["JSON", new Set(["isRawJSON", "parse", "rawJSON", "stringify"])],
   [
     "Math",
@@ -157,16 +160,22 @@ const PURE_HELPER_NAMESPACE_MEMBER_NAMES: ReadonlyMap<string, ReadonlySet<string
       "trunc",
     ]),
   ],
+  ["Object", new Set(["assign"])],
 ]);
 
 const PURE_MEMBER_TRANSFORM_NAMES: ReadonlySet<string> = new Set([
   "concat",
   "filter",
+  "flatMap",
   "join",
   "map",
+  "reduce",
+  "replace",
+  "slice",
   "split",
   "toLowerCase",
   "toString",
+  "toSorted",
   "toUpperCase",
   "trim",
 ]);
@@ -842,6 +851,21 @@ const analyzeHelperExpression = (
     );
     return callbackSummary.isValid && !callbackSummary.canContinue;
   }
+  if (isNodeOfType(node, "NewExpression")) {
+    const callee = stripParenExpression(node.callee);
+    if (
+      !isNodeOfType(callee, "Identifier") ||
+      !PURE_GLOBAL_CONSTRUCTOR_NAMES.has(callee.name) ||
+      environment.parameterIndices.has(callee.name) ||
+      environment.recursiveNames.has(callee.name) ||
+      environment.shadowedGlobalNames.has(callee.name)
+    ) {
+      return false;
+    }
+    return (node.arguments ?? []).every((argument) =>
+      analyzeHelperExpression(argument as EsTreeNode, environment, usedParameterIndices),
+    );
+  }
   if (isNodeOfType(node, "CallExpression")) {
     const callee = stripParenExpression(node.callee);
     const calleeRoot = getMemberRoot(callee);
@@ -1259,9 +1283,12 @@ const collectValueEvidence = (
       (isNodeOfType(callee, "Identifier") &&
         PURE_GLOBAL_CALLEE_NAMES.has(callee.name) &&
         getIdentifierBindingIdentity(analysis, callee) === null) ||
-      (isNodeOfType(calleeRoot, "Identifier") &&
-        PURE_GLOBAL_NAMESPACE_NAMES.has(calleeRoot.name) &&
-        getIdentifierBindingIdentity(analysis, calleeRoot) === null);
+      (isNodeOfType(callee, "MemberExpression") &&
+        isNodeOfType(calleeRoot, "Identifier") &&
+        getIdentifierBindingIdentity(analysis, calleeRoot) === null &&
+        PURE_HELPER_NAMESPACE_MEMBER_NAMES.get(calleeRoot.name)?.has(
+          getStaticMemberName(callee) ?? "",
+        ) === true);
     const isPureMemberTransform =
       isNodeOfType(callee, "MemberExpression") &&
       PURE_MEMBER_TRANSFORM_NAMES.has(getStaticMemberName(callee) ?? "");
@@ -1358,6 +1385,31 @@ const collectValueEvidence = (
           argument,
           frame,
           remainingCallFrames - 1,
+          new Set(visitedBindings),
+        ),
+      );
+    }
+    return evidence;
+  }
+
+  if (isNodeOfType(node, "NewExpression")) {
+    const callee = stripParenExpression(node.callee);
+    if (
+      !isNodeOfType(callee, "Identifier") ||
+      !PURE_GLOBAL_CONSTRUCTOR_NAMES.has(callee.name) ||
+      getIdentifierBindingIdentity(analysis, callee) !== null
+    ) {
+      evidence.hasUnknownSource = true;
+      return evidence;
+    }
+    for (const argument of node.arguments ?? []) {
+      mergeEvidence(
+        evidence,
+        collectValueEvidence(
+          analysis,
+          argument as EsTreeNode,
+          frame,
+          remainingCallFrames,
           new Set(visitedBindings),
         ),
       );

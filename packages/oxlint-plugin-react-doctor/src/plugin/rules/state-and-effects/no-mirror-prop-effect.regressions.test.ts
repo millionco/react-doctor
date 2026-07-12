@@ -6,7 +6,7 @@ describe("no-mirror-prop-effect — regressions", () => {
   it.each(["$", "($)", "void ($)", "(0, $)"])(
     "flags a prop mirror through discarded wrapper %s",
     (wrapper) => {
-      const effect = wrapper.replace("$", "useEffect(() => { setDraft(value); }, [value])");
+      const effect = wrapper.replaceAll("$", "useEffect(() => { setDraft(value); }, [value])");
       const result = runRule(
         noMirrorPropEffect,
         `function Form({ value }) {

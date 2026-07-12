@@ -135,7 +135,7 @@ describe("no-self-updating-effect — diverging updaters keep firing", () => {
   it.each(["$", "($)", "void ($)", "(0, $)"])(
     "flags a self-updating effect through discarded wrapper %s",
     (wrapper) => {
-      const effect = wrapper.replace(
+      const effect = wrapper.replaceAll(
         "$",
         "useEffect(() => { setCount((value) => value + 1); }, [count])",
       );

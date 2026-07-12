@@ -6,8 +6,8 @@ describe("js-performance/js-batch-dom-css — regressions", () => {
   it.each(["$", "($)", "void ($)", "(0, $)"])(
     "flags layout-affecting writes through discarded wrapper %s",
     (wrapper) => {
-      const heightWrite = wrapper.replace("$", "row.style.height = `${height}px`");
-      const widthWrite = wrapper.replace("$", 'row.style.width = "100%"');
+      const heightWrite = wrapper.replaceAll("$", "row.style.height = `${height}px`");
+      const widthWrite = wrapper.replaceAll("$", 'row.style.width = "100%"');
       const result = runRule(
         jsBatchDomCss,
         `function resizeRows(rows) {

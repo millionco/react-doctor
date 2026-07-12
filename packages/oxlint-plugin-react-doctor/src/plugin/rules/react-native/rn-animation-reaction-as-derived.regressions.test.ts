@@ -6,7 +6,7 @@ describe("react-native/rn-animation-reaction-as-derived — regressions", () => 
   it.each(["$", "($)", "void ($)", "(0, $)"])(
     "flags a shared-value copy through discarded wrapper %s",
     (wrapper) => {
-      const assignment = wrapper.replace("$", "target.value = current");
+      const assignment = wrapper.replaceAll("$", "target.value = current");
       const result = runRule(
         rnAnimationReactionAsDerived,
         `import { useAnimatedReaction } from "react-native-reanimated";

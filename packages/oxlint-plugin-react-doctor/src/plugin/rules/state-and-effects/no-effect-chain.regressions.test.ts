@@ -6,8 +6,8 @@ describe("no-effect-chain — regressions", () => {
   it.each(["$", "($)", "void ($)", "(0, $)"])(
     "flags a cross-effect chain through discarded wrapper %s",
     (wrapper) => {
-      const upstreamEffect = wrapper.replace("$", "useEffect(() => { setFirst(1); }, [])");
-      const downstreamEffect = wrapper.replace(
+      const upstreamEffect = wrapper.replaceAll("$", "useEffect(() => { setFirst(1); }, [])");
+      const downstreamEffect = wrapper.replaceAll(
         "$",
         "useEffect(() => { setSecond(first + 1); }, [first])",
       );

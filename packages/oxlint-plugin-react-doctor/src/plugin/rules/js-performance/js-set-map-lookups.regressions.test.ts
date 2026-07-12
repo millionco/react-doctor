@@ -17,7 +17,13 @@ const expectPass = (code: string): void => {
 describe("js-performance/js-set-map-lookups — regressions", () => {
   it("flags `.includes()` against a named array inside a loop", () => {
     expectFail(
-      `function f(users, roles){ const a=[]; for(const u of users){ if(roles.includes(u.role)) a.push(u);} return a; }`,
+      `function f(users){ const roles = ["a","b","c","d","e","f","g","h","i"]; const out=[]; for(const user of users){ if(roles.includes(user.role)) out.push(user);} return out; }`,
+    );
+  });
+
+  it("does not flag a caller-owned mutable array", () => {
+    expectPass(
+      `function f(users, roles){ const out=[]; for(const user of users){ if(roles.includes(user.role)) out.push(user);} return out; }`,
     );
   });
 
@@ -39,8 +45,8 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("flags `.includes()` against an inline array with spread", () => {
-    expectFail(
+  it("does not flag `.includes()` against a fresh inline array with spread", () => {
+    expectPass(
       `function f(users, extra){ const out=[]; for(const u of users){ if(["a", ...extra].includes(u.role)) out.push(u); } return out; }`,
     );
   });
@@ -154,13 +160,44 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `function f(candidates: number[], allowedValues: readonly number[]){ for(const candidate of candidates){ allowedValues!.includes(candidate); } }`,
     `function f(candidates: number[], allowedValues: Uint8Array){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
     `function f(candidates: number[]){ const allowedValues = Array(20); for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
-  ])("flags a one-argument SameValueZero lookup on a native receiver", (code) => {
-    expectFail(code);
+  ])("does not flag a caller-owned or non-literal native receiver", (code) => {
+    expectPass(code);
   });
 
   it("flags NaN and sparse-hole lookups because Set preserves includes semantics", () => {
     expectFail(
-      `function f(candidates: number[], allowedValues: readonly number[]){ const sparseValues = Array(20); for(const candidate of candidates){ allowedValues.includes(NaN); sparseValues.includes(undefined); } }`,
+      `function f(candidates: number[]){ const allowedValues = [NaN,1,2,3,4,5,6,7,8,9,10,11]; const sparseValues = [,,,,,,,,,,,,]; for(const candidate of candidates){ allowedValues.includes(NaN); sparseValues.includes(undefined); } }`,
+    );
+  });
+
+  it("flags a large static primitive array that can be hoisted as a Set", () => {
+    expectFail(
+      `function f(candidates: number[]){ for(const candidate of candidates){ [1,2,3,4,5,6,7,8,9,10,11,12].includes(candidate); } }`,
+    );
+  });
+
+  it("flags a large static primitive array with special primitive expressions", () => {
+    expectFail(
+      "function f(candidates: unknown[]){ for(const candidate of candidates){ [-0, NaN, undefined, `x`, 1, 2, 3, 4, 5, 6, 7, 8].includes(candidate); } }",
+    );
+  });
+
+  it("flags static primitive elements behind TypeScript wrappers", () => {
+    expectFail(
+      `function f(candidates: unknown[]){ for(const candidate of candidates){ [(1 as number), (2 satisfies number),3,4,5,6,7,8,9].includes(candidate); } }`,
+    );
+  });
+
+  it.each([
+    `function f(candidates: number[]){ for(const candidate of candidates){ [getValue(),2,3,4,5,6,7,8,9,10,11,12].includes(candidate); } }`,
+    `function f(candidates: number[], values: number[]){ for(const candidate of candidates){ [...values,2,3,4,5,6,7,8,9,10,11,12].includes(candidate); } }`,
+  ])("does not flag a fresh inline array whose values can change per iteration", (code) => {
+    expectPass(code);
+  });
+
+  it("does not treat a shadowed primitive global as loop-invariant", () => {
+    expectPass(
+      `function f(candidates: unknown[], NaN: unknown){ for(const candidate of candidates){ [NaN,1,2,3,4,5,6,7,8,9,10,11].includes(candidate); } }`,
     );
   });
 
@@ -176,11 +213,133 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ Object.assign(values, { 0: candidate }); values.includes(candidate); } }`,
     `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ Reflect.set(values, 0, candidate); values.includes(candidate); } }`,
     `function f(values: Uint8Array, candidates: number[]){ for(const candidate of candidates){ values.set([candidate], 0); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ for(values[0] of candidates){} values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ Array.prototype.push.call(values, candidate); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ values.push.apply(values, [candidate]); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ const assign = Object.assign; for(const candidate of candidates){ assign(values, { 0: candidate }); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ globalThis.Object.assign(values, { 0: candidate }); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ const set = Reflect.set; for(const candidate of candidates){ set(values, 0, candidate); values.includes(candidate); } }`,
     `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ [values[0]] = [candidate]; values.includes(candidate); } }`,
     `function f(values: number[], candidates: number[]){ let alias = values; for(const candidate of candidates){ [alias] = [[]]; values.includes(candidate); } }`,
     `interface State { values: number[] } function f(state: State, candidates: number[]){ for(const candidate of candidates){ state.values.reverse(); state.values.includes(candidate); } }`,
     `interface State { values: number[] } function f(state: State, candidates: number[]){ const alias = state; for(const candidate of candidates){ alias.values.push(candidate); state.values.includes(candidate); } }`,
   ])("does not flag a receiver mutated during repeated lookups", (code) => {
+    expectPass(code);
+  });
+
+  it.each([
+    [
+      "direct alias",
+      `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; const alias = values; for(const candidate of candidates){ alias.includes(candidate); } }`,
+    ],
+    [
+      "multi-hop alias",
+      `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; const firstAlias = values; const secondAlias = firstAlias; for(const candidate of candidates){ secondAlias.includes(candidate); } }`,
+    ],
+    [
+      "spread read",
+      `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; const copy = [...values]; for(const candidate of candidates){ values.includes(candidate); use(copy); } }`,
+    ],
+  ])("flags a non-escaping local const array literal through a $0", (_name, code) => {
+    expectFail(code);
+  });
+
+  it.each([
+    `export function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `export const f = (candidates: number[]) => { const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+  ])("flags a stable local array inside an exported function", (code) => {
+    expectFail(code);
+  });
+
+  it.each([
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ mutate(values); values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; const alias = values; for(const candidate of candidates){ mutate(alias); values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; const mutate = () => values.push(10); for(const candidate of candidates){ mutate(); values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; const holder = { values }; for(const candidate of candidates){ values.includes(candidate); use(holder); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; values.__proto__.includes = () => false; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; values.constructor.prototype.includes = () => false; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; [values[0]] = [1]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; ({ value: values[0] } = { value: 1 }); for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } return values; }`,
+    `export const values = [1,2,3,4,5,6,7,8,9]; export function f(candidates: number[]){ for(const candidate of candidates){ values.includes(candidate); } }`,
+    `const values = [1,2,3,4,5,6,7,8,9]; export const alias = values; export function f(candidates: number[]){ for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; mutate(values as number[]); for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; eval("values.push(10)"); for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[], code: string){ const values = [1,2,3,4,5,6,7,8,9]; eval(code); for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[], code: string){ const values = [1,2,3,4,5,6,7,8,9]; const mutate = () => eval(code); for(const candidate of candidates){ mutate(); values.includes(candidate); } }`,
+    `function f(candidates: number[]){ Array.prototype.includes = () => false; const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ Object.defineProperty(Array.prototype, "includes", { value: () => false }); const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const prototype = Array.prototype; prototype.includes = () => false; const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ Object.assign(Array.prototype, { includes: () => false }); const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ Reflect.set(Array.prototype, "includes", () => false); const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ Object.defineProperties(Array.prototype, { includes: { value: () => false } }); const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ globalThis.Object.defineProperty(Array.prototype, "includes", { value: () => false }); const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const defineProperty = Object.defineProperty; defineProperty(Array.prototype, "includes", { value: () => false }); const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const { defineProperty } = Object; defineProperty(Array.prototype, "includes", { value: () => false }); const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ Reflect.deleteProperty(Array.prototype, "includes"); const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[], propertyName: string){ Array.prototype[propertyName] = () => false; const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[], methods){ Object.assign(Array.prototype, { ...methods }); const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[], propertyName: string){ Object.defineProperties(Array.prototype, { [propertyName]: { value: () => false } }); const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const { Array: ArrayConstructor } = globalThis; ArrayConstructor.prototype.includes = () => false; const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const root = globalThis; root.Array.prototype.includes = () => false; const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const { prototype } = Array; prototype.includes = () => false; const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const prototype = [].__proto__; prototype.includes = () => false; const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const prototype = Object.getPrototypeOf([]); prototype.includes = () => false; const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(candidates: number[]){ const getPrototypeOf = Reflect.getPrototypeOf; const prototype = getPrototypeOf([]); prototype.includes = () => false; const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+  ])("does not flag a local array whose contents can mutate or escape", (code) => {
+    expectPass(code);
+  });
+
+  it("still flags after an unrelated Array prototype mutation", () => {
+    expectFail(
+      `function f(candidates: number[]){ Array.prototype.map = () => []; const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    );
+  });
+
+  it("still flags after deleting an unrelated Array prototype method", () => {
+    expectFail(
+      `function f(candidates: number[]){ Reflect.deleteProperty(Array.prototype, "map"); const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    );
+  });
+
+  it("does not flag a static inline lookup after Array includes prototype mutation", () => {
+    expectPass(
+      `function f(candidates: number[]){ Array.prototype.includes = () => false; for(const candidate of candidates){ [1,2,3,4,5,6,7,8,9].includes(candidate); } }`,
+    );
+  });
+
+  it.each([
+    `function unrelated(code: string){ eval(code); } function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `eval(code); function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } }`,
+  ])("still flags when direct eval cannot reach the local binding", (code) => {
+    expectFail(code);
+  });
+
+  it("does not flag an array exported with TypeScript export assignment", () => {
+    const result = runRule(
+      jsSetMapLookups,
+      `const values = [1,2,3,4,5,6,7,8,9]; function f(candidates: number[]){ for(const candidate of candidates){ values.includes(candidate); } } export = values;`,
+      { filename: "fixture.cts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an array escaped through a TypeScript angle-bracket assertion", () => {
+    const result = runRule(
+      jsSetMapLookups,
+      `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; mutate(<number[]>values); for(const candidate of candidates){ values.includes(candidate); } }`,
+      { filename: "fixture.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    `function f(values: number[], candidates: number[], helpers){ const assign = helpers.assign; for(const candidate of candidates){ assign(values, { 0: candidate }); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ const Object = { assign(){} }; const assign = Object.assign; for(const candidate of candidates){ assign(values, { 0: candidate }); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ const Reflect = { set(){} }; const set = Reflect.set; for(const candidate of candidates){ set(values, 0, candidate); values.includes(candidate); } }`,
+  ])("does not flag caller-owned arrays passed to opaque APIs", (code) => {
     expectPass(code);
   });
 
@@ -196,8 +355,8 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("still recognizes the unshadowed built-in Array type", () => {
-    expectFail(
+  it("does not infer stability from an unshadowed built-in Array type", () => {
+    expectPass(
       `function f(values: Array<number>, candidates: number[]){ for(const candidate of candidates){ values.includes(candidate); } }`,
     );
   });
@@ -206,8 +365,8 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `function f(candidates: readonly number[], allowedValues: readonly number[]){ for(const candidate of candidates){ allowedValues.includes(-0); } }`,
     `function f(candidates: readonly object[], allowedValues: readonly object[]){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
     `function f(candidates: readonly (string | boolean | bigint | undefined)[], allowedValues: readonly (string | boolean | bigint | undefined)[]){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
-  ])("flags native includes where Set preserves the equality relation", (code) => {
-    expectFail(code);
+  ])("does not infer local ownership from native includes semantics", (code) => {
+    expectPass(code);
   });
 
   it("does not flag `.indexOf()` assigned as an index position in a loop", () => {
@@ -218,7 +377,44 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
 
   it("flags `.includes()` inside a `.filter()` iteration callback", () => {
     expectFail(
-      `function f(tokens, capturedTokenIndices){ return tokens.filter((token, index) => !capturedTokenIndices.includes(index)); }`,
+      `function f(){ const tokens = ["a","b","c","d","e","f","g","h","i"]; const capturedTokenIndices = [1,2,3,4,5,6,7,8,9]; return tokens.filter((token, index) => !capturedTokenIndices.includes(index)); }`,
+    );
+  });
+
+  it("does not flag when Array.prototype.filter no longer provides repeated iteration", () => {
+    expectPass(
+      `function f(){ Array.prototype.filter = function(callback){ return [callback(this[0])]; }; const tokens = ["a","b","c","d","e","f","g","h","i"]; const capturedTokenIndices = [1,2,3,4,5,6,7,8,9]; return tokens.filter((token, index) => !capturedTokenIndices.includes(index)); }`,
+    );
+  });
+
+  it("does not flag inline filter iteration after its prototype method changes", () => {
+    expectPass(
+      `function f(){ Array.prototype.filter = () => []; const values = [1,2,3,4,5,6,7,8,9]; return [1,2,3,4,5,6,7,8,9].filter((candidate) => values.includes(candidate)); }`,
+    );
+  });
+
+  it("still flags filter iteration after an unrelated prototype mutation", () => {
+    expectFail(
+      `function f(){ Array.prototype.map = () => []; const tokens = ["a","b","c","d","e","f","g","h","i"]; const capturedTokenIndices = [1,2,3,4,5,6,7,8,9]; return tokens.filter((token, index) => !capturedTokenIndices.includes(index)); }`,
+    );
+  });
+
+  it("does not infer native callback dispatch from a structural array type", () => {
+    expectPass(
+      `function f(tokens: string[]){ const capturedTokenIndices = [1,2,3,4,5,6,7,8,9]; return tokens.filter((token, index) => !capturedTokenIndices.includes(index)); }`,
+    );
+  });
+
+  it.each([
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; const bag = { map(callback){ return callback(1); } }; bag.map((candidate) => values.includes(candidate)); }`,
+    `function f(candidates: number[], bag){ const values = [1,2,3,4,5,6,7,8,9]; bag.forEach((candidate) => values.includes(candidate)); }`,
+  ])("does not treat an unproven userland callback method as repeated iteration", (code) => {
+    expectPass(code);
+  });
+
+  it("does not treat a userland typed callback method as native iteration", () => {
+    expectPass(
+      `interface Bag { map(callback: (value: number) => boolean): boolean } function f(bag: Bag){ const values = [1,2,3,4,5,6,7,8,9]; bag.map((candidate) => values.includes(candidate)); }`,
     );
   });
 
@@ -229,21 +425,92 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
   });
 
   it.each([
-    `function f(rows, { weekendDays = [0, 6] }: { weekendDays?: number[] }) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
-    `function f(rows, { weekendDays = [0, 6] }: { weekendDays?: readonly number[] }) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
-    `function f(rows, weekendDays: number[] = [0, 6]) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
-  ])("flags a caller-controlled array with a small fallback", (code) => {
+    `function f(candidates: number[]){ const values = [1,2]; const firstAlias = values; const secondAlias = firstAlias; for(const candidate of candidates){ secondAlias.includes(candidate); } }`,
+    `function f(candidates: number[]){ const values = [1,2] as const; const firstAlias = values; const secondAlias = firstAlias; for(const candidate of candidates){ secondAlias.includes(candidate); } }`,
+  ])("does not flag a small local array through multiple aliases", (code) => {
+    expectPass(code);
+  });
+
+  it("does not flag a lookup deferred into a nested callback", () => {
+    expectPass(
+      `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ schedule(() => values.includes(candidate)); } }`,
+    );
+  });
+
+  it("flags a lookup in a synchronously invoked nested function", () => {
+    expectFail(
+      `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ (() => values.includes(candidate))(); } }`,
+    );
+  });
+
+  it("flags a lookup in a transparent-wrapped IIFE", () => {
+    expectFail(
+      `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ ((() => values.includes(candidate))!)(); } }`,
+    );
+  });
+
+  it.each([
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ (function*(){ return values.includes(candidate); })(); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ (async function*(){ return values.includes(candidate); })(); } }`,
+  ])("does not flag a lookup in an unconsumed generator IIFE", (code) => {
+    expectPass(code);
+  });
+
+  it.each([
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ (function*(){ return values.includes(candidate); })().next(); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ [...(function*(){ return values.includes(candidate); })()]; } }`,
+    `async function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ await (async function*(){ return values.includes(candidate); })().next(); } }`,
+  ])("flags a lookup in a consumed generator IIFE", (code) => {
     expectFail(code);
   });
 
-  it("flags a caller-controlled alias with a small fallback", () => {
+  it("does not flag a deferred instance field initializer", () => {
+    expectPass(
+      `function f(candidates: number[], handlers: Function[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ class Handler { result = values.includes(candidate) } handlers.push(Handler); } }`,
+    );
+  });
+
+  it("does not count construction deferred into a stored callback", () => {
+    expectPass(
+      `function f(candidates: number[], handlers: Function[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ class Handler { result = values.includes(candidate) } handlers.push(() => new Handler()); } }`,
+    );
+  });
+
+  it("flags a static field initializer that executes in the loop", () => {
     expectFail(
+      `function f(candidates: number[], handlers: Function[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ class Handler { static result = values.includes(candidate) } handlers.push(Handler); } }`,
+    );
+  });
+
+  it.each([
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ class Handler { result = values.includes(candidate) } new Handler(); } }`,
+    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ const Handler = class { result = values.includes(candidate) }; new Handler(); } }`,
+  ])("does not flag an instance field even when construction appears in the loop", (code) => {
+    expectPass(code);
+  });
+
+  it("ignores same-spelling identifiers that are not binding references", () => {
+    expectFail(
+      `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; const object = { values: true, values(){}, other: source.values }; values: for(const candidate of candidates){ if(values.includes(candidate)) break values; } use(object); }`,
+    );
+  });
+
+  it.each([
+    `function f(rows, { weekendDays = [0, 6] }: { weekendDays?: number[] }) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
+    `function f(rows, { weekendDays = [0, 6] }: { weekendDays?: readonly number[] }) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
+    `function f(rows, weekendDays: number[] = [0, 6]) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
+  ])("does not flag a caller-controlled array with a small fallback", (code) => {
+    expectPass(code);
+  });
+
+  it("does not flag a caller-controlled alias with a small fallback", () => {
+    expectPass(
       `function f(rows, { weekendDays = [0, 6] }: { weekendDays?: number[] }) { const days = weekendDays; for (const row of rows) { if (days.includes(row.day)) row.weekend = true; } }`,
     );
   });
 
-  it("flags a caller-controlled nullish fallback", () => {
-    expectFail(
+  it("does not flag a caller-controlled nullish fallback", () => {
+    expectPass(
       `function f(rows, options: { weekendDays?: number[] }) { const days = options.weekendDays ?? [0, 6]; for (const row of rows) { if (days.includes(row.day)) row.weekend = true; } }`,
     );
   });
@@ -257,6 +524,12 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
   it("does not flag a SCREAMING_SNAKE_CASE constant behind an `as` cast", () => {
     expectPass(
       `import { VALID_PAGE_TYPES } from "./types"; function f(entries){ for (const entry of entries){ if ((VALID_PAGE_TYPES as string[]).includes(entry.pageType)) entry.ok = true; } }`,
+    );
+  });
+
+  it("does not flag a SCREAMING_SNAKE_CASE constant through an alias", () => {
+    expectPass(
+      `function f(candidates: number[]){ const ALLOWED = [1,2,3,4,5,6,7,8,9,10,11,12]; const values = ALLOWED; for(const candidate of candidates){ values.includes(candidate); } }`,
     );
   });
 
@@ -345,13 +618,13 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
 
   it("still flags when an unbounded outer loop wraps the constant-enum map", () => {
     expectFail(
-      `function f(rows, enabled){ return rows.map((row) => AGENT_OPTIONS.map((option) => enabled.includes(row.id + option))); }`,
+      `function f(){ const rows = [{id:"1"},{id:"2"},{id:"3"},{id:"4"},{id:"5"},{id:"6"},{id:"7"},{id:"8"},{id:"9"}]; const options = ["a","b","c","d","e","f","g","h","i"]; const enabled = ["a","b","c","d","e","f","g","h","i"]; return rows.map((row) => options.map((option) => enabled.includes(row.id + option))); }`,
     );
   });
 
   it("still flags a lookup inside a map over unbounded data", () => {
     expectFail(
-      `function f(items, allowlist){ return items.map((item) => allowlist.includes(item.id)); }`,
+      `function f(){ const items = [{id:"a"},{id:"b"},{id:"c"},{id:"d"},{id:"e"},{id:"f"},{id:"g"},{id:"h"},{id:"i"}]; const allowlist = ["a","b","c","d","e","f","g","h","i"]; return items.map((item) => allowlist.includes(item.id)); }`,
     );
   });
 
@@ -368,8 +641,8 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("still flags a receiver resolving to a `.flat()` of an unbounded array", () => {
-    expectFail(
+  it("does not flag a derived receiver without a local literal origin proof", () => {
+    expectPass(
       `function f(elements: readonly unknown[], groups: readonly (readonly unknown[])[]) {
         const types = groups.flat();
         return elements.filter((element) => types.includes(element.type));

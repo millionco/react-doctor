@@ -2,4 +2,4 @@
 "oxlint-plugin-react-doctor": patch
 ---
 
-Keep js-set-map-lookups quiet when Set membership would change lookup semantics.
+Restrict js-set-map-lookups to semantics-preserving includes calls on proven stable local arrays.

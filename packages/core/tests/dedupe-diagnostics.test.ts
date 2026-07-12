@@ -51,6 +51,47 @@ describe("dedupeDiagnostics", () => {
     expect(dedupeDiagnostics([stateRule, mirrorRule])).toEqual([stateRule, mirrorRule]);
   });
 
+  it("keeps the most specific derived-state owner at one write", () => {
+    const generic = buildDiagnostic({ rule: "no-derived-state", offset: 100, length: 12 });
+    const effect = buildDiagnostic({
+      rule: "no-derived-state-effect",
+      offset: 80,
+      length: 60,
+    });
+    const propChange = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      offset: 100,
+      length: 12,
+    });
+    expect(dedupeDiagnostics([effect, generic, propChange])).toEqual([propChange]);
+  });
+
+  it("keeps mount initialization ahead of generic derived-state rules", () => {
+    const generic = buildDiagnostic({ rule: "no-derived-state", offset: 100, length: 12 });
+    const mount = buildDiagnostic({ rule: "no-initialize-state", offset: 100, length: 12 });
+    expect(dedupeDiagnostics([generic, mount])).toEqual([mount]);
+  });
+
+  it("preserves separate writes inside one overlapping effect diagnostic", () => {
+    const effect = buildDiagnostic({
+      rule: "no-derived-state-effect",
+      offset: 80,
+      length: 100,
+    });
+    const firstWrite = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      offset: 100,
+      length: 12,
+    });
+    const secondWrite = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      offset: 140,
+      length: 12,
+      column: 20,
+    });
+    expect(dedupeDiagnostics([effect, firstWrite, secondWrite])).toEqual([firstWrite, secondWrite]);
+  });
+
   it("preserves diagnostics with different messages at the same location and rule", () => {
     const useContextMessage = buildDiagnostic({
       rule: "no-react19-deprecated-apis",

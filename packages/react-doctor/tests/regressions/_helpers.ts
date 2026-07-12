@@ -118,6 +118,13 @@ export interface CollectRuleHitsOptions {
   hasSsrDependency?: boolean;
 }
 
+const DERIVED_STATE_SIBLING_RULE_IDS = [
+  "no-adjust-state-on-prop-change",
+  "no-derived-state",
+  "no-derived-state-effect",
+  "no-initialize-state",
+];
+
 export interface BuildTestProjectOptions {
   rootDirectory: string;
   framework?: ProjectInfo["framework"];
@@ -199,13 +206,21 @@ export const collectRuleHits = async (
   options: CollectRuleHitsOptions = {},
 ): Promise<RuleHit[]> => {
   const project = buildTestProject({ rootDirectory: projectDir, ...options });
+  const isolatedSiblingRules = DERIVED_STATE_SIBLING_RULE_IDS.includes(ruleId)
+    ? Object.fromEntries(
+        DERIVED_STATE_SIBLING_RULE_IDS.map((siblingRuleId) => [
+          `react-doctor/${siblingRuleId}`,
+          siblingRuleId === ruleId ? "warn" : "off",
+        ]),
+      )
+    : { [`react-doctor/${ruleId}`]: "warn" };
   const diagnostics = await runOxlint({
     rootDirectory: projectDir,
     project,
     // Force-enable the rule under test so default-disabled rules
     // (`defaultEnabled: false`) still produce hits here. Severity is
     // irrelevant — callers assert on file path and message, not severity.
-    userConfig: { rules: { [`react-doctor/${ruleId}`]: "warn" } },
+    userConfig: { rules: isolatedSiblingRules },
   });
   return diagnostics
     .filter((diagnostic) => diagnostic.rule === ruleId)

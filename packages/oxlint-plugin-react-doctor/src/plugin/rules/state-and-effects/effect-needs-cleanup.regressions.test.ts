@@ -910,6 +910,45 @@ export const Debounced = ({ value }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("rejects split cleanup when an early return skips the rerun release", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Debounced = ({ enabled, value }) => {
+  const timeoutRef = useRef(null);
+  useEffect(() => {
+    if (!enabled) return;
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => commit(value), 300);
+  }, [enabled, value]);
+  useEffect(() => () => clearTimeout(timeoutRef.current), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects split cleanup when an outer condition skips the rerun release", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Debounced = ({ enabled, value }) => {
+  const timeoutRef = useRef(null);
+  useEffect(() => {
+    if (enabled) {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => commit(value), 300);
+    }
+  }, [enabled, value]);
+  useEffect(() => () => clearTimeout(timeoutRef.current), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts helper-mediated rerun and unmount cleanup for the same timer", () => {
     const result = runRule(
       effectNeedsCleanup,
@@ -976,6 +1015,23 @@ export const Feed = ({ store }) => {
   useEffect(() => {
     const subscription = store.subscribe(update);
     return subscription.unsubscribe.bind(subscription);
+  }, [store]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts an aliased release method bound to its subscription receiver", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ store }) => {
+  useEffect(() => {
+    const subscription = store.subscribe(update);
+    const cleanup = subscription.unsubscribe.bind(subscription);
+    return cleanup;
   }, [store]);
   return null;
 };`,

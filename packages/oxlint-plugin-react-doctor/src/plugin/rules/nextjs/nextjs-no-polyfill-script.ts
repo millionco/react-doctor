@@ -26,7 +26,9 @@ export const nextjsNoPolyfillScript = defineRule({
         ? srcAttribute.value.value
         : null;
 
-      if (typeof srcValue === "string" && POLYFILL_SCRIPT_PATTERN.test(srcValue)) {
+      const requestUrl = typeof srcValue === "string" ? srcValue.split("#", 1)[0] : null;
+
+      if (requestUrl && POLYFILL_SCRIPT_PATTERN.test(requestUrl)) {
         context.report({
           node,
           message:

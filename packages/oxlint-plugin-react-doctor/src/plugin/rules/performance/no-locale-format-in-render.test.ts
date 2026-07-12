@@ -425,6 +425,85 @@ export const Timestamp = ({ value, locale }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a module-scope mutation before component rendering", () => {
+    const result = run(
+      `"use client";
+const options = { timeZone: "UTC" };
+
+export const Timestamp = ({ value, locale }) => {
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};
+
+options.timeZone = undefined;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves a spread snapshot created before its source is mutated", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const baseOptions = { timeZone: "UTC" };
+  const options = { ...baseOptions };
+  baseOptions.timeZone = undefined;
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("preserves a spread snapshot before a helper mutates its source", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const baseOptions = { timeZone: "UTC" };
+  const options = { ...baseOptions };
+  clearTimeZone();
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+
+  function clearTimeZone() {
+    baseOptions.timeZone = undefined;
+  }
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a mutation in an IIFE invoked before construction", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  (() => {
+    options.timeZone = undefined;
+  })();
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a deferred IIFE as a render-time mutation", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  useEffect(() => {
+    (() => {
+      options.timeZone = undefined;
+    })();
+  }, []);
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags a trailing spread whose timeZone is undefined", () => {
     const result = run(
       `"use client";

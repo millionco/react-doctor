@@ -177,8 +177,8 @@ const isPotentialMutationReference = (identifier: EsTreeNode, readNode: EsTreeNo
   return false;
 };
 
-const getDirectCallForIdentifier = (identifier: EsTreeNode): EsTreeNode | null => {
-  let callee: EsTreeNode = identifier;
+const getDirectCallForExpression = (expression: EsTreeNode): EsTreeNode | null => {
+  let callee: EsTreeNode = expression;
   let parent = callee.parent;
   while (
     parent &&
@@ -198,6 +198,18 @@ const isFunctionInvokedBeforeUsage = (
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
 ): boolean => {
+  const immediateCall = getDirectCallForExpression(functionNode);
+  if (immediateCall) {
+    const immediateCallFunction = findEnclosingFunction(immediateCall);
+    const usageFunction = findEnclosingFunction(usageNode);
+    if (immediateCallFunction === usageFunction) {
+      const immediateCallStart = getRangeStart(immediateCall);
+      const usageStart = getRangeStart(usageNode);
+      return immediateCallStart === null || usageStart === null || immediateCallStart < usageStart;
+    }
+    if (!immediateCallFunction) return usageFunction !== null;
+    return isFunctionInvokedBeforeUsage(immediateCallFunction, usageNode, scopes, visitedSymbolIds);
+  }
   const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
   if (!bindingIdentifier) return false;
   const symbol = scopes.symbolFor(bindingIdentifier);
@@ -210,7 +222,7 @@ const isFunctionInvokedBeforeUsage = (
   walkAst(scopes.rootScope.node, (child) => {
     if (wasInvokedBeforeUsage || !isNodeOfType(child, "Identifier")) return;
     if (scopes.symbolFor(child)?.declarationNode !== symbol.declarationNode) return;
-    const call = getDirectCallForIdentifier(child);
+    const call = getDirectCallForExpression(child);
     if (!call) return false;
     const callFunction = findEnclosingFunction(call);
     if (callFunction === usageFunction) {
@@ -264,10 +276,9 @@ const wasMutatedBeforeUsage = (
     if (referenceStart === null) return true;
     const mutationFunction = findEnclosingFunction(reference.identifier);
     if (mutationFunction === usageFunction) return referenceStart < usageBoundary;
-    return (
-      mutationFunction !== null &&
-      isFunctionInvokedBeforeUsage(mutationFunction, usageNode, scopes, new Set())
-    );
+    if (!mutationFunction) return usageFunction !== null;
+    if (usageFunction && isAstDescendant(usageFunction, mutationFunction)) return true;
+    return isFunctionInvokedBeforeUsage(mutationFunction, usageNode, scopes, new Set());
   });
 };
 
@@ -346,7 +357,7 @@ const getObjectPropertyProof = (
         property.argument,
         propertyName,
         scopes,
-        usageNode,
+        unwrapped,
         new Set(visitedSymbolIds),
       );
       if (spreadProof.status !== "absent") return spreadProof;

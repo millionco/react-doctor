@@ -884,9 +884,10 @@ export const jsSetMapLookups = defineRule({
         return;
       }
       const nearestLoop = findNearestLoopContext(node, context.scopes);
+      if (!nearestLoop) return;
       if (
         !isNodeOfType(receiver, "ArrayExpression") &&
-        (!nearestLoop || !isStableLocalArrayLookupReceiver(receiver, nearestLoop, context.scopes))
+        !isStableLocalArrayLookupReceiver(receiver, nearestLoop, context.scopes)
       ) {
         return;
       }
@@ -924,7 +925,7 @@ export const jsSetMapLookups = defineRule({
     };
 
     visitors.CallExpression = (node: EsTreeNodeOfType<"CallExpression">) => {
-      if (findNearestLoopContext(node, context.scopes)) inspectLookupCall(node);
+      inspectLookupCall(node);
     };
 
     return visitors;

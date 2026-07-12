@@ -176,6 +176,12 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
+  it("does not flag a large static primitive array outside a loop", () => {
+    expectPass(
+      `function f(candidate: number){ return [1,2,3,4,5,6,7,8,9,10,11,12].includes(candidate); }`,
+    );
+  });
+
   it("flags a large static primitive array with special primitive expressions", () => {
     expectFail(
       "function f(candidates: unknown[]){ for(const candidate of candidates){ [-0, NaN, undefined, `x`, 1, 2, 3, 4, 5, 6, 7, 8].includes(candidate); } }",

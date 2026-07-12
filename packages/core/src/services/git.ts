@@ -25,6 +25,8 @@ import {
 import { parseChangedLineRanges } from "../parse-changed-line-ranges.js";
 import { isDirectory } from "../project-info/fs-utils.js";
 import type { ChangedFileLineRanges } from "../types/index.js";
+import { mergeUniqueFilePaths } from "../utils/merge-unique-file-paths.js";
+import { LAST_UNTRACKED_SOURCE_LINE_NUMBER } from "./constants.js";
 
 interface GitInvocationResult {
   readonly status: number;
@@ -448,6 +450,20 @@ export class Git extends Context.Service<
       ): Effect.Effect<GitInvocationResult, ReactDoctorError> =>
         runCommand({ command: "git", args, directory });
 
+      const listUntrackedFilePaths = (
+        directory: string,
+        includePaths: ReadonlyArray<string> = [],
+      ): Effect.Effect<ReadonlyArray<string> | null, ReactDoctorError> =>
+        runGit(directory, [
+          "ls-files",
+          "-z",
+          "--others",
+          "--exclude-standard",
+          ...(includePaths.length > 0 ? ["--", ...includePaths] : []),
+        ]).pipe(
+          Effect.map((result) => (result.status === 0 ? splitNullSeparated(result.stdout) : null)),
+        );
+
       const currentBranch = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
         runGit(directory, ["rev-parse", "--abbrev-ref", "HEAD"]).pipe(
           Effect.map((result) => {
@@ -711,16 +727,26 @@ export class Git extends Context.Service<
             }
 
             if (resolvedCurrentBranch !== null && resolvedCurrentBranch === baseBranch) {
-              const uncommitted = yield* runGit(directory, [
-                "diff",
-                "-z",
-                "--name-only",
-                "--diff-filter=ACMR",
-                "--relative",
-                "HEAD",
-              ]);
+              const [uncommitted, untrackedFilePaths] = yield* Effect.all(
+                [
+                  runGit(directory, [
+                    "diff",
+                    "-z",
+                    "--name-only",
+                    "--diff-filter=ACMR",
+                    "--relative",
+                    "HEAD",
+                  ]),
+                  listUntrackedFilePaths(directory),
+                ],
+                { concurrency: 2 },
+              );
               if (uncommitted.status !== 0) return null;
-              const files = splitNullSeparated(uncommitted.stdout);
+              if (untrackedFilePaths === null) return null;
+              const files = mergeUniqueFilePaths(
+                splitNullSeparated(uncommitted.stdout),
+                untrackedFilePaths,
+              );
               if (files.length === 0) return null;
               return {
                 currentBranch: resolvedCurrentBranch,
@@ -735,20 +761,30 @@ export class Git extends Context.Service<
             const mergeBaseRef = trimOrNull(mergeBase.stdout);
             if (mergeBaseRef === null) return null;
 
-            const diff = yield* runGit(directory, [
-              "diff",
-              "-z",
-              "--name-only",
-              "--diff-filter=ACMR",
-              "--relative",
-              mergeBaseRef,
-            ]);
+            const [diff, untrackedFilePaths] = yield* Effect.all(
+              [
+                runGit(directory, [
+                  "diff",
+                  "-z",
+                  "--name-only",
+                  "--diff-filter=ACMR",
+                  "--relative",
+                  mergeBaseRef,
+                ]),
+                listUntrackedFilePaths(directory),
+              ],
+              { concurrency: 2 },
+            );
             if (diff.status !== 0) return null;
+            if (untrackedFilePaths === null) return null;
             return {
               currentBranch: resolvedCurrentBranch,
               baseBranch,
               diffBaseRef: mergeBaseRef,
-              changedFiles: splitNullSeparated(diff.stdout),
+              changedFiles: mergeUniqueFilePaths(
+                splitNullSeparated(diff.stdout),
+                untrackedFilePaths,
+              ),
               isCurrentChanges: false,
             } satisfies GitDiffSelection;
           }).pipe(Effect.withSpan("Git.diffSelection")),
@@ -837,7 +873,19 @@ export class Git extends Context.Service<
               ...files,
             ]);
             if (result.status !== 0) return null;
-            return parseChangedLineRanges(result.stdout);
+            const changedLineRanges = parseChangedLineRanges(result.stdout);
+            if (cached) return changedLineRanges;
+            const untrackedFilePaths = yield* listUntrackedFilePaths(directory, files);
+            if (untrackedFilePaths === null) return null;
+            return [
+              ...changedLineRanges,
+              ...untrackedFilePaths.map(
+                (file): ChangedFileLineRanges => ({
+                  file,
+                  ranges: [[1, LAST_UNTRACKED_SOURCE_LINE_NUMBER]],
+                }),
+              ),
+            ];
           }).pipe(
             // A git invocation failure (binary missing, or a synchronous spawn
             // throw such as ENAMETOOLONG on a 1k-file `--scope lines` diff) means

@@ -16,8 +16,9 @@ export type BlockingLevel = "error" | "warning" | "none";
  *
  * - `"full"` — whole project, every issue (the default). Whole-project checks
  *   (dead-code, environment, supply-chain) run only at this scope.
- * - `"files"` — only the files changed vs the base, with ALL issues in them
- *   (no compare-to-main). What `--staged` and an uncommitted `--diff` do today.
+ * - `"files"` — only tracked or ordinary untracked files changed vs the base,
+ *   with ALL issues in them (no compare-to-main). What `--staged` and an
+ *   uncommitted `--diff` do today. Git-ignored files remain excluded.
  * - `"changed"` — only issues the change INTRODUCED vs the base (the baseline
  *   delta). What `--diff <base>` and the action's `scope: changed` do today.
  * - `"lines"` — only issues on the lines the change actually touched.

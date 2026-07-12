@@ -46,6 +46,14 @@ describe("isReactApiCall", () => {
       expectedCount: 1,
     },
     {
+      name: "immutable named React API aliases",
+      code: `import { useEffect as runEffect } from "react";
+        const invokeEffect = runEffect as typeof runEffect;
+        invokeEffect(() => {});`,
+      options: { resolveNamedAliases: true },
+      expectedCount: 1,
+    },
+    {
       name: "default React receivers",
       code: 'import ReactClient from "react"; ReactClient.useEffect(() => {});',
       expectedCount: 1,

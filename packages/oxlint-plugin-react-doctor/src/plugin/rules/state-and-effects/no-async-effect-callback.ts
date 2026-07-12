@@ -1,7 +1,7 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -20,7 +20,15 @@ export const noAsyncEffectCallback = defineRule({
     "Don't make the effect callback `async`. Define an async function inside the effect and call it, then return a real cleanup function if you need one.",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
+      if (
+        !isReactApiCall(node, EFFECT_HOOK_NAMES, context.scopes, {
+          allowGlobalReactNamespace: true,
+          allowUnboundBareCalls: true,
+          resolveNamedAliases: true,
+        })
+      ) {
+        return;
+      }
       const callback = getEffectCallback(node);
       if (!callback) return;
       if (

@@ -7,6 +7,33 @@ import { exhaustiveDeps } from "./exhaustive-deps.js";
 import { clearExhaustiveDepsSuppressionCache } from "./exhaustive-deps-suppression.js";
 
 describe("react-builtins/exhaustive-deps — regressions", () => {
+  it.each([
+    [
+      "a shadowing local",
+      `import { useEffect } from "react";
+      const C = ({ value }) => {
+        const useEffect = (callback) => callback();
+        useEffect(() => consume(value), []);
+      };`,
+    ],
+    [
+      "a function parameter",
+      `const C = ({ value, useEffect }) => {
+        useEffect(() => consume(value), []);
+      };`,
+    ],
+    [
+      "an arbitrary object method",
+      `const C = ({ value, engine }) => {
+        engine.useEffect(() => consume(value), []);
+      };`,
+    ],
+  ])("does not treat %s as a React effect", (_name, code) => {
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   // A module-scope constant used only as a parameter default is stable
   // across renders, so it must NOT be reported as a missing dependency.
   // Previously a manual (unfiltered) param-default walk added it

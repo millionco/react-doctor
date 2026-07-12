@@ -11,6 +11,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { REACT_HOC_NAMES } from "../../constants/react.js";
@@ -1125,6 +1126,16 @@ If the missing value is recreated every render, move it inside the hook or stabi
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const hookName = getHookName(node.callee, context.scopes);
         if (!hookName || !isHookOfInterest(hookName, node.callee)) return;
+        if (
+          HOOKS_REQUIRING_DEPS_MATCH.has(hookName) &&
+          !isReactApiCall(node, HOOKS_REQUIRING_DEPS_MATCH, context.scopes, {
+            allowGlobalReactNamespace: true,
+            allowUnboundBareCalls: true,
+            resolveNamedAliases: true,
+          })
+        ) {
+          return;
+        }
 
         const callbackArgumentIndex = getCallbackArgumentIndex(hookName);
         const depsArgumentIndex = getDepsArgumentIndex(hookName);

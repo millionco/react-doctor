@@ -8,7 +8,7 @@ import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
@@ -510,7 +510,15 @@ export const noFetchInEffect = defineRule({
     "Use a data-fetching layer or Server Component so fetches do not race, double-fire, or leak from `useEffect`.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
+      if (
+        !isReactApiCall(node, EFFECT_HOOK_NAMES, context.scopes, {
+          allowGlobalReactNamespace: true,
+          allowUnboundBareCalls: true,
+          resolveNamedAliases: true,
+        })
+      ) {
+        return;
+      }
       const callback = getEffectCallback(node);
       if (!callback) return;
 

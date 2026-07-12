@@ -9,6 +9,7 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 export interface ReactApiCallOptions {
   allowGlobalReactNamespace?: boolean;
   allowUnboundBareCalls?: boolean;
+  resolveNamedAliases?: boolean;
 }
 
 const includesApiName = (apiNames: string | ReadonlySet<string>, apiName: string): boolean =>
@@ -29,9 +30,12 @@ const isNamedReactApiImport = (
   identifier: EsTreeNode,
   apiNames: string | ReadonlySet<string>,
   scopes: ScopeAnalysis,
+  resolveAliases: boolean,
 ): boolean => {
   if (!isNodeOfType(identifier, "Identifier")) return false;
-  const symbol = scopes.symbolFor(identifier);
+  const symbol = resolveAliases
+    ? resolveConstIdentifierAlias(identifier, scopes)
+    : scopes.symbolFor(identifier);
   if (!symbol || !isImportedFromReact(symbol)) return false;
   const importedName = getImportedName(symbol.declarationNode);
   return Boolean(importedName && includesApiName(apiNames, importedName));
@@ -55,7 +59,9 @@ export const isReactApiCall = (
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = stripParenExpression(node.callee);
   if (isNodeOfType(callee, "Identifier")) {
-    if (isNamedReactApiImport(callee, apiNames, scopes)) return true;
+    if (isNamedReactApiImport(callee, apiNames, scopes, Boolean(options.resolveNamedAliases))) {
+      return true;
+    }
     return Boolean(
       options.allowUnboundBareCalls &&
       includesApiName(apiNames, callee.name) &&

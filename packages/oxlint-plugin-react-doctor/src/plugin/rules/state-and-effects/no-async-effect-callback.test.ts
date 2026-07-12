@@ -89,4 +89,30 @@ describe("no-async-effect-callback", () => {
     const result = runRule(noAsyncEffectCallback, `subscribe(async () => { await handle(); });`);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it.each([
+    [
+      "a shadowing local",
+      `import { useEffect } from "react";
+      const C = () => {
+        const useEffect = (callback) => callback();
+        useEffect(async () => { await sync(); });
+      };`,
+    ],
+    [
+      "a function parameter",
+      `const C = (useEffect) => {
+        useEffect(async () => { await sync(); });
+      };`,
+    ],
+    [
+      "an arbitrary object method",
+      `const C = ({ engine }) => {
+        engine.useEffect(async () => { await sync(); });
+      };`,
+    ],
+  ])("does not treat %s as a React effect", (_name, code) => {
+    const result = runRule(noAsyncEffectCallback, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

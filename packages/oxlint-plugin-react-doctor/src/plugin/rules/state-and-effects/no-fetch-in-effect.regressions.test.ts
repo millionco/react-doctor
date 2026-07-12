@@ -15,6 +15,31 @@ const expectPass = (code: string): void => {
 };
 
 describe("state-and-effects/no-fetch-in-effect — regressions", () => {
+  it.each([
+    [
+      "a shadowing local",
+      `import { useEffect } from "react";
+      const C = () => {
+        const useEffect = (callback) => callback();
+        useEffect(() => { fetch("/api/profile"); });
+      };`,
+    ],
+    [
+      "a function parameter",
+      `const C = (useEffect) => {
+        useEffect(() => { fetch("/api/profile"); });
+      };`,
+    ],
+    [
+      "an arbitrary object method",
+      `const C = ({ engine }) => {
+        engine.useEffect(() => { fetch("/api/profile"); });
+      };`,
+    ],
+  ])("does not treat %s as a React effect", (_name, code) => {
+    expectPass(code);
+  });
+
   it("does not flag a fetch cancelled via AbortController in the cleanup", () => {
     expectPass(`
       const useSubtitles = (subtitlesUrl) => {

@@ -101,6 +101,29 @@ describe("client/client-localstorage-no-version — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags when only a nested helper returns the validated payload", () => {
+    const result = runRule(
+      clientLocalstorageNoVersion,
+      `const STORAGE_KEY = "preferences";
+      const isValidPreferences = (value) => typeof value.name === "string";
+      const getStoredPreferences = () => {
+        try {
+          const rawValue = localStorage.getItem(STORAGE_KEY);
+          const parsedValue = JSON.parse(rawValue);
+          const getValidatedValue = () =>
+            isValidPreferences(parsedValue) ? parsedValue : {};
+          getValidatedValue();
+          return parsedValue;
+        } catch {
+          return {};
+        }
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags when another reader of the same key skips validation", () => {
     const result = runRule(
       clientLocalstorageNoVersion,

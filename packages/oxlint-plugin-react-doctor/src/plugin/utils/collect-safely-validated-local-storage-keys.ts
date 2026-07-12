@@ -119,6 +119,7 @@ export const collectSafelyValidatedLocalStorageKeys = ({
     const rawValueKeys = new Map<number, string>();
     const parsedValueSources = new Map<number, number>();
     walkAst(child.block, (tryChild) => {
+      if (isFunctionLike(tryChild)) return false;
       if (
         isNodeOfType(tryChild, "VariableDeclarator") &&
         isNodeOfType(tryChild.id, "Identifier") &&

@@ -227,9 +227,6 @@ const isPotentialMutationReference = (identifier: EsTreeNode, readNode: EsTreeNo
   if (isNodeOfType(parent, "NewExpression")) {
     return memberDepth === 0 && parent.arguments?.some((argument) => argument === rootExpression);
   }
-  if (isNodeOfType(parent, "VariableDeclarator") && parent.init === rootExpression) {
-    return !isNodeOfType(parent.id, "Identifier");
-  }
   if (isNodeOfType(parent, "AssignmentExpression") && parent.right === rootExpression) {
     return true;
   }
@@ -497,6 +494,7 @@ const wasMutatedBeforeUsage = (
   scopes: ScopeAnalysis,
   visitedMutationSymbolIds: Set<number> = new Set(),
   inheritedUsageBoundary?: number | null,
+  readNodesBySymbolId: ReadonlyMap<number, EsTreeNode> = new Map(),
 ): boolean => {
   if (visitedMutationSymbolIds.has(symbol.id)) return false;
   visitedMutationSymbolIds.add(symbol.id);
@@ -513,10 +511,11 @@ const wasMutatedBeforeUsage = (
       return wasMutatedBeforeUsage(
         simpleAlias.symbol,
         usageNode,
-        simpleAlias.readNode,
+        readNodesBySymbolId.get(simpleAlias.symbol.id) ?? simpleAlias.readNode,
         scopes,
         new Set(visitedMutationSymbolIds),
         usageBoundary,
+        readNodesBySymbolId,
       );
     }
     if (!isPotentialMutationReference(reference.identifier, readNode)) return false;
@@ -542,6 +541,7 @@ const getObjectPropertyProof = (
   usageNode: EsTreeNode,
   visitedSymbolIds: Set<number> = new Set(),
   inheritedUsageBoundary?: number | null,
+  readNodesBySymbolId: ReadonlyMap<number, EsTreeNode> = new Map(),
 ): ObjectPropertyProof => {
   if (!objectExpression) return ABSENT_PROPERTY_PROOF;
   const unwrapped = stripParenExpression(objectExpression);
@@ -550,6 +550,8 @@ const getObjectPropertyProof = (
   }
   if (isNodeOfType(unwrapped, "Identifier")) {
     const symbol = scopes.symbolFor(unwrapped);
+    const nextReadNodesBySymbolId = new Map(readNodesBySymbolId);
+    if (symbol) nextReadNodesBySymbolId.set(symbol.id, unwrapped);
     const usageBoundary =
       inheritedUsageBoundary === undefined
         ? getMutationUsageBoundary(usageNode, unwrapped)
@@ -560,7 +562,15 @@ const getObjectPropertyProof = (
       !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
       !isNodeOfType(symbol.declarationNode.id, "Identifier") ||
       visitedSymbolIds.has(symbol.id) ||
-      wasMutatedBeforeUsage(symbol, usageNode, unwrapped, scopes, new Set(), usageBoundary)
+      wasMutatedBeforeUsage(
+        symbol,
+        usageNode,
+        unwrapped,
+        scopes,
+        new Set(),
+        usageBoundary,
+        nextReadNodesBySymbolId,
+      )
     ) {
       return UNKNOWN_PROPERTY_PROOF;
     }
@@ -572,6 +582,7 @@ const getObjectPropertyProof = (
       usageNode,
       visitedSymbolIds,
       usageBoundary,
+      nextReadNodesBySymbolId,
     );
   }
   if (isNodeOfType(unwrapped, "ConditionalExpression")) {
@@ -582,6 +593,7 @@ const getObjectPropertyProof = (
       usageNode,
       new Set(visitedSymbolIds),
       inheritedUsageBoundary,
+      new Map(readNodesBySymbolId),
     );
     const alternate = getObjectPropertyProof(
       unwrapped.alternate,
@@ -590,6 +602,7 @@ const getObjectPropertyProof = (
       usageNode,
       new Set(visitedSymbolIds),
       inheritedUsageBoundary,
+      new Map(readNodesBySymbolId),
     );
     return consequent.status === alternate.status ? consequent : UNKNOWN_PROPERTY_PROOF;
   }
@@ -610,6 +623,7 @@ const getObjectPropertyProof = (
       usageNode,
       visitedSymbolIds,
       inheritedUsageBoundary,
+      readNodesBySymbolId,
     );
   }
   if (!isNodeOfType(unwrapped, "ObjectExpression")) return UNKNOWN_PROPERTY_PROOF;

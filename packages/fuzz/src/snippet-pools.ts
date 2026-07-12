@@ -290,11 +290,13 @@ export const JSX_LEAF_POOL = [
   `<iframe src={url} />`,
   `<time>{new Date(value).toLocaleString()}</time>`,
   `<span>{new Intl.DateTimeFormat().format(state)}</span>`,
+  `<time>{new Intl.DateTimeFormat("en-US", localeOptionsAlias).format(new Date(value))}</time>`,
 ] as const;
 
 // Rare-but-parseable weirdness kept from the original generator, plus
 // trace-mined oddities (unicode, globalThis gymnastics, labels).
 export const EDGE_CASE_STATEMENT_POOL = [
+  `const localeOptionsBase = { timeZone: "UTC" }; const localeOptionsAlias = localeOptionsBase; const { timeZone: localeTimeZone } = localeOptionsAlias;`,
   `const useState = () => [0, () => {}] as const;`,
   `const { useEffect: renamedEffect } = React;`,
   `const shadowed = (useMemo: () => void) => useMemo();`,

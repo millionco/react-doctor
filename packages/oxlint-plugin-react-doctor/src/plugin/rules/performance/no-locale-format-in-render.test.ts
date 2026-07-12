@@ -371,6 +371,61 @@ export const Timestamp = ({ value, locale }) => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not treat identity aliases on the formatter path as escapes", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const baseOptions = { timeZone: "UTC" };
+  const intermediateOptions = baseOptions;
+  const options = intermediateOptions;
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still tracks mutations through aliases outside the formatter path", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const baseOptions = { timeZone: "UTC" };
+  const options = baseOptions;
+  const mutableAlias = baseOptions;
+  mutableAlias.timeZone = undefined;
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat read-only destructuring as mutation", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  const { timeZone, ...remainingOptions } = options;
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time data-zone={timeZone} data-options={remainingOptions}>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still tracks mutations inside destructuring defaults", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  const { missing = (options.timeZone = undefined) } = {};
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time data-missing={missing}>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a mutation evaluated in an earlier formatter argument", () => {
     const result = run(
       `"use client";

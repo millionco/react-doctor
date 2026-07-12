@@ -158,6 +158,14 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
+  it.each([
+    `function f(candidates: readonly number[], allowedValues: readonly number[]){ for(const candidate of candidates){ allowedValues.includes(-0); } }`,
+    `function f(candidates: readonly object[], allowedValues: readonly object[]){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
+    `function f(candidates: readonly (string | boolean | bigint | undefined)[], allowedValues: readonly (string | boolean | bigint | undefined)[]){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
+  ])("flags native includes where Set preserves the equality relation", (code) => {
+    expectFail(code);
+  });
+
   it("does not flag `.indexOf()` assigned as an index position in a loop", () => {
     expectPass(
       `function f(rows, order){ for (const row of rows){ const position = order.indexOf(row.id); row.rank = position; } }`,

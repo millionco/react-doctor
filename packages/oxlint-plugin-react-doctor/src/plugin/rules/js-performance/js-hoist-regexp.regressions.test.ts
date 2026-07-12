@@ -23,6 +23,68 @@ describe("js-performance/js-hoist-regexp — regressions", () => {
     expectPass(`for (const line of lines) { const m = new RegExp("\\\\d+", "g"); m.test(line); }`);
   });
 
+  it("does not flag global or sticky flag combinations", () => {
+    for (const flags of ["g", "y", "gi", "my", "dgy"]) {
+      expectPass(`for (const line of lines) { new RegExp("a", "${flags}").test(line); }`);
+    }
+  });
+
+  it("does not flag stateful static template flags for call or constructor forms", () => {
+    expectPass(`for (const line of lines) { RegExp("a", \`g\`).test(line); }`);
+    expectPass(`for (const line of lines) { new RegExp(\`a\`, \`y\`).test(line); }`);
+  });
+
+  it("still flags stateless call and constructor forms", () => {
+    expectFail(`for (const line of lines) { RegExp("a", "i").test(line); }`);
+    expectFail(`for (const line of lines) { new RegExp("a", "m").test(line); }`);
+    expectFail(`for (const line of lines) { new RegExp("a", "").test(line); }`);
+  });
+
+  it("does not recommend moving constructors that throw for invalid static flags", () => {
+    expectPass(`for (const line of lines) { new RegExp("a", "gg").test(line); }`);
+    expectPass(`for (const line of lines) { new RegExp("a", "q").test(line); }`);
+    expectPass(`for (const line of lines) { new RegExp("a", "uv").test(line); }`);
+  });
+
+  it("uses inherited RegExp literal flags when constructor flags are omitted", () => {
+    expectPass(`for (const line of lines) { new RegExp(/a/g).test(line); }`);
+    expectPass(`for (const line of lines) { RegExp(/a/y).test(line); }`);
+  });
+
+  it("uses explicit constructor flags instead of RegExp literal flags", () => {
+    expectFail(`for (const line of lines) { new RegExp(/a/g, "i").test(line); }`);
+    expectFail(`for (const line of lines) { RegExp(/a/y, "").test(line); }`);
+    expectPass(`for (const line of lines) { new RegExp(/a/i, "g").test(line); }`);
+  });
+
+  it("resolves transparent wrappers around the constructor and its arguments", () => {
+    expectPass(
+      `for (const line of lines) { (RegExp as typeof RegExp)(("a" as string), ("g" as string)).test(line); }`,
+    );
+    expectPass(`for (const line of lines) { new RegExp((/a/g as RegExp)).test(line); }`);
+    expectFail(
+      `for (const line of lines) { new (RegExp as typeof RegExp)(("a" as string), ("i" as string)).test(line); }`,
+    );
+  });
+
+  it("does not assign global RegExp semantics to shadowed or reassigned bindings", () => {
+    expectPass(
+      `const CustomRegExp = class {}; let RegExp = CustomRegExp; RegExp = CustomRegExp; for (const line of lines) { new RegExp("a", "i"); }`,
+    );
+    expectPass(
+      `const scan = (RegExp) => { for (const line of lines) { return RegExp("a", "i"); } };`,
+    );
+    expectPass(
+      `RegExp = CustomRegExp; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+  });
+
+  it("stays quiet on stateful constructors across loop and callback control flow", () => {
+    expectPass(`while (queue.length > 0) { new RegExp("a", "g").test(queue.pop()); }`);
+    expectPass(`const matches = lines.map((line) => new RegExp("a", "y").test(line));`);
+    expectPass(`for (;;) { if (condition) break; RegExp("a", "gy").test(value); }`);
+  });
+
   it("does not flag `new RegExp(loopVar, ...)` whose pattern depends on the loop", () => {
     expectPass(
       `function h(text, kws){ let o=text; for(const k of kws){ const m=new RegExp(k,"gi"); o=o.replace(m,(x)=>x);} return o; }`,

@@ -4,27 +4,72 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
-// Only a `new RegExp(...)` whose pattern AND flags are compile-time-constant
-// strings is genuinely loop-invariant and worth hoisting. When either
-// argument is a binding (`new RegExp(keyword, "gi")`, `new RegExp("token",
-// flags)`) it depends on the loop variable, so each pass builds a different
-// regex and hoisting is impossible — flagging it would be a false positive.
 const isStaticPattern = (argument: EsTreeNode | null | undefined): boolean => {
   if (!argument) return false;
-  if (isNodeOfType(argument, "Literal")) return true;
-  return isNodeOfType(argument, "TemplateLiteral") && (argument.expressions?.length ?? 0) === 0;
+  const unwrappedArgument = stripParenExpression(argument);
+  if (isNodeOfType(unwrappedArgument, "Literal")) return true;
+  return (
+    isNodeOfType(unwrappedArgument, "TemplateLiteral") &&
+    (unwrappedArgument.expressions?.length ?? 0) === 0
+  );
 };
 
 const STATEFUL_REGEXP_FLAGS_PATTERN = /[gy]/;
+const VALID_REGEXP_FLAGS_PATTERN = /^[dgimsuvy]*$/;
 
-const hasStatefulRegExpFlags = (argument: EsTreeNode | null | undefined): boolean => {
-  if (isNodeOfType(argument, "Literal") && typeof argument.value === "string") {
-    return STATEFUL_REGEXP_FLAGS_PATTERN.test(argument.value);
+const getStaticStringValue = (argument: EsTreeNode | null | undefined): string | null => {
+  if (!argument) return null;
+  const unwrappedArgument = stripParenExpression(argument);
+  if (isNodeOfType(unwrappedArgument, "Literal") && typeof unwrappedArgument.value === "string") {
+    return unwrappedArgument.value;
   }
-  if (isNodeOfType(argument, "TemplateLiteral") && (argument.expressions?.length ?? 0) === 0) {
-    const flags = argument.quasis?.[0]?.value?.cooked;
-    return typeof flags === "string" && STATEFUL_REGEXP_FLAGS_PATTERN.test(flags);
+  if (
+    isNodeOfType(unwrappedArgument, "TemplateLiteral") &&
+    (unwrappedArgument.expressions?.length ?? 0) === 0
+  ) {
+    const value = unwrappedArgument.quasis?.[0]?.value?.cooked;
+    return typeof value === "string" ? value : null;
+  }
+  return null;
+};
+
+const getEffectiveRegExpFlags = (
+  patternArgument: EsTreeNode | null | undefined,
+  flagsArgument: EsTreeNode | null | undefined,
+): string | null => {
+  if (flagsArgument) return getStaticStringValue(flagsArgument);
+  if (!patternArgument) return "";
+  const unwrappedPattern = stripParenExpression(patternArgument);
+  if (isNodeOfType(unwrappedPattern, "Literal") && unwrappedPattern.value instanceof RegExp) {
+    return unwrappedPattern.value.flags;
+  }
+  return "";
+};
+
+const hasValidRegExpFlags = (flags: string): boolean =>
+  VALID_REGEXP_FLAGS_PATTERN.test(flags) &&
+  new Set(flags).size === flags.length &&
+  !(flags.includes("u") && flags.includes("v"));
+
+const hasGlobalRegExpReassignment = (context: RuleContext): boolean => {
+  const pendingScopes = [context.scopes.rootScope];
+  while (pendingScopes.length > 0) {
+    const currentScope = pendingScopes.pop();
+    if (!currentScope) continue;
+    if (
+      currentScope.references.some(
+        (reference) =>
+          reference.resolvedSymbol === null &&
+          reference.flag !== "read" &&
+          isNodeOfType(reference.identifier, "Identifier") &&
+          reference.identifier.name === "RegExp",
+      )
+    ) {
+      return true;
+    }
+    pendingScopes.push(...currentScope.children);
   }
   return false;
 };
@@ -33,15 +78,22 @@ const hasStatefulRegExpFlags = (argument: EsTreeNode | null | undefined): boolea
 // `new RegExp(...)` does, so both call forms get the same treatment.
 const isStaticRegExpConstruction = (
   node: EsTreeNodeOfType<"NewExpression"> | EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+  hasReassignedGlobalRegExp: boolean,
 ): boolean => {
   const patternArgument = node.arguments?.[0] as EsTreeNode | undefined;
   const flagsArgument = node.arguments?.[1] as EsTreeNode | undefined;
+  const callee = stripParenExpression(node.callee);
+  const effectiveFlags = getEffectiveRegExpFlags(patternArgument, flagsArgument);
   return (
-    isNodeOfType(node.callee, "Identifier") &&
-    node.callee.name === "RegExp" &&
+    isNodeOfType(callee, "Identifier") &&
+    callee.name === "RegExp" &&
+    !hasReassignedGlobalRegExp &&
+    context.scopes.isGlobalReference(callee) &&
     isStaticPattern(patternArgument) &&
-    (flagsArgument === undefined || isStaticPattern(flagsArgument)) &&
-    !hasStatefulRegExpFlags(flagsArgument)
+    effectiveFlags !== null &&
+    hasValidRegExpFlags(effectiveFlags) &&
+    !STATEFUL_REGEXP_FLAGS_PATTERN.test(effectiveFlags)
   );
 };
 
@@ -55,20 +107,22 @@ export const jsHoistRegexp = defineRule({
   severity: "warn",
   recommendation:
     "Move `new RegExp(...)` (or large regex literals) to a constant outside the loop so it isn't rebuilt on every pass",
-  create: (context: RuleContext) =>
-    createLoopAwareVisitors(
+  create: (context: RuleContext) => {
+    const hasReassignedGlobalRegExp = hasGlobalRegExpReassignment(context);
+    return createLoopAwareVisitors(
       {
         NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
-          if (isStaticRegExpConstruction(node)) {
+          if (isStaticRegExpConstruction(node, context, hasReassignedGlobalRegExp)) {
             context.report({ node, message: MESSAGE });
           }
         },
         CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-          if (isStaticRegExpConstruction(node)) {
+          if (isStaticRegExpConstruction(node, context, hasReassignedGlobalRegExp)) {
             context.report({ node, message: MESSAGE });
           }
         },
       },
       { treatIteratorCallbacksAsLoops: true },
-    ),
+    );
+  },
 });

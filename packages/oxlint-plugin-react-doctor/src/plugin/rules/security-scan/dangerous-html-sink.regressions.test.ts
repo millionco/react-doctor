@@ -111,6 +111,35 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("flags prop HTML routed through an alias after an unrelated same-named binding", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `const payload = "<strong>static</strong>";
+export const Preview = ({ html }: { html: string }) => {
+  const payload = html;
+  return <div dangerouslySetInnerHTML={{ __html: payload }} />;
+};
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("ignores an out-of-scope same-named binding when tracing an alias", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `const payload = props.html;
+const StaticPreview = () => {
+  const payload = "<strong>static</strong>";
+  return payload;
+};
+export const Preview = () => (
+  <div dangerouslySetInnerHTML={{ __html: payload }} />
+);
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("flags prop HTML routed through a visible helper parameter", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/components/preview.tsx",

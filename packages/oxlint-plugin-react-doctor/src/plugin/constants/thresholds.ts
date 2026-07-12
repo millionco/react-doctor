@@ -24,6 +24,7 @@ export const SPREAD_KEY_RESOLUTION_DEPTH = 3;
 // or-fewer literals twice is trivial cost, the rewrite is pure
 // ceremony at this scale.
 export const SMALL_LITERAL_ARRAY_MAX_ELEMENTS = 8;
+export const MATH_EXTREMUM_SPREAD_MAX_ELEMENT_COUNT = 1024;
 
 // Materiality gate for `rendering-svg-precision`: a single stray
 // over-precise coordinate in a one-off hand-written glyph saves only a

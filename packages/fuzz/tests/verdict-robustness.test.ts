@@ -21,6 +21,7 @@ const AUDITED_RULE_IDS = [
   "effect-listener-cleanup-mismatch",
   "effect-needs-cleanup",
   "interactive-supports-focus",
+  "js-min-max-loop",
   "no-adjust-state-on-prop-change",
   "no-aria-hidden-on-focusable",
   "no-cascading-set-state",

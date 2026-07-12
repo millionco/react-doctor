@@ -141,6 +141,7 @@ export const GUARD_SNIPPET_POOL = [
   `const merged = { ...defaults, ...props };`,
   `const flattened = items.reduce((accumulator, item) => [...accumulator, ...item.children], []);`,
   `const lookup = items.reduce((accumulator, item) => ({ ...accumulator, [item.id]: item }), {});`,
+  `const smallestValue = [3, 1, 2].sort((leftValue, rightValue) => leftValue - rightValue)[0];`,
 ] as const;
 
 // Library idioms — tanstack, mobx, styled-components, next/dynamic, redux.

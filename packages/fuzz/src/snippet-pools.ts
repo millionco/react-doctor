@@ -284,6 +284,8 @@ export const JSX_LEAF_POOL = [
   `<div role="button" onClick={handleClick}>{state}</div>`,
   `<div style={{ paddingLeft: 8, paddingRight: 8, width: 100, height: 100 }}>{state}</div>`,
   `<div style={{ marginTop: 4, marginBottom: 4 }}>{state}</div>`,
+  `<div style={{ backgroundColor: "#000", boxShadow: "0 0 60px rgb(255 0 0 / 0%)" }}>{state}</div>`,
+  `<div style={{ backgroundColor: "#000", boxShadow: "0 0 60px rgb(255 0 0 / 10%)" }}>{state}</div>`,
   `<input type="checkbox" checked={isChecked} />`,
   `<video autoPlay />`,
   `<marquee>{state}</marquee>`,

@@ -178,6 +178,7 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `const defaults = { title: "untitled", pageSize: 20 };`,
   `reaction(() => store.value, (next) => persist(next));`,
   `let sharedSnapshot = "idle"; const snapshotListeners = new Set(); function subscribeSnapshot(listener) { snapshotListeners.add(listener); return () => snapshotListeners.delete(listener); }`,
+  `const FuzzPolyfillScript = () => <script src="https://polyfill.io/v3/polyfill.min.js" />;`,
 ] as const;
 
 // Attributes that specifically trip a11y validity rules — misspelled aria

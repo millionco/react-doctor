@@ -2,4 +2,4 @@
 "oxlint-plugin-react-doctor": patch
 ---
 
-Ignore URL fragments when detecting polyfill script requests.
+Match polyfill script diagnostics against network request identity, ignoring fragments and non-network URL schemes.

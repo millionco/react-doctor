@@ -180,6 +180,72 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `let sharedSnapshot = "idle"; const snapshotListeners = new Set(); function subscribeSnapshot(listener) { snapshotListeners.add(listener); return () => snapshotListeners.delete(listener); }`,
 ] as const;
 
+export const SERVER_MODULE_PROGRAM_POOL = [
+  `"use server";
+const state = Object.seal({ count: 0 });
+export const increment = async () => {
+  state.count++;
+};`,
+  `"use server";
+const state = Object.preventExtensions({ users: [] });
+export const addUser = async (user: unknown) => {
+  state.users.push(user);
+};`,
+  `"use server";
+const state = Object.seal({ cache: new Map<string, unknown>() });
+export const remember = async (key: string, value: unknown) => {
+  state.cache.set(key, value);
+};`,
+  `"use server";
+const state = Object.seal({ count: 0 });
+const incrementState = (target: { count: number }) => {
+  target.count++;
+};
+export const increment = async () => {
+  incrementState(state);
+};`,
+  `"use server";
+const state = Object.seal({ count: 0 });
+export const update = async (patch: { count?: number }) => {
+  Object.assign(state, patch);
+};`,
+  `"use server";
+const state = Object.preventExtensions({ count: 0 });
+export const removeCount = async () => {
+  delete state.count;
+};`,
+  `"use server";
+const state = Object.freeze({ count: 0 });
+export const increment = async () => {
+  state.count++;
+};`,
+  `"use server";
+const state = Object.seal({ get count() { return 0; } });
+export const increment = async () => {
+  state.count++;
+};`,
+  `"use server";
+const state = Object.preventExtensions({ count: 0 });
+state.count = 1;
+export const read = async () => state.count;`,
+  `"use server";
+const state = Object.seal({ service: getService() });
+export const update = async () => {
+  state.service.set("status", "active");
+};`,
+  `"use server";
+const state = Object.seal({ service: { set(value: string) { persist(value); } } });
+export const update = async () => {
+  state.service.set("active");
+};`,
+  `"use server";
+const Object = { seal: <Value,>(value: Value) => value };
+const state = Object.seal({ count: 0 });
+export const increment = async () => {
+  state.count++;
+};`,
+] as const;
+
 // Attributes that specifically trip a11y validity rules — misspelled aria
 // props, invalid roles, wrong-typed values, missing pairings.
 export const A11Y_TRIGGER_ATTRIBUTE_POOL = [

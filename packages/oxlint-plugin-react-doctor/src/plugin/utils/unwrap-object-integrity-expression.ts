@@ -15,12 +15,15 @@ export const getObjectIntegrityMethodName = (
   const expression = stripParenExpression(node);
   if (!isNodeOfType(expression, "CallExpression")) return null;
   const callee = stripParenExpression(expression.callee);
+  const receiver = isNodeOfType(callee, "MemberExpression")
+    ? stripParenExpression(callee.object)
+    : callee;
   if (
     !isNodeOfType(callee, "MemberExpression") ||
     callee.computed ||
-    !isNodeOfType(callee.object, "Identifier") ||
-    callee.object.name !== "Object" ||
-    !scopes.isGlobalReference(callee.object) ||
+    !isNodeOfType(receiver, "Identifier") ||
+    receiver.name !== "Object" ||
+    !scopes.isGlobalReference(receiver) ||
     !isNodeOfType(callee.property, "Identifier") ||
     !methodNames.has(callee.property.name)
   ) {

@@ -247,6 +247,22 @@ export async function increment() {
     },
   );
 
+  it.each(["Object as any", "Object!"])(
+    "flags a write when the integrity call receiver is wrapped as %s",
+    (objectReceiver) => {
+      const result = runRule(
+        serverNoMutableModuleState,
+        `"use server";
+const state = (${objectReceiver}).seal({ count: 0 });
+export async function increment() {
+  state.count++;
+}`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it.each(["seal", "preventExtensions"])(
     "stays silent on a rejected new property write through Object.%s",
     (methodName) => {

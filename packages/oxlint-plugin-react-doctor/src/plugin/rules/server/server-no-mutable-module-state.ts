@@ -10,8 +10,19 @@ import {
   stripParenExpression,
 } from "../../utils/strip-paren-expression.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getObjectIntegrityMethodName } from "../../utils/unwrap-object-integrity-expression.js";
+import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
 
 const MUTABLE_CONTAINER_CONSTRUCTORS = new Set(["Map", "Set", "WeakMap", "WeakSet"]);
+const WRITABLE_INTEGRITY_METHOD_NAMES = new Set(["seal", "preventExtensions"]);
+
+interface MutableConstInitializer {
+  containerKind: string;
+  writablePropertyNames: Set<string> | null;
+  nestedPropertyKinds: Map<string, string> | null;
+  allowsPropertyDeletion: boolean;
+}
 
 const MUTATING_METHODS = new Set([
   "push",
@@ -36,16 +47,101 @@ const OBJECT_MUTATING_METHODS = new Set([
   "setPrototypeOf",
 ]);
 
-const isMutableConstInitializer = (init: EsTreeNode | null | undefined): string | null => {
-  if (!init) return null;
-  if (isNodeOfType(init, "ArrayExpression")) return "[]";
-  if (isNodeOfType(init, "ObjectExpression")) return "{}";
+const ARRAY_MUTATING_METHODS = new Set([
+  "push",
+  "pop",
+  "shift",
+  "unshift",
+  "splice",
+  "sort",
+  "reverse",
+  "fill",
+  "copyWithin",
+]);
+
+const getNestedPropertyKind = (propertyValue: EsTreeNode): string | null => {
+  const value = stripParenExpression(propertyValue);
+  if (isNodeOfType(value, "ArrayExpression")) return "Array";
+  if (isNodeOfType(value, "ObjectExpression")) return "Object";
   if (
-    isNodeOfType(init, "NewExpression") &&
-    isNodeOfType(init.callee, "Identifier") &&
-    MUTABLE_CONTAINER_CONSTRUCTORS.has(init.callee.name)
+    isNodeOfType(value, "NewExpression") &&
+    isNodeOfType(value.callee, "Identifier") &&
+    MUTABLE_CONTAINER_CONSTRUCTORS.has(value.callee.name)
   ) {
-    return `new ${init.callee.name}()`;
+    return value.callee.name;
+  }
+  return null;
+};
+
+const getMutableConstInitializer = (
+  init: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
+): MutableConstInitializer | null => {
+  if (!init) return null;
+  let initializer = stripParenExpression(init);
+  let hasIntegrityWrapper = false;
+  let allowsPropertyDeletion = true;
+  while (isNodeOfType(initializer, "CallExpression")) {
+    const methodName = getObjectIntegrityMethodName(
+      initializer,
+      scopes,
+      WRITABLE_INTEGRITY_METHOD_NAMES,
+    );
+    if (!methodName) break;
+    const wrappedInitializer = initializer.arguments[0];
+    if (!wrappedInitializer || isNodeOfType(wrappedInitializer, "SpreadElement")) return null;
+    hasIntegrityWrapper = true;
+    if (methodName === "seal") allowsPropertyDeletion = false;
+    initializer = stripParenExpression(wrappedInitializer);
+  }
+
+  if (hasIntegrityWrapper) {
+    if (!isNodeOfType(initializer, "ObjectExpression")) return null;
+    const writablePropertyNames = new Set<string>();
+    const nestedPropertyKinds = new Map<string, string>();
+    for (const property of initializer.properties) {
+      if (isNodeOfType(property, "Property") && property.kind !== "init") continue;
+      const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+      if (propertyName === null || !isNodeOfType(property, "Property")) continue;
+      writablePropertyNames.add(propertyName);
+      const nestedPropertyKind = getNestedPropertyKind(property.value);
+      if (nestedPropertyKind) nestedPropertyKinds.set(propertyName, nestedPropertyKind);
+    }
+    return {
+      containerKind: "{}",
+      writablePropertyNames,
+      nestedPropertyKinds,
+      allowsPropertyDeletion,
+    };
+  }
+
+  if (isNodeOfType(initializer, "ArrayExpression")) {
+    return {
+      containerKind: "[]",
+      writablePropertyNames: null,
+      nestedPropertyKinds: null,
+      allowsPropertyDeletion: true,
+    };
+  }
+  if (isNodeOfType(initializer, "ObjectExpression")) {
+    return {
+      containerKind: "{}",
+      writablePropertyNames: null,
+      nestedPropertyKinds: null,
+      allowsPropertyDeletion: true,
+    };
+  }
+  if (
+    isNodeOfType(initializer, "NewExpression") &&
+    isNodeOfType(initializer.callee, "Identifier") &&
+    MUTABLE_CONTAINER_CONSTRUCTORS.has(initializer.callee.name)
+  ) {
+    return {
+      containerKind: `new ${initializer.callee.name}()`,
+      writablePropertyNames: null,
+      nestedPropertyKinds: null,
+      allowsPropertyDeletion: true,
+    };
   }
   return null;
 };
@@ -116,6 +212,106 @@ const isDirectContentsMutation = (referenceIdentifier: EsTreeNode): boolean => {
   return false;
 };
 
+const getRootPropertyName = (referenceIdentifier: EsTreeNode): string | null => {
+  let receiver: EsTreeNode = referenceIdentifier;
+  while (
+    receiver.parent &&
+    TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(receiver.parent.type) &&
+    "expression" in receiver.parent &&
+    receiver.parent.expression === receiver
+  ) {
+    receiver = receiver.parent;
+  }
+  if (!receiver.parent || !isNodeOfType(receiver.parent, "MemberExpression")) return null;
+  if (receiver.parent.object !== receiver) return null;
+  return getMemberPropertyName(receiver.parent);
+};
+
+const isDeleteContentsMutation = (referenceIdentifier: EsTreeNode): boolean => {
+  const chainTip = ascendMemberChain(referenceIdentifier);
+  const chainTipParent = chainTip.parent;
+  return Boolean(
+    chainTipParent &&
+    isNodeOfType(chainTipParent, "UnaryExpression") &&
+    chainTipParent.operator === "delete" &&
+    chainTipParent.argument === chainTip,
+  );
+};
+
+const isDirectRootPropertyMutation = (referenceIdentifier: EsTreeNode): boolean => {
+  const chainTip = ascendMemberChain(referenceIdentifier);
+  if (!isNodeOfType(chainTip, "MemberExpression")) return false;
+  return stripParenExpression(chainTip.object) === referenceIdentifier;
+};
+
+const isSupportedNestedMethodMutation = (
+  referenceIdentifier: EsTreeNode,
+  nestedPropertyKind: string,
+): boolean => {
+  const chainTip = ascendMemberChain(referenceIdentifier);
+  const chainTipParent = chainTip.parent;
+  if (
+    !isNodeOfType(chainTip, "MemberExpression") ||
+    !chainTipParent ||
+    !isNodeOfType(chainTipParent, "CallExpression") ||
+    chainTipParent.callee !== chainTip
+  ) {
+    return true;
+  }
+  const methodName = getMemberPropertyName(chainTip);
+  if (!methodName) return false;
+  if (nestedPropertyKind === "Array") return ARRAY_MUTATING_METHODS.has(methodName);
+  if (nestedPropertyKind === "Map") {
+    return methodName === "set" || methodName === "delete" || methodName === "clear";
+  }
+  if (nestedPropertyKind === "WeakMap") return methodName === "set" || methodName === "delete";
+  if (nestedPropertyKind === "Set") {
+    return methodName === "add" || methodName === "delete" || methodName === "clear";
+  }
+  if (nestedPropertyKind === "WeakSet") return methodName === "add" || methodName === "delete";
+  return false;
+};
+
+const isKnownPropertyObjectMutation = (
+  referenceIdentifier: EsTreeNode,
+  writablePropertyNames: Set<string>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callExpression = referenceIdentifier.parent;
+  if (!callExpression || !isNodeOfType(callExpression, "CallExpression")) return false;
+  if (callExpression.arguments[0] !== referenceIdentifier) return false;
+  const callee = callExpression.callee;
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object);
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    receiver.name !== "Object" ||
+    !scopes.isGlobalReference(receiver) ||
+    getMemberPropertyName(callee) === "setPrototypeOf"
+  ) {
+    return false;
+  }
+  const methodName = getMemberPropertyName(callee);
+  if (methodName === "defineProperty") {
+    const propertyNameNode = callExpression.arguments[1];
+    return Boolean(
+      propertyNameNode &&
+      isNodeOfType(propertyNameNode, "Literal") &&
+      typeof propertyNameNode.value === "string" &&
+      writablePropertyNames.has(propertyNameNode.value),
+    );
+  }
+  const propertyObject = callExpression.arguments[1];
+  if (methodName !== "assign" && methodName !== "defineProperties") return false;
+  if (!isNodeOfType(propertyObject, "ObjectExpression")) {
+    return writablePropertyNames.size > 0;
+  }
+  return propertyObject.properties.some((property) => {
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    return propertyName !== null && writablePropertyNames.has(propertyName);
+  });
+};
+
 // A bare reference passed as a call argument mutates the container when the
 // call is `Object.assign(X, …)`-shaped, or when the callee is a same-file
 // function whose matching parameter is mutated in its body (one hop only —
@@ -124,6 +320,7 @@ const isMutatedThroughCallArgument = (
   referenceIdentifier: EsTreeNode,
   scopes: ScopeAnalysis,
   mayFollowCalleeHop: boolean,
+  initializer: MutableConstInitializer | null = null,
 ): boolean => {
   const callExpression = referenceIdentifier.parent;
   if (!callExpression || !isNodeOfType(callExpression, "CallExpression")) return false;
@@ -140,9 +337,16 @@ const isMutatedThroughCallArgument = (
     return Boolean(
       isNodeOfType(calleeReceiver, "Identifier") &&
       calleeReceiver.name === "Object" &&
+      scopes.isGlobalReference(calleeReceiver) &&
       methodName !== null &&
       OBJECT_MUTATING_METHODS.has(methodName) &&
-      referenceArgumentIndex === 0,
+      referenceArgumentIndex === 0 &&
+      (!initializer?.writablePropertyNames ||
+        isKnownPropertyObjectMutation(
+          referenceIdentifier,
+          initializer.writablePropertyNames,
+          scopes,
+        )),
     );
   }
 
@@ -157,8 +361,25 @@ const isMutatedThroughCallArgument = (
   if (!parameterSymbol) return false;
   return parameterSymbol.references.some(
     (parameterReference) =>
-      isDirectContentsMutation(parameterReference.identifier) ||
-      isMutatedThroughCallArgument(parameterReference.identifier, scopes, false),
+      isAllowedDirectMutation(parameterReference.identifier, initializer) ||
+      isMutatedThroughCallArgument(parameterReference.identifier, scopes, false, initializer),
+  );
+};
+
+const isAllowedDirectMutation = (
+  referenceIdentifier: EsTreeNode,
+  initializer: MutableConstInitializer | null,
+): boolean => {
+  if (!isDirectContentsMutation(referenceIdentifier)) return false;
+  if (!initializer?.writablePropertyNames) return true;
+  const rootPropertyName = getRootPropertyName(referenceIdentifier);
+  if (!rootPropertyName || !initializer.writablePropertyNames.has(rootPropertyName)) return false;
+  if (isDirectRootPropertyMutation(referenceIdentifier)) {
+    return initializer.allowsPropertyDeletion || !isDeleteContentsMutation(referenceIdentifier);
+  }
+  const nestedPropertyKind = initializer.nestedPropertyKinds?.get(rootPropertyName);
+  return Boolean(
+    nestedPropertyKind && isSupportedNestedMethodMutation(referenceIdentifier, nestedPropertyKind),
   );
 };
 
@@ -202,12 +423,14 @@ const collectAliasGroup = (
 const isContainerContentsMutated = (
   containerSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
+  initializer: MutableConstInitializer,
 ): boolean =>
   collectAliasGroup(containerSymbol, scopes).some((groupSymbol) =>
     groupSymbol.references.some(
       (reference) =>
-        isDirectContentsMutation(reference.identifier) ||
-        isMutatedThroughCallArgument(reference.identifier, scopes, true),
+        isInsideFunctionScope(reference.identifier) &&
+        (isAllowedDirectMutation(reference.identifier, initializer) ||
+          isMutatedThroughCallArgument(reference.identifier, scopes, true, initializer)),
     ),
   );
 
@@ -247,14 +470,14 @@ export const serverNoMutableModuleState = defineRule({
             continue;
           }
 
-          const containerKind = isMutableConstInitializer(declarator.init);
-          if (!containerKind || !isNodeOfType(declarator.id, "Identifier")) continue;
+          const initializer = getMutableConstInitializer(declarator.init, context.scopes);
+          if (!initializer || !isNodeOfType(declarator.id, "Identifier")) continue;
           const containerSymbol = context.scopes.symbolFor(declarator.id);
           if (!containerSymbol) continue;
-          if (isContainerContentsMutated(containerSymbol, context.scopes)) {
+          if (isContainerContentsMutated(containerSymbol, context.scopes, initializer)) {
             context.report({
               node: declarator,
-              message: `Module-scoped const "${variableName} = ${containerKind}" leaks state between your users, since every request shares it.`,
+              message: `Module-scoped const "${variableName} = ${initializer.containerKind}" leaks state between your users, since every request shares it.`,
             });
           }
         }

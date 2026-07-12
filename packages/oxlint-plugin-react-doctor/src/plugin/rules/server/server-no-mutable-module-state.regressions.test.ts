@@ -230,4 +230,287 @@ export async function track(userId) {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it.each(["seal", "preventExtensions"])(
+    "flags a write to an existing Object.%s property",
+    (methodName) => {
+      const result = runRule(
+        serverNoMutableModuleState,
+        `"use server";
+const state = Object.${methodName}({ count: 0 });
+export async function increment() {
+  state.count++;
+}`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each(["seal", "preventExtensions"])(
+    "stays silent on a rejected new property write through Object.%s",
+    (methodName) => {
+      const result = runRule(
+        serverNoMutableModuleState,
+        `"use server";
+const state = Object.${methodName}({ count: 0 });
+export async function addLabel() {
+  state.label = "active";
+}`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("stays silent on a rejected delete from a sealed object", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ count: 0 });
+export async function removeCount() {
+  delete state.count;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a permitted delete from a non-extensible object", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.preventExtensions({ count: 0 });
+export async function removeCount() {
+  delete state.count;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a descriptor update to an existing sealed property", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ count: 0 });
+export async function reset() {
+  Object.defineProperty(state, "count", { value: 1 });
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a frozen object", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.freeze({ count: 0 });
+export async function increment() {
+  state.count++;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["seal", "preventExtensions"])(
+    "stays silent on a rejected write to a getter-only Object.%s property",
+    (methodName) => {
+      const result = runRule(
+        serverNoMutableModuleState,
+        `"use server";
+const state = Object.${methodName}({ get count() { return 0; } });
+export async function increment() {
+  state.count++;
+}`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("stays silent when a dynamic patch cannot update any non-extensible property", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.preventExtensions({ get count() { return 0; } });
+export async function update(patch) {
+  Object.assign(state, patch);
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a sealed setter delegates without storing state", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ set count(value) { persist(value); } });
+export async function update() {
+  state.count = 1;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a mutator-shaped call below a scalar sealed property", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ count: 0 });
+export async function update() {
+  state.count.set(1);
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on an opaque nested method whose name resembles a mutator", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ service: getService() });
+export async function update() {
+  state.service.set("status", "active");
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags nested writes through statically mutable sealed properties", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ users: [], nested: { count: 0 }, cache: new Map() });
+export async function update(user) {
+  state.users[0] = user;
+  state.nested.count++;
+  state.cache.set(user.id, user);
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a custom mutator-shaped method in a nested object literal", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ service: { set(value) { persist(value); } } });
+export async function update() {
+  state.service.set("active");
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a shadowed Object.seal implementation", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const Object = { seal: () => sharedState };
+const state = Object.seal({ count: 0 });
+export async function increment() {
+  state.count++;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a sealed object passed to a helper that mutates an existing property", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ count: 0 });
+const increment = (target) => { target.count++; };
+export async function update() {
+  increment(state);
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a helper only attempts to add a sealed property", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ count: 0 });
+const addLabel = (target) => { target.label = "active"; };
+export async function update() {
+  addLabel(state);
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a dynamic Object.assign that may update existing sealed properties", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ count: 0 });
+export async function update(patch) {
+  Object.assign(state, patch);
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "const state = { count: 0 };",
+    "const state = Object.seal({ count: 0 });",
+    "const state = Object.preventExtensions({ count: 0 });",
+  ])(
+    "stays silent when a const container is only populated during module initialization",
+    (declaration) => {
+      const result = runRule(
+        serverNoMutableModuleState,
+        `"use server";
+${declaration}
+state.count = 1;
+export async function read() {
+  return state.count;
+}`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("still flags a mutation inside a module-initialized scheduled callback", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ count: 0 });
+setInterval(() => {
+  state.count++;
+}, 1000);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a shadowed Object.assign lookalike", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+const state = Object.seal({ count: 0 });
+export async function update() {
+  const Object = { assign: () => null };
+  Object.assign(state, { count: 1 });
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

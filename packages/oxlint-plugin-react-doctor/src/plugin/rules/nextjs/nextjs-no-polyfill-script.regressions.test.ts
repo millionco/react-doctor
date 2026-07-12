@@ -2,73 +2,73 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { nextjsNoPolyfillScript } from "./nextjs-no-polyfill-script.js";
 
-const expectDiagnosticCount = (sourceUrl: string, expectedCount: number): void => {
-  const result = runRule(
-    nextjsNoPolyfillScript,
-    `export const Page = () => <script src=${JSON.stringify(sourceUrl)} />;`,
-  );
+const expectDiagnosticCount = (code: string, expectedCount: number): void => {
+  const result = runRule(nextjsNoPolyfillScript, code);
   expect(result.parseErrors).toEqual([]);
   expect(result.diagnostics).toHaveLength(expectedCount);
 };
 
 describe("nextjs-no-polyfill-script request identity", () => {
   it("ignores polyfill text after the first URL fragment delimiter", () => {
-    for (const sourceUrl of [
-      "/analytics.js#https://polyfill.io/v3/polyfill.min.js",
-      "/analytics.js##polyfill.min.js",
-      "/analytics.js#section#polyfill.min.js",
-      "https://example.com/analytics.js#polyfill.min.js",
-      "//example.com/analytics.js#polyfill.min.js",
-      "analytics.js#polyfill.min.js",
-    ]) {
-      expectDiagnosticCount(sourceUrl, 0);
-    }
+    expectDiagnosticCount(
+      `export const Page = () => <>
+        <script src="/analytics.js#https://polyfill.io/v3/polyfill.min.js" />
+        <script src="/analytics.js##polyfill.min.js" />
+        <script src="/analytics.js#section#polyfill.min.js" />
+        <script src="https://example.com/analytics.js#polyfill.min.js" />
+        <script src="//example.com/analytics.js#polyfill.min.js" />
+        <script src="analytics.js#polyfill.min.js" />
+      </>;`,
+      0,
+    );
   });
 
   it("reports network polyfill URLs with empty or non-empty fragments", () => {
-    for (const sourceUrl of [
-      "https://polyfill.io/v3/polyfill.min.js",
-      "https://polyfill.io/v3/polyfill.min.js#",
-      "https://polyfill.io/v3/polyfill.min.js#ignored",
-      "HTTPS://user:secret@polyfill.io:443/v3/polyfill.min.js#ignored",
-      "//polyfill.io/v3/polyfill.min.js#ignored",
-      "/assets/polyfill.min.js#ignored",
-      "assets/polyfill.min.js#ignored",
-    ]) {
-      expectDiagnosticCount(sourceUrl, 1);
-    }
+    expectDiagnosticCount(
+      `export const Page = () => <>
+        <script src="https://polyfill.io/v3/polyfill.min.js" />
+        <script src="https://polyfill.io/v3/polyfill.min.js#" />
+        <script src="https://polyfill.io/v3/polyfill.min.js#ignored" />
+        <script src="HTTPS://user:secret@polyfill.io:443/v3/polyfill.min.js#ignored" />
+        <script src="//polyfill.io/v3/polyfill.min.js#ignored" />
+        <script src="/assets/polyfill.min.js#ignored" />
+        <script src="assets/polyfill.min.js#ignored" />
+      </>;`,
+      7,
+    );
   });
 
   it("keeps literal and percent-encoded request data before the fragment", () => {
-    for (const sourceUrl of [
-      "/analytics.js?fallback=polyfill.min.js#ignored",
-      "/analytics.js?fallback=%23polyfill.min.js#ignored",
-      "/assets/%23polyfill.min.js#ignored",
-    ]) {
-      expectDiagnosticCount(sourceUrl, 1);
-    }
+    expectDiagnosticCount(
+      `export const Page = () => <>
+        <script src="/analytics.js?fallback=polyfill.min.js#ignored" />
+        <script src="/analytics.js?fallback=%23polyfill.min.js#ignored" />
+        <script src="/assets/%23polyfill.min.js#ignored" />
+      </>;`,
+      3,
+    );
   });
 
   it("ignores non-network script URL schemes", () => {
-    for (const sourceUrl of [
-      "data:text/javascript,polyfill.min.js",
-      "blob:https://polyfill.io/polyfill.min.js",
-      "javascript:polyfill.min.js",
-      "  DATA:text/javascript,polyfill.min.js",
-    ]) {
-      expectDiagnosticCount(sourceUrl, 0);
-    }
+    expectDiagnosticCount(
+      `export const Page = () => <>
+        <script src="data:text/javascript,polyfill.min.js" />
+        <script src="blob:https://polyfill.io/polyfill.min.js" />
+        <script src="javascript:polyfill.min.js" />
+        <script src="  DATA:text/javascript,polyfill.min.js" />
+      </>;`,
+      0,
+    );
   });
 
   it("ignores empty, fragment-only, and dynamic sources", () => {
-    expectDiagnosticCount("", 0);
-    expectDiagnosticCount("#polyfill.min.js", 0);
-
-    const result = runRule(
-      nextjsNoPolyfillScript,
-      `export const Page = ({ sourceUrl }) => <script src={sourceUrl} />;`,
+    expectDiagnosticCount(
+      `export const Page = ({ sourceUrl }) => <>
+        <script src="" />
+        <script src="#polyfill.min.js" />
+        <script src={sourceUrl} />
+      </>;`,
+      0,
     );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
   });
 });

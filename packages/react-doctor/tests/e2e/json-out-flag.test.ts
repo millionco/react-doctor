@@ -3,7 +3,7 @@
  * a file instead of stdout when the flag is provided.
  */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
@@ -20,6 +20,13 @@ const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-json-out-"));
 afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
+
+const git = (currentWorkingDirectory: string, ...argumentsList: string[]): void => {
+  execFileSync("git", ["-c", "user.email=test@test", "-c", "user.name=test", ...argumentsList], {
+    cwd: currentWorkingDirectory,
+    stdio: "ignore",
+  });
+};
 
 const runCli = (
   args: string[],
@@ -72,5 +79,47 @@ describe.skipIf(!hasBuiltCli)("--json-out flag", () => {
     const report = JSON.parse(reportContent);
     expect(report.ok).toBeDefined();
     expect(report.schemaVersion).toBe(3);
+  }, 60_000);
+
+  it("writes JSON report when changed scope contains only config files", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "json-out-config-only-diff", {
+      files: {
+        "src/App.tsx": `export const App = () => null;\n`,
+      },
+    });
+    git(projectDirectory, "init", "-b", "main");
+    git(projectDirectory, "add", ".");
+    git(projectDirectory, "commit", "-m", "initial");
+    git(projectDirectory, "switch", "-c", "config-only-change");
+    fs.appendFileSync(path.join(projectDirectory, "package.json"), "\n");
+    git(projectDirectory, "add", "package.json");
+    git(projectDirectory, "commit", "-m", "update config");
+
+    const outputFile = path.join(projectDirectory, "report.json");
+    const { stdout, stderr, exitCode } = await runCli(
+      [
+        ".",
+        "--json",
+        "--json-out",
+        "./report.json",
+        "--no-score",
+        "--scope",
+        "changed",
+        "--base",
+        "main",
+      ],
+      projectDirectory,
+    );
+
+    if (exitCode !== 0) {
+      console.error("STDERR:", stderr);
+      console.error("STDOUT:", stdout);
+    }
+    expect(exitCode).toBe(0);
+    expect(fs.existsSync(outputFile)).toBe(true);
+    const report = JSON.parse(fs.readFileSync(outputFile, "utf8"));
+    expect(report.ok).toBe(true);
+    expect(report.schemaVersion).toBe(3);
+    expect(report.diagnostics).toEqual([]);
   }, 60_000);
 });

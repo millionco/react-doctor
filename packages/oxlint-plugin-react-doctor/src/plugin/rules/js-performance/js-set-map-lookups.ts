@@ -566,7 +566,61 @@ const isNativeArrayType = (typeNode: EsTreeNode | null | undefined): boolean => 
   );
 };
 
+const getTypeLiteralMemberType = (
+  typeNode: EsTreeNode | null | undefined,
+  propertyName: string,
+): EsTreeNode | null => {
+  if (!typeNode || !isNodeOfType(typeNode, "TSTypeLiteral")) return null;
+  for (const member of typeNode.members) {
+    if (
+      isNodeOfType(member, "TSPropertySignature") &&
+      !member.computed &&
+      isNodeOfType(member.key, "Identifier") &&
+      member.key.name === propertyName
+    ) {
+      return member.typeAnnotation?.typeAnnotation ?? null;
+    }
+  }
+  return null;
+};
+
+const getDeclaredMemberType = (
+  receiver: EsTreeNodeOfType<"MemberExpression">,
+): EsTreeNode | null => {
+  if (receiver.computed || !isNodeOfType(receiver.property, "Identifier")) return null;
+  const propertyName = receiver.property.name;
+  const object = stripParenExpression(receiver.object);
+  if (isNodeOfType(object, "Identifier")) {
+    const binding = findVariableInitializer(object, object.name);
+    if (binding && isNodeOfType(binding.bindingIdentifier, "Identifier")) {
+      return getTypeLiteralMemberType(
+        binding.bindingIdentifier.typeAnnotation?.typeAnnotation,
+        propertyName,
+      );
+    }
+  }
+  if (!isNodeOfType(object, "ThisExpression")) return null;
+  let ancestor: EsTreeNode | null | undefined = receiver.parent;
+  while (ancestor && !isNodeOfType(ancestor, "ClassBody")) ancestor = ancestor.parent;
+  if (!ancestor) return null;
+  for (const classElement of ancestor.body) {
+    if (
+      isNodeOfType(classElement, "PropertyDefinition") &&
+      !classElement.computed &&
+      isNodeOfType(classElement.key, "Identifier") &&
+      classElement.key.name === propertyName
+    ) {
+      return classElement.typeAnnotation?.typeAnnotation ?? null;
+    }
+  }
+  return null;
+};
+
 const hasProvenNonArrayType = (receiver: EsTreeNode): boolean => {
+  if (isNodeOfType(receiver, "MemberExpression")) {
+    const declaredType = getDeclaredMemberType(receiver);
+    return Boolean(declaredType) && !isNativeArrayType(declaredType);
+  }
   if (!isNodeOfType(receiver, "Identifier")) return false;
   const binding = findVariableInitializer(receiver, receiver.name);
   if (!binding || !isNodeOfType(binding.bindingIdentifier, "Identifier")) return false;

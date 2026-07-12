@@ -3,6 +3,22 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { rnAnimationReactionAsDerived } from "./rn-animation-reaction-as-derived.js";
 
 describe("react-native/rn-animation-reaction-as-derived — regressions", () => {
+  it.each(["$", "($)", "void ($)", "(0, $)"])(
+    "flags a shared-value copy through discarded wrapper %s",
+    (wrapper) => {
+      const assignment = wrapper.replace("$", "target.value = current");
+      const result = runRule(
+        rnAnimationReactionAsDerived,
+        `import { useAnimatedReaction } from "react-native-reanimated";
+        const C = () => {
+          useAnimatedReaction(() => source.value, (current) => { ${assignment}; });
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("stays silent on a locally-defined useAnimatedReaction", () => {
     const result = runRule(
       rnAnimationReactionAsDerived,

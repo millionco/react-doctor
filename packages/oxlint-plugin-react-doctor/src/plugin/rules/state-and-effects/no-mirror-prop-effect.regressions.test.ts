@@ -3,6 +3,23 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noMirrorPropEffect } from "./no-mirror-prop-effect.js";
 
 describe("no-mirror-prop-effect — regressions", () => {
+  it.each(["$", "($)", "void ($)", "(0, $)"])(
+    "flags a prop mirror through discarded wrapper %s",
+    (wrapper) => {
+      const effect = wrapper.replace("$", "useEffect(() => { setDraft(value); }, [value])");
+      const result = runRule(
+        noMirrorPropEffect,
+        `function Form({ value }) {
+          const [draft, setDraft] = useState(value);
+          ${effect};
+          return <span>{draft}</span>;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("stays silent on an initial-only prop re-seed that is also user-editable", () => {
     const result = runRule(
       noMirrorPropEffect,

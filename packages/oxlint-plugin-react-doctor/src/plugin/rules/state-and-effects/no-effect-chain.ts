@@ -21,6 +21,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 
 // HACK: §7 of "You Might Not Need an Effect" — chains of computations:
 //
@@ -58,7 +59,7 @@ const findTopLevelEffectCalls = (componentBody: EsTreeNode): EsTreeNode[] => {
   if (!isNodeOfType(componentBody, "BlockStatement")) return effectCalls;
   for (const statement of componentBody.body ?? []) {
     if (!isNodeOfType(statement, "ExpressionStatement")) continue;
-    const expression = statement.expression;
+    const expression = unwrapDiscardedExpression(statement);
     if (!isNodeOfType(expression, "CallExpression")) continue;
     if (!isHookCall(expression, EFFECT_HOOK_NAMES)) continue;
     effectCalls.push(expression);

@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const ITERATOR_METHOD_NAMES: ReadonlySet<string> = new Set([
@@ -311,21 +312,31 @@ const hasAttachmentBefore = (
   return foundAttachment;
 };
 
+const getStyleAssignment = (node: EsTreeNode): EsTreeNodeOfType<"AssignmentExpression"> | null => {
+  if (!isNodeOfType(node, "ExpressionStatement")) return null;
+  const expression = unwrapDiscardedExpression(node);
+  if (!isNodeOfType(expression, "AssignmentExpression")) return null;
+  if (!isNodeOfType(expression.left, "MemberExpression")) return null;
+  if (!isNodeOfType(expression.left.object, "MemberExpression")) return null;
+  if (!isNodeOfType(expression.left.object.property, "Identifier")) return null;
+  return expression.left.object.property.name === "style" ? expression : null;
+};
+
 // Style writes on an element that is not in the document dirty nothing —
 // no live layout exists to recalculate. When the receiver resolves to a
 // same-file `createElement` / `cloneNode` / etc. binding and no
 // attachment call (`appendChild(el)`, `parent.replaceChild(el, …)`, …)
 // precedes the write, the write is provably reflow-free.
 const isProvablyDetachedAtWrite = (styleWriteStatement: EsTreeNode): boolean => {
+  const assignment = getStyleAssignment(styleWriteStatement);
   if (
-    !isNodeOfType(styleWriteStatement, "ExpressionStatement") ||
-    !isNodeOfType(styleWriteStatement.expression, "AssignmentExpression") ||
-    !isNodeOfType(styleWriteStatement.expression.left, "MemberExpression") ||
-    !isNodeOfType(styleWriteStatement.expression.left.object, "MemberExpression")
+    !assignment ||
+    !isNodeOfType(assignment.left, "MemberExpression") ||
+    !isNodeOfType(assignment.left.object, "MemberExpression")
   ) {
     return false;
   }
-  const elementExpression = styleWriteStatement.expression.left.object.object;
+  const elementExpression = assignment.left.object.object;
   const creationRoot = resolveDetachedCreationRoot(elementExpression as EsTreeNode, 0);
   if (!creationRoot) return false;
   return !hasAttachmentBefore(
@@ -343,20 +354,15 @@ export const jsBatchDomCss = defineRule({
   recommendation:
     "Do all your reads first, then all your writes. Mixing them inside a loop makes the browser recalculate the layout again and again, which is slow",
   create: (context: RuleContext) => {
-    const isStyleAssignment = (node: EsTreeNode): boolean =>
-      isNodeOfType(node, "ExpressionStatement") &&
-      isNodeOfType(node.expression, "AssignmentExpression") &&
-      isNodeOfType(node.expression.left, "MemberExpression") &&
-      isNodeOfType(node.expression.left.object, "MemberExpression") &&
-      isNodeOfType(node.expression.left.object.property, "Identifier") &&
-      node.expression.left.object.property.name === "style";
-
-    const writesLayoutAffectingProperty = (node: EsTreeNode): boolean =>
-      isNodeOfType(node, "ExpressionStatement") &&
-      isNodeOfType(node.expression, "AssignmentExpression") &&
-      isNodeOfType(node.expression.left, "MemberExpression") &&
-      isNodeOfType(node.expression.left.property, "Identifier") &&
-      !LAYOUT_NEUTRAL_STYLE_PROPERTY_NAMES.has(node.expression.left.property.name);
+    const writesLayoutAffectingProperty = (node: EsTreeNode): boolean => {
+      const assignment = getStyleAssignment(node);
+      return (
+        assignment !== null &&
+        isNodeOfType(assignment.left, "MemberExpression") &&
+        isNodeOfType(assignment.left.property, "Identifier") &&
+        !LAYOUT_NEUTRAL_STYLE_PROPERTY_NAMES.has(assignment.left.property.name)
+      );
+    };
 
     return {
       BlockStatement(node: EsTreeNodeOfType<"BlockStatement">) {
@@ -366,8 +372,8 @@ export const jsBatchDomCss = defineRule({
         let layoutReads: PerIterationLayoutReads | null = null;
         for (let statementIndex = 1; statementIndex < statements.length; statementIndex++) {
           if (
-            !isStyleAssignment(statements[statementIndex]) ||
-            !isStyleAssignment(statements[statementIndex - 1])
+            getStyleAssignment(statements[statementIndex]) === null ||
+            getStyleAssignment(statements[statementIndex - 1]) === null
           ) {
             continue;
           }

@@ -12,6 +12,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 
 // Every literal builds a value-equal result except a regex literal,
@@ -104,9 +105,7 @@ const getUnconditionalSetterCall = (
   // arrow body (`() => setCount(...)`) and the `ExpressionStatement` for a
   // block body (`() => { setCount(...); }`). Both are unconditional
   // synchronous writes, so unwrap the statement form and treat them alike.
-  const expression = stripParenExpression(
-    isNodeOfType(statement, "ExpressionStatement") ? statement.expression : statement,
-  );
+  const expression = unwrapDiscardedExpression(statement);
   if (!isNodeOfType(expression, "CallExpression")) return null;
   if (!isNodeOfType(expression.callee, "Identifier")) return null;
   if (!setterNames.has(expression.callee.name)) return null;
@@ -798,7 +797,7 @@ export const noSelfUpdatingEffect = defineRule({
 
       for (const statement of functionBody.body ?? []) {
         if (!isNodeOfType(statement, "ExpressionStatement")) continue;
-        const effectCall = statement.expression;
+        const effectCall = unwrapDiscardedExpression(statement);
         if (!isNodeOfType(effectCall, "CallExpression")) continue;
         if (!isHookCall(effectCall, EFFECT_HOOK_NAMES)) continue;
         if ((effectCall.arguments?.length ?? 0) < 2) continue;

@@ -10,6 +10,7 @@ import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js"
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: §1 of "You Might Not Need an Effect" — mirroring a prop into
@@ -128,7 +129,7 @@ export const noMirrorPropEffect = defineRule({
       // anyway.
       for (const statement of componentBody.body ?? []) {
         if (!isNodeOfType(statement, "ExpressionStatement")) continue;
-        const effectCall = statement.expression;
+        const effectCall = unwrapDiscardedExpression(statement);
         if (!isNodeOfType(effectCall, "CallExpression")) continue;
         if (!isHookCall(effectCall, EFFECT_HOOK_NAMES)) continue;
         if ((effectCall.arguments?.length ?? 0) < 2) continue;
@@ -146,9 +147,7 @@ export const noMirrorPropEffect = defineRule({
         const bodyStatements = getCallbackStatements(callback);
         if (bodyStatements.length !== 1) continue;
         const onlyStatement = bodyStatements[0];
-        const expression = isNodeOfType(onlyStatement, "ExpressionStatement")
-          ? onlyStatement.expression
-          : onlyStatement;
+        const expression = unwrapDiscardedExpression(onlyStatement);
         if (!isNodeOfType(expression, "CallExpression")) continue;
         if (!isNodeOfType(expression.callee, "Identifier")) continue;
         if (!isSetterIdentifier(expression.callee.name)) continue;

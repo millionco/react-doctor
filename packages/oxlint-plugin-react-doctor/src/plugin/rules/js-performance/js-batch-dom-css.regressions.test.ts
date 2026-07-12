@@ -3,6 +3,26 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { jsBatchDomCss } from "./js-batch-dom-css.js";
 
 describe("js-performance/js-batch-dom-css — regressions", () => {
+  it.each(["$", "($)", "void ($)", "(0, $)"])(
+    "flags layout-affecting writes through discarded wrapper %s",
+    (wrapper) => {
+      const heightWrite = wrapper.replace("$", "row.style.height = `${height}px`");
+      const widthWrite = wrapper.replace("$", 'row.style.width = "100%"');
+      const result = runRule(
+        jsBatchDomCss,
+        `function resizeRows(rows) {
+          for (const row of rows) {
+            const height = row.offsetHeight;
+            ${heightWrite};
+            ${widthWrite};
+          }
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("stays silent when the styled element is created detached and appended after the writes", () => {
     const result = runRule(
       jsBatchDomCss,

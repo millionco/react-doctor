@@ -3,6 +3,29 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noEffectChain } from "./no-effect-chain.js";
 
 describe("no-effect-chain — regressions", () => {
+  it.each(["$", "($)", "void ($)", "(0, $)"])(
+    "flags a cross-effect chain through discarded wrapper %s",
+    (wrapper) => {
+      const upstreamEffect = wrapper.replace("$", "useEffect(() => { setFirst(1); }, [])");
+      const downstreamEffect = wrapper.replace(
+        "$",
+        "useEffect(() => { setSecond(first + 1); }, [first])",
+      );
+      const result = runRule(
+        noEffectChain,
+        `function C() {
+          const [first, setFirst] = useState(0);
+          const [second, setSecond] = useState(0);
+          ${upstreamEffect};
+          ${downstreamEffect};
+          return second;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("still flags the canonical cross-effect state chain", () => {
     const result = runRule(
       noEffectChain,

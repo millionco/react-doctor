@@ -132,6 +132,26 @@ describe("no-self-updating-effect — accepted converging updaters stay quiet", 
 });
 
 describe("no-self-updating-effect — diverging updaters keep firing", () => {
+  it.each(["$", "($)", "void ($)", "(0, $)"])(
+    "flags a self-updating effect through discarded wrapper %s",
+    (wrapper) => {
+      const effect = wrapper.replace(
+        "$",
+        "useEffect(() => { setCount((value) => value + 1); }, [count])",
+      );
+      const result = runRule(
+        noSelfUpdatingEffect,
+        `function Counter() {
+          const [count, setCount] = useState(0);
+          ${effect};
+          return count;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("still flags an increment updater whose only guard is a nullish equality the write never establishes", () => {
     const result = runRule(
       noSelfUpdatingEffect,

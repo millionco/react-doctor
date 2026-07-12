@@ -96,6 +96,16 @@ describe("isReactApiCall", () => {
       expectedCount: 1,
     },
     {
+      name: "static computed React members",
+      code: 'import * as ReactClient from "react"; ReactClient["useEffect"](() => {});',
+      expectedCount: 1,
+    },
+    {
+      name: "dynamic computed React members",
+      code: 'import * as ReactClient from "react"; const method = "useEffect"; ReactClient[method](() => {});',
+      expectedCount: 0,
+    },
+    {
       name: "same-named imports from another package",
       code: 'import { useEffect } from "other"; useEffect(() => {});',
       expectedCount: 0,

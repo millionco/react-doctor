@@ -41,4 +41,90 @@ describe("react-builtins/forward-ref-uses-ref binding provenance", () => {
       0,
     );
   });
+
+  it("reports default and namespace React imports", () => {
+    expectDiagnosticCount(
+      `import ReactDefault from "react";
+       import * as ReactNamespace from "react";
+       ReactDefault.forwardRef((props) => <button>{props.label}</button>);
+       ReactNamespace.forwardRef((props) => <button>{props.label}</button>);`,
+      2,
+    );
+  });
+
+  it("reports immutable named and namespace aliases", () => {
+    expectDiagnosticCount(
+      `import ReactNamespace, { forwardRef as importedForwardRef } from "react";
+       const firstForwardRef = importedForwardRef;
+       const wrappedForwardRef = firstForwardRef as typeof firstForwardRef;
+       const firstReactAlias = ReactNamespace;
+       const secondReactAlias = firstReactAlias;
+       wrappedForwardRef((props) => <button>{props.label}</button>);
+       secondReactAlias.forwardRef((props) => <button>{props.label}</button>);`,
+      2,
+    );
+  });
+
+  it("ignores mutable aliases and lexical shadows", () => {
+    expectDiagnosticCount(
+      `import ReactNamespace, { forwardRef as importedForwardRef } from "react";
+       let mutableForwardRef = importedForwardRef;
+       mutableForwardRef = (callback) => callback("local");
+       let MutableReact = ReactNamespace;
+       MutableReact = { forwardRef: (callback) => callback("local") };
+       const run = (importedForwardRef, ReactNamespace) => {
+         importedForwardRef((value) => value.toUpperCase());
+         ReactNamespace.forwardRef((value) => value.toUpperCase());
+       };
+       mutableForwardRef((value) => value.toUpperCase());
+       MutableReact.forwardRef((value) => value.toUpperCase());
+       void run;`,
+      0,
+    );
+  });
+
+  it("ignores same-shaped imports from other packages", () => {
+    expectDiagnosticCount(
+      `import OtherReact, { forwardRef, forwardRef as wrapRef } from "other-react";
+       forwardRef((value) => value.toUpperCase());
+       wrapRef((value) => value.toUpperCase());
+       OtherReact.forwardRef((value) => value.toUpperCase());`,
+      0,
+    );
+  });
+
+  it("reports static computed, optional, and TypeScript-wrapped React calls", () => {
+    expectDiagnosticCount(
+      `import ReactNamespace, { forwardRef } from "react";
+       ReactNamespace["forwardRef"]((props) => <button>{props.label}</button>);
+       ReactNamespace?.forwardRef((props) => <button>{props.label}</button>);
+       (forwardRef as typeof forwardRef)((props) => <button>{props.label}</button>);
+       (ReactNamespace as typeof ReactNamespace).forwardRef((props) => <button>{props.label}</button>);`,
+      4,
+    );
+  });
+
+  it("only reports inline callbacks with exactly one non-rest parameter", () => {
+    expectDiagnosticCount(
+      `import { forwardRef } from "react";
+       const renderButton = (props) => <button>{props.label}</button>;
+       forwardRef(() => <button />);
+       forwardRef((props) => <button>{props.label}</button>);
+       forwardRef((props, ref) => <button ref={ref}>{props.label}</button>);
+       forwardRef((...argumentsList) => <button>{argumentsList.length}</button>);
+       forwardRef(renderButton);`,
+      1,
+    );
+  });
+
+  it("keeps CommonJS, dynamic, and unbound calls conservative", () => {
+    expectDiagnosticCount(
+      `const ReactCommonJs = require("react");
+       const propertyName = "forwardRef";
+       ReactCommonJs.forwardRef((props) => <button>{props.label}</button>);
+       ReactCommonJs[propertyName]((props) => <button>{props.label}</button>);
+       forwardRef((props) => <button>{props.label}</button>);`,
+      0,
+    );
+  });
 });

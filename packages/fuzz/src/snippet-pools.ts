@@ -342,7 +342,7 @@ export const IMPORT_LINE_POOL = [
   `import { useForm } from "react-hook-form";`,
   `import debounce from "lodash/debounce";`,
   `import { z } from "zod";`,
-  `import { forwardRef } from "react";`,
+  `import { forwardRef } from "react";\nconst FuzzForwardRefComponent = forwardRef((props) => <button>{props.label}</button>);`,
 ] as const;
 
 // Filenames rotate per iteration because a large rule population is

@@ -2,6 +2,7 @@ import { REACT_RUNTIME_MODULE_SOURCES } from "../constants/react.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getImportedName } from "./get-imported-name.js";
+import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -70,9 +71,7 @@ export const isReactApiCall = (
   }
   if (
     !isNodeOfType(callee, "MemberExpression") ||
-    callee.computed ||
-    !isNodeOfType(callee.property, "Identifier") ||
-    !includesApiName(apiNames, callee.property.name)
+    !includesApiName(apiNames, getStaticPropertyName(callee) ?? "")
   ) {
     return false;
   }

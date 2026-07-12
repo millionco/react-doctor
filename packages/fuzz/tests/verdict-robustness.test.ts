@@ -20,6 +20,7 @@ const AUDITED_RULE_IDS = [
   "aria-role",
   "effect-listener-cleanup-mismatch",
   "effect-needs-cleanup",
+  "forward-ref-uses-ref",
   "interactive-supports-focus",
   "no-adjust-state-on-prop-change",
   "no-aria-hidden-on-focusable",

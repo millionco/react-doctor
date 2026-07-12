@@ -155,6 +155,47 @@ export const Preview = ({ html }: { html: string }) => {
     expect(findings).toHaveLength(1);
   });
 
+  it("flags a call-site alias declared after the helper sink", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `const inject = (element: HTMLElement, payload: string) => {
+  element.innerHTML = payload;
+};
+export const Preview = ({ html }: { html: string }) => {
+  const payload = html;
+  inject(document.body, payload);
+};
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("does not recurse forever through a self-calling helper", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `const inject = (element: HTMLElement, payload: string) => {
+  element.innerHTML = payload;
+  inject(element, payload);
+};
+inject(document.body, "<strong>static</strong>");
+`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("traces a helper parameter before an outer same-named binding", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `const payload = "<strong>static</strong>";
+const inject = (element: HTMLElement, payload: string) => {
+  element.innerHTML = payload;
+};
+inject(document.body, props.html);
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("flags prop HTML routed through a function-declaration helper", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/components/preview.tsx",
@@ -211,6 +252,49 @@ preview.innerHTML = preview.html;
       content: `const temporaryContainer = document.createElement("div");\ntemporaryContainer.innerHTML = toHtml(createGutterUtilityElement());\n`,
     });
     expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when trusted highlighter output is routed through an alias", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/code-preview.tsx",
+      content: `const highlighted = highlighter.codeToHtml(code);
+const rendered = highlighted.dark;
+return <div dangerouslySetInnerHTML={{ __html: rendered }} />;
+`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when escaping serializer output is routed through an alias", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/code-preview.tsx",
+      content: `const escaped = renderToStaticMarkup(content);
+const rendered = escaped;
+return <div dangerouslySetInnerHTML={{ __html: rendered }} />;
+`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags a highlighter-named alias assigned from user HTML", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/code-preview.tsx",
+      content: `const highlightedHtml = props.html;
+const rendered = highlightedHtml;
+return <div dangerouslySetInnerHTML={{ __html: rendered }} />;
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags a taint-named alias initialized by an opaque call", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `const content = loadPage();
+return <div dangerouslySetInnerHTML={{ __html: content }} />;
+`,
+    });
+    expect(findings).toHaveLength(1);
   });
 
   it("stays silent on KaTeX-rendered html identifiers", () => {
@@ -860,6 +944,54 @@ preview.innerHTML = preview.html;
       content: `const bodyHtml = props.body;\nreturn <div dangerouslySetInnerHTML={{ __html: bodyHtml || '' }} />;\n`,
     });
     expect(findings).toHaveLength(1);
+  });
+
+  it("still flags a taint-named property read from a helper parameter", () => {
+    const content = [
+      "const renderPreview = (element, data) => {",
+      "  element.innerHTML = data.html;",
+      "};",
+      "renderPreview(preview, loadPreview());",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent when every taint-named helper parameter receives explicitly trusted HTML", () => {
+    const content = [
+      "const renderPreview = (element, html) => {",
+      "  element.innerHTML = html;",
+      "};",
+      'renderPreview(firstPreview, "<p>Static preview</p>");',
+      "renderPreview(secondPreview, DOMPurify.sanitize(loadPreview()));",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when trusted helper arguments pass through local aliases", () => {
+    const content = [
+      "const renderPreview = (element, html) => {",
+      "  element.innerHTML = html;",
+      "};",
+      'const staticPreview = "<p>Static preview</p>";',
+      "const sanitizedPreview = DOMPurify.sanitize(loadPreview());",
+      "const serializedPreview = highlighter.codeToHtml(source);",
+      "renderPreview(firstPreview, staticPreview);",
+      "renderPreview(secondPreview, sanitizedPreview);",
+      "renderPreview(thirdPreview, serializedPreview);",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
   });
 
   it("still flags an identifier declared from a template with tainted interpolations", () => {

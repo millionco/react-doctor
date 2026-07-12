@@ -418,7 +418,58 @@ const findVisibleIdentifierDeclaration = (
   return nearestDeclaration;
 };
 
+const isTrustedHighlighterValue = (
+  valueExpression: string,
+  fileContent: string,
+  sinkIndex: number,
+): boolean => {
+  if (!/highlight/i.test(valueExpression)) return false;
+  const identifier = valueExpression.match(/^([\w$]+)/)?.[1];
+  if (identifier === undefined) return false;
+  const declaration = findVisibleIdentifierDeclaration(identifier, sinkIndex, fileContent);
+  if (declaration !== null) {
+    return (
+      ESCAPING_SERIALIZER_CALL_PATTERN.test(declaration.initializer) ||
+      SERIALIZER_ASSIGNMENT_PATTERN.test(`=${declaration.initializer}`)
+    );
+  }
+  return /highlighted/i.test(valueExpression) || HIGHLIGHTER_LIBRARY_PATTERN.test(fileContent);
+};
+
+const isExplicitlyTrustedHtmlValue = (
+  valueExpression: string,
+  fileContent: string,
+  sinkIndex: number,
+  visitedIdentifiers: Set<string> = new Set(),
+): boolean => {
+  const trimmedExpression = valueExpression.trim();
+  if (
+    STRING_LITERAL_VALUE_PATTERN.test(`${trimmedExpression};`) ||
+    MODULE_CONSTANT_VALUE_PATTERN.test(`${trimmedExpression};`) ||
+    SANITIZER_PATTERN.test(trimmedExpression) ||
+    ENV_CONFIG_VALUE_PATTERN.test(trimmedExpression) ||
+    I18N_VALUE_PATTERN.test(trimmedExpression) ||
+    ESCAPING_SERIALIZER_CALL_PATTERN.test(trimmedExpression) ||
+    isTrustedHighlighterValue(trimmedExpression, fileContent, sinkIndex)
+  ) {
+    return true;
+  }
+  const identifier = trimmedExpression.match(/^([\w$]+)$/)?.[1];
+  if (!identifier || visitedIdentifiers.has(identifier)) return false;
+  const declaration = findVisibleIdentifierDeclaration(identifier, sinkIndex, fileContent);
+  if (!declaration) return false;
+  const nextVisitedIdentifiers = new Set(visitedIdentifiers);
+  nextVisitedIdentifiers.add(identifier);
+  return isExplicitlyTrustedHtmlValue(
+    declaration.initializer,
+    fileContent,
+    declaration.initializerStartIndex,
+    nextVisitedIdentifiers,
+  );
+};
+
 interface FunctionParameterSource {
+  readonly declarationNameIndex: number;
   readonly functionName: string;
   readonly parameterIndex: number;
 }
@@ -449,7 +500,12 @@ const findContainingFunctionParameterSource = (
         );
       if (parameterIndex < 0) continue;
       closestStartIndex = matchIndex;
-      closestSource = { functionName: match[1] ?? "", parameterIndex };
+      const functionName = match[1] ?? "";
+      closestSource = {
+        declarationNameIndex: matchIndex + match[0].indexOf(functionName),
+        functionName,
+        parameterIndex,
+      };
     }
   }
   return closestSource;
@@ -486,43 +542,75 @@ const isHtmlTainted = (
   fileContent: string,
   sinkIndex: number,
   visitedIdentifiers: Set<string>,
+  visitedCallSites: Set<number>,
 ): boolean => {
   const trimmedExpression = expression.trim();
-  if (STRING_LITERAL_VALUE_PATTERN.test(`${trimmedExpression};`)) return false;
-  if (MODULE_CONSTANT_VALUE_PATTERN.test(`${trimmedExpression};`)) return false;
-  if (SANITIZER_PATTERN.test(trimmedExpression)) return false;
-  if (ENV_CONFIG_VALUE_PATTERN.test(trimmedExpression)) return false;
-  if (I18N_VALUE_PATTERN.test(trimmedExpression)) return false;
-  if (ESCAPING_SERIALIZER_CALL_PATTERN.test(trimmedExpression)) return false;
-  if (HTML_TAINT_PATTERN.test(trimmedExpression)) return true;
-  const identifier = trimmedExpression.match(/^([\w$]+)\s*(?:[;,})\n]|$)/)?.[1];
-  if (identifier === undefined || visitedIdentifiers.has(identifier)) return false;
+  if (isExplicitlyTrustedHtmlValue(trimmedExpression, fileContent, sinkIndex)) return false;
+  const identifier = trimmedExpression.match(/^([\w$]+)(?:\.|\s*(?:[;,})\n]|$))/)?.[1];
+  if (identifier === undefined) return HTML_TAINT_PATTERN.test(trimmedExpression);
+  if (visitedIdentifiers.has(identifier)) return false;
   visitedIdentifiers.add(identifier);
 
-  const declaration = findVisibleIdentifierDeclaration(identifier, sinkIndex, fileContent);
-  if (
-    declaration !== null &&
-    isHtmlTainted(declaration.initializer, fileContent, sinkIndex, visitedIdentifiers)
-  ) {
-    return true;
-  }
-
   const parameterSource = findContainingFunctionParameterSource(identifier, sinkIndex, fileContent);
-  if (parameterSource === null || parameterSource.functionName.length === 0) return false;
-  const callPattern = new RegExp(
-    `\\b${escapeRegExp(parameterSource.functionName)}\\s*\\(([^)]*)\\)`,
-    "g",
-  );
-  for (const callMatch of fileContent.matchAll(callPattern)) {
-    const argument = splitTopLevelArguments(callMatch[1] ?? "")[parameterSource.parameterIndex];
-    if (
-      argument !== undefined &&
-      isHtmlTainted(argument, fileContent, sinkIndex, new Set(visitedIdentifiers))
-    ) {
-      return true;
+  if (parameterSource !== null && parameterSource.functionName.length > 0) {
+    const callPattern = new RegExp(
+      `\\b${escapeRegExp(parameterSource.functionName)}\\s*\\(([^)]*)\\)`,
+      "g",
+    );
+    let didInspectCallArgument = false;
+    let didInspectOnlyExplicitlyTrustedArguments = true;
+    for (const callMatch of fileContent.matchAll(callPattern)) {
+      if (
+        callMatch.index === parameterSource.declarationNameIndex ||
+        visitedCallSites.has(callMatch.index)
+      ) {
+        continue;
+      }
+      const argument = splitTopLevelArguments(callMatch[1] ?? "")[parameterSource.parameterIndex];
+      if (argument === undefined) continue;
+      didInspectCallArgument = true;
+      didInspectOnlyExplicitlyTrustedArguments &&= isExplicitlyTrustedHtmlValue(
+        argument,
+        fileContent,
+        callMatch.index,
+      );
+      const callVisitedIdentifiers = new Set(visitedIdentifiers);
+      callVisitedIdentifiers.delete(identifier);
+      const nextVisitedCallSites = new Set(visitedCallSites);
+      nextVisitedCallSites.add(callMatch.index);
+      if (
+        isHtmlTainted(
+          argument,
+          fileContent,
+          callMatch.index,
+          callVisitedIdentifiers,
+          nextVisitedCallSites,
+        )
+      ) {
+        return true;
+      }
+    }
+    if (didInspectCallArgument) {
+      return (
+        !didInspectOnlyExplicitlyTrustedArguments && HTML_TAINT_PATTERN.test(trimmedExpression)
+      );
     }
   }
-  return false;
+
+  const declaration = findVisibleIdentifierDeclaration(identifier, sinkIndex, fileContent);
+  if (declaration !== null) {
+    if (isExplicitlyTrustedHtmlValue(declaration.initializer, fileContent, sinkIndex)) return false;
+    return (
+      isHtmlTainted(
+        declaration.initializer,
+        fileContent,
+        sinkIndex,
+        visitedIdentifiers,
+        visitedCallSites,
+      ) || HTML_TAINT_PATTERN.test(trimmedExpression)
+    );
+  }
+  return HTML_TAINT_PATTERN.test(trimmedExpression);
 };
 
 export const dangerousHtmlSink = defineRule({
@@ -604,7 +692,8 @@ export const dangerousHtmlSink = defineRule({
       if (
         templateInterpolations === null &&
         valueIdentifier !== undefined &&
-        BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression)
+        BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression) &&
+        findContainingFunctionParameterSource(valueIdentifier, sinkIndex, file.content) === null
       ) {
         const declarationInitializer = getIdentifierDeclarationInitializer(
           valueIdentifier,
@@ -623,17 +712,14 @@ export const dangerousHtmlSink = defineRule({
       if (SANITIZER_PATTERN.test(judgedExpression)) continue;
       if (ENV_CONFIG_VALUE_PATTERN.test(judgedExpression)) continue;
       if (I18N_VALUE_PATTERN.test(judgedExpression)) continue;
-      if (!isHtmlTainted(judgedExpression, file.content, sinkIndex, new Set())) continue;
+      if (!isHtmlTainted(judgedExpression, file.content, sinkIndex, new Set(), new Set())) continue;
       if (ESCAPING_SERIALIZER_CALL_PATTERN.test(valueExpression)) continue;
       // Highlighter output: a `highlighted*` value is escaped, token-wrapped
       // markup by naming convention (often passed as a prop or routed through
       // React state, so no direct serializer assignment is visible); a present-
       // tense `highlight*` value is trusted only when the file uses a highlighter
       // library. (`highlight*()` calls are handled by the serializer-call check.)
-      if (/highlighted/i.test(valueExpression)) continue;
-      if (/highlight/i.test(valueExpression) && HIGHLIGHTER_LIBRARY_PATTERN.test(file.content)) {
-        continue;
-      }
+      if (isTrustedHighlighterValue(valueExpression, file.content, sinkIndex)) continue;
       // Value is a bare identifier, member/index access, or identifier with a
       // literal fallback: exempt only when that identifier is assigned from a
       // serializer or a sanitizer in the file. `[:=]` accepts property-style

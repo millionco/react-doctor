@@ -264,13 +264,14 @@ const isUnsafeBuiltinMutationApiCall = (
 ): boolean => {
   const target = callExpression.arguments[0];
   if (!target) return false;
-  const propertyName = resolvesToNativeArrayPrototype(target, scopes)
-    ? "sort"
-    : resolvesToGlobalNamespace(target, "Math", scopes)
-      ? targetFunction
-      : isGlobalObjectReference(target, scopes)
-        ? "Math"
-        : null;
+  let propertyName: string | null = null;
+  if (resolvesToNativeArrayPrototype(target, scopes)) {
+    propertyName = "sort";
+  } else if (resolvesToGlobalNamespace(target, "Math", scopes)) {
+    propertyName = targetFunction;
+  } else if (isGlobalObjectReference(target, scopes)) {
+    propertyName = "Math";
+  }
   if (!propertyName) return false;
   const canObjectExpressionSetProperty = (properties: EsTreeNode): boolean => {
     if (!isNodeOfType(properties, "ObjectExpression")) return true;

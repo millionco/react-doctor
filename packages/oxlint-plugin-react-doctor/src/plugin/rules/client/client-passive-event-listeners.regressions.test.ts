@@ -468,6 +468,27 @@ function attach(el: HTMLElement) {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not trust DOM assertions laundered through const aliases", () => {
+    const result = runRule(
+      clientPassiveEventListeners,
+      `const attach = (source) => {
+         const target = source;
+         (target as EventTarget).addEventListener("wheel", () => trackPosition());
+       };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps constructed DOM receivers proven through asserted const aliases", () => {
+    const result = runRule(
+      clientPassiveEventListeners,
+      `const source = new EventTarget();
+       const target = source;
+       (target as EventTarget).addEventListener("wheel", () => trackPosition());`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps typed DOM parameters proven through redundant assertions", () => {
     const result = runRule(
       clientPassiveEventListeners,

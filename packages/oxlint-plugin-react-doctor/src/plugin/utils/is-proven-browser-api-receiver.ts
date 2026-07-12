@@ -240,6 +240,7 @@ const hasAssertedTargetType = (
     if (!assertedInitializer) return false;
     assertedSource = stripParenExpression(assertedInitializer);
   }
+  if (didFindTargetAssertion && isNodeOfType(assertedSource, "Identifier")) return false;
   if (didFindTargetAssertion && isNodeOfType(assertedSource, "MemberExpression")) return false;
   if (didFindTargetAssertion && isNodeOfType(assertedSource, "ObjectExpression")) return false;
   if (didFindTargetAssertion && isNodeOfType(assertedSource, "NewExpression")) {

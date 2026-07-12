@@ -431,6 +431,27 @@ describe("no-sync-xhr", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not trust assertions laundered through const aliases", () => {
+    const result = runRule(
+      noSyncXhr,
+      `const load = (source) => {
+         const request = source;
+         (request as XMLHttpRequest).open("read", "/archive", false);
+       };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps constructed receivers proven through asserted const aliases", () => {
+    const result = runRule(
+      noSyncXhr,
+      `const source = new XMLHttpRequest();
+       const request = source;
+       (request as XMLHttpRequest).open("GET", "/api", false);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps typed parameters proven through redundant assertions", () => {
     const result = runRule(
       noSyncXhr,

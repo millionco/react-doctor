@@ -28,18 +28,24 @@ export const NON_BLOCKING_REACT_DOCTOR_COMMAND = [
 ].join(" ");
 const PACKAGE_JSON_FILE_NAME = "package.json";
 
-export const runGit = (projectRoot: string, args: ReadonlyArray<string>): string | null => {
+const executeGit = (projectRoot: string, args: ReadonlyArray<string>): string | null => {
   try {
     return execFileSync("git", [...args], {
       cwd: projectRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       maxBuffer: RUN_GIT_MAX_BUFFER_BYTES,
-    }).trim();
+    });
   } catch {
     return null;
   }
 };
+
+export const runGit = (projectRoot: string, args: ReadonlyArray<string>): string | null =>
+  executeGit(projectRoot, args)?.trim() ?? null;
+
+export const runGitRaw = (projectRoot: string, args: ReadonlyArray<string>): string | null =>
+  executeGit(projectRoot, args);
 
 export const resolveGitPath = (baseDirectory: string, value: string): string =>
   path.isAbsolute(value) ? value : path.resolve(baseDirectory, value);

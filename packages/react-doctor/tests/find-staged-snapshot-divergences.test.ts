@@ -1,0 +1,96 @@
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import os from "node:os";
+import * as path from "node:path";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { findStagedSnapshotDivergences } from "../src/cli/utils/find-staged-snapshot-divergences.js";
+
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const temporaryDirectory of temporaryDirectories.splice(0)) {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+const createRepository = (): string => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-staged-snapshot-"));
+  temporaryDirectories.push(directory);
+  fs.mkdirSync(path.join(directory, "src"), { recursive: true });
+  fs.writeFileSync(path.join(directory, "package.json"), '{"dependencies":{"react":"19"}}\n');
+  fs.writeFileSync(path.join(directory, "doctor.config.json"), '{"rules":{}}\n');
+  fs.writeFileSync(path.join(directory, "src/app.tsx"), "export const App = () => null;\n");
+  execFileSync("git", ["init", "-q", "-b", "main"], { cwd: directory });
+  execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: directory });
+  execFileSync("git", ["config", "user.name", "test"], { cwd: directory });
+  execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: directory });
+  execFileSync("git", ["add", "."], { cwd: directory });
+  execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: directory });
+  return directory;
+};
+
+describe("findStagedSnapshotDivergences", () => {
+  it("keeps staged source isolated from later worktree source edits", () => {
+    const directory = createRepository();
+    fs.writeFileSync(path.join(directory, "src/app.tsx"), "export const App = () => <div />;\n");
+    execFileSync("git", ["add", "src/app.tsx"], { cwd: directory });
+    fs.writeFileSync(path.join(directory, "src/app.tsx"), "export const App = () => <main />;\n");
+
+    expect(findStagedSnapshotDivergences(directory)).toEqual([]);
+  });
+
+  it("accepts configuration whose staged and worktree contents match", () => {
+    const directory = createRepository();
+    fs.writeFileSync(path.join(directory, "doctor.config.json"), '{"warnings":true}\n');
+    execFileSync("git", ["add", "doctor.config.json"], { cwd: directory });
+
+    expect(findStagedSnapshotDivergences(directory)).toEqual([]);
+  });
+
+  it("reports an unstaged modification to tracked configuration", () => {
+    const directory = createRepository();
+    fs.writeFileSync(path.join(directory, "doctor.config.json"), '{"warnings":true}\n');
+
+    expect(findStagedSnapshotDivergences(directory)).toEqual(["doctor.config.json"]);
+  });
+
+  it("reports tracked nested configuration that differs from the index", () => {
+    const directory = createRepository();
+    fs.mkdirSync(path.join(directory, "apps/web"), { recursive: true });
+    fs.writeFileSync(path.join(directory, "apps/web/doctor.config.json"), '{"warnings":true}\n');
+    execFileSync("git", ["add", "apps/web/doctor.config.json"], { cwd: directory });
+    fs.writeFileSync(path.join(directory, "apps/web/doctor.config.json"), '{"warnings":false}\n');
+
+    expect(findStagedSnapshotDivergences(directory)).toEqual(["apps/web/doctor.config.json"]);
+  });
+
+  it("reports governing configuration above the requested directory", () => {
+    const directory = createRepository();
+    fs.writeFileSync(path.join(directory, "doctor.config.json"), '{"warnings":true}\n');
+
+    expect(findStagedSnapshotDivergences(path.join(directory, "src"))).toEqual([
+      "doctor.config.json",
+    ]);
+  });
+
+  it("reports ordinary and ignored untracked configuration", () => {
+    const directory = createRepository();
+    fs.writeFileSync(path.join(directory, ".gitignore"), "next.config.mjs\n");
+    execFileSync("git", ["add", ".gitignore"], { cwd: directory });
+    execFileSync("git", ["commit", "-q", "-m", "ignore config"], { cwd: directory });
+    fs.writeFileSync(path.join(directory, "eslint.config.mjs"), "export default [];\n");
+    fs.writeFileSync(path.join(directory, "next.config.mjs"), "export default {};\n");
+
+    expect(findStagedSnapshotDivergences(directory)).toEqual([
+      "eslint.config.mjs",
+      "next.config.mjs",
+    ]);
+  });
+
+  it("returns null outside a Git worktree", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-staged-snapshot-no-git-"));
+    temporaryDirectories.push(directory);
+
+    expect(findStagedSnapshotDivergences(directory)).toBeNull();
+  });
+});

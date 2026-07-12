@@ -78,6 +78,8 @@ import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
 import { warnIfAiTrainingEnvironment } from "../utils/warn-ai-training-environment.js";
 import { validateModeFlags } from "../utils/validate-mode-flags.js";
 import { VERSION } from "../utils/version.js";
+import { findStagedSnapshotDivergences } from "../utils/find-staged-snapshot-divergences.js";
+import { CliInputError } from "../utils/cli-input-error.js";
 
 interface CompletedScan {
   directory: string;
@@ -265,6 +267,24 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
   try {
     validateModeFlags(flags);
 
+    if (flags.staged) {
+      setJsonReportMode("staged");
+      const divergentConfigFiles = findStagedSnapshotDivergences(requestedDirectory);
+      if (divergentConfigFiles === null) {
+        throw new CliInputError(
+          "Could not verify that staged configuration matches the worktree. Run the command from a Git worktree with Git available.",
+        );
+      }
+      if (divergentConfigFiles.length > 0) {
+        recordCount(METRIC.stagedSnapshotDivergence, 1, {
+          divergentInputCount: divergentConfigFiles.length,
+        });
+        throw new CliInputError(
+          `Cannot scan staged files while configuration differs between the index and worktree: ${divergentConfigFiles.join(", ")}. Stage or restore those files, then rerun react-doctor --staged.`,
+        );
+      }
+    }
+
     await maybeMigrateLegacyConfig(requestedDirectory, {
       isQuiet,
       isStaged: Boolean(flags.staged),
@@ -329,7 +349,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     const skipPrompts = shouldSkipPrompts({ yes: flags.yes, json: flags.json });
 
     if (flags.staged) {
-      setJsonReportMode("staged");
       const stagedFiles = await getStagedSourceFiles(resolvedDirectory);
       if (stagedFiles.length === 0) {
         if (isJsonMode) {

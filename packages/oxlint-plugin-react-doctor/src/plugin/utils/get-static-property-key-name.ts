@@ -10,7 +10,7 @@ export const getStaticPropertyKeyName = (
   node: EsTreeNode,
   options: StaticPropertyKeyOptions = {},
 ): string | null => {
-  if (!isNodeOfType(node, "Property")) return null;
+  if (!isNodeOfType(node, "Property") && !isNodeOfType(node, "MethodDefinition")) return null;
   if (node.computed) {
     if (
       options.allowComputedString &&

@@ -65,6 +65,13 @@ interface SimpleAlias {
   readonly readNode: EsTreeNode;
 }
 
+interface MethodOwner {
+  readonly methodName: string;
+  readonly ownerKind: "class" | "object";
+  readonly ownerSymbol: SymbolDescriptor;
+  readonly isStatic: boolean;
+}
+
 const ABSENT_PROPERTY_PROOF: ObjectPropertyProof = { status: "absent" };
 const PRESENT_PROPERTY_PROOF: ObjectPropertyProof = { status: "present" };
 const UNDEFINED_PROPERTY_PROOF: ObjectPropertyProof = { status: "undefined" };
@@ -267,17 +274,130 @@ const getDirectCallForExpression = (expression: EsTreeNode): EsTreeNode | null =
   return isNodeOfType(parent, "CallExpression") && parent.callee === callee ? parent : null;
 };
 
+const getMethodOwner = (functionNode: EsTreeNode, scopes: ScopeAnalysis): MethodOwner | null => {
+  const methodNode = functionNode.parent;
+  if (
+    isNodeOfType(methodNode, "Property") &&
+    methodNode.value === functionNode &&
+    isNodeOfType(methodNode.parent, "ObjectExpression")
+  ) {
+    const objectParent = methodNode.parent.parent;
+    if (
+      !isNodeOfType(objectParent, "VariableDeclarator") ||
+      objectParent.init !== methodNode.parent ||
+      !isNodeOfType(objectParent.id, "Identifier")
+    ) {
+      return null;
+    }
+    const ownerSymbol = scopes.symbolFor(objectParent.id);
+    const methodName = getStaticPropertyKeyName(methodNode, { allowComputedString: true });
+    return ownerSymbol && methodName
+      ? { methodName, ownerKind: "object", ownerSymbol, isStatic: false }
+      : null;
+  }
+  if (
+    !isNodeOfType(methodNode, "MethodDefinition") ||
+    methodNode.value !== functionNode ||
+    !isNodeOfType(methodNode.parent, "ClassBody")
+  ) {
+    return null;
+  }
+  const classNode = methodNode.parent.parent;
+  if (!isNodeOfType(classNode, "ClassDeclaration") && !isNodeOfType(classNode, "ClassExpression")) {
+    return null;
+  }
+  let bindingIdentifier = isNodeOfType(classNode.id, "Identifier") ? classNode.id : null;
+  if (!bindingIdentifier && isNodeOfType(classNode.parent, "VariableDeclarator")) {
+    bindingIdentifier = isNodeOfType(classNode.parent.id, "Identifier")
+      ? classNode.parent.id
+      : null;
+  }
+  if (!bindingIdentifier) return null;
+  const ownerSymbol = scopes.symbolFor(bindingIdentifier);
+  const methodName = getStaticPropertyKeyName(methodNode, { allowComputedString: true });
+  return ownerSymbol && methodName
+    ? {
+        methodName,
+        ownerKind: "class",
+        ownerSymbol,
+        isStatic: Boolean(methodNode.static),
+      }
+    : null;
+};
+
+const doesSymbolResolveToOwner = (
+  symbol: SymbolDescriptor | null,
+  ownerSymbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  if (!symbol) return false;
+  if (symbol.declarationNode === ownerSymbol.declarationNode) return true;
+  if (symbol.kind !== "const" || !symbol.initializer || visitedSymbolIds.has(symbol.id)) {
+    return false;
+  }
+  visitedSymbolIds.add(symbol.id);
+  const initializer = stripParenExpression(symbol.initializer);
+  return (
+    isNodeOfType(initializer, "Identifier") &&
+    doesSymbolResolveToOwner(scopes.symbolFor(initializer), ownerSymbol, scopes, visitedSymbolIds)
+  );
+};
+
+const isClassInstanceExpression = (
+  expression: EsTreeNode,
+  ownerSymbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "NewExpression") && isNodeOfType(candidate.callee, "Identifier")) {
+    return doesSymbolResolveToOwner(scopes.symbolFor(candidate.callee), ownerSymbol, scopes);
+  }
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = scopes.symbolFor(candidate);
+  if (symbol?.kind !== "const" || !symbol.initializer || visitedSymbolIds.has(symbol.id)) {
+    return false;
+  }
+  visitedSymbolIds.add(symbol.id);
+  return isClassInstanceExpression(symbol.initializer, ownerSymbol, scopes, visitedSymbolIds);
+};
+
+const getMethodCalls = (functionNode: EsTreeNode, scopes: ScopeAnalysis): EsTreeNode[] => {
+  const owner = getMethodOwner(functionNode, scopes);
+  if (!owner) return [];
+  const calls: EsTreeNode[] = [];
+  walkAst(scopes.rootScope.node, (child) => {
+    if (!isNodeOfType(child, "MemberExpression")) return;
+    if (getStaticPropertyName(child) !== owner.methodName) return;
+    const receiver = stripParenExpression(child.object);
+    let doesReceiverMatch =
+      isNodeOfType(receiver, "Identifier") &&
+      doesSymbolResolveToOwner(scopes.symbolFor(receiver), owner.ownerSymbol, scopes);
+    if (owner.ownerKind === "class" && !owner.isStatic) {
+      doesReceiverMatch = isClassInstanceExpression(receiver, owner.ownerSymbol, scopes);
+    }
+    if (!doesReceiverMatch) return;
+    const call = getDirectCallForExpression(child);
+    if (call) calls.push(call);
+  });
+  return calls;
+};
+
 const isFunctionInvokedBeforeUsage = (
   functionNode: EsTreeNode,
   usageNode: EsTreeNode,
   usageBoundary: number,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
+  visitedFunctionNodes: Set<EsTreeNode> = new Set(),
 ): boolean => {
+  if (visitedFunctionNodes.has(functionNode)) return false;
+  visitedFunctionNodes.add(functionNode);
+  const usageFunction = findEnclosingFunction(usageNode);
   const immediateCall = getDirectCallForExpression(functionNode);
   if (immediateCall) {
     const immediateCallFunction = findEnclosingFunction(immediateCall);
-    const usageFunction = findEnclosingFunction(usageNode);
     if (immediateCallFunction === usageFunction) {
       const immediateCallStart = getRangeStart(immediateCall);
       return immediateCallStart === null || immediateCallStart < usageBoundary;
@@ -289,14 +409,38 @@ const isFunctionInvokedBeforeUsage = (
       usageBoundary,
       scopes,
       visitedSymbolIds,
+      new Set(visitedFunctionNodes),
     );
+  }
+  for (const methodCall of getMethodCalls(functionNode, scopes)) {
+    const methodCallFunction = findEnclosingFunction(methodCall);
+    if (methodCallFunction === usageFunction) {
+      const methodCallStart = getRangeStart(methodCall);
+      if (methodCallStart === null || methodCallStart < usageBoundary) return true;
+      continue;
+    }
+    if (!methodCallFunction) {
+      if (usageFunction) return true;
+      continue;
+    }
+    if (
+      isFunctionInvokedBeforeUsage(
+        methodCallFunction,
+        usageNode,
+        usageBoundary,
+        scopes,
+        new Set(visitedSymbolIds),
+        new Set(visitedFunctionNodes),
+      )
+    ) {
+      return true;
+    }
   }
   const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
   if (!bindingIdentifier) return false;
   const symbol = scopes.symbolFor(bindingIdentifier);
   if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
   visitedSymbolIds.add(symbol.id);
-  const usageFunction = findEnclosingFunction(usageNode);
   let wasInvokedBeforeUsage = false;
   walkAst(scopes.rootScope.node, (child) => {
     if (wasInvokedBeforeUsage || !isNodeOfType(child, "Identifier")) return;
@@ -319,6 +463,7 @@ const isFunctionInvokedBeforeUsage = (
       usageBoundary,
       scopes,
       new Set(visitedSymbolIds),
+      new Set(visitedFunctionNodes),
     );
   });
   return wasInvokedBeforeUsage;

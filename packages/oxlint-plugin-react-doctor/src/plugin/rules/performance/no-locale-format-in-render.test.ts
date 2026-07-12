@@ -558,6 +558,101 @@ export const Timestamp = ({ value, locale }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a mutation in a synchronously invoked object method", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  const helper = {
+    clearTimeZone() {
+      options.timeZone = undefined;
+    },
+  };
+  const alias = helper;
+  alias.clearTimeZone();
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a deferred object method call as render-time mutation", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  const helper = {
+    clearTimeZone() {
+      options.timeZone = undefined;
+    },
+  };
+  useEffect(() => helper.clearTimeZone(), []);
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not match a same-named method on an unrelated object", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  const mutatingHelper = {
+    clearTimeZone() {
+      options.timeZone = undefined;
+    },
+  };
+  const readOnlyHelper = { clearTimeZone() {} };
+  readOnlyHelper.clearTimeZone();
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a mutation in a synchronously invoked class method", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  class Helper {
+    clearTimeZone() {
+      options.timeZone = undefined;
+    }
+  }
+  const helper = new Helper();
+  const alias = helper;
+  alias.clearTimeZone();
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a mutation in a synchronously invoked static method", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  class Helper {
+    static clearTimeZone() {
+      options.timeZone = undefined;
+    }
+  }
+  const HelperAlias = Helper;
+  HelperAlias.clearTimeZone();
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a module-scope mutation before component rendering", () => {
     const result = run(
       `"use client";

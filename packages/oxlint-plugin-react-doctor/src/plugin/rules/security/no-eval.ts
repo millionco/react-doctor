@@ -4,6 +4,9 @@ import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // A hyphen-delimited `sandbox` path segment (`lib/plugin-sandbox/runtime.tsx`,
@@ -13,6 +16,23 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // Hyphen boundaries keep `CodeSandboxEmbed.tsx` / `codesandbox.ts` firing.
 const SANDBOX_SURFACE_PATH_PATTERN =
   /(?:^|[/-])sandbox(?:$|[/-])|(?:^|\/)[\w.]+-sandbox(?:\/|\.[cm]?[jt]sx?$)/i;
+
+const getExecutableGlobalName = (node: EsTreeNode, context: RuleContext): string | null => {
+  const expression = stripParenExpression(node);
+  if (isNodeOfType(expression, "Identifier")) {
+    return context.scopes.isGlobalReference(expression) ? expression.name : null;
+  }
+  if (!isNodeOfType(expression, "MemberExpression")) return null;
+  const receiver = stripParenExpression(expression.object);
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    receiver.name !== "globalThis" ||
+    !context.scopes.isGlobalReference(receiver)
+  ) {
+    return null;
+  }
+  return getStaticPropertyName(expression);
+};
 
 export const noEval = defineRule({
   id: "no-eval",
@@ -24,7 +44,8 @@ export const noEval = defineRule({
     if (SANDBOX_SURFACE_PATH_PATTERN.test(normalizeFilename(context.filename ?? ""))) return {};
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (isNodeOfType(node.callee, "Identifier") && node.callee.name === "eval") {
+        const executableGlobalName = getExecutableGlobalName(node.callee, context);
+        if (executableGlobalName === "eval") {
           context.report({
             node,
             message: "eval() is a code-injection vulnerability: it runs any string as code.",
@@ -33,19 +54,18 @@ export const noEval = defineRule({
         }
 
         if (
-          isNodeOfType(node.callee, "Identifier") &&
-          (node.callee.name === "setTimeout" || node.callee.name === "setInterval") &&
+          (executableGlobalName === "setTimeout" || executableGlobalName === "setInterval") &&
           isNodeOfType(node.arguments?.[0], "Literal") &&
           typeof node.arguments[0].value === "string"
         ) {
           context.report({
             node,
-            message: `Passing a string to ${node.callee.name}() is a code-injection vulnerability, since it runs that string as code.`,
+            message: `Passing a string to ${executableGlobalName}() is a code-injection vulnerability, since it runs that string as code.`,
           });
         }
       },
       NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
-        if (isNodeOfType(node.callee, "Identifier") && node.callee.name === "Function") {
+        if (getExecutableGlobalName(node.callee, context) === "Function") {
           // `new Function("return this")` is the ubiquitous globalThis polyfill
           // (webpack runtime, core-js): a constant body with no injectable input.
           const onlyArgument = node.arguments.length === 1 ? node.arguments[0] : undefined;

@@ -45,4 +45,30 @@ describe("security/no-eval — regressions", () => {
     });
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it.each([
+    `globalThis.eval(payload);`,
+    `globalThis["eval"](payload);`,
+    "globalThis[`eval`](payload);",
+    `(globalThis as typeof globalThis).eval(payload);`,
+    `globalThis?.eval(payload);`,
+    `globalThis.setTimeout("run()", 0);`,
+    `globalThis["setInterval"]("run()", 0);`,
+    `new globalThis.Function(payload);`,
+  ])("flags executable global form %#", (source) => {
+    const result = runRule(noEval, source, { filename: "src/run.ts" });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `const eval = (value: string) => value; eval(payload);`,
+    `const setTimeout = (value: string) => value; setTimeout("label");`,
+    `const setInterval = (value: string) => value; setInterval("label");`,
+    `class Function { constructor(value: unknown) {} } new Function(payload);`,
+  ])("does not flag shadowed executable lookalike %#", (source) => {
+    const result = runRule(noEval, source, { filename: "src/run.ts" });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

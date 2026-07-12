@@ -1,6 +1,7 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../../utils/find-variable-initializer.js";
+import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 
@@ -22,16 +23,7 @@ interface MethodCall {
   receiver: EsTreeNode;
 }
 
-export const getStaticPropertyName = (
-  member: EsTreeNodeOfType<"MemberExpression">,
-): string | null => {
-  const property = member.property as EsTreeNode;
-  if (!member.computed && isNodeOfType(property, "Identifier")) return property.name;
-  if (member.computed && isNodeOfType(property, "Literal") && typeof property.value === "string") {
-    return property.value;
-  }
-  return null;
-};
+export { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
 
 // The classification is a pure function of the identifier node within its
 // (immutable) file, and every zod rule re-queries the same identifiers —

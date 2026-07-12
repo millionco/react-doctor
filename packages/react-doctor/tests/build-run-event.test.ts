@@ -576,6 +576,19 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["timing.scanMs"]).toBeUndefined();
   });
 
+  it("counts analyzed non-JSX source files for partial-scan coverage telemetry", () => {
+    const attributes = buildRunEventAttributes(
+      baseInput({
+        scope: "changed",
+        result: buildResult({
+          analyzedFiles: ["src/App.tsx", "src/hooks.ts", "src/runtime.mjs", "src/View.jsx"],
+          scannedFileCount: 4,
+        }),
+      }),
+    );
+    expect(attributes["scan.nonJsxFileCount"]).toBe(2);
+  });
+
   it("records each scan phase's enabled state, including supply-chain", () => {
     const enabled = buildRunEventAttributes(baseInput());
     expect(enabled["scan.lint"]).toBe(true);

@@ -6,13 +6,30 @@ describe("computeExplicitLintIncludePaths", () => {
     expect(computeExplicitLintIncludePaths([])).toBeUndefined();
   });
 
-  it("filters to ordinary component-bearing JSX/TSX files", () => {
-    const paths = ["src/app.tsx", "src/utils.ts", "src/Button.jsx", "src/config.js"];
+  it("keeps every supported JS and TS source extension", () => {
+    const paths = [
+      "src/app.tsx",
+      "src/utils.ts",
+      "src/Button.jsx",
+      "src/config.js",
+      "src/hooks.mts",
+      "src/runtime.mjs",
+      "src/legacy.cts",
+      "src/legacy.cjs",
+      "src/styles.css",
+    ];
     const result = computeExplicitLintIncludePaths(paths);
-    expect(result).toEqual(["src/app.tsx", "src/Button.jsx"]);
+    expect(result).toEqual([
+      "src/app.tsx",
+      "src/utils.ts",
+      "src/Button.jsx",
+      "src/config.js",
+      "src/hooks.mts",
+      "src/runtime.mjs",
+    ]);
   });
 
-  it("keeps Next middleware and proxy entry files in Next projects", () => {
+  it("keeps ordinary modules and framework entry files in every project", () => {
     const paths = [
       "middleware.ts",
       "middleware.mjs",
@@ -23,30 +40,7 @@ describe("computeExplicitLintIncludePaths", () => {
       "nested/middleware.ts",
     ];
 
-    const result = computeExplicitLintIncludePaths(paths, {
-      rootDirectory: "/repo",
-      projectName: "next-app",
-      reactVersion: "19.0.0",
-      reactMajorVersion: 19,
-      tailwindVersion: null,
-      zodVersion: null,
-      zodMajorVersion: null,
-      framework: "nextjs",
-      hasTypeScript: true,
-      hasReactCompiler: false,
-      hasTanStackQuery: false,
-      nextjsVersion: "^16.0.0",
-      nextjsMajorVersion: 16,
-      hasReactNativeWorkspace: false,
-      expoVersion: null,
-      shopifyFlashListVersion: null,
-      shopifyFlashListMajorVersion: null,
-      hasReanimated: false,
-      isPreES2023Target: false,
-      preactVersion: null,
-      preactMajorVersion: null,
-      sourceFileCount: 0,
-    });
+    const result = computeExplicitLintIncludePaths(paths);
 
     expect(result).toEqual([
       "middleware.ts",
@@ -54,41 +48,13 @@ describe("computeExplicitLintIncludePaths", () => {
       "src/proxy.ts",
       "src/proxy.mts",
       "src/app.tsx",
+      "src/server.ts",
+      "nested/middleware.ts",
     ]);
   });
 
-  it("does not keep Next entry filenames for non-Next projects", () => {
-    const paths = ["middleware.ts", "src/proxy.mjs", "src/App.tsx"];
-    const result = computeExplicitLintIncludePaths(paths, {
-      rootDirectory: "/repo",
-      projectName: "vite-app",
-      reactVersion: "19.0.0",
-      reactMajorVersion: 19,
-      tailwindVersion: null,
-      zodVersion: null,
-      zodMajorVersion: null,
-      framework: "vite",
-      hasTypeScript: true,
-      hasReactCompiler: false,
-      hasTanStackQuery: false,
-      nextjsVersion: null,
-      nextjsMajorVersion: null,
-      hasReactNativeWorkspace: false,
-      expoVersion: null,
-      shopifyFlashListVersion: null,
-      shopifyFlashListMajorVersion: null,
-      hasReanimated: false,
-      isPreES2023Target: false,
-      preactVersion: null,
-      preactMajorVersion: null,
-      sourceFileCount: 0,
-    });
-
-    expect(result).toEqual(["src/App.tsx"]);
-  });
-
   it("returns empty array when no explicitly lintable files exist", () => {
-    const paths = ["src/utils.ts", "src/config.js"];
+    const paths = ["src/styles.css", "src/data.json", "src/legacy.cjs"];
     const result = computeExplicitLintIncludePaths(paths);
     expect(result).toEqual([]);
   });

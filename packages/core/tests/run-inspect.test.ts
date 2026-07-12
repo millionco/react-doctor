@@ -848,7 +848,7 @@ describe("runInspect — diff mode skips dead-code", () => {
     expect(output.didDeadCodeFail).toBe(false);
   });
 
-  it("passes Next middleware and proxy entries through to the linter", async () => {
+  it("passes every supported explicit source file through to the linter", async () => {
     const nextProject: ProjectInfo = {
       ...sampleProject,
       framework: "nextjs",
@@ -898,12 +898,14 @@ describe("runInspect — diff mode skips dead-code", () => {
       "/repo/middleware.ts",
       "/repo/src/App.tsx",
       "/repo/src/proxy.mjs",
+      "/repo/src/server.ts",
     ]);
     // The Reporter captures diagnostics as they stream through, before the
     // final sort — so it preserves the linter's arrival (includePaths) order.
     expect(result.captured.map((diagnostic) => diagnostic.filePath)).toEqual([
       "/repo/middleware.ts",
       "/repo/src/proxy.mjs",
+      "/repo/src/server.ts",
       "/repo/src/App.tsx",
     ]);
   });

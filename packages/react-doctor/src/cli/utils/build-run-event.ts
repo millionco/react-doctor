@@ -2,6 +2,7 @@ import {
   filterDiagnosticsForSurface,
   isReactDoctorError,
   isScanComplete,
+  JSX_FILE_PATTERN,
   resolveGithubActionsScoreMetadata,
   summarizeDiagnostics,
 } from "@react-doctor/core";
@@ -471,6 +472,9 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     // Scan extent — how many files this run covered (the denominator for
     // `diag.affectedFiles`). Known only on the success path.
     fileCount: input.result?.scannedFileCount ?? null,
+    nonJsxFileCount:
+      input.result?.analyzedFiles?.filter((filePath) => !JSX_FILE_PATTERN.test(filePath)).length ??
+      null,
   });
 };
 

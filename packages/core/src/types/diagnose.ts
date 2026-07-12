@@ -8,6 +8,7 @@ export interface DiagnoseOptions {
   /** See `ReactDoctorConfig.deadCode`. Ignored in diff mode. */
   deadCode?: boolean;
   verbose?: boolean;
+  /** Restrict linting to these supported JS/TS source files. */
   includePaths?: string[];
   /**
    * Per-call override for `ReactDoctorConfig.respectInlineDisables`.

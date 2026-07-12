@@ -161,7 +161,7 @@ export const runEditorScan = async (input: EditorScanInput): Promise<EditorScanR
     warnings,
     isCi: false,
     resolveLocalGithubViewerPermission: false,
-    skipJsxIncludeFilter: true,
+    skipExplicitIncludePathFilter: true,
     // `layerOtlp` is a no-op unless REACT_DOCTOR_OTLP_ENDPOINT +
     // REACT_DOCTOR_OTLP_AUTH_HEADER are set; when they are, every
     // `runInspect` / `Service.method` span from this scan is exported,

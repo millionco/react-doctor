@@ -58,6 +58,42 @@ describe("inspect", () => {
     }
   });
 
+  it("lints every supported source extension in an explicit-path scan", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-explicit-sources-"));
+    try {
+      const projectDirectory = setupReactProject(projectRoot, "app");
+      const extensions = ["ts", "tsx", "js", "jsx", "mts", "mjs"];
+      const includePaths = extensions.map((extension) => `src/conditional-hook.${extension}`);
+      for (const relativePath of includePaths) {
+        writeFile(
+          path.join(projectDirectory, relativePath),
+          'import { useState } from "react";\nexport const useConditional = (enabled) => { if (enabled) useState(0); };\n',
+        );
+      }
+
+      const result = await inspect(projectDirectory, {
+        lint: true,
+        deadCode: false,
+        noScore: true,
+        silent: true,
+        includePaths,
+      });
+
+      expect(result.scannedFileCount).toBe(includePaths.length);
+      expect(result.analyzedFiles?.toSorted()).toEqual(includePaths.toSorted());
+      expect(
+        result.diagnostics
+          .filter((diagnostic) => diagnostic.rule === "rules-of-hooks")
+          .map((diagnostic) => path.extname(diagnostic.filePath))
+          .toSorted(),
+      ).toEqual(extensions.map((extension) => `.${extension}`).toSorted());
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("throws when React dependency is missing", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {

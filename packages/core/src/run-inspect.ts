@@ -116,15 +116,11 @@ export interface InspectInput {
    */
   readonly suppressScanSummary?: boolean;
   /**
-   * When `true`, `includePaths` is linted verbatim instead of being
-   * narrowed to JSX (`.tsx` / `.jsx`) files. The CLI's diff / staged
-   * paths intentionally restrict to JSX so a changed-files scan stays
-   * React-focused, but an editor scanning the exact buffer the user is
-   * editing wants its diagnostics regardless of extension (custom
-   * hooks, server actions, and module-level rules all fire in plain
-   * `.ts`). Defaults to `false` to preserve the CLI contract.
+   * When `true`, `includePaths` is linted verbatim instead of being filtered
+   * to React Doctor's supported source-file set. Editor scans use this for the
+   * exact buffer supplied by the language server.
    */
-  readonly skipJsxIncludeFilter?: boolean;
+  readonly skipExplicitIncludePathFilter?: boolean;
   /**
    * Whether the scanned project's `package.json` is among the changed files
    * in a diff / staged scan. Dependency health is a whole-project property
@@ -459,14 +455,13 @@ export const runInspect = <HooksR = never>(
         : Effect.succeed(null as string | null),
     );
 
-    const explicitLintIncludePaths = input.skipJsxIncludeFilter
+    const explicitLintIncludePaths = input.skipExplicitIncludePathFilter
       ? input.includePaths.length > 0
         ? [...input.includePaths]
         : undefined
-      : computeExplicitLintIncludePaths([...input.includePaths], project);
+      : computeExplicitLintIncludePaths([...input.includePaths]);
     const lintIncludePaths =
-      explicitLintIncludePaths ??
-      resolveLintIncludePaths(scanDirectory, resolvedConfig.config, project);
+      explicitLintIncludePaths ?? resolveLintIncludePaths(scanDirectory, resolvedConfig.config);
 
     // Absolute paths of the exact file set the linter scans, captured ONLY
     // for the multi-project summary (the sole consumer), which signals via

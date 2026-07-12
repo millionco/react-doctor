@@ -79,6 +79,132 @@ describe("js-performance/js-hoist-regexp — regressions", () => {
     );
   });
 
+  it("does not assign global RegExp semantics after global-object member reassignment", () => {
+    expectPass(
+      `globalThis.RegExp = CustomRegExp; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `window["RegExp"] = CustomRegExp; for (const line of lines) { RegExp("a", "m").test(line); }`,
+    );
+    expectPass(
+      `self[\`RegExp\`] = CustomRegExp; for (const line of lines) { new RegExp("a").test(line); }`,
+    );
+    expectPass(
+      `global.RegExp = CustomRegExp; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `globalThis.globalThis.RegExp = CustomRegExp; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+  });
+
+  it("follows stable aliases of the global object", () => {
+    expectPass(
+      `const root = globalThis; root.RegExp = CustomRegExp; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `const root = globalThis; const realm = root; realm["RegExp"] = CustomRegExp; for (const line of lines) { RegExp("a", "m").test(line); }`,
+    );
+  });
+
+  it("recognizes global built-in mutation APIs", () => {
+    expectPass(
+      `Object.defineProperty(globalThis, "RegExp", { value: CustomRegExp }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `Reflect.set(globalThis, "RegExp", CustomRegExp); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `Object.assign(globalThis, { RegExp: CustomRegExp }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `Object.assign(globalThis, getGlobalOverrides()); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `globalThis.Object.defineProperty(globalThis, "RegExp", { value: CustomRegExp }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `globalThis.Reflect.set(globalThis, "RegExp", CustomRegExp); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+  });
+
+  it("follows stable aliases of global mutation APIs", () => {
+    expectPass(
+      `const objectApi = Object; objectApi.defineProperty(globalThis, "RegExp", { value: CustomRegExp }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `const define = Object.defineProperty; define(globalThis, "RegExp", { value: CustomRegExp }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `const { defineProperty: define } = Object; define(globalThis, "RegExp", { value: CustomRegExp }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `const reflectApi = globalThis.Reflect; const set = reflectApi.set; set(globalThis, "RegExp", CustomRegExp); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+  });
+
+  it("conservatively handles dynamic writes through proven global objects", () => {
+    expectPass(
+      `globalThis[getGlobalName()] = CustomRegExp; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `(globalThis as typeof globalThis)["RegExp"] = CustomRegExp; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `delete globalThis.RegExp; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `globalThis.RegExp++; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `for (globalThis.RegExp of constructors) break; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `({ value: globalThis.RegExp } = source); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectPass(
+      `[...globalThis.RegExp] = source; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+  });
+
+  it("still reports when global-object writes cannot replace the built-in RegExp", () => {
+    expectFail(
+      `globalThis.fetch = customFetch; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectFail(
+      `globalThis.RegExp.metadata = value; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectFail(
+      `const globalThis = { RegExp: CustomRegExp }; globalThis.RegExp = CustomRegExp; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectFail(
+      `const window = { RegExp: CustomRegExp }; window["RegExp"] = CustomRegExp; for (const line of lines) { RegExp("a", "m").test(line); }`,
+    );
+    expectFail(
+      `let root = globalThis; root = customRoot; root.RegExp = CustomRegExp; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectFail(
+      `const global = { RegExp: CustomRegExp }; global.RegExp = CustomRegExp; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectFail(
+      `Object.defineProperty(globalThis, "fetch", { value: customFetch }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectFail(
+      `Object.assign(globalThis, { fetch: customFetch }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectFail(
+      `const Object = customObject; Object.defineProperty(globalThis, "RegExp", { value: CustomRegExp }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectFail(
+      `const Reflect = customReflect; Reflect.set(globalThis, "RegExp", CustomRegExp); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectFail(
+      `let objectApi = Object; objectApi = customObject; objectApi.defineProperty(globalThis, "RegExp", { value: CustomRegExp }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+    expectFail(
+      `const globalThis = customGlobal; globalThis.Object.defineProperty(globalThis, "RegExp", { value: CustomRegExp }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+  });
+
   it("stays quiet on stateful constructors across loop and callback control flow", () => {
     expectPass(`while (queue.length > 0) { new RegExp("a", "g").test(queue.pop()); }`);
     expectPass(`const matches = lines.map((line) => new RegExp("a", "y").test(line));`);

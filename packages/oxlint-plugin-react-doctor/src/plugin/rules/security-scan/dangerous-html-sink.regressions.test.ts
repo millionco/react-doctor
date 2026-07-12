@@ -994,6 +994,68 @@ return <div dangerouslySetInnerHTML={{ __html: content }} />;
     expect(findings).toHaveLength(0);
   });
 
+  it("does not let a later trusted binding clear an earlier tainted alias", () => {
+    const content = [
+      "const source = props.userHtml;",
+      "const bodyHtml = source;",
+      "export const renderPreview = (element) => {",
+      '  const source = "<p>Static</p>";',
+      "  element.innerHTML = bodyHtml;",
+      "};",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags an externally called helper despite an outer trusted lookalike binding", () => {
+    const content = [
+      'const html = "<p>Static</p>";',
+      "export const renderPreview = (element, html) => {",
+      "  element.innerHTML = html;",
+      "};",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("ignores recursive calls when every external helper argument is trusted", () => {
+    const content = [
+      "function renderPreview(element, html, remaining) {",
+      "  element.innerHTML = html;",
+      "  if (remaining > 0) renderPreview(element, html, remaining - 1);",
+      "}",
+      'renderPreview(preview, "<p>Static</p>", 2);',
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("prefers a nested tainted binding over a trusted helper parameter", () => {
+    const content = [
+      "const renderPreview = (element, html) => {",
+      "  if (element) {",
+      "    const html = props.userHtml;",
+      "    element.innerHTML = html;",
+      "  }",
+      "};",
+      'renderPreview(preview, "<p>Static</p>");',
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("still flags an identifier declared from a template with tainted interpolations", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/widgets/card.ts",

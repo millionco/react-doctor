@@ -382,6 +382,7 @@ const findContainingBlockEndIndex = (fileContent: string, targetIndex: number): 
 };
 
 interface VisibleIdentifierDeclaration {
+  readonly declarationIndex: number;
   readonly initializer: string;
   readonly initializerStartIndex: number;
 }
@@ -411,6 +412,7 @@ const findVisibleIdentifierDeclaration = (
     const initializer = match[1];
     if (initializer === undefined) continue;
     nearestDeclaration = {
+      declarationIndex,
       initializer,
       initializerStartIndex: declarationIndex + match[0].length - initializer.length,
     };
@@ -469,6 +471,7 @@ const isExplicitlyTrustedHtmlValue = (
 };
 
 interface FunctionParameterSource {
+  readonly bodyEndIndex: number;
   readonly declarationNameIndex: number;
   readonly functionName: string;
   readonly parameterIndex: number;
@@ -492,7 +495,8 @@ const findContainingFunctionParameterSource = (
         continue;
       }
       const openingBraceIndex = matchIndex + match[0].lastIndexOf("{");
-      if (findMatchingBraceIndex(fileContent, openingBraceIndex) < sinkIndex) continue;
+      const bodyEndIndex = findMatchingBraceIndex(fileContent, openingBraceIndex);
+      if (bodyEndIndex < sinkIndex) continue;
       const parameterIndex = (match[2] ?? "")
         .split(",")
         .findIndex(
@@ -502,6 +506,7 @@ const findContainingFunctionParameterSource = (
       closestStartIndex = matchIndex;
       const functionName = match[1] ?? "";
       closestSource = {
+        bodyEndIndex,
         declarationNameIndex: matchIndex + match[0].indexOf(functionName),
         functionName,
         parameterIndex,
@@ -551,7 +556,32 @@ const isHtmlTainted = (
   if (visitedIdentifiers.has(identifier)) return false;
   visitedIdentifiers.add(identifier);
 
+  const declaration = findVisibleIdentifierDeclaration(identifier, sinkIndex, fileContent);
   const parameterSource = findContainingFunctionParameterSource(identifier, sinkIndex, fileContent);
+  const doesDeclarationShadowParameter =
+    declaration !== null &&
+    (parameterSource === null ||
+      declaration.declarationIndex > parameterSource.declarationNameIndex);
+  if (doesDeclarationShadowParameter) {
+    if (
+      isExplicitlyTrustedHtmlValue(
+        declaration.initializer,
+        fileContent,
+        declaration.initializerStartIndex,
+      )
+    ) {
+      return false;
+    }
+    return (
+      isHtmlTainted(
+        declaration.initializer,
+        fileContent,
+        declaration.initializerStartIndex,
+        visitedIdentifiers,
+        visitedCallSites,
+      ) || HTML_TAINT_PATTERN.test(trimmedExpression)
+    );
+  }
   if (parameterSource !== null && parameterSource.functionName.length > 0) {
     const callPattern = new RegExp(
       `\\b${escapeRegExp(parameterSource.functionName)}\\s*\\(([^)]*)\\)`,
@@ -562,6 +592,8 @@ const isHtmlTainted = (
     for (const callMatch of fileContent.matchAll(callPattern)) {
       if (
         callMatch.index === parameterSource.declarationNameIndex ||
+        (callMatch.index >= parameterSource.declarationNameIndex &&
+          callMatch.index <= parameterSource.bodyEndIndex) ||
         visitedCallSites.has(callMatch.index)
       ) {
         continue;
@@ -595,16 +627,24 @@ const isHtmlTainted = (
         !didInspectOnlyExplicitlyTrustedArguments && HTML_TAINT_PATTERN.test(trimmedExpression)
       );
     }
+    return HTML_TAINT_PATTERN.test(trimmedExpression);
   }
 
-  const declaration = findVisibleIdentifierDeclaration(identifier, sinkIndex, fileContent);
   if (declaration !== null) {
-    if (isExplicitlyTrustedHtmlValue(declaration.initializer, fileContent, sinkIndex)) return false;
+    if (
+      isExplicitlyTrustedHtmlValue(
+        declaration.initializer,
+        fileContent,
+        declaration.initializerStartIndex,
+      )
+    ) {
+      return false;
+    }
     return (
       isHtmlTainted(
         declaration.initializer,
         fileContent,
-        sinkIndex,
+        declaration.initializerStartIndex,
         visitedIdentifiers,
         visitedCallSites,
       ) || HTML_TAINT_PATTERN.test(trimmedExpression)

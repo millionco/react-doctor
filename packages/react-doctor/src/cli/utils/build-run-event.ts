@@ -1,7 +1,6 @@
 import {
   filterDiagnosticsForSurface,
   isReactDoctorError,
-  isScanComplete,
   JSX_FILE_PATTERN,
   resolveGithubActionsScoreMetadata,
   summarizeDiagnostics,
@@ -13,6 +12,7 @@ import type {
   SuppressedRuleCount,
 } from "@react-doctor/core";
 import { buildRuleBlastRadii } from "./diagnostic-grouping.js";
+import { isInspectResultComplete } from "./is-inspect-result-complete.js";
 import { ACTION_INPUT_ENVIRONMENT_VARIABLES, detectRunnerOs } from "./is-ci-environment.js";
 import { summarizeRuleFirings } from "./record-scan-metrics.js";
 import { isValidBlockingLevel } from "./resolve-blocking-level.js";
@@ -245,19 +245,18 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     "ciFailure",
     input.userConfig,
   );
-  // `scoreOnly` runs never raise a non-zero exit (finalizeScans guards the gate
-  // on `!isScoreOnly`), and a degraded baseline run (`gateExempt`) skips the
-  // gate too — keep `outcome.wouldBlock`/`outcome.status`/`outcome.exitCode` consistent with the real exit.
+  const complete = isInspectResultComplete(result);
+  // `scoreOnly` runs never raise a non-zero exit for ordinary findings, and a
+  // degraded baseline run (`gateExempt`) skips the finding gate. Incomplete
+  // analysis is an operational failure rather than a finding, so it exits one
+  // in every mode and remains distinct from `wouldBlock`.
   const wouldBlock =
     !input.scoreOnly && !input.gateExempt && shouldBlockCi(gateDiagnostics, blockingLevel);
-  const complete = isScanComplete({
-    analyzedFileCount: result.analyzedFiles?.length,
-    scannedFileCount: result.scannedFileCount,
-    skippedCheckCount: result.skippedChecks.length,
-    skippedCheckReasonCount: Object.keys(result.skippedCheckReasons ?? {}).length,
-  });
   const isClean = result.diagnostics.length === 0 && complete;
-  const outcome = wouldBlock ? "blocked" : isClean ? "clean" : "ok";
+  let outcome = "ok";
+  if (!complete) outcome = "error";
+  else if (wouldBlock) outcome = "blocked";
+  else if (isClean) outcome = "clean";
 
   const firings = summarizeRuleFirings(result.diagnostics);
   const countByRule = new Map<string, number>();
@@ -334,7 +333,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   const attributes: RunEventAttributes = {
     ...withNamespace("outcome", {
       status: outcome,
-      exitCode: wouldBlock ? 1 : 0,
+      exitCode: !complete || wouldBlock ? 1 : 0,
       wouldBlock,
       blocking: blockingLevel,
       clean: isClean,

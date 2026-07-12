@@ -193,6 +193,9 @@ describe("buildRunEventAttributes", () => {
       }),
     );
     expect(incompleteAttributes["outcome.complete"]).toBe(false);
+    expect(incompleteAttributes["outcome.status"]).toBe("error");
+    expect(incompleteAttributes["outcome.exitCode"]).toBe(1);
+    expect(incompleteAttributes["outcome.wouldBlock"]).toBe(false);
     const partialCheckAttributes = buildRunEventAttributes(
       baseInput({
         result: buildResult({
@@ -204,7 +207,8 @@ describe("buildRunEventAttributes", () => {
       }),
     );
     expect(partialCheckAttributes["outcome.complete"]).toBe(false);
-    expect(partialCheckAttributes["outcome.status"]).toBe("ok");
+    expect(partialCheckAttributes["outcome.status"]).toBe("error");
+    expect(partialCheckAttributes["outcome.exitCode"]).toBe(1);
     expect(partialCheckAttributes["outcome.clean"]).toBe(false);
     expect(
       buildRunEventAttributes(baseInput({ error: new Error("boom") }))["outcome.complete"],

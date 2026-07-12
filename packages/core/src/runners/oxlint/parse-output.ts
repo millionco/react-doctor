@@ -251,11 +251,42 @@ const buildRelatedLocations = (
   return related;
 };
 
-const isOxlintOutput = (value: unknown): value is OxlintOutput => {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value as { diagnostics?: unknown };
-  return Array.isArray(candidate.diagnostics);
-};
+const isOxlintSpan = (value: unknown): boolean =>
+  typeof value === "object" &&
+  value !== null &&
+  "offset" in value &&
+  typeof value.offset === "number" &&
+  "length" in value &&
+  typeof value.length === "number" &&
+  "line" in value &&
+  typeof value.line === "number" &&
+  "column" in value &&
+  typeof value.column === "number";
+
+const isOxlintLabel = (value: unknown): boolean =>
+  typeof value === "object" && value !== null && "span" in value && isOxlintSpan(value.span);
+
+const isMappableOxlintDiagnostic = (value: unknown): boolean =>
+  typeof value === "object" &&
+  value !== null &&
+  "code" in value &&
+  typeof value.code === "string" &&
+  value.code.length > 0 &&
+  "filename" in value &&
+  typeof value.filename === "string" &&
+  value.filename.length > 0 &&
+  "severity" in value &&
+  (value.severity === "warning" || value.severity === "error") &&
+  "labels" in value &&
+  Array.isArray(value.labels) &&
+  value.labels.every(isOxlintLabel);
+
+const isOxlintOutput = (value: unknown): value is OxlintOutput =>
+  typeof value === "object" &&
+  value !== null &&
+  "diagnostics" in value &&
+  Array.isArray(value.diagnostics) &&
+  value.diagnostics.every(isMappableOxlintDiagnostic);
 
 /**
  * Parses one oxlint subprocess's stdout into a flat `Diagnostic[]`.

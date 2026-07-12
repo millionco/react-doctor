@@ -57,3 +57,4 @@ export const TSCONFIG_EXTENDS_MAX_DEPTH = 8;
 // cap a deeply-branched reducer would blow up time + memory. Bailing is
 // safe — it can only cause missed diagnostics, never false positives.
 export const REDUCER_PATH_STATE_LIMIT = 1000;
+export const LARGE_TEXT_OPTIMIZATION_THRESHOLD_CHARS = 1000;

@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { LARGE_TEXT_OPTIMIZATION_THRESHOLD_CHARS } from "../../constants/thresholds.js";
 import { isComponentParameterSymbol } from "../../utils/is-component-parameter-symbol.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -155,6 +156,44 @@ const guardsRenderShape = (comparison: EsTreeNode): boolean => {
   return false;
 };
 
+const isPropsChildrenLength = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const unwrappedNode = stripParenExpression(node);
+  return (
+    isNodeOfType(unwrappedNode, "MemberExpression") &&
+    !unwrappedNode.computed &&
+    isNodeOfType(unwrappedNode.property, "Identifier") &&
+    unwrappedNode.property.name === "length" &&
+    resolvesToPropsChildren(stripParenExpression(unwrappedNode.object), scopes)
+  );
+};
+
+const isLargeTextLengthComparison = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(node, "BinaryExpression")) return false;
+  const leftIsLength = isPropsChildrenLength(node.left, scopes);
+  const rightIsLength = isPropsChildrenLength(node.right, scopes);
+  const thresholdNode = leftIsLength ? node.right : node.left;
+  if ((!leftIsLength && !rightIsLength) || !isNodeOfType(thresholdNode, "Literal")) return false;
+  if (
+    typeof thresholdNode.value !== "number" ||
+    thresholdNode.value < LARGE_TEXT_OPTIMIZATION_THRESHOLD_CHARS
+  ) {
+    return false;
+  }
+  return leftIsLength
+    ? node.operator === ">" || node.operator === ">="
+    : node.operator === "<" || node.operator === "<=";
+};
+
+const isLargeStringOptimizationGuard = (comparison: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const comparisonRoot = findTransparentExpressionRoot(comparison);
+  const parent = comparisonRoot.parent;
+  if (!parent || !isNodeOfType(parent, "LogicalExpression") || parent.operator !== "&&") {
+    return false;
+  }
+  const otherOperand = parent.left === comparisonRoot ? parent.right : parent.left;
+  return isLargeTextLengthComparison(otherOperand, scopes);
+};
+
 // HACK: `typeof children === "string"` (or `=== 'object'`) is a
 // polymorphic-children smell — the component switches behavior based on
 // what the consumer happened to pass. Better to expose explicit
@@ -184,6 +223,7 @@ export const noPolymorphicChildren = defineRule({
       if (!isStringLiteral(node.left) && !isStringLiteral(node.right)) return;
 
       if (!guardsRenderShape(node)) return;
+      if (isLargeStringOptimizationGuard(node, context.scopes)) return;
 
       context.report({
         node,

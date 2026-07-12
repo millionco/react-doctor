@@ -90,6 +90,38 @@ describe("correctness/no-polymorphic-children — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when a backwards-compatible pre renderer virtualizes only large strings", () => {
+    const result = runRule(
+      noPolymorphicChildren,
+      `
+      const CodeBlock = ({ children, ...preProps }) => {
+        if (typeof children === 'string' && children.length > 50_000) {
+          return <VirtualizedCode text={children} />;
+        }
+        return <pre {...preProps}>{children}</pre>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags small-string branches that change layout semantics", () => {
+    const result = runRule(
+      noPolymorphicChildren,
+      `
+      const Button = ({ children }) => {
+        if (typeof children === 'string' && children.length > 3) {
+          return <button className="wide">{children}</button>;
+        }
+        return <div className="compact">{children}</div>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a ternary that renders different shapes", () => {
     const result = runRule(
       noPolymorphicChildren,

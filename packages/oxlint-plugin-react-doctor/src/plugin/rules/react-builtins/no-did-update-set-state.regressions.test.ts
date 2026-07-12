@@ -293,6 +293,45 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when a convergent DOM alias is declared inside a synchronous IIFE", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          (() => {
+            const tooltip = this.durationNode.textContent;
+            if (this.state.tooltip !== tooltip) {
+              this.setState({ tooltip });
+            }
+          })();
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on an optional-chained convergent DOM text guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          if (this.state?.tooltip !== this.durationNode?.textContent) {
+            this.setState({ tooltip: this.durationNode?.textContent });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags a post-mount guard that assigns a different value", () => {
     const result = runRule(
       noDidUpdateSetState,

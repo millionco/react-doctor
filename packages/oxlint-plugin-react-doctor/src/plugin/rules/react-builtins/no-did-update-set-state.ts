@@ -5,6 +5,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle.js";
 import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -88,7 +89,7 @@ const collectDiffSourceLocalNames = (
   const body = (lifecycleFunction as { body?: EsTreeNode }).body;
   if (!body) return derivedNames;
   walkAst(body, (node) => {
-    if (FUNCTION_NODE_TYPES.has(node.type)) return false;
+    if (FUNCTION_NODE_TYPES.has(node.type) && !isImmediatelyInvokedFunction(node)) return false;
     if (!isNodeOfType(node, "VariableDeclarator")) return;
     const init = node.init;
     if (!init) return;
@@ -119,8 +120,9 @@ const getStaticMemberName = (node: EsTreeNode): string | null => {
 };
 
 const getThisStateFieldName = (node: EsTreeNode): string | null => {
-  if (!isNodeOfType(node, "MemberExpression")) return null;
-  const object = stripParenExpression(node.object as EsTreeNode);
+  const unwrappedNode = stripParenExpression(node);
+  if (!isNodeOfType(unwrappedNode, "MemberExpression")) return null;
+  const object = stripParenExpression(unwrappedNode.object as EsTreeNode);
   if (
     !isNodeOfType(object, "MemberExpression") ||
     !isNodeOfType(stripParenExpression(object.object as EsTreeNode), "ThisExpression") ||
@@ -128,7 +130,7 @@ const getThisStateFieldName = (node: EsTreeNode): string | null => {
   ) {
     return null;
   }
-  return getStaticMemberName(node);
+  return getStaticMemberName(unwrappedNode);
 };
 
 const collectLocalInitializers = (lifecycleFunction: EsTreeNode): Map<string, EsTreeNode> => {
@@ -136,7 +138,7 @@ const collectLocalInitializers = (lifecycleFunction: EsTreeNode): Map<string, Es
   const body = (lifecycleFunction as { body?: EsTreeNode }).body;
   if (!body) return initializers;
   walkAst(body, (node) => {
-    if (FUNCTION_NODE_TYPES.has(node.type)) return false;
+    if (FUNCTION_NODE_TYPES.has(node.type) && !isImmediatelyInvokedFunction(node)) return false;
     if (
       isNodeOfType(node, "VariableDeclarator") &&
       isNodeOfType(node.id, "Identifier") &&

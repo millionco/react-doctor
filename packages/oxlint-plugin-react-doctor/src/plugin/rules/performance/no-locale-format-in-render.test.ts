@@ -246,6 +246,11 @@ export const Timestamp = ({ value, locale, useUtc }) => {
       `const source = { timeZone: "UTC", options: { dateStyle: "medium" } };
        const { options } = source;`,
     ],
+    [
+      "passing the options object to an unknown function",
+      `const options = { timeZone: "UTC" };
+       inspect(options);`,
+    ],
     ["an unknown trailing spread", `const options = { timeZone: "UTC", ...overrides };`],
     [
       "a final undefined duplicate property",
@@ -268,6 +273,22 @@ export const Timestamp = ({ value, locale, overrides }) => {
       `"use client";
 export const Timestamp = ({ value, locale, overrides }) => {
   const options = { ...overrides, timeZone: "UTC" };
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat read-only option property uses as mutation", () => {
+    const result = run(
+      `"use client";
+const consume = (value) => value;
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  consume(options.timeZone);
+  options.timeZone.toLowerCase();
+  options.hasOwnProperty("timeZone");
   const formatter = new Intl.DateTimeFormat(locale, options);
   return <time>{formatter.format(new Date(value))}</time>;
 };`,

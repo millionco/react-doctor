@@ -10,6 +10,7 @@ import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js
 import { hasSuppressHydrationWarningAttribute } from "../../utils/has-suppress-hydration-warning-attribute.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -61,6 +62,14 @@ const ABSENT_PROPERTY_PROOF: ObjectPropertyProof = { status: "absent" };
 const PRESENT_PROPERTY_PROOF: ObjectPropertyProof = { status: "present" };
 const UNDEFINED_PROPERTY_PROOF: ObjectPropertyProof = { status: "undefined" };
 const UNKNOWN_PROPERTY_PROOF: ObjectPropertyProof = { status: "unknown" };
+const READ_ONLY_OBJECT_METHOD_NAMES = new Set([
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toLocaleString",
+  "toString",
+  "valueOf",
+]);
 
 const isProvableDateExpression = (expression: EsTreeNode | null | undefined): boolean => {
   if (!expression) return false;
@@ -122,7 +131,10 @@ const isPotentialMutationReference = (identifier: EsTreeNode, usageNode: EsTreeN
     expression = parent;
     parent = expression.parent;
   }
+  const rootExpression = expression;
+  let memberDepth = 0;
   while (parent && isNodeOfType(parent, "MemberExpression") && parent.object === expression) {
+    memberDepth += 1;
     expression = parent;
     parent = expression.parent;
     while (
@@ -146,12 +158,19 @@ const isPotentialMutationReference = (identifier: EsTreeNode, usageNode: EsTreeN
     return true;
   }
   if (isNodeOfType(parent, "CallExpression")) {
-    return (
-      parent.callee === expression || parent.arguments?.some((argument) => argument === expression)
-    );
+    if (parent.callee === expression) {
+      if (memberDepth === 0) return true;
+      const memberExpression = stripParenExpression(expression);
+      return (
+        memberDepth === 1 &&
+        isNodeOfType(memberExpression, "MemberExpression") &&
+        !READ_ONLY_OBJECT_METHOD_NAMES.has(getStaticPropertyName(memberExpression) ?? "")
+      );
+    }
+    return memberDepth === 0 && parent.arguments?.some((argument) => argument === rootExpression);
   }
   if (isNodeOfType(parent, "NewExpression")) {
-    return parent.arguments?.some((argument) => argument === expression);
+    return memberDepth === 0 && parent.arguments?.some((argument) => argument === rootExpression);
   }
   return false;
 };

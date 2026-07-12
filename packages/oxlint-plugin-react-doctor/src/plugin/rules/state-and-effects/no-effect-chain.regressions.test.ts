@@ -163,4 +163,19 @@ describe("no-effect-chain — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("flags a state chain whose downstream effect calls a concise helper", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const syncDownstream = (value) => consume(value);
+        useEffect(() => { setSource(1); }, []);
+        useEffect(() => syncDownstream(source), [source]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

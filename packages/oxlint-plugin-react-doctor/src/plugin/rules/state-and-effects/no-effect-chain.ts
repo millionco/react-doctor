@@ -22,6 +22,7 @@ import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
+import { isCleanupReturn } from "./utils/is-cleanup-return.js";
 
 // HACK: §7 of "You Might Not Need an Effect" — chains of computations:
 //
@@ -112,6 +113,8 @@ const collectWrittenStateNamesInEffect = (
 // external resource" — bare literals (`return null`, `return 0`) and
 // state reads (`return foo`) get ignored so they don't silently
 // disable chain detection.
+const EMPTY_CLEANUP_NAME_SET = new Set<string>();
+
 const isFunctionShapedReturn = (
   returnedValue: EsTreeNode,
   setterToStateName: ReadonlyMap<string, string>,
@@ -126,13 +129,11 @@ const isFunctionShapedReturn = (
   // primitives (subscribe, addEventListener helpers) return a
   // function. Conservatively accept this shape.
   if (isNodeOfType(returnedValue, "CallExpression")) {
-    if (
-      isNodeOfType(returnedValue.callee, "Identifier") &&
-      setterToStateName.has(returnedValue.callee.name)
-    ) {
-      return false;
+    if (isNodeOfType(returnedValue.callee, "Identifier")) {
+      if (setterToStateName.has(returnedValue.callee.name)) return false;
+      if (isSetterIdentifier(returnedValue.callee.name)) return true;
     }
-    return true;
+    return isCleanupReturn(returnedValue, EMPTY_CLEANUP_NAME_SET, EMPTY_CLEANUP_NAME_SET);
   }
   // Returning a bare Identifier — could be the unsub binding from a
   // `const unsub = subscribe(...)` line. We can't statically prove

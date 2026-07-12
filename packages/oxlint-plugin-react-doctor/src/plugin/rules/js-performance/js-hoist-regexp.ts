@@ -2,6 +2,11 @@ import { createLoopAwareVisitors } from "../../utils/create-loop-aware-visitors.
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import {
+  getImportedNameFromModule,
+  isNamespaceImportFromModule,
+} from "../../utils/find-import-source-for-name.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
@@ -27,6 +32,14 @@ const GLOBAL_OBJECT_NAMES: ReadonlySet<string> = new Set([
   "window",
   "self",
 ]);
+const GLOBAL_BUILTIN_NAMES: ReadonlySet<string> = new Set([
+  "Object",
+  "Reflect",
+  "String",
+  "RegExp",
+]);
+const STRING_PROTOTYPE_PATH = "String.prototype";
+const REGEXP_PROTOTYPE_PATH = "RegExp.prototype";
 
 const getStaticStringValue = (argument: EsTreeNode | null | undefined): string | null => {
   if (!argument) return null;
@@ -62,6 +75,128 @@ const hasValidRegExpFlags = (flags: string): boolean =>
   new Set(flags).size === flags.length &&
   !(flags.includes("u") && flags.includes("v"));
 
+const globSyncReturnsStringPaths = (
+  node: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  if (node.arguments.some((argument) => isNodeOfType(argument, "SpreadElement"))) return false;
+  const callee = stripParenExpression(node.callee);
+  let isGlobSyncImport = false;
+  if (isNodeOfType(callee, "Identifier")) {
+    const symbol = context.scopes.symbolFor(callee);
+    isGlobSyncImport =
+      symbol?.kind === "import" &&
+      getImportedNameFromModule(callee, callee.name, "glob") === "globSync";
+  } else if (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.object, "Identifier") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "globSync"
+  ) {
+    const symbol = context.scopes.symbolFor(callee.object);
+    isGlobSyncImport =
+      symbol?.kind === "import" &&
+      isNamespaceImportFromModule(callee.object, callee.object.name, "glob");
+  }
+  if (!isGlobSyncImport) return false;
+  const options = node.arguments[1];
+  if (!options) return true;
+  const unwrappedOptions = stripParenExpression(options);
+  if (!isNodeOfType(unwrappedOptions, "ObjectExpression")) return false;
+  for (const property of unwrappedOptions.properties) {
+    if (!isNodeOfType(property, "Property")) return false;
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (propertyName === null) return false;
+    if (propertyName !== "withFileTypes") continue;
+    const propertyValue = stripParenExpression(property.value);
+    if (!isNodeOfType(propertyValue, "Literal") || propertyValue.value !== false) return false;
+  }
+  return true;
+};
+
+const isGlobSyncStringIterationBinding = (
+  bindingIdentifier: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const declarator = bindingIdentifier.parent;
+  if (!isNodeOfType(declarator, "VariableDeclarator") || declarator.id !== bindingIdentifier) {
+    return false;
+  }
+  const declaration = declarator.parent;
+  const loop = declaration?.parent;
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    !isNodeOfType(loop, "ForOfStatement") ||
+    loop.left !== declaration
+  ) {
+    return false;
+  }
+  const iteratedValue = stripParenExpression(loop.right);
+  return (
+    isNodeOfType(iteratedValue, "CallExpression") &&
+    globSyncReturnsStringPaths(iteratedValue, context)
+  );
+};
+
+const isProvenNativeStringReceiver = (
+  node: EsTreeNode,
+  context: RuleContext,
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
+  const receiver = stripParenExpression(node);
+  if (isNodeOfType(receiver, "Literal")) return typeof receiver.value === "string";
+  if (isNodeOfType(receiver, "TemplateLiteral")) return true;
+  if (
+    isNodeOfType(receiver, "CallExpression") &&
+    isNodeOfType(receiver.callee, "Identifier") &&
+    receiver.callee.name === "String" &&
+    context.scopes.isGlobalReference(receiver.callee)
+  ) {
+    return true;
+  }
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(receiver);
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+  if (
+    isNodeOfType(symbol.bindingIdentifier, "Identifier") &&
+    isNodeOfType(symbol.bindingIdentifier.typeAnnotation?.typeAnnotation, "TSStringKeyword")
+  ) {
+    return true;
+  }
+  if (isGlobSyncStringIterationBinding(symbol.bindingIdentifier, context)) return true;
+  if (symbol.kind !== "const" || !symbol.initializer) return false;
+  visitedSymbolIds.add(symbol.id);
+  return isProvenNativeStringReceiver(symbol.initializer, context, visitedSymbolIds);
+};
+
+const isSafeStatefulReplaceAllSearch = (
+  node: EsTreeNodeOfType<"NewExpression"> | EsTreeNodeOfType<"CallExpression">,
+  flags: string,
+  context: RuleContext,
+): boolean => {
+  if (!flags.includes("g")) return false;
+  const searchArgument = findTransparentExpressionRoot(node);
+  const replaceAllCall = searchArgument.parent;
+  if (
+    !isNodeOfType(replaceAllCall, "CallExpression") ||
+    replaceAllCall.arguments[0] !== searchArgument
+  ) {
+    return false;
+  }
+  const callee = stripParenExpression(replaceAllCall.callee);
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    !callee.optional &&
+    !replaceAllCall.optional &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "replaceAll" &&
+    isProvenNativeStringReceiver(callee.object, context)
+  );
+};
+
 const getDestructuredBindingPropertyName = (bindingIdentifier: EsTreeNode): string | null => {
   let bindingNode = bindingIdentifier;
   if (
@@ -84,9 +219,15 @@ const getDestructuredBindingPropertyName = (bindingIdentifier: EsTreeNode): stri
 const extendGlobalPath = (basePath: string, propertyName: string | null): string | null => {
   if (basePath === "global") {
     if (propertyName === null || GLOBAL_OBJECT_NAMES.has(propertyName)) return "global";
-    return propertyName === "Object" || propertyName === "Reflect" ? propertyName : null;
+    return propertyName && GLOBAL_BUILTIN_NAMES.has(propertyName) ? propertyName : null;
   }
   if ((basePath === "Object" || basePath === "Reflect") && propertyName) {
+    return `${basePath}.${propertyName}`;
+  }
+  if ((basePath === "String" || basePath === "RegExp") && propertyName === "prototype") {
+    return `${basePath}.prototype`;
+  }
+  if ((basePath === STRING_PROTOTYPE_PATH || basePath === REGEXP_PROTOTYPE_PATH) && propertyName) {
     return `${basePath}.${propertyName}`;
   }
   return null;
@@ -106,7 +247,7 @@ const getGlobalPath = (
       return "global";
     }
     if (
-      (unwrappedNode.name === "Object" || unwrappedNode.name === "Reflect") &&
+      GLOBAL_BUILTIN_NAMES.has(unwrappedNode.name) &&
       context.scopes.isGlobalReference(unwrappedNode)
     ) {
       return unwrappedNode.name;
@@ -132,7 +273,7 @@ const getGlobalPath = (
   return extendGlobalPath(objectPath, propertyName);
 };
 
-const assignmentTargetMayReplaceGlobalRegExp = (
+const assignmentTargetMayInvalidateRegExpProof = (
   node: EsTreeNode | null | undefined,
   context: RuleContext,
   symbolCache: Map<number, string | false>,
@@ -140,24 +281,29 @@ const assignmentTargetMayReplaceGlobalRegExp = (
   if (!node) return false;
   const target = stripParenExpression(node);
   if (isNodeOfType(target, "MemberExpression")) {
-    if (getGlobalPath(target.object, context, symbolCache) !== "global") return false;
+    const objectPath = getGlobalPath(target.object, context, symbolCache);
     const propertyName = getStaticPropertyName(target);
-    return propertyName === null || propertyName === "RegExp";
+    if (objectPath === "global") return propertyName === null || propertyName === "RegExp";
+    if (objectPath === REGEXP_PROTOTYPE_PATH) return true;
+    return (
+      objectPath === STRING_PROTOTYPE_PATH &&
+      (propertyName === null || propertyName === "replaceAll")
+    );
   }
   if (isNodeOfType(target, "AssignmentPattern")) {
-    return assignmentTargetMayReplaceGlobalRegExp(target.left, context, symbolCache);
+    return assignmentTargetMayInvalidateRegExpProof(target.left, context, symbolCache);
   }
   if (isNodeOfType(target, "RestElement")) {
-    return assignmentTargetMayReplaceGlobalRegExp(target.argument, context, symbolCache);
+    return assignmentTargetMayInvalidateRegExpProof(target.argument, context, symbolCache);
   }
   if (isNodeOfType(target, "ArrayPattern")) {
     return target.elements.some((element) =>
-      assignmentTargetMayReplaceGlobalRegExp(element, context, symbolCache),
+      assignmentTargetMayInvalidateRegExpProof(element, context, symbolCache),
     );
   }
   if (isNodeOfType(target, "ObjectPattern")) {
     return target.properties.some((property) =>
-      assignmentTargetMayReplaceGlobalRegExp(
+      assignmentTargetMayInvalidateRegExpProof(
         isNodeOfType(property, "Property") ? property.value : property,
         context,
         symbolCache,
@@ -179,66 +325,97 @@ const getWriteTarget = (node: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
-const objectExpressionMayDefineRegExp = (node: EsTreeNode | null | undefined): boolean => {
+const objectExpressionMayDefineProperty = (
+  node: EsTreeNode | null | undefined,
+  targetPropertyName: string,
+): boolean => {
   if (!node) return true;
   const unwrappedNode = stripParenExpression(node);
   if (!isNodeOfType(unwrappedNode, "ObjectExpression")) return true;
   return unwrappedNode.properties.some((property) => {
     if (!isNodeOfType(property, "Property")) return true;
     const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
-    return propertyName === null || propertyName === "RegExp";
+    return propertyName === null || propertyName === targetPropertyName;
   });
 };
 
-const callMayReplaceGlobalRegExp = (
+const callMayInvalidateRegExpProof = (
   node: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
   symbolCache: Map<number, string | false>,
 ): boolean => {
   const methodName = getGlobalPath(node.callee, context, symbolCache);
   const target = node.arguments?.[0];
-  if (!target || getGlobalPath(target, context, symbolCache) !== "global") {
-    return false;
-  }
-  if (
+  if (!target) return false;
+  const targetPath = getGlobalPath(target, context, symbolCache);
+  const isSinglePropertyMutation =
     methodName === "Object.defineProperty" ||
     methodName === "Reflect.set" ||
-    methodName === "Reflect.defineProperty"
-  ) {
+    methodName === "Reflect.defineProperty" ||
+    methodName === "Reflect.deleteProperty";
+  const isPropertyCollectionMutation =
+    methodName === "Object.defineProperties" || methodName === "Object.assign";
+  if (targetPath === REGEXP_PROTOTYPE_PATH) {
+    return (
+      isSinglePropertyMutation ||
+      isPropertyCollectionMutation ||
+      methodName === "Object.setPrototypeOf" ||
+      methodName === "Reflect.setPrototypeOf"
+    );
+  }
+  if (targetPath === STRING_PROTOTYPE_PATH) {
+    if (isSinglePropertyMutation) {
+      const propertyName = getStaticStringValue(node.arguments?.[1]);
+      return propertyName === null || propertyName === "replaceAll";
+    }
+    if (isPropertyCollectionMutation) {
+      return (node.arguments?.slice(1) ?? []).some((source) =>
+        objectExpressionMayDefineProperty(source, "replaceAll"),
+      );
+    }
+    return false;
+  }
+  if (targetPath !== "global") return false;
+  if (isSinglePropertyMutation) {
     const propertyName = getStaticStringValue(node.arguments?.[1]);
     return propertyName === null || propertyName === "RegExp";
   }
   if (methodName === "Object.defineProperties") {
-    return objectExpressionMayDefineRegExp(node.arguments?.[1]);
+    return objectExpressionMayDefineProperty(node.arguments?.[1], "RegExp");
   }
   if (methodName === "Object.assign") {
-    return (node.arguments?.slice(1) ?? []).some(objectExpressionMayDefineRegExp);
+    return (node.arguments?.slice(1) ?? []).some((source) =>
+      objectExpressionMayDefineProperty(source, "RegExp"),
+    );
   }
   return false;
 };
 
-const hasGlobalRegExpMemberReassignment = (context: RuleContext): boolean => {
-  let hasReassignment = false;
+const hasUnsafeRegExpEnvironmentMutation = (context: RuleContext): boolean => {
+  let hasUnsafeMutation = false;
   const symbolCache = new Map<number, string | false>();
   walkAst(context.scopes.rootScope.node, (node: EsTreeNode): boolean | void => {
-    if (hasReassignment) return false;
+    if (hasUnsafeMutation) return false;
     const writeTarget = getWriteTarget(node);
-    if (writeTarget && assignmentTargetMayReplaceGlobalRegExp(writeTarget, context, symbolCache)) {
-      hasReassignment = true;
+    if (
+      writeTarget &&
+      assignmentTargetMayInvalidateRegExpProof(writeTarget, context, symbolCache)
+    ) {
+      hasUnsafeMutation = true;
       return false;
     }
     if (
       isNodeOfType(node, "CallExpression") &&
-      callMayReplaceGlobalRegExp(node, context, symbolCache)
+      callMayInvalidateRegExpProof(node, context, symbolCache)
     ) {
-      hasReassignment = true;
+      hasUnsafeMutation = true;
       return false;
     }
   });
-  return hasReassignment;
+  return hasUnsafeMutation;
 };
 
-const hasGlobalRegExpReassignment = (context: RuleContext): boolean => {
+const hasUnsafeRegExpEnvironment = (context: RuleContext): boolean => {
   const pendingScopes = [context.scopes.rootScope];
   while (pendingScopes.length > 0) {
     const currentScope = pendingScopes.pop();
@@ -256,7 +433,7 @@ const hasGlobalRegExpReassignment = (context: RuleContext): boolean => {
     }
     pendingScopes.push(...currentScope.children);
   }
-  return hasGlobalRegExpMemberReassignment(context);
+  return hasUnsafeRegExpEnvironmentMutation(context);
 };
 
 // `RegExp(...)` without `new` constructs a fresh regex exactly like
@@ -264,12 +441,14 @@ const hasGlobalRegExpReassignment = (context: RuleContext): boolean => {
 const isStaticRegExpConstruction = (
   node: EsTreeNodeOfType<"NewExpression"> | EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
-  getHasReassignedGlobalRegExp: () => boolean,
+  getHasUnsafeRegExpEnvironment: () => boolean,
 ): boolean => {
   const patternArgument = node.arguments?.[0] as EsTreeNode | undefined;
   const flagsArgument = node.arguments?.[1] as EsTreeNode | undefined;
   const callee = stripParenExpression(node.callee);
   const effectiveFlags = getEffectiveRegExpFlags(patternArgument, flagsArgument);
+  const hasStatefulFlags =
+    effectiveFlags !== null && STATEFUL_REGEXP_FLAGS_PATTERN.test(effectiveFlags);
   return (
     isNodeOfType(callee, "Identifier") &&
     callee.name === "RegExp" &&
@@ -277,8 +456,8 @@ const isStaticRegExpConstruction = (
     isStaticPattern(patternArgument) &&
     effectiveFlags !== null &&
     hasValidRegExpFlags(effectiveFlags) &&
-    !STATEFUL_REGEXP_FLAGS_PATTERN.test(effectiveFlags) &&
-    !getHasReassignedGlobalRegExp()
+    (!hasStatefulFlags || isSafeStatefulReplaceAllSearch(node, effectiveFlags, context)) &&
+    !getHasUnsafeRegExpEnvironment()
   );
 };
 
@@ -293,20 +472,20 @@ export const jsHoistRegexp = defineRule({
   recommendation:
     "Move `new RegExp(...)` (or large regex literals) to a constant outside the loop so it isn't rebuilt on every pass",
   create: (context: RuleContext) => {
-    let hasReassignedGlobalRegExp: boolean | null = null;
-    const getHasReassignedGlobalRegExp = (): boolean => {
-      hasReassignedGlobalRegExp ??= hasGlobalRegExpReassignment(context);
-      return hasReassignedGlobalRegExp;
+    let cachedUnsafeRegExpEnvironment: boolean | null = null;
+    const getHasUnsafeRegExpEnvironment = (): boolean => {
+      cachedUnsafeRegExpEnvironment ??= hasUnsafeRegExpEnvironment(context);
+      return cachedUnsafeRegExpEnvironment;
     };
     return createLoopAwareVisitors(
       {
         NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
-          if (isStaticRegExpConstruction(node, context, getHasReassignedGlobalRegExp)) {
+          if (isStaticRegExpConstruction(node, context, getHasUnsafeRegExpEnvironment)) {
             context.report({ node, message: MESSAGE });
           }
         },
         CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-          if (isStaticRegExpConstruction(node, context, getHasReassignedGlobalRegExp)) {
+          if (isStaticRegExpConstruction(node, context, getHasUnsafeRegExpEnvironment)) {
             context.report({ node, message: MESSAGE });
           }
         },

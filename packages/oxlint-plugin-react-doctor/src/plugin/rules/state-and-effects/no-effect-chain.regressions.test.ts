@@ -116,4 +116,22 @@ describe("no-effect-chain — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("flags a state chain through exact effect callback bindings", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [first, setFirst] = useState(0);
+        const [second, setSecond] = useState(0);
+        const writeFirst = () => { setFirst(1); };
+        const writeSecond = () => { setSecond(first + 1); };
+        const downstreamEffect = writeSecond;
+        useEffect(writeFirst, []);
+        useEffect(downstreamEffect, [first]);
+        return second;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

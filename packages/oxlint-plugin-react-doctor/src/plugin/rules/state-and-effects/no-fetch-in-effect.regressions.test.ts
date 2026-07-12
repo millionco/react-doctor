@@ -389,4 +389,43 @@ describe("state-and-effects/no-fetch-in-effect — regressions", () => {
       };
     `);
   });
+
+  it("flags a fetch through an exact effect callback alias", () => {
+    expectFail(`
+      const Profile = ({ url }) => {
+        const loadProfile = () => {
+          fetch(url).then((response) => response.json()).then(setProfile);
+        };
+        const effectCallback = loadProfile;
+        useEffect(effectCallback, [url]);
+        return null;
+      };
+    `);
+  });
+
+  it("stays silent when a mutable callback no longer denotes the fetching function", () => {
+    expectPass(`
+      const Profile = ({ url }) => {
+        let effectCallback = () => {
+          fetch(url).then((response) => response.json()).then(setProfile);
+        };
+        effectCallback = () => console.log(url);
+        useEffect(effectCallback, [url]);
+        return null;
+      };
+    `);
+  });
+
+  it("stays silent when a function declaration callback is reassigned", () => {
+    expectPass(`
+      const Profile = ({ url }) => {
+        function effectCallback() {
+          fetch(url).then((response) => response.json()).then(setProfile);
+        }
+        effectCallback = () => console.log(url);
+        useEffect(effectCallback, [url]);
+        return null;
+      };
+    `);
+  });
 });

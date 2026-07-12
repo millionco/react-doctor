@@ -10,6 +10,7 @@
  *   #92 — `share: false` config option exists in the schema and is read
  *         by the scan banner
  *   #135 — lint failures surface in `skippedChecks`, never silently
+ *   #1183 — scan with --scope changed and only config files produces JSON report
  */
 
 import * as fs from "node:fs";
@@ -419,6 +420,21 @@ describe("issue #135: lint failures surface in skippedChecks", () => {
     });
     // Type contract: skippedChecks always exists as an array.
     expect(Array.isArray(result.skippedChecks)).toBe(true);
+  });
+});
+
+describe("issue #1183: scan with only config files in diff produces JSON report", () => {
+  it("returns complete result structure when scanning only config files", async () => {
+    const projectDir = setupMinimalReactProject("issue-1183-config-only-diff");
+
+    const { result } = await captureScanOutput(projectDir, {
+      includePaths: ["package.json"],
+      noScore: true,
+      silent: true,
+    });
+
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.diagnostics)).toBe(true);
   });
 });
 

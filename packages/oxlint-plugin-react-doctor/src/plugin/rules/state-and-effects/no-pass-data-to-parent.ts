@@ -39,6 +39,7 @@ import {
 } from "./utils/effect/react.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`, narrowed to
@@ -576,6 +577,15 @@ const getFunctionalUpdaterDataRefs = (
 
 const HOOK_NAME_PATTERN = /^use[A-Z0-9]/;
 
+const EXTERNAL_SUBSCRIPTION_HOOK_NAMES: ReadonlySet<string> = new Set([
+  "useIntersectionObserver",
+  "useMatchMedia",
+  "useMediaQuery",
+  "useResizeObserver",
+  "useVisibility",
+  "useWindowSize",
+]);
+
 // A value produced by a custom hook that is itself WIRED TO the component's
 // props (`useMarqueeSelection({ containerRef, onSelectionChange, ... })`)
 // is hook-owned interaction state the component merely bridges up — the
@@ -633,6 +643,26 @@ const isParentWiredHookCalleeRef = (analysis: ProgramAnalysis, ref: Reference): 
     getDownstreamRefs(analysis, hookArgument as EsTreeNode).some((downstreamRef) =>
       isProp(analysis, downstreamRef),
     ),
+  );
+};
+
+const isExternalSubscriptionHookRef = (ref: Reference): boolean => {
+  const identifier = ref.identifier as unknown as EsTreeNode;
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  if (EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(identifier.name) && isCalleePosition(identifier)) {
+    return true;
+  }
+  return Boolean(
+    ref.resolved?.defs.some((def) => {
+      const node = def.node as unknown as EsTreeNode;
+      if (!isNodeOfType(node, "VariableDeclarator") || !node.init) return false;
+      const initializer = stripParenExpression(node.init as EsTreeNode);
+      if (!isNodeOfType(initializer, "CallExpression")) return false;
+      const callee = stripParenExpression(initializer.callee as EsTreeNode);
+      return (
+        isNodeOfType(callee, "Identifier") && EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(callee.name)
+      );
+    }),
   );
 };
 
@@ -792,6 +822,8 @@ export const noPassDataToParent = defineRule({
 
           const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
             if (isUseStateIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
+            if (isExternallyDrivenState(analysis, argRef)) return false;
+            if (isExternalSubscriptionHookRef(argRef)) return false;
             if (isProp(analysis, argRef)) return false;
             if (isUseRefIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
             if (isRefCurrent(argRef)) return false;

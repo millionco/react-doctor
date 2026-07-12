@@ -3,6 +3,63 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noPassDataToParent } from "./no-pass-data-to-parent.js";
 
 describe("no-pass-data-to-parent — regressions", () => {
+  describe("external subscription notifications", () => {
+    it("stays silent when notifying a parent of a media-query hook transition", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const Sidebar = ({ onBreakPoint }) => {
+          const broken = useMediaQuery("(max-width: 768px)");
+          const previousBroken = useRef(broken);
+          useEffect(() => {
+            if (previousBroken.current !== broken) {
+              previousBroken.current = broken;
+              onBreakPoint(broken);
+            }
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when notifying a parent of state driven only by matchMedia", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const Sidebar = ({ onBreakPoint }) => {
+          const [broken, setBroken] = useState(false);
+          useEffect(() => {
+            const query = window.matchMedia("(max-width: 768px)");
+            const update = (event) => setBroken(event.matches);
+            query.addEventListener("change", update);
+            return () => query.removeEventListener("change", update);
+          }, []);
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags ordinary child-owned form state passed to a parent", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const Form = ({ onChange }) => {
+          const value = useFormValue();
+          useEffect(() => {
+            onChange(value);
+          }, [value, onChange]);
+          return <input value={value} />;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
   describe("router / namespaced API receivers", () => {
     it("stays silent on a destructured router prop redirecting in a useEffect (ant-design .dumi/pages/404 shape)", () => {
       const result = runRule(

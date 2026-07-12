@@ -93,7 +93,12 @@ const collectSynchronouslyInvokedFunctions = (
     walkInsideStatementBlocks(currentFunction.body, (child) => {
       if (!isNodeOfType(child, "CallExpression")) return;
       const invokedFunction = resolveExactLocalFunction(child.callee, scopes);
-      if (!invokedFunction || analysisFunctions.has(invokedFunction)) return;
+      if (!invokedFunction || analysisFunctions.has(invokedFunction)) {
+        return;
+      }
+      if (isFunctionLike(invokedFunction) && invokedFunction.async) {
+        return;
+      }
       analysisFunctions.add(invokedFunction);
       pendingFunctions.push(invokedFunction);
     });

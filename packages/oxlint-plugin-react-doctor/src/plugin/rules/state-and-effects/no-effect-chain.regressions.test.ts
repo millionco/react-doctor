@@ -297,6 +297,45 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("ignores state writes deferred inside an invoked async function", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        function loadSource() {
+          void (async () => {
+            await loadSourceValue();
+            setSource(1);
+          })();
+        }
+        function updateTarget() { setTarget(source + 1); }
+        useEffect(loadSource, []);
+        useEffect(updateTarget, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags state writes inside an invoked synchronous function", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        function loadSource() { (() => setSource(1))(); }
+        function updateTarget() { setTarget(source + 1); }
+        useEffect(loadSource, []);
+        useEffect(updateTarget, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for a declared opaque context setter", () => {
     const result = runRule(
       noEffectChain,

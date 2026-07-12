@@ -1,5 +1,37 @@
 # oxlint-plugin-react-doctor
 
+## 0.7.6
+
+### Patch Changes
+
+- [#1160](https://github.com/millionco/react-doctor/pull/1160) [`dbd4067`](https://github.com/millionco/react-doctor/commit/dbd4067fce8ce9e734738af27b751992ea6bb483) Thanks [@aidenybai](https://github.com/aidenybai)! - Resolve executable browser globals by lexical binding and static property identity.
+
+- [#1155](https://github.com/millionco/react-doctor/pull/1155) [`bc49aaa`](https://github.com/millionco/react-doctor/commit/bc49aaa383da79ac3b31c4f99436bdf26f95495b) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect click handlers in statically known JSX object spreads when no keyboard handler is present.
+
+- [#1147](https://github.com/millionco/react-doctor/pull/1147) [`3075e10`](https://github.com/millionco/react-doctor/commit/3075e10babeb7dfd2ee531572454120df40fa904) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix no-prop-callback-in-effect dependency provenance and callback-ref parity.
+
+- [#1154](https://github.com/millionco/react-doctor/pull/1154) [`0654849`](https://github.com/millionco/react-doctor/commit/06548498e257accee8a186762ace7557900d31cc) Thanks [@aidenybai](https://github.com/aidenybai)! - Track createContext imports through aliases, namespace destructuring, and computed access while honoring lexical shadowing.
+
+- [#1146](https://github.com/millionco/react-doctor/pull/1146) [`18e8717`](https://github.com/millionco/react-doctor/commit/18e8717ec18f2221953e9b8ae810c4a8464e7b6f) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix lifecycle state rules to follow synchronous IIFEs and preserve convergent post-mount DOM guards.
+
+- [#1149](https://github.com/millionco/react-doctor/pull/1149) [`a240f8b`](https://github.com/millionco/react-doctor/commit/a240f8b7d94baf6d5d3eabdf313a91c296ce197e) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid no-polymorphic-children diagnostics for large-string virtualization guards while preserving small-string render-shape checks.
+
+- [#1114](https://github.com/millionco/react-doctor/pull/1114) [`76cd6be`](https://github.com/millionco/react-doctor/commit/76cd6bea69e1f453805a054e8d648abc97ef3384) Thanks [@aidenybai](https://github.com/aidenybai)! - Reduce cold full-scan CPU and allocation overhead with comment-tolerant security-rule content gates, semantic analysis only for rules that consume it, cached binding-mutation scans, analysis-local scope and reference caches, host-native component/export collection, combined state observation passes, single-pass control-flow construction, allocation-free and decorator-aware visitor-key traversal for closure-capture, effect cleanup, and React render analysis, lazy shadow-binding sets, constant-time dependency checks, compatible React Compiler plugin resolution, and newer Oxc parser and resolver releases. Preserve ESLint filename fallbacks, decorator scope semantics, scope-aware React HOC identity, and bodyless TypeScript declarations across the optimized analysis paths.
+
+- [#1157](https://github.com/millionco/react-doctor/pull/1157) [`8fc5848`](https://github.com/millionco/react-doctor/commit/8fc58480f83895fd64d51758cccd393c3d493515) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve render-value ownership through binding-safe deterministic standard-library transforms.
+
+- [#1156](https://github.com/millionco/react-doctor/pull/1156) [`22bb155`](https://github.com/millionco/react-doctor/commit/22bb1557282fbcf47c6fa865ca7ddca050f21b8f) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize bound subscription disposers and split timer cleanup that covers both effect reruns and unmount.
+
+- [#1151](https://github.com/millionco/react-doctor/pull/1151) [`21da48f`](https://github.com/millionco/react-doctor/commit/21da48ffb694ac857b5cf6336f56923ac411cb59) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid auth-token diagnostics for product-scoped API-key record collections while preserving authentication credential findings.
+
+- [#1148](https://github.com/millionco/react-doctor/pull/1148) [`20cd922`](https://github.com/millionco/react-doctor/commit/20cd922e9a2908b20a36b9e728932975018207a1) Thanks [@aidenybai](https://github.com/aidenybai)! - Allow stateless primitive display lists to use duplicate-disambiguating index keys.
+
+- [#1150](https://github.com/millionco/react-doctor/pull/1150) [`d9676e2`](https://github.com/millionco/react-doctor/commit/d9676e2597fe01a8db537928b7e02cd82b1e3582) Thanks [@aidenybai](https://github.com/aidenybai)! - Track dynamic HTML through local aliases and helper parameters, and exclude declaration files from executable security scans.
+
+- [#1153](https://github.com/millionco/react-doctor/pull/1153) [`3afd146`](https://github.com/millionco/react-doctor/commit/3afd14670042fe8ffb85bd8cc04b15a2987eac52) Thanks [@aidenybai](https://github.com/aidenybai)! - Prove effect-hook calls resolve to React before applying effect callback semantics.
+
+- [#1161](https://github.com/millionco/react-doctor/pull/1161) [`70eff9a`](https://github.com/millionco/react-doctor/commit/70eff9a493f35eb6bdfedbe35ccadec3908ba132) Thanks [@aidenybai](https://github.com/aidenybai)! - Allow effects to notify parents about externally subscribed browser state.
+
 ## 0.7.5
 
 ### Patch Changes

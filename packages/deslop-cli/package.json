@@ -1,6 +1,6 @@
 {
   "name": "deslop-cli",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "CLI to remove AI slop from JavaScript codebases.",
   "keywords": [
     "cli",

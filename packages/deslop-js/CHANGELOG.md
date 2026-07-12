@@ -1,5 +1,11 @@
 # deslop-js
 
+## 0.7.6
+
+### Patch Changes
+
+- [#1114](https://github.com/millionco/react-doctor/pull/1114) [`76cd6be`](https://github.com/millionco/react-doctor/commit/76cd6bea69e1f453805a054e8d648abc97ef3384) Thanks [@aidenybai](https://github.com/aidenybai)! - Reduce cold full-scan CPU and allocation overhead with comment-tolerant security-rule content gates, semantic analysis only for rules that consume it, cached binding-mutation scans, analysis-local scope and reference caches, host-native component/export collection, combined state observation passes, single-pass control-flow construction, allocation-free and decorator-aware visitor-key traversal for closure-capture, effect cleanup, and React render analysis, lazy shadow-binding sets, constant-time dependency checks, compatible React Compiler plugin resolution, and newer Oxc parser and resolver releases. Preserve ESLint filename fallbacks, decorator scope semantics, scope-aware React HOC identity, and bodyless TypeScript declarations across the optimized analysis paths.
+
 ## 0.7.5
 
 ## 0.7.4

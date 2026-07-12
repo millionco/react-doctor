@@ -195,6 +195,107 @@ export const Timestamp = ({ value, locale, resolvedTimeZone }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not flag frozen deterministic Intl options", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = Object.freeze({ dateStyle: "medium", timeZone: "UTC" });
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a conditional whose branches both set timeZone", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale, useUtc }) => {
+  const options = useUtc ? { timeZone: "UTC" } : { timeZone: "America/New_York" };
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "member mutation before construction",
+      `const options = { timeZone: "UTC" };
+       options.timeZone = undefined;`,
+    ],
+    [
+      "property deletion before construction",
+      `const options = { timeZone: "UTC" };
+       delete options.timeZone;`,
+    ],
+    [
+      "mutation through a nested const alias",
+      `const baseOptions = { timeZone: "UTC" };
+       const options = baseOptions;
+       options.timeZone = undefined;`,
+    ],
+    ["an unknown trailing spread", `const options = { timeZone: "UTC", ...overrides };`],
+    [
+      "a final undefined duplicate property",
+      `const options = { timeZone: "UTC", timeZone: undefined };`,
+    ],
+  ])("flags options invalidated by %s", (_name, optionSetup) => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale, overrides }) => {
+  ${optionSetup}
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a trailing explicit timeZone after an unknown spread", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale, overrides }) => {
+  const options = { ...overrides, timeZone: "UTC" };
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags an inline timeZone overridden by an unknown spread", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale, overrides }) => (
+  <time>{new Date(value).toLocaleString(locale, { timeZone: "UTC", ...overrides })}</time>
+);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an inline statically undefined timeZone", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => (
+  <time>{new Date(value).toLocaleString(locale, { timeZone: void 0 })}</time>
+);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes a shadowed undefined locale as explicit", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value }) => {
+  const undefined = "en-US";
+  return <time>{new Date(value).toLocaleString(undefined, { timeZone: "UTC" })}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags an explicit locale WITHOUT a timeZone on a provable date", () => {
     const result = run(
       `"use client";

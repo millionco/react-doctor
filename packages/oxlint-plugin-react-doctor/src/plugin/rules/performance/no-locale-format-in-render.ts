@@ -1,4 +1,4 @@
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingJsxOpeningElement } from "../../utils/find-enclosing-jsx-opening-element.js";
@@ -8,6 +8,8 @@ import { hasClientRenderEvidence } from "../../utils/has-client-render-evidence.
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { hasSuppressHydrationWarningAttribute } from "../../utils/has-suppress-hydration-warning-attribute.js";
+import { getRangeStart } from "../../utils/get-range-start.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
@@ -15,7 +17,6 @@ import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-re
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
-import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -86,35 +87,178 @@ const receiverNameLooksDateFlavored = (expression: EsTreeNode | null | undefined
   return false;
 };
 
-const objectLiteralHasProperty = (
-  objectExpression: EsTreeNode | null | undefined,
-  propertyName: string,
-  scopes: ScopeAnalysis,
-): boolean => {
-  if (!objectExpression) return false;
-  const unwrapped = stripParenExpression(objectExpression);
-  if (isNodeOfType(unwrapped, "Identifier")) {
-    const symbol = resolveConstIdentifierAlias(unwrapped, scopes);
-    return Boolean(
-      symbol?.kind === "const" &&
-      symbol.initializer &&
-      objectLiteralHasProperty(symbol.initializer, propertyName, scopes),
-    );
-  }
-  if (!isNodeOfType(unwrapped, "ObjectExpression")) return false;
-  for (const property of unwrapped.properties ?? []) {
-    if (!isNodeOfType(property, "Property")) continue;
-    if (property.computed) continue;
-    if (isNodeOfType(property.key, "Identifier") && property.key.name === propertyName) return true;
-    if (isNodeOfType(property.key, "Literal") && property.key.value === propertyName) return true;
+const isStaticUndefined = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const expression = stripParenExpression(node);
+  return (
+    (isNodeOfType(expression, "Identifier") &&
+      expression.name === "undefined" &&
+      scopes.isGlobalReference(expression)) ||
+    (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void")
+  );
+};
+
+const isWithinNode = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
+  let current: EsTreeNode | null | undefined = node;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parent;
   }
   return false;
 };
 
-const hasExplicitLocaleArgument = (argument: EsTreeNode | null | undefined): boolean => {
+const isPotentialMutationReference = (identifier: EsTreeNode, usageNode: EsTreeNode): boolean => {
+  let expression: EsTreeNode = identifier;
+  let parent = expression.parent;
+  while (parent && isNodeOfType(parent, "MemberExpression") && parent.object === expression) {
+    expression = parent;
+    parent = expression.parent;
+  }
+  if (!parent || isWithinNode(identifier, usageNode)) return false;
+  if (isNodeOfType(parent, "AssignmentExpression") && parent.left === expression) return true;
+  if (isNodeOfType(parent, "UpdateExpression") && parent.argument === expression) return true;
+  if (
+    isNodeOfType(parent, "UnaryExpression") &&
+    parent.operator === "delete" &&
+    parent.argument === expression
+  ) {
+    return true;
+  }
+  if (isNodeOfType(parent, "CallExpression")) {
+    return (
+      parent.callee === expression || parent.arguments?.some((argument) => argument === expression)
+    );
+  }
+  if (isNodeOfType(parent, "NewExpression")) {
+    return parent.arguments?.some((argument) => argument === expression);
+  }
+  return false;
+};
+
+const wasMutatedBeforeUsage = (symbol: SymbolDescriptor, usageNode: EsTreeNode): boolean => {
+  const usageStart = getRangeStart(usageNode);
+  if (usageStart === null) return true;
+  return symbol.references.some((reference) => {
+    const referenceStart = getRangeStart(reference.identifier);
+    return (
+      referenceStart !== null &&
+      referenceStart < usageStart &&
+      isPotentialMutationReference(reference.identifier, usageNode)
+    );
+  });
+};
+
+const getObjectPropertyProof = (
+  objectExpression: EsTreeNode | null | undefined,
+  propertyName: string,
+  scopes: ScopeAnalysis,
+  usageNode: EsTreeNode,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean | null => {
+  if (!objectExpression) return false;
+  const unwrapped = stripParenExpression(objectExpression);
+  if (isNodeOfType(unwrapped, "Identifier")) {
+    const symbol = scopes.symbolFor(unwrapped);
+    if (
+      symbol?.kind !== "const" ||
+      !symbol.initializer ||
+      visitedSymbolIds.has(symbol.id) ||
+      wasMutatedBeforeUsage(symbol, usageNode)
+    ) {
+      return null;
+    }
+    visitedSymbolIds.add(symbol.id);
+    return getObjectPropertyProof(
+      symbol.initializer,
+      propertyName,
+      scopes,
+      usageNode,
+      visitedSymbolIds,
+    );
+  }
+  if (isNodeOfType(unwrapped, "ConditionalExpression")) {
+    const consequent = getObjectPropertyProof(
+      unwrapped.consequent,
+      propertyName,
+      scopes,
+      usageNode,
+      new Set(visitedSymbolIds),
+    );
+    const alternate = getObjectPropertyProof(
+      unwrapped.alternate,
+      propertyName,
+      scopes,
+      usageNode,
+      new Set(visitedSymbolIds),
+    );
+    return consequent === alternate ? consequent : null;
+  }
+  if (
+    isNodeOfType(unwrapped, "CallExpression") &&
+    isNodeOfType(unwrapped.callee, "MemberExpression") &&
+    !unwrapped.callee.computed &&
+    isNodeOfType(unwrapped.callee.object, "Identifier") &&
+    unwrapped.callee.object.name === "Object" &&
+    scopes.isGlobalReference(unwrapped.callee.object) &&
+    isNodeOfType(unwrapped.callee.property, "Identifier") &&
+    unwrapped.callee.property.name === "freeze"
+  ) {
+    return getObjectPropertyProof(
+      unwrapped.arguments?.[0],
+      propertyName,
+      scopes,
+      usageNode,
+      visitedSymbolIds,
+    );
+  }
+  if (!isNodeOfType(unwrapped, "ObjectExpression")) return null;
+  const properties = unwrapped.properties ?? [];
+  for (let propertyIndex = properties.length - 1; propertyIndex >= 0; propertyIndex -= 1) {
+    const property = properties[propertyIndex];
+    if (!property) continue;
+    if (isNodeOfType(property, "SpreadElement")) {
+      const spreadProof = getObjectPropertyProof(
+        property.argument,
+        propertyName,
+        scopes,
+        usageNode,
+        new Set(visitedSymbolIds),
+      );
+      if (spreadProof === true) return true;
+      if (spreadProof === null) return null;
+      continue;
+    }
+    if (
+      !isNodeOfType(property, "Property") ||
+      getStaticPropertyKeyName(property) !== propertyName
+    ) {
+      continue;
+    }
+    return !isStaticUndefined(property.value, scopes);
+  }
+  return false;
+};
+
+const objectHasExplicitProperty = (
+  objectExpression: EsTreeNode | null | undefined,
+  propertyName: string,
+  scopes: ScopeAnalysis,
+  usageNode: EsTreeNode,
+): boolean => getObjectPropertyProof(objectExpression, propertyName, scopes, usageNode) === true;
+
+const hasExplicitLocaleArgument = (
+  argument: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
+): boolean => {
   if (!argument) return false;
   const unwrapped = stripParenExpression(argument);
-  if (isNodeOfType(unwrapped, "Identifier") && unwrapped.name === "undefined") return false;
+  if (
+    (isNodeOfType(unwrapped, "Identifier") &&
+      unwrapped.name === "undefined" &&
+      scopes.isGlobalReference(unwrapped)) ||
+    (isNodeOfType(unwrapped, "UnaryExpression") && unwrapped.operator === "void")
+  ) {
+    return false;
+  }
   return true;
 };
 
@@ -129,9 +273,9 @@ const isDeterministicLocaleMethodCall = (
   scopes: ScopeAnalysis,
 ): boolean => {
   const localeArgument = call.arguments?.[0];
-  if (!hasExplicitLocaleArgument(localeArgument)) return false;
+  if (!hasExplicitLocaleArgument(localeArgument, scopes)) return false;
   const optionsArgument = call.arguments?.[1];
-  if (objectLiteralHasProperty(optionsArgument, "timeZone", scopes)) return true;
+  if (objectHasExplicitProperty(optionsArgument, "timeZone", scopes, call)) return true;
   // Explicit locale, no timeZone: still environment-dependent when the
   // receiver is a date. An unknown receiver could be a number (locale is
   // its only environment input), so stay quiet there.
@@ -184,9 +328,9 @@ const isDeterministicIntlConstruction = (
   ) {
     return false;
   }
-  if (!hasExplicitLocaleArgument(construction.arguments?.[0])) return false;
+  if (!hasExplicitLocaleArgument(construction.arguments?.[0], scopes)) return false;
   if (formatterName !== "DateTimeFormat") return true;
-  return objectLiteralHasProperty(construction.arguments?.[1], "timeZone", scopes);
+  return objectHasExplicitProperty(construction.arguments?.[1], "timeZone", scopes, construction);
 };
 
 // `Intl.DateTimeFormat().format(date)` — direct chain, or through a

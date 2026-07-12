@@ -750,3 +750,5 @@ export const SUPPLY_CHAIN_ALERT_NOTE_MAX_CHARS = 160;
 // Next rule family — so a low Socket score would be redundant noise rather
 // than an actionable, distinct supply-chain signal.
 export const SUPPLY_CHAIN_IGNORED_PACKAGES: ReadonlySet<string> = new Set(["next"]);
+
+export const LINE_FEED_UTF8_BYTE = 10;

@@ -475,6 +475,10 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     nonJsxFileCount:
       input.result?.analyzedFiles?.filter((filePath) => !JSX_FILE_PATTERN.test(filePath)).length ??
       null,
+    multilineDiagnosticCount:
+      input.result?.diagnostics.filter(
+        (diagnostic) => (diagnostic.endLine ?? diagnostic.line) > diagnostic.line,
+      ).length ?? null,
   });
 };
 

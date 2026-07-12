@@ -144,7 +144,7 @@ const BLOCKING_SUMMARY: Record<BlockingLevel, string> = {
 const SCOPE_SUMMARY: Record<ScopeValue, string> = {
   full: "Scan the whole project on every run",
   files: "Report every issue in changed files",
-  lines: "Report issues on changed lines",
+  lines: "Report issues whose source spans touch changed lines",
   changed: "Report only the issues a change introduces",
 };
 

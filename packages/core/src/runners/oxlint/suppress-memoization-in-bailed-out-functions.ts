@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import ts from "typescript";
 import type { Diagnostic } from "../../types/index.js";
+import { lineOfUtf8Offset } from "../../utils/line-of-utf8-offset.js";
 
 const MANUAL_MEMOIZATION_PLUGIN = "react-doctor";
 const MANUAL_MEMOIZATION_RULE = "react-compiler-no-manual-memoization";
@@ -49,17 +50,6 @@ const findOutermostEnclosingFunctionRange = (
   };
   visit(sourceFile);
   return foundRange;
-};
-
-const NEWLINE_BYTE = 10;
-
-const lineOfUtf8Offset = (sourceBuffer: Buffer, utf8Offset: number): number => {
-  let lineNumber = 1;
-  const scanEnd = Math.min(utf8Offset, sourceBuffer.length);
-  for (let byteIndex = 0; byteIndex < scanEnd; byteIndex++) {
-    if (sourceBuffer[byteIndex] === NEWLINE_BYTE) lineNumber++;
-  }
-  return lineNumber;
 };
 
 /**

@@ -110,6 +110,22 @@ describe("buildRunEventAttributes", () => {
     }
   });
 
+  it("records how many surfaced diagnostics span multiple lines", () => {
+    const attributes = buildRunEventAttributes(
+      baseInput({
+        result: buildResult({
+          diagnostics: [
+            buildDiagnostic({ line: 2, endLine: 5 }),
+            buildDiagnostic({ line: 8, endLine: 8 }),
+            buildDiagnostic({ line: 10 }),
+          ],
+        }),
+      }),
+    );
+
+    expect(attributes["scan.multilineDiagnosticCount"]).toBe(1);
+  });
+
   it("records whether the dead-code pass overlapped lint, and drops it on the failure path", () => {
     expect(
       buildRunEventAttributes(baseInput({ result: buildResult(), deadCodeOverlapped: true }))[

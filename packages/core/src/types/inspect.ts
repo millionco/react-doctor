@@ -156,8 +156,8 @@ export interface InspectOptions {
    */
   baseline?: { ref: string };
   /**
-   * Restrict reported diagnostics to those landing on the lines the change
-   * touched (`--scope lines`). Each entry is one changed file with the
+   * Restrict reported diagnostics to those whose source spans intersect the
+   * lines the change touched (`--scope lines`). Each entry is one changed file with the
    * inclusive 1-based `[start, end]` line ranges the diff added/modified,
    * keyed by a path relative to the scanned directory (forward slashes).
    * Applied at the same post-lint seam as `baseline` — the score is still

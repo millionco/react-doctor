@@ -171,7 +171,7 @@ const program = new Command()
   )
   .option(
     "--scope <value>",
-    "how much supported JS/TS source to scan/report: full (default), files, changed (only new issues vs base), or lines (only changed lines)",
+    "how much supported JS/TS source to scan/report: full (default), files, changed (only new issues vs base), or lines (issues whose source spans touch changed lines)",
   )
   .option("--base <ref>", "base git ref for files/changed/lines scope (auto-detected when omitted)")
   .addOption(

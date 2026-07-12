@@ -47,7 +47,7 @@ export const jsxFragments = defineRule({
         // guard.
         if (!node.closingElement) return;
         const openingElement = node.openingElement;
-        if (!isJsxFragmentElement(openingElement as EsTreeNode)) return;
+        if (!isJsxFragmentElement(openingElement as EsTreeNode, context.scopes)) return;
         if (openingElement.attributes.length > 0) return;
         context.report({ node: openingElement, message: SYNTAX_MESSAGE });
       },

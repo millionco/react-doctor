@@ -7,7 +7,9 @@ export const resolveConstIdentifierAlias = (
   identifier: EsTreeNode,
   scopes: ScopeAnalysis,
 ): SymbolDescriptor | null => {
-  if (!isNodeOfType(identifier, "Identifier")) return null;
+  if (!isNodeOfType(identifier, "Identifier") && !isNodeOfType(identifier, "JSXIdentifier")) {
+    return null;
+  }
   const visitedSymbolIds = new Set<number>();
   let symbol = scopes.symbolFor(identifier);
   while (symbol?.kind === "const") {

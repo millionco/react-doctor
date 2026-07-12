@@ -132,7 +132,7 @@ export const jsxNoUselessFragment = defineRule({
     return {
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         const openingElement = node.openingElement;
-        if (!isJsxFragmentElement(openingElement as EsTreeNode)) return;
+        if (!isJsxFragmentElement(openingElement as EsTreeNode, context.scopes)) return;
         if (hasJsxKeyAttribute(openingElement)) return;
         const didReport = checkChildren(node, openingElement, node.children);
         if (didReport) return;

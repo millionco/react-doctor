@@ -123,4 +123,59 @@ describe("architecture/no-prop-types component provenance", () => {
       0,
     );
   });
+
+  it("reports components wrapped by proven React memo and forwardRef bindings", () => {
+    expectDiagnosticCount(
+      `import ReactDefault, { forwardRef as withRef, memo as withMemo } from "react";
+       const ReactAlias = ReactDefault;
+       const Panel = withMemo(withRef((props: { value: string }, ref) => <div ref={ref}>{props.value}</div>));
+       Panel.propTypes = { value: () => true };
+       const DialogRender = (props: { value: string }) => <div>{props.value}</div>;
+       const Dialog = ReactAlias.memo(DialogRender);
+       Dialog.propTypes = { value: () => true };
+       function renderSheet(props: { value: string }) { return <div>{props.value}</div>; }
+       const Sheet = withMemo(renderSheet);
+       Sheet.propTypes = { value: () => true };`,
+      3,
+    );
+  });
+
+  it("keeps same-named userland wrappers and non-rendering React callbacks quiet", () => {
+    expectDiagnosticCount(
+      `import { memo as reactMemo } from "react";
+       const memo = (callback: () => unknown) => callback;
+       const forwardRef = memo;
+       const Schema = memo(forwardRef(() => ({ value: true })));
+       Schema.propTypes = { value: () => true };
+       const Protocol = reactMemo(() => ({ value: true }));
+       Protocol.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
+  it("reports an exact component function returned by proven React useMemo", () => {
+    expectDiagnosticCount(
+      `import { useMemo as useStableValue } from "react";
+       const Outer = () => {
+         const Panel = useStableValue(() => ({ value }: { value: string }) => <div>{value}</div>, []);
+         Panel.propTypes = { value: () => true };
+         return <Panel value="ok" />;
+       };`,
+      1,
+    );
+  });
+
+  it("keeps shadowed useMemo and non-component memoized values quiet", () => {
+    expectDiagnosticCount(
+      `const useMemo = (callback: () => unknown) => callback();
+       const Schema = useMemo(() => () => ({ value: true }), []);
+       Schema.propTypes = { value: () => true };
+       import { useMemo as useStableValue } from "react";
+       const Protocol = useStableValue(() => ({ value: true }), []);
+       Protocol.propTypes = { value: () => true };
+       const Ambiguous = useStableValue(() => Math.random() > 0.5 ? (() => <div />) : { value: true }, []);
+       Ambiguous.propTypes = { value: () => true };`,
+      0,
+    );
+  });
 });

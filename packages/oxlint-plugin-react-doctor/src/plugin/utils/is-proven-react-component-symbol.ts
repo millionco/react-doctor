@@ -1,10 +1,80 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
+import type { EsTreeNode } from "./es-tree-node.js";
 import { functionContainsReactRenderOutput } from "./function-contains-react-render-output.js";
 import { isComponentDeclaration } from "./is-component-declaration.js";
+import { isInlineFunctionExpression } from "./is-inline-function-expression.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isProvenReactClassComponent } from "./is-proven-react-class-component.js";
+import { isReactApiCall } from "./is-react-api-call.js";
+import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { isUppercaseName } from "./is-uppercase-name.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+
+const REACT_COMPONENT_HOC_NAMES: ReadonlySet<string> = new Set(["memo", "forwardRef"]);
+
+const isProvenReactComponentExpression = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isInlineFunctionExpression(candidate)) {
+    return functionContainsReactRenderOutput(candidate, scopes);
+  }
+  if (isNodeOfType(candidate, "ClassExpression")) {
+    return isProvenReactClassComponent(candidate, scopes);
+  }
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = resolveConstIdentifierAlias(candidate, scopes);
+    if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+    visitedSymbolIds.add(symbol.id);
+    if (isNodeOfType(symbol.declarationNode, "FunctionDeclaration")) {
+      return functionContainsReactRenderOutput(symbol.declarationNode, scopes);
+    }
+    if (
+      isNodeOfType(symbol.declarationNode, "ClassDeclaration") ||
+      isNodeOfType(symbol.declarationNode, "ClassExpression")
+    ) {
+      return isProvenReactClassComponent(symbol.declarationNode, scopes);
+    }
+    return Boolean(
+      symbol.initializer &&
+      isProvenReactComponentExpression(symbol.initializer, scopes, visitedSymbolIds),
+    );
+  }
+  if (!isNodeOfType(candidate, "CallExpression")) return false;
+  if (
+    isReactApiCall(candidate, REACT_COMPONENT_HOC_NAMES, scopes, {
+      resolveNamedAliases: true,
+    })
+  ) {
+    const wrappedComponent = candidate.arguments[0];
+    return Boolean(
+      wrappedComponent &&
+      !isNodeOfType(wrappedComponent, "SpreadElement") &&
+      isProvenReactComponentExpression(wrappedComponent, scopes, visitedSymbolIds),
+    );
+  }
+  if (!isReactApiCall(candidate, "useMemo", scopes, { resolveNamedAliases: true })) return false;
+  const factory = candidate.arguments[0];
+  if (!factory || isNodeOfType(factory, "SpreadElement")) return false;
+  const unwrappedFactory = stripParenExpression(factory);
+  if (!isInlineFunctionExpression(unwrappedFactory)) return false;
+  if (!isNodeOfType(unwrappedFactory.body, "BlockStatement")) {
+    return isProvenReactComponentExpression(unwrappedFactory.body, scopes, visitedSymbolIds);
+  }
+  const returnedExpressions: EsTreeNode[] = [];
+  for (const statement of unwrappedFactory.body.body) {
+    if (isNodeOfType(statement, "ReturnStatement") && statement.argument) {
+      returnedExpressions.push(statement.argument);
+    }
+  }
+  return Boolean(
+    returnedExpressions.length === 1 &&
+    returnedExpressions[0] &&
+    isProvenReactComponentExpression(returnedExpressions[0], scopes, visitedSymbolIds),
+  );
+};
 
 export const isProvenReactComponentSymbol = (
   symbol: SymbolDescriptor,
@@ -26,14 +96,13 @@ export const isProvenReactComponentSymbol = (
       ? stripParenExpression(candidateSymbol.initializer)
       : null;
     if (
+      candidateSymbol.kind === "const" &&
       isNodeOfType(candidateSymbol.declarationNode, "VariableDeclarator") &&
       isNodeOfType(candidateSymbol.declarationNode.id, "Identifier") &&
       isUppercaseName(candidateSymbol.declarationNode.id.name) &&
-      initializer &&
-      (isNodeOfType(initializer, "ArrowFunctionExpression") ||
-        isNodeOfType(initializer, "FunctionExpression"))
+      initializer
     ) {
-      if (functionContainsReactRenderOutput(initializer, scopes)) return true;
+      if (isProvenReactComponentExpression(initializer, scopes)) return true;
       continue;
     }
     if (

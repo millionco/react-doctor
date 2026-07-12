@@ -251,6 +251,41 @@ export const Timestamp = ({ value, locale, useUtc }) => {
       `const options = { timeZone: "UTC" };
        inspect(options);`,
     ],
+    [
+      "an array destructuring write",
+      `const options = { timeZone: "UTC" };
+       [options.timeZone] = [undefined];`,
+    ],
+    [
+      "an object destructuring write",
+      `const options = { timeZone: "UTC" };
+       ({ timeZone: options.timeZone } = { timeZone: undefined });`,
+    ],
+    [
+      "a destructuring for-of write",
+      `const options = { timeZone: "UTC" };
+       for ([options.timeZone] of [[undefined]]) {}`,
+    ],
+    [
+      "a mutation through a secondary const alias",
+      `const options = { timeZone: "UTC" };
+       const alias = options;
+       delete alias.timeZone;`,
+    ],
+    [
+      "a mutation through an assigned alias",
+      `const options = { timeZone: "UTC" };
+       let alias;
+       alias = options;
+       alias.timeZone = undefined;`,
+    ],
+    [
+      "storage in a mutable member alias",
+      `const options = { timeZone: "UTC" };
+       const holder = {};
+       holder.options = options;
+       delete holder.options.timeZone;`,
+    ],
     ["an unknown trailing spread", `const options = { timeZone: "UTC", ...overrides };`],
     [
       "a final undefined duplicate property",
@@ -289,6 +324,21 @@ export const Timestamp = ({ value, locale }) => {
   consume(options.timeZone);
   options.timeZone.toLowerCase();
   options.hasOwnProperty("timeZone");
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat a read-only secondary alias as mutation", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  const alias = options;
+  alias.timeZone.toLowerCase();
+  alias.hasOwnProperty("timeZone");
   const formatter = new Intl.DateTimeFormat(locale, options);
   return <time>{formatter.format(new Date(value))}</time>;
 };`,

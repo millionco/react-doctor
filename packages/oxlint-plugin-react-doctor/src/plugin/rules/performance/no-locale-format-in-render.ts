@@ -60,6 +60,11 @@ interface ObjectPropertyProof {
   readonly status: "absent" | "present" | "undefined" | "unknown";
 }
 
+interface SimpleAlias {
+  readonly symbol: SymbolDescriptor;
+  readonly readNode: EsTreeNode;
+}
+
 const ABSENT_PROPERTY_PROOF: ObjectPropertyProof = { status: "absent" };
 const PRESENT_PROPERTY_PROOF: ObjectPropertyProof = { status: "present" };
 const UNDEFINED_PROPERTY_PROOF: ObjectPropertyProof = { status: "undefined" };
@@ -121,6 +126,33 @@ const isStaticUndefined = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => 
   );
 };
 
+const isNestedAssignmentTarget = (expression: EsTreeNode): boolean => {
+  let target = expression;
+  let parent = target.parent;
+  while (parent) {
+    if (isNodeOfType(parent, "AssignmentExpression")) return parent.left === target;
+    if (isNodeOfType(parent, "ForInStatement") || isNodeOfType(parent, "ForOfStatement")) {
+      return parent.left === target;
+    }
+    if (isNodeOfType(parent, "AssignmentPattern")) {
+      if (parent.left !== target) return false;
+    } else if (isNodeOfType(parent, "RestElement")) {
+      if (parent.argument !== target) return false;
+    } else if (isNodeOfType(parent, "ArrayPattern")) {
+      if (!parent.elements?.some((element) => element === target)) return false;
+    } else if (isNodeOfType(parent, "Property")) {
+      if (parent.value !== target || !isNodeOfType(parent.parent, "ObjectPattern")) return false;
+    } else if (isNodeOfType(parent, "ObjectPattern")) {
+      if (!parent.properties?.some((property) => property === target)) return false;
+    } else {
+      return false;
+    }
+    target = parent;
+    parent = target.parent;
+  }
+  return false;
+};
+
 const isPotentialMutationReference = (identifier: EsTreeNode, readNode: EsTreeNode): boolean => {
   let expression: EsTreeNode = identifier;
   let parent = expression.parent;
@@ -150,6 +182,7 @@ const isPotentialMutationReference = (identifier: EsTreeNode, readNode: EsTreeNo
     }
   }
   if (!parent || isAstDescendant(identifier, readNode)) return false;
+  if (isNestedAssignmentTarget(expression)) return true;
   if (isNodeOfType(parent, "AssignmentExpression") && parent.left === expression) return true;
   if (isNodeOfType(parent, "UpdateExpression") && parent.argument === expression) return true;
   if (
@@ -174,7 +207,36 @@ const isPotentialMutationReference = (identifier: EsTreeNode, readNode: EsTreeNo
   if (isNodeOfType(parent, "NewExpression")) {
     return memberDepth === 0 && parent.arguments?.some((argument) => argument === rootExpression);
   }
+  if (isNodeOfType(parent, "VariableDeclarator") && parent.init === rootExpression) {
+    return !isNodeOfType(parent.id, "Identifier");
+  }
+  if (isNodeOfType(parent, "AssignmentExpression") && parent.right === rootExpression) {
+    return true;
+  }
   return false;
+};
+
+const getSimpleAlias = (identifier: EsTreeNode, scopes: ScopeAnalysis): SimpleAlias | null => {
+  let expression = identifier;
+  let parent = expression.parent;
+  while (
+    parent &&
+    TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type) &&
+    "expression" in parent &&
+    parent.expression === expression
+  ) {
+    expression = parent;
+    parent = expression.parent;
+  }
+  if (
+    !isNodeOfType(parent, "VariableDeclarator") ||
+    parent.init !== expression ||
+    !isNodeOfType(parent.id, "Identifier")
+  ) {
+    return null;
+  }
+  const symbol = scopes.symbolFor(parent.id);
+  return symbol ? { symbol, readNode: parent.id } : null;
 };
 
 const getDirectCallForExpression = (expression: EsTreeNode): EsTreeNode | null => {
@@ -254,7 +316,10 @@ const wasMutatedBeforeUsage = (
   usageNode: EsTreeNode,
   readNode: EsTreeNode,
   scopes: ScopeAnalysis,
+  visitedMutationSymbolIds: Set<number> = new Set(),
 ): boolean => {
+  if (visitedMutationSymbolIds.has(symbol.id)) return false;
+  visitedMutationSymbolIds.add(symbol.id);
   const readStart = getRangeStart(readNode);
   let readExpression = readNode;
   let readParent = readExpression.parent;
@@ -277,6 +342,16 @@ const wasMutatedBeforeUsage = (
   const usageFunction = findEnclosingFunction(usageNode);
   return symbol.references.some((reference) => {
     const referenceStart = getRangeStart(reference.identifier);
+    const simpleAlias = getSimpleAlias(reference.identifier, scopes);
+    if (simpleAlias) {
+      return wasMutatedBeforeUsage(
+        simpleAlias.symbol,
+        usageNode,
+        simpleAlias.readNode,
+        scopes,
+        new Set(visitedMutationSymbolIds),
+      );
+    }
     if (!isPotentialMutationReference(reference.identifier, readNode)) return false;
     if (referenceStart === null) return true;
     const mutationFunction = findEnclosingFunction(reference.identifier);

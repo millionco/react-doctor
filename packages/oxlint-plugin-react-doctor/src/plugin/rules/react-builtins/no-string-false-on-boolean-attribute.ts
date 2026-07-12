@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 // True HTML boolean attributes: presence means "on", absence means "off".
 // Deliberately EXCLUDES enumerated attributes that legitimately take the
@@ -42,12 +43,13 @@ export const noStringFalseOnBooleanAttribute = defineRule({
       // ASCII letter (a-z). Custom components start uppercase and own their
       // prop semantics (`<Foo disabled="false">` may take a real string).
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-      const firstCharacter = node.name.name.charCodeAt(0);
+      const elementName = resolveJsxElementType(node);
+      const firstCharacter = elementName.charCodeAt(0);
       if (firstCharacter < 97 || firstCharacter > 122) return;
       // Custom elements (hyphenated tag names) own their attribute
       // semantics — many web components read `checked="false"` as a real
       // boolean. Matches `no-unknown-property`'s custom-element skip.
-      if (node.name.name.includes("-")) return;
+      if (elementName.includes("-")) return;
 
       for (const attribute of node.attributes) {
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;

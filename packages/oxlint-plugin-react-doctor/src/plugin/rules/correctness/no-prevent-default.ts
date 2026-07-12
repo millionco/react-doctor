@@ -14,6 +14,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 // HACK: <button> is intentionally omitted. <button type="submit"> (the
 // HTML default inside a form) has a real default action, so calling
@@ -301,7 +302,7 @@ export const noPreventDefault = defineRule({
       : FORM_MESSAGE_GENERIC;
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        const elementName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;
+        const elementName = resolveJsxElementType(node);
         if (!elementName) return;
 
         const targetEventProps = PREVENT_DEFAULT_ELEMENTS.get(elementName);

@@ -5,6 +5,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const MESSAGE =
   "Your styles don't render because you passed the `style` prop a string instead of an object.";
@@ -125,11 +126,6 @@ const isInvalidStyleExpression = (expression: EsTreeNode): boolean => {
   return false;
 };
 
-const getJsxOpeningElementName = (node: EsTreeNodeOfType<"JSXOpeningElement">): string | null => {
-  if (isNodeOfType(node.name, "JSXIdentifier")) return node.name.name;
-  return null;
-};
-
 // Port of `oxc_linter::rules::react::style_prop_object`. Reports `style`
 // prop values that are clearly not objects: `style="..."` (string),
 // `style={true}` / `style={42}` / `style={"x"}` etc. Also flags
@@ -148,7 +144,8 @@ export const stylePropObject = defineRule({
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        const elementName = getJsxOpeningElementName(node);
+        if (!isNodeOfType(node.name, "JSXIdentifier")) return;
+        const elementName = resolveJsxElementType(node);
         if (elementName && allowSet.has(elementName)) return;
         // Custom components define their own `style` prop type — many
         // libraries (Expo's `<StatusBar style="auto"/>`, React Native

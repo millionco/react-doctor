@@ -8,6 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall, type ReactApiCallOptions } from "../../utils/is-react-api-call.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const MESSAGE =
   "The `indeterminate` HTML attribute does not set a checkbox's visual state. Assign the `HTMLInputElement.indeterminate` DOM property instead.";
@@ -179,7 +180,7 @@ export const noIndeterminateAttribute = defineRule({
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "input") return;
+        if (resolveJsxElementType(node) !== "input") return;
         let typeAttribute: EsTreeNodeOfType<"JSXAttribute"> | null = null;
         let typeAttributeIndex: number | null = null;
         let indeterminateAttribute: EsTreeNodeOfType<"JSXAttribute"> | null = null;

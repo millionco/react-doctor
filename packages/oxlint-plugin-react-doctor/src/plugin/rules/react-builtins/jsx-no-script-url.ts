@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const MESSAGE = "A `javascript:` URL is an XSS hole that runs injected input as code.";
 
@@ -26,11 +27,6 @@ const resolveSettings = (
   if (typeof reactDoctor !== "object" || reactDoctor === null) return {};
   const ruleSettings = (reactDoctor as { jsxNoScriptUrl?: JsxNoScriptUrlSettings }).jsxNoScriptUrl;
   return ruleSettings ?? {};
-};
-
-const getElementName = (node: EsTreeNodeOfType<"JSXOpeningElement">): string | null => {
-  if (isNodeOfType(node.name, "JSXIdentifier")) return node.name.name;
-  return null;
 };
 
 const isLinkPropForElement = (
@@ -64,7 +60,8 @@ export const jsxNoScriptUrl = defineRule({
     const options = resolveSettings(context.settings);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        const elementName = getElementName(node);
+        if (!isNodeOfType(node.name, "JSXIdentifier")) return;
+        const elementName = resolveJsxElementType(node);
         if (!elementName) return;
         for (const attribute of node.attributes) {
           if (!isNodeOfType(attribute, "JSXAttribute")) continue;

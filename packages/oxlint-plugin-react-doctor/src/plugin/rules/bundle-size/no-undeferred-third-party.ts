@@ -5,6 +5,7 @@ import { hasJsxAttribute } from "../../utils/has-jsx-attribute.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 // Scheme-relative or absolute URLs load from another origin; anything
 // else (`/analytics.js`, `./setup.js`) is served by the app itself and is
@@ -19,7 +20,7 @@ export const noUndeferredThirdParty = defineRule({
   recommendation: 'Use `next/script` with `strategy="lazyOnload"`, or add the `defer` attribute.',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "script") return;
+      if (resolveJsxElementType(node) !== "script") return;
       const attributes = node.attributes ?? [];
       const srcAttribute = findJsxAttribute(attributes, "src");
       if (!srcAttribute) return;

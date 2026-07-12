@@ -9,6 +9,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import type { Rule } from "../../utils/rule.js";
 import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const ALLOWED_SANDBOX_VALUES = new Set([
   "downloads-without-user-activation",
@@ -87,7 +88,7 @@ export const iframeMissingSandbox = defineRule({
   matchByOccurrence: true,
   create: skipNonProductionFiles((context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "iframe") return;
+      if (resolveJsxElementType(node) !== "iframe") return;
       const sandboxAttr = hasJsxPropIgnoreCase(node.attributes, "sandbox");
       if (!sandboxAttr) {
         // A fully-opaque spread (`<iframe {...props} />`) can forward

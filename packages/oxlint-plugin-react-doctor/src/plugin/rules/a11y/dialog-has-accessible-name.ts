@@ -4,6 +4,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
@@ -29,7 +30,7 @@ export const dialogHasAccessibleName = defineRule({
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-        const tagName = node.name.name;
+        const tagName = resolveJsxElementType(node);
         // Custom components (`<Modal>`) own their internal DOM — we can't verify
         // whether they wire up a name, so only intrinsic lowercase elements.
         if (tagName[0] !== tagName[0]?.toLowerCase()) return;

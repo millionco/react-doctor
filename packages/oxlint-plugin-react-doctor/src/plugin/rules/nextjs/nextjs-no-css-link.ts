@@ -4,6 +4,7 @@ import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 export const nextjsNoCssLink = defineRule({
   id: "nextjs-no-css-link",
@@ -15,7 +16,7 @@ export const nextjsNoCssLink = defineRule({
     "Import CSS directly or use CSS Modules so Next.js can bundle, order, and optimize the stylesheet.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "link") return;
+      if (resolveJsxElementType(node) !== "link") return;
       const attributes = node.attributes ?? [];
 
       const relAttribute = findJsxAttribute(attributes, "rel");

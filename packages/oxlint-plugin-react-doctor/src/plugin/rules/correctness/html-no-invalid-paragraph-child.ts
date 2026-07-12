@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 // Lifted verbatim from `preact/debug/src/debug.js`'s
 // `ILLEGAL_PARAGRAPH_CHILD_ELEMENTS` regex. These are the block-level
@@ -48,8 +49,7 @@ const buildMessage = (childTagName: string): string =>
 const isParagraphElement = (candidate: EsTreeNode): boolean => {
   if (!isNodeOfType(candidate, "JSXElement")) return false;
   const opening = candidate.openingElement;
-  if (!isNodeOfType(opening.name, "JSXIdentifier")) return false;
-  return opening.name.name === "p";
+  return resolveJsxElementType(opening) === "p";
 };
 
 // `node.parent` of a JSXOpeningElement is the JSXElement that owns it
@@ -115,8 +115,7 @@ export const htmlNoInvalidParagraphChild = defineRule({
   recommendation: "Swap the `<p>` for a `<div>`, or move the child outside the paragraph.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-      const childTagName = node.name.name;
+      const childTagName = resolveJsxElementType(node);
       if (!BLOCK_LEVEL_ELEMENTS.has(childTagName)) return;
       const enclosingParagraph = findEnclosingParagraph(node);
       if (!enclosingParagraph) return;

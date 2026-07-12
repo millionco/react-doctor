@@ -110,13 +110,8 @@ export const anchorIsValid = defineRule({
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isTestlikeFile) return;
-        if (
-          !fileHasJsxA11ySettings &&
-          (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a")
-        ) {
-          return;
-        }
         const tag = getElementType(node, context.settings);
+        if (!fileHasJsxA11ySettings && tag !== "a") return;
         if (tag !== "a") return;
         // First-found custom href alternative, falling back to "href".
         let hrefAttribute: ReturnType<typeof hasJsxPropIgnoreCase> | undefined;

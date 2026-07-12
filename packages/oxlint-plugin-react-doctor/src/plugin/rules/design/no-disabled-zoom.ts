@@ -3,6 +3,7 @@ import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 export const noDisabledZoom = defineRule({
   id: "no-disabled-zoom",
@@ -14,7 +15,7 @@ export const noDisabledZoom = defineRule({
     "Remove `user-scalable=no` and `maximum-scale` from the viewport meta tag. If the layout breaks at 200% zoom, fix the layout instead.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "meta") return;
+      if (resolveJsxElementType(node) !== "meta") return;
 
       const nameAttr = findJsxAttribute(node.attributes ?? [], "name");
       if (!nameAttr?.value) return;

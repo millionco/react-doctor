@@ -6,6 +6,7 @@ import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const getAttributeStringValue = (attribute: EsTreeNode | undefined): string | null => {
   if (!attribute || !isNodeOfType(attribute, "JSXAttribute") || !attribute.value) return null;
@@ -34,7 +35,7 @@ export const tanstackStartNoAnchorElement = defineRule({
     if (!isInProjectDirectory(context, "routes")) return {};
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a") return;
+        if (resolveJsxElementType(node) !== "a") return;
 
         const attributes = node.attributes ?? [];
         const hrefAttribute = findJsxAttribute(attributes, "href");

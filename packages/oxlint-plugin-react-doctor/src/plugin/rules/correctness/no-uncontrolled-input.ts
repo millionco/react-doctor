@@ -9,6 +9,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const UNCONTROLLED_INPUT_TAGS = new Set(["input", "textarea", "select"]);
 
@@ -112,8 +113,7 @@ export const noUncontrolledInput = defineRule({
 
       walkAst(componentBody, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "JSXOpeningElement")) return;
-        if (!isNodeOfType(child.name, "JSXIdentifier")) return;
-        const tagName = child.name.name;
+        const tagName = resolveJsxElementType(child);
         if (!UNCONTROLLED_INPUT_TAGS.has(tagName)) return;
 
         const attributes = child.attributes ?? [];

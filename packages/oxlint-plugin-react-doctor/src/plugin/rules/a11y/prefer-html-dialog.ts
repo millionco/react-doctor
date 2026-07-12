@@ -10,6 +10,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const ROLE_DIALOG_VALUES = new Set(["dialog", "alertdialog"]);
 
@@ -278,7 +279,7 @@ export const preferHtmlDialog = defineRule({
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-        const tagName = node.name.name;
+        const tagName = resolveJsxElementType(node);
         // Native `<dialog>` is the destination, not the source — never flag.
         if (tagName === "dialog") return;
         // Capitalised names are user components: a custom `<Dialog>` is

@@ -11,6 +11,7 @@ import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { Rule } from "../../utils/rule.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
@@ -479,7 +480,7 @@ export const buttonHasType = defineRule({
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isTestlikeFile) return;
-        if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "button") return;
+        if (resolveJsxElementType(node) !== "button") return;
         const typeAttr = hasJsxPropIgnoreCase(node.attributes, "type");
         if (!typeAttr) {
           // A spread (`<button {...props} />`) can forward `type` at

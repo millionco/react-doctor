@@ -1,8 +1,7 @@
-import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { getJsxPropStringValue } from "./get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "./has-jsx-prop-ignore-case.js";
-import { isNodeOfType } from "./is-node-of-type.js";
+import { resolveJsxElementType } from "./resolve-jsx-element-type.js";
 
 interface JsxA11ySettings {
   components?: Readonly<Record<string, string>>;
@@ -30,23 +29,11 @@ const readJsxA11ySettings = (
   return a11ySettings;
 };
 
-const flattenJsxName = (name: EsTreeNode): string => {
-  if (isNodeOfType(name, "JSXIdentifier")) return name.name;
-  if (isNodeOfType(name, "JSXMemberExpression")) {
-    const obj = flattenJsxName(name.object);
-    return `${obj}.${name.property.name}`;
-  }
-  if (isNodeOfType(name, "JSXNamespacedName")) {
-    return `${name.namespace.name}:${name.name.name}`;
-  }
-  return "";
-};
-
 const computeElementType = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
   a11ySettings: JsxA11ySettings,
 ): string => {
-  const baseName = flattenJsxName(openingElement.name as EsTreeNode);
+  const baseName = resolveJsxElementType(openingElement);
 
   if (a11ySettings.polymorphicPropName) {
     const polymorphicAttribute = hasJsxPropIgnoreCase(

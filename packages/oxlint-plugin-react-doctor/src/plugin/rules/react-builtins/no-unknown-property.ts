@@ -13,6 +13,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { fileImportsNonReactJsxDialect } from "../../utils/non-react-jsx-dialect.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 interface NoUnknownPropertySettings {
   ignore?: ReadonlyArray<string>;
@@ -119,7 +120,7 @@ export const noUnknownProperty = defineRule({
         }
         if (fileIsNonReactJsx) return;
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-        const elementType = node.name.name;
+        const elementType = resolveJsxElementType(node);
         const firstCharacter = elementType.charCodeAt(0);
         const isLowercaseStart = firstCharacter >= 97 && firstCharacter <= 122;
         if (!isLowercaseStart || elementType === "fbt" || elementType === "fbs") return;

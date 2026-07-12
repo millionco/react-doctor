@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const MISSING_MESSAGE = "Your users can't toggle this input because `checked` has no `onChange`.";
 const EXCLUSIVE_MESSAGE =
@@ -182,7 +183,7 @@ export const checkedRequiresOnchangeOrReadonly = defineRule({
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "input") return;
+        if (resolveJsxElementType(node) !== "input") return;
         reportFromPresence(collectFromJsxAttributes(node.attributes));
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {

@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const MESSAGE =
   "Your users get no response from `onDoubleClick` in Preact core, where it never fires, so use `onDblClick` instead, which matches the DOM event name.";
@@ -33,7 +34,7 @@ export const preactPreferOndblclick = defineRule({
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-      const tagName = node.name.name;
+      const tagName = resolveJsxElementType(node);
       if (tagName.length === 0 || tagName[0] !== tagName[0].toLowerCase()) return;
       const onDoubleClickAttribute = findJsxAttribute(node.attributes, "onDoubleClick");
       if (!onDoubleClickAttribute) return;

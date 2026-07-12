@@ -3,6 +3,21 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { buttonHasType } from "./button-has-type.js";
 
 describe("react-builtins/button-has-type — regressions", () => {
+  it("treats an exact const string JSX alias as a button", () => {
+    const invalidResult = runRule(
+      buttonHasType,
+      'const ButtonTag = "button" as const; const Save = () => <ButtonTag>Save</ButtonTag>;',
+    );
+    const validResult = runRule(
+      buttonHasType,
+      'const ButtonTag = "button" as const; const Save = () => <ButtonTag type="button">Save</ButtonTag>;',
+    );
+    expect(invalidResult.parseErrors).toEqual([]);
+    expect(invalidResult.diagnostics).toHaveLength(1);
+    expect(validResult.parseErrors).toEqual([]);
+    expect(validResult.diagnostics).toEqual([]);
+  });
+
   // Bugbot review: bare `<button type />` is shorthand for
   // `type={true}` — should be flagged as invalid type, not silently
   // accepted via `if (!value) return`.

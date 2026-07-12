@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const buildMessage = (tagName: string): string =>
   `Your users get broken clicks, focus & screen readers because you can't put a \`<${tagName}>\` inside another \`<${tagName}>\`, so the browser closes the outer one early. Move the inner one out.`;
@@ -12,8 +13,7 @@ const isJsxElementWithTagName = (
 ): candidate is EsTreeNodeOfType<"JSXElement"> => {
   if (!isNodeOfType(candidate, "JSXElement")) return false;
   const opening = candidate.openingElement;
-  if (!isNodeOfType(opening.name, "JSXIdentifier")) return false;
-  return opening.name.name === tagName;
+  return resolveJsxElementType(opening) === tagName;
 };
 
 // `node.parent` of a JSXOpeningElement is the JSXElement that owns it
@@ -71,8 +71,7 @@ export const htmlNoNestedInteractive = defineRule({
     "Move the inner `<a>` or `<button>` so it's a sibling, or change the outer one to a plain `<div>` or `<span>`.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-      const tagName = node.name.name;
+      const tagName = resolveJsxElementType(node);
       if (tagName !== "a" && tagName !== "button") return;
       const enclosingElement = findEnclosingSameTag(node, tagName);
       if (!enclosingElement) return;

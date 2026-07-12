@@ -3,6 +3,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const PREFER_ONINPUT_MESSAGE =
   "Your users see no live updates because `onChange` on text inputs in Preact core only fires on blur, so use `onInput` instead. `preact/compat` handles this for you.";
@@ -15,7 +16,7 @@ const COMPAT_EXEMPT_INPUT_TYPES = new Set(["checkbox", "radio", "file"]);
 
 const isTextLikeInput = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   if (!isNodeOfType(openingElement.name, "JSXIdentifier")) return false;
-  const tagName = openingElement.name.name;
+  const tagName = resolveJsxElementType(openingElement);
   if (tagName === "textarea") return true;
   if (tagName !== "input") return false;
   const typeAttribute = findJsxAttribute(openingElement.attributes, "type");

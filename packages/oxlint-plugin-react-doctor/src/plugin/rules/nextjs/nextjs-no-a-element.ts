@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 // HACK: `undefined` doubles as "not statically knowable" (dynamic
 // expression), which callers must treat differently from a literal
@@ -30,7 +31,7 @@ export const nextjsNoAElement = defineRule({
     "`import Link from 'next/link'` for client-side navigation, prefetching, and preserved scroll position",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a") return;
+      if (resolveJsxElementType(node) !== "a") return;
 
       const attributes = node.attributes ?? [];
 

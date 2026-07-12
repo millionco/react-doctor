@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import { TRANSPARENT_EXPRESSION_WRAPPER_TYPES } from "../../utils/strip-paren-expression.js";
 
 const TABLE_ELEMENTS = new Set(["table", "thead", "tbody", "tfoot", "tr", "td", "th"]);
@@ -19,7 +20,7 @@ const getHostTagName = (jsxElement: EsTreeNode): string | null => {
   if (!isNodeOfType(jsxElement, "JSXElement")) return null;
   const opening = jsxElement.openingElement;
   if (!isNodeOfType(opening.name, "JSXIdentifier")) return null;
-  const tagName = opening.name.name;
+  const tagName = resolveJsxElementType(opening);
   // Capitalised names are user components — opaque to static HTML
   // structural checks, so we can't tell whether `<MyTable>` ultimately
   // renders a `<table>`. Bail out as soon as one shows up in the
@@ -96,7 +97,7 @@ const findClosestHostAncestor = (
     if (isNodeOfType(ancestor, "JSXElement")) {
       const opening = ancestor.openingElement;
       if (isNodeOfType(opening.name, "JSXIdentifier")) {
-        const ancestorTag = opening.name.name;
+        const ancestorTag = resolveJsxElementType(opening);
         if (ancestorTag.length === 0) {
           previous = ancestor;
           ancestor = ancestor.parent ?? null;

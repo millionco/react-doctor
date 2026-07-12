@@ -1,9 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
-import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const buildMessage = (element: string, customHelp?: string): string =>
   customHelp
@@ -54,7 +54,7 @@ export const forbidElements = defineRule({
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (forbidMap.size === 0) return;
-        const fullName = flattenJsxName(node.name);
+        const fullName = resolveJsxElementType(node);
         if (!fullName || !forbidMap.has(fullName)) return;
         context.report({
           node: node.name,

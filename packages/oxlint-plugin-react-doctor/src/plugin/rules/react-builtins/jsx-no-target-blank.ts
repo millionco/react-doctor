@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const NOREFERRER_MESSAGE =
   '`target="_blank"` without `rel="noreferrer"` lets the linked page hijack your tab to a phishing site.';
@@ -238,12 +239,6 @@ const checkTarget = (attributeValue: EsTreeNode): BranchTuple => {
   return { combined: false, testName: "", consequent: false, alternate: false };
 };
 
-const getOpeningElementName = (node: EsTreeNodeOfType<"JSXOpeningElement">): string | null => {
-  const name = node.name as EsTreeNode;
-  if (isNodeOfType(name, "JSXIdentifier")) return name.name;
-  return null;
-};
-
 // Port of `oxc_linter::rules::react::jsx_no_target_blank`.
 export const jsxNoTargetBlank = defineRule({
   id: "jsx-no-target-blank",
@@ -265,7 +260,8 @@ export const jsxNoTargetBlank = defineRule({
     };
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        const tagName = getOpeningElementName(node);
+        if (!isNodeOfType(node.name, "JSXIdentifier")) return;
+        const tagName = resolveJsxElementType(node);
         if (!tagName) return;
         if (!isLink(tagName) && !isForm(tagName)) return;
 

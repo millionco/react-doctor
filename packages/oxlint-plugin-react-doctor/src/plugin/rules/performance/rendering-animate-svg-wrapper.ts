@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 export const renderingAnimateSvgWrapper = defineRule({
   id: "rendering-animate-svg-wrapper",
@@ -14,7 +15,7 @@ export const renderingAnimateSvgWrapper = defineRule({
     "Wrap the SVG in a motion element so animation props apply to a stable wrapper instead of the SVG node itself.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "svg") return;
+      if (resolveJsxElementType(node) !== "svg") return;
 
       const hasAnimationProp = node.attributes?.some(
         (attribute: EsTreeNode) =>

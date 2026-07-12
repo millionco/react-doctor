@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 interface ForbiddenPropDescriptor {
   propName: string;
@@ -66,7 +67,7 @@ export const forbidDomProps = defineRule({
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (forbidMap.size === 0) return;
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-        const elementName = node.name.name;
+        const elementName = resolveJsxElementType(node);
         if (isReactComponentName(elementName)) return; // PascalCase = component
         for (const attribute of node.attributes) {
           if (!isNodeOfType(attribute, "JSXAttribute")) continue;

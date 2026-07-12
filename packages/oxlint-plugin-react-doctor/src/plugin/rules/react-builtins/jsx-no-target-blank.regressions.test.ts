@@ -8,6 +8,21 @@ import { jsxNoTargetBlank } from "./jsx-no-target-blank.js";
 // always-enabled. These pin the exact corpus shapes that went unreported
 // while the rule was missing.
 describe("react-builtins/jsx-no-target-blank — regressions", () => {
+  it("treats an exact const string JSX alias as an anchor", () => {
+    const invalidResult = runRule(
+      jsxNoTargetBlank,
+      'const AnchorTag = "a" as const; const Link = () => <AnchorTag href="https://example.com" target="_blank">open</AnchorTag>;',
+    );
+    const validResult = runRule(
+      jsxNoTargetBlank,
+      'const AnchorTag = "a" as const; const Link = () => <AnchorTag href="https://example.com" target="_blank" rel="noreferrer">open</AnchorTag>;',
+    );
+    expect(invalidResult.parseErrors).toEqual([]);
+    expect(invalidResult.diagnostics).toHaveLength(1);
+    expect(validResult.parseErrors).toEqual([]);
+    expect(validResult.diagnostics).toEqual([]);
+  });
+
   it("flags an external link with target=_blank and no rel (internxt AuthShell)", () => {
     const result = runRule(
       jsxNoTargetBlank,

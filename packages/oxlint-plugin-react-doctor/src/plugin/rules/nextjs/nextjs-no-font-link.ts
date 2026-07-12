@@ -4,6 +4,7 @@ import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 export const nextjsNoFontLink = defineRule({
   id: "nextjs-no-font-link",
@@ -15,7 +16,7 @@ export const nextjsNoFontLink = defineRule({
     '`import { Inter } from "next/font/google"` for self-hosting, zero layout shift, and no render-blocking requests',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "link") return;
+      if (resolveJsxElementType(node) !== "link") return;
       const attributes = node.attributes ?? [];
 
       const hrefAttribute = findJsxAttribute(attributes, "href");

@@ -12,6 +12,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const NON_OPTIMIZABLE_SRC_PREFIX_PATTERN = /^\s*(data:|blob:)/i;
 const GENERATED_URL_NAME_PATTERN = /(data|object|blob)_?url/i;
@@ -168,7 +169,7 @@ export const nextjsNoImgElement = defineRule({
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "img") return;
+        if (resolveJsxElementType(node) !== "img") return;
         if (isGeneratedImageRenderContext(context, node)) return;
 
         const programRoot = findProgramRoot(node);

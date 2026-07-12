@@ -4,6 +4,7 @@ import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isMeaningfulJsxChild } from "../../utils/is-meaningful-jsx-child.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const VOID_DOM_ELEMENTS = new Set([
   "area",
@@ -52,8 +53,7 @@ export const voidDomElementsNoChildren = defineRule({
   create: (context) => ({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       const openingElement = node.openingElement;
-      if (!isNodeOfType(openingElement.name, "JSXIdentifier")) return;
-      const tagName = openingElement.name.name;
+      const tagName = resolveJsxElementType(openingElement);
       if (!VOID_DOM_ELEMENTS.has(tagName)) return;
       const hasChildrenContent = node.children.some(isMeaningfulJsxChild);
       const hasChildrenLikeProp = findChildrenLikePropName(openingElement.attributes);

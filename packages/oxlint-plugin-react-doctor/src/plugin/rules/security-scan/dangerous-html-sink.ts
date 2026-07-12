@@ -95,6 +95,9 @@ const HIGHLIGHTER_LIBRARY_PATTERN =
 const SERIALIZER_ASSIGNMENT_PATTERN =
   /[:=]\s*[^\n;]*(?:\b(?:katex|shiki|hljs|prism|mermaid)\b|hast-util-to-html|renderHtmlFromRichText|(?:toHtml|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast)\s*\()/i;
 
+const SERIALIZER_CALL_PROVENANCE_PATTERN =
+  /\b(?:(?:katex|shiki|hljs|prism|mermaid|highlighter)[\w$]*\.(?:render\w*|highlight\w*|codeTo(?:Html|Hast))|(?:toHtml|render(?:Html|HTML)[A-Za-z]*|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast|highlight[A-Za-z]*))\s*\(/i;
+
 const BARE_IDENTIFIER_VALUE_PATTERN = /^[\w$]+\s*(?:[;,})\n]|$)/;
 
 // `lineHtml || " "` / `html ?? ""` — an identifier with a string-literal
@@ -335,6 +338,28 @@ const findMatchingBraceIndex = (fileContent: string, openingBraceIndex: number):
   return fileContent.length;
 };
 
+const findMatchingParenthesisIndex = (fileContent: string, openingIndex: number): number => {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let index = openingIndex; index < fileContent.length; index += 1) {
+    const character = fileContent[index];
+    if (quote !== null) {
+      if (character === quote && fileContent[index - 1] !== "\\") quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === "(") depth += 1;
+    if (character === ")") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return fileContent.length;
+};
+
 const findContainingBlockEndIndex = (fileContent: string, targetIndex: number): number => {
   const openingBraceIndexes: number[] = [];
   let quote: string | null = null;
@@ -430,10 +455,7 @@ const isTrustedHighlighterValue = (
   if (identifier === undefined) return false;
   const declaration = findVisibleIdentifierDeclaration(identifier, sinkIndex, fileContent);
   if (declaration !== null) {
-    return (
-      ESCAPING_SERIALIZER_CALL_PATTERN.test(declaration.initializer) ||
-      SERIALIZER_ASSIGNMENT_PATTERN.test(`=${declaration.initializer}`)
-    );
+    return SERIALIZER_CALL_PROVENANCE_PATTERN.test(declaration.initializer);
   }
   return /highlighted/i.test(valueExpression) || HIGHLIGHTER_LIBRARY_PATTERN.test(fileContent);
 };
@@ -445,33 +467,70 @@ const isExplicitlyTrustedHtmlValue = (
   visitedIdentifiers: Set<string> = new Set(),
 ): boolean => {
   const trimmedExpression = valueExpression.trim();
-  const isCompoundValue =
-    splitTopLevelByPlus(trimmedExpression).length > 1 ||
-    (trimmedExpression.match(/\$\{/g)?.length ?? 0) > 1;
-  if (
-    !isCompoundValue &&
-    (STRING_LITERAL_VALUE_PATTERN.test(`${trimmedExpression};`) ||
-      MODULE_CONSTANT_VALUE_PATTERN.test(`${trimmedExpression};`) ||
-      SANITIZER_PATTERN.test(trimmedExpression) ||
-      ENV_CONFIG_VALUE_PATTERN.test(trimmedExpression) ||
-      I18N_VALUE_PATTERN.test(trimmedExpression) ||
-      ESCAPING_SERIALIZER_CALL_PATTERN.test(trimmedExpression) ||
-      isTrustedHighlighterValue(trimmedExpression, fileContent, sinkIndex))
-  ) {
-    return true;
+  const concatenatedParts = splitTopLevelByPlus(trimmedExpression);
+  if (concatenatedParts.length > 1) {
+    return concatenatedParts.every((part) =>
+      isExplicitlyTrustedHtmlValue(part, fileContent, sinkIndex, visitedIdentifiers),
+    );
+  }
+  const interpolationParts = [...trimmedExpression.matchAll(/\$\{([^}]*)\}/g)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  );
+  if (interpolationParts.length > 1) {
+    return interpolationParts.every((part) =>
+      isExplicitlyTrustedHtmlValue(part, fileContent, sinkIndex, visitedIdentifiers),
+    );
   }
   const identifier = trimmedExpression.match(
     /^([\w$]+)(?:(?:\??\.[\w$]+)|(?:\[\s*(?:"[^"\n]*"|'[^'\n]*'|\d+)\s*\]))*$/,
   )?.[1];
-  if (!identifier || visitedIdentifiers.has(identifier)) return false;
-  const declaration = findVisibleIdentifierDeclaration(identifier, sinkIndex, fileContent);
+  if (identifier && !visitedIdentifiers.has(identifier)) {
+    const declaration = findVisibleIdentifierDeclaration(identifier, sinkIndex, fileContent);
+    if (declaration) {
+      const nextVisitedIdentifiers = new Set(visitedIdentifiers);
+      nextVisitedIdentifiers.add(identifier);
+      return isExplicitlyTrustedHtmlValue(
+        declaration.initializer,
+        fileContent,
+        declaration.initializerStartIndex,
+        nextVisitedIdentifiers,
+      );
+    }
+  }
+  if (
+    STRING_LITERAL_VALUE_PATTERN.test(`${trimmedExpression};`) ||
+    MODULE_CONSTANT_VALUE_PATTERN.test(`${trimmedExpression};`) ||
+    SANITIZER_PATTERN.test(trimmedExpression) ||
+    ENV_CONFIG_VALUE_PATTERN.test(trimmedExpression) ||
+    I18N_VALUE_PATTERN.test(trimmedExpression) ||
+    ESCAPING_SERIALIZER_CALL_PATTERN.test(trimmedExpression) ||
+    isTrustedHighlighterValue(trimmedExpression, fileContent, sinkIndex)
+  ) {
+    return true;
+  }
+  return false;
+};
+
+const doesExpressionAliasIdentifier = (
+  expression: string,
+  targetIdentifier: string,
+  expressionIndex: number,
+  fileContent: string,
+  visitedIdentifiers: Set<string> = new Set(),
+): boolean => {
+  const identifier = expression.trim().match(/^([\w$]+)$/)?.[1];
+  if (!identifier) return false;
+  if (identifier === targetIdentifier) return true;
+  if (visitedIdentifiers.has(identifier)) return false;
+  const declaration = findVisibleIdentifierDeclaration(identifier, expressionIndex, fileContent);
   if (!declaration) return false;
   const nextVisitedIdentifiers = new Set(visitedIdentifiers);
   nextVisitedIdentifiers.add(identifier);
-  return isExplicitlyTrustedHtmlValue(
+  return doesExpressionAliasIdentifier(
     declaration.initializer,
-    fileContent,
+    targetIdentifier,
     declaration.initializerStartIndex,
+    fileContent,
     nextVisitedIdentifiers,
   );
 };
@@ -589,10 +648,7 @@ const isHtmlTainted = (
     );
   }
   if (parameterSource !== null && parameterSource.functionName.length > 0) {
-    const callPattern = new RegExp(
-      `\\b${escapeRegExp(parameterSource.functionName)}\\s*\\(([^)]*)\\)`,
-      "g",
-    );
+    const callPattern = new RegExp(`\\b${escapeRegExp(parameterSource.functionName)}\\s*\\(`, "g");
     let didInspectCallArgument = false;
     let didInspectOnlyExplicitlyTrustedArguments = true;
     for (const callMatch of fileContent.matchAll(callPattern)) {
@@ -602,12 +658,24 @@ const isHtmlTainted = (
       ) {
         continue;
       }
-      const argument = splitTopLevelArguments(callMatch[1] ?? "")[parameterSource.parameterIndex];
+      const openingParenthesisIndex = callMatch.index + callMatch[0].lastIndexOf("(");
+      const closingParenthesisIndex = findMatchingParenthesisIndex(
+        fileContent,
+        openingParenthesisIndex,
+      );
+      const argument = splitTopLevelArguments(
+        fileContent.slice(openingParenthesisIndex + 1, closingParenthesisIndex),
+      )[parameterSource.parameterIndex];
       if (argument === undefined) continue;
       const isCallInsideFunctionBody =
         callMatch.index >= parameterSource.declarationNameIndex &&
         callMatch.index <= parameterSource.bodyEndIndex;
-      if (isCallInsideFunctionBody && argument.trim() === identifier) continue;
+      if (
+        isCallInsideFunctionBody &&
+        doesExpressionAliasIdentifier(argument, identifier, callMatch.index, fileContent)
+      ) {
+        continue;
+      }
       didInspectCallArgument = true;
       didInspectOnlyExplicitlyTrustedArguments &&= isExplicitlyTrustedHtmlValue(
         argument,
@@ -777,7 +845,7 @@ export const dangerousHtmlSink = defineRule({
           if (
             visibleInitializer === undefined
               ? fromSerializer.test(file.content)
-              : SERIALIZER_ASSIGNMENT_PATTERN.test(`=${visibleInitializer}`)
+              : SERIALIZER_CALL_PROVENANCE_PATTERN.test(visibleInitializer)
           ) {
             continue;
           }

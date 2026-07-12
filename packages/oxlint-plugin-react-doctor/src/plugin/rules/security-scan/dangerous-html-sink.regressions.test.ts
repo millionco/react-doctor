@@ -1094,6 +1094,66 @@ return <div dangerouslySetInnerHTML={{ __html: content }} />;
     expect(findings).toHaveLength(1);
   });
 
+  it.each(["safeHtml", "SANITIZED_HTML"])(
+    "does not trust a trusted-looking alias whose initializer is tainted: %s",
+    (trustedLookingName) => {
+      const findings = runScanRule(dangerousHtmlSink, {
+        relativePath: "src/components/preview.ts",
+        content: `const ${trustedLookingName} = props.userHtml;\nconst bodyHtml = ${trustedLookingName};\nelement.innerHTML = bodyHtml;\n`,
+      });
+      expect(findings).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    "DOMPurify.sanitize(first) + DOMPurify.sanitize(second)",
+    "`${escapeHtml(first)}${escapeHtml(second)}`",
+  ])("stays silent when every compound value part is trusted %#", (valueExpression) => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content: `const bodyHtml = ${valueExpression};\nelement.innerHTML = bodyHtml;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("ignores a recursive call that re-passes the parameter through a local alias", () => {
+    const content = [
+      "function renderPreview(element, html, remaining) {",
+      "  element.innerHTML = html;",
+      "  const nextHtml = html;",
+      "  if (remaining > 0) renderPreview(element, nextHtml, remaining - 1);",
+      "}",
+      'renderPreview(preview, "<p>Static</p>", 2);',
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("keeps a trusted helper argument containing parentheses intact", () => {
+    const content = [
+      "const renderPreview = (element, html) => {",
+      "  element.innerHTML = html;",
+      "};",
+      'renderPreview(preview, "<p>Static (preview)</p>");',
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("does not trust a highlighter-named alias from a library-looking prop", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content: "const highlightedHtml = props.shikiHtml;\nelement.innerHTML = highlightedHtml;\n",
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("still flags an identifier declared from a template with tainted interpolations", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/widgets/card.ts",

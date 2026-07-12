@@ -112,7 +112,10 @@ const collectWrittenStateNamesInEffect = (
 // external resource" — bare literals (`return null`, `return 0`) and
 // state reads (`return foo`) get ignored so they don't silently
 // disable chain detection.
-const isFunctionShapedReturn = (returnedValue: EsTreeNode): boolean => {
+const isFunctionShapedReturn = (
+  returnedValue: EsTreeNode,
+  setterToStateName: ReadonlyMap<string, string>,
+): boolean => {
   if (
     isNodeOfType(returnedValue, "ArrowFunctionExpression") ||
     isNodeOfType(returnedValue, "FunctionExpression")
@@ -122,7 +125,15 @@ const isFunctionShapedReturn = (returnedValue: EsTreeNode): boolean => {
   // Returning a CallExpression result — most cleanup-returning
   // primitives (subscribe, addEventListener helpers) return a
   // function. Conservatively accept this shape.
-  if (isNodeOfType(returnedValue, "CallExpression")) return true;
+  if (isNodeOfType(returnedValue, "CallExpression")) {
+    if (
+      isNodeOfType(returnedValue.callee, "Identifier") &&
+      setterToStateName.has(returnedValue.callee.name)
+    ) {
+      return false;
+    }
+    return true;
+  }
   // Returning a bare Identifier — could be the unsub binding from a
   // `const unsub = subscribe(...)` line. We can't statically prove
   // it's function-typed without scope analysis, but in idiomatic React
@@ -201,7 +212,10 @@ const callsStorageHookSetter = (
   return didFindStorageSetterCall;
 };
 
-const isExternalSyncEffect = (effectCallback: EsTreeNode): boolean => {
+const isExternalSyncEffect = (
+  effectCallback: EsTreeNode,
+  setterToStateName: ReadonlyMap<string, string>,
+): boolean => {
   if (
     !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
     !isNodeOfType(effectCallback, "FunctionExpression")
@@ -211,13 +225,15 @@ const isExternalSyncEffect = (effectCallback: EsTreeNode): boolean => {
   // A cleanup return is the strongest signal that the effect owns
   // an external resource — once we see one, we don't need to inspect
   // the body for an external-sync call shape.
-  if (isNodeOfType(effectCallback.body, "BlockStatement")) {
+  if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
+    if (isFunctionShapedReturn(effectCallback.body, setterToStateName)) return true;
+  } else {
     const statements = effectCallback.body.body ?? [];
     for (const statement of statements) {
       if (
         isNodeOfType(statement, "ReturnStatement") &&
         statement.argument &&
-        isFunctionShapedReturn(statement.argument)
+        isFunctionShapedReturn(statement.argument, setterToStateName)
       ) {
         return true;
       }
@@ -328,7 +344,8 @@ export const noEffectChain = defineRule({
           depNames: collectDepIdentifierNames(effectCall),
           writtenStateNames: collectWrittenStateNamesInEffect(callback, setterToStateName),
           isExternalSync:
-            isExternalSyncEffect(callback) || callsStorageHookSetter(callback, storageSetterNames),
+            isExternalSyncEffect(callback, setterToStateName) ||
+            callsStorageHookSetter(callback, storageSetterNames),
         });
       }
       if (effectInfos.length < 2) return;

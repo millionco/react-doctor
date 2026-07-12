@@ -148,6 +148,13 @@ const SCENARIO_POOL: ReadonlyArray<SnippetBuilder> = [
       .join("\n    ")
       .replace(/^/, `const load = async () => {\n    `)
       .concat(`\n  };`),
+  () =>
+    [
+      `const [fuzzChainSource, setFuzzChainSource] = useState(0);`,
+      `const [fuzzChainTarget, setFuzzChainTarget] = useState(0);`,
+      `useEffect(() => { setFuzzChainSource(1); }, []);`,
+      `useEffect(() => { setFuzzChainTarget(fuzzChainSource + 1); }, [fuzzChainSource]);`,
+    ].join("\n  "),
 ];
 
 const buildComponent: SnippetBuilder = (random) => {

@@ -134,4 +134,33 @@ describe("no-effect-chain — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a state chain when the upstream effect explicitly returns a local setter call", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        useEffect(() => { return setSource(1); }, []);
+        useEffect(() => { setTarget(source + 1); }, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when the downstream effect synchronizes an opaque context setter", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget({ disabled, setAutoPlaying }) {
+        const [playing, setPlaying] = useState(false);
+        useEffect(() => { if (disabled) setPlaying(false); }, [disabled]);
+        useEffect(() => setAutoPlaying(playing), [playing, setAutoPlaying]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

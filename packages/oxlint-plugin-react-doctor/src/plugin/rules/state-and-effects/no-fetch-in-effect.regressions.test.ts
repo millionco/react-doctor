@@ -428,4 +428,35 @@ describe("state-and-effects/no-fetch-in-effect — regressions", () => {
       };
     `);
   });
+
+  it.each([
+    [
+      "conditional callback",
+      `const Profile = ({ url, shouldFetch }) => {
+        const fetchProfile = () => fetch(url);
+        const effectCallback = shouldFetch ? fetchProfile : () => console.log(url);
+        useEffect(effectCallback, [url]);
+        return null;
+      };`,
+    ],
+    [
+      "mutable terminal binding",
+      `const Profile = ({ url }) => {
+        const fetchProfile = () => fetch(url);
+        let callbackImplementation = fetchProfile;
+        const effectCallback = callbackImplementation;
+        useEffect(effectCallback, [url]);
+        return null;
+      };`,
+    ],
+    [
+      "callback parameter",
+      `const Profile = ({ url, effectCallback }) => {
+        useEffect(effectCallback, [url]);
+        return null;
+      };`,
+    ],
+  ])("stays silent on a non-exact %s", (_caseName, code) => {
+    expectPass(code);
+  });
 });

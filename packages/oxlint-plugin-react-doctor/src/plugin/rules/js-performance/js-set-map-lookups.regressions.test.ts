@@ -169,7 +169,14 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ values[0] = candidate; values.includes(candidate); } }`,
     `function f(values: number[], candidates: number[]){ const alias = values; for(const candidate of candidates){ alias.splice(0, 1); values.includes(candidate); } }`,
     `function f(values: number[], candidates: number[]){ const firstAlias = values; const secondAlias = firstAlias; for(const candidate of candidates){ secondAlias.splice(0, 1); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ const firstAlias = values; const secondAlias = firstAlias; for(const candidate of candidates){ firstAlias[0] = candidate; secondAlias.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ const alias = values; for(const candidate of candidates){ alias.length = 0; values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ const firstAlias = values; const secondAlias = firstAlias; for(const candidate of candidates){ values.push(candidate); secondAlias.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ delete values[0]; values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ Object.assign(values, { 0: candidate }); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ Reflect.set(values, 0, candidate); values.includes(candidate); } }`,
     `interface State { values: number[] } function f(state: State, candidates: number[]){ for(const candidate of candidates){ state.values.reverse(); state.values.includes(candidate); } }`,
+    `interface State { values: number[] } function f(state: State, candidates: number[]){ const alias = state; for(const candidate of candidates){ alias.values.push(candidate); state.values.includes(candidate); } }`,
   ])("does not flag a receiver mutated during repeated lookups", (code) => {
     expectPass(code);
   });
@@ -177,6 +184,18 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
   it("does not flag a member whose imported type cannot prove native array semantics", () => {
     expectPass(
       `import type { State } from "./types"; function f(state: State, candidates: number[]){ for(const candidate of candidates){ state.values.includes(candidate); } }`,
+    );
+  });
+
+  it("does not treat an imported userland type aliased as Array as native", () => {
+    expectPass(
+      `import type { Bag as Array } from "./types"; function f(values: Array<number>, candidates: number[]){ for(const candidate of candidates){ values.includes(candidate); } }`,
+    );
+  });
+
+  it("still recognizes the unshadowed built-in Array type", () => {
+    expectFail(
+      `function f(values: Array<number>, candidates: number[]){ for(const candidate of candidates){ values.includes(candidate); } }`,
     );
   });
 

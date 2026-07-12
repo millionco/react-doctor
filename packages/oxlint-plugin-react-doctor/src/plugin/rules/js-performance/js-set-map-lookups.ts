@@ -8,7 +8,10 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
-import { isExpressionMutatedWithin } from "../../utils/is-expression-mutated-within.js";
+import {
+  getArrayExpressionMutationKey,
+  isArrayExpressionMutatedWithin,
+} from "../../utils/is-array-expression-mutated-within.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -556,6 +559,27 @@ const NATIVE_ARRAY_RETURNING_METHOD_NAMES: ReadonlySet<string> = new Set([
   "with",
 ]);
 
+const isNativeArrayTypeNameShadowed = (typeNode: EsTreeNode, typeName: string): boolean => {
+  if (findVariableInitializer(typeNode, typeName)) return true;
+  const programRoot = findProgramRoot(typeNode);
+  if (!programRoot) return false;
+  for (const statement of programRoot.body) {
+    const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
+      ? statement.declaration
+      : statement;
+    if (
+      declaration &&
+      (isNodeOfType(declaration, "TSInterfaceDeclaration") ||
+        isNodeOfType(declaration, "TSTypeAliasDeclaration")) &&
+      isNodeOfType(declaration.id, "Identifier") &&
+      declaration.id.name === typeName
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const isNativeArrayType = (typeNode: EsTreeNode | null | undefined): boolean => {
   if (!typeNode) return false;
   if (isNodeOfType(typeNode, "TSArrayType") || isNodeOfType(typeNode, "TSTupleType")) return true;
@@ -565,7 +589,8 @@ const isNativeArrayType = (typeNode: EsTreeNode | null | undefined): boolean => 
   return (
     isNodeOfType(typeNode, "TSTypeReference") &&
     isNodeOfType(typeNode.typeName, "Identifier") &&
-    NATIVE_ARRAY_TYPE_NAMES.has(typeNode.typeName.name)
+    NATIVE_ARRAY_TYPE_NAMES.has(typeNode.typeName.name) &&
+    !isNativeArrayTypeNameShadowed(typeNode, typeNode.typeName.name)
   );
 };
 
@@ -943,6 +968,7 @@ export const jsSetMapLookups = defineRule({
     "Use a `Set` or `Map` when you check for the same items over and over. `Array.includes`/`find` scans the whole list each time",
   create: (context: RuleContext) => {
     let loopDepth = 0;
+    const mutationResultsByLoop = new WeakMap<EsTreeNode, Map<string, boolean>>();
     const visitors: RuleVisitors = {};
     for (const loopType of LOOP_TYPES) {
       visitors[loopType] = () => {
@@ -952,6 +978,21 @@ export const jsSetMapLookups = defineRule({
         loopDepth--;
       };
     }
+
+    const isReceiverMutatedInLoop = (receiver: EsTreeNode, loop: EsTreeNode): boolean => {
+      const mutationKey = getArrayExpressionMutationKey(receiver);
+      if (!mutationKey) return false;
+      let mutationResults = mutationResultsByLoop.get(loop);
+      if (!mutationResults) {
+        mutationResults = new Map();
+        mutationResultsByLoop.set(loop, mutationResults);
+      }
+      const cachedResult = mutationResults.get(mutationKey);
+      if (cachedResult !== undefined) return cachedResult;
+      const didMutateReceiver = isArrayExpressionMutatedWithin(receiver, loop);
+      mutationResults.set(mutationKey, didMutateReceiver);
+      return didMutateReceiver;
+    };
 
     const inspectLookupCall = (node: EsTreeNodeOfType<"CallExpression">): void => {
       if (
@@ -1007,7 +1048,7 @@ export const jsSetMapLookups = defineRule({
       if (isPerIterationReceiver(receiver, node)) return;
       if (isLookupBoundedByConstantIteration(node)) return;
       const nearestLoop = findNearestLoopContext(node);
-      if (nearestLoop && isExpressionMutatedWithin(receiver, nearestLoop)) return;
+      if (nearestLoop && isReceiverMutatedInLoop(receiver, nearestLoop)) return;
       context.report({
         node,
         message: `This scales poorly because \`array.${methodName}()\` inside a loop scans the whole list every time. Use a Set for constant-time lookups.`,

@@ -671,6 +671,41 @@ const CodePanel = ({ tokens }) => (
   });
 
   describe("fn-hunt corpus misses (2026-07) — must fire", () => {
+    it("stays silent on stateless primitive display rows with duplicate-disambiguating keys", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const LicenseFeatures = ({ features }) => (
+  <ul>
+    {features.map((feature, index) => (
+      <li key={\`\${feature}-\${index}\`}>{feature}</li>
+    ))}
+  </ul>
+);
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags duplicate-disambiguating keys on editable rows", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const EditableFeatures = ({ features, setFeature, removeFeature }) => (
+  <ul>
+    {features.map((feature, index) => (
+      <li key={\`\${feature}-\${index}\`}>
+        <input value={feature} onChange={(event) => setFeature(index, event.target.value)} />
+        <button onClick={() => removeFeature(index)}>Remove</button>
+      </li>
+    ))}
+  </ul>
+);
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     // glific InteractiveOptions: the map index is forwarded one hop into a
     // render helper whose FIRST parameter is the index.
     it("flags an index forwarded into a render helper's position-0 parameter", () => {

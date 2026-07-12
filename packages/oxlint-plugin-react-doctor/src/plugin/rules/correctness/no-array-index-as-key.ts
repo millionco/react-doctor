@@ -903,6 +903,17 @@ const templateHasOuterMemberIdentity = (
   return false;
 };
 
+const templateReferencesBareItem = (
+  template: EsTreeNodeOfType<"TemplateLiteral">,
+  itemNames: ReadonlySet<string>,
+): boolean =>
+  (template.expressions ?? []).some((expression) => {
+    const unwrappedExpression = stripParenExpression(expression);
+    return (
+      isNodeOfType(unwrappedExpression, "Identifier") && itemNames.has(unwrappedExpression.name)
+    );
+  });
+
 const forLoopTestReadsDataLength = (test: EsTreeNode): boolean => {
   let didFindLengthRead = false;
   walkAst(test, (child: EsTreeNode): boolean | void => {
@@ -1150,9 +1161,14 @@ export const noArrayIndexAsKey = defineRule({
             const jsxElement = openingElement.parent;
             if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
               const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(elementName.name);
+              const rendersPrimitiveItem = Boolean(
+                keyTemplate && templateReferencesBareItem(keyTemplate, itemNames),
+              );
               const isStateful = containsStatefulDescendant(jsxElement as EsTreeNode, {
                 memberRootNames: isInlineTextRun ? itemNames : EMPTY_NAME_SET,
-                bareIdentifierNames: derivedNames,
+                bareIdentifierNames: rendersPrimitiveItem
+                  ? new Set([...derivedNames, ...itemNames])
+                  : derivedNames,
               });
               if (!isStateful) return;
             }

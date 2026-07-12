@@ -811,7 +811,11 @@ export const noPassDataToParent = defineRule({
               }
               return getDownstreamRefs(analysis, argument as EsTreeNode);
             })
-            .flatMap((argumentRef) => getUpstreamRefs(analysis, argumentRef))
+            .flatMap((argumentRef) =>
+              isExternallyDrivenState(analysis, argumentRef)
+                ? []
+                : getUpstreamRefs(analysis, argumentRef),
+            )
             .filter(isLeafRef);
           // A wrapper-hook callee hides the hand-off in its wrapped body, so
           // its data refs live on the eventual call chain, not the direct
@@ -822,7 +826,6 @@ export const noPassDataToParent = defineRule({
 
           const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
             if (isUseStateIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
-            if (isExternallyDrivenState(analysis, argRef)) return false;
             if (isExternalSubscriptionHookRef(argRef)) return false;
             if (isProp(analysis, argRef)) return false;
             if (isUseRefIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;

@@ -35,7 +35,8 @@ describe("no-pass-data-to-parent — regressions", () => {
             return () => query.removeEventListener("change", update);
           }, []);
           useEffect(() => {
-            onBreakPoint(broken);
+            const currentBroken = broken;
+            onBreakPoint(currentBroken);
           }, [broken, onBreakPoint]);
           return null;
         };`,

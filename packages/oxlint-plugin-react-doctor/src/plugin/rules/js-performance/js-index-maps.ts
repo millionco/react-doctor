@@ -9,6 +9,7 @@ import { isInlineFunctionExpression } from "../../utils/is-inline-function-expre
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { resolveFirstArgumentBinding } from "../../utils/resolve-first-argument-binding.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 // Only a predicate that tests a SINGLE equality on one field
@@ -32,7 +33,7 @@ const referencesParameter = (
 const isSingleFieldEqualityPredicate = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callback = node.arguments?.[0] as EsTreeNode | undefined;
   if (!isInlineFunctionExpression(callback)) return false;
-  const firstParameter = callback.params?.[0];
+  const firstParameter = resolveFirstArgumentBinding(callback.params?.[0]);
   if (!firstParameter || !isNodeOfType(firstParameter, "Identifier")) return false;
 
   let predicate: EsTreeNode | null = null;

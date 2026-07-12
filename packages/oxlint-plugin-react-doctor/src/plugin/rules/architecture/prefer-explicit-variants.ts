@@ -7,6 +7,7 @@ import { isComponentDeclaration } from "../../utils/is-component-declaration.js"
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isJsxElementOrFragment } from "../../utils/is-jsx-element-or-fragment.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveFirstArgumentBinding } from "../../utils/resolve-first-argument-binding.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -81,8 +82,9 @@ const CROSS_CUTTING_STATE_BOOLEAN_NAMES = new Set<string>([
 // so the ternary-test lookup matches what the body actually references.
 const collectBooleanPropBindings = (param: EsTreeNode | undefined): Set<string> => {
   const bindings = new Set<string>();
-  if (!param || !isNodeOfType(param, "ObjectPattern")) return bindings;
-  for (const property of param.properties ?? []) {
+  const propsBinding = resolveFirstArgumentBinding(param);
+  if (!isNodeOfType(propsBinding, "ObjectPattern")) return bindings;
+  for (const property of propsBinding.properties ?? []) {
     if (!isNodeOfType(property, "Property")) continue;
     if (property.computed) continue;
     if (!isNodeOfType(property.key, "Identifier")) continue;

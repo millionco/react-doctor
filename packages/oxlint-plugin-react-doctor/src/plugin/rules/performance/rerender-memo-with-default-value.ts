@@ -12,6 +12,7 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { resolveFirstArgumentBinding } from "../../utils/resolve-first-argument-binding.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -68,10 +69,11 @@ const collectDefaultedEmptyBindings = (
 ): Map<string, DefaultedEmptyBinding> => {
   const bindings = new Map<string, DefaultedEmptyBinding>();
   const params = (functionNode as { params?: EsTreeNode[] }).params ?? [];
-  for (const param of params) {
-    collectFromObjectPattern(param, bindings);
+  for (const [parameterIndex, param] of params.entries()) {
+    const parameterBinding = parameterIndex === 0 ? resolveFirstArgumentBinding(param) : param;
+    if (parameterBinding) collectFromObjectPattern(parameterBinding, bindings);
   }
-  const propsParam = params[0];
+  const propsParam = resolveFirstArgumentBinding(params[0]);
   const body = (functionNode as { body?: EsTreeNode }).body;
   if (!propsParam || !isNodeOfType(propsParam, "Identifier") || !body) return bindings;
   if (!isNodeOfType(body, "BlockStatement")) return bindings;

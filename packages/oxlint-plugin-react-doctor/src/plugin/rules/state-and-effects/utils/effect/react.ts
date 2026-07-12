@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
 import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
+import { resolveFirstArgumentBinding } from "../../../../utils/resolve-first-argument-binding.js";
 import {
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
   stripParenExpression,
@@ -350,6 +351,17 @@ export const isProp = (analysis: ProgramAnalysis, ref: Reference): boolean =>
     }),
   );
 
+const isWholePropsParameterBinding = (bindingNode: EsTreeNode): boolean => {
+  if (isFunctionLike(bindingNode.parent)) return true;
+  let declaringFunction: EsTreeNode | null | undefined = bindingNode.parent;
+  while (declaringFunction && !isFunctionLike(declaringFunction)) {
+    declaringFunction = declaringFunction.parent;
+  }
+  return Boolean(
+    declaringFunction && resolveFirstArgumentBinding(declaringFunction.params?.[0]) === bindingNode,
+  );
+};
+
 // True when the reference binds the WHOLE props object (`(props) =>`)
 // rather than a destructured prop value (`({ text }) =>`). Calling a
 // method directly on the props object (`props.search(results)`) calls
@@ -361,8 +373,7 @@ export const isWholePropsObjectReference = (analysis: ProgramAnalysis, ref: Refe
   Boolean(
     ref.resolved?.defs.some((def) => {
       if (def.type !== "Parameter") return false;
-      const bindingParent = (def.name as unknown as { parent?: EsTreeNode | null }).parent;
-      return isFunctionLike(bindingParent);
+      return isWholePropsParameterBinding(def.name as unknown as EsTreeNode);
     }),
   );
 

@@ -53,6 +53,27 @@ describe("security/auth-token-in-web-storage — regressions", () => {
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("stays silent on product-scoped API-key table records", () => {
+    const { diagnostics } = runRule(
+      authTokenInWebStorage,
+      `const LOCAL_API_KEYS_STORAGE_KEY = "mailing.createdApiKeys";
+      sessionStorage.setItem(
+        LOCAL_API_KEYS_STORAGE_KEY,
+        JSON.stringify([{ id, key, status, createdAt }]),
+      );`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags authentication API keys and singular credentials", () => {
+    const { diagnostics } = runRule(
+      authTokenInWebStorage,
+      `sessionStorage.setItem("auth.apiKey", apiKey);
+      sessionStorage.setItem("mailing.createdApiKey", apiKey);`,
+    );
+    expect(diagnostics).toHaveLength(2);
+  });
+
   // Docs-validation FP wave: E2E scaffolding under `playwright/` seeds tokens
   // via page.evaluate to simulate login — test tooling, not production
   // exposure. `/playwright/` was missing from the testlike path segments.

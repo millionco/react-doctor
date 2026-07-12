@@ -2,12 +2,14 @@ import { PASSIVE_EVENT_NAMES } from "../../constants/dom.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
+import { isProvenBrowserApiReceiver } from "../../utils/is-proven-browser-api-receiver.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 // A handler that calls `event.preventDefault()` MUST run non-passively —
 // passive listeners silently ignore preventDefault(). Recommending
@@ -186,7 +188,9 @@ export const clientPassiveEventListeners = defineRule({
     "Add `{ passive: true }` as the third argument: `addEventListener('touchmove', handler, { passive: true })`. Only do this if the handler doesn't call `event.preventDefault()`, since passive listeners ignore it (which breaks pull-to-refresh, custom gestures, and nested scrolling).",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isMemberProperty(node.callee, "addEventListener")) return;
+      const callee = stripParenExpression(node.callee);
+      if (!isMemberProperty(callee, "addEventListener")) return;
+      if (!isProvenBrowserApiReceiver(callee.object, "dom-event-target", context.scopes)) return;
       if ((node.arguments?.length ?? 0) < 2) return;
 
       const eventNameNode = node.arguments[0];

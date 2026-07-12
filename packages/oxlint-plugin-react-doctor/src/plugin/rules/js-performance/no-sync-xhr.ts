@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenBrowserApiReceiver } from "../../utils/is-proven-browser-api-receiver.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -18,10 +19,6 @@ const isFalseLiteral = (node: EsTreeNode): boolean =>
 // rewriting the generated file is not an applicable fix.
 const PUBLIC_ASSET_PATH_PATTERN = /(?:^|\/)public\//i;
 
-// `<receiver>.open(method, url, false)` — the canonical synchronous-XHR
-// signature. The literal `false` third argument (the `async` flag) is the
-// distinctive, high-precision marker; we don't need to prove the receiver is
-// an XMLHttpRequest.
 export const noSyncXhr = defineRule({
   id: "no-sync-xhr",
   title: "Synchronous XMLHttpRequest",
@@ -32,11 +29,12 @@ export const noSyncXhr = defineRule({
     if (PUBLIC_ASSET_PATH_PATTERN.test(context.filename ?? "")) return {};
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        const callee = node.callee;
+        const callee = stripParenExpression(node.callee);
         if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
         if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "open") {
           return;
         }
+        if (!isProvenBrowserApiReceiver(callee.object, "xml-http-request", context.scopes)) return;
         const asyncArgument = node.arguments?.[2];
         if (!asyncArgument || !isFalseLiteral(stripParenExpression(asyncArgument))) return;
         context.report({ node, message: MESSAGE });

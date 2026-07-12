@@ -4,6 +4,7 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { findStagedSnapshotDivergences } from "../src/cli/utils/find-staged-snapshot-divergences.js";
+import { parseStagedSnapshotDivergences } from "../src/cli/utils/parse-staged-snapshot-divergences.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -92,5 +93,21 @@ describe("findStagedSnapshotDivergences", () => {
     temporaryDirectories.push(directory);
 
     expect(findStagedSnapshotDivergences(directory)).toBeNull();
+  });
+
+  it("reports a governing source path in a worktree-side rename record", () => {
+    expect(parseStagedSnapshotDivergences(" R archive.txt\0doctor.config.json\0")).toEqual([
+      "doctor.config.json",
+    ]);
+  });
+
+  it("reports a governing destination path in a worktree-side copy record", () => {
+    expect(parseStagedSnapshotDivergences(" C doctor.config.json\0archive.txt\0")).toEqual([
+      "doctor.config.json",
+    ]);
+  });
+
+  it("accepts an index-only rename whose worktree matches the index", () => {
+    expect(parseStagedSnapshotDivergences("R  archive.txt\0doctor.config.json\0")).toEqual([]);
   });
 });

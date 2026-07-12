@@ -236,6 +236,16 @@ export const Timestamp = ({ value, locale, useUtc }) => {
        const options = baseOptions;
        options.timeZone = undefined;`,
     ],
+    [
+      "a mutation through a TypeScript wrapper",
+      `const options = { timeZone: "UTC" };
+       (options as Intl.DateTimeFormatOptions).timeZone = undefined;`,
+    ],
+    [
+      "a destructured const binding",
+      `const source = { timeZone: "UTC", options: { dateStyle: "medium" } };
+       const { options } = source;`,
+    ],
     ["an unknown trailing spread", `const options = { timeZone: "UTC", ...overrides };`],
     [
       "a final undefined duplicate property",
@@ -263,6 +273,19 @@ export const Timestamp = ({ value, locale, overrides }) => {
 };`,
     );
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a trailing spread whose timeZone is undefined", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const overrides = { timeZone: undefined };
+  const options = { timeZone: "UTC", ...overrides };
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags an inline timeZone overridden by an unknown spread", () => {

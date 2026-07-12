@@ -11,13 +11,17 @@ import { hasSuppressHydrationWarningAttribute } from "../../utils/has-suppress-h
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
-import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import {
+  stripParenExpression,
+  TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
+} from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -48,6 +52,15 @@ interface LocaleFormatMatch {
   readonly node: EsTreeNode;
   readonly display: string;
 }
+
+interface ObjectPropertyProof {
+  readonly status: "absent" | "present" | "undefined" | "unknown";
+}
+
+const ABSENT_PROPERTY_PROOF: ObjectPropertyProof = { status: "absent" };
+const PRESENT_PROPERTY_PROOF: ObjectPropertyProof = { status: "present" };
+const UNDEFINED_PROPERTY_PROOF: ObjectPropertyProof = { status: "undefined" };
+const UNKNOWN_PROPERTY_PROOF: ObjectPropertyProof = { status: "unknown" };
 
 const isProvableDateExpression = (expression: EsTreeNode | null | undefined): boolean => {
   if (!expression) return false;
@@ -97,23 +110,32 @@ const isStaticUndefined = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => 
   );
 };
 
-const isWithinNode = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current) {
-    if (current === ancestor) return true;
-    current = current.parent;
-  }
-  return false;
-};
-
 const isPotentialMutationReference = (identifier: EsTreeNode, usageNode: EsTreeNode): boolean => {
   let expression: EsTreeNode = identifier;
   let parent = expression.parent;
-  while (parent && isNodeOfType(parent, "MemberExpression") && parent.object === expression) {
+  while (
+    parent &&
+    TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type) &&
+    "expression" in parent &&
+    parent.expression === expression
+  ) {
     expression = parent;
     parent = expression.parent;
   }
-  if (!parent || isWithinNode(identifier, usageNode)) return false;
+  while (parent && isNodeOfType(parent, "MemberExpression") && parent.object === expression) {
+    expression = parent;
+    parent = expression.parent;
+    while (
+      parent &&
+      TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type) &&
+      "expression" in parent &&
+      parent.expression === expression
+    ) {
+      expression = parent;
+      parent = expression.parent;
+    }
+  }
+  if (!parent || isAstDescendant(identifier, usageNode)) return false;
   if (isNodeOfType(parent, "AssignmentExpression") && parent.left === expression) return true;
   if (isNodeOfType(parent, "UpdateExpression") && parent.argument === expression) return true;
   if (
@@ -153,18 +175,20 @@ const getObjectPropertyProof = (
   scopes: ScopeAnalysis,
   usageNode: EsTreeNode,
   visitedSymbolIds: Set<number> = new Set(),
-): boolean | null => {
-  if (!objectExpression) return false;
+): ObjectPropertyProof => {
+  if (!objectExpression) return ABSENT_PROPERTY_PROOF;
   const unwrapped = stripParenExpression(objectExpression);
   if (isNodeOfType(unwrapped, "Identifier")) {
     const symbol = scopes.symbolFor(unwrapped);
     if (
       symbol?.kind !== "const" ||
       !symbol.initializer ||
+      !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+      !isNodeOfType(symbol.declarationNode.id, "Identifier") ||
       visitedSymbolIds.has(symbol.id) ||
       wasMutatedBeforeUsage(symbol, usageNode)
     ) {
-      return null;
+      return UNKNOWN_PROPERTY_PROOF;
     }
     visitedSymbolIds.add(symbol.id);
     return getObjectPropertyProof(
@@ -190,7 +214,7 @@ const getObjectPropertyProof = (
       usageNode,
       new Set(visitedSymbolIds),
     );
-    return consequent === alternate ? consequent : null;
+    return consequent.status === alternate.status ? consequent : UNKNOWN_PROPERTY_PROOF;
   }
   if (
     isNodeOfType(unwrapped, "CallExpression") &&
@@ -210,7 +234,7 @@ const getObjectPropertyProof = (
       visitedSymbolIds,
     );
   }
-  if (!isNodeOfType(unwrapped, "ObjectExpression")) return null;
+  if (!isNodeOfType(unwrapped, "ObjectExpression")) return UNKNOWN_PROPERTY_PROOF;
   const properties = unwrapped.properties ?? [];
   for (let propertyIndex = properties.length - 1; propertyIndex >= 0; propertyIndex -= 1) {
     const property = properties[propertyIndex];
@@ -223,8 +247,7 @@ const getObjectPropertyProof = (
         usageNode,
         new Set(visitedSymbolIds),
       );
-      if (spreadProof === true) return true;
-      if (spreadProof === null) return null;
+      if (spreadProof.status !== "absent") return spreadProof;
       continue;
     }
     if (
@@ -233,9 +256,11 @@ const getObjectPropertyProof = (
     ) {
       continue;
     }
-    return !isStaticUndefined(property.value, scopes);
+    return isStaticUndefined(property.value, scopes)
+      ? UNDEFINED_PROPERTY_PROOF
+      : PRESENT_PROPERTY_PROOF;
   }
-  return false;
+  return ABSENT_PROPERTY_PROOF;
 };
 
 const objectHasExplicitProperty = (
@@ -243,7 +268,8 @@ const objectHasExplicitProperty = (
   propertyName: string,
   scopes: ScopeAnalysis,
   usageNode: EsTreeNode,
-): boolean => getObjectPropertyProof(objectExpression, propertyName, scopes, usageNode) === true;
+): boolean =>
+  getObjectPropertyProof(objectExpression, propertyName, scopes, usageNode).status === "present";
 
 const hasExplicitLocaleArgument = (
   argument: EsTreeNode | null | undefined,

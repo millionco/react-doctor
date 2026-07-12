@@ -1,6 +1,7 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isEs5Component } from "./is-es5-component.js";
 import { isEs6Component } from "./is-es6-component.js";
+import { isImmediatelyInvokedFunction } from "./is-immediately-invoked-function.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 const FUNCTION_NODE_TYPES = new Set<string>([
@@ -50,7 +51,14 @@ export const isSetStateCallInLifecycle = (
   let ancestor: EsTreeNode | null | undefined = setStateCall.parent;
   while (ancestor) {
     if (!lifecycleMember) {
-      if (FUNCTION_NODE_TYPES.has(ancestor.type)) nestedFunctionCount += 1;
+      if (
+        FUNCTION_NODE_TYPES.has(ancestor.type) &&
+        (!isImmediatelyInvokedFunction(ancestor) ||
+          !("async" in ancestor) ||
+          ancestor.async === true)
+      ) {
+        nestedFunctionCount += 1;
+      }
       if (isLifecycleMember(ancestor, lifecycleNames)) {
         lifecycleMember = ancestor;
       }

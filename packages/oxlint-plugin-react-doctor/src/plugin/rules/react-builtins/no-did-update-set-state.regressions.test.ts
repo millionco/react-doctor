@@ -235,4 +235,98 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("stays silent on a convergent post-mount DOM text guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          const tooltip = this.durationNode.textContent;
+          if (this.state.tooltip !== tooltip) {
+            this.setState({ tooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a direct convergent ref text guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          if (this.state.tooltip !== this.durationRef.current.textContent) {
+            this.setState({ tooltip: this.durationRef.current.textContent });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a convergent DOM value passes through a formatter", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          const renderedText = this.durationNode.textContent;
+          const tooltip = formatDuration(renderedText);
+          if (this.state.tooltip !== tooltip) {
+            this.setState({ tooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a post-mount guard that assigns a different value", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          const tooltip = this.durationNode.textContent;
+          if (this.state.tooltip !== tooltip) {
+            this.setState({ tooltip: this.otherNode.textContent });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a convergent render-known prop copy", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          if (this.state.tooltip !== this.props.tooltip) {
+            this.setState({ tooltip: this.props.tooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

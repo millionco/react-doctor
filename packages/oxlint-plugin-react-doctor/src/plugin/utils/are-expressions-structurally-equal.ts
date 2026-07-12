@@ -16,6 +16,7 @@ export const areExpressionsStructurallyEqual = (
 ): boolean => {
   if (!a || !b) return a === b;
   if (a.type !== b.type) return false;
+  if (isNodeOfType(a, "ThisExpression")) return true;
   if (isNodeOfType(a, "Identifier") && isNodeOfType(b, "Identifier")) return a.name === b.name;
   if (isNodeOfType(a, "Literal") && isNodeOfType(b, "Literal")) return a.value === b.value;
   if (isNodeOfType(a, "MemberExpression") && isNodeOfType(b, "MemberExpression")) {

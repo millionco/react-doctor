@@ -1,10 +1,12 @@
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
+import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle.js";
+import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
@@ -111,6 +113,99 @@ const isStatefulOperand = (
   referencesAnyName(node, derivedNames) ||
   containsThisStateOrProps(node);
 
+const getStaticMemberName = (node: EsTreeNode): string | null => {
+  if (!isNodeOfType(node, "MemberExpression") || node.computed === true) return null;
+  return isNodeOfType(node.property, "Identifier") ? node.property.name : null;
+};
+
+const getThisStateFieldName = (node: EsTreeNode): string | null => {
+  if (!isNodeOfType(node, "MemberExpression")) return null;
+  const object = stripParenExpression(node.object as EsTreeNode);
+  if (
+    !isNodeOfType(object, "MemberExpression") ||
+    !isNodeOfType(stripParenExpression(object.object as EsTreeNode), "ThisExpression") ||
+    getStaticMemberName(object) !== "state"
+  ) {
+    return null;
+  }
+  return getStaticMemberName(node);
+};
+
+const collectLocalInitializers = (lifecycleFunction: EsTreeNode): Map<string, EsTreeNode> => {
+  const initializers = new Map<string, EsTreeNode>();
+  const body = (lifecycleFunction as { body?: EsTreeNode }).body;
+  if (!body) return initializers;
+  walkAst(body, (node) => {
+    if (FUNCTION_NODE_TYPES.has(node.type)) return false;
+    if (
+      isNodeOfType(node, "VariableDeclarator") &&
+      isNodeOfType(node.id, "Identifier") &&
+      node.init
+    ) {
+      initializers.set(node.id.name, node.init as EsTreeNode);
+    }
+  });
+  return initializers;
+};
+
+const derivesFromPostMountValue = (
+  node: EsTreeNode,
+  localInitializers: ReadonlyMap<string, EsTreeNode>,
+  visitedNames: ReadonlySet<string> = new Set(),
+): boolean => {
+  if (readsPostMountValue(node)) return true;
+  const referencedNames = new Set<string>();
+  collectReferenceIdentifierNames(node, referencedNames);
+  for (const referencedName of referencedNames) {
+    if (visitedNames.has(referencedName)) continue;
+    const initializer = localInitializers.get(referencedName);
+    if (!initializer) continue;
+    const nextVisitedNames = new Set([...visitedNames, referencedName]);
+    if (derivesFromPostMountValue(initializer, localInitializers, nextVisitedNames)) return true;
+  }
+  return false;
+};
+
+const getSetStateFieldValue = (setStateCall: EsTreeNode, fieldName: string): EsTreeNode | null => {
+  if (!isNodeOfType(setStateCall, "CallExpression")) return null;
+  const argument = setStateCall.arguments?.[0];
+  if (!argument || !isNodeOfType(argument, "ObjectExpression")) return null;
+  for (const property of argument.properties ?? []) {
+    if (!isNodeOfType(property, "Property") || property.computed === true) continue;
+    const propertyName =
+      (isNodeOfType(property.key, "Identifier") && property.key.name) ||
+      (isNodeOfType(property.key, "Literal") &&
+        typeof property.key.value === "string" &&
+        property.key.value) ||
+      null;
+    if (propertyName === fieldName) return property.value as EsTreeNode;
+  }
+  return null;
+};
+
+const isConvergentPostMountGuard = (
+  test: EsTreeNode,
+  setStateCall: EsTreeNode,
+  localInitializers: ReadonlyMap<string, EsTreeNode>,
+): boolean => {
+  let qualifies = false;
+  walkAst(test, (node) => {
+    if (qualifies) return false;
+    if (!isNodeOfType(node, "BinaryExpression") || !EQUALITY_OPERATORS.has(node.operator)) return;
+    const leftFieldName = getThisStateFieldName(node.left as EsTreeNode);
+    const rightFieldName = getThisStateFieldName(node.right as EsTreeNode);
+    const fieldName = leftFieldName ?? rightFieldName;
+    const comparedValue = leftFieldName ? (node.right as EsTreeNode) : (node.left as EsTreeNode);
+    if (!fieldName || (!leftFieldName && !rightFieldName)) return;
+    const assignedValue = getSetStateFieldValue(setStateCall, fieldName);
+    if (!assignedValue || !areExpressionsStructurallyEqual(comparedValue, assignedValue)) return;
+    if (!derivesFromPostMountValue(comparedValue, localInitializers)) return;
+    qualifies = true;
+    return false;
+  });
+  return qualifies;
+};
+
 // The doc's sanctioned escape hatch: `if (prevProps.x !== this.props.x)` and
 // equivalents (`snapshot.shouldUpdate`, `wasOpen !== isOpen` via locals
 // destructured from prevState/this.state, `newState !== this.state`).
@@ -127,7 +222,8 @@ const isDiffGuardTest = (
     if (!EQUALITY_OPERATORS.has(node.operator)) return;
     if (
       isStatefulOperand(node.left, paramNames, derivedNames) &&
-      isStatefulOperand(node.right, paramNames, derivedNames)
+      isStatefulOperand(node.right, paramNames, derivedNames) &&
+      (referencesAnyName(node.left, derivedNames) || referencesAnyName(node.right, derivedNames))
     ) {
       qualifies = true;
       return false;
@@ -144,6 +240,7 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode): boolean => {
     collectPatternNames(param, paramNames);
   }
   const derivedNames = collectDiffSourceLocalNames(lifecycleFunction, paramNames);
+  const localInitializers = collectLocalInitializers(lifecycleFunction);
 
   let child: EsTreeNode = setStateCall;
   let ancestor: EsTreeNode | null | undefined = setStateCall.parent;
@@ -158,7 +255,13 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode): boolean => {
         child === ancestor.right &&
         ancestor.left) ||
       null;
-    if (guardTest && isDiffGuardTest(guardTest, paramNames, derivedNames)) return true;
+    if (
+      guardTest &&
+      (isDiffGuardTest(guardTest, paramNames, derivedNames) ||
+        isConvergentPostMountGuard(guardTest, setStateCall, localInitializers))
+    ) {
+      return true;
+    }
     child = ancestor;
     ancestor = ancestor.parent ?? null;
   }

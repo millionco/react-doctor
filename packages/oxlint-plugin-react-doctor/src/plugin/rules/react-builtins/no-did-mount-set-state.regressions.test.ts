@@ -183,4 +183,74 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags the same mount write inside a synchronous IIFE and as a direct call", () => {
+    const iifeResult = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        componentDidMount() {
+          this.initializeMonthContainer = (() => {
+            this.setState({ monthContainer: this.monthContainer });
+          })();
+        }
+      }
+      `,
+    );
+    const directResult = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        componentDidMount() {
+          this.setState({ monthContainer: this.monthContainer });
+        }
+      }
+      `,
+    );
+
+    expect(iifeResult.parseErrors).toEqual([]);
+    expect(directResult.parseErrors).toEqual([]);
+    expect(iifeResult.diagnostics).toHaveLength(1);
+    expect(directResult.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a deferred nested mount callback", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        componentDidMount() {
+          requestAnimationFrame(() => {
+            this.setState({ monthContainer: this.monthContainer });
+          });
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a deferred callback in an async lifecycle", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        async componentDidMount() {
+          requestAnimationFrame(() => {
+            this.setState({ monthContainer: this.monthContainer });
+          });
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

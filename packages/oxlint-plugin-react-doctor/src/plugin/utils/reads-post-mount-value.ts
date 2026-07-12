@@ -30,6 +30,8 @@ export const DOM_QUERY_MEMBER_NAMES: ReadonlySet<string> = new Set([
 // they only count as a post-mount read when the receiver is ref-like.
 const LAYOUT_MEASUREMENT_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "current",
+  "textContent",
+  "innerText",
   "scrollWidth",
   "clientWidth",
   "offsetWidth",
@@ -55,7 +57,13 @@ const POST_MOUNT_GLOBAL_NAMES: ReadonlySet<string> = new Set([
 const REF_FACTORY_CALLEE_NAMES: ReadonlySet<string> = new Set(["useRef", "createRef"]);
 
 const hasRefLikeName = (name: string): boolean =>
-  name === "ref" || name.endsWith("Ref") || name.endsWith("ref");
+  name === "ref" ||
+  name.endsWith("Ref") ||
+  name.endsWith("ref") ||
+  name.endsWith("Node") ||
+  name.endsWith("node") ||
+  name.endsWith("Element") ||
+  name.endsWith("element");
 
 const isRefFactoryInitializer = (init: EsTreeNode | null | undefined): boolean => {
   if (!init || !isNodeOfType(init, "CallExpression")) return false;

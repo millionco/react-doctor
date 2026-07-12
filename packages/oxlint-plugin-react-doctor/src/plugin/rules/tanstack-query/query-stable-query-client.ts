@@ -3,9 +3,9 @@ import { TANSTACK_QUERY_CLIENT_CLASS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
-import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -36,18 +36,6 @@ const isStableHookWrapperArgument = (node: EsTreeNode): boolean => {
 // encloses it, so it is transparent when deciding whether a construction
 // happens per render: `const client = (() => new QueryClient())()` in a
 // component body still constructs on every render.
-const isImmediatelyInvokedFunction = (functionNode: EsTreeNode): boolean => {
-  let wrappedCallee: EsTreeNode = functionNode;
-  let enclosing: EsTreeNode | null | undefined = functionNode.parent;
-  while (enclosing && stripParenExpression(enclosing) === functionNode) {
-    wrappedCallee = enclosing;
-    enclosing = enclosing.parent ?? null;
-  }
-  return Boolean(
-    enclosing && isNodeOfType(enclosing, "CallExpression") && enclosing.callee === wrappedCallee,
-  );
-};
-
 export const queryStableQueryClient = defineRule({
   id: "query-stable-query-client",
   title: "Unstable QueryClient in component",

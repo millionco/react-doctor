@@ -2,20 +2,8 @@ import { catchClauseRethrowsCaught } from "./catch-clause-rethrows-caught.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isFunctionLike } from "./is-function-like.js";
+import { isImmediatelyInvokedFunction } from "./is-immediately-invoked-function.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { stripParenExpression } from "./strip-paren-expression.js";
-
-const isImmediatelyInvokedFunctionCallee = (functionNode: EsTreeNode): boolean => {
-  let wrappedCallee: EsTreeNode = functionNode;
-  let enclosing: EsTreeNode | null | undefined = functionNode.parent;
-  while (enclosing && stripParenExpression(enclosing) === functionNode) {
-    wrappedCallee = enclosing;
-    enclosing = enclosing.parent ?? null;
-  }
-  return Boolean(
-    enclosing && isNodeOfType(enclosing, "CallExpression") && enclosing.callee === wrappedCallee,
-  );
-};
 
 // The enclosing TryStatement that SWALLOWS a control-flow error (a thrown
 // redirect()/notFound()) raised at `node`: its `try` BLOCK contains `node`,
@@ -35,7 +23,7 @@ export const findGuardingTryStatement = (
   let child: EsTreeNode = node;
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor) {
-    if (isFunctionLike(ancestor) && !isImmediatelyInvokedFunctionCallee(ancestor)) {
+    if (isFunctionLike(ancestor) && !isImmediatelyInvokedFunction(ancestor)) {
       return null;
     }
     if (

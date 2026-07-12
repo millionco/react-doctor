@@ -182,6 +182,19 @@ export const Timestamp = ({ value, locale, resolvedTimeZone }) => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not trust mutable Intl option aliases", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale, resolvedTimeZone }) => {
+  let options = { dateStyle: "medium", timeZone: resolvedTimeZone };
+  options = getCurrentOptions(options);
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags an explicit locale WITHOUT a timeZone on a provable date", () => {
     const result = run(
       `"use client";

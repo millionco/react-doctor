@@ -96,7 +96,9 @@ const objectLiteralHasProperty = (
   if (isNodeOfType(unwrapped, "Identifier")) {
     const symbol = resolveConstIdentifierAlias(unwrapped, scopes);
     return Boolean(
-      symbol?.initializer && objectLiteralHasProperty(symbol.initializer, propertyName, scopes),
+      symbol?.kind === "const" &&
+      symbol.initializer &&
+      objectLiteralHasProperty(symbol.initializer, propertyName, scopes),
     );
   }
   if (!isNodeOfType(unwrapped, "ObjectExpression")) return false;

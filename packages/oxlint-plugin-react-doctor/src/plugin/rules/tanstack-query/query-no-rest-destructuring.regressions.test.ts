@@ -51,10 +51,70 @@ describe("tanstack-query/query-no-rest-destructuring — regressions", () => {
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("flags rest destructuring through multiple exact const aliases", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import { useQuery } from "@tanstack/react-query";
+const queryResult = useQuery({ queryKey: ["todos"] });
+const exactResult = queryResult;
+const finalResult = exactResult;
+const { data, ...rest } = finalResult;`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags a namespace query result through multiple exact const aliases", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import * as ReactQuery from "@tanstack/react-query";
+const queryResult = ReactQuery.useQuery({ queryKey: ["todos"] });
+const exactResult = queryResult;
+const { data, ...rest } = exactResult;`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("stays silent on a two-step rest-destructure of a reassignable binding", () => {
     const { diagnostics } = runRule(
       queryNoRestDestructuring,
       `import { useQuery } from "@tanstack/react-query"; let queryResult = useQuery({ queryKey: ["todos"] }); queryResult = fallback; const { data, ...rest } = queryResult;`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when an alias chain reaches a reassignable binding", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import { useQuery } from "@tanstack/react-query";
+let queryResult = useQuery({ queryKey: ["todos"] });
+queryResult = fallback;
+const exactResult = queryResult;
+const { data, ...rest } = exactResult;`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on conditional query-result aliases", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import { useQuery } from "@tanstack/react-query";
+const queryResult = useQuery({ queryKey: ["todos"] });
+const selectedResult = condition ? queryResult : fallback;
+const { data, ...rest } = selectedResult;`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when a same-named local shadows an aliased query result", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import { useQuery } from "@tanstack/react-query";
+const queryResult = useQuery({ queryKey: ["todos"] });
+const exactResult = queryResult;
+function read(exactResult) {
+  const { data, ...rest } = exactResult;
+  return rest;
+}`,
     );
     expect(diagnostics).toHaveLength(0);
   });

@@ -2,12 +2,12 @@ import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
-import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isTanstackQuerySource } from "../../utils/is-tanstack-query-source.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 
 // Canonical TanStack hook name for a call expression, or null when the call
 // is not a TanStack Query hook. Resolves renamed imports
@@ -47,19 +47,21 @@ const resolveTanstackQueryHookName = (
   return null;
 };
 
-// Hook name behind a destructure initializer: a direct hook call, or a
-// `const` binding to one (`const result = useQuery(...); const { ...rest } =
-// result`). Reassignable bindings (`let`) stay exempt — the destructured
-// value may no longer be the query result.
-const resolveHookNameFromInitializer = (initializer: EsTreeNode): string | null => {
+// Hook name behind a destructure initializer: a direct hook call, or a chain
+// of exact `const` aliases rooted at one. Reassignable bindings (`let`) stay
+// exempt because the destructured value may no longer be the query result.
+const resolveHookNameFromInitializer = (
+  initializer: EsTreeNode,
+  scopes: ScopeAnalysis,
+): string | null => {
   if (isNodeOfType(initializer, "CallExpression")) {
     return resolveTanstackQueryHookName(initializer);
   }
   if (!isNodeOfType(initializer, "Identifier")) return null;
-  const binding = findVariableInitializer(initializer, initializer.name);
-  if (!binding?.initializer || !isConstDeclaredBinding(binding)) return null;
-  if (!isNodeOfType(binding.initializer, "CallExpression")) return null;
-  return resolveTanstackQueryHookName(binding.initializer);
+  const resolvedSymbol = resolveConstIdentifierAlias(initializer, scopes);
+  if (resolvedSymbol?.kind !== "const" || !resolvedSymbol.initializer) return null;
+  if (!isNodeOfType(resolvedSymbol.initializer, "CallExpression")) return null;
+  return resolveTanstackQueryHookName(resolvedSymbol.initializer);
 };
 
 export const queryNoRestDestructuring = defineRule({
@@ -80,7 +82,7 @@ export const queryNoRestDestructuring = defineRule({
       );
       if (!hasRestElement) return;
 
-      const hookName = resolveHookNameFromInitializer(node.init);
+      const hookName = resolveHookNameFromInitializer(node.init, context.scopes);
       if (!hookName) return;
 
       context.report({

@@ -17,7 +17,11 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import { clearIgnorePatternsCache, collectIgnorePatterns, runOxlint } from "@react-doctor/core";
-import { buildTestProject, setupReactProject } from "./_helpers.js";
+import {
+  buildIsolatedDerivedStateRuleConfig,
+  buildTestProject,
+  setupReactProject,
+} from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-respect-lint-ignores-"));
 
@@ -228,6 +232,9 @@ export const FullName = ({ first, last }: { first: string; last: string }) => {
       rootDirectory: projectDir,
       project: buildTestProject({ rootDirectory: projectDir }),
       respectInlineDisables: false,
+      userConfig: {
+        rules: buildIsolatedDerivedStateRuleConfig("no-derived-state-effect"),
+      },
     });
 
     expect(
@@ -259,6 +266,9 @@ export const FullName = ({ first, last }: { first: string; last: string }) => {
       rootDirectory: projectDir,
       project: buildTestProject({ rootDirectory: projectDir }),
       respectInlineDisables: false,
+      userConfig: {
+        rules: buildIsolatedDerivedStateRuleConfig("no-derived-state-effect"),
+      },
     });
 
     expect(diagnostics.some((d) => d.rule === "no-derived-state-effect")).toBe(true);

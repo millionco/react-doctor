@@ -20,7 +20,7 @@ describe("runOxlint", () => {
   describeRules(
     "state & effects rules",
     {
-      "no-derived-state-effect": {
+      "no-adjust-state-on-prop-change": {
         fixture: "state-issues.tsx",
         ruleSource: "rules/state-and-effects.ts",
         severity: "warning",

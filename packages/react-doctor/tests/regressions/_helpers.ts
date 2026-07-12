@@ -125,6 +125,16 @@ const DERIVED_STATE_SIBLING_RULE_IDS = [
   "no-initialize-state",
 ];
 
+export const buildIsolatedDerivedStateRuleConfig = (
+  ruleId: string,
+): Record<string, "off" | "warn"> =>
+  Object.fromEntries(
+    DERIVED_STATE_SIBLING_RULE_IDS.map((siblingRuleId) => [
+      `react-doctor/${siblingRuleId}`,
+      siblingRuleId === ruleId ? "warn" : "off",
+    ]),
+  );
+
 export interface BuildTestProjectOptions {
   rootDirectory: string;
   framework?: ProjectInfo["framework"];
@@ -207,12 +217,7 @@ export const collectRuleHits = async (
 ): Promise<RuleHit[]> => {
   const project = buildTestProject({ rootDirectory: projectDir, ...options });
   const isolatedSiblingRules = DERIVED_STATE_SIBLING_RULE_IDS.includes(ruleId)
-    ? Object.fromEntries(
-        DERIVED_STATE_SIBLING_RULE_IDS.map((siblingRuleId) => [
-          `react-doctor/${siblingRuleId}`,
-          siblingRuleId === ruleId ? "warn" : "off",
-        ]),
-      )
+    ? buildIsolatedDerivedStateRuleConfig(ruleId)
     : { [`react-doctor/${ruleId}`]: "warn" };
   const diagnostics = await runOxlint({
     rootDirectory: projectDir,

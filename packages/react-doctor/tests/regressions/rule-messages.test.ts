@@ -19,7 +19,11 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import { runOxlint } from "@react-doctor/core";
-import { buildTestProject, setupReactProject } from "./_helpers.js";
+import {
+  buildIsolatedDerivedStateRuleConfig,
+  buildTestProject,
+  setupReactProject,
+} from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-rule-messages-"));
 
@@ -55,6 +59,9 @@ export const FullName = ({ firstName, lastName }: { firstName: string; lastName:
     const diagnostics = await runOxlint({
       rootDirectory: projectDir,
       project: buildTestProject({ rootDirectory: projectDir }),
+      userConfig: {
+        rules: buildIsolatedDerivedStateRuleConfig("no-derived-state-effect"),
+      },
     });
 
     const messages = diagnostics

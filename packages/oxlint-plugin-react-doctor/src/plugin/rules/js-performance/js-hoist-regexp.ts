@@ -16,6 +16,19 @@ const isStaticPattern = (argument: EsTreeNode | null | undefined): boolean => {
   return isNodeOfType(argument, "TemplateLiteral") && (argument.expressions?.length ?? 0) === 0;
 };
 
+const STATEFUL_REGEXP_FLAGS_PATTERN = /[gy]/;
+
+const hasStatefulRegExpFlags = (argument: EsTreeNode | null | undefined): boolean => {
+  if (isNodeOfType(argument, "Literal") && typeof argument.value === "string") {
+    return STATEFUL_REGEXP_FLAGS_PATTERN.test(argument.value);
+  }
+  if (isNodeOfType(argument, "TemplateLiteral") && (argument.expressions?.length ?? 0) === 0) {
+    const flags = argument.quasis?.[0]?.value?.cooked;
+    return typeof flags === "string" && STATEFUL_REGEXP_FLAGS_PATTERN.test(flags);
+  }
+  return false;
+};
+
 // `RegExp(...)` without `new` constructs a fresh regex exactly like
 // `new RegExp(...)` does, so both call forms get the same treatment.
 const isStaticRegExpConstruction = (
@@ -27,7 +40,8 @@ const isStaticRegExpConstruction = (
     isNodeOfType(node.callee, "Identifier") &&
     node.callee.name === "RegExp" &&
     isStaticPattern(patternArgument) &&
-    (flagsArgument === undefined || isStaticPattern(flagsArgument))
+    (flagsArgument === undefined || isStaticPattern(flagsArgument)) &&
+    !hasStatefulRegExpFlags(flagsArgument)
   );
 };
 

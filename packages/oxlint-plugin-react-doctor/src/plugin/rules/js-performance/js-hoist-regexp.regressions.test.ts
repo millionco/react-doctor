@@ -16,7 +16,11 @@ const expectPass = (code: string): void => {
 
 describe("js-performance/js-hoist-regexp — regressions", () => {
   it("flags a static-pattern `new RegExp(...)` built inside a loop", () => {
-    expectFail(`for (const line of lines) { const m = new RegExp("\\\\d+", "gi"); m.test(line); }`);
+    expectFail(`for (const line of lines) { const m = new RegExp("\\\\d+", "i"); m.test(line); }`);
+  });
+
+  it("does not flag a global RegExp whose lastIndex resets on every loop pass", () => {
+    expectPass(`for (const line of lines) { const m = new RegExp("\\\\d+", "g"); m.test(line); }`);
   });
 
   it("does not flag `new RegExp(loopVar, ...)` whose pattern depends on the loop", () => {
@@ -48,9 +52,9 @@ describe("js-performance/js-hoist-regexp — regressions", () => {
     expectFail(`for (const line of lines) { if (new RegExp("^\\\\s*#").test(line)) count++; }`);
   });
 
-  it("still flags an expression-free template-literal pattern with static flags in a while loop", () => {
+  it("still flags an expression-free template-literal pattern with non-stateful flags", () => {
     expectFail(
-      `while (queue.length > 0) { const item = queue.pop(); new RegExp(\`abc\`, "g").test(item); }`,
+      `while (queue.length > 0) { const item = queue.pop(); new RegExp(\`abc\`, "m").test(item); }`,
     );
   });
 

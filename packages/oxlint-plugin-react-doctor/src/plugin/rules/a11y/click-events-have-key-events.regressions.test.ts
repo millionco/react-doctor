@@ -106,6 +106,87 @@ describe("a11y/click-events-have-key-events regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    ["an inline object", `export const Card = ({ open }) => <div {...{ onClick: open }} />;`],
+    [
+      "a local object",
+      `export const Card = ({ open }) => {
+        const cardProps = { className: "card", onClick: open };
+        return <div {...cardProps} />;
+      };`,
+    ],
+    [
+      "a static computed key",
+      `export const Card = ({ open }) => <div {...{ ["onClick"]: open }} />;`,
+    ],
+  ])("flags a noninteractive element whose click handler comes from %s", (_name, code) => {
+    const result = runRule(clickEventsHaveKeyEvents, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a transparent spread that includes a keyboard handler", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Card = ({ open, openFromKeyboard }) => (
+        <div {...{ onClick: open, onKeyDown: openFromKeyboard }} />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags repeated transparent spreads of the same click props object", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Card = ({ open }) => {
+        const cardProps = { onClick: open };
+        return <div {...cardProps} {...cardProps} />;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an inline focus-forwarding handler inside a transparent spread", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Field = ({ inputRef }) => (
+        <div {...{ onClick: () => inputRef.current?.focus() }} />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a named backdrop handler inside a transparent spread", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Modal = ({ close }) => {
+        const dismissBackdrop = (event) => {
+          if (event.target === event.currentTarget) close();
+        };
+        return <div {...{ onClick: dismissBackdrop }} />;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a native button whose click handler comes from a transparent spread", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Card = ({ open }) => <button {...{ onClick: open }} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a spread role conservative when it can change accessibility semantics", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Option = ({ select }) => (
+        <div {...{ role: "option", onClick: select }} />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag a role=option item of a listbox composite", () => {
     const result = runRule(
       clickEventsHaveKeyEvents,

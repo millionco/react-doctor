@@ -1,17 +1,20 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
-import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isPresentationRole } from "../../utils/is-presentation-role.js";
 import { isPureEventBlockerHandler } from "../../utils/is-pure-event-blocker-handler.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
 
 const MESSAGE =
@@ -25,6 +28,98 @@ const KEY_HANDLERS = [
   "onKeyDownCapture",
   "onKeyPressCapture",
 ] as const;
+
+const CLICK_HANDLERS = ["onClick", "onClickCapture"] as const;
+const TRANSPARENT_SPREAD_EVENT_NAMES: ReadonlySet<string> = new Set(
+  [...CLICK_HANDLERS, ...KEY_HANDLERS].map((eventName) => eventName.toLowerCase()),
+);
+const CONSERVATIVE_SPREAD_PROP_NAMES: ReadonlySet<string> = new Set([
+  "aria-hidden",
+  "onmouseenter",
+  "onmouseover",
+  "role",
+]);
+
+const resolveSpreadObjectExpression = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNodeOfType<"ObjectExpression"> | null => {
+  const innerExpression = stripParenExpression(expression);
+  if (isNodeOfType(innerExpression, "ObjectExpression")) return innerExpression;
+  if (!isNodeOfType(innerExpression, "Identifier")) return null;
+  const symbol = resolveConstIdentifierAlias(innerExpression, scopes);
+  if (symbol?.kind !== "const" || !symbol.initializer) return null;
+  const initializer = stripParenExpression(symbol.initializer);
+  return isNodeOfType(initializer, "ObjectExpression") ? initializer : null;
+};
+
+const collectTransparentSpreadEventNames = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  eventValues: Map<string, EsTreeNode>,
+  visitedObjectExpressions: Set<EsTreeNode>,
+): boolean => {
+  const objectExpression = resolveSpreadObjectExpression(expression, scopes);
+  if (!objectExpression || visitedObjectExpressions.has(objectExpression)) return false;
+  visitedObjectExpressions.add(objectExpression);
+  let isTransparent = true;
+  for (const property of objectExpression.properties) {
+    if (isNodeOfType(property, "SpreadElement")) {
+      if (
+        !collectTransparentSpreadEventNames(
+          property.argument as EsTreeNode,
+          scopes,
+          eventValues,
+          visitedObjectExpressions,
+        )
+      ) {
+        isTransparent = false;
+        break;
+      }
+      continue;
+    }
+    if (!isNodeOfType(property, "Property")) {
+      isTransparent = false;
+      break;
+    }
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (!propertyName) {
+      isTransparent = false;
+      break;
+    }
+    const normalizedPropertyName = propertyName.toLowerCase();
+    if (CONSERVATIVE_SPREAD_PROP_NAMES.has(normalizedPropertyName)) {
+      isTransparent = false;
+      break;
+    }
+    if (TRANSPARENT_SPREAD_EVENT_NAMES.has(normalizedPropertyName)) {
+      eventValues.set(normalizedPropertyName, property.value as EsTreeNode);
+    }
+  }
+  visitedObjectExpressions.delete(objectExpression);
+  return isTransparent;
+};
+
+const getTransparentSpreadEventValues = (
+  attributes: EsTreeNode[],
+  scopes: ScopeAnalysis,
+): Map<string, EsTreeNode> | null => {
+  const eventValues = new Map<string, EsTreeNode>();
+  for (const attribute of attributes) {
+    if (!isNodeOfType(attribute, "JSXSpreadAttribute")) continue;
+    if (
+      !collectTransparentSpreadEventNames(
+        attribute.argument as EsTreeNode,
+        scopes,
+        eventValues,
+        new Set(),
+      )
+    ) {
+      return null;
+    }
+  }
+  return eventValues;
+};
 
 // OXC's `is_interactive_element` treats these as interactive, but none
 // of them takes focus or has native activation semantics — a
@@ -89,7 +184,11 @@ const isFocusForwardingFunctionBody = (body: EsTreeNode | null | undefined): boo
 
 const resolveHandlerFunction = (attribute: EsTreeNodeOfType<"JSXAttribute">): EsTreeNode | null => {
   if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) return null;
-  let expression = attribute.value.expression as EsTreeNode;
+  return resolveHandlerFunctionExpression(attribute.value.expression as EsTreeNode);
+};
+
+const resolveHandlerFunctionExpression = (handlerExpression: EsTreeNode): EsTreeNode | null => {
+  let expression = handlerExpression;
   if (isNodeOfType(expression, "Identifier")) {
     const binding = findVariableInitializer(expression, expression.name);
     if (!binding?.initializer) return null;
@@ -263,26 +362,45 @@ export const clickEventsHaveKeyEvents = defineRule({
         if (!FOCUSLESS_CONTAINER_TAGS.has(tag) && isInteractiveElement(tag, node)) return;
         // `onClickCapture` is the same click affordance on the capture
         // phase — equally unreachable from the keyboard.
+        const spreadEventValues = getTransparentSpreadEventValues(node.attributes, context.scopes);
+        if (!spreadEventValues) return;
         const onClick =
           hasJsxPropIgnoreCase(node.attributes, "onClick") ??
           hasJsxPropIgnoreCase(node.attributes, "onClickCapture");
-        if (!onClick) return;
-        if (isPureEventBlockerHandler(onClick)) return;
-        if (isFocusForwardingHandler(onClick)) return;
-        // A spread can carry keyboard handlers the static check can't
-        // see (react-aria's `{...buttonProps}` from useCalendarCell,
-        // `{...rest}` on design-system options).
-        if (hasJsxSpreadAttribute(node.attributes)) return;
+        const spreadOnClickExpression = CLICK_HANDLERS.map((name) =>
+          spreadEventValues.get(name.toLowerCase()),
+        ).find((expression) => expression !== undefined);
+        if (!onClick && !spreadOnClickExpression) {
+          return;
+        }
+        if (onClick && isPureEventBlockerHandler(onClick)) return;
+        if (onClick && isFocusForwardingHandler(onClick)) return;
+        const spreadHandlerFunction = spreadOnClickExpression
+          ? resolveHandlerFunctionExpression(spreadOnClickExpression)
+          : null;
+        if (
+          spreadHandlerFunction &&
+          (isFocusForwardingFunctionBody(
+            (spreadHandlerFunction as { body?: EsTreeNode }).body ?? null,
+          ) ||
+            containsBackdropDismissComparison(
+              (spreadHandlerFunction as { body?: EsTreeNode }).body ?? null,
+            ))
+        ) {
+          return;
+        }
         if (hasCompositeItemRole(node)) return;
         if (isHoverSelectionListItem(tag, node)) return;
-        if (isBackdropDismissHandler(onClick)) return;
+        if (onClick && isBackdropDismissHandler(onClick)) return;
         if (containsKeyboardActivatableDescendant(node.parent)) return;
 
         if (isHiddenFromScreenReader(node, context.settings)) return;
         // Presentational role (presentation / none) → not perceivable by AT.
         if (isPresentationRole(node)) return;
-        const hasKeyHandler = KEY_HANDLERS.some((handler) =>
-          hasJsxPropIgnoreCase(node.attributes, handler),
+        const hasKeyHandler = KEY_HANDLERS.some(
+          (handler) =>
+            hasJsxPropIgnoreCase(node.attributes, handler) ||
+            spreadEventValues.has(handler.toLowerCase()),
         );
         if (hasKeyHandler) return;
 

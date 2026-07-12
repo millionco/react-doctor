@@ -15,6 +15,15 @@ interface RulesetHashInput {
    * parses / resolves a file, so a tsconfig edit must bust the cache even when
    * source content is unchanged. */
   readonly tsconfigContent: string | null;
+  /** Whether inline `// eslint-disable*` / `// oxlint-disable*` directives are
+   * respected. Audit mode (`false`) neutralizes those directives on disk BEFORE
+   * oxlint runs, so oxlint emits the very diagnostics they would have suppressed
+   * — a different RAW stream than default mode for the same source content. It
+   * therefore partitions the cache into disjoint audit / default namespaces so
+   * the two modes can never replay each other's entries. (This is the ONE
+   * inline-disable effect that is pre-cache; RD's own post-cache suppression of
+   * `react-doctor-disable-next-line` is deliberately NOT hashed — see below.) */
+  readonly respectInlineDisables: boolean;
 }
 
 const ROOT_DIRECTORY_PLACEHOLDER = "<root>";
@@ -50,4 +59,6 @@ export const computeRulesetHash = (input: RulesetHashInput): string =>
     .update([...input.ignorePatterns].join("\n"))
     .update("\u0000")
     .update(input.tsconfigContent ?? "")
+    .update("\u0000")
+    .update(input.respectInlineDisables ? "respect-inline-disables" : "audit-mode")
     .digest("hex");

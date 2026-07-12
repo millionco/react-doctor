@@ -53,6 +53,7 @@ const hash = (
     toolchainVersions: TOOLCHAIN,
     ignorePatterns: [],
     tsconfigContent: null,
+    respectInlineDisables: true,
     ...input,
   });
 
@@ -99,6 +100,13 @@ describe("computeRulesetHash", () => {
     const withoutIgnore = hash({ config });
     const withIgnore = hash({ config, ignorePatterns: ["src/generated/**"] });
     expect(withIgnore).not.toBe(withoutIgnore);
+  });
+
+  it("partitions audit mode from default mode (neutralize changes the raw stream)", () => {
+    const config = cacheableConfig(makeProject("/repo/a"));
+    const defaultMode = hash({ config, respectInlineDisables: true });
+    const auditMode = hash({ config, respectInlineDisables: false });
+    expect(auditMode).not.toBe(defaultMode);
   });
 
   it("changes when tsconfig content changes (oxlint parses with it)", () => {

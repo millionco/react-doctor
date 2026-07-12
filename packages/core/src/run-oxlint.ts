@@ -625,9 +625,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     };
 
     // The cache is sound only when nothing rewrites file content out from
-    // under the content hash and every linted rule is one we can analyze:
-    //   - audit mode (`!respectInlineDisables`) mutates files in place, so the
-    //     hash wouldn't match what oxlint saw;
+    // under the content hash in a way the key can't see, and every linted rule
+    // is one we can analyze:
     //   - adopted `extends` and user plugins carry opaque rules that may read
     //     other files, which a content-of-self key can't invalidate;
     //   - React Compiler (`react-hooks-js`) can fail to LOAD at lint time
@@ -635,10 +634,14 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     //     never spawns the cacheable pass, so that load failure would never
     //     trigger while stale React Compiler diagnostics keep replaying —
     //     breaking the byte-identical guarantee. Bypass entirely instead.
-    // Any of those falls back to the original single-config path.
+    // Any of those falls back to the original single-config path. Audit mode
+    // (`!respectInlineDisables`) is NOT a bypass: its neutralize pass rewrites
+    // disable directives on disk BEFORE the content is hashed (see the
+    // `restoreDisableDirectives` HACK above), so the key already reflects what
+    // oxlint saw, and `respectInlineDisables` is folded into the ruleset hash
+    // so audit and default runs never share a cache entry.
     const useFileLintCache =
       perFileLintCacheEnabled &&
-      respectInlineDisables &&
       !project.hasReactCompiler &&
       extendsPaths.length === 0 &&
       userPlugins.length === 0;
@@ -649,6 +652,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         toolchainVersions: resolveOxlintToolchainVersions(nodeBinaryPath),
         ignorePatterns: combinedPatterns,
         tsconfigContent,
+        respectInlineDisables,
       });
       const cache = createFileLintCache(resolveReactDoctorCacheDir(rootDirectory), rulesetHash);
 
@@ -729,6 +733,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
               toolchainVersions: resolveOxlintToolchainVersions(nodeBinaryPath),
               ignorePatterns: combinedPatterns,
               tsconfigContent,
+              respectInlineDisables,
             }),
           )
         : null;

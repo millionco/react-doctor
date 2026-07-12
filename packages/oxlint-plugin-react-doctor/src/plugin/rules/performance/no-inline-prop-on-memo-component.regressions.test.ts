@@ -69,4 +69,85 @@ export function List() { return <Inner onClick={() => doThing()} />; }`,
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it.each(["freeze", "seal", "preventExtensions"])(
+    "flags a fresh inline object wrapped with Object.%s",
+    (methodName) => {
+      const result = runRule(
+        noInlinePropOnMemoComponent,
+        `const Row = memo(Inner);
+function List() {
+  return <Row config={Object.${methodName}({ mode: "compact" })} />;
+}`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("flags fresh inline arrays through nested object integrity wrappers", () => {
+    const result = runRule(
+      noInlinePropOnMemoComponent,
+      `const Row = memo(Inner);
+function List() {
+  return <Row values={Object.freeze(Object.seal([1, 2, 3]))} />;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags fresh inline props when the integrity callee has a TypeScript wrapper", () => {
+    const result = runRule(
+      noInlinePropOnMemoComponent,
+      `const Row = memo(Inner);
+function List() {
+  return <Row config={(Object.freeze as typeof Object.freeze)({ mode: "compact" })} />;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a module-scoped frozen object", () => {
+    const result = runRule(
+      noInlinePropOnMemoComponent,
+      `const Row = memo(Inner);
+const config = Object.freeze({ mode: "compact" });
+function List() { return <Row config={config} />; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the integrity wrapper receives an existing reference", () => {
+    const result = runRule(
+      noInlinePropOnMemoComponent,
+      `const Row = memo(Inner);
+function List({ config }) { return <Row config={Object.freeze(config)} />; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a shadowed Object.freeze implementation", () => {
+    const result = runRule(
+      noInlinePropOnMemoComponent,
+      `const Row = memo(Inner);
+const Object = { freeze: () => sharedConfig };
+function List() { return <Row config={Object.freeze({ mode: "compact" })} />; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on an unknown integrity-like wrapper", () => {
+    const result = runRule(
+      noInlinePropOnMemoComponent,
+      `const Row = memo(Inner);
+function List() { return <Row config={freeze({ mode: "compact" })} />; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

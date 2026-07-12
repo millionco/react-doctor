@@ -3,6 +3,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { unwrapObjectIntegrityExpression } from "../../utils/unwrap-object-integrity-expression.js";
 
 const isMemoCall = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
@@ -35,20 +37,23 @@ const hasCustomComparator = (node: EsTreeNode): boolean =>
   (node.arguments?.length ?? 0) >= 2 &&
   !isDefaultEquivalentComparator(node.arguments?.[1]);
 
-const isInlineReference = (node: EsTreeNode): string | null => {
+const isInlineReference = (node: EsTreeNode, scopes: ScopeAnalysis): string | null => {
+  const referenceNode = unwrapObjectIntegrityExpression(node, scopes);
+
   if (
-    isNodeOfType(node, "ArrowFunctionExpression") ||
-    isNodeOfType(node, "FunctionExpression") ||
-    (isNodeOfType(node, "CallExpression") &&
-      isNodeOfType(node.callee, "MemberExpression") &&
-      isNodeOfType(node.callee.property, "Identifier") &&
-      node.callee.property.name === "bind")
+    isNodeOfType(referenceNode, "ArrowFunctionExpression") ||
+    isNodeOfType(referenceNode, "FunctionExpression") ||
+    (isNodeOfType(referenceNode, "CallExpression") &&
+      isNodeOfType(referenceNode.callee, "MemberExpression") &&
+      isNodeOfType(referenceNode.callee.property, "Identifier") &&
+      referenceNode.callee.property.name === "bind")
   )
     return "functions";
 
-  if (isNodeOfType(node, "ObjectExpression")) return "objects";
-  if (isNodeOfType(node, "ArrayExpression")) return "Arrays";
-  if (isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment")) return "JSX";
+  if (isNodeOfType(referenceNode, "ObjectExpression")) return "objects";
+  if (isNodeOfType(referenceNode, "ArrayExpression")) return "Arrays";
+  if (isNodeOfType(referenceNode, "JSXElement") || isNodeOfType(referenceNode, "JSXFragment"))
+    return "JSX";
 
   return null;
 };
@@ -104,7 +109,7 @@ export const noInlinePropOnMemoComponent = defineRule({
         }
         if (!elementName || !memoizedComponentNames.has(elementName)) return;
 
-        const propType = isInlineReference(node.value.expression);
+        const propType = isInlineReference(node.value.expression, context.scopes);
         if (propType) {
           context.report({
             node: node.value.expression,

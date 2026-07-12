@@ -1,11 +1,14 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { hasDirective } from "../../utils/has-directive.js";
-import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import {
+  OBJECT_FREEZE_OR_SEAL_METHOD_NAMES,
+  unwrapObjectIntegrityExpression,
+} from "../../utils/unwrap-object-integrity-expression.js";
 
 export const nextjsAsyncClientComponent = defineRule({
   id: "nextjs-async-client-component",
@@ -32,10 +35,14 @@ export const nextjsAsyncClientComponent = defineRule({
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!fileHasUseClient) return;
-        if (!isComponentAssignment(node)) return;
-        if (!isInlineFunctionExpression(node.init)) return;
-        if (!node.init.async) return;
         if (!isNodeOfType(node.id, "Identifier")) return;
+        if (!isUppercaseName(node.id.name) || !node.init) return;
+        const componentFunction = unwrapObjectIntegrityExpression(
+          node.init,
+          context.scopes,
+          OBJECT_FREEZE_OR_SEAL_METHOD_NAMES,
+        );
+        if (!isInlineFunctionExpression(componentFunction) || !componentFunction.async) return;
         context.report({
           node,
           message: `Async client component "${node.id.name}" fails to render because client components can't be async.`,

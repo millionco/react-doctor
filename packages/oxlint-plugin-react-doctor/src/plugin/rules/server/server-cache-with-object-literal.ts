@@ -2,6 +2,10 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import {
+  OBJECT_FREEZE_OR_SEAL_METHOD_NAMES,
+  unwrapObjectIntegrityExpression,
+} from "../../utils/unwrap-object-integrity-expression.js";
 
 // HACK: `cache(fn)` from React keys deduplication on REFERENCE equality
 // of the function arguments. Calling the cached function with object
@@ -40,7 +44,13 @@ export const serverCacheWithObjectLiteral = defineRule({
         if (!isNodeOfType(node.callee, "Identifier")) return;
         if (!cachedFunctionNames.has(node.callee.name)) return;
         const firstArg = node.arguments?.[0];
-        if (!isNodeOfType(firstArg, "ObjectExpression")) return;
+        if (!firstArg || isNodeOfType(firstArg, "SpreadElement")) return;
+        const cacheKey = unwrapObjectIntegrityExpression(
+          firstArg,
+          context.scopes,
+          OBJECT_FREEZE_OR_SEAL_METHOD_NAMES,
+        );
+        if (!isNodeOfType(cacheKey, "ObjectExpression")) return;
 
         context.report({
           node,

@@ -8,6 +8,7 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
+import { isExpressionMutatedWithin } from "../../utils/is-expression-mutated-within.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -664,7 +665,17 @@ const getDeclaredMemberType = (
 const hasProvenNonArrayType = (receiver: EsTreeNode): boolean => {
   if (isNodeOfType(receiver, "MemberExpression")) {
     const declaredType = getDeclaredMemberType(receiver);
-    return Boolean(declaredType) && !isNativeArrayType(declaredType);
+    if (declaredType) return !isNativeArrayType(declaredType);
+    const object = stripParenExpression(receiver.object);
+    if (isNodeOfType(object, "Identifier")) {
+      const binding = findVariableInitializer(object, object.name);
+      return Boolean(
+        binding &&
+        isNodeOfType(binding.bindingIdentifier, "Identifier") &&
+        binding.bindingIdentifier.typeAnnotation,
+      );
+    }
+    return false;
   }
   if (!isNodeOfType(receiver, "Identifier")) return false;
   const binding = findVariableInitializer(receiver, receiver.name);
@@ -995,6 +1006,8 @@ export const jsSetMapLookups = defineRule({
       if (isReceiverDeclaredInNearestLoop(receiver, node)) return;
       if (isPerIterationReceiver(receiver, node)) return;
       if (isLookupBoundedByConstantIteration(node)) return;
+      const nearestLoop = findNearestLoopContext(node);
+      if (nearestLoop && isExpressionMutatedWithin(receiver, nearestLoop)) return;
       context.report({
         node,
         message: `This scales poorly because \`array.${methodName}()\` inside a loop scans the whole list every time. Use a Set for constant-time lookups.`,

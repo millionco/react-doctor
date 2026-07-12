@@ -165,6 +165,22 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
   });
 
   it.each([
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ values.push(candidate); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ values[0] = candidate; values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ const alias = values; for(const candidate of candidates){ alias.splice(0, 1); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ const firstAlias = values; const secondAlias = firstAlias; for(const candidate of candidates){ secondAlias.splice(0, 1); values.includes(candidate); } }`,
+    `interface State { values: number[] } function f(state: State, candidates: number[]){ for(const candidate of candidates){ state.values.reverse(); state.values.includes(candidate); } }`,
+  ])("does not flag a receiver mutated during repeated lookups", (code) => {
+    expectPass(code);
+  });
+
+  it("does not flag a member whose imported type cannot prove native array semantics", () => {
+    expectPass(
+      `import type { State } from "./types"; function f(state: State, candidates: number[]){ for(const candidate of candidates){ state.values.includes(candidate); } }`,
+    );
+  });
+
+  it.each([
     `function f(candidates: readonly number[], allowedValues: readonly number[]){ for(const candidate of candidates){ allowedValues.includes(-0); } }`,
     `function f(candidates: readonly object[], allowedValues: readonly object[]){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
     `function f(candidates: readonly (string | boolean | bigint | undefined)[], allowedValues: readonly (string | boolean | bigint | undefined)[]){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,

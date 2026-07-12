@@ -87,6 +87,36 @@ describe("no-create-context-in-render", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    [
+      "a namespace alias",
+      `import * as React from "react";
+      const R = React;
+      function App() { return R.createContext(null); }`,
+    ],
+    [
+      "a named API alias",
+      `import { createContext } from "react";
+      const makeContext = createContext;
+      function App() { return makeContext(null); }`,
+    ],
+    [
+      "namespace destructuring",
+      `import * as React from "react";
+      const { createContext: makeContext } = React;
+      function App() { return makeContext(null); }`,
+    ],
+    [
+      "static computed access",
+      `import * as React from "react";
+      function App() { return React["createContext"](null); }`,
+    ],
+  ])("flags createContext through %s", (_name, code) => {
+    const result = runRule(noCreateContextInRender, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag createContext at module scope", () => {
     const result = runRule(
       noCreateContextInRender,
@@ -182,6 +212,18 @@ describe("no-create-context-in-render", () => {
     `,
     );
 
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a local that shadows an imported createContext", () => {
+    const result = runRule(
+      noCreateContextInRender,
+      `import { createContext } from "react";
+      function App() {
+        const createContext = (value) => ({ value });
+        return createContext(null);
+      }`,
+    );
     expect(result.diagnostics).toEqual([]);
   });
 

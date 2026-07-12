@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall, type ReactApiCallOptions } from "./is-react-api-call.js";
 import { walkAst } from "./walk-ast.js";
@@ -34,16 +35,17 @@ const isCallArgumentFunctionExpression = (node: EsTreeNode): boolean => {
 const isNestedRenderEvidenceBoundary = (node: EsTreeNode): boolean =>
   NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES.has(node.type) && !isCallArgumentFunctionExpression(node);
 
+const isRenderOutputExpression = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  node.type === "JSXElement" ||
+  node.type === "JSXFragment" ||
+  isReactApiCall(node, "createElement", scopes, REACT_CREATE_ELEMENT_OPTIONS);
+
 const containsRenderOutput = (rootNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let hasRenderOutput = false;
   walkAst(rootNode, (node: EsTreeNode): boolean | void => {
     if (hasRenderOutput) return false;
     if (node !== rootNode && isNestedRenderEvidenceBoundary(node)) return false;
-    if (
-      node.type === "JSXElement" ||
-      node.type === "JSXFragment" ||
-      isReactApiCall(node, "createElement", scopes, REACT_CREATE_ELEMENT_OPTIONS)
-    ) {
+    if (isRenderOutputExpression(node, scopes)) {
       hasRenderOutput = true;
       return false;
     }
@@ -71,7 +73,11 @@ export const functionContainsReactRenderOutput = (
 ): boolean => {
   const cachedEntry = renderOutputCache.get(functionNode);
   if (cachedEntry && cachedEntry.scopes === scopes) return cachedEntry.hasRenderOutput;
-  const hasRenderOutput = containsRenderOutput(functionNode, scopes);
+  const hasRenderOutput =
+    containsRenderOutput(functionNode, scopes) ||
+    functionReturnsMatchingExpression(functionNode, scopes, (expression) =>
+      isRenderOutputExpression(expression, scopes),
+    );
   renderOutputCache.set(functionNode, { scopes, hasRenderOutput });
   return hasRenderOutput;
 };

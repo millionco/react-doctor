@@ -1,6 +1,7 @@
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isJsxElementOrFragment } from "../../utils/is-jsx-element-or-fragment.js";
@@ -10,11 +11,12 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const isJsxExpression = (node: EsTreeNode | null | undefined): boolean =>
   Boolean(node && isJsxElementOrFragment(stripParenExpression(node)));
 
-const callbackReturnsJsx = (callback: EsTreeNode | undefined): boolean => {
+const callbackReturnsJsx = (callback: EsTreeNode | undefined, scopes: ScopeAnalysis): boolean => {
   if (!callback) return false;
   if (
     !isNodeOfType(callback, "ArrowFunctionExpression") &&
@@ -22,15 +24,7 @@ const callbackReturnsJsx = (callback: EsTreeNode | undefined): boolean => {
   ) {
     return false;
   }
-  const body = callback.body;
-  if (isJsxExpression(body)) return true;
-  if (!isNodeOfType(body, "BlockStatement")) return false;
-  for (const stmt of body.body ?? []) {
-    if (isNodeOfType(stmt, "ReturnStatement") && isJsxExpression(stmt.argument)) {
-      return true;
-    }
-  }
-  return false;
+  return functionReturnsMatchingExpression(callback, scopes, isJsxExpression);
 };
 
 const returnArgumentUsesAnyName = (
@@ -184,7 +178,7 @@ export const rerenderMemoBeforeEarlyReturn = defineRule({
             if (
               isNodeOfType(init, "CallExpression") &&
               isHookCall(init, "useMemo") &&
-              callbackReturnsJsx(init.arguments?.[0])
+              callbackReturnsJsx(init.arguments?.[0], context.scopes)
             ) {
               memoNode = declarator;
               callbackGuardTests = collectLeadingCallbackGuardTests(init.arguments?.[0]);

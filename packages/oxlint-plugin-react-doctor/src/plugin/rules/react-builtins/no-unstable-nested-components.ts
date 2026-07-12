@@ -1,5 +1,6 @@
 import { compileGlob } from "../../utils/compile-glob.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
@@ -8,6 +9,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const buildMessage = (parentName: string | null): string => {
   let message =
@@ -71,6 +73,13 @@ const expressionContainsJsxOrCreateElement = (root: EsTreeNode): boolean => {
   return found;
 };
 
+const functionContainsJsxOrCreateElement = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean =>
+  expressionContainsJsxOrCreateElement(functionNode) ||
+  functionReturnsMatchingExpression(functionNode, scopes, expressionContainsJsxOrCreateElement);
+
 // True iff `classNode` extends React.Component / PureComponent (or a
 // bare `Component` / `PureComponent` symbol — matches the import shape
 // most React class components actually use).
@@ -87,6 +96,7 @@ const isReactClassComponent = (classNode: EsTreeNode): boolean => {
 // Walk up to find the FIRST enclosing function/class component.
 const findEnclosingComponent = (
   node: EsTreeNode,
+  scopes: ScopeAnalysis,
 ): { component: EsTreeNode; name: string | null } | null => {
   let walker: EsTreeNode | null | undefined = node.parent;
   while (walker) {
@@ -95,14 +105,14 @@ const findEnclosingComponent = (
       if (
         componentName &&
         isReactComponentName(componentName) &&
-        expressionContainsJsxOrCreateElement(walker)
+        functionContainsJsxOrCreateElement(walker, scopes)
       ) {
         return { component: walker, name: componentName };
       }
       // Anonymous default-exported function returning JSX counts too.
       if (
         !componentName &&
-        expressionContainsJsxOrCreateElement(walker) &&
+        functionContainsJsxOrCreateElement(walker, scopes) &&
         walker.parent &&
         isNodeOfType(walker.parent, "ExportDefaultDeclaration")
       ) {
@@ -491,7 +501,7 @@ export const noUnstableNestedComponents = defineRule({
         if (renderPropRegex.test(propInfo.propName)) return;
         if (settings.allowAsProps) return;
       }
-      const enclosing = findEnclosingComponent(candidateNode);
+      const enclosing = findEnclosingComponent(candidateNode, context.scopes);
       if (!enclosing) return;
       // A prop / object-callback candidate is instantiated by its
       // consumer, so don't gate it on local instantiation.
@@ -510,7 +520,7 @@ export const noUnstableNestedComponents = defineRule({
         "FunctionDeclaration" | "FunctionExpression" | "ArrowFunctionExpression"
       >,
     ): void => {
-      if (!expressionContainsJsxOrCreateElement(node as EsTreeNode)) {
+      if (!functionContainsJsxOrCreateElement(node as EsTreeNode, context.scopes)) {
         return;
       }
       const inferredName = inferFunctionLikeName(node as EsTreeNode);

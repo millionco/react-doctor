@@ -79,7 +79,7 @@ const hasGlobalRegExpReassignment = (context: RuleContext): boolean => {
 const isStaticRegExpConstruction = (
   node: EsTreeNodeOfType<"NewExpression"> | EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
-  hasReassignedGlobalRegExp: boolean,
+  getHasReassignedGlobalRegExp: () => boolean,
 ): boolean => {
   const patternArgument = node.arguments?.[0] as EsTreeNode | undefined;
   const flagsArgument = node.arguments?.[1] as EsTreeNode | undefined;
@@ -88,12 +88,12 @@ const isStaticRegExpConstruction = (
   return (
     isNodeOfType(callee, "Identifier") &&
     callee.name === "RegExp" &&
-    !hasReassignedGlobalRegExp &&
     context.scopes.isGlobalReference(callee) &&
     isStaticPattern(patternArgument) &&
     effectiveFlags !== null &&
     hasValidRegExpFlags(effectiveFlags) &&
-    !STATEFUL_REGEXP_FLAGS_PATTERN.test(effectiveFlags)
+    !STATEFUL_REGEXP_FLAGS_PATTERN.test(effectiveFlags) &&
+    !getHasReassignedGlobalRegExp()
   );
 };
 
@@ -108,16 +108,20 @@ export const jsHoistRegexp = defineRule({
   recommendation:
     "Move `new RegExp(...)` (or large regex literals) to a constant outside the loop so it isn't rebuilt on every pass",
   create: (context: RuleContext) => {
-    const hasReassignedGlobalRegExp = hasGlobalRegExpReassignment(context);
+    let hasReassignedGlobalRegExp: boolean | null = null;
+    const getHasReassignedGlobalRegExp = (): boolean => {
+      hasReassignedGlobalRegExp ??= hasGlobalRegExpReassignment(context);
+      return hasReassignedGlobalRegExp;
+    };
     return createLoopAwareVisitors(
       {
         NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
-          if (isStaticRegExpConstruction(node, context, hasReassignedGlobalRegExp)) {
+          if (isStaticRegExpConstruction(node, context, getHasReassignedGlobalRegExp)) {
             context.report({ node, message: MESSAGE });
           }
         },
         CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-          if (isStaticRegExpConstruction(node, context, hasReassignedGlobalRegExp)) {
+          if (isStaticRegExpConstruction(node, context, getHasReassignedGlobalRegExp)) {
             context.report({ node, message: MESSAGE });
           }
         },

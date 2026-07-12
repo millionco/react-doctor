@@ -1,6 +1,6 @@
 import type { EsTreeNode } from "./es-tree-node.js";
-import { isNodeOfType } from "./is-node-of-type.js";
-import { stripParenExpression } from "./strip-paren-expression.js";
+import { getRootIdentifier } from "./get-root-identifier.js";
+import type { RootIdentifierOptions } from "./get-root-identifier.js";
 
 // HACK: walk a MemberExpression chain (computed or not) down to the
 // underlying root identifier. `state.nested.items` -> "state",
@@ -18,24 +18,5 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 // expression that produced the receiver.
 export const getRootIdentifierName = (
   node: EsTreeNode | undefined | null,
-  options?: { followCallChains?: boolean },
-): string | null => {
-  if (!node) return null;
-  const followCallChains = options?.followCallChains === true;
-  let cursor: EsTreeNode | undefined = node;
-  while (cursor) {
-    cursor = stripParenExpression(cursor);
-    if (isNodeOfType(cursor, "MemberExpression")) {
-      cursor = cursor.object;
-      continue;
-    }
-    if (followCallChains && isNodeOfType(cursor, "CallExpression")) {
-      const callee: EsTreeNode | null | undefined = cursor.callee;
-      if (!isNodeOfType(callee, "MemberExpression")) return null;
-      cursor = callee.object;
-      continue;
-    }
-    break;
-  }
-  return isNodeOfType(cursor, "Identifier") ? cursor.name : null;
-};
+  options?: RootIdentifierOptions,
+): string | null => getRootIdentifier(node, options)?.name ?? null;

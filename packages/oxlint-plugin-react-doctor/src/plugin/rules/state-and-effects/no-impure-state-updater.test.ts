@@ -105,6 +105,92 @@ describe("no-impure-state-updater", () => {
          return <button onClick={increment}>{count}</button>;
        };`,
     ],
+    [
+      "a named updater function",
+      `import { useState } from "react";
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         const updateCount = (previousCount) => {
+           localStorage.setItem("count", String(previousCount));
+           return previousCount + 1;
+         };
+         setCount(updateCount);
+         return count;
+       };`,
+    ],
+    [
+      "a deep captured assignment",
+      `import { useState } from "react";
+       const cache = { nested: { value: 0 } };
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         setCount((previousCount) => {
+           cache.nested.value = previousCount;
+           return previousCount;
+         });
+         return count;
+       };`,
+    ],
+    [
+      "a window timer",
+      `import { useState } from "react";
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         setCount((previousCount) => {
+           window.setTimeout(save, 0);
+           return previousCount;
+         });
+         return count;
+       };`,
+    ],
+    [
+      "globalThis storage mutation",
+      `import { useState } from "react";
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         setCount((previousCount) => {
+           globalThis.localStorage.setItem("count", String(previousCount));
+           return previousCount;
+         });
+         return count;
+       };`,
+    ],
+    [
+      "an aliased notification import",
+      `import { useState } from "react";
+       import { toast as notify } from "sonner";
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         setCount((previousCount) => {
+           notify.error("Try again");
+           return previousCount;
+         });
+         return count;
+       };`,
+    ],
+    [
+      "an aliased notification hook",
+      `import { useState } from "react";
+       import { useToast as useNotifier } from "@chakra-ui/react";
+       const Counter = () => {
+         const notifier = useNotifier();
+         const [count, setCount] = useState(0);
+         setCount((previousCount) => {
+           notifier.error("Try again");
+           return previousCount;
+         });
+         return count;
+       };`,
+    ],
+    [
+      "a document DOM measurement",
+      `import { useState } from "react";
+       const Counter = () => {
+         const [width, setWidth] = useState(0);
+         setWidth(() => document.body.getBoundingClientRect().width);
+         return width;
+       };`,
+    ],
   ])("reports %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -211,6 +297,29 @@ describe("no-impure-state-updater", () => {
          const [value, setValue] = useState(0);
          setValue(() => toast.success());
          return value;
+       };`,
+    ],
+    [
+      "a deferred callback passed to a userland map method",
+      `import { useState } from "react";
+       const scheduler = { map: (callback) => () => callback() };
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         setCount((previousCount) => {
+           const deferred = scheduler.map(() => localStorage.setItem("count", "1"));
+           return previousCount + Number(Boolean(deferred));
+         });
+         return count;
+       };`,
+    ],
+    [
+      "a shadowed window timer",
+      `import { useState } from "react";
+       const window = { setTimeout: () => 1 };
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         setCount((previousCount) => previousCount + window.setTimeout());
+         return count;
        };`,
     ],
   ])("stays silent for %s", (_name, code) => {

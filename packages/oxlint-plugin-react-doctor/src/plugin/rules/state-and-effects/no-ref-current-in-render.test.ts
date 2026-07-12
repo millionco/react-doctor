@@ -123,6 +123,38 @@ describe("no-ref-current-in-render", () => {
          return latestValueRef;
        };`,
     ],
+    [
+      "a repeated write under a null guard",
+      `import { useRef } from "react";
+       const Panel = () => {
+         const valueRef = useRef(null);
+         if (valueRef.current === null) {
+           valueRef.current = firstValue();
+           valueRef.current = secondValue();
+         }
+         return null;
+       };`,
+    ],
+    [
+      "a write in a loop under a null guard",
+      `import { useRef } from "react";
+       const Panel = ({ values }) => {
+         const valueRef = useRef(null);
+         if (valueRef.current === null) {
+           for (const value of values) valueRef.current = value;
+         }
+         return null;
+       };`,
+    ],
+    [
+      "a statically computed current write",
+      `import { useRef } from "react";
+       const Panel = ({ value }) => {
+         const valueRef = useRef(null);
+         valueRef["current"] = value;
+         return null;
+       };`,
+    ],
   ])("reports %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -206,6 +238,37 @@ describe("no-ref-current-in-render", () => {
        const Video = () => {
          const playerRef = useRef(null);
          playerRef.current ??= createVideoPlayer();
+         return <video />;
+       };`,
+    ],
+    [
+      "lazy initialization with logical-or assignment",
+      `import { useRef } from "react";
+       const Video = () => {
+         const playerRef = useRef(null);
+         playerRef.current ||= createVideoPlayer();
+         return <video />;
+       };`,
+    ],
+    [
+      "lazy initialization through a const current alias",
+      `import { useRef } from "react";
+       const Video = () => {
+         const playerRef = useRef(null);
+         const player = playerRef.current;
+         if (player === null) playerRef.current = createVideoPlayer();
+         return <video />;
+       };`,
+    ],
+    [
+      "mutually exclusive lazy initialization writes",
+      `import { useRef } from "react";
+       const Video = ({ useHardware }) => {
+         const playerRef = useRef(null);
+         if (playerRef.current === null) {
+           if (useHardware) playerRef.current = createHardwarePlayer();
+           else playerRef.current = createSoftwarePlayer();
+         }
          return <video />;
        };`,
     ],

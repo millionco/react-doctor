@@ -1,5 +1,6 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall } from "./is-react-api-call.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
@@ -14,9 +15,7 @@ export const resolveReactRefSymbol = (
     : null;
   if (
     !isNodeOfType(memberExpression, "MemberExpression") ||
-    memberExpression.computed ||
-    !isNodeOfType(memberExpression.property, "Identifier") ||
-    memberExpression.property.name !== "current" ||
+    getStaticPropertyName(memberExpression) !== "current" ||
     !isNodeOfType(receiver, "Identifier")
   ) {
     return null;

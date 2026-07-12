@@ -1,3 +1,4 @@
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingJsxOpeningElement } from "../../utils/find-enclosing-jsx-opening-element.js";
@@ -14,6 +15,7 @@ import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-re
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -87,9 +89,16 @@ const receiverNameLooksDateFlavored = (expression: EsTreeNode | null | undefined
 const objectLiteralHasProperty = (
   objectExpression: EsTreeNode | null | undefined,
   propertyName: string,
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (!objectExpression) return false;
   const unwrapped = stripParenExpression(objectExpression);
+  if (isNodeOfType(unwrapped, "Identifier")) {
+    const symbol = resolveConstIdentifierAlias(unwrapped, scopes);
+    return Boolean(
+      symbol?.initializer && objectLiteralHasProperty(symbol.initializer, propertyName, scopes),
+    );
+  }
   if (!isNodeOfType(unwrapped, "ObjectExpression")) return false;
   for (const property of unwrapped.properties ?? []) {
     if (!isNodeOfType(property, "Property")) continue;
@@ -115,11 +124,12 @@ const isDeterministicLocaleMethodCall = (
   call: EsTreeNodeOfType<"CallExpression">,
   methodName: string,
   receiverIsProvablyDate: boolean,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const localeArgument = call.arguments?.[0];
   if (!hasExplicitLocaleArgument(localeArgument)) return false;
   const optionsArgument = call.arguments?.[1];
-  if (objectLiteralHasProperty(optionsArgument, "timeZone")) return true;
+  if (objectLiteralHasProperty(optionsArgument, "timeZone", scopes)) return true;
   // Explicit locale, no timeZone: still environment-dependent when the
   // receiver is a date. An unknown receiver could be a number (locale is
   // its only environment input), so stay quiet there.
@@ -128,6 +138,7 @@ const isDeterministicLocaleMethodCall = (
 
 const matchLocaleMethodCall = (
   call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
 ): LocaleFormatMatch | null => {
   const callee = call.callee;
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
@@ -142,7 +153,8 @@ const matchLocaleMethodCall = (
   ) {
     return null;
   }
-  if (isDeterministicLocaleMethodCall(call, methodName, receiverIsProvablyDate)) return null;
+  if (isDeterministicLocaleMethodCall(call, methodName, receiverIsProvablyDate, scopes))
+    return null;
   return { node: call, display: `${methodName}()` };
 };
 
@@ -162,6 +174,7 @@ const getIntlFormatterName = (expression: EsTreeNode | null | undefined): string
 const isDeterministicIntlConstruction = (
   construction: EsTreeNode,
   formatterName: string,
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (
     !isNodeOfType(construction, "CallExpression") &&
@@ -171,7 +184,7 @@ const isDeterministicIntlConstruction = (
   }
   if (!hasExplicitLocaleArgument(construction.arguments?.[0])) return false;
   if (formatterName !== "DateTimeFormat") return true;
-  return objectLiteralHasProperty(construction.arguments?.[1], "timeZone");
+  return objectLiteralHasProperty(construction.arguments?.[1], "timeZone", scopes);
 };
 
 // `Intl.DateTimeFormat().format(date)` — direct chain, or through a
@@ -179,6 +192,7 @@ const isDeterministicIntlConstruction = (
 // formatter.format(date)`).
 const matchIntlFormatCall = (
   call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
 ): LocaleFormatMatch | null => {
   const callee = call.callee;
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
@@ -193,7 +207,7 @@ const matchIntlFormatCall = (
   if (!construction) return null;
   const formatterName = getIntlFormatterName(construction);
   if (!formatterName) return null;
-  if (isDeterministicIntlConstruction(construction, formatterName)) return null;
+  if (isDeterministicIntlConstruction(construction, formatterName, scopes)) return null;
   return { node: call, display: `Intl.${formatterName}().${callee.property.name}()` };
 };
 
@@ -296,8 +310,8 @@ export const noLocaleFormatInRender = defineRule({
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const match =
-          matchLocaleMethodCall(node) ??
-          matchIntlFormatCall(node) ??
+          matchLocaleMethodCall(node, context.scopes) ??
+          matchIntlFormatCall(node, context.scopes) ??
           matchDateDefaultStringification(node);
         if (match) reportIfRenderPhase(match);
       },
@@ -323,7 +337,9 @@ export const noLocaleFormatInRender = defineRule({
         walkAst(helperNode.body ?? helperNode, (child: EsTreeNode) => {
           if (isFunctionLike(child)) return false;
           if (!isNodeOfType(child, "CallExpression")) return;
-          const match = matchLocaleMethodCall(child) ?? matchIntlFormatCall(child);
+          const match =
+            matchLocaleMethodCall(child, context.scopes) ??
+            matchIntlFormatCall(child, context.scopes);
           if (!match || reportedNodes.has(match.node)) return;
           if (fileIsEmailTemplate) return;
           if (!hasClientRenderEvidence(componentOrHookNode, fileHasUseClientDirective)) return;

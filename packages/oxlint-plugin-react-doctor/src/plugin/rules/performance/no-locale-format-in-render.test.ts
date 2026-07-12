@@ -170,6 +170,18 @@ export const Timestamp = ({ value }) => (
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag deterministic Intl options through a const alias", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale, resolvedTimeZone }) => {
+  const options = { dateStyle: "medium", timeZone: resolvedTimeZone };
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags an explicit locale WITHOUT a timeZone on a provable date", () => {
     const result = run(
       `"use client";

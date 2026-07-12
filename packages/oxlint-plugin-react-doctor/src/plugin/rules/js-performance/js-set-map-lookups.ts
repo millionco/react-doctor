@@ -4,7 +4,9 @@ import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -566,19 +568,61 @@ const isNativeArrayType = (typeNode: EsTreeNode | null | undefined): boolean => 
   );
 };
 
-const getTypeLiteralMemberType = (
+const getDeclaredTypeMember = (
   typeNode: EsTreeNode | null | undefined,
   propertyName: string,
+  referenceNode: EsTreeNode,
+  visitedDeclarations = new Set<EsTreeNode>(),
 ): EsTreeNode | null => {
-  if (!typeNode || !isNodeOfType(typeNode, "TSTypeLiteral")) return null;
-  for (const member of typeNode.members) {
+  if (!typeNode) return null;
+  const members = isNodeOfType(typeNode, "TSTypeLiteral")
+    ? typeNode.members
+    : isNodeOfType(typeNode, "TSInterfaceDeclaration")
+      ? typeNode.body.body
+      : null;
+  if (members) {
+    for (const member of members) {
+      if (
+        isNodeOfType(member, "TSPropertySignature") &&
+        !member.computed &&
+        isNodeOfType(member.key, "Identifier") &&
+        member.key.name === propertyName
+      ) {
+        return member.typeAnnotation?.typeAnnotation ?? null;
+      }
+    }
+    return null;
+  }
+  if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
+    return getDeclaredTypeMember(
+      typeNode.typeAnnotation,
+      propertyName,
+      referenceNode,
+      visitedDeclarations,
+    );
+  }
+  if (
+    !isNodeOfType(typeNode, "TSTypeReference") ||
+    !isNodeOfType(typeNode.typeName, "Identifier")
+  ) {
+    return null;
+  }
+  const programRoot = findProgramRoot(referenceNode);
+  if (!programRoot) return null;
+  for (const statement of programRoot.body) {
+    const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
+      ? statement.declaration
+      : statement;
     if (
-      isNodeOfType(member, "TSPropertySignature") &&
-      !member.computed &&
-      isNodeOfType(member.key, "Identifier") &&
-      member.key.name === propertyName
+      declaration &&
+      (isNodeOfType(declaration, "TSInterfaceDeclaration") ||
+        isNodeOfType(declaration, "TSTypeAliasDeclaration")) &&
+      isNodeOfType(declaration.id, "Identifier") &&
+      declaration.id.name === typeNode.typeName.name &&
+      !visitedDeclarations.has(declaration)
     ) {
-      return member.typeAnnotation?.typeAnnotation ?? null;
+      visitedDeclarations.add(declaration);
+      return getDeclaredTypeMember(declaration, propertyName, referenceNode, visitedDeclarations);
     }
   }
   return null;
@@ -587,15 +631,16 @@ const getTypeLiteralMemberType = (
 const getDeclaredMemberType = (
   receiver: EsTreeNodeOfType<"MemberExpression">,
 ): EsTreeNode | null => {
-  if (receiver.computed || !isNodeOfType(receiver.property, "Identifier")) return null;
-  const propertyName = receiver.property.name;
+  const propertyName = getStaticPropertyName(receiver);
+  if (!propertyName) return null;
   const object = stripParenExpression(receiver.object);
   if (isNodeOfType(object, "Identifier")) {
     const binding = findVariableInitializer(object, object.name);
     if (binding && isNodeOfType(binding.bindingIdentifier, "Identifier")) {
-      return getTypeLiteralMemberType(
+      return getDeclaredTypeMember(
         binding.bindingIdentifier.typeAnnotation?.typeAnnotation,
         propertyName,
+        receiver,
       );
     }
   }
@@ -913,6 +958,13 @@ export const jsSetMapLookups = defineRule({
       if (!rawReceiver) return;
       const receiver = stripParenExpression(rawReceiver);
       if (isNodeOfType(receiver, "CallExpression") || isNodeOfType(receiver, "NewExpression")) {
+        return;
+      }
+      if (
+        isNodeOfType(receiver, "MemberExpression") &&
+        receiver.computed &&
+        getStaticPropertyName(receiver) === null
+      ) {
         return;
       }
       if (isLikelyStringReceiver(receiver)) return;

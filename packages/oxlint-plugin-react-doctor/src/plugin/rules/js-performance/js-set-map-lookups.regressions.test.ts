@@ -121,7 +121,11 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `function f(candidates){ const source = { includes(value){ return value > 0; } }; const firstAlias = source; const values = firstAlias; for(const candidate of candidates){ values.includes(candidate); } }`,
     `function f(candidates){ const Array = class { includes(value){ return value > 0; } }; const values = new Array(); for(const candidate of candidates){ values.includes(candidate); } }`,
     `interface Bag { includes(value: number): boolean } function f(state: { values: Bag }, candidates: number[]){ for(const candidate of candidates){ state.values.includes(candidate); } }`,
+    `interface Bag { includes(value: number): boolean } interface State { values: Bag } function f(state: State, candidates: number[]){ for(const candidate of candidates){ state.values.includes(candidate); } }`,
+    `interface Bag { includes(value: number): boolean } type State = { values: Bag }; function f(state: State, candidates: number[]){ for(const candidate of candidates){ state["values"].includes(candidate); } }`,
     `interface Bag { includes(value: number): boolean } class Example { values: Bag; f(candidates: number[]){ for(const candidate of candidates){ this.values.includes(candidate); } } }`,
+    `interface Bag { includes(value: number): boolean } class Example { values: Bag; f(candidates: number[]){ for(const candidate of candidates){ this["values"].includes(candidate); } } }`,
+    `function f(state, candidates, propertyName){ for(const candidate of candidates){ state[propertyName].includes(candidate); } }`,
   ])("does not flag a proven userland includes receiver", (code) => {
     expectPass(code);
   });
@@ -272,8 +276,8 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("still flags a loop-invariant array indexed by an OUTER constant", () => {
-    expectFail(
+  it("does not flag a dynamically indexed receiver without element-type proof", () => {
+    expectPass(
       `function f(groups, ids, bucket){ return ids.filter((id) => groups[bucket].includes(id)); }`,
     );
   });

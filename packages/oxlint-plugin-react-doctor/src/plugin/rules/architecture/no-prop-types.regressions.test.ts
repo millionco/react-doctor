@@ -27,10 +27,63 @@ describe("architecture/no-prop-types component provenance", () => {
     );
   });
 
+  it("reports immutable aliases of local function components", () => {
+    expectDiagnosticCount(
+      `const Panel = (props: { value: string }) => <div>{props.value}</div>;
+       const PanelAlias = Panel;
+       PanelAlias.propTypes = { value: (value: unknown): boolean => typeof value === "string" };`,
+      1,
+    );
+  });
+
+  it("reports namespace-merged function components", () => {
+    expectDiagnosticCount(
+      `export function Panel(props: { value: string }) { return <div>{props.value}</div>; }
+       export namespace Panel { export let propTypes: Record<string, () => boolean>; }
+       Panel.propTypes = { value: () => true };`,
+      1,
+    );
+  });
+
   it("ignores uppercase functions without React render output", () => {
     expectDiagnosticCount(
       `const Schema = (value: unknown): boolean => typeof value === "string";
        Schema.propTypes = { value: Schema };`,
+      0,
+    );
+  });
+
+  it("reports static propTypes only on proven React class components", () => {
+    expectDiagnosticCount(
+      `import ReactDefault, { Component as ReactComponent } from "react";
+       class Panel extends ReactDefault.Component { static propTypes = { value: () => true }; }
+       class DialogBase extends ReactComponent {}
+       class Dialog extends DialogBase { static propTypes = { value: () => true }; }
+       class Schema extends Map<string, unknown> { static propTypes = { value: () => true }; }
+       class Protocol { static propTypes = { value: () => true }; }`,
+      2,
+    );
+  });
+
+  it("reports propTypes assignments on proven React class components", () => {
+    expectDiagnosticCount(
+      `import { PureComponent as ReactPureComponent } from "react";
+       class Panel extends ReactPureComponent {}
+       Panel.propTypes = { value: () => true };
+       const Dialog = class extends ReactPureComponent {};
+       Dialog.propTypes = { value: () => true };
+       class Schema extends Map<string, unknown> {}
+       Schema.propTypes = { value: () => true };`,
+      2,
+    );
+  });
+
+  it("ignores shadowed React class names", () => {
+    expectDiagnosticCount(
+      `const React = { Component: class {} };
+       class Schema extends React.Component { static propTypes = { value: () => true }; }
+       class Component {}
+       class Protocol extends Component { static propTypes = { value: () => true }; }`,
       0,
     );
   });

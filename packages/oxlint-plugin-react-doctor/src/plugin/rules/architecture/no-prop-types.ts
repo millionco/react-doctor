@@ -1,9 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
-import { isComponentAssignment } from "../../utils/is-component-assignment.js";
-import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
+import { isProvenReactClassComponent } from "../../utils/is-proven-react-class-component.js";
+import { isProvenReactComponentSymbol } from "../../utils/is-proven-react-component-symbol.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -88,25 +88,18 @@ export const noPropTypes = defineRule({
       if (node.operator !== "=") return;
       const component = getComponentFromPropTypesAssignment(node.left);
       if (!component) return;
-      const symbol = context.scopes.symbolFor(component);
+      const symbol = resolveConstIdentifierAlias(component, context.scopes);
       if (!symbol) return;
-      let componentFunction: EsTreeNode | null = null;
-      if (isComponentDeclaration(symbol.declarationNode)) {
-        componentFunction = symbol.declarationNode;
-      } else if (isComponentAssignment(symbol.declarationNode) && symbol.initializer) {
-        componentFunction = symbol.initializer;
-      }
-      if (
-        !componentFunction ||
-        !functionContainsReactRenderOutput(componentFunction, context.scopes)
-      ) {
-        return;
-      }
+      if (!isProvenReactComponentSymbol(symbol, context.scopes)) return;
       context.report({ node: node.left, message: buildMessage(component.name) });
     },
     PropertyDefinition(node: EsTreeNodeOfType<"PropertyDefinition">) {
       const componentName = getComponentNameFromClassProperty(node);
       if (!componentName) return;
+      const classBody = node.parent;
+      if (!isNodeOfType(classBody, "ClassBody")) return;
+      const classNode = classBody.parent;
+      if (!classNode || !isProvenReactClassComponent(classNode, context.scopes)) return;
       context.report({ node: node.key, message: buildMessage(componentName) });
     },
   }),

@@ -160,6 +160,7 @@ export const LIBRARY_SNIPPET_POOL = [
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
   `const GLOBAL_CACHE = new Map<string, unknown>();`,
+  `const FuzzPropTypesPanel = ({ value }) => <div>{value}</div>; FuzzPropTypesPanel.propTypes = { value: () => true };`,
   `let moduleMutableState = 0;`,
   `const ThemeContext = React.createContext({ mode: "light" });`,
   `const ItemsContext = React.createContext(null);`,

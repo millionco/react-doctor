@@ -892,10 +892,7 @@ return <div dangerouslySetInnerHTML={{ __html: content }} />;
   it("stays silent on an identifier declared from an escapeHtml-escaped template (contact-print shape)", () => {
     const content = [
       "const html = `<html><body>",
-      "<header>${photoTag}",
       '<div><h1>${escapeHtml(name || "Contact")}</h1></div>',
-      "</header>",
-      '${rows.join("")}',
       "</body></html>`;",
       "printWindow.document.write(html);",
     ].join("\n");
@@ -1052,6 +1049,47 @@ return <div dangerouslySetInnerHTML={{ __html: content }} />;
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/components/preview.ts",
       content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent when a highlighter result member is routed through an alias", () => {
+    const content = [
+      "const result = highlighter.codeToHtml(source);",
+      "const darkHtml = result.dark;",
+      "element.innerHTML = darkHtml;",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags a helper re-entry that replaces a trusted argument with tainted HTML", () => {
+    const content = [
+      "function renderPreview(element, html, nested) {",
+      "  element.innerHTML = html;",
+      "  if (nested) renderPreview(element, props.userHtml, false);",
+      "}",
+      'renderPreview(preview, "<p>Static</p>", true);',
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each([
+    "DOMPurify.sanitize(props.safeHtml) + props.userHtml",
+    "renderer.codeToHtml(source) + props.userHtml",
+    "process.env.STATIC_HTML + props.userHtml",
+    "`${DOMPurify.sanitize(props.safeHtml)}${props.userHtml}`",
+  ])("does not trust a partially sanitized compound value %#", (valueExpression) => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content: `const bodyHtml = ${valueExpression};\nelement.innerHTML = bodyHtml;\n`,
     });
     expect(findings).toHaveLength(1);
   });

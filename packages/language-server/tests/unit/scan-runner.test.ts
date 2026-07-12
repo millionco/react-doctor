@@ -48,9 +48,10 @@ describe("scan-runner", () => {
         reason: "test",
       };
       const hasAltTextDiagnostic = (outcome: ScanOutcome | null) =>
-        outcome?.byFile
-          .get(sourcePath)
-          ?.some((diagnostic) => diagnostic.rule.endsWith("alt-text")) ?? false;
+        outcome !== null &&
+        Array.from(outcome.byFile.values()).some((diagnostics) =>
+          diagnostics.some((diagnostic) => diagnostic.rule.endsWith("alt-text")),
+        );
       const firstRunner = createScanRunner({
         nodeBinaryPath: null,
         readText: () => null,

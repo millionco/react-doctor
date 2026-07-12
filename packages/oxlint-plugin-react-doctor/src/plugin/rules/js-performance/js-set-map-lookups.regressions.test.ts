@@ -105,6 +105,26 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
+  it.each([
+    `function f(rows, { weekendDays = [0, 6] }: { weekendDays?: number[] }) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
+    `function f(rows, { weekendDays = [0, 6] }: { weekendDays?: readonly number[] }) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
+    `function f(rows, weekendDays: number[] = [0, 6]) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
+  ])("flags a caller-controlled array with a small fallback", (code) => {
+    expectFail(code);
+  });
+
+  it("flags a caller-controlled alias with a small fallback", () => {
+    expectFail(
+      `function f(rows, { weekendDays = [0, 6] }: { weekendDays?: number[] }) { const days = weekendDays; for (const row of rows) { if (days.includes(row.day)) row.weekend = true; } }`,
+    );
+  });
+
+  it("flags a caller-controlled nullish fallback", () => {
+    expectFail(
+      `function f(rows, options: { weekendDays?: number[] }) { const days = options.weekendDays ?? [0, 6]; for (const row of rows) { if (days.includes(row.day)) row.weekend = true; } }`,
+    );
+  });
+
   it("does not flag a SCREAMING_SNAKE_CASE constant receiver", () => {
     expectPass(
       `import { VALID_PAGE_TYPES } from "./types"; function f(entries){ for (const entry of entries){ if (VALID_PAGE_TYPES.includes(entry.pageType)) entry.ok = true; } }`,

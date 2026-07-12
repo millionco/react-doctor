@@ -414,28 +414,32 @@ const isSmallFixedListMember = (receiver: EsTreeNode | null | undefined): boolea
   );
 };
 
+interface ResolvedInitializer {
+  readonly initializer: EsTreeNode;
+  readonly isDefault: boolean;
+}
+
 // Follow an identifier receiver to its declaration so `const ct =
 // flare.contentType; … ct.includes('json')` is recognized as the string
 // lookup it is, and `const KNOWN = ['a', 'b']; … KNOWN.includes(x)` as a
 // tiny fixed allowlist.
-const getResolvedInitializer = (receiver: EsTreeNode): EsTreeNode | null => {
+const getResolvedInitializer = (receiver: EsTreeNode): ResolvedInitializer | null => {
   if (!isNodeOfType(receiver, "Identifier")) return null;
   const binding = findVariableInitializer(receiver, receiver.name);
   const initializer = binding?.initializer ?? null;
+  if (!binding || !initializer) return null;
+  const isDefault = isNodeOfType(binding.bindingIdentifier.parent, "AssignmentPattern");
   // Follow one alias hop: `const supported = LOCALES;`.
-  if (initializer && isNodeOfType(initializer, "Identifier")) {
+  if (isNodeOfType(initializer, "Identifier")) {
     const aliased = findVariableInitializer(initializer, initializer.name);
-    return aliased?.initializer ?? initializer;
+    if (aliased?.initializer) {
+      return {
+        initializer: aliased.initializer,
+        isDefault: isDefault || isNodeOfType(aliased.bindingIdentifier.parent, "AssignmentPattern"),
+      };
+    }
   }
-  return initializer;
-};
-
-const getReceiverRootIdentifierName = (receiver: EsTreeNode): string | null => {
-  let current = stripParenExpression(receiver);
-  while (isNodeOfType(current, "MemberExpression")) {
-    current = stripParenExpression(current.object);
-  }
-  return isNodeOfType(current, "Identifier") ? current.name : null;
+  return { initializer, isDefault };
 };
 
 // `cookie.split(';')` produces string elements; a binding iterating over a
@@ -705,8 +709,10 @@ const isBoundedConstantCollection = (collection: EsTreeNode): boolean => {
   if (isScreamingSnakeCaseConstantReceiver(stripped)) return true;
   if (isSmallInlineLiteralArray(stripped)) return true;
   if (isNodeOfType(stripped, "Identifier")) {
-    const initializer = getResolvedInitializer(stripped);
-    if (initializer && isSmallInlineLiteralArray(initializer)) return true;
+    const resolved = getResolvedInitializer(stripped);
+    if (resolved && !resolved.isDefault && isSmallInlineLiteralArray(resolved.initializer)) {
+      return true;
+    }
   }
   return false;
 };
@@ -781,8 +787,13 @@ export const jsSetMapLookups = defineRule({
       }
       const resolvedInitializer = getResolvedInitializer(receiver);
       if (resolvedInitializer) {
-        if (isLikelyStringReceiver(resolvedInitializer)) return;
-        if (isSmallInlineLiteralArray(resolvedInitializer)) return;
+        if (isLikelyStringReceiver(resolvedInitializer.initializer)) return;
+        if (
+          !resolvedInitializer.isDefault &&
+          isSmallInlineLiteralArray(resolvedInitializer.initializer)
+        ) {
+          return;
+        }
       }
       if (isStringElementOfSplitIteration(receiver)) return;
       if (isReceiverDeclaredInNearestLoop(receiver, node)) return;

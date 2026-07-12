@@ -1,4 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
+import { isComponentAssignment } from "../../utils/is-component-assignment.js";
+import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -29,12 +32,14 @@ const isPropTypesKey = (key: EsTreeNode | null | undefined, computed: boolean): 
   return isNodeOfType(key, "Identifier") && key.name === PROP_TYPES_PROPERTY;
 };
 
-const getComponentNameFromPropTypesAssignment = (left: EsTreeNode): string | null => {
+const getComponentFromPropTypesAssignment = (
+  left: EsTreeNode,
+): EsTreeNodeOfType<"Identifier"> | null => {
   if (!isNodeOfType(left, "MemberExpression")) return null;
   if (!isPropTypesKey(left.property, Boolean(left.computed))) return null;
   if (!isNodeOfType(left.object, "Identifier")) return null;
   if (!isUppercaseName(left.object.name)) return null;
-  return left.object.name;
+  return left.object;
 };
 
 const getComponentNameFromClassProperty = (
@@ -81,9 +86,23 @@ export const noPropTypes = defineRule({
   create: (context: RuleContext) => ({
     AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
       if (node.operator !== "=") return;
-      const componentName = getComponentNameFromPropTypesAssignment(node.left);
-      if (!componentName) return;
-      context.report({ node: node.left, message: buildMessage(componentName) });
+      const component = getComponentFromPropTypesAssignment(node.left);
+      if (!component) return;
+      const symbol = context.scopes.symbolFor(component);
+      if (!symbol) return;
+      let componentFunction: EsTreeNode | null = null;
+      if (isComponentDeclaration(symbol.declarationNode)) {
+        componentFunction = symbol.declarationNode;
+      } else if (isComponentAssignment(symbol.declarationNode) && symbol.initializer) {
+        componentFunction = symbol.initializer;
+      }
+      if (
+        !componentFunction ||
+        !functionContainsReactRenderOutput(componentFunction, context.scopes)
+      ) {
+        return;
+      }
+      context.report({ node: node.left, message: buildMessage(component.name) });
     },
     PropertyDefinition(node: EsTreeNodeOfType<"PropertyDefinition">) {
       const componentName = getComponentNameFromClassProperty(node);

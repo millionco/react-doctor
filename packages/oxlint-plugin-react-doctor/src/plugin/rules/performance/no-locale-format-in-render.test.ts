@@ -389,6 +389,35 @@ export const Timestamp = ({ value }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("preserves the formatter boundary through an identity alias", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value }) => {
+  const baseOptions = { timeZone: "UTC" };
+  const options = baseOptions;
+  const formatter = new Intl.DateTimeFormat(
+    (baseOptions.timeZone = undefined, "en-US"),
+    options,
+  );
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves the formatter boundary while following a secondary alias", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value }) => {
+  const options = { timeZone: "UTC" };
+  const alias = options;
+  const formatter = new Intl.DateTimeFormat("en-US", options, alias.timeZone = undefined);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps a spread snapshot deterministic when its source is mutated afterward", () => {
     const result = run(
       `"use client";
@@ -639,6 +668,34 @@ export const Timestamp = ({ value, locale }) => (
 );`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a timeZone set through a const undefined alias", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const missingTimeZone = undefined;
+  const timeZone = missingTimeZone;
+  const options = { timeZone };
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not confuse a shadowed undefined binding with undefined", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const undefined = "UTC";
+  const timeZone = undefined;
+  const options = { timeZone };
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("recognizes a shadowed undefined locale as explicit", () => {

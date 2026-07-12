@@ -116,14 +116,27 @@ const receiverNameLooksDateFlavored = (expression: EsTreeNode | null | undefined
   return false;
 };
 
-const isStaticUndefined = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const isStaticUndefined = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
   const expression = stripParenExpression(node);
-  return (
-    (isNodeOfType(expression, "Identifier") &&
-      expression.name === "undefined" &&
-      scopes.isGlobalReference(expression)) ||
-    (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void")
-  );
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void") return true;
+  if (!isNodeOfType(expression, "Identifier")) return false;
+  if (expression.name === "undefined" && scopes.isGlobalReference(expression)) return true;
+  const symbol = scopes.symbolFor(expression);
+  if (
+    symbol?.kind !== "const" ||
+    !symbol.initializer ||
+    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+    !isNodeOfType(symbol.declarationNode.id, "Identifier") ||
+    visitedSymbolIds.has(symbol.id)
+  ) {
+    return false;
+  }
+  visitedSymbolIds.add(symbol.id);
+  return isStaticUndefined(symbol.initializer, scopes, visitedSymbolIds);
 };
 
 const isNestedAssignmentTarget = (expression: EsTreeNode): boolean => {
@@ -311,15 +324,7 @@ const isFunctionInvokedBeforeUsage = (
   return wasInvokedBeforeUsage;
 };
 
-const wasMutatedBeforeUsage = (
-  symbol: SymbolDescriptor,
-  usageNode: EsTreeNode,
-  readNode: EsTreeNode,
-  scopes: ScopeAnalysis,
-  visitedMutationSymbolIds: Set<number> = new Set(),
-): boolean => {
-  if (visitedMutationSymbolIds.has(symbol.id)) return false;
-  visitedMutationSymbolIds.add(symbol.id);
+const getMutationUsageBoundary = (usageNode: EsTreeNode, readNode: EsTreeNode): number | null => {
   const readStart = getRangeStart(readNode);
   let readExpression = readNode;
   let readParent = readExpression.parent;
@@ -335,9 +340,25 @@ const wasMutatedBeforeUsage = (
   const isDirectUsageArgument =
     (isNodeOfType(usageNode, "CallExpression") || isNodeOfType(usageNode, "NewExpression")) &&
     usageNode.arguments?.some((argument) => argument === readExpression);
-  let usageBoundary = getRangeStart(usageNode);
-  if (isAstDescendant(readNode, usageNode)) usageBoundary = readStart;
-  if (isDirectUsageArgument) usageBoundary = usageNode.range?.[1] ?? null;
+  if (isDirectUsageArgument) return usageNode.range?.[1] ?? null;
+  if (isAstDescendant(readNode, usageNode)) return readStart;
+  return getRangeStart(usageNode);
+};
+
+const wasMutatedBeforeUsage = (
+  symbol: SymbolDescriptor,
+  usageNode: EsTreeNode,
+  readNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedMutationSymbolIds: Set<number> = new Set(),
+  inheritedUsageBoundary?: number | null,
+): boolean => {
+  if (visitedMutationSymbolIds.has(symbol.id)) return false;
+  visitedMutationSymbolIds.add(symbol.id);
+  const usageBoundary =
+    inheritedUsageBoundary === undefined
+      ? getMutationUsageBoundary(usageNode, readNode)
+      : inheritedUsageBoundary;
   if (typeof usageBoundary !== "number") return true;
   const usageFunction = findEnclosingFunction(usageNode);
   return symbol.references.some((reference) => {
@@ -350,6 +371,7 @@ const wasMutatedBeforeUsage = (
         simpleAlias.readNode,
         scopes,
         new Set(visitedMutationSymbolIds),
+        usageBoundary,
       );
     }
     if (!isPotentialMutationReference(reference.identifier, readNode)) return false;
@@ -374,18 +396,23 @@ const getObjectPropertyProof = (
   scopes: ScopeAnalysis,
   usageNode: EsTreeNode,
   visitedSymbolIds: Set<number> = new Set(),
+  inheritedUsageBoundary?: number | null,
 ): ObjectPropertyProof => {
   if (!objectExpression) return ABSENT_PROPERTY_PROOF;
   const unwrapped = stripParenExpression(objectExpression);
   if (isNodeOfType(unwrapped, "Identifier")) {
     const symbol = scopes.symbolFor(unwrapped);
+    const usageBoundary =
+      inheritedUsageBoundary === undefined
+        ? getMutationUsageBoundary(usageNode, unwrapped)
+        : inheritedUsageBoundary;
     if (
       symbol?.kind !== "const" ||
       !symbol.initializer ||
       !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
       !isNodeOfType(symbol.declarationNode.id, "Identifier") ||
       visitedSymbolIds.has(symbol.id) ||
-      wasMutatedBeforeUsage(symbol, usageNode, unwrapped, scopes)
+      wasMutatedBeforeUsage(symbol, usageNode, unwrapped, scopes, new Set(), usageBoundary)
     ) {
       return UNKNOWN_PROPERTY_PROOF;
     }
@@ -396,6 +423,7 @@ const getObjectPropertyProof = (
       scopes,
       usageNode,
       visitedSymbolIds,
+      usageBoundary,
     );
   }
   if (isNodeOfType(unwrapped, "ConditionalExpression")) {
@@ -405,6 +433,7 @@ const getObjectPropertyProof = (
       scopes,
       usageNode,
       new Set(visitedSymbolIds),
+      inheritedUsageBoundary,
     );
     const alternate = getObjectPropertyProof(
       unwrapped.alternate,
@@ -412,6 +441,7 @@ const getObjectPropertyProof = (
       scopes,
       usageNode,
       new Set(visitedSymbolIds),
+      inheritedUsageBoundary,
     );
     return consequent.status === alternate.status ? consequent : UNKNOWN_PROPERTY_PROOF;
   }
@@ -431,6 +461,7 @@ const getObjectPropertyProof = (
       scopes,
       usageNode,
       visitedSymbolIds,
+      inheritedUsageBoundary,
     );
   }
   if (!isNodeOfType(unwrapped, "ObjectExpression")) return UNKNOWN_PROPERTY_PROOF;
@@ -445,6 +476,7 @@ const getObjectPropertyProof = (
         scopes,
         unwrapped,
         new Set(visitedSymbolIds),
+        undefined,
       );
       if (spreadProof.status !== "absent") return spreadProof;
       continue;

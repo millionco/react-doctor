@@ -188,4 +188,79 @@ describe("hooks-no-nan-in-deps", () => {
 
     expect(result.diagnostics).toHaveLength(3);
   });
+
+  it("stays silent on shadowed finite NaN and Number.NaN bindings", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+const NaN = 1;
+const Number = { NaN: 2 };
+const Comp = () => {
+  useEffect(() => {}, [NaN, Number.NaN]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags exact immutable aliases of the global NaN values", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+const firstValue = Number.NaN;
+const secondValue = firstValue;
+const Comp = () => {
+  useEffect(() => {}, [secondValue]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an exact destructured alias of global Number.NaN", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+const { NaN: invalidValue } = Number;
+const Comp = () => {
+  useEffect(() => {}, [invalidValue]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent across a mutable NaN alias", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+let invalidValue = Number.NaN;
+invalidValue = 0;
+const Comp = () => {
+  useEffect(() => {}, [invalidValue]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags Number.NaN aliases through transparent TypeScript wrappers", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+const directValue = (Number as typeof Number).NaN;
+const { NaN: destructuredValue } = Number as typeof Number;
+const [arrayValue] = [Number.NaN as number] as const;
+const Comp = () => {
+  useEffect(() => {}, [directValue, destructuredValue, arrayValue]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(3);
+  });
 });

@@ -1132,6 +1132,23 @@ return <div dangerouslySetInnerHTML={{ __html: content }} />;
     expect(findings).toHaveLength(0);
   });
 
+  it("flags a recursive call that reassigns a local parameter alias", () => {
+    const content = [
+      "function renderPreview(element, html, remaining) {",
+      "  element.innerHTML = html;",
+      "  let nextHtml = html;",
+      "  nextHtml = props.userHtml;",
+      "  if (remaining > 0) renderPreview(element, nextHtml, remaining - 1);",
+      "}",
+      'renderPreview(preview, "<p>Static</p>", 2);',
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("keeps a trusted helper argument containing parentheses intact", () => {
     const content = [
       "const renderPreview = (element, html) => {",

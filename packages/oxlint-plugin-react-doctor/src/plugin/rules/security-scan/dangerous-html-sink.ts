@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
 import { escapeRegExp } from "./utils/escape-reg-exp.js";
+import { findMatchingBracket } from "./utils/find-matching-bracket.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 
 // HTML-injection sinks: React's `dangerouslySetInnerHTML`, the DOM
@@ -338,28 +339,6 @@ const findMatchingBraceIndex = (fileContent: string, openingBraceIndex: number):
   return fileContent.length;
 };
 
-const findMatchingParenthesisIndex = (fileContent: string, openingIndex: number): number => {
-  let depth = 0;
-  let quote: string | null = null;
-  for (let index = openingIndex; index < fileContent.length; index += 1) {
-    const character = fileContent[index];
-    if (quote !== null) {
-      if (character === quote && fileContent[index - 1] !== "\\") quote = null;
-      continue;
-    }
-    if (character === '"' || character === "'" || character === "`") {
-      quote = character;
-      continue;
-    }
-    if (character === "(") depth += 1;
-    if (character === ")") {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
-  }
-  return fileContent.length;
-};
-
 const findContainingBlockEndIndex = (fileContent: string, targetIndex: number): number => {
   const openingBraceIndexes: number[] = [];
   let quote: string | null = null;
@@ -410,6 +389,7 @@ interface VisibleIdentifierDeclaration {
   readonly declarationIndex: number;
   readonly initializer: string;
   readonly initializerStartIndex: number;
+  readonly isImmutable: boolean;
 }
 
 const findVisibleIdentifierDeclaration = (
@@ -418,7 +398,7 @@ const findVisibleIdentifierDeclaration = (
   fileContent: string,
 ): VisibleIdentifierDeclaration | null => {
   const initializerPattern = new RegExp(
-    `(?:const|let|var)\\s+${escapeRegExp(identifier)}\\s*(?::[^=\\n]*)?=\\s*([^;\\n]+)`,
+    `(const|let|var)\\s+${escapeRegExp(identifier)}\\s*(?::[^=\\n]*)?=\\s*([^;\\n]+)`,
     "g",
   );
   let nearestDeclaration: VisibleIdentifierDeclaration | null = null;
@@ -434,12 +414,13 @@ const findVisibleIdentifierDeclaration = (
       continue;
     }
     nearestDeclarationIndex = declarationIndex;
-    const initializer = match[1];
+    const initializer = match[2];
     if (initializer === undefined) continue;
     nearestDeclaration = {
       declarationIndex,
       initializer,
       initializerStartIndex: declarationIndex + match[0].length - initializer.length,
+      isImmutable: match[1] === "const",
     };
   }
   return nearestDeclaration;
@@ -523,7 +504,7 @@ const doesExpressionAliasIdentifier = (
   if (identifier === targetIdentifier) return true;
   if (visitedIdentifiers.has(identifier)) return false;
   const declaration = findVisibleIdentifierDeclaration(identifier, expressionIndex, fileContent);
-  if (!declaration) return false;
+  if (!declaration?.isImmutable) return false;
   const nextVisitedIdentifiers = new Set(visitedIdentifiers);
   nextVisitedIdentifiers.add(identifier);
   return doesExpressionAliasIdentifier(
@@ -659,10 +640,8 @@ const isHtmlTainted = (
         continue;
       }
       const openingParenthesisIndex = callMatch.index + callMatch[0].lastIndexOf("(");
-      const closingParenthesisIndex = findMatchingParenthesisIndex(
-        fileContent,
-        openingParenthesisIndex,
-      );
+      const closingParenthesisIndex = findMatchingBracket(fileContent, openingParenthesisIndex);
+      if (closingParenthesisIndex < 0) continue;
       const argument = splitTopLevelArguments(
         fileContent.slice(openingParenthesisIndex + 1, closingParenthesisIndex),
       )[parameterSource.parameterIndex];

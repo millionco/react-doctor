@@ -1,20 +1,33 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectHandlerBindingNames } from "./utils/collect-handler-binding-names.js";
 import { isInsideEventHandler } from "./utils/is-inside-event-handler.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const DEFERRABLE_HOOK_NAMES = new Set(["useSearchParams", "useParams", "usePathname"]);
 
+interface HookCallBinding {
+  valueSymbol: SymbolDescriptor;
+  hookName: string;
+  declarator: EsTreeNode;
+}
+
+interface ExactAliasSymbols {
+  symbols: SymbolDescriptor[];
+  aliasSourceIdentifiers: Set<EsTreeNode>;
+}
+
 const findHookCallBindings = (
   componentBody: EsTreeNode,
-): Array<{ valueName: string; hookName: string; declarator: EsTreeNode }> => {
-  const bindings: Array<{ valueName: string; hookName: string; declarator: EsTreeNode }> = [];
+  scopes: ScopeAnalysis,
+): HookCallBinding[] => {
+  const bindings: HookCallBinding[] = [];
   if (!isNodeOfType(componentBody, "BlockStatement")) return bindings;
 
   for (const statement of componentBody.body ?? []) {
@@ -25,14 +38,86 @@ const findHookCallBindings = (
       const callee = declarator.init.callee;
       if (!isNodeOfType(callee, "Identifier")) continue;
       if (!DEFERRABLE_HOOK_NAMES.has(callee.name)) continue;
+      const valueSymbol = scopes.symbolFor(declarator.id);
+      if (!valueSymbol) continue;
       bindings.push({
-        valueName: declarator.id.name,
+        valueSymbol,
         hookName: callee.name,
         declarator,
       });
     }
   }
   return bindings;
+};
+
+const collectExactAliasSymbols = (
+  componentBody: EsTreeNode,
+  sourceSymbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): ExactAliasSymbols => {
+  const symbols = [sourceSymbol];
+  const symbolIds = new Set([sourceSymbol.id]);
+  const aliasSourceIdentifiers = new Set<EsTreeNode>();
+  if (!isNodeOfType(componentBody, "BlockStatement")) {
+    return { symbols, aliasSourceIdentifiers };
+  }
+
+  let didFindAlias = true;
+  while (didFindAlias) {
+    didFindAlias = false;
+    for (const statement of componentBody.body ?? []) {
+      if (!isNodeOfType(statement, "VariableDeclaration") || statement.kind !== "const") continue;
+      for (const declarator of statement.declarations ?? []) {
+        let aliasIdentifier: EsTreeNode | null = null;
+        let sourceIdentifier: EsTreeNode | null = null;
+        const initializer = declarator.init ? stripParenExpression(declarator.init) : null;
+        const arrayBinding = isNodeOfType(declarator.id, "ArrayPattern")
+          ? declarator.id.elements[0]
+          : null;
+        const arrayValueNode = isNodeOfType(initializer, "ArrayExpression")
+          ? initializer.elements[0]
+          : null;
+        const arrayValue =
+          arrayValueNode && !isNodeOfType(arrayValueNode, "SpreadElement")
+            ? stripParenExpression(arrayValueNode)
+            : null;
+
+        if (isNodeOfType(declarator.id, "Identifier") && isNodeOfType(initializer, "Identifier")) {
+          aliasIdentifier = declarator.id;
+          sourceIdentifier = initializer;
+        } else if (
+          isNodeOfType(declarator.id, "ArrayPattern") &&
+          declarator.id.elements.length === 1 &&
+          isNodeOfType(arrayBinding, "Identifier") &&
+          isNodeOfType(initializer, "ArrayExpression") &&
+          initializer.elements.length === 1 &&
+          isNodeOfType(arrayValue, "Identifier")
+        ) {
+          aliasIdentifier = arrayBinding;
+          sourceIdentifier = arrayValue;
+        }
+
+        if (!aliasIdentifier || !sourceIdentifier) continue;
+        const referencedSymbol = scopes.symbolFor(sourceIdentifier);
+        const aliasSymbol = scopes.symbolFor(aliasIdentifier);
+        if (
+          !referencedSymbol ||
+          !symbolIds.has(referencedSymbol.id) ||
+          !aliasSymbol ||
+          aliasSymbol.kind !== "const" ||
+          symbolIds.has(aliasSymbol.id)
+        ) {
+          continue;
+        }
+        symbolIds.add(aliasSymbol.id);
+        symbols.push(aliasSymbol);
+        aliasSourceIdentifiers.add(sourceIdentifier);
+        didFindAlias = true;
+      }
+    }
+  }
+
+  return { symbols, aliasSourceIdentifiers };
 };
 
 // HACK: subscribing to `useSearchParams()` / `useParams()` /
@@ -59,22 +144,24 @@ export const rerenderDeferReadsHook = defineRule({
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
-      const bindings = findHookCallBindings(componentBody);
+      const bindings = findHookCallBindings(componentBody, context.scopes);
       if (bindings.length === 0) return;
       const handlerBindingNames = collectHandlerBindingNames(componentBody);
 
       for (const binding of bindings) {
+        const { symbols, aliasSourceIdentifiers } = collectExactAliasSymbols(
+          componentBody,
+          binding.valueSymbol,
+          context.scopes,
+        );
         const referenceLocations: EsTreeNode[] = [];
-        walkAst(componentBody, (child: EsTreeNode) => {
-          if (
-            isNodeOfType(binding.declarator, "VariableDeclarator") &&
-            child === binding.declarator.id
-          )
-            return;
-          if (isNodeOfType(child, "Identifier") && child.name === binding.valueName) {
-            referenceLocations.push(child);
+        for (const symbol of symbols) {
+          for (const reference of symbol.references) {
+            if (!aliasSourceIdentifiers.has(reference.identifier)) {
+              referenceLocations.push(reference.identifier);
+            }
           }
-        });
+        }
 
         if (referenceLocations.length === 0) continue;
 

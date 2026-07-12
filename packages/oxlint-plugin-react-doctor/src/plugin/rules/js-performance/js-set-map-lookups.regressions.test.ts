@@ -175,6 +175,9 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ delete values[0]; values.includes(candidate); } }`,
     `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ Object.assign(values, { 0: candidate }); values.includes(candidate); } }`,
     `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ Reflect.set(values, 0, candidate); values.includes(candidate); } }`,
+    `function f(values: Uint8Array, candidates: number[]){ for(const candidate of candidates){ values.set([candidate], 0); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ [values[0]] = [candidate]; values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ let alias = values; for(const candidate of candidates){ [alias] = [[]]; values.includes(candidate); } }`,
     `interface State { values: number[] } function f(state: State, candidates: number[]){ for(const candidate of candidates){ state.values.reverse(); state.values.includes(candidate); } }`,
     `interface State { values: number[] } function f(state: State, candidates: number[]){ const alias = state; for(const candidate of candidates){ alias.values.push(candidate); state.values.includes(candidate); } }`,
   ])("does not flag a receiver mutated during repeated lookups", (code) => {

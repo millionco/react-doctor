@@ -12,6 +12,7 @@ const MUTATING_ARRAY_METHOD_NAMES: ReadonlySet<string> = new Set([
   "pop",
   "push",
   "reverse",
+  "set",
   "shift",
   "sort",
   "splice",
@@ -123,6 +124,28 @@ const getCanonicalExpressionMutationKey = (
 export const getArrayExpressionMutationKey = (expression: EsTreeNode): string | null =>
   getCanonicalExpressionMutationKey(expression, new Set());
 
+const doesWriteTargetMutateExpression = (
+  writeTarget: EsTreeNode,
+  expression: EsTreeNode,
+): boolean => {
+  if (isExpressionOrAliasedMemberRoot(writeTarget, expression)) return true;
+  if (!isNodeOfType(writeTarget, "ArrayPattern") && !isNodeOfType(writeTarget, "ObjectPattern")) {
+    return false;
+  }
+  let didFindMutation = false;
+  walkAst(writeTarget, (patternNode) => {
+    if (didFindMutation) return false;
+    if (
+      (isNodeOfType(patternNode, "Identifier") || isNodeOfType(patternNode, "MemberExpression")) &&
+      isExpressionOrAliasedMemberRoot(patternNode, expression)
+    ) {
+      didFindMutation = true;
+      return false;
+    }
+  });
+  return didFindMutation;
+};
+
 export const isArrayExpressionMutatedWithin = (
   expression: EsTreeNode,
   root: EsTreeNode,
@@ -137,7 +160,7 @@ export const isArrayExpressionMutatedWithin = (
         : isNodeOfType(node, "UnaryExpression") && node.operator === "delete"
           ? node.argument
           : null;
-    if (writeTarget && isExpressionOrAliasedMemberRoot(writeTarget, expression)) {
+    if (writeTarget && doesWriteTargetMutateExpression(writeTarget, expression)) {
       didFindMutation = true;
       return false;
     }

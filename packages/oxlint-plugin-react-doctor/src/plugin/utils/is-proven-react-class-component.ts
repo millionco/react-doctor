@@ -4,9 +4,23 @@ import { getImportedName } from "./get-imported-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isImportedFromReact, isReactNamespaceImport } from "./is-react-api-call.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const REACT_COMPONENT_CLASS_NAMES: ReadonlySet<string> = new Set(["Component", "PureComponent"]);
+
+const isReactComponentClassMember = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const expression = stripParenExpression(node);
+  if (!isNodeOfType(expression, "MemberExpression")) return false;
+  const propertyName = getStaticPropertyName(expression);
+  const receiver = stripParenExpression(expression.object);
+  return Boolean(
+    propertyName &&
+    REACT_COMPONENT_CLASS_NAMES.has(propertyName) &&
+    isNodeOfType(receiver, "Identifier") &&
+    isReactNamespaceImport(receiver, scopes),
+  );
+};
 
 export const isProvenReactClassComponent = (
   classNode: EsTreeNode,
@@ -22,18 +36,10 @@ export const isProvenReactClassComponent = (
   }
   visitedClassNodes.add(classNode);
   const superClass = stripParenExpression(classNode.superClass);
-  if (isNodeOfType(superClass, "MemberExpression")) {
-    const propertyName = getStaticPropertyName(superClass);
-    const receiver = stripParenExpression(superClass.object);
-    return Boolean(
-      propertyName &&
-      REACT_COMPONENT_CLASS_NAMES.has(propertyName) &&
-      isNodeOfType(receiver, "Identifier") &&
-      isReactNamespaceImport(receiver, scopes),
-    );
-  }
+  if (isNodeOfType(superClass, "MemberExpression"))
+    return isReactComponentClassMember(superClass, scopes);
   if (!isNodeOfType(superClass, "Identifier")) return false;
-  const superClassSymbol = scopes.symbolFor(superClass);
+  const superClassSymbol = resolveConstIdentifierAlias(superClass, scopes);
   if (!superClassSymbol) return false;
   if (isImportedFromReact(superClassSymbol)) {
     const importedName = getImportedName(superClassSymbol.declarationNode);
@@ -44,6 +50,12 @@ export const isProvenReactClassComponent = (
     isNodeOfType(superClassSymbol.declarationNode, "ClassExpression")
   ) {
     return isProvenReactClassComponent(superClassSymbol.declarationNode, scopes, visitedClassNodes);
+  }
+  if (
+    superClassSymbol.initializer &&
+    isReactComponentClassMember(superClassSymbol.initializer, scopes)
+  ) {
+    return true;
   }
   if (
     superClassSymbol.initializer &&

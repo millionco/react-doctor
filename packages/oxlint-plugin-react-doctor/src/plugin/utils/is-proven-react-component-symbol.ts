@@ -1,9 +1,10 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import { functionContainsReactRenderOutput } from "./function-contains-react-render-output.js";
-import { isComponentAssignment } from "./is-component-assignment.js";
 import { isComponentDeclaration } from "./is-component-declaration.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isProvenReactClassComponent } from "./is-proven-react-class-component.js";
+import { isUppercaseName } from "./is-uppercase-name.js";
+import { stripParenExpression } from "./strip-paren-expression.js";
 
 export const isProvenReactComponentSymbol = (
   symbol: SymbolDescriptor,
@@ -21,8 +22,18 @@ export const isProvenReactComponentSymbol = (
       if (functionContainsReactRenderOutput(candidateSymbol.declarationNode, scopes)) return true;
       continue;
     }
-    if (isComponentAssignment(candidateSymbol.declarationNode) && candidateSymbol.initializer) {
-      if (functionContainsReactRenderOutput(candidateSymbol.initializer, scopes)) return true;
+    const initializer = candidateSymbol.initializer
+      ? stripParenExpression(candidateSymbol.initializer)
+      : null;
+    if (
+      isNodeOfType(candidateSymbol.declarationNode, "VariableDeclarator") &&
+      isNodeOfType(candidateSymbol.declarationNode.id, "Identifier") &&
+      isUppercaseName(candidateSymbol.declarationNode.id.name) &&
+      initializer &&
+      (isNodeOfType(initializer, "ArrowFunctionExpression") ||
+        isNodeOfType(initializer, "FunctionExpression"))
+    ) {
+      if (functionContainsReactRenderOutput(initializer, scopes)) return true;
       continue;
     }
     if (
@@ -33,9 +44,9 @@ export const isProvenReactComponentSymbol = (
       continue;
     }
     if (
-      candidateSymbol.initializer &&
-      isNodeOfType(candidateSymbol.initializer, "ClassExpression") &&
-      isProvenReactClassComponent(candidateSymbol.initializer, scopes)
+      initializer &&
+      isNodeOfType(initializer, "ClassExpression") &&
+      isProvenReactClassComponent(initializer, scopes)
     ) {
       return true;
     }

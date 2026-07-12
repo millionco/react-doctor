@@ -4,6 +4,7 @@ import { isProvenReactComponentSymbol } from "../../utils/is-proven-react-compon
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -37,9 +38,10 @@ const getComponentFromPropTypesAssignment = (
 ): EsTreeNodeOfType<"Identifier"> | null => {
   if (!isNodeOfType(left, "MemberExpression")) return null;
   if (!isPropTypesKey(left.property, Boolean(left.computed))) return null;
-  if (!isNodeOfType(left.object, "Identifier")) return null;
-  if (!isUppercaseName(left.object.name)) return null;
-  return left.object;
+  const receiver = stripParenExpression(left.object);
+  if (!isNodeOfType(receiver, "Identifier")) return null;
+  if (!isUppercaseName(receiver.name)) return null;
+  return receiver;
 };
 
 const getComponentNameFromClassProperty = (

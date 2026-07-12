@@ -87,4 +87,40 @@ describe("architecture/no-prop-types component provenance", () => {
       0,
     );
   });
+
+  it("reports transparent TypeScript wrappers and static computed property names", () => {
+    expectDiagnosticCount(
+      `const Panel = (((props: { value: string }) => <div>{props.value}</div>) satisfies React.FC<{ value: string }>);
+       (Panel as typeof Panel)["propTypes"] = { value: () => true };
+       import ReactDefault from "react";
+       const Dialog = (class extends ReactDefault.Component {}) as typeof ReactDefault.Component;
+       (Dialog!)["propTypes"] = { value: () => true };`,
+      2,
+    );
+  });
+
+  it("reports stable aliases of React component base classes", () => {
+    expectDiagnosticCount(
+      `import ReactDefault from "react";
+       const ReactAlias = ReactDefault;
+       const ComponentBase = ReactAlias["Component"];
+       const ComponentAlias = ComponentBase;
+       class Panel extends ComponentAlias { static ["propTypes"] = { value: () => true }; }`,
+      1,
+    );
+  });
+
+  it("keeps mutable, imported, and unrelated class aliases quiet", () => {
+    expectDiagnosticCount(
+      `import ImportedPanel from "./panel";
+       ImportedPanel.propTypes = { value: () => true };
+       const LocalPanel = () => <div />;
+       let MutablePanel = LocalPanel;
+       MutablePanel.propTypes = { value: () => true };
+       const React = { Component: class {} };
+       const ComponentBase = React.Component;
+       class Protocol extends ComponentBase { static propTypes = { value: () => true }; }`,
+      0,
+    );
+  });
 });

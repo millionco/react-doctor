@@ -106,6 +106,38 @@ describe("correctness/no-polymorphic-children — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when a leading guard precedes large-string virtualization", () => {
+    const result = runRule(
+      noPolymorphicChildren,
+      `
+      const CodeBlock = ({ enabled, children }) => {
+        if (enabled && typeof children === 'string' && children.length > 50_000) {
+          return <VirtualizedCode text={children} />;
+        }
+        return <pre>{children}</pre>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the large-string length comparison is parenthesized", () => {
+    const result = runRule(
+      noPolymorphicChildren,
+      `
+      const CodeBlock = ({ children }) => {
+        if (typeof children === 'string' && (children.length > 50_000)) {
+          return <VirtualizedCode text={children} />;
+        }
+        return <pre>{children}</pre>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags small-string branches that change layout semantics", () => {
     const result = runRule(
       noPolymorphicChildren,

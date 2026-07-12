@@ -168,10 +168,11 @@ const isPropsChildrenLength = (node: EsTreeNode, scopes: ScopeAnalysis): boolean
 };
 
 const isLargeTextLengthComparison = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  if (!isNodeOfType(node, "BinaryExpression")) return false;
-  const leftIsLength = isPropsChildrenLength(node.left, scopes);
-  const rightIsLength = isPropsChildrenLength(node.right, scopes);
-  const thresholdNode = leftIsLength ? node.right : node.left;
+  const unwrappedNode = stripParenExpression(node);
+  if (!isNodeOfType(unwrappedNode, "BinaryExpression")) return false;
+  const leftIsLength = isPropsChildrenLength(unwrappedNode.left, scopes);
+  const rightIsLength = isPropsChildrenLength(unwrappedNode.right, scopes);
+  const thresholdNode = leftIsLength ? unwrappedNode.right : unwrappedNode.left;
   if ((!leftIsLength && !rightIsLength) || !isNodeOfType(thresholdNode, "Literal")) return false;
   if (
     typeof thresholdNode.value !== "number" ||
@@ -180,18 +181,20 @@ const isLargeTextLengthComparison = (node: EsTreeNode, scopes: ScopeAnalysis): b
     return false;
   }
   return leftIsLength
-    ? node.operator === ">" || node.operator === ">="
-    : node.operator === "<" || node.operator === "<=";
+    ? unwrappedNode.operator === ">" || unwrappedNode.operator === ">="
+    : unwrappedNode.operator === "<" || unwrappedNode.operator === "<=";
 };
 
 const isLargeStringOptimizationGuard = (comparison: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const comparisonRoot = findTransparentExpressionRoot(comparison);
-  const parent = comparisonRoot.parent;
-  if (!parent || !isNodeOfType(parent, "LogicalExpression") || parent.operator !== "&&") {
-    return false;
+  let current = findTransparentExpressionRoot(comparison);
+  while (current.parent) {
+    const parent = current.parent;
+    if (!isNodeOfType(parent, "LogicalExpression") || parent.operator !== "&&") return false;
+    const otherOperand = parent.left === current ? parent.right : parent.left;
+    if (isLargeTextLengthComparison(otherOperand, scopes)) return true;
+    current = findTransparentExpressionRoot(parent);
   }
-  const otherOperand = parent.left === comparisonRoot ? parent.right : parent.left;
-  return isLargeTextLengthComparison(otherOperand, scopes);
+  return false;
 };
 
 // HACK: `typeof children === "string"` (or `=== 'object'`) is a

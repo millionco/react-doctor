@@ -7,16 +7,6 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
-// `Math.min` / `Math.max` can only express the scalar extremum of an
-// array's own values. `arr.sort(cmp)[0]` is equivalent ONLY when the
-// comparator is the canonical numeric identity comparator: `(a, b) => a - b`
-// (ascending) or `(a, b) => b - a` (descending). A comparator-less `.sort()`
-// is lexicographic, so `Math.min/max` would return NaN for strings — that
-// case is excluded. A comparator that orders by a derived key, breaks
-// ties, or returns the element object also cannot be rewritten as
-// `Math.min/max`, so we must not report it. The direction matters for the
-// rewrite hint: ascending puts the min at `[0]`, descending puts the max
-// there.
 const numericComparatorDirection = (
   comparator: EsTreeNode | undefined,
 ): "ascending" | "descending" | null => {
@@ -57,6 +47,39 @@ const numericComparatorDirection = (
   return null;
 };
 
+const getStaticFiniteNumericValue = (expression: EsTreeNode): number | null => {
+  const strippedExpression = stripParenExpression(expression);
+  if (isNodeOfType(strippedExpression, "Literal")) {
+    return typeof strippedExpression.value === "number" && Number.isFinite(strippedExpression.value)
+      ? strippedExpression.value
+      : null;
+  }
+  if (
+    !isNodeOfType(strippedExpression, "UnaryExpression") ||
+    (strippedExpression.operator !== "+" && strippedExpression.operator !== "-")
+  ) {
+    return null;
+  }
+  const argumentValue = getStaticFiniteNumericValue(strippedExpression.argument);
+  if (argumentValue === null) return null;
+  const numericValue = strippedExpression.operator === "-" ? -argumentValue : +argumentValue;
+  return Number.isFinite(numericValue) ? numericValue : null;
+};
+
+const isSafeFreshNumericArray = (arrayExpression: EsTreeNodeOfType<"ArrayExpression">): boolean => {
+  if (arrayExpression.elements.length === 0) return false;
+  let didFindPositiveZero = false;
+  let didFindNegativeZero = false;
+  for (const element of arrayExpression.elements) {
+    if (!element || isNodeOfType(element, "SpreadElement")) return false;
+    const numericValue = getStaticFiniteNumericValue(element);
+    if (numericValue === null) return false;
+    if (Object.is(numericValue, 0)) didFindPositiveZero = true;
+    if (Object.is(numericValue, -0)) didFindNegativeZero = true;
+  }
+  return !(didFindPositiveZero && didFindNegativeZero);
+};
+
 export const jsMinMaxLoop = defineRule({
   id: "js-min-max-loop",
   title: "sort() to find min or max",
@@ -72,27 +95,22 @@ export const jsMinMaxLoop = defineRule({
       if (!isNodeOfType(object, "CallExpression") || !isMemberProperty(object.callee, "sort"))
         return;
 
+      if (!isNodeOfType(object.callee, "MemberExpression")) return;
+      const sortReceiver = stripParenExpression(object.callee.object);
+      if (!isNodeOfType(sortReceiver, "ArrayExpression") || !isSafeFreshNumericArray(sortReceiver))
+        return;
+
       const comparator = object.arguments?.[0] as EsTreeNode | undefined;
       const direction = numericComparatorDirection(comparator);
       if (!direction) return;
 
       const isFirstElement = isNodeOfType(node.property, "Literal") && node.property.value === 0;
-      const isLastElement =
-        isNodeOfType(node.property, "BinaryExpression") &&
-        node.property.operator === "-" &&
-        isNodeOfType(node.property.right, "Literal") &&
-        node.property.right.value === 1;
-
-      if (isFirstElement || isLastElement) {
-        // Ascending puts the min at [0] and max at [length-1]; descending
-        // reverses both, so the rewrite hint has to follow the direction.
-        const readsMinimum = direction === "ascending" ? isFirstElement : isLastElement;
-        const targetFunction = readsMinimum ? "min" : "max";
-        context.report({
-          node,
-          message: `This is slow because array.sort()[${isFirstElement ? "0" : "length-1"}] sorts the whole list just to grab the smallest or largest, so use Math.${targetFunction}(...array) instead`,
-        });
-      }
+      if (!isFirstElement) return;
+      const targetFunction = direction === "ascending" ? "min" : "max";
+      context.report({
+        node,
+        message: `This is slow because array.sort()[0] sorts the whole list just to grab the smallest or largest, so use Math.${targetFunction}(...array) instead`,
+      });
     },
   }),
 });

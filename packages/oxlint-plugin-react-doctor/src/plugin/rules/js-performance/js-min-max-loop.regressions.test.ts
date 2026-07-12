@@ -22,38 +22,55 @@ const expectSuggests = (code: string, mathFn: "min" | "max"): void => {
 };
 
 describe("js-performance/js-min-max-loop — regressions", () => {
-  it("flags `.sort((a, b) => a - b)[0]` with the canonical numeric comparator", () => {
-    expectFail(`const smallest = nums.sort((a, b) => a - b)[0];`);
+  it("flags a fresh finite numeric array sorted with the canonical comparator", () => {
+    expectFail(`const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`);
   });
 
   it("does not flag a comparator-less lexicographic `.sort()[0]`", () => {
     expectPass(`const first = [...names].sort()[0];`);
   });
 
-  // Bugbot: the rewrite hint has to follow the sort direction. Ascending puts
-  // the min at [0]; descending puts the max there.
-  it("suggests Math.min for ascending `[0]` and Math.max for ascending `[length-1]`", () => {
-    expectSuggests(`const smallest = nums.sort((a, b) => a - b)[0];`, "min");
-    expectSuggests(`const largest = nums.sort((a, b) => a - b)[nums.length - 1];`, "max");
+  it("suggests Math.min for ascending `[0]`", () => {
+    expectSuggests(`const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`, "min");
   });
 
-  it("suggests Math.max for descending `[0]` and Math.min for descending `[length-1]`", () => {
-    expectSuggests(`const largest = nums.sort((a, b) => b - a)[0];`, "max");
-    expectSuggests(`const smallest = nums.sort((a, b) => b - a)[nums.length - 1];`, "min");
+  it("suggests Math.max for descending `[0]`", () => {
+    expectSuggests(`const largest = [-3, +1, 2].sort((a, b) => b - a)[0];`, "max");
   });
 
   // fp-review PR #994: oxc-parser wraps `(a - b)` in a ParenthesizedExpression,
   // which must be peeled before matching the canonical comparator.
   it("flags the parenthesized concise-body comparator `(a, b) => (a - b)`", () => {
-    expectSuggests(`const smallest = nums.sort((a, b) => (a - b))[0];`, "min");
+    expectSuggests(`const smallest = [3, 1, 2].sort((a, b) => (a - b))[0];`, "min");
   });
 
   it("flags the parenthesized block-body comparator `{ return (a - b); }`", () => {
-    expectSuggests(`const smallest = nums.sort((a, b) => { return (a - b); })[0];`, "min");
+    expectSuggests(`const smallest = [3, 1, 2].sort((a, b) => { return (a - b); })[0];`, "min");
   });
 
   it("flags the parenthesized descending comparator `(a, b) => (b - a)`", () => {
-    expectSuggests(`const largest = nums.sort((a, b) => (b - a))[0];`, "max");
+    expectSuggests(`const largest = [3, 1, 2].sort((a, b) => (b - a))[0];`, "max");
+  });
+
+  it.each([
+    `const smallest = nums.sort((a, b) => a - b)[0];`,
+    `const smallest = [].sort((a, b) => a - b)[0];`,
+    `const smallest = [, 1, 2].sort((a, b) => a - b)[0];`,
+    `const smallest = [...nums].sort((a, b) => a - b)[0];`,
+    `const smallest = [NaN, 1, 2].sort((a, b) => a - b)[0];`,
+    `const smallest = [Infinity, 1, 2].sort((a, b) => a - b)[0];`,
+    `const smallest = [undefined, 1, 2].sort((a, b) => a - b)[0];`,
+    `const smallest = ["1", 2, 3].sort((a, b) => a - b)[0];`,
+    `const smallest = [0, -0, 1].sort((a, b) => a - b)[0];`,
+    `const largest = [3, 1, 2].sort((a, b) => a - b)[2];`,
+  ])("does not recommend Math.min/max when scalar equivalence is unproven", (code) => {
+    expectPass(code);
+  });
+
+  it("does not flag a magnitude comparator", () => {
+    expectPass(
+      `const smallestMagnitude = [3, -1, 2].sort((a, b) => Math.abs(a) - Math.abs(b))[0];`,
+    );
   });
 
   it("does not flag a derived-key comparator on objects", () => {

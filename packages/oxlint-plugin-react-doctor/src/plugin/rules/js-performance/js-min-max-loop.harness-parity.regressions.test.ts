@@ -14,21 +14,21 @@ const diagnosticsFor = (code: string) => {
 // and masked these shapes; parse-fixture now strips parens to match.
 describe("js-performance/js-min-max-loop — parenthesized comparator parity", () => {
   it("flags the concise parenthesized ascending comparator `(a, b) => (a - b)`", () => {
-    const diagnostics = diagnosticsFor(`const smallest = nums.sort((a, b) => (a - b))[0];`);
+    const diagnostics = diagnosticsFor(`const smallest = [3, 1, 2].sort((a, b) => (a - b))[0];`);
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].message).toContain("Math.min(...array)");
   });
 
   it("flags the block-body parenthesized comparator `{ return (a - b); }`", () => {
     const diagnostics = diagnosticsFor(
-      `const smallest = nums.sort((a, b) => { return (a - b); })[0];`,
+      `const smallest = [3, 1, 2].sort((a, b) => { return (a - b); })[0];`,
     );
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].message).toContain("Math.min(...array)");
   });
 
   it("flags the parenthesized descending comparator `(b - a)` with a Math.max hint at [0]", () => {
-    const diagnostics = diagnosticsFor(`const largest = nums.sort((a, b) => (b - a))[0];`);
+    const diagnostics = diagnosticsFor(`const largest = [3, 1, 2].sort((a, b) => (b - a))[0];`);
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].message).toContain("Math.max(...array)");
   });

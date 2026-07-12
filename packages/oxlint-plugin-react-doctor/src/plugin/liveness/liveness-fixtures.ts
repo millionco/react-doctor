@@ -308,7 +308,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "function arraysEqual(a, b) {\n      return a.every((value, index) => value === b[index]);\n    }",
   },
   "js-min-max-loop": {
-    code: "const smallest = nums.sort((a, b) => a - b)[0];",
+    code: "const smallest = [3, 1, 2].sort((a, b) => a - b)[0];",
   },
   "js-set-map-lookups": {
     code: "function f(users, roles){ const a=[]; for(const u of users){ if(roles.includes(u.role)) a.push(u);} return a; }",

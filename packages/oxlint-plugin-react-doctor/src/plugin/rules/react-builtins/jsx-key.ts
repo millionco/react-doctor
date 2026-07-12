@@ -5,6 +5,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxKeyAttribute } from "../../utils/has-jsx-key-attribute.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
@@ -177,6 +178,54 @@ interface IteratorContextIterator {
 }
 type IteratorContext = IteratorContextArray | IteratorContextIterator;
 
+const namedCallbackIteratorCallCache = new WeakMap<EsTreeNode, EsTreeNode | null>();
+
+const findNamedCallbackIteratorCall = (functionNode: EsTreeNode): EsTreeNode | null => {
+  const cached = namedCallbackIteratorCallCache.get(functionNode);
+  if (cached !== undefined) return cached;
+  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  if (!bindingIdentifier) {
+    namedCallbackIteratorCallCache.set(functionNode, null);
+    return null;
+  }
+  const programRoot = findProgramRoot(functionNode);
+  if (!programRoot) {
+    namedCallbackIteratorCallCache.set(functionNode, null);
+    return null;
+  }
+  let iteratorCall: EsTreeNode | null = null;
+  walkAst(programRoot, (node) => {
+    if (iteratorCall) return false;
+    if (
+      !isNodeOfType(node, "Identifier") ||
+      node === bindingIdentifier ||
+      node.name !== bindingIdentifier.name
+    ) {
+      return;
+    }
+    const binding = findVariableInitializer(node, node.name);
+    if (!binding || binding.bindingIdentifier !== bindingIdentifier) return;
+    const callbackExpression = findTransparentExpressionRoot(node);
+    const callExpression = callbackExpression.parent;
+    if (!callExpression || !isNodeOfType(callExpression, "CallExpression")) return;
+    const callee = callExpression.callee;
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      !isNodeOfType(callee.property, "Identifier") ||
+      !ITERATOR_METHOD_NAMES.has(callee.property.name)
+    ) {
+      return;
+    }
+    const callbackIndex = callee.property.name === "from" ? 1 : 0;
+    if (callExpression.arguments[callbackIndex] !== callbackExpression) return;
+    if (isNonChildrenJsxAttributeValue(callExpression)) return;
+    iteratorCall = callExpression;
+    return false;
+  });
+  namedCallbackIteratorCallCache.set(functionNode, iteratorCall);
+  return iteratorCall;
+};
+
 const findEnclosingIteratorContext = (jsxNode: EsTreeNode): IteratorContext | null => {
   let current: EsTreeNode | null | undefined = jsxNode;
   let isOutsideContainingFunction = false;
@@ -200,6 +249,10 @@ const findEnclosingIteratorContext = (jsxNode: EsTreeNode): IteratorContext | nu
       const grandparent = parent.parent;
       if (grandparent && isNodeOfType(grandparent, "Property")) return null;
       if (isOutsideContainingFunction) return null;
+      const namedCallbackIteratorCall = findNamedCallbackIteratorCall(parent);
+      if (namedCallbackIteratorCall) {
+        return { kind: "iterator", callExpression: namedCallbackIteratorCall };
+      }
       isOutsideContainingFunction = true;
     } else if (isNodeOfType(parent, "ArrayExpression")) {
       if (isOutsideContainingFunction) return null;
@@ -268,7 +321,12 @@ const resolveIterationItemName = (callExpression: EsTreeNode): string | null => 
   if (!isNodeOfType(callee, "MemberExpression")) return null;
   if (!isNodeOfType(callee.property, "Identifier")) return null;
   const targetArgIndex = callee.property.name === "from" ? 1 : 0;
-  const callback = callExpression.arguments[targetArgIndex];
+  const callbackArgument = callExpression.arguments[targetArgIndex];
+  if (!callbackArgument) return null;
+  const unwrappedCallback = stripParenExpression(callbackArgument);
+  const callback = isNodeOfType(unwrappedCallback, "Identifier")
+    ? findVariableInitializer(unwrappedCallback, unwrappedCallback.name)?.initializer
+    : unwrappedCallback;
   if (
     !callback ||
     (!isNodeOfType(callback, "ArrowFunctionExpression") &&

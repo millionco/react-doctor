@@ -3,6 +3,7 @@ import {
   memoStatusForJsxOpeningName,
   type MemoStatus,
 } from "../../utils/build-same-file-memo-registry.js";
+import { buildSameFileJsxSlotPropRegistry } from "../../utils/build-same-file-jsx-slot-prop-registry.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -348,9 +349,11 @@ export const jsxNoJsxAsProp = defineRule({
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);
     let memoRegistry: Map<string, MemoStatus> | null = null;
+    let jsxSlotPropRegistry: Map<number, ReadonlySet<string>> | null = null;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         memoRegistry = buildSameFileMemoRegistry(node as EsTreeNode);
+        jsxSlotPropRegistry = buildSameFileJsxSlotPropRegistry(node, memoRegistry, context.scopes);
       },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         if (isTestlikeFile) return;
@@ -368,6 +371,17 @@ export const jsxNoJsxAsProp = defineRule({
             : null;
         const memoStatus = memoStatusForJsxOpeningName(memoRegistry, openingName);
         if (memoStatus !== "memoised") return;
+        const openingSymbol =
+          openingName && isNodeOfType(openingName, "JSXIdentifier")
+            ? context.scopes.symbolFor(openingName)
+            : null;
+        if (
+          openingSymbol &&
+          isNodeOfType(node.name, "JSXIdentifier") &&
+          jsxSlotPropRegistry?.get(openingSymbol.id)?.has(node.name.name)
+        ) {
+          return;
+        }
         // Known slot prop names (icon, tooltip, fallback, header, etc.)
         // and slot suffixes (*Button, *Icon, *Component, *Element, ...)
         // are designed to receive JSX. Flagging them is unactionable.

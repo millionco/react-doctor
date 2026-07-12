@@ -3,6 +3,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getImportedName } from "./get-imported-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 export interface ReactApiCallOptions {
@@ -37,8 +38,7 @@ const isNamedReactApiImport = (
 };
 
 export const isReactNamespaceImport = (identifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  if (!isNodeOfType(identifier, "Identifier")) return false;
-  const symbol = scopes.symbolFor(identifier);
+  const symbol = resolveConstIdentifierAlias(identifier, scopes);
   if (!symbol || !isImportedFromReact(symbol)) return false;
   return (
     isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier") ||
@@ -65,16 +65,17 @@ export const isReactApiCall = (
   if (
     !isNodeOfType(callee, "MemberExpression") ||
     callee.computed ||
-    !isNodeOfType(callee.object, "Identifier") ||
     !isNodeOfType(callee.property, "Identifier") ||
     !includesApiName(apiNames, callee.property.name)
   ) {
     return false;
   }
-  if (isReactNamespaceImport(callee.object, scopes)) return true;
+  const receiver = stripParenExpression(callee.object);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  if (isReactNamespaceImport(receiver, scopes)) return true;
   return Boolean(
     options.allowGlobalReactNamespace &&
-    callee.object.name === "React" &&
-    scopes.isGlobalReference(callee.object),
+    receiver.name === "React" &&
+    scopes.isGlobalReference(receiver),
   );
 };

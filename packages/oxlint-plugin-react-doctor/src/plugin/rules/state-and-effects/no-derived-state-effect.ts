@@ -1,124 +1,10 @@
-import { BUILTIN_GLOBAL_NAMESPACE_NAMES } from "../../constants/js.js";
-import { EFFECT_HOOK_NAMES, TRIVIAL_DERIVATION_CALLEE_NAMES } from "../../constants/react.js";
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getCallbackStatements } from "../../utils/get-callback-statements.js";
-import { getEffectCallback } from "../../utils/get-effect-callback.js";
-import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
-import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
-import { isNoOpStatement } from "../../utils/is-no-op-statement.js";
-import { isSetterCall } from "../../utils/is-setter-call.js";
-import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
-import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
-import { isControlledPropMirror } from "./utils/is-controlled-prop-mirror.js";
-import { walkAst } from "../../utils/walk-ast.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
-import type { RuleContext } from "../../utils/rule-context.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-
-// HACK: AST-aware walker for "what reactive values does this expression
-// actually READ?". The plain `walkAst` adds every Identifier it sees,
-// which over-counts in two ways:
-//   - the CALLEE of a CallExpression (`getFilteredTodos(...)`) is a
-//     function reference, almost always module-scoped and stable —
-//     React's exhaustive-deps lint correctly omits these from deps.
-//   - the PROPERTY of a non-computed MemberExpression (`obj.foo`) is
-//     a static identifier, not a separate reactive read; only `obj`
-//     is the reactive value.
-// Without this, `setX(getFilteredTodos(todos, filter))` would treat
-// `getFilteredTodos` as a missing dep and bail before the §2 "expensive
-// derivation" branch could fire.
-const collectValueIdentifierNames = (
-  node: EsTreeNode | null | undefined,
-  into: string[],
-  localBindingNames: ReadonlySet<string> = new Set(),
-): void => {
-  if (!node || typeof node !== "object") return;
-  if (isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression")) {
-    const nestedBindingNames = new Set(localBindingNames);
-    for (const parameter of node.params ?? []) {
-      if (isNodeOfType(parameter, "Identifier")) nestedBindingNames.add(parameter.name);
-    }
-    collectValueIdentifierNames(node.body, into, nestedBindingNames);
-    return;
-  }
-  if (isNodeOfType(node, "CallExpression")) {
-    if (isNodeOfType(node.callee, "MemberExpression")) {
-      // For `state.method(arg)`, `state` is a reactive read; `method`
-      // is not. Skip the callee chain entirely when its root is a
-      // built-in global (`Math.floor`, `JSON.parse`, ...) — those
-      // aren't reactive reads either.
-      const rootName = getRootIdentifierName(node.callee);
-      if (!rootName || !BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) {
-        collectValueIdentifierNames(node.callee.object, into, localBindingNames);
-      }
-    }
-    for (const argument of node.arguments ?? []) {
-      collectValueIdentifierNames(argument, into, localBindingNames);
-    }
-    return;
-  }
-  if (isNodeOfType(node, "MemberExpression")) {
-    const rootName = getRootIdentifierName(node);
-    if (!rootName || !BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) {
-      collectValueIdentifierNames(node.object, into, localBindingNames);
-    }
-    if (node.computed) collectValueIdentifierNames(node.property, into, localBindingNames);
-    return;
-  }
-  if (isNodeOfType(node, "Identifier")) {
-    if (!localBindingNames.has(node.name)) into.push(node.name);
-    return;
-  }
-  const nodeRecord = node as unknown as Record<string, unknown>;
-  for (const key of Object.keys(nodeRecord)) {
-    if (key === "parent" || key === "type") continue;
-    const child = nodeRecord[key];
-    if (Array.isArray(child)) {
-      for (const item of child) {
-        if (item && typeof item === "object" && "type" in item) {
-          collectValueIdentifierNames(item as EsTreeNode, into, localBindingNames);
-        }
-      }
-    } else if (child && typeof child === "object" && "type" in child) {
-      collectValueIdentifierNames(child as EsTreeNode, into, localBindingNames);
-    }
-  }
-};
-
-// Wrapping the setter in an `if` guard (`if (a !== b) setX(a)`) is still
-// derived state — recurse into IfStatement branches so the guard doesn't
-// silence the rule. Any branch statement that isn't itself an
-// ExpressionStatement or a nested IfStatement disqualifies the effect
-// (returns null), preserving the strict "contains only setState calls"
-// contract of the flattened list.
-const flattenGuardedStatements = (
-  statements: ReadonlyArray<EsTreeNode>,
-): ReadonlyArray<EsTreeNode> | null => {
-  const flattened: EsTreeNode[] = [];
-  for (const statement of statements) {
-    if (isNoOpStatement(statement)) continue;
-    if (isNodeOfType(statement, "ExpressionStatement")) {
-      flattened.push(statement);
-      continue;
-    }
-    if (isNodeOfType(statement, "IfStatement")) {
-      for (const branch of [statement.consequent, statement.alternate]) {
-        if (!branch) continue;
-        const branchStatements = isNodeOfType(branch, "BlockStatement")
-          ? (branch.body ?? [])
-          : [branch];
-        const flattenedBranch = flattenGuardedStatements(branchStatements);
-        if (flattenedBranch === null) return null;
-        flattened.push(...flattenedBranch);
-      }
-      continue;
-    }
-    return null;
-  }
-  return flattened;
-};
+import { isHookCall } from "../../utils/is-hook-call.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
+import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 
 export const noDerivedStateEffect = defineRule({
   id: "no-derived-state-effect",
@@ -129,132 +15,17 @@ export const noDerivedStateEffect = defineRule({
     "Work out derived values while rendering: `const x = fn(dep)`. To reset a component's state when a prop changes, give it a key prop: `<Component key={prop} />`. See https://react.dev/learn/you-might-not-need-an-effect",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
-
-      const callback = getEffectCallback(node);
-      if (!callback) return;
-
-      const depsNode = node.arguments[1];
-      if (!isNodeOfType(depsNode, "ArrayExpression") || !depsNode.elements?.length) return;
-
-      const dependencyNames = new Set<string>();
-      for (const element of depsNode.elements ?? []) {
-        if (isNodeOfType(element, "Identifier")) dependencyNames.add(element.name);
-        if (isNodeOfType(element, "MemberExpression")) {
-          const rootName = getRootIdentifierName(element);
-          if (rootName) dependencyNames.add(rootName);
-        }
-      }
-      if (dependencyNames.size === 0) return;
-      // Initial-only / default / seed-named deps signal an explicit
-      // controlled-init re-sync pattern. `useEffect(..., [initialValue])`
-      // is the canonical "reset child state when the caller passes a
-      // new initial" idiom — skip when EVERY dep matches.
-      let allDepsAreInitialOnly = true;
-      let sawAnyDep = false;
-      for (const name of dependencyNames) {
-        sawAnyDep = true;
-        if (!isInitialOnlyPropName(name)) {
-          allDepsAreInitialOnly = false;
-          break;
-        }
-      }
-      if (sawAnyDep && allDepsAreInitialOnly) return;
-
-      const statements = flattenGuardedStatements(getCallbackStatements(callback));
-      if (statements === null || statements.length === 0) return;
-
-      const containsOnlySetStateCalls = statements.every((statement: EsTreeNode) => {
-        if (!isNodeOfType(statement, "ExpressionStatement")) return false;
-        const expression = statement.expression;
-        if (!isSetterCall(expression)) return false;
-        if (!isNodeOfType(expression, "CallExpression")) return false;
-        if (!isNodeOfType(expression.callee, "Identifier")) return false;
-        return isUseStateSetterInScope(expression, expression.callee.name);
+      if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
+      const analysis = getProgramAnalysis(node);
+      if (!analysis) return;
+      const derivedWrite = collectEffectStateWriteFacts(analysis, node, context.filename).find(
+        (fact) => fact.isRenderKnownCopy && !fact.resetsSourceState,
+      );
+      if (!derivedWrite) return;
+      context.report({
+        node,
+        message: "You pay an extra render for state you can derive from other values.",
       });
-      if (!containsOnlySetStateCalls) return;
-
-      const isControlledMirrorEffect = statements.some((statement: EsTreeNode) => {
-        if (!isNodeOfType(statement, "ExpressionStatement")) return false;
-        return isControlledPropMirror(node, statement.expression);
-      });
-      if (isControlledMirrorEffect) return;
-
-      let allArgumentsDeriveFromDeps = true;
-      let hasAnyDependencyReference = false;
-      // §2 of "You Might Not Need an Effect" branches the suggested
-      // fix on whether the derivation is potentially expensive. A
-      // setter argument that contains a user-defined CallExpression
-      // (e.g. `setVisibleTodos(getFilteredTodos(todos, filter))`)
-      // gets the `useMemo` recommendation; pure data shaping like
-      // `firstName + " " + lastName` keeps the cheaper "compute
-      // during render" message.
-      let hasExpensiveDerivation = false;
-      for (const statement of statements) {
-        if (!isNodeOfType(statement, "ExpressionStatement")) continue;
-        if (!isNodeOfType(statement.expression, "CallExpression")) continue;
-        const setStateArguments = statement.expression.arguments;
-        if (!setStateArguments?.length) continue;
-
-        const valueIdentifierNames: string[] = [];
-        collectValueIdentifierNames(setStateArguments[0], valueIdentifierNames);
-
-        walkAst(setStateArguments[0], (child: EsTreeNode) => {
-          if (!isNodeOfType(child, "CallExpression")) return;
-          if (isNodeOfType(child.callee, "MemberExpression")) {
-            // `Math.floor(x)` / `Date.now()` are trivial regardless
-            // of the property — gate on the chain root, not the
-            // method name (which would never match TRIVIAL_*).
-            const rootName = getRootIdentifierName(child.callee);
-            if (rootName && BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) return;
-            hasExpensiveDerivation = true;
-            return;
-          }
-          if (isNodeOfType(child.callee, "Identifier")) {
-            const calleeName = child.callee.name;
-            if (
-              !TRIVIAL_DERIVATION_CALLEE_NAMES.has(calleeName) &&
-              !isSetterIdentifier(calleeName)
-            ) {
-              hasExpensiveDerivation = true;
-            }
-          }
-        });
-
-        const nonSetterIdentifiers = valueIdentifierNames.filter(
-          (name) => !isSetterIdentifier(name),
-        );
-
-        if (nonSetterIdentifiers.some((name) => dependencyNames.has(name))) {
-          hasAnyDependencyReference = true;
-        }
-
-        if (nonSetterIdentifiers.some((name) => !dependencyNames.has(name))) {
-          allArgumentsDeriveFromDeps = false;
-          break;
-        }
-      }
-
-      if (!allArgumentsDeriveFromDeps) return;
-
-      // HACK: a user-defined function call inside the setter arg
-      // (`setFilteredItems(applyFilters())`) closes over reactive
-      // values implicitly — it's a derivation, not a "state reset".
-      // Without this, a zero-arg call would leave the identifier list
-      // empty and the message would vacuously default to the wrong
-      // "state reset" branch.
-      if (hasExpensiveDerivation) hasAnyDependencyReference = true;
-
-      let message: string;
-      if (!hasAnyDependencyReference) {
-        message = "Your users briefly see stale state on every prop change.";
-      } else if (hasExpensiveDerivation) {
-        message = "You pay an extra render for state derived from other values.";
-      } else {
-        message = "You pay an extra render for state you can derive from other values.";
-      }
-
-      context.report({ node, message });
     },
   }),
 });

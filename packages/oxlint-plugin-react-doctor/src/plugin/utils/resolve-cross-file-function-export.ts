@@ -2,10 +2,9 @@ import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "../constants/thresholds.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import {
   findExportedFunctionBody,
-  findReExportSourcesForName,
+  findReExportTargetsForName,
 } from "./find-exported-function-body.js";
 import { parseSourceFile } from "./parse-source-file.js";
-import { resolveBarrelExportFilePath } from "./resolve-barrel-export-file-path.js";
 import { resolveModulePath } from "./resolve-module-path.js";
 
 const resolveFunctionExportInFile = (
@@ -17,29 +16,26 @@ const resolveFunctionExportInFile = (
   if (visitedFilePaths.has(filePath)) return null;
   visitedFilePaths.add(filePath);
 
-  // Barrel files re-export from other files. Resolve the barrel first
-  // so we land on the file that owns the function.
-  const barrelTargetPath = resolveBarrelExportFilePath(filePath, exportedName);
-  const actualFilePath = barrelTargetPath ?? filePath;
-
-  const programRoot = parseSourceFile(actualFilePath);
+  const programRoot = parseSourceFile(filePath);
   if (!programRoot) return null;
 
   const exported = findExportedFunctionBody(programRoot, exportedName);
   if (exported) return exported;
 
-  // The export might be a re-export not handled by the barrel resolver.
-  // Probe each candidate re-export source in turn — a matching named
-  // re-export is precise, otherwise every `export *` is tried until one
-  // resolves.
-  for (const reExportSource of findReExportSourcesForName(programRoot, exportedName)) {
-    const nextFilePath = resolveModulePath(actualFilePath, reExportSource);
+  const resolvedCandidates = new Set<EsTreeNode>();
+  for (const target of findReExportTargetsForName(programRoot, exportedName)) {
+    const nextFilePath = resolveModulePath(filePath, target.source);
     if (!nextFilePath) continue;
-    const resolved = resolveFunctionExportInFile(nextFilePath, exportedName, visitedFilePaths);
-    if (resolved) return resolved;
+    const resolved = resolveFunctionExportInFile(
+      nextFilePath,
+      target.importedName,
+      new Set(visitedFilePaths),
+    );
+    if (resolved) resolvedCandidates.add(resolved);
   }
 
-  return null;
+  if (resolvedCandidates.size !== 1) return null;
+  return resolvedCandidates.values().next().value ?? null;
 };
 
 // Resolves `import { name } from "source"` (relative or tsconfig-alias)

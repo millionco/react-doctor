@@ -61,6 +61,7 @@ const buildResult = (overrides: Partial<InspectResult> = {}): InspectResult => (
   project: projectInfo,
   elapsedMilliseconds: 1200,
   scannedFileCount: 10,
+  analyzedFiles: Array.from({ length: 10 }, (_unused, index) => `src/${index}.tsx`),
   scanElapsedMilliseconds: 900,
   ...overrides,
 });
@@ -157,6 +158,41 @@ describe("buildRunEventAttributes", () => {
     // Nothing fired -> no migration bucket to report (dropped, not "null").
     expect(attributes["migration.largestRuleBucketFiles"]).toBeUndefined();
     expect(attributes["migration.largestRuleBucketRule"]).toBeUndefined();
+  });
+
+  it("records exact scan completeness as one low-cardinality outcome attribute", () => {
+    const completeAttributes = buildRunEventAttributes(
+      baseInput({
+        result: buildResult({
+          analyzedFiles: Array.from({ length: 10 }, (_unused, index) => `src/${index}.tsx`),
+        }),
+      }),
+    );
+    expect(completeAttributes["outcome.complete"]).toBe(true);
+    expect(completeAttributes["scan.complete"]).toBeUndefined();
+
+    const incompleteAttributes = buildRunEventAttributes(
+      baseInput({
+        result: buildResult({ analyzedFiles: ["src/0.tsx"] }),
+      }),
+    );
+    expect(incompleteAttributes["outcome.complete"]).toBe(false);
+    const partialCheckAttributes = buildRunEventAttributes(
+      baseInput({
+        result: buildResult({
+          analyzedFiles: Array.from({ length: 10 }, (_unused, index) => `src/${index}.tsx`),
+          skippedCheckReasons: {
+            "lint:partial": "React Hooks rules were skipped after their plugin failed to load.",
+          },
+        }),
+      }),
+    );
+    expect(partialCheckAttributes["outcome.complete"]).toBe(false);
+    expect(partialCheckAttributes["outcome.status"]).toBe("ok");
+    expect(partialCheckAttributes["outcome.clean"]).toBe(false);
+    expect(
+      buildRunEventAttributes(baseInput({ error: new Error("boom") }))["outcome.complete"],
+    ).toBe(false);
   });
 
   it("records the widest-blast-radius rule for migration-scale calibration", () => {

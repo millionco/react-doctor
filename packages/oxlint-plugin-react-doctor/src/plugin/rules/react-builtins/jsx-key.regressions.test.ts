@@ -75,6 +75,83 @@ describe("react-builtins/jsx-key — regressions", () => {
     expectFail(`items.map(item => <Item name={item.name} />);`);
   });
 
+  it("flags a keyless element returned by a named function callback", () => {
+    expectFail(`
+      function renderRow(item) {
+        return <Item name={item.name} />;
+      }
+      items.map(renderRow);
+    `);
+  });
+
+  it("flags a keyless element returned by a named arrow callback", () => {
+    expectFail(`
+      const renderRow = (item) => <Item name={item.name} />;
+      items.flatMap(renderRow);
+    `);
+  });
+
+  it("flags a keyless element returned by a named Array.from callback", () => {
+    expectFail(`
+      const renderRow = (item) => <Item name={item.name} />;
+      Array.from(items, renderRow);
+    `);
+  });
+
+  it("does not flag a keyed element returned by a named callback", () => {
+    expectPass(`
+      const renderRow = (item) => <Item key={item.id} name={item.name} />;
+      items.map(renderRow);
+    `);
+  });
+
+  it("does not flag a named callback that spreads the iteration item", () => {
+    expectPass(`
+      const renderRow = (item) => <Item {...item} />;
+      items.map(renderRow);
+    `);
+  });
+
+  it("does not flag a named callback whose mapped output is a non-children prop", () => {
+    expectPass(`
+      const renderRow = (item) => <Item name={item.name} />;
+      <Menu items={items.map(renderRow)} />;
+    `);
+  });
+
+  it("does not flag a named JSX-returning callback that is not an iterator", () => {
+    expectPass(`
+      const renderRow = (item) => <Item name={item.name} />;
+      consume(renderRow);
+    `);
+  });
+
+  it("keeps same-named callbacks in different scopes separate", () => {
+    expectPass(`
+      const renderRow = (item) => <Item name={item.name} />;
+      const Panel = () => {
+        const renderRow = (item) => <Item key={item.id} name={item.name} />;
+        return items.map(renderRow);
+      };
+      consume(renderRow);
+    `);
+  });
+
+  it("flags each keyless return branch in a named callback", () => {
+    const result = runRule(
+      jsxKey,
+      `
+        const renderRow = (item) => {
+          if (item.featured) return <FeaturedItem name={item.name} />;
+          return <Item name={item.name} />;
+        };
+        items.map(renderRow);
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("still flags when spreading something other than the iteration item", () => {
     expectFail(`items.map(item => <Item {...other} />);`);
   });

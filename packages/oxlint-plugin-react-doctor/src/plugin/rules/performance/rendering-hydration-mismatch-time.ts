@@ -8,7 +8,6 @@ import { hasSuppressHydrationWarningAttribute } from "../../utils/has-suppress-h
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
-import { isInsideClientOnlyGuard } from "../../utils/is-inside-client-only-guard.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -111,9 +110,7 @@ export const renderingHydrationMismatchTime = defineRule({
   title: "Time or random value in JSX",
   severity: "warn",
   category: "Correctness",
-  // Client-only build tools have no server render, so hydration can never
-  // happen and a wall-clock/random value in JSX is harmless there.
-  disabledWhen: ["vite", "cra"],
+  requires: ["ssr"],
   recommendation:
     "Move time or random values into useEffect+useState so they only run in the browser, or add suppressHydrationWarning to the parent if it's intentional",
   create: (context: RuleContext): RuleVisitors => {
@@ -141,8 +138,7 @@ export const renderingHydrationMismatchTime = defineRule({
         if (matched) {
           const openingElement = findOpeningElementOfChild(node);
           if (hasSuppressHydrationWarningAttribute(openingElement)) return;
-          if (isInsideClientOnlyGuard(node)) return;
-          if (isGatedByFalsyInitialState(node)) return;
+          if (isGatedByFalsyInitialState(node, context.scopes)) return;
           if (isInsideMotionTransitionAttribute(node)) return;
           context.report({
             node,
@@ -159,13 +155,12 @@ export const renderingHydrationMismatchTime = defineRule({
           // server/client render pass, so a time/random call inside it is
           // not a hydration mismatch. IIFEs and useMemo factories DO run
           // during render, so keep walking those.
-          if (isFunctionLike(child) && !executesDuringRender(child)) return false;
+          if (isFunctionLike(child) && !executesDuringRender(child, context.scopes)) return false;
           for (const pattern of NONDETERMINISTIC_RENDER_PATTERNS) {
             if (pattern.matches(child)) {
               const openingElement = findOpeningElementOfChild(node);
               if (hasSuppressHydrationWarningAttribute(openingElement)) return;
-              if (isInsideClientOnlyGuard(child)) return;
-              if (isGatedByFalsyInitialState(child)) return;
+              if (isGatedByFalsyInitialState(child, context.scopes)) return;
               if (isInsideMotionTransitionAttribute(child)) return;
               if (pattern.display === "new Date()" && isYearOnlyDateRead(child)) return;
               context.report({

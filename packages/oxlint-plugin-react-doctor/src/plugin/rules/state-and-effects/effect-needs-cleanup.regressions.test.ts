@@ -107,6 +107,40 @@ export const StoreSubscriber = ({ store }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a `.subscribe()` disposer invoked by the returned cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const StoreSubscriber = ({ store }) => {
+  useEffect(() => {
+    const unsubscribe = store.subscribe(update);
+    return () => unsubscribe();
+  }, [store]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a cleanup function returned through a const alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const LiveFeed = ({ url }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    const closeSocket = () => socket.close();
+    const cleanup = closeSocket;
+    return cleanup;
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   // Mined miss (gatsby loading-indicator): the cleanup calls `.off` with a
   // FRESH inline arrow — a different reference from the one `.on` registered
   // — so reference-based removal removes nothing and the listeners leak.
@@ -142,6 +176,43 @@ export const Listener = ({ target }) => {
     target.addEventListener("scroll", onScroll);
     return () => target.removeEventListener("scroll", onScroll);
   }, [target]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a listener released through an aliased destructured abort signal", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = () => {
+  useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    const listenerSignal = signal;
+    window.addEventListener("resize", update, { signal: listenerSignal });
+    return () => controller.abort();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an abort signal passed through a variable options bag", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = () => {
+  useEffect(() => {
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+    window.addEventListener("resize", update, options);
+    return () => controller.abort();
+  }, []);
   return null;
 };`,
     );
@@ -432,7 +503,7 @@ export const Toast = () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a captured subscription disposer in a useCallback", () => {
+  it("flags a captured subscription disposer in a useCallback when it is never released", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useCallback, useRef } from "react";
@@ -445,7 +516,7 @@ export const StoreBridge = ({ store }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags a `{ once: false }` listener registered in a handler", () => {
@@ -523,7 +594,7 @@ export const StoreBridge = ({ store }) => {
     expect(result.diagnostics[0].message).toContain("setInterval");
   });
 
-  it("does not flag a discarded setInterval in a handler that also clears an interval", () => {
+  it("flags a discarded setInterval when the handler clears an unrelated interval", () => {
     const result = runRule(
       effectNeedsCleanup,
       `export const Ticker = ({ tickIdRef }) => {
@@ -535,7 +606,7 @@ export const StoreBridge = ({ store }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags a WebSocket constructed as a concise useCallback body", () => {
@@ -565,7 +636,7 @@ export const LiveFeed = ({ url }) => {
     expect(result.diagnostics[0].message).toContain("EventSource");
   });
 
-  it("does not flag a concise-body socket whose handle is stored in a ref", () => {
+  it("flags a concise-body socket whose handle is stored in a ref but never closed", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useCallback, useRef } from "react";
@@ -576,7 +647,7 @@ export const LiveFeed = ({ url }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not attribute a setInterval inside a nested inner callback to the retained handler", () => {
@@ -711,6 +782,40 @@ export const PingOnce = ({ url }) => {
     socket.send("ping");
     socket.close();
   }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a subscription removed synchronously in the same effect body", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const ReadOnce = ({ store }) => {
+  useEffect(() => {
+    const subscription = store.subscribe(update);
+    readCurrentValue();
+    subscription.remove();
+  }, [store]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a subscribe disposer invoked synchronously in the same effect body", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const ReadOnce = ({ store }) => {
+  useEffect(() => {
+    const unsubscribe = store.subscribe(update);
+    readCurrentValue();
+    unsubscribe();
+  }, [store]);
   return null;
 };`,
     );
@@ -892,7 +997,7 @@ export const Computed = ({ el }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a retained function whose setInterval id flows into a setter", () => {
+  it("flags a retained function whose setInterval id is captured but never cleared", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useState } from "react";
@@ -905,7 +1010,7 @@ export const Poller = () => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a concise-body interval factory — the id escapes to the caller", () => {
@@ -935,7 +1040,7 @@ export const Poller = () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a component-scope function that leaks even when nothing references it yet", () => {
+  it("ignores an unreferenced component-scope function that cannot acquire a resource", () => {
     const result = runRule(
       effectNeedsCleanup,
       `export const Idle = () => {
@@ -946,7 +1051,7 @@ export const Poller = () => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it('does not flag a `{ "once": true }` listener registered with a string-literal key', () => {
@@ -971,6 +1076,1091 @@ export const Poller = () => {
     window.addEventListener("pointerup", () => finish(), { once: false });
   };
   return <button onPointerDown={arm}>press</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("effect-needs-cleanup retained-resource correlation", () => {
+  it("checks useInsertionEffect for retained resources", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useInsertionEffect } from "react";
+export const Styles = ({ registry }) => {
+  useInsertionEffect(() => {
+    registry.subscribe(syncStyles);
+  }, [registry]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("in useInsertionEffect");
+  });
+
+  it("accepts a matching useInsertionEffect cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useInsertionEffect } from "react";
+export const Styles = ({ registry }) => {
+  useInsertionEffect(() => {
+    const unsubscribe = registry.subscribe(syncStyles);
+    return unsubscribe;
+  }, [registry]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let cleanup for one socket hide another socket", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ primaryUrl, secondaryUrl }) => {
+  useEffect(() => {
+    const primary = new WebSocket(primaryUrl);
+    const secondary = new WebSocket(secondaryUrl);
+    return () => primary.close();
+  }, [primaryUrl, secondaryUrl]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("WebSocket");
+  });
+
+  it("does not let an unrelated timer cleanup suppress a recurring timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Poller = () => {
+  useEffect(() => {
+    const pollingId = setInterval(poll, 1000);
+    const animationId = setInterval(animate, 16);
+    return () => clearInterval(animationId);
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let an unrelated listener removal suppress a registration", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = ({ firstTarget, secondTarget, handler }) => {
+  useEffect(() => {
+    firstTarget.addEventListener("change", handler);
+    return () => secondTarget.removeEventListener("change", handler);
+  }, [firstTarget, secondTarget, handler]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let an opaque cleanup call suppress another resource leak", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const LiveFeed = ({ firstUrl, secondUrl }) => {
+  useEffect(() => {
+    const firstSocket = new WebSocket(firstUrl);
+    const secondSocket = new WebSocket(secondUrl);
+    return () => {
+      firstSocket.close();
+      recordCleanup();
+    };
+  }, [firstUrl, secondUrl]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat `return undefined` as resource cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const LiveFeed = ({ url, disabled }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    if (disabled) return undefined;
+    socket.onmessage = update;
+  }, [url, disabled]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a recurring timer in an inline JSX handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Poller = () => (
+  <button onClick={() => setInterval(poll, 1000)}>start</button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a recurring timer in an inline config handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Feed = () => {
+  useConnection({ onOpen: () => setInterval(poll, 1000) });
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves the one-shot setTimeout exemption for inline handlers", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Toast = () => (
+  <button onClick={() => setTimeout(hideToast, 3000)}>show</button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("effect-needs-cleanup path and reachability correlation", () => {
+  it("flags a resource when only one return path supplies matching cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, shouldCleanup }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    if (shouldCleanup) return () => socket.close();
+    return undefined;
+  }, [url, shouldCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts cleanup on every branch that acquires its resource", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ primaryUrl, secondaryUrl, usePrimary }) => {
+  useEffect(() => {
+    if (usePrimary) {
+      const primary = new WebSocket(primaryUrl);
+      return () => primary.close();
+    }
+    const secondary = new WebSocket(secondaryUrl);
+    return () => secondary.close();
+  }, [primaryUrl, secondaryUrl, usePrimary]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a resource released synchronously on only one path", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, shouldClose }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    if (shouldClose) socket.close();
+  }, [url, shouldClose]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a retained listener whose local AbortController can never be aborted", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Listener = () => (
+  <button
+    onClick={() => {
+      const controller = new AbortController();
+      window.addEventListener("resize", update, { signal: controller.signal });
+    }}
+  >
+    listen
+  </button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a retained listener whose local AbortController is aborted by a reachable handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Listener = () => {
+  const controller = new AbortController();
+  const listen = () => {
+    window.addEventListener("resize", update, { signal: controller.signal });
+  };
+  const stop = () => controller.abort();
+  return <button onClick={listen} onBlur={stop}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores a resource acquisition inside an uncalled nested function", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url }) => {
+  useEffect(() => {
+    const openUnusedSocket = () => new WebSocket(url);
+    void openUnusedSocket;
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let an unreachable release function suppress a retained listener leak", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const KeyTracker = () => {
+  const onKeyDown = (event) => track(event.key);
+  const armListener = () => {
+    window.addEventListener("keydown", onKeyDown);
+  };
+  const unusedDisarmListener = () => {
+    window.removeEventListener("keydown", onKeyDown);
+  };
+  return <button onClick={armListener}>arm</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects an opaque cleanup identifier for a locally owned connection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, opaqueCleanup }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    return opaqueCleanup;
+  }, [url, opaqueCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts map-created timers cleared through the same collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map(() => setInterval(poll, 1000));
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a local timer returned from a block-bodied map callback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map(() => {
+      const timerId = setInterval(poll, 1000);
+      return timerId;
+    });
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a map callback that returns a value other than its local timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map((item) => {
+      const timerId = setInterval(poll, 1000);
+      return item.id;
+    });
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a map callback that conditionally mixes timers with other values", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map((item) => {
+      const timerId = setInterval(poll, 1000);
+      if (item.disabled) return null;
+      return timerId;
+    });
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a map callback that can exit after scheduling before returning the timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map((item) => {
+      const timerId = setInterval(poll, 1000);
+      if (item.invalid) throw new Error("invalid");
+      return timerId;
+    });
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a timer handle returned from a filter callback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.filter(() => setInterval(poll, 1000));
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects cleanup through a different timer collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items, previousTimerIds }) => {
+  useEffect(() => {
+    const timerIds = items.map(() => {
+      const timerId = setInterval(poll, 1000);
+      return timerId;
+    });
+    return () => previousTimerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items, previousTimerIds]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects the wrong clear verb for a mapped interval collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map(() => {
+      const timerId = setInterval(poll, 1000);
+      return timerId;
+    });
+    return () => timerIds.forEach((timerId) => clearTimeout(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a local mapped timer that is not returned", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map(() => {
+      const timerId = setInterval(poll, 1000);
+      track(timerId);
+    });
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("effect-needs-cleanup stable aliases and indirect cleanup helpers", () => {
+  it("accepts an unreassigned let cleanup alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    let cleanup = () => socket.close();
+    const cleanupAlias = cleanup;
+    return cleanupAlias;
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts an unreassigned var listener options alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = () => {
+  useEffect(() => {
+    const controller = new AbortController();
+    var options = { signal: controller.signal };
+    window.addEventListener("resize", update, options);
+    return () => controller.abort();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a reassigned cleanup alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, skipCleanup }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    let cleanup = () => socket.close();
+    if (skipCleanup) cleanup = () => {};
+    return cleanup;
+  }, [url, skipCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a cleanup alias reassigned through destructuring", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, replacement }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    let cleanup = () => socket.close();
+    ({ cleanup } = replacement);
+    return cleanup;
+  }, [url, replacement]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a reassigned listener options alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = ({ useOtherSignal }) => {
+  useEffect(() => {
+    const controller = new AbortController();
+    const otherController = new AbortController();
+    let options = { signal: controller.signal };
+    if (useOtherSignal) options = { signal: otherController.signal };
+    window.addEventListener("resize", update, options);
+    return () => controller.abort();
+  }, [useOtherSignal]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a socket released by a transitively invoked local helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    const closeSocket = () => socket.close();
+    const releaseConnection = () => closeSocket();
+    return () => releaseConnection();
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a timer released by an invoked local helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Poller = () => {
+  useEffect(() => {
+    const timerId = setInterval(poll, 1000);
+    const stopPolling = () => clearInterval(timerId);
+    return () => stopPolling();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a listener released by an invoked local helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = ({ target, handler }) => {
+  useEffect(() => {
+    target.addEventListener("change", handler);
+    const stopListening = () => target.removeEventListener("change", handler);
+    return () => stopListening();
+  }, [target, handler]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a reassigned cleanup helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, skipCleanup }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    let closeSocket = () => socket.close();
+    if (skipCleanup) closeSocket = () => {};
+    return () => closeSocket();
+  }, [url, skipCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not correlate a helper that releases another resource", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, otherSocket }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    const closeSocket = () => otherSocket.close();
+    return () => closeSocket();
+  }, [url, otherSocket]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("terminates cyclic helper traversal without inventing cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    const firstCleanup = () => secondCleanup();
+    const secondCleanup = () => firstCleanup();
+    return () => firstCleanup();
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("effect-needs-cleanup CLI integration correlation", () => {
+  it("rejects cleanup methods called on an unrelated resource", () => {
+    for (const releaseName of ["remove", "cleanup", "dispose", "destroy", "teardown"]) {
+      const result = runRule(
+        effectNeedsCleanup,
+        `import { useEffect } from "react";
+declare const node: { ${releaseName}: () => void };
+export const Resize = () => {
+  useEffect(() => {
+    window.addEventListener("resize", () => {});
+    return () => {
+      node.${releaseName}();
+    };
+  }, []);
+  return null;
+};`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("rejects a returned helper that does not clear its timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const track: () => void;
+export const Clock = () => {
+  useEffect(() => {
+    setInterval(track, 1000);
+    const stopInterval = () => {
+      track();
+    };
+    return stopInterval;
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects an undefined cleanup binding shadowed inside its installer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const tick: () => void;
+export const Clock = () => {
+  useEffect(() => {
+    const id = setInterval(tick, 1000);
+    let stopInterval: (() => void) | undefined;
+    const install = () => {
+      const stopInterval = () => clearInterval(id);
+      return stopInterval;
+    };
+    install();
+    return stopInterval;
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a ref timer started and stopped through synchronous helpers", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef, useState } from "react";
+export const Clock = () => {
+  const [, setTick] = useState(0);
+  const intervalIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    const startInterval = () => {
+      if (intervalIdRef.current) return;
+      intervalIdRef.current = setInterval(() => setTick((state) => state + 1), 1000);
+    };
+    const stopInterval = () => {
+      if (!intervalIdRef.current) return;
+      clearInterval(intervalIdRef.current);
+      intervalIdRef.current = null;
+    };
+    startInterval();
+    return stopInterval;
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a listener disposer assigned by a synchronous subscribe helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const win: Window;
+declare const updatePixelRatio: () => void;
+export const Resolution = () => {
+  useEffect(() => {
+    let remove: (() => void) | null = null;
+    const subscribe = () => {
+      const media = win.matchMedia("(resolution: 1dppx)");
+      media.addEventListener("change", updatePixelRatio);
+      remove = () => {
+        media.removeEventListener("change", updatePixelRatio);
+      };
+    };
+    subscribe();
+    return () => {
+      remove?.();
+    };
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a listener disposer assigned on only one control-flow path", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const win: Window;
+declare const updatePixelRatio: () => void;
+export const Resolution = ({ shouldAssignCleanup }) => {
+  useEffect(() => {
+    let remove: (() => void) | null = null;
+    const subscribe = () => {
+      const media = win.matchMedia("(resolution: 1dppx)");
+      media.addEventListener("change", updatePixelRatio);
+      if (shouldAssignCleanup) {
+        remove = () => media.removeEventListener("change", updatePixelRatio);
+      }
+    };
+    subscribe();
+    return () => remove?.();
+  }, [shouldAssignCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects an assigned disposer that releases another listener", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const firstTarget: EventTarget;
+declare const secondTarget: EventTarget;
+declare const handler: EventListener;
+export const Listener = () => {
+  useEffect(() => {
+    let remove: (() => void) | null = null;
+    const subscribe = () => {
+      firstTarget.addEventListener("change", handler);
+      remove = () => secondTarget.removeEventListener("change", handler);
+    };
+    subscribe();
+    return () => remove?.();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a returned function declaration that removes its listener", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const emitter: {
+  on: (eventName: string, handler: () => void) => void;
+  off: (eventName: string, handler: () => void) => void;
+};
+declare const handler: () => void;
+export const Emitter = () => {
+  useEffect(() => {
+    emitter.on("change", handler);
+    function cleanup() {
+      emitter.off("change", handler);
+    }
+    return cleanup;
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("effect-needs-cleanup inline useCallback reachability", () => {
+  it("flags a socket leak in a useCallback wired directly to a JSX handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Feed = ({ url }) => (
+  <button
+    onClick={useCallback(() => {
+      const socket = new WebSocket(url);
+      socket.onmessage = update;
+    }, [url])}
+  >
+    connect
+  </button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("WebSocket");
+  });
+
+  it("flags a discarded timer through transparent JSX handler wrappers", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Poller = () => (
+  <button
+    onClick={(useCallback((() => setInterval(poll, 1000)) as () => number, []) satisfies () => number)}
+  >
+    poll
+  </button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setInterval");
+  });
+
+  it("ignores an unused inline useCallback value", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Feed = ({ url }) => {
+  useCallback(() => {
+    const socket = new WebSocket(url);
+    socket.onmessage = update;
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores an inline useCallback passed to a non-handler prop", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Feed = ({ url }) => (
+  <Panel
+    renderContent={useCallback(() => {
+      const socket = new WebSocket(url);
+      socket.onmessage = update;
+    }, [url])}
+  />
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not attribute a resource in a nested deferred callback to the JSX handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Feed = ({ url }) => (
+  <button
+    onClick={useCallback(() => {
+      schedule(() => {
+        const socket = new WebSocket(url);
+        socket.onmessage = update;
+      });
+    }, [url])}
+  >
+    connect
+  </button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts an inline JSX useCallback that closes its socket", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Feed = ({ url }) => (
+  <button
+    onClick={useCallback(() => {
+      const socket = new WebSocket(url);
+      socket.close();
+    }, [url])}
+  >
+    connect
+  </button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("effect-needs-cleanup useSyncExternalStore subscription cleanup", () => {
+  it("accepts the TaskTrove i18next subscription with its matching returned disposer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+import i18next from "i18next";
+export const LanguageProvider = () => {
+  const subscribeToLanguage = useCallback((onStoreChange: () => void) => {
+    i18next.on("languageChanged", onStoreChange);
+    return () => {
+      i18next.off("languageChanged", onStoreChange);
+    };
+  }, []);
+  const language = useSyncExternalStore(
+    subscribeToLanguage,
+    () => i18next.resolvedLanguage,
+    () => "en",
+  );
+  return language;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "receiver",
+      cleanup: `otherI18next.off("languageChanged", onStoreChange);`,
+    },
+    {
+      name: "event",
+      cleanup: `i18next.off("loaded", onStoreChange);`,
+    },
+    {
+      name: "handler",
+      cleanup: `i18next.off("languageChanged", otherHandler);`,
+    },
+  ])("rejects a returned disposer with the wrong $name", ({ cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const LanguageProvider = ({ i18next, otherI18next, otherHandler }) => {
+  const subscribeToLanguage = useCallback((onStoreChange) => {
+    i18next.on("languageChanged", onStoreChange);
+    return () => {
+      ${cleanup}
+    };
+  }, [i18next, otherI18next, otherHandler]);
+  useSyncExternalStore(subscribeToLanguage, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects cleanup returned on only one path after subscribing", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const LanguageProvider = ({ i18next, shouldCleanup }) => {
+  const subscribeToLanguage = useCallback((onStoreChange) => {
+    i18next.on("languageChanged", onStoreChange);
+    if (shouldCleanup) {
+      return () => i18next.off("languageChanged", onStoreChange);
+    }
+    return undefined;
+  }, [i18next, shouldCleanup]);
+  useSyncExternalStore(subscribeToLanguage, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts matching receiver, event, and handler aliases", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore as useStore } from "react";
+export const LanguageProvider = ({ i18next }) => {
+  const subscribeToLanguage = useCallback((onStoreChange) => {
+    const emitter = i18next;
+    const eventName = "languageChanged";
+    const handler = onStoreChange;
+    emitter.on(eventName, handler);
+    return () => emitter.off(eventName, handler);
+  }, [i18next]);
+  const subscribe = subscribeToLanguage;
+  useStore(subscribe, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a shadowed useSyncExternalStore call as a cleanup contract", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const LanguageProvider = ({ i18next }) => {
+  const useSyncExternalStore = (subscribe) => subscribe;
+  const subscribeToLanguage = useCallback((onStoreChange) => {
+    i18next.on("languageChanged", onStoreChange);
+    return () => i18next.off("languageChanged", onStoreChange);
+  }, [i18next]);
+  useSyncExternalStore(subscribeToLanguage);
+  return null;
 };`,
     );
     expect(result.parseErrors).toEqual([]);

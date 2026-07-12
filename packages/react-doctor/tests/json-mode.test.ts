@@ -3,6 +3,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { JsonReport } from "@react-doctor/core";
+import { JsonReport as JsonReportSchema } from "@react-doctor/core/schemas";
+import * as Schema from "effect/Schema";
+import { INTERNAL_ERROR_JSON_FALLBACK } from "../src/cli/utils/constants.js";
 import {
   enableJsonMode,
   isJsonModeActive,
@@ -156,7 +159,15 @@ describe("json-mode lifecycle", () => {
     expect(() => JSON.parse(written.trim())).not.toThrow();
     const parsed = JSON.parse(written.trim());
     expect(parsed.ok).toBe(false);
-    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.schemaVersion).toBe(3);
+  });
+
+  it("keeps the last-resort error payload valid against the v3 schema", () => {
+    const parsedFallback = JSON.parse(INTERNAL_ERROR_JSON_FALLBACK);
+    const decodedFallback = Schema.decodeUnknownSync(JsonReportSchema)(parsedFallback);
+
+    expect(decodedFallback.schemaVersion).toBe(3);
+    expect(decodedFallback.ok).toBe(false);
   });
 
   it("writeJsonReport writes to a file when outputFile is provided", () => {

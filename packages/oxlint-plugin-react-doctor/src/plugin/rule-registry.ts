@@ -193,7 +193,9 @@ import { noGiantComponent } from "./rules/architecture/no-giant-component.js";
 import { noGlobalCssVariableAnimation } from "./rules/performance/no-global-css-variable-animation.js";
 import { noGradientText } from "./rules/design/no-gradient-text.js";
 import { noGrayOnColoredBackground } from "./rules/design/no-gray-on-colored-background.js";
+import { noHydrationBranchOnBrowserGlobal } from "./rules/performance/no-hydration-branch-on-browser-global.js";
 import { noImgLazyWithHighFetchpriority } from "./rules/performance/no-img-lazy-with-high-fetchpriority.js";
+import { noImpureStateUpdater } from "./rules/state-and-effects/no-impure-state-updater.js";
 import { noIndeterminateAttribute } from "./rules/correctness/no-indeterminate-attribute.js";
 import { noInitializeState } from "./rules/state-and-effects/no-initialize-state.js";
 import { noInlineBounceEasing } from "./rules/design/no-inline-bounce-easing.js";
@@ -230,6 +232,7 @@ import { noPermanentWillChange } from "./rules/performance/no-permanent-will-cha
 import { noPolymorphicChildren } from "./rules/correctness/no-polymorphic-children.js";
 import { noPreventDefault } from "./rules/correctness/no-prevent-default.js";
 import { noPropCallbackInEffect } from "./rules/state-and-effects/no-prop-callback-in-effect.js";
+import { noPropCallbackInRender } from "./rules/state-and-effects/no-prop-callback-in-render.js";
 import { noPropTypes } from "./rules/architecture/no-prop-types.js";
 import { noPureBlackBackground } from "./rules/design/no-pure-black-background.js";
 import { noRandomKey } from "./rules/correctness/no-random-key.js";
@@ -238,6 +241,7 @@ import { noReactDomDeprecatedApis } from "./rules/architecture/no-react-dom-depr
 import { noReact19DeprecatedApis } from "./rules/architecture/no-react19-deprecated-apis.js";
 import { noRedundantRoles } from "./rules/a11y/no-redundant-roles.js";
 import { noRedundantShouldComponentUpdate } from "./rules/react-builtins/no-redundant-should-component-update.js";
+import { noRefCurrentInRender } from "./rules/state-and-effects/no-ref-current-in-render.js";
 import { noRenderInRender } from "./rules/architecture/no-render-in-render.js";
 import { noRenderPropChildren } from "./rules/architecture/no-render-prop-children.js";
 import { noRenderReturnValue } from "./rules/react-builtins/no-render-return-value.js";
@@ -259,6 +263,7 @@ import { noTransitionAll } from "./rules/performance/no-transition-all.js";
 import { noUncontrolledInput } from "./rules/correctness/no-uncontrolled-input.js";
 import { noUndeferredThirdParty } from "./rules/bundle-size/no-undeferred-third-party.js";
 import { noUnescapedEntities } from "./rules/react-builtins/no-unescaped-entities.js";
+import { noUnguardedBrowserGlobalInRenderOrHookInit } from "./rules/performance/no-unguarded-browser-global-in-render-or-hook-init.js";
 import { noUnknownProperty } from "./rules/react-builtins/no-unknown-property.js";
 import { noUnsafe } from "./rules/react-builtins/no-unsafe.js";
 import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-nested-components.js";
@@ -921,6 +926,7 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(effectNeedsCleanup.requires ?? [])])],
+      requiresSemanticContext: true,
     },
   },
   {
@@ -1537,6 +1543,7 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set<Capability>(["react", ...(jsxNoJsxAsProp.requires ?? [])])],
+      requiresSemanticContext: true,
     },
   },
   {
@@ -2499,6 +2506,7 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noFetchInEffect.requires ?? [])])],
+      requiresSemanticContext: true,
     },
   },
   {
@@ -2596,6 +2604,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-hydration-branch-on-browser-global",
+    id: "no-hydration-branch-on-browser-global",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noHydrationBranchOnBrowserGlobal,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(noHydrationBranchOnBrowserGlobal.requires ?? [])]),
+      ],
+      requiresSemanticContext: true,
+    },
+  },
+  {
     key: "react-doctor/no-img-lazy-with-high-fetchpriority",
     id: "no-img-lazy-with-high-fetchpriority",
     source: "react-doctor",
@@ -2607,6 +2630,19 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noImgLazyWithHighFetchpriority.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-impure-state-updater",
+    id: "no-impure-state-updater",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noImpureStateUpdater,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noImpureStateUpdater.requires ?? [])])],
+      requiresSemanticContext: true,
     },
   },
   {
@@ -2798,6 +2834,7 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noLocaleFormatInRender.requires ?? [])])],
+      requiresSemanticContext: true,
     },
   },
   {
@@ -2985,6 +3022,7 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noPassDataToParent.requires ?? [])])],
+      requiresSemanticContext: true,
     },
   },
   {
@@ -3044,6 +3082,19 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noPropCallbackInEffect.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-prop-callback-in-render",
+    id: "no-prop-callback-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPropCallbackInRender,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noPropCallbackInRender.requires ?? [])])],
+      requiresSemanticContext: true,
     },
   },
   {
@@ -3138,6 +3189,19 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noRedundantShouldComponentUpdate.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-ref-current-in-render",
+    id: "no-ref-current-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRefCurrentInRender,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noRefCurrentInRender.requires ?? [])])],
+      requiresSemanticContext: true,
     },
   },
   {
@@ -3390,6 +3454,24 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noUnescapedEntities.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-unguarded-browser-global-in-render-or-hook-init",
+    id: "no-unguarded-browser-global-in-render-or-hook-init",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUnguardedBrowserGlobalInRenderOrHookInit,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          ...(noUnguardedBrowserGlobalInRenderOrHookInit.requires ?? []),
+        ]),
+      ],
+      requiresSemanticContext: true,
     },
   },
   {
@@ -3962,6 +4044,7 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(renderingHydrationMismatchTime.requires ?? [])]),
       ],
+      requiresSemanticContext: true,
     },
   },
   {

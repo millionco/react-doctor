@@ -136,6 +136,8 @@ const outputToDiagnoseResult = (
     score: output.score,
     skippedChecks,
     ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
+    analyzedFiles: output.analyzedFiles,
+    scannedFileCount: output.scannedFileCount,
     project: output.project,
     reactDetected: hasReactRuntime(output.project),
     elapsedMilliseconds,

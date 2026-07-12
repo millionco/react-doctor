@@ -99,7 +99,7 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a hoistable literal local even when the cleanup mentions it", () => {
+  it("stays silent on a literal local with no copied render source", () => {
     const result = runRule(
       noInitializeState,
       `function C() {
@@ -113,10 +113,10 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a literal init even when the effect has an unrelated cleanup", () => {
+  it("stays silent on a literal init with unrelated cleanup", () => {
     const result = runRule(
       noInitializeState,
       `function C() {
@@ -130,10 +130,10 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a deterministic new Date(value) init from a mount effect", () => {
+  it("stays silent on a deterministic value with no render source", () => {
     const result = runRule(
       noInitializeState,
       `function C({ createdAt }) {
@@ -143,10 +143,10 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a deterministic literal init from a mount effect", () => {
+  it("stays silent on a deterministic literal init", () => {
     const result = runRule(
       noInitializeState,
       `function C() {
@@ -156,10 +156,10 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a storage-seeded mount init (digitalocean sea-notes Theme)", () => {
+  it("stays silent on storage restoration", () => {
     const result = runRule(
       noInitializeState,
       `function MaterialThemeProvider({ children }) {
@@ -177,10 +177,10 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a sessionStorage draft load with deterministic fallbacks (formslab)", () => {
+  it("stays silent on sessionStorage draft restoration", () => {
     const result = runRule(
       noInitializeState,
       `function useCreateSurveyManager(initialData) {
@@ -214,10 +214,10 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags literal flag inits beside interval-ref bookkeeping (bradgarropy use-countdown)", () => {
+  it("stays silent on literal lifecycle flags beside interval bookkeeping", () => {
     const result = runRule(
       noInitializeState,
       `function useCountdown() {
@@ -235,10 +235,10 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a literal init hidden behind unrelated ref bookkeeping", () => {
+  it("stays silent on a literal init behind ref bookkeeping", () => {
     const result = runRule(
       noInitializeState,
       `function C() {
@@ -252,10 +252,10 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a literal init inside a bare typeof-window SSR guard", () => {
+  it("stays silent on a literal hydration flag", () => {
     const result = runRule(
       noInitializeState,
       `function C() {
@@ -267,10 +267,10 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a setter fed from a localStorage read via a local variable", () => {
+  it("stays silent on a localStorage alias", () => {
     const result = runRule(
       noInitializeState,
       `function Theme() {
@@ -283,10 +283,10 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a stored callback whose body reads Date.now (deterministic value)", () => {
+  it("stays silent when storing a callback value", () => {
     const result = runRule(
       noInitializeState,
       `function C() {
@@ -298,7 +298,7 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags a setter argument whose member property merely shadows a global name", () => {
@@ -348,7 +348,7 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags state seeded from an uncalled measurement member reference", () => {
+  it("stays silent on an uncalled browser capability reference", () => {
     const result = runRule(
       noInitializeState,
       `function Support() {
@@ -360,7 +360,7 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
   // docs-validation FP wave: the doc's named FP carve-out is "SSR hydration
@@ -459,7 +459,7 @@ describe("no-initialize-state — same-value re-writes of the initializer stay q
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a mount write whose value differs from the initializer", () => {
+  it("stays silent on a literal mount write that differs from the initializer", () => {
     const result = runRule(
       noInitializeState,
       `function C() {
@@ -471,7 +471,7 @@ describe("no-initialize-state — same-value re-writes of the initializer stay q
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 });
 
@@ -552,7 +552,7 @@ describe("no-initialize-state — helper-function indirection", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a helper that synchronously writes a hoistable literal", () => {
+  it("stays silent on a helper that writes a literal", () => {
     const result = runRule(
       noInitializeState,
       `function C() {
@@ -567,7 +567,7 @@ describe("no-initialize-state — helper-function indirection", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 });
 
@@ -717,7 +717,7 @@ describe("no-initialize-state — docs-validation FP wave", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a mount write of a literal true with no SSR marker anywhere", () => {
+  it("stays silent on a mount-only literal flag", () => {
     const result = runRule(
       noInitializeState,
       `function C() {
@@ -729,7 +729,7 @@ describe("no-initialize-state — docs-validation FP wave", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 });
 

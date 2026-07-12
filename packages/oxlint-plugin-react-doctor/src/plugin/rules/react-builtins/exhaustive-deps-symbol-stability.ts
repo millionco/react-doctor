@@ -6,6 +6,7 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import {
   getHookName,
   isOutsideAllFunctions,
@@ -56,7 +57,10 @@ const STABLE_IDENTITY_WRAPPER_HOOK_NAMES: ReadonlySet<string> = new Set([
  *   - primitive-literal local consts (the value never changes
  *     between renders unless the literal does)
  */
-export const symbolHasStableHookOrigin = (symbol: SymbolDescriptor): boolean => {
+export const symbolHasStableHookOrigin = (
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
   if (symbol.references.some((reference) => reference.flag !== "read")) return false;
   // We need the binding's parent context. The symbol's
   // declarationNode is the VariableDeclarator (when destructured) or
@@ -93,7 +97,7 @@ export const symbolHasStableHookOrigin = (symbol: SymbolDescriptor): boolean => 
   }
 
   if (!isNodeOfType(initializer, "CallExpression")) return false;
-  const initializerHookName = getHookName(initializer.callee);
+  const initializerHookName = getHookName(initializer.callee, scopes);
   if (!initializerHookName) return false;
   // useRef returns a stable ref; the binding itself is the ref.
   if (initializerHookName === "useRef") return true;
@@ -166,7 +170,7 @@ const symbolHasStableMemoizedOrigin = (
   if (!declarator.init) return false;
   const initializer = unwrapExpression(declarator.init);
   if (!isNodeOfType(initializer, "CallExpression")) return false;
-  const initializerHookName = getHookName(initializer.callee);
+  const initializerHookName = getHookName(initializer.callee, scopes);
   if (!initializerHookName || !MEMOIZING_HOOK_NAMES.has(initializerHookName)) return false;
   const depsArgument = initializer.arguments[1];
   if (!depsArgument || !isAstNode(depsArgument)) return false;
@@ -215,7 +219,11 @@ const getObjectPropertyValue = (
 // `const refs = { slider: useRef(null) }` re-creates the container each
 // render, but each property holds the SAME ref object (hook-call order
 // guarantees it), so a captured `refs.slider` path can never be stale.
-export const isStableRefContainerCapture = (symbol: SymbolDescriptor, depKey: string): boolean => {
+export const isStableRefContainerCapture = (
+  symbol: SymbolDescriptor,
+  depKey: string,
+  scopes: ScopeAnalysis,
+): boolean => {
   if (symbol.kind !== "const") return false;
   if (!depKey.startsWith(`${symbol.name}.`)) return false;
   if (symbol.references.some((reference) => reference.flag !== "read")) return false;
@@ -230,7 +238,8 @@ export const isStableRefContainerCapture = (symbol: SymbolDescriptor, depKey: st
     currentValue = propertyValue;
   }
   return (
-    isNodeOfType(currentValue, "CallExpression") && getHookName(currentValue.callee) === "useRef"
+    isNodeOfType(currentValue, "CallExpression") &&
+    getHookName(currentValue.callee, scopes) === "useRef"
   );
 };
 
@@ -258,11 +267,19 @@ const symbolHasStableFunctionOrigin = (
   return true;
 };
 
+const symbolHasStableImportedAlias = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean => {
+  if (symbol.kind !== "const") return false;
+  if (symbol.references.some((reference) => reference.flag !== "read")) return false;
+  const resolvedSymbol = resolveConstIdentifierAlias(symbol.bindingIdentifier, scopes);
+  return resolvedSymbol !== null && resolvedSymbol !== symbol && resolvedSymbol.kind === "import";
+};
+
 export const symbolHasStableValue = (
   symbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number> = new Set(),
 ): boolean =>
-  symbolHasStableHookOrigin(symbol) ||
+  symbolHasStableHookOrigin(symbol, scopes) ||
+  symbolHasStableImportedAlias(symbol, scopes) ||
   symbolHasStableFunctionOrigin(symbol, scopes, visitedSymbolIds) ||
   symbolHasStableMemoizedOrigin(symbol, scopes, visitedSymbolIds);

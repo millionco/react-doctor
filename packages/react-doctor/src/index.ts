@@ -116,6 +116,10 @@ export const toJsonReport = (result: DiagnoseResult, options: ToJsonReportOption
           ...(result.skippedCheckReasons
             ? { skippedCheckReasons: result.skippedCheckReasons }
             : {}),
+          ...(result.analyzedFiles ? { analyzedFiles: result.analyzedFiles } : {}),
+          ...(typeof result.scannedFileCount === "number"
+            ? { scannedFileCount: result.scannedFileCount }
+            : {}),
           project: result.project,
           elapsedMilliseconds: result.elapsedMilliseconds,
         },

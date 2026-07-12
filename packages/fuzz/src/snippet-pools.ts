@@ -33,6 +33,7 @@ export const EFFECT_SNIPPET_POOL = [
   `useEffect(() => { document.title = String(state); }, [state]);`,
   `useEffect(() => { setState(value); }, [value]);`,
   `useEffect(() => { if (value) { handle(value); } }, [value]);`,
+  `const CallbackRefChild = ({ onSelect }) => { const callbackRef = useRef(onSelect); callbackRef.current = onSelect; const childData = buildPhoneData(); useEffect(() => { callbackRef.current(childData); }, [childData]); return null; };`,
   `useEffect(() => { const debounced = debounce(() => handle(value), 300); debounced(); return () => debounced.cancel(); }, [value]);`,
   `useEffect(() => { const unsubscribe = store.subscribe(handle); return unsubscribe; }, []);`,
   `useEffect(() => store.subscribe(handle), []);`,
@@ -65,6 +66,7 @@ export const STATE_SNIPPET_POOL = [
   `const deferredValue = useDeferredValue(state);`,
   `const [isPending, startTransition] = useTransition();`,
   `const [counterState, dispatchCounter] = useReducer((state, action) => { state.count += 1; return state; }, { count: 0 });`,
+  `const [persistedCount, setPersistedCount] = useState(0); const incrementPersistedCount = () => setPersistedCount((previousCount) => { localStorage.setItem("count", String(previousCount + 1)); return previousCount + 1; });`,
   `const [parsedItems, setParsedItems] = useState(parseItems(value));`,
   `const indexRef = useRef(buildIndex(items));`,
   `const doubled = useMemo(() => state * 2, [state]);`,
@@ -122,6 +124,7 @@ export const GUARD_SNIPPET_POOL = [
   `const keys = Object.keys(config ?? {});`,
   `const entries = Object.entries(config);`,
   `if (!items.length) return null;`,
+  `if (value) onSelect(value);`,
   `if (items.length === 0) { return <p>No items</p>; }`,
   `const parsed = JSON.parse(String(value)).settings;`,
   `let parsed = {}; try { parsed = JSON.parse(String(value)); } catch { parsed = {}; }`,
@@ -142,6 +145,7 @@ export const GUARD_SNIPPET_POOL = [
 
 // Library idioms — tanstack, mobx, styled-components, next/dynamic, redux.
 export const LIBRARY_SNIPPET_POOL = [
+  `const subscribeStore = useCallback((onStoreChange) => { store.on("change", onStoreChange); return () => store.off("change", onStoreChange); }, [store]); const snapshot = useSyncExternalStore(subscribeStore, getSnapshot);`,
   `const { data: queryData, isPending } = useQuery({ queryKey: ["items", value], queryFn: () => fetch(url).then((response) => response.json()) });`,
   `const mutation = useMutation({ mutationFn: (payload) => api.post(url, payload) });`,
   `const { mutate, mutateAsync } = useMutation({ mutationFn: (payload) => api.post(url, payload) });`,
@@ -319,7 +323,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 export const IMPORT_LINE_POOL = [
   `import React from "react";`,
   `import * as React from "react";`,
-  `import { useState, useEffect, useMemo, useCallback, useRef, useContext, useReducer, useTransition, useDeferredValue, useId, useLayoutEffect } from "react";`,
+  `import { useState, useEffect, useMemo, useCallback, useRef, useContext, useReducer, useTransition, useDeferredValue, useId, useLayoutEffect, useSyncExternalStore } from "react";`,
   `import { useState as useLocalState } from "react";`,
   `import { createPortal } from "react-dom";`,
   `import Link from "next/link";`,

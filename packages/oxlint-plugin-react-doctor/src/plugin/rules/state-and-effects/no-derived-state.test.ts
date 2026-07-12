@@ -144,3 +144,218 @@ const Form = ({ names }) => {
     });
   });
 });
+
+describe("no-derived-state — local helper return provenance", () => {
+  it.each([
+    [
+      "an impure function declaration",
+      `function derive(firstName, lastName) {
+        console.log("derive");
+        return firstName + " " + lastName;
+      }`,
+    ],
+    ["an arrow function", `const derive = (firstName, lastName) => firstName + " " + lastName;`],
+    ["a closure", `const derive = () => firstName + " " + lastName;`],
+    [
+      "a useCallback closure",
+      `const derive = useCallback(
+        () => firstName + " " + lastName + firstName,
+        [firstName, lastName],
+      );`,
+    ],
+  ])("flags state copied through %s", (_scenarioLabel, helperSource) => {
+    const result = runRule(
+      noDerivedState,
+      `
+function Form() {
+  const [firstName] = useState("Dwayne");
+  const [lastName] = useState("Johnson");
+  const [fullName, setFullName] = useState("");
+  ${helperSource}
+  useEffect(() => {
+    setFullName(derive(firstName, lastName));
+  }, [firstName, lastName, derive]);
+  return fullName;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["an effect-local arrow", `const derive = () => firstName + " " + lastName;`],
+    [
+      "an effect-local function declaration",
+      `function derive() {
+        return firstName + " " + lastName;
+      }`,
+    ],
+  ])("flags state copied through %s", (_scenarioLabel, helperSource) => {
+    const result = runRule(
+      noDerivedState,
+      `
+function Form() {
+  const [firstName] = useState("Dwayne");
+  const [lastName] = useState("Johnson");
+  const [fullName, setFullName] = useState("");
+  useEffect(() => {
+    ${helperSource}
+    setFullName(derive());
+  }, [firstName, lastName]);
+  return fullName;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("no-derived-state — one-hop module helper summaries", () => {
+  it("flags a pure module helper and ignores an unused opaque argument", () => {
+    const result = runRule(
+      noDerivedState,
+      `
+const selectVisible = (items, ignoredMeasurement) =>
+  items.filter((item) => item.visible);
+
+function List({ items }) {
+  const measurementRef = useRef(null);
+  const [visibleItems, setVisibleItems] = useState([]);
+  useEffect(() => {
+    setVisibleItems(selectVisible(items, measurementRef));
+  }, [items]);
+  return visibleItems.length;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a used helper argument reads a ref", () => {
+    const result = runRule(
+      noDerivedState,
+      `
+const buildLabel = (value, measurement) => value + measurement.current;
+
+function Field({ value }) {
+  const measurementRef = useRef(null);
+  const [label, setLabel] = useState("");
+  useEffect(() => {
+    setLabel(buildLabel(value, measurementRef));
+  }, [value]);
+  return label;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags deterministic global transforms returned by a module helper", () => {
+    const result = runRule(
+      noDerivedState,
+      `
+const derive = (value) => JSON.stringify({ rounded: Math.floor(value) });
+
+function Field({ value }) {
+  const [label, setLabel] = useState("");
+  useEffect(() => {
+    setLabel(derive(value));
+  }, [value]);
+  return label;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["incomplete returns", `const derive = (value) => { if (value) return value.trim(); };`],
+    ["side effects", `const derive = (value) => { analytics.track(value); return value.trim(); };`],
+    ["mutations", `const derive = (value) => { value.label = "changed"; return value; };`],
+    ["mutable free variables", `let suffix = "!"; const derive = (value) => value + suffix;`],
+    ["recursive calls", `const derive = (value) => value ? derive(value.slice(1)) : value;`],
+    [
+      "multi-hop calls",
+      `const normalize = (value) => value.trim(); const derive = (value) => normalize(value);`,
+    ],
+    ["nondeterministic external values", `const derive = (value) => value + Math.random();`],
+    ["async functions", `const derive = async (value) => value.trim();`],
+    ["generator functions", `function* derive(value) { return value.trim(); }`],
+    [
+      "shadowed global namespaces",
+      `const Math = { floor: (value) => readExternal(value) }; const derive = (value) => Math.floor(value);`,
+    ],
+    [
+      "imported global names",
+      `import { JSON } from "./opaque"; const derive = (value) => JSON.stringify(value);`,
+    ],
+    [
+      "unknown namespace members",
+      `const derive = (value) => Math.projectSpecificTransform(value);`,
+    ],
+  ])("stays silent for %s", (_scenarioLabel, helperSource) => {
+    const result = runRule(
+      noDerivedState,
+      `
+${helperSource}
+function Field({ value }) {
+  const [label, setLabel] = useState("");
+  useEffect(() => {
+    setLabel(derive(value));
+  }, [value]);
+  return label;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("preserves direct member, boolean, reset, and filter derivations", () => {
+    const directExpressions = [
+      "levels.length",
+      "isOpen",
+      "photos.length - 1",
+      "messages.filter((message) => message.visible)",
+    ];
+    for (const directExpression of directExpressions) {
+      const result = runRule(
+        noDerivedState,
+        `
+function Example({ levels, isOpen, photos, messages }) {
+  const [derived, setDerived] = useState(null);
+  useEffect(() => {
+    setDerived(${directExpression});
+  }, [levels, isOpen, photos, messages]);
+  return derived;
+}
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("does not broaden mixed prop, ref, and independently edited state", () => {
+    const result = runRule(
+      noDerivedState,
+      `
+function MailingField({ value }) {
+  const inputRef = useRef(null);
+  const [draft, setDraft] = useState("");
+  useEffect(() => {
+    setDraft(value + (inputRef.current?.dataset.suffix ?? ""));
+  }, [value]);
+  return <input ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} />;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+});

@@ -32,6 +32,7 @@ export type Capability =
   | "pure-preact"
   | "react-native"
   | "server-actions"
+  | "ssr"
   | "client-only"
   | "nextjs:static-export"
   | "nextjs:15"

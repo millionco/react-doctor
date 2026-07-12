@@ -71,6 +71,6 @@ describe.skipIf(!hasBuiltCli)("--json-out flag", () => {
     const reportContent = fs.readFileSync(outputFile, "utf8");
     const report = JSON.parse(reportContent);
     expect(report.ok).toBeDefined();
-    expect(report.schemaVersion).toBe(1);
+    expect(report.schemaVersion).toBe(3);
   }, 60_000);
 });

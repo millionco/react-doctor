@@ -1,13 +1,6 @@
-import { createContext, forwardRef, useContext } from "react";
+import React, { createContext, useContext } from "react";
 
-export const ForwardedInput = forwardRef<HTMLInputElement, { label: string }>(({ label }, ref) => (
-  <label>
-    {label}
-    <input ref={ref} />
-  </label>
-));
-
-ForwardedInput.displayName = "ForwardedInput";
+export const createLegacyInput = React.createFactory("input");
 
 const ThemeContext = createContext<"light" | "dark">("light");
 

@@ -2,13 +2,17 @@ import type { Reference } from "eslint-scope";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import {
   DATA_SINK_METHOD_NAMES,
   STRING_READ_METHOD_NAMES,
 } from "../../constants/data-sink-method-names.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isComponentFunction } from "../../utils/is-component-function.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import {
   getArgsUpstreamRefs,
@@ -35,6 +39,7 @@ import {
 } from "./utils/effect/react.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`, narrowed to
 // DIRECT parent-callback call sites. The verification run showed the
@@ -193,6 +198,332 @@ const isDirectParentCallbackRef = (analysis: ProgramAnalysis, ref: Reference): b
   );
 };
 
+interface CallbackRefProvenance {
+  callbackPropNames: ReadonlySet<string>;
+}
+
+interface RefBindingProvenance {
+  refCall: EsTreeNodeOfType<"CallExpression">;
+  variables: Set<NonNullable<Reference["resolved"]>>;
+}
+
+const getDeclarationKind = (declarator: EsTreeNode): string | null => {
+  const declaration = declarator.parent;
+  return declaration && isNodeOfType(declaration, "VariableDeclaration") ? declaration.kind : null;
+};
+
+const hasMutableBindingWrite = (reference: Reference): boolean =>
+  Boolean(
+    reference.resolved?.references.some(
+      (candidateReference) => candidateReference.isWrite() && !candidateReference.init,
+    ),
+  );
+
+const getDestructuredPropertyName = (bindingIdentifier: EsTreeNode): string | null => {
+  const property = bindingIdentifier.parent;
+  if (!property || !isNodeOfType(property, "Property")) return null;
+  if (property.computed) {
+    return isNodeOfType(property.key as EsTreeNode, "Literal") &&
+      typeof (property.key as { value?: unknown }).value === "string"
+      ? String((property.key as { value: string }).value)
+      : null;
+  }
+  return isNodeOfType(property.key as EsTreeNode, "Identifier")
+    ? (property.key as { name: string }).name
+    : null;
+};
+
+const getParentCallbackPropName = (
+  analysis: ProgramAnalysis,
+  expression: EsTreeNode,
+  visitedVariables: Set<NonNullable<Reference["resolved"]>> = new Set(),
+): string | null => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (isNodeOfType(unwrappedExpression, "Identifier")) {
+    const callbackReference = getRef(analysis, unwrappedExpression);
+    const callbackVariable = callbackReference?.resolved;
+    if (!callbackReference || !callbackVariable || visitedVariables.has(callbackVariable)) {
+      return null;
+    }
+    if (isProp(analysis, callbackReference)) {
+      if (isWholePropsObjectReference(analysis, callbackReference)) return null;
+      const parameterDefinition = callbackVariable.defs.find(
+        (definition) => definition.type === "Parameter",
+      );
+      const bindingIdentifier = parameterDefinition?.name as unknown as EsTreeNode | undefined;
+      return (
+        (bindingIdentifier && getDestructuredPropertyName(bindingIdentifier)) ??
+        unwrappedExpression.name
+      );
+    }
+    if (hasMutableBindingWrite(callbackReference)) return null;
+    const definitions = callbackVariable.defs
+      .map((definition) => definition.node as unknown as EsTreeNode)
+      .filter((definitionNode) => isNodeOfType(definitionNode, "VariableDeclarator"));
+    if (definitions.length !== 1) return null;
+    const declarator = definitions[0];
+    if (
+      !declarator ||
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      getDeclarationKind(declarator) !== "const" ||
+      !declarator.init
+    ) {
+      return null;
+    }
+    visitedVariables.add(callbackVariable);
+    if (isNodeOfType(declarator.id, "ObjectPattern")) {
+      const bindingIdentifier = callbackVariable.defs[0]?.name as unknown as EsTreeNode | undefined;
+      const propertyName = bindingIdentifier
+        ? getDestructuredPropertyName(bindingIdentifier)
+        : null;
+      const propsReference = getDownstreamRefs(analysis, declarator.init as EsTreeNode).find(
+        (candidateReference) => isWholePropsObjectReference(analysis, candidateReference),
+      );
+      return propertyName && propsReference ? propertyName : null;
+    }
+    if (!isNodeOfType(declarator.id, "Identifier")) return null;
+    return getParentCallbackPropName(analysis, declarator.init as EsTreeNode, visitedVariables);
+  }
+  if (!isNodeOfType(unwrappedExpression, "MemberExpression")) return null;
+  const callbackName = getStaticMemberPropertyName(unwrappedExpression);
+  if (!callbackName) return null;
+  const receiver = stripParenExpression(unwrappedExpression.object);
+  if (!isNodeOfType(receiver, "Identifier")) return null;
+  const receiverReference = getRef(analysis, receiver);
+  if (!receiverReference || !isWholePropsObjectReference(analysis, receiverReference)) return null;
+  return callbackName;
+};
+
+const isNullishRefInitializer = (initializer: EsTreeNode | undefined): boolean => {
+  if (!initializer) return true;
+  const unwrappedInitializer = stripParenExpression(initializer);
+  if (isNodeOfType(unwrappedInitializer, "Literal")) return unwrappedInitializer.value === null;
+  if (!isNodeOfType(unwrappedInitializer, "Identifier")) return false;
+  return unwrappedInitializer.name === "undefined";
+};
+
+const getDirectComponentBodyStatement = (
+  node: EsTreeNode,
+  componentBody: EsTreeNode,
+): EsTreeNode | null => {
+  let current: EsTreeNode | null | undefined = node;
+  while (current?.parent && current.parent !== componentBody) current = current.parent;
+  return current?.parent === componentBody ? current : null;
+};
+
+const getVariableForDeclarator = (
+  analysis: ProgramAnalysis,
+  declarator: EsTreeNode,
+): NonNullable<Reference["resolved"]> | null => {
+  for (const scope of analysis.scopeManager.scopes) {
+    const variable = scope.variables.find((candidateVariable) =>
+      candidateVariable.defs.some(
+        (definition) => (definition.node as unknown as EsTreeNode) === declarator,
+      ),
+    );
+    if (variable) return variable;
+  }
+  return null;
+};
+
+const getRefMember = (identifier: EsTreeNode): EsTreeNodeOfType<"MemberExpression"> | null => {
+  const receiver = findTransparentExpressionRoot(identifier);
+  const member = receiver.parent;
+  if (
+    !member ||
+    !isNodeOfType(member, "MemberExpression") ||
+    member.object !== (receiver as unknown as typeof member.object)
+  ) {
+    return null;
+  }
+  return member;
+};
+
+const getRefMemberAssignment = (
+  identifier: EsTreeNode,
+): EsTreeNodeOfType<"AssignmentExpression"> | null => {
+  const member = getRefMember(identifier);
+  if (!member) return null;
+  const memberRoot = findTransparentExpressionRoot(member);
+  const assignment = memberRoot.parent;
+  if (
+    !assignment ||
+    !isNodeOfType(assignment, "AssignmentExpression") ||
+    assignment.left !== (memberRoot as unknown as typeof assignment.left)
+  ) {
+    return null;
+  }
+  return assignment;
+};
+
+const getRefAliasDeclarator = (
+  identifier: EsTreeNode,
+): EsTreeNodeOfType<"VariableDeclarator"> | null => {
+  const initializer = findTransparentExpressionRoot(identifier);
+  const declarator = initializer.parent;
+  if (
+    !declarator ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== (initializer as unknown as typeof declarator.init) ||
+    !isNodeOfType(declarator.id, "Identifier") ||
+    getDeclarationKind(declarator) !== "const"
+  ) {
+    return null;
+  }
+  return declarator;
+};
+
+const getRefBindingProvenance = (
+  analysis: ProgramAnalysis,
+  receiver: EsTreeNode,
+  isReactUseRefCall: (node: EsTreeNode) => boolean,
+): RefBindingProvenance | null => {
+  if (!isNodeOfType(receiver, "Identifier")) return null;
+  const receiverReference = getRef(analysis, receiver);
+  if (!receiverReference?.resolved || hasMutableBindingWrite(receiverReference)) return null;
+  const variables = new Set<NonNullable<Reference["resolved"]>>();
+  let currentVariable: NonNullable<Reference["resolved"]> | null = receiverReference.resolved;
+  let refCall: EsTreeNodeOfType<"CallExpression"> | null = null;
+  while (currentVariable && !variables.has(currentVariable)) {
+    variables.add(currentVariable);
+    const definitions = currentVariable.defs
+      .map((definition) => definition.node as unknown as EsTreeNode)
+      .filter((definitionNode) => isNodeOfType(definitionNode, "VariableDeclarator"));
+    if (definitions.length !== 1) return null;
+    const declarator = definitions[0];
+    if (
+      !declarator ||
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      !isNodeOfType(declarator.id, "Identifier") ||
+      !declarator.init
+    ) {
+      return null;
+    }
+    if (
+      isNodeOfType(declarator.init, "CallExpression") &&
+      isReactUseRefCall(declarator.init as EsTreeNode)
+    ) {
+      refCall = declarator.init;
+      break;
+    }
+    if (
+      getDeclarationKind(declarator) !== "const" ||
+      !isNodeOfType(stripParenExpression(declarator.init as EsTreeNode), "Identifier")
+    ) {
+      return null;
+    }
+    const upstreamReference = getRef(analysis, stripParenExpression(declarator.init as EsTreeNode));
+    if (!upstreamReference?.resolved || hasMutableBindingWrite(upstreamReference)) return null;
+    currentVariable = upstreamReference.resolved;
+  }
+  if (!refCall) return null;
+
+  const pendingVariables = [...variables];
+  while (pendingVariables.length > 0) {
+    const variable = pendingVariables.pop();
+    if (!variable) continue;
+    for (const candidateReference of variable.references) {
+      const aliasDeclarator = getRefAliasDeclarator(
+        candidateReference.identifier as unknown as EsTreeNode,
+      );
+      if (!aliasDeclarator) continue;
+      const aliasVariable = getVariableForDeclarator(analysis, aliasDeclarator);
+      if (!aliasVariable || variables.has(aliasVariable)) continue;
+      if (
+        aliasVariable.references.some(
+          (aliasReference) => aliasReference.isWrite() && !aliasReference.init,
+        )
+      ) {
+        return null;
+      }
+      variables.add(aliasVariable);
+      pendingVariables.push(aliasVariable);
+    }
+  }
+  return { refCall, variables };
+};
+
+const getCallbackRefProvenance = (
+  analysis: ProgramAnalysis,
+  effectCall: EsTreeNode,
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  isReactUseRefCall: (node: EsTreeNode) => boolean,
+): CallbackRefProvenance | null => {
+  const callee = stripParenExpression(callExpression.callee as EsTreeNode);
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    getStaticMemberPropertyName(callee) !== "current"
+  ) {
+    return null;
+  }
+  const receiver = stripParenExpression(callee.object);
+  const bindingProvenance = getRefBindingProvenance(analysis, receiver, isReactUseRefCall);
+  if (!bindingProvenance) return null;
+  const { refCall, variables } = bindingProvenance;
+
+  const componentFunction = findEnclosingFunction(effectCall);
+  if (
+    !componentFunction ||
+    !isFunctionLike(componentFunction) ||
+    !isComponentFunction(componentFunction) ||
+    !isNodeOfType(componentFunction.body, "BlockStatement")
+  ) {
+    return null;
+  }
+  if (!getDirectComponentBodyStatement(effectCall, componentFunction.body)) return null;
+
+  const callbackPropNames = new Set<string>();
+  const initializer = refCall.arguments?.[0] as EsTreeNode | undefined;
+  const initializerCallbackName = initializer
+    ? getParentCallbackPropName(analysis, initializer)
+    : null;
+  if (initializerCallbackName) {
+    callbackPropNames.add(initializerCallbackName);
+  } else if (!isNullishRefInitializer(initializer)) {
+    return null;
+  }
+
+  for (const variable of variables) {
+    for (const candidateReference of variable.references) {
+      if (candidateReference.init) continue;
+      if (candidateReference.isWrite()) return null;
+      const identifier = candidateReference.identifier as unknown as EsTreeNode;
+      if (getRefAliasDeclarator(identifier)) continue;
+      const member = getRefMember(identifier);
+      if (!member || getStaticMemberPropertyName(member) !== "current") return null;
+      const memberRoot = findTransparentExpressionRoot(member);
+      const memberParent = memberRoot.parent;
+      if (
+        memberParent &&
+        (isNodeOfType(memberParent, "UpdateExpression") ||
+          (isNodeOfType(memberParent, "UnaryExpression") && memberParent.operator === "delete"))
+      ) {
+        return null;
+      }
+      const assignment = getRefMemberAssignment(identifier);
+      if (!assignment) continue;
+      const assignmentRoot = findTransparentExpressionRoot(assignment);
+      const assignmentStatement = assignmentRoot.parent;
+      if (
+        assignment.operator !== "=" ||
+        !assignmentStatement ||
+        !isNodeOfType(assignmentStatement, "ExpressionStatement") ||
+        assignmentStatement.parent !== componentFunction.body
+      ) {
+        return null;
+      }
+      const assignedCallbackName = getParentCallbackPropName(
+        analysis,
+        assignment.right as EsTreeNode,
+      );
+      if (!assignedCallbackName) return null;
+      callbackPropNames.add(assignedCallbackName);
+    }
+  }
+
+  return callbackPropNames.size > 0 ? { callbackPropNames } : null;
+};
+
 // The wrapper hides the data hand-off inside the wrapped body
 // (`fireNonCancelableEvent(onNavigationChange, { open: isOpen })`), so the
 // direct call's arguments alone can be all-literal; scan the call-chain
@@ -324,155 +655,182 @@ export const noPassDataToParent = defineRule({
   tags: ["test-noise"],
   recommendation:
     "Fetch the data in the parent and pass it down as a prop (or return it from the hook), instead of handing it back up through a prop callback in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#passing-data-to-the-parent",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isUseEffect(node)) return;
-      const analysis = getProgramAnalysis(node);
-      if (!analysis) return;
-      if (hasCleanup(analysis, node)) return;
-      const effectFnRefs = getEffectFnRefs(analysis, node);
-      if (!effectFnRefs) return;
-      const effectFn = getEffectFn(analysis, node);
-      if (!effectFn) return;
+  create: (context: RuleContext) => {
+    const isReactUseRefCall = (node: EsTreeNode): boolean =>
+      isReactApiCall(node, "useRef", context.scopes, {
+        allowGlobalReactNamespace: true,
+        allowUnboundBareCalls: true,
+      });
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isUseEffect(node)) return;
+        const analysis = getProgramAnalysis(node);
+        if (!analysis) return;
+        if (hasCleanup(analysis, node)) return;
+        const effectFnRefs = getEffectFnRefs(analysis, node);
+        if (!effectFnRefs) return;
+        const effectFn = getEffectFn(analysis, node);
+        if (!effectFn) return;
 
-      for (const ref of effectFnRefs) {
-        const callExpr = getCallExpr(ref);
-        if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
-        if (isRefCall(analysis, ref)) continue;
-        if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
+        for (const ref of effectFnRefs) {
+          const callExpr = getCallExpr(ref);
+          if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
+          const callbackRefProvenance = getCallbackRefProvenance(
+            analysis,
+            node,
+            callExpr,
+            isReactUseRefCall,
+          );
+          if (isRefCall(analysis, ref) && !callbackRefProvenance) continue;
+          if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
 
-        const calleeNode = unwrapChainExpression(callExpr.callee as EsTreeNode);
-        const identifier = ref.identifier as unknown as EsTreeNode;
+          const calleeNode = unwrapChainExpression(callExpr.callee as EsTreeNode);
+          const identifier = ref.identifier as unknown as EsTreeNode;
 
-        if (calleeNode === identifier) {
-          // Bare form: `onChange(data)` — callee must BE a prop (or a
-          // plain alias of one), not a local function that eventually
-          // mentions a prop.
-          if (!isDirectParentCallbackRef(analysis, ref)) continue;
+          if (callbackRefProvenance) {
+            if (
+              [...callbackRefProvenance.callbackPropNames].some((callbackPropName) =>
+                COMMAND_PROP_NAME_PATTERN.test(callbackPropName),
+              )
+            ) {
+              continue;
+            }
+          } else if (calleeNode === identifier) {
+            // Bare form: `onChange(data)` — callee must BE a prop (or a
+            // plain alias of one), not a local function that eventually
+            // mentions a prop.
+            if (!isDirectParentCallbackRef(analysis, ref)) continue;
+            if (
+              isNodeOfType(identifier, "Identifier") &&
+              COMMAND_PROP_NAME_PATTERN.test(identifier.name)
+            ) {
+              continue;
+            }
+          } else if (
+            isNodeOfType(calleeNode, "MemberExpression") &&
+            stripParenExpression(calleeNode.object) === identifier
+          ) {
+            // Member form: `props.onLoaded(data)` — only the whole props
+            // object of a COMPONENT qualifies. A positional custom-hook
+            // parameter (`cy.batch(...)`) is an external instance.
+            if (!isWholePropsObjectReference(analysis, ref)) continue;
+            if (isCustomHookParameter(ref)) continue;
+          } else {
+            continue;
+          }
+
+          // Skip well-known prototype/observer/promise methods —
+          // `props.items.forEach(fn)`, `props.store.subscribe(fn)`,
+          // `props.fetcher.then(fn)` are NOT "passing data to a parent
+          // via a callback", they're iteration / subscription /
+          // chaining patterns that happen to receive a callback. The
+          // rule's intent is `props.onDataLoaded(data)` style hand-back,
+          // which never uses these method names.
+          const methodName = getCallMethodName(calleeNode);
+          // ...except when a string-read name is called directly ON the
+          // props object: `props.search(results)` is a parent callback
+          // that happens to be named like `String.prototype.search`.
+          const isPropCallbackNamedLikeStringRead = Boolean(
+            methodName &&
+            STRING_READ_METHOD_NAMES.has(methodName) &&
+            isNodeOfType(calleeNode, "MemberExpression") &&
+            stripParenExpression(calleeNode.object) === (ref.identifier as unknown as EsTreeNode) &&
+            isWholePropsObjectReference(analysis, ref),
+          );
           if (
-            isNodeOfType(identifier, "Identifier") &&
-            COMMAND_PROP_NAME_PATTERN.test(identifier.name)
+            methodName &&
+            DATA_SINK_METHOD_NAMES.has(methodName) &&
+            !isPropCallbackNamedLikeStringRead
           ) {
             continue;
           }
-        } else if (
-          isNodeOfType(calleeNode, "MemberExpression") &&
-          stripParenExpression(calleeNode.object) === identifier
-        ) {
-          // Member form: `props.onLoaded(data)` — only the whole props
-          // object of a COMPONENT qualifies. A positional custom-hook
-          // parameter (`cy.batch(...)`) is an external instance.
-          if (!isWholePropsObjectReference(analysis, ref)) continue;
-          if (isCustomHookParameter(ref)) continue;
-        } else {
-          continue;
-        }
+          if (methodName && COMMAND_PROP_NAME_PATTERN.test(methodName)) continue;
+          // `editor.commands.setSelection(...)`, `props.store.dispatch(...)`,
+          // `props.queryClient.invalidate(...)` etc. — calling a method
+          // on a namespaced API object, not handing data back to a parent.
+          if (!callbackRefProvenance && isNamespacedApiCallee(calleeNode)) continue;
 
-        // Skip well-known prototype/observer/promise methods —
-        // `props.items.forEach(fn)`, `props.store.subscribe(fn)`,
-        // `props.fetcher.then(fn)` are NOT "passing data to a parent
-        // via a callback", they're iteration / subscription /
-        // chaining patterns that happen to receive a callback. The
-        // rule's intent is `props.onDataLoaded(data)` style hand-back,
-        // which never uses these method names.
-        const methodName = getCallMethodName(calleeNode);
-        // ...except when a string-read name is called directly ON the
-        // props object: `props.search(results)` is a parent callback
-        // that happens to be named like `String.prototype.search`.
-        const isPropCallbackNamedLikeStringRead = Boolean(
-          methodName &&
-          STRING_READ_METHOD_NAMES.has(methodName) &&
-          isNodeOfType(calleeNode, "MemberExpression") &&
-          stripParenExpression(calleeNode.object) === (ref.identifier as unknown as EsTreeNode) &&
-          isWholePropsObjectReference(analysis, ref),
-        );
-        if (
-          methodName &&
-          DATA_SINK_METHOD_NAMES.has(methodName) &&
-          !isPropCallbackNamedLikeStringRead
-        ) {
-          continue;
-        }
-        if (methodName && COMMAND_PROP_NAME_PATTERN.test(methodName)) continue;
-        // `editor.commands.setSelection(...)`, `props.store.dispatch(...)`,
-        // `props.queryClient.invalidate(...)` etc. — calling a method
-        // on a namespaced API object, not handing data back to a parent.
-        if (isNamespacedApiCallee(calleeNode)) continue;
-
-        const calleeName = isNodeOfType(identifier, "Identifier") ? identifier.name : methodName;
-        const isSetterNamedCallee = Boolean(
-          calleeName && SETTER_NAMED_PROP_PATTERN.test(calleeName),
-        );
-        const isLeafRef = (argRef: Reference): boolean =>
-          getUpstreamRefs(analysis, argRef).length === 1;
-        const argsUpstreamRefs = (callExpr.arguments ?? [])
-          .flatMap((argument) => {
-            // A function-valued argument is a callback handed up for
-            // REGISTRATION — the parent calls the child later, so data
-            // flows down, not up. The exception is a functional updater
-            // handed to a setter-named callee: its body produces the
-            // payload, so it is scanned (minus its own parameters).
-            if (isFunctionLike(argument as EsTreeNode)) {
-              if (!isSetterNamedCallee) return [];
-              return getFunctionalUpdaterDataRefs(analysis, argument as EsTreeNode);
-            }
-            if (isHandlerBagArgument(analysis, argument as EsTreeNode)) return [];
-            if (isParentWiredHookResultArgument(analysis, argument as EsTreeNode)) return [];
-            if (isNodeOfType(argument, "Identifier")) {
-              const argumentRef = getRef(analysis, argument as EsTreeNode);
-              if (argumentRef && resolveToFunction(argumentRef)) return [];
-            }
-            return getDownstreamRefs(analysis, argument as EsTreeNode);
-          })
-          .flatMap((argumentRef) => getUpstreamRefs(analysis, argumentRef))
-          .filter(isLeafRef);
-        // A wrapper-hook callee hides the hand-off in its wrapped body, so
-        // its data refs live on the eventual call chain, not the direct
-        // call's arguments.
-        if (calleeNode === identifier && isWrapperHookCallbackRef(analysis, ref)) {
-          argsUpstreamRefs.push(...getArgsUpstreamRefs(analysis, ref).filter(isLeafRef));
-        }
-
-        const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
-          if (isUseStateIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
-          if (isProp(analysis, argRef)) return false;
-          if (isUseRefIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
-          if (isRefCurrent(argRef)) return false;
-          if (isConstant(argRef)) return false;
-          // A leaf sourced from a parent-wired hook stays hook-owned even
-          // when it reaches the callback through a derived local
-          // (`const effectiveFilename = hasStaticFallback ? fallbackFilename
-          // : filename` — PortOS MediaJobThumb, docs-validation round 2).
-          if (isParentWiredHookResultRef(analysis, argRef)) return false;
-          if (isParentWiredHookCalleeRef(analysis, argRef)) return false;
-          // Only real function BINDINGS are registration callbacks; a
-          // parameter reference resolves to its enclosing function via
-          // defs[0].node, which must not be mistaken for one — parameters
-          // carry the data being handed up (cloudscape custom-forms,
-          // a delta-audit recall regression).
-          if (resolvesToFunctionBinding(argRef)) return false;
-          // An imported binding in argument (not callee) position is
-          // static module config (`subscribe(EVENT_NAME, handler)`),
-          // not component-derived data.
-          const argIdentifier = argRef.identifier as unknown as EsTreeNode;
-          if (isImportBindingRef(argRef) && !isCalleePosition(argIdentifier)) return false;
-          // `props.onReset(undefined)` is an imperative clear, not data
-          // lifted to a parent. `undefined` is a global identifier with no
-          // resolved def, so `isConstant` (which only inspects an init
-          // expression) misses it — recognize it explicitly.
-          if (isNodeOfType(argIdentifier, "Identifier") && argIdentifier.name === "undefined") {
-            return false;
+          const isSetterNamedCallee = callbackRefProvenance
+            ? [...callbackRefProvenance.callbackPropNames].every((callbackPropName) =>
+                SETTER_NAMED_PROP_PATTERN.test(callbackPropName),
+              )
+            : Boolean(
+                (isNodeOfType(identifier, "Identifier") ? identifier.name : methodName) &&
+                SETTER_NAMED_PROP_PATTERN.test(
+                  (isNodeOfType(identifier, "Identifier") ? identifier.name : methodName) ?? "",
+                ),
+              );
+          const isLeafRef = (argRef: Reference): boolean =>
+            getUpstreamRefs(analysis, argRef).length === 1;
+          const argsUpstreamRefs = (callExpr.arguments ?? [])
+            .flatMap((argument) => {
+              // A function-valued argument is a callback handed up for
+              // REGISTRATION — the parent calls the child later, so data
+              // flows down, not up. The exception is a functional updater
+              // handed to a setter-named callee: its body produces the
+              // payload, so it is scanned (minus its own parameters).
+              if (isFunctionLike(argument as EsTreeNode)) {
+                if (!isSetterNamedCallee) return [];
+                return getFunctionalUpdaterDataRefs(analysis, argument as EsTreeNode);
+              }
+              if (isHandlerBagArgument(analysis, argument as EsTreeNode)) return [];
+              if (isParentWiredHookResultArgument(analysis, argument as EsTreeNode)) return [];
+              if (isNodeOfType(argument, "Identifier")) {
+                const argumentRef = getRef(analysis, argument as EsTreeNode);
+                if (argumentRef && resolveToFunction(argumentRef)) return [];
+              }
+              return getDownstreamRefs(analysis, argument as EsTreeNode);
+            })
+            .flatMap((argumentRef) => getUpstreamRefs(analysis, argumentRef))
+            .filter(isLeafRef);
+          // A wrapper-hook callee hides the hand-off in its wrapped body, so
+          // its data refs live on the eventual call chain, not the direct
+          // call's arguments.
+          if (calleeNode === identifier && isWrapperHookCallbackRef(analysis, ref)) {
+            argsUpstreamRefs.push(...getArgsUpstreamRefs(analysis, ref).filter(isLeafRef));
           }
-          return true;
-        });
-        if (!isSomeArgsData) continue;
 
-        context.report({
-          node: callExpr,
-          message:
-            "Handing data back to a parent from a useEffect costs your users an extra render.",
-        });
-      }
-    },
-  }),
+          const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
+            if (isUseStateIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
+            if (isProp(analysis, argRef)) return false;
+            if (isUseRefIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
+            if (isRefCurrent(argRef)) return false;
+            if (isConstant(argRef)) return false;
+            // A leaf sourced from a parent-wired hook stays hook-owned even
+            // when it reaches the callback through a derived local
+            // (`const effectiveFilename = hasStaticFallback ? fallbackFilename
+            // : filename` — PortOS MediaJobThumb, docs-validation round 2).
+            if (isParentWiredHookResultRef(analysis, argRef)) return false;
+            if (isParentWiredHookCalleeRef(analysis, argRef)) return false;
+            // Only real function BINDINGS are registration callbacks; a
+            // parameter reference resolves to its enclosing function via
+            // defs[0].node, which must not be mistaken for one — parameters
+            // carry the data being handed up (cloudscape custom-forms,
+            // a delta-audit recall regression).
+            if (resolvesToFunctionBinding(argRef)) return false;
+            // An imported binding in argument (not callee) position is
+            // static module config (`subscribe(EVENT_NAME, handler)`),
+            // not component-derived data.
+            const argIdentifier = argRef.identifier as unknown as EsTreeNode;
+            if (isImportBindingRef(argRef) && !isCalleePosition(argIdentifier)) return false;
+            // `props.onReset(undefined)` is an imperative clear, not data
+            // lifted to a parent. `undefined` is a global identifier with no
+            // resolved def, so `isConstant` (which only inspects an init
+            // expression) misses it — recognize it explicitly.
+            if (isNodeOfType(argIdentifier, "Identifier") && argIdentifier.name === "undefined") {
+              return false;
+            }
+            return true;
+          });
+          if (!isSomeArgsData) continue;
+
+          context.report({
+            node: callExpr,
+            message:
+              "Handing data back to a parent from a useEffect costs your users an extra render.",
+          });
+        }
+      },
+    };
+  },
 });

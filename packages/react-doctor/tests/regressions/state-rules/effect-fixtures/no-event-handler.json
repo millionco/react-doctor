@@ -5,16 +5,21 @@
       "name": "Sychronizing with external system",
       "code": "\n        function Search() {\n          const [query, setQuery] = useState();\n          const [results, setResults] = useState();\n\n          useEffect(() => {\n            fetch('/search?query=' + query).then((data) => {\n              setResults(data);\n            });\n          }, [query]);\n\n          return (\n            <div>\n              <input\n                name=\"query\"\n                type=\"text\"\n                value={query}\n                onChange={(e) => setQuery(e.target.value)}\n              />\n              <ul>\n                {results.map((result) => (\n                  <li key={result.id}>{result.title}</li>\n                ))}\n              </ul>\n            </div>\n          )\n        }\n      ",
       "todo": false
+    },
+    {
+      "idx": 1,
+      "name": "Using props to call an external function",
+      "code": "\n        function Form({ dataToSubmit }) {\n          useEffect(() => {\n            if (dataToSubmit) {\n              submitData(dataToSubmit);\n            }\n          }, [dataToSubmit]);\n        }\n      ",
+      "todo": false
+    },
+    {
+      "idx": 2,
+      "name": "Opaque external state guard",
+      "code": "\n        function Klarna({ klarnaAppId }) {\n          const [countryCode] = useState(qs.parse('countryCode=meow'));\n          const [result, setResult] = useState();\n          const klarnaEnabled = useSelector('idk') && shouldKlarnaBeEnabled(countryCode);\n          const currentLocale = getCurrentLocale(useGetCurrentLanguage());\n\n          const loadSignInWithKlarna = (klarnaAppId, klarnaEnvironment, countryCode, currentLocale) => {\n            const klarnaResult = doSomething();\n            setResult(klarnaResult);\n          };\n\n          useEffect(() => {\n            if (klarnaEnabled) {\n              return loadSignInWithKlarna(\n                  klarnaAppId,\n                  klarnaEnvironment,\n                  countryCode?.toUpperCase(),\n                  currentLocale,\n              );\n            }\n          }, [\n            countryCode,\n            klarnaAppId,\n            klarnaEnabled,\n            klarnaEnvironment,\n            currentLocale,\n          ]);\n        }\n      ",
+      "todo": false
     }
   ],
   "invalid": [
-    {
-      "idx": 0,
-      "name": "Using props to handle an event and call an external function",
-      "code": "\n        function Form({ dataToSubmit }) {\n          useEffect(() => {\n            if (dataToSubmit) {\n              submitData(dataToSubmit);\n            }\n          }, [dataToSubmit]);\n        }\n      ",
-      "todo": false,
-      "errors": 1
-    },
     {
       "idx": 1,
       "name": "Using state to handle an event and call an external function",
@@ -63,13 +68,6 @@
       "idx": 7,
       "name": "If test includes non-state",
       "code": "\n        function Form() {\n          const [name, setName] = useState();\n          const [dataToSubmit, setDataToSubmit] = useState();\n\n          useEffect(() => {\n            if (dataToSubmit && Date.now() % 2 === 0) {\n              submitData(dataToSubmit);\n            }\n          }, [dataToSubmit]);\n\n          return (\n            <div>\n              <input\n                name=\"name\"\n                type=\"text\"\n                onChange={(e) => setName(e.target.value)}\n              />\n              <button onClick={() => setDataToSubmit({ name })}>Submit</button>\n            </div>\n          )\n        }\n      ",
-      "todo": false,
-      "errors": 1
-    },
-    {
-      "idx": 8,
-      "name": "Klarna",
-      "code": "\n        function Klarna({ klarnaAppId }) {\n          const [countryCode] = useState(qs.parse('countryCode=meow'));\n          const [result, setResult] = useState();\n          const klarnaEnabled = useSelector('idk') && shouldKlarnaBeEnabled(countryCode);\n          const currentLocale = getCurrentLocale(useGetCurrentLanguage());\n\n          const loadSignInWithKlarna = (klarnaAppId, klarnaEnvironment, countryCode, currentLocale) => {\n            const klarnaResult = doSomething();\n            setResult(klarnaResult);\n          };\n\n          useEffect(() => {\n            if (klarnaEnabled) {\n              return loadSignInWithKlarna(\n                  klarnaAppId,\n                  klarnaEnvironment,\n                  countryCode?.toUpperCase(),\n                  currentLocale,\n              );\n            }\n          }, [\n            countryCode,\n            klarnaAppId,\n            klarnaEnabled,\n            klarnaEnvironment,\n            currentLocale,\n          ]);\n        }\n      ",
       "todo": false,
       "errors": 1
     }

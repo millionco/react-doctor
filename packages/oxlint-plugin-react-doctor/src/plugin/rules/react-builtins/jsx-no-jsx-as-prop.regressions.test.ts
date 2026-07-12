@@ -53,6 +53,19 @@ describe("react-builtins/jsx-no-jsx-as-prop regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag the corpus MUI ListItemText primary slot", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import ListItemText from "@mui/material/ListItemText";
+      import { FormattedMessage } from "react-intl";
+      const Row = () => <ListItemText primary={<FormattedMessage id="row.title" />} />;
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // Mined ant-design FP (.dumi/pages/index/index.tsx:92):
   // `<Group decoration={<img .../>}>` — a background-decoration slot.
   it("does not flag a `decoration` slot receiving inline JSX", () => {
@@ -272,5 +285,159 @@ ${INK_STATUS_BAR_USAGE}
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("exempts same-file memoized props typed as React JSX slots while reporting a non-slot prop", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import React, { memo, type ReactNode } from "react";
+      interface ChildProps {
+        payload: ReactNode;
+        visual: React.ReactElement;
+        artifact: JSX.Element | null;
+        strictValue: string;
+      }
+      const MemoChild = memo(
+        ({ payload, visual, artifact, strictValue }: ChildProps) => (
+          <section>{payload}{visual}{artifact}{strictValue}</section>
+        ),
+      );
+      const Parent = () => (
+        <MemoChild
+          payload={<Heavy />}
+          visual={<Chart />}
+          artifact={<Badge />}
+          strictValue={<Incorrect />}
+        />
+      );
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("brand new JSX");
+  });
+
+  it("resolves memo references to same-file component implementations", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import { memo, type ReactNode } from "react";
+      interface ChildProps {
+        payload: ReactNode;
+      }
+      const ChildImplementation = ({ payload }: ChildProps) => <>{payload}</>;
+      const MemoChild = memo(ChildImplementation);
+      const Parent = () => <MemoChild payload={<Heavy />} />;
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("uses the JSX component binding when applying same-file slot contracts", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import { memo, type ReactNode } from "react";
+      const MemoChild = memo(({ payload }: { payload: ReactNode }) => <>{payload}</>);
+      const Parent = () => {
+        const MemoChild = memo(
+          ({ payload }: { payload: unknown }) => <span>{String(payload)}</span>,
+        );
+        return <MemoChild payload={<Heavy />} />;
+      };
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("brand new JSX");
+  });
+
+  it("does not treat arbitrary wrappers as transparent component contracts", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import { memo, type ReactNode } from "react";
+      interface ChildProps {
+        payload: ReactNode;
+      }
+      const adapt = (render: (props: ChildProps) => JSX.Element) =>
+        ({ payload }: { payload: unknown }) => render({ payload: String(payload) });
+      const MemoChild = memo(adapt(({ payload }: ChildProps) => <>{payload}</>));
+      const Parent = () => <MemoChild payload={<Heavy />} />;
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("brand new JSX");
+  });
+
+  it("resolves renamed React slot type imports and same-file type aliases", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import { memo, type ReactElement as ElementSlot, type ReactNode as NodeSlot } from "react";
+      type OptionalSlot = NodeSlot | undefined;
+      type ChildProps = {
+        payload: ElementSlot;
+        artifact: OptionalSlot;
+      };
+      const MemoChild = memo(({ payload, artifact }: ChildProps) => <>{payload}{artifact}</>);
+      const Parent = () => <MemoChild payload={<Heavy />} artifact={<Badge />} />;
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not trust imported props or a same-file JSX namespace", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import { memo } from "react";
+      import type { ChildProps } from "./child-props";
+      namespace JSX {
+        export interface Element {}
+      }
+      interface LocalJsxChildProps {
+        payload: JSX.Element;
+      }
+      const ImportedTypedChild = memo(({ payload }: ChildProps) => <>{payload}</>);
+      const LocalJsxTypedChild = memo(({ payload }: LocalJsxChildProps) => <>{payload}</>);
+      const Parent = () => (
+        <>
+          <ImportedTypedChild payload={<Heavy />} />
+          <LocalJsxTypedChild payload={<Heavy />} />
+        </>
+      );
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not mistake a same-file ReactNode namesake for React's slot type", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import { memo } from "react";
+      type ReactNode = string;
+      interface ChildProps {
+        payload: ReactNode;
+      }
+      const MemoChild = memo(({ payload }: ChildProps) => <>{payload}</>);
+      const Parent = () => <MemoChild payload={<Heavy />} />;
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

@@ -1,21 +1,19 @@
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { executesDuringRender } from "../../utils/executes-during-render.js";
-import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findEnclosingJsxOpeningElement } from "../../utils/find-enclosing-jsx-opening-element.js";
+import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { hasClientRenderEvidence } from "../../utils/has-client-render-evidence.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { hasSuppressHydrationWarningAttribute } from "../../utils/has-suppress-hydration-warning-attribute.js";
+import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
-import { isInsideClientOnlyGuard } from "../../utils/is-inside-client-only-guard.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
-import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
-import { referencesClientOnlyFlag } from "../../utils/references-client-only-flag.js";
-import { referencesFalsyInitialState } from "../../utils/references-falsy-initial-state.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -248,102 +246,12 @@ const matchDateDefaultStringification = (node: EsTreeNode): LocaleFormatMatch | 
   return null;
 };
 
-// Walks out of the node through enclosing functions: every hop must be a
-// function that executes during the render pass (IIFE / useMemo factory)
-// until a component or custom hook is reached. Any other function boundary
-// (event handler, effect callback, useCallback, plain helper,
-// getServerSideProps) means the formatting does not run during render.
-const findRenderPhaseComponentOrHook = (node: EsTreeNode): EsTreeNode | null => {
-  let functionNode = findEnclosingFunction(node);
-  while (functionNode) {
-    if (componentOrHookDisplayNameForFunction(functionNode)) return functionNode;
-    if (!executesDuringRender(functionNode)) return null;
-    functionNode = findEnclosingFunction(functionNode);
-  }
-  return null;
-};
-
-// A React Server Component renders exactly once on the server — there is
-// no client render to disagree with, so the hydration-mismatch claim would
-// be false. Hook usage is client-side proof (server components can't call
-// hooks), as is an explicit "use client" directive.
-const hasClientRenderEvidence = (
-  componentOrHookNode: EsTreeNode,
-  fileHasUseClientDirective: boolean,
-): boolean => {
-  if (fileHasUseClientDirective) return true;
-  const displayName = componentOrHookDisplayNameForFunction(componentOrHookNode);
-  if (displayName && isReactHookName(displayName)) return true;
-  let callsHook = false;
-  const componentBody = isFunctionLike(componentOrHookNode) ? componentOrHookNode.body : null;
-  walkAst(componentBody ?? componentOrHookNode, (child: EsTreeNode) => {
-    if (callsHook) return false;
-    if (
-      isNodeOfType(child, "CallExpression") &&
-      isNodeOfType(child.callee, "Identifier") &&
-      isReactHookName(child.callee.name)
-    ) {
-      callsHook = true;
-      return false;
-    }
-  });
-  return callsHook;
-};
-
-// `if (!mounted) return …;` above the formatting means everything after it
-// only runs post-hydration on the client — the SSR-safe early-return shape.
-const isAfterClientOnlyEarlyReturn = (
-  node: EsTreeNode,
-  componentOrHookNode: EsTreeNode,
-): boolean => {
-  const body = isFunctionLike(componentOrHookNode) ? componentOrHookNode.body : null;
-  if (!isNodeOfType(body, "BlockStatement")) return false;
-  const ancestors = new Set<EsTreeNode>();
-  let cursor: EsTreeNode | null | undefined = node;
-  while (cursor) {
-    ancestors.add(cursor);
-    cursor = cursor.parent ?? null;
-  }
-  for (const statement of body.body ?? []) {
-    if (ancestors.has(statement)) return false;
-    if (!isNodeOfType(statement, "IfStatement")) continue;
-    if (!referencesClientOnlyFlag(statement.test) && !referencesFalsyInitialState(statement.test)) {
-      continue;
-    }
-    let returnsEarly = false;
-    walkAst(statement.consequent, (child: EsTreeNode) => {
-      if (isFunctionLike(child)) return false;
-      if (isNodeOfType(child, "ReturnStatement")) {
-        returnsEarly = true;
-        return false;
-      }
-    });
-    if (returnsEarly) return true;
-  }
-  return false;
-};
-
-const findEnclosingJsxOpeningElement = (node: EsTreeNode): EsTreeNode | null => {
-  let cursor: EsTreeNode | null | undefined = node.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "JSXElement")) return cursor.openingElement;
-    if (isNodeOfType(cursor, "JSXFragment")) return null;
-    cursor = cursor.parent ?? null;
-  }
-  return null;
-};
-
 export const noLocaleFormatInRender = defineRule({
   id: "no-locale-format-in-render",
   title: "Locale/timezone formatting during render",
   severity: "warn",
   category: "Correctness",
-  // Hydration mismatch needs a server-rendered document, so only
-  // SSR/SSG-capable frameworks (Next.js, Remix, TanStack Start, Gatsby)
-  // keep the rule on. Client-only build tools, native targets, and
-  // unrecognized projects (webpack SPAs, Electron apps) never hydrate
-  // server HTML, so locale formatting in render is harmless there.
-  disabledWhen: ["vite", "cra", "expo", "react-native", "unknown"],
+  requires: ["ssr"],
   recommendation:
     "Format locale/timezone-dependent values in a post-mount useEffect + state, or pass an explicit locale and timeZone so the server and the browser render the same text. Only runs on SSR-capable projects.",
   create: (context: RuleContext): RuleVisitors => {
@@ -359,13 +267,12 @@ export const noLocaleFormatInRender = defineRule({
 
     const reportIfRenderPhase = (match: LocaleFormatMatch): void => {
       if (reportedNodes.has(match.node)) return;
-      const componentOrHookNode = findRenderPhaseComponentOrHook(match.node);
+      const componentOrHookNode = findRenderPhaseComponentOrHook(match.node, context.scopes);
       if (!componentOrHookNode) return;
       if (fileIsEmailTemplate) return;
       if (!hasClientRenderEvidence(componentOrHookNode, fileHasUseClientDirective)) return;
-      if (isInsideClientOnlyGuard(match.node)) return;
-      if (isGatedByFalsyInitialState(match.node)) return;
-      if (isAfterClientOnlyEarlyReturn(match.node, componentOrHookNode)) return;
+      if (isGatedByFalsyInitialState(match.node, context.scopes)) return;
+      if (isAfterClientOnlyEarlyReturn(match.node, componentOrHookNode, context.scopes)) return;
       if (hasSuppressHydrationWarningAttribute(findEnclosingJsxOpeningElement(match.node))) return;
       if (
         isGeneratedImageRenderContext(
@@ -407,7 +314,7 @@ export const noLocaleFormatInRender = defineRule({
         if (!isNodeOfType(expression, "CallExpression")) return;
         if (!isNodeOfType(expression.callee, "Identifier")) return;
         const helperName = expression.callee.name;
-        const componentOrHookNode = findRenderPhaseComponentOrHook(node);
+        const componentOrHookNode = findRenderPhaseComponentOrHook(node, context.scopes);
         if (!componentOrHookNode) return;
         const binding = findVariableInitializer(expression.callee, helperName);
         const helperNode = binding?.initializer;
@@ -420,9 +327,8 @@ export const noLocaleFormatInRender = defineRule({
           if (!match || reportedNodes.has(match.node)) return;
           if (fileIsEmailTemplate) return;
           if (!hasClientRenderEvidence(componentOrHookNode, fileHasUseClientDirective)) return;
-          if (isInsideClientOnlyGuard(node)) return;
-          if (isGatedByFalsyInitialState(node)) return;
-          if (isAfterClientOnlyEarlyReturn(node, componentOrHookNode)) return;
+          if (isGatedByFalsyInitialState(node, context.scopes)) return;
+          if (isAfterClientOnlyEarlyReturn(node, componentOrHookNode, context.scopes)) return;
           if (hasSuppressHydrationWarningAttribute(findEnclosingJsxOpeningElement(node))) return;
           reportedNodes.add(match.node);
           context.report({

@@ -51,7 +51,7 @@ export const noMatchMediaInStateInitializer = defineRule({
   title: "matchMedia in state initializer",
   severity: "warn",
   category: "Correctness",
-  disabledWhen: ["vite", "cra"],
+  requires: ["ssr"],
   recommendation:
     "Prefer CSS media queries for layout, or subscribe with `useSyncExternalStore` and provide a stable server snapshot.",
   create: (context: RuleContext): RuleVisitors => {

@@ -48,7 +48,7 @@ export const buildJsonReportError = (input: BuildJsonReportErrorInput): JsonRepo
       : { message: safeStringify(input.error), name: "Error", chain, sentryEventId };
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     version: input.version,
     ok: false,
     directory: input.directory,

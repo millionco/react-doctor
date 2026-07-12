@@ -1,13 +1,20 @@
+import * as path from "node:path";
 import type {
+  Diagnostic,
   DiffInfo,
-  JsonReport,
+  JsonReportDiagnosticV3,
   JsonReportDiffInfo,
   JsonReportMode,
-  JsonReportProjectEntry,
+  JsonReportProjectEntryV3,
+  JsonReportV3,
   InspectResult,
 } from "./types/index.js";
+import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
+import { buildDiagnosticIdentity } from "./schemas.js";
 import { summarizeDiagnostics } from "./summarize-diagnostics.js";
 import { hasReactRuntime } from "./utils/has-react-runtime.js";
+import { isScanComplete } from "./utils/is-scan-complete.js";
+import { toNormalizedRelativePath } from "./utils/to-normalized-relative-path.js";
 
 interface BuildJsonReportInput {
   version: string;
@@ -18,7 +25,7 @@ interface BuildJsonReportInput {
   totalElapsedMilliseconds: number;
   /**
    * Present for a baseline run — `scans[].result.diagnostics` are then the
-   * introduced findings only. Emits a `schemaVersion: 2` report with the
+   * introduced findings only. Emits a `schemaVersion: 3` report with the
    * delta totals and `mode: "baseline"`.
    */
   baseline?: { baseRef: string; fixedCount: number; baseTotalCount: number };
@@ -27,7 +34,7 @@ interface BuildJsonReportInput {
    * computed (no merge base — usually a shallow CI checkout — or a failed
    * base/head lint), so `diagnostics` list every finding in the changed files
    * rather than only the introduced ones. Ignored when `baseline` is set: a
-   * computed baseline (v2) wins, so callers pass at most one.
+   * computed baseline wins, so callers pass at most one.
    */
   baselineDegraded?: boolean;
 }
@@ -43,9 +50,9 @@ const toJsonDiff = (diff: DiffInfo | null): JsonReportDiffInfo | null => {
 };
 
 const findWorstScoredProject = (
-  projects: JsonReportProjectEntry[],
-): JsonReportProjectEntry | null => {
-  let worst: JsonReportProjectEntry | null = null;
+  projects: JsonReportProjectEntryV3[],
+): JsonReportProjectEntryV3 | null => {
+  let worst: JsonReportProjectEntryV3 | null = null;
   let worstScore = Number.POSITIVE_INFINITY;
   for (const project of projects) {
     const score = project.score?.score;
@@ -58,30 +65,102 @@ const findWorstScoredProject = (
   return worst;
 };
 
-export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
-  const projects: JsonReportProjectEntry[] = input.scans.map(({ directory, result }) => ({
-    directory,
-    project: result.project,
-    diagnostics: result.diagnostics,
-    score: result.score,
-    skippedChecks: result.skippedChecks,
-    ...(result.skippedCheckReasons ? { skippedCheckReasons: result.skippedCheckReasons } : {}),
-    ...(typeof result.scannedFileCount === "number"
-      ? { scannedFileCount: result.scannedFileCount }
-      : {}),
-    elapsedMilliseconds: result.elapsedMilliseconds,
-  }));
+const toJsonReportDiagnostic = (
+  diagnostic: Diagnostic,
+  projectRoot: string,
+  reportRoot: string,
+): JsonReportDiagnosticV3 => {
+  const normalizedFilePath = toNormalizedRelativePath(diagnostic.filePath, projectRoot);
+  const reportRelativeFilePath = toNormalizedRelativePath(
+    path.resolve(projectRoot, diagnostic.filePath),
+    reportRoot,
+  );
+  const ruleIdentity = getDiagnosticRuleIdentity(diagnostic);
+  return {
+    ...diagnostic,
+    id: buildDiagnosticIdentity({
+      filePath: reportRelativeFilePath,
+      line: diagnostic.line,
+      column: diagnostic.column,
+      plugin: diagnostic.plugin,
+      rule: diagnostic.rule,
+    }),
+    normalizedFilePath,
+    category: ruleIdentity.category,
+    tags: [...new Set(ruleIdentity.tags)].sort(),
+  };
+};
+
+export const buildJsonReport = (input: BuildJsonReportInput): JsonReportV3 => {
+  const projects: JsonReportProjectEntryV3[] = input.scans.map(({ directory, result }) => {
+    const skippedChecks = result.skippedChecks ?? [];
+    const analyzedFiles = [
+      ...new Set(
+        (result.analyzedFiles ?? []).map((filePath) =>
+          toNormalizedRelativePath(filePath, result.project.rootDirectory),
+        ),
+      ),
+    ].sort();
+    const scannedFileCount = result.scannedFileCount ?? result.project.sourceFileCount;
+    return {
+      directory,
+      packageRoot: result.project.rootDirectory,
+      framework: result.project.framework,
+      project: result.project,
+      diagnostics: result.diagnostics.map((diagnostic) =>
+        toJsonReportDiagnostic(diagnostic, result.project.rootDirectory, input.directory),
+      ),
+      score: result.score,
+      skippedChecks,
+      ...(result.skippedCheckReasons ? { skippedCheckReasons: result.skippedCheckReasons } : {}),
+      analyzedFiles,
+      analyzedFileCount: analyzedFiles.length,
+      complete: isScanComplete({
+        analyzedFileCount: result.analyzedFiles === undefined ? undefined : analyzedFiles.length,
+        scannedFileCount,
+        skippedCheckCount: skippedChecks.length,
+        skippedCheckReasonCount: Object.keys(result.skippedCheckReasons ?? {}).length,
+      }),
+      ...(typeof result.scannedFileCount === "number" ? { scannedFileCount } : {}),
+      elapsedMilliseconds: result.elapsedMilliseconds,
+    };
+  });
 
   const flattenedDiagnostics = projects.flatMap((entry) => entry.diagnostics);
   const worstScoredProject = findWorstScoredProject(projects);
 
-  const summary = summarizeDiagnostics(
+  const diagnosticSummary = summarizeDiagnostics(
     flattenedDiagnostics,
     worstScoredProject?.score?.score ?? null,
     worstScoredProject?.score?.label ?? null,
   );
+  const affectedFileCount = projects.reduce(
+    (totalAffectedFileCount, project) =>
+      totalAffectedFileCount +
+      new Set(project.diagnostics.map((diagnostic) => diagnostic.normalizedFilePath)).size,
+    0,
+  );
+  const summary = { ...diagnosticSummary, affectedFileCount };
 
-  const shared = {
+  return {
+    schemaVersion: 3,
+    mode:
+      input.baseline !== undefined
+        ? "baseline"
+        : input.baselineDegraded && input.mode === "baseline"
+          ? "diff"
+          : input.mode,
+    ...(input.baseline
+      ? {
+          baseline: {
+            baseRef: input.baseline.baseRef,
+            newCount: summary.totalDiagnosticCount,
+            fixedCount: input.baseline.fixedCount,
+            baseTotalCount: input.baseline.baseTotalCount,
+          },
+        }
+      : {}),
+    ...(input.baselineDegraded ? { baselineDegraded: true } : {}),
     ...(input.scans.length > 0
       ? { reactDetected: input.scans.some((scan) => hasReactRuntime(scan.result.project)) }
       : {}),
@@ -94,26 +173,5 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
     summary,
     elapsedMilliseconds: input.totalElapsedMilliseconds,
     error: null,
-  };
-
-  if (input.baseline) {
-    return {
-      schemaVersion: 2,
-      mode: "baseline",
-      baseline: {
-        baseRef: input.baseline.baseRef,
-        newCount: summary.totalDiagnosticCount,
-        fixedCount: input.baseline.fixedCount,
-        baseTotalCount: input.baseline.baseTotalCount,
-      },
-      ...shared,
-    };
-  }
-
-  return {
-    schemaVersion: 1,
-    mode: input.mode,
-    ...(input.baselineDegraded ? { baselineDegraded: true } : {}),
-    ...shared,
   };
 };

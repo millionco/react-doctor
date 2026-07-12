@@ -40,6 +40,7 @@ export interface CachedScanPayload {
   readonly directory: string;
   readonly scannedFileCount: number;
   readonly scannedFilePaths: ReadonlyArray<string>;
+  readonly analyzedFiles?: ReadonlyArray<string>;
   readonly scanElapsedMilliseconds: number;
   readonly baselineDelta: InspectResult["baselineDelta"];
   readonly lintFailureReasonKind: InspectOutput["lintFailureReasonKind"];

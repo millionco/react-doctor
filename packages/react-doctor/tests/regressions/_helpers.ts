@@ -115,6 +115,7 @@ export interface CollectRuleHitsOptions {
   framework?: ProjectInfo["framework"];
   hasReactCompiler?: boolean;
   hasTanStackQuery?: boolean;
+  hasSsrDependency?: boolean;
 }
 
 export interface BuildTestProjectOptions {
@@ -165,6 +166,7 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     hasTypeScript: options.hasTypeScript ?? true,
     hasReactCompiler: options.hasReactCompiler ?? false,
     hasTanStackQuery: options.hasTanStackQuery ?? false,
+    hasSsrDependency: options.hasSsrDependency ?? false,
     nextjsVersion,
     nextjsMajorVersion,
     hasReactNativeWorkspace: framework === "expo" || framework === "react-native",

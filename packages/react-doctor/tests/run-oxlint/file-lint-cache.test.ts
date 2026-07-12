@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import type { Diagnostic } from "@react-doctor/core";
+import type { Diagnostic, RunOxlintFileCoverage } from "@react-doctor/core";
 import { buildDiagnosticIdentity, runOxlint } from "@react-doctor/core";
 import { buildTestProject, setupReactProject, writeFile } from "../regressions/_helpers.js";
 
@@ -39,6 +39,7 @@ interface ScanOptions {
   hasReactCompiler?: boolean;
   includePaths?: string[];
   onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
+  onFileCoverage?: (coverage: RunOxlintFileCoverage) => void;
 }
 
 const setupFixture = (caseId: string, indexSource: string): string => {
@@ -70,6 +71,7 @@ const scan = (projectDir: string, options: ScanOptions = {}): Promise<Diagnostic
     respectInlineDisables: options.respectInlineDisables,
     perFileLintCacheEnabled: options.perFileLintCacheEnabled,
     onCacheStats: options.onCacheStats,
+    onFileCoverage: options.onFileCoverage,
   });
 
 // Deterministic serialization of a diagnostic set for byte-identical
@@ -132,6 +134,24 @@ describe("per-file lint cache", () => {
     // Nothing changed between the two scans, so every file is a hit.
     expect(warmHits).toBe(warmTotal);
     expect(warmTotal).toBe(coldTotal);
+  });
+
+  it("reports complete structural coverage on cold and warm scans", async () => {
+    const projectDir = setupFixture("file-coverage", BARREL_INDEX);
+    const coverageSnapshots: RunOxlintFileCoverage[] = [];
+    const onFileCoverage = (coverage: RunOxlintFileCoverage): void => {
+      coverageSnapshots.push(coverage);
+    };
+
+    await scan(projectDir, { perFileLintCacheEnabled: true, onFileCoverage });
+    await scan(projectDir, { perFileLintCacheEnabled: true, onFileCoverage });
+
+    expect(coverageSnapshots).toHaveLength(2);
+    for (const coverage of coverageSnapshots) {
+      expect([...coverage.analyzedFiles].sort()).toEqual(
+        [...new Set(coverage.candidateFiles)].sort(),
+      );
+    }
   });
 
   it("invalidates a file when its OWN content changes (content-addressed)", async () => {

@@ -56,6 +56,38 @@ describe("isReactApiCall", () => {
       expectedCount: 1,
     },
     {
+      name: "immutable default and namespace React aliases",
+      code: `import ReactDefault from "react";
+        import * as ReactNamespace from "react";
+        const ReactAlias = ReactDefault;
+        const ChainedReactAlias = ReactAlias;
+        const WrappedReactAlias = ReactNamespace as typeof ReactNamespace;
+        ChainedReactAlias.useEffect(() => {});
+        WrappedReactAlias.useLayoutEffect(() => {});`,
+      expectedCount: 2,
+    },
+    {
+      name: "mutable React aliases",
+      code: `import * as ReactNamespace from "react";
+        let ReactAlias = ReactNamespace;
+        ReactAlias = { useEffect: (callback) => callback() };
+        ReactAlias.useEffect(() => {});`,
+      expectedCount: 0,
+    },
+    {
+      name: "shadowed immutable React aliases",
+      code: `import * as ReactNamespace from "react";
+        const ReactAlias = ReactNamespace;
+        const run = (ReactAlias) => ReactAlias.useEffect(() => {});
+        run({ useEffect: (callback) => callback() });`,
+      expectedCount: 0,
+    },
+    {
+      name: "wrapped namespace React receivers",
+      code: 'import * as ReactClient from "react"; (ReactClient as any).useEffect(() => {});',
+      expectedCount: 1,
+    },
+    {
       name: "same-named imports from another package",
       code: 'import { useEffect } from "other"; useEffect(() => {});',
       expectedCount: 0,

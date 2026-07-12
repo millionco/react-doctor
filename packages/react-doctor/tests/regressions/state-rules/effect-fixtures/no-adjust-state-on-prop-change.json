@@ -14,12 +14,24 @@
     },
     {
       "idx": 2,
-      "name": "Set state to a value derived from props",
-      "code": "\n        function Counter({ count }) {\n          const [doubleCount, setDoubleCount] = useState(0);\n\n          useEffect(() => {\n            setDoubleCount(count * 2);\n          }, [count]);\n        }\n      ",
+      "name": "Set state to literal when prop changes",
+      "code": "\n        function List({ items }) {\n          const [selection, setSelection] = useState();\n\n          useEffect(() => {\n            setSelection(null);\n          }, [items]);\n        }\n      ",
       "todo": false
     },
     {
       "idx": 3,
+      "name": "Set state to external state when prop changes",
+      "code": "\n        function List({ items }) {\n          const [selection, setSelection] = useState();\n          const { data: externalData } = useDataSource();\n\n          useEffect(() => {\n            setSelection(externalData);\n          }, [items]);\n        }\n      ",
+      "todo": false
+    },
+    {
+      "idx": 4,
+      "name": "Conditionally set state to literal when prop changes",
+      "code": "\n        function Form({ result }) {\n          const [error, setError] = useState();\n\n          useEffect(() => {\n            if (result.data) {\n              setError(null);\n            }\n          }, [result]);\n        }\n      ",
+      "todo": false
+    },
+    {
+      "idx": 5,
       "name": "Setter inside named async function called from effect",
       "code": "\n        function Profile({ userId }) {\n          const [data, setData] = useState(null);\n\n          useEffect(() => {\n            const sync = async () => {\n              await refresh(userId);\n              setData(true);\n            };\n            sync();\n          }, [userId]);\n        }\n      ",
       "todo": false
@@ -28,8 +40,8 @@
   "invalid": [
     {
       "idx": 0,
-      "name": "Set state to literal when prop changes",
-      "code": "\n        function List({ items }) {\n          const [selection, setSelection] = useState();\n\n          useEffect(() => {\n            setSelection(null);\n          }, [items]);\n        }\n      ",
+      "name": "Set state to a value derived from props",
+      "code": "\n        function Counter({ count }) {\n          const [doubleCount, setDoubleCount] = useState(0);\n\n          useEffect(() => {\n            setDoubleCount(count * 2);\n          }, [count]);\n        }\n      ",
       "todo": false,
       "errors": 1
     },
@@ -37,20 +49,6 @@
       "idx": 1,
       "name": "Set state to internal state when prop changes",
       "code": "\n        function List({ items }) {\n          const [selection, setSelection] = useState();\n          const [internalData, setInternalData] = useState();\n\n          useEffect(() => {\n            setSelection(internalData);\n          }, [items, internalData]);\n        }\n      ",
-      "todo": false,
-      "errors": 1
-    },
-    {
-      "idx": 2,
-      "name": "Set state to external state when prop changes",
-      "code": "\n        function List({ items }) {\n          const [selection, setSelection] = useState();\n          const { data: externalData } = useDataSource();\n\n          useEffect(() => {\n            setSelection(externalData);\n          }, [items]);\n        }\n      ",
-      "todo": false,
-      "errors": 1
-    },
-    {
-      "idx": 3,
-      "name": "Conditionally set state to literal when prop changes",
-      "code": "\n        function Form({ result }) {\n          const [error, setError] = useState();\n\n          useEffect(() => {\n            if (result.data) {\n              setError(null);\n            }\n          }, [result]);\n        }\n      ",
       "todo": false,
       "errors": 1
     }

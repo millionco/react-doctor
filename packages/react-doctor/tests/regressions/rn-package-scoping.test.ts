@@ -71,10 +71,13 @@ describe("mixed RN + web monorepo: rn-* rules respect package boundaries", () =>
   beforeAll(async () => {
     allDiagnostics = await runOxlint({
       rootDirectory: MIXED_MONOREPO_FIXTURE,
-      project: buildTestProject({
-        rootDirectory: MIXED_MONOREPO_FIXTURE,
-        framework: "react-native",
-      }),
+      project: {
+        ...buildTestProject({
+          rootDirectory: MIXED_MONOREPO_FIXTURE,
+          framework: "nextjs",
+        }),
+        hasReactNativeWorkspace: true,
+      },
     });
   });
 
@@ -92,6 +95,26 @@ describe("mixed RN + web monorepo: rn-* rules respect package boundaries", () =>
       "apps/web/src/Page.tsx",
     );
     expect(webDiagnostics).toHaveLength(0);
+  });
+
+  it("fires Next.js rules only inside the Next.js workspace", () => {
+    const nextImageDiagnostics = findDiagnosticsByRule(allDiagnostics, "nextjs-no-img-element");
+    expect(
+      findDiagnosticsByFile(nextImageDiagnostics, "apps/web/src/framework-boundaries.tsx"),
+    ).toHaveLength(1);
+    expect(
+      findDiagnosticsByFile(nextImageDiagnostics, "apps/mobile/src/framework-boundaries.tsx"),
+    ).toHaveLength(0);
+  });
+
+  it("keeps truth-based global DOM validation active in both workspaces", () => {
+    const unknownPropertyDiagnostics = findDiagnosticsByRule(allDiagnostics, "no-unknown-property");
+    expect(
+      findDiagnosticsByFile(unknownPropertyDiagnostics, "apps/web/src/framework-boundaries.tsx"),
+    ).toHaveLength(1);
+    expect(
+      findDiagnosticsByFile(unknownPropertyDiagnostics, "apps/mobile/src/framework-boundaries.tsx"),
+    ).toHaveLength(1);
   });
 
   it("does not fire rn-no-raw-text inside the Vite workspace", () => {

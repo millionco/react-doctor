@@ -21,6 +21,13 @@ const CLIENT_ONLY_FRAMEWORKS: ReadonlySet<Framework> = new Set([
   "expo",
 ]);
 
+const SSR_FRAMEWORKS: ReadonlySet<Framework> = new Set([
+  "nextjs",
+  "remix",
+  "gatsby",
+  "tanstack-start",
+]);
+
 const addMajorLadder = (
   capabilities: Set<Capability>,
   name: "react" | "preact",
@@ -78,6 +85,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   ) {
     capabilities.add("server-actions");
   }
+  if (SSR_FRAMEWORKS.has(project.framework) || project.hasSsrDependency) capabilities.add("ssr");
   if (CLIENT_ONLY_FRAMEWORKS.has(project.framework)) capabilities.add("client-only");
   // `output: "export"` Next.js app — no request-time server, so server-only
   // remediations (server `redirect()`, middleware, Server Actions) don't apply.

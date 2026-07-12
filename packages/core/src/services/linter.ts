@@ -45,6 +45,7 @@ export interface LintInput {
   readonly userConfig?: ReactDoctorConfig | null;
   readonly configSourceDirectory?: string;
   readonly nodeBinaryPath?: string;
+  readonly onFileCoverage?: (coverage: LintFileCoverage) => void;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
   readonly onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
   /** See `RunOxlintOptions.onSidecarStats`. */
@@ -54,6 +55,11 @@ export interface LintInput {
   ) => void;
   /** See `RunOxlintOptions.deadlineEpochMs`. */
   readonly deadlineEpochMs?: number;
+}
+
+export interface LintFileCoverage {
+  readonly candidateFiles: ReadonlyArray<string>;
+  readonly analyzedFiles: ReadonlyArray<string>;
 }
 
 /**
@@ -144,6 +150,7 @@ export class Linter extends Context.Service<
                   onPartialFailure: (reason) => {
                     collectedFailures.push(reason);
                   },
+                  onFileCoverage: input.onFileCoverage,
                   onFileProgress: input.onFileProgress,
                   perFileLintCacheEnabled,
                   sidecarLintCacheEnabled,

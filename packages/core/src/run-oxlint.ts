@@ -81,6 +81,7 @@ interface RunOxlintOptions {
    * mode, or a logger message in human mode).
    */
   onPartialFailure?: (reason: string) => void;
+  onFileCoverage?: (coverage: RunOxlintFileCoverage) => void;
   onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
   /**
    * Enables the per-file lint cache, resolved from the
@@ -144,6 +145,11 @@ interface RunOxlintOptions {
    * are untouched.
    */
   lintBatchOrdering?: "cost" | "arrival";
+}
+
+export interface RunOxlintFileCoverage {
+  readonly candidateFiles: ReadonlyArray<string>;
+  readonly analyzedFiles: ReadonlyArray<string>;
 }
 
 /**
@@ -367,6 +373,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     userConfig,
     configSourceDirectory = rootDirectory,
     onPartialFailure,
+    onFileCoverage,
     perFileLintCacheEnabled = false,
     sidecarLintCacheEnabled = false,
     onCacheStats,
@@ -393,6 +400,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   resetManifestCaches();
 
   if (includePaths !== undefined && includePaths.length === 0) {
+    onFileCoverage?.({ candidateFiles: [], analyzedFiles: [] });
     return [];
   }
 
@@ -548,11 +556,17 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       fileProgress: ((scannedFileCount: number, totalFileCount: number) => void) | undefined,
     ): Promise<{
       diagnostics: Diagnostic[];
+      analyzedFiles: ReadonlyArray<string>;
       didDropReactHooksJsPlugin: boolean;
       hadPartialFailure: boolean;
     }> => {
       if (files.length === 0) {
-        return { diagnostics: [], didDropReactHooksJsPlugin: false, hadPartialFailure: false };
+        return {
+          diagnostics: [],
+          analyzedFiles: [],
+          didDropReactHooksJsPlugin: false,
+          hadPartialFailure: false,
+        };
       }
       // A file dropped by the binary-split retry (timeout / OOM) produces no
       // diagnostics — indistinguishable from a clean file by output alone. Track
@@ -565,14 +579,19 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       const passConfigPath = path.join(configDirectory, configFileName);
       const passBaseArgs = makeBaseArgs(passConfigPath);
       const passFileBatches = buildFileBatches(passBaseArgs, files);
-      const spawnPass = () =>
-        spawnLintBatches({
+      let analyzedFiles: ReadonlyArray<string> = [];
+      const spawnPass = () => {
+        analyzedFiles = [];
+        return spawnLintBatches({
           baseArgs: passBaseArgs,
           fileBatches: passFileBatches,
           rootDirectory,
           nodeBinaryPath,
           project,
           onPartialFailure: reportPartialFailure,
+          onAnalyzedFiles: (filePaths) => {
+            analyzedFiles = filePaths;
+          },
           onFileProgress: fileProgress,
           spawnTimeoutMs,
           outputMaxBytes,
@@ -580,17 +599,28 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           signal: options.signal,
           deadlineEpochMs: options.deadlineEpochMs,
         });
+      };
       writeOxlintConfig(passConfigPath, buildConfigForPass({}));
       try {
         const diagnostics = await spawnPass();
-        return { diagnostics, didDropReactHooksJsPlugin: false, hadPartialFailure };
+        return {
+          diagnostics,
+          analyzedFiles,
+          didDropReactHooksJsPlugin: false,
+          hadPartialFailure,
+        };
       } catch (error) {
         const reactHooksJsDropNote = reactHooksJsPluginDropNote(error);
         if (reactHooksJsDropNote === null) throw error;
         writeOxlintConfig(passConfigPath, buildConfigForPass({ disableReactHooksJsPlugin: true }));
         const diagnostics = await spawnPass();
         reportPartialFailure(reactHooksJsDropNote);
-        return { diagnostics, didDropReactHooksJsPlugin: true, hadPartialFailure };
+        return {
+          diagnostics,
+          analyzedFiles,
+          didDropReactHooksJsPlugin: true,
+          hadPartialFailure,
+        };
       }
     };
 
@@ -749,6 +779,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       // map lookups over the hashes computed above; the loop still stats
       // package.json / tsconfig probes, so it shares the cooperative budget.
       const sidecarReplayedDiagnostics: Diagnostic[] = [];
+      const sidecarReplayedFiles: string[] = [];
       const sidecarLintFiles: string[] = [];
       if (sidecarCache === null) {
         sidecarLintFiles.push(...hitFiles);
@@ -762,8 +793,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
             entry.probes.every(
               (probe) => probeAnswers.answerFor(probe.kind, probe.path) === probe.answer,
             );
-          if (isReplayable) sidecarReplayedDiagnostics.push(...entry.diagnostics);
-          else sidecarLintFiles.push(hitFile);
+          if (isReplayable) {
+            sidecarReplayedFiles.push(hitFile);
+            sidecarReplayedDiagnostics.push(...entry.diagnostics);
+          } else sidecarLintFiles.push(hitFile);
           if (performance.now() - verifySliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
             await yieldToEventLoop();
             verifySliceStartedAt = performance.now();
@@ -821,7 +854,12 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
               hitFiles,
               undefined,
             )
-          : { diagnostics: [], didDropReactHooksJsPlugin: false, hadPartialFailure: false };
+          : {
+              diagnostics: [],
+              analyzedFiles: [],
+              didDropReactHooksJsPlugin: false,
+              hadPartialFailure: false,
+            };
 
       const freshCacheableDiagnostics: Diagnostic[] = [];
       for (const diagnostic of fullResult.diagnostics) {
@@ -884,6 +922,22 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         });
       }
 
+      const analyzedFileSet = new Set(fullResult.analyzedFiles);
+      const boundedSidecarAnalyzedFileSet = new Set(boundedSidecarResult.analyzedFiles);
+      const unboundedSidecarAnalyzedFileSet = new Set(unboundedSidecarResult.analyzedFiles);
+      const sidecarReplayedFileSet = new Set(sidecarReplayedFiles);
+      for (const hitFile of hitFiles) {
+        const didAnalyzeSidecar = useSidecarCache
+          ? (sidecarReplayedFileSet.has(hitFile) || boundedSidecarAnalyzedFileSet.has(hitFile)) &&
+            (unboundedSidecarRuleIds.length === 0 || unboundedSidecarAnalyzedFileSet.has(hitFile))
+          : boundedSidecarAnalyzedFileSet.has(hitFile);
+        if (didAnalyzeSidecar) analyzedFileSet.add(hitFile);
+      }
+      onFileCoverage?.({
+        candidateFiles,
+        analyzedFiles: candidateFiles.filter((candidateFile) => analyzedFileSet.has(candidateFile)),
+      });
+
       // Dedupe the merged result to match the non-cached path (which dedupes
       // at the end of `spawnLintBatches`): a duplicate path in `includePaths`
       // replays the same cached set twice, which dedupe collapses — so warm
@@ -899,6 +953,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
 
     const baseArgs = makeBaseArgs(configPath);
     const fileBatches = buildFileBatches(baseArgs, candidateFiles);
+    let analyzedFiles: ReadonlyArray<string> = [];
 
     const runBatches = () =>
       spawnLintBatches({
@@ -908,6 +963,9 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         nodeBinaryPath,
         project,
         onPartialFailure,
+        onAnalyzedFiles: (filePaths) => {
+          analyzedFiles = filePaths;
+        },
         onFileProgress: options.onFileProgress,
         spawnTimeoutMs,
         outputMaxBytes,
@@ -918,7 +976,9 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
 
     writeOxlintConfig(configPath, buildConfig({ extendsPaths }));
     try {
-      return await runBatches();
+      const diagnostics = await runBatches();
+      onFileCoverage?.({ candidateFiles, analyzedFiles });
+      return diagnostics;
     } catch (error) {
       // The optional `react-hooks-js` React Compiler plugin failed to
       // `import()` in this environment. oxlint fails the ENTIRE config
@@ -936,6 +996,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         );
         const diagnostics = await runBatches();
         onPartialFailure?.(reactHooksJsDropNote);
+        onFileCoverage?.({ candidateFiles, analyzedFiles });
         return diagnostics;
       }
       // HACK: if the user's adopted lint config is the reason oxlint
@@ -952,7 +1013,9 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       // through — most importantly `userPlugins`, so custom rules from
       // `config.plugins` still run on the retry.
       writeOxlintConfig(configPath, buildConfig({ extendsPaths: [] }));
-      return await runBatches();
+      const diagnostics = await runBatches();
+      onFileCoverage?.({ candidateFiles, analyzedFiles });
+      return diagnostics;
     }
   } finally {
     restoreDisableDirectives();

@@ -49,8 +49,10 @@ const buildSampleScan = (
   diagnostics,
   score: { score, label },
   skippedChecks: [],
+  analyzedFiles: [],
   project: SAMPLE_PROJECT,
   elapsedMilliseconds: 1234,
+  scannedFileCount: 0,
 });
 
 describe("buildJsonReport", () => {
@@ -70,7 +72,7 @@ describe("buildJsonReport", () => {
       totalElapsedMilliseconds: 5000,
     });
 
-    expect(report.schemaVersion).toBe(1);
+    expect(report.schemaVersion).toBe(3);
     expect(report.ok).toBe(true);
     expect(report.version).toBe("1.2.3");
     expect(report.mode).toBe("full");
@@ -155,6 +157,7 @@ describe("buildJsonReportError", () => {
     });
 
     expect(report.ok).toBe(false);
+    expect(report.schemaVersion).toBe(3);
     expect(report.error).toEqual({
       message: "boom",
       name: "TypeError",

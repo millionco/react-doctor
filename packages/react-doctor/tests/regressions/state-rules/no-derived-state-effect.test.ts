@@ -4,9 +4,8 @@ import { collectRuleHits, createScopedTempRoot, setupReactProject } from "./_hel
 
 const tempRoot = createScopedTempRoot("no-derived-state-effect");
 
-describe("no-derived-state-effect (memo-message branch)", () => {
-  it("flags an expensive derivation with a useMemo recommendation", async () => {
-    // https://react.dev/learn/you-might-not-need-an-effect#caching-expensive-calculations
+describe("no-derived-state-effect render-source contract", () => {
+  it("stays silent for an opaque external derivation", async () => {
     const projectDir = setupReactProject(tempRoot, "no-derived-state-effect-memo", {
       files: {
         "src/TodoList.tsx": `import { useEffect, useState } from "react";
@@ -26,8 +25,7 @@ export const TodoList = ({ todos, filter }: { todos: string[]; filter: string })
     });
 
     const hits = await collectRuleHits(projectDir, "no-derived-state-effect");
-    expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("state derived from other values");
+    expect(hits).toEqual([]);
   });
 
   it("keeps the 'compute during render' message for trivial derivations", async () => {
@@ -55,7 +53,7 @@ export const Form = () => {
     expect(hits[0].message).not.toContain("state derived from other values");
   });
 
-  it("still uses the 'state reset' message when no dep is referenced", async () => {
+  it("stays silent for a constant reset with an independent input writer", async () => {
     const projectDir = setupReactProject(tempRoot, "no-derived-state-effect-reset", {
       files: {
         "src/ProfilePage.tsx": `import { useEffect, useState } from "react";
@@ -72,8 +70,7 @@ export const ProfilePage = ({ userId }: { userId: string }) => {
     });
 
     const hits = await collectRuleHits(projectDir, "no-derived-state-effect");
-    expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("stale state on every prop change");
+    expect(hits).toEqual([]);
   });
 
   it("treats coercion helpers (Number, parseInt) as trivial", async () => {
@@ -99,11 +96,6 @@ export const Counter = ({ raw }: { raw: string }) => {
   });
 
   it("flags `Math.floor(raw)` and treats it as a trivial derivation (Bugbot #153 round 2)", async () => {
-    // Regression: \`Math.floor(raw)\` previously bailed the rule
-    // entirely — \`collectValueIdentifierNames\` collected "Math" as
-    // a reactive read, "Math" wasn't in deps, allArgumentsDeriveFromDeps
-    // went false, no diagnostic. The chain root is now skipped when
-    // it's a built-in global namespace, and the call is trivial.
     const projectDir = setupReactProject(tempRoot, "no-derived-state-effect-math-floor", {
       files: {
         "src/Counter.tsx": `import { useEffect, useState } from "react";
@@ -125,14 +117,7 @@ export const Counter = ({ raw }: { raw: number }) => {
     expect(hits[0].message).not.toContain("state derived from other values");
   });
 
-  it("flags `setX(applyFilters())` as expensive, not as a state reset (Bugbot #153 round 2)", async () => {
-    // Regression: zero-arg call \`applyFilters()\` produced an empty
-    // identifier list, both .some() checks vacuously passed, and the
-    // rule fired with the wrong "state reset" message. Now the
-    // callee identifier is collected so the dep mismatch correctly
-    // bails or — in this case — is recognized as expensive (because
-    // \`applyFilters\` isn't in TRIVIAL_DERIVATION_CALLEE_NAMES) AND
-    // referenced via deps (\`filter\`).
+  it("stays silent for an opaque external call even when its argument is render-known", async () => {
     const projectDir = setupReactProject(tempRoot, "no-derived-state-effect-zero-arg-call", {
       files: {
         "src/TodoList.tsx": `import { useEffect, useState } from "react";
@@ -151,8 +136,6 @@ export const TodoList = ({ todos, filter }: { todos: string[]; filter: string })
     });
 
     const hits = await collectRuleHits(projectDir, "no-derived-state-effect");
-    expect(hits).toHaveLength(1);
-    expect(hits[0].message).not.toContain("stale state on every prop change");
-    expect(hits[0].message).toContain("state derived from other values");
+    expect(hits).toEqual([]);
   });
 });

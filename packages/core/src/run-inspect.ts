@@ -57,7 +57,7 @@ import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
 import { Files } from "./services/files.js";
 import { Git } from "./services/git.js";
-import { LintPartialFailures, Linter } from "./services/linter.js";
+import { type LintFileCoverage, LintPartialFailures, Linter } from "./services/linter.js";
 import { Progress } from "./services/progress.js";
 import { Project } from "./services/project.js";
 import { Reporter } from "./services/reporter.js";
@@ -66,6 +66,7 @@ import { SupplyChain } from "./services/supply-chain.js";
 import type { ScoreRequestMetadata } from "./calculate-score.js";
 import { resolveGithubActionsScoreMetadata } from "./utils/resolve-github-actions-score-metadata.js";
 import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
+import { toNormalizedRelativePath } from "./utils/to-normalized-relative-path.js";
 
 export interface InspectInput {
   readonly directory: string;
@@ -206,6 +207,8 @@ export interface InspectOutput {
    * per-project counts are summed.
    */
   readonly scannedFilePaths: ReadonlyArray<string>;
+  /** Project-relative POSIX paths the lint pass completed successfully. */
+  readonly analyzedFiles: ReadonlyArray<string>;
   /** Wall-clock duration of the scan phase, in milliseconds. */
   readonly scanElapsedMilliseconds: number;
   /**
@@ -218,16 +221,17 @@ export interface InspectOutput {
   /**
    * `true` when the background supply-chain fiber hit its overlap budget
    * (`SupplyChainOverlapTimeoutMs`) and failed open to no diagnostics — a
-   * rare hung-socket guard, surfaced for telemetry. `false` on the healthy
-   * path and whenever supply-chain was skipped (diff/staged scans).
+   * rare hung-socket guard, surfaced for telemetry and skipped-check
+   * accounting. `false` on the healthy path and whenever supply-chain was
+   * skipped (diff/staged scans).
    */
   readonly supplyChainOverlapTimedOut: boolean;
   /**
    * `true` when the forked security scan failed (a non-ignorable fs error
    * escaping the cooperative walk) and failed open to no diagnostics —
-   * surfaced for telemetry so a failed pass is distinguishable from a clean
-   * one with zero findings. `false` on the healthy path and when the pass
-   * was skipped (diff/staged scans).
+   * surfaced for telemetry and skipped-check accounting so a failed pass is
+   * distinguishable from a clean one with zero findings. `false` on the
+   * healthy path and when the pass was skipped (diff/staged scans).
    */
   readonly securityScanFailed: boolean;
   /**
@@ -469,7 +473,7 @@ export const runInspect = <HooksR = never>(
     // `suppressScanSummary`. Gating avoids a redundant full-tree walk on
     // every single-project / `diagnose()` run — for a full scan the linter
     // already enumerates the same files, so we'd otherwise list twice.
-    const scannedFilePaths = input.suppressScanSummary
+    const fallbackScannedFilePaths = input.suppressScanSummary
       ? (lintIncludePaths ?? (yield* filesService.listSourceFiles(scanDirectory))).map(
           (relativePath) => path.resolve(scanDirectory, relativePath),
         )
@@ -779,6 +783,7 @@ export const runInspect = <HooksR = never>(
     let deadCodeCacheHit: boolean | null = null;
     let deadCodeSummaryCacheHits: number | null = null;
     let deadCodeSummaryCacheMisses: number | null = null;
+    const lintFileCoverageState: { value: LintFileCoverage | null } = { value: null };
 
     const baseLintStream = linterService
       .run({
@@ -799,6 +804,9 @@ export const runInspect = <HooksR = never>(
               `Scanning files (${scannedFileCount}/${totalFileCount})${workerCountSuffix}...`,
             ),
           );
+        },
+        onFileCoverage: (coverage) => {
+          lintFileCoverageState.value = coverage;
         },
         onCacheStats: (cacheHitFileCount, totalConsideredFileCount) => {
           lintCacheHitFileCount = cacheHitFileCount;
@@ -868,8 +876,35 @@ export const runInspect = <HooksR = never>(
     // short of N even though every file was scanned (issue #815). Resolve the
     // full total now and carry it into the dead-code label so "scanned N files"
     // stays visible for the whole (longer) dead-code pass.
+    const candidateFiles =
+      lintFileCoverageState.value === null
+        ? []
+        : [
+            ...new Set(
+              lintFileCoverageState.value.candidateFiles.map((filePath) =>
+                toNormalizedRelativePath(filePath, scanDirectory),
+              ),
+            ),
+          ];
+    const analyzedFiles =
+      lintFileCoverageState.value === null
+        ? []
+        : [
+            ...new Set(
+              lintFileCoverageState.value.analyzedFiles.map((filePath) =>
+                toNormalizedRelativePath(filePath, scanDirectory),
+              ),
+            ),
+          ].sort();
     const totalFileCount =
-      lastReportedTotalFileCount || (lintIncludePaths?.length ?? project.sourceFileCount);
+      candidateFiles.length ||
+      lastReportedTotalFileCount ||
+      (lintIncludePaths?.length ?? project.sourceFileCount);
+    const scannedFilePaths = input.suppressScanSummary
+      ? candidateFiles.length > 0
+        ? candidateFiles.map((filePath) => path.resolve(scanDirectory, filePath))
+        : fallbackScannedFilePaths
+      : [];
     const scannedFilesLabel = `${totalFileCount} ${totalFileCount === 1 ? "file" : "files"}`;
 
     // Resolve dead-code now that lint has settled. Three paths:
@@ -1026,6 +1061,7 @@ export const runInspect = <HooksR = never>(
       deadCodeOverlapped: shouldOverlapDeadCode,
       scannedFileCount: totalFileCount,
       scannedFilePaths,
+      analyzedFiles,
       scanElapsedMilliseconds,
       scanConcurrency,
       supplyChainOverlapTimedOut: supplyChainResult.timedOut,

@@ -874,6 +874,132 @@ export const Debounced = ({ value }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("accepts a timer released before replacement and by a stable unmount effect", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Debounced = ({ value }) => {
+  const timeoutRef = useRef(null);
+  useEffect(() => {
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => commit(value), 300);
+  }, [value]);
+  useEffect(() => () => clearTimeout(timeoutRef.current), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a handle-guarded release before timer replacement", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Debounced = ({ value }) => {
+  const timeoutRef = useRef(null);
+  useEffect(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => commit(value), 300);
+  }, [value]);
+  useEffect(() => () => clearTimeout(timeoutRef.current), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts helper-mediated rerun and unmount cleanup for the same timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Debounced = ({ value }) => {
+  const timeoutRef = useRef(null);
+  const clearTimer = () => clearTimeout(timeoutRef.current);
+  useEffect(() => {
+    clearTimer();
+    timeoutRef.current = setTimeout(() => commit(value), 300);
+  }, [value]);
+  useEffect(() => clearTimer, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects split cleanup that releases a different timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Debounced = ({ value }) => {
+  const timeoutRef = useRef(null);
+  const otherTimeoutRef = useRef(null);
+  useEffect(() => {
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => commit(value), 300);
+  }, [value]);
+  useEffect(() => () => clearTimeout(otherTimeoutRef.current), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects split cleanup that is not returned on every unmount-effect path", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Debounced = ({ enabled, value }) => {
+  const timeoutRef = useRef(null);
+  useEffect(() => {
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => commit(value), 300);
+  }, [value]);
+  useEffect(() => {
+    if (enabled) return () => clearTimeout(timeoutRef.current);
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a release method bound to its subscription receiver", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ store }) => {
+  useEffect(() => {
+    const subscription = store.subscribe(update);
+    return subscription.unsubscribe.bind(subscription);
+  }, [store]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a release method bound to a different subscription receiver", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ store, otherSubscription }) => {
+  useEffect(() => {
+    const subscription = store.subscribe(update);
+    return subscription.unsubscribe.bind(otherSubscription);
+  }, [store, otherSubscription]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a nested-callback release — only statement-level releases neutralize", () => {
     // `socket.onclose = () => socket.close()` runs later, if ever — it must
     // NOT count as a synchronous release.

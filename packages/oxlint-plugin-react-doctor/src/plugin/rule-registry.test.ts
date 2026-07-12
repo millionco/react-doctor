@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import plugin from "./react-doctor-plugin.js";
 import { ruleRegistry } from "./rule-registry.js";
+import { parseSourceText } from "./utils/parse-source-file.js";
+import { walkAst } from "./utils/walk-ast.js";
 
 const REANIMATED_LAYOUT_RULE_ID = "rn-animate-layout-property";
 
@@ -84,5 +86,34 @@ describe("rule registry", () => {
       expect(hostRule, `${ruleId} should be registered`).toBeDefined();
       expect(hostRule?.create, `${ruleId} host context wrapper`).not.toBe(rule.create);
     }
+  });
+
+  // Regression: rules can consume `context.scopes` through shared helpers
+  // and factories (`createDeprecatedReactImportRule` resolves namespace
+  // aliases via `resolveConstIdentifierAlias`), where no static marker in
+  // the rule's own file reveals the dependency. The host wrapper must
+  // capture the Program root for every rule so those reads see live scope
+  // analysis instead of the conservative stubs.
+  it("serves live scope analysis to rules that read it through shared helpers", () => {
+    const hostRule = plugin.rules["no-react-dom-deprecated-apis"];
+    const program = parseSourceText({
+      filename: "/tmp/deprecated-render.tsx",
+      sourceText: `import ReactDOM from "react-dom";
+        export const mount = (element, container) => ReactDOM.render(element, container);`,
+    });
+    if (!hostRule || program === null) throw new Error("Expected rule and parsed fixture");
+
+    const reportedMessages: string[] = [];
+    const visitors = hostRule.create({
+      report: (descriptor) => {
+        reportedMessages.push(descriptor.message);
+      },
+      filename: "/tmp/deprecated-render.tsx",
+    });
+    walkAst(program, (node) => {
+      visitors[node.type]?.(node);
+    });
+
+    expect(reportedMessages.some((message) => message.includes("createRoot"))).toBe(true);
   });
 });

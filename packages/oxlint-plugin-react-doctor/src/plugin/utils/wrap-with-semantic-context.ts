@@ -101,12 +101,14 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
     };
 
     const visitors = rule.create(enrichedContext);
-    if (!rule.requiresSemanticContext) return visitors;
     // Program enter fires before every other visitor, so capturing the root
     // there is enough — wrapping every visitor of every rule in a
     // capture-then-forward closure added a call per (node × rule) for
-    // nothing. A handler that somehow ran without a Program visit falls back
-    // to the conservative stubs above, same as before capture happened.
+    // nothing. Every rule gets the capture: rules can consume
+    // `context.scopes` through shared helpers and factories, so no static
+    // marker can tell the consumers apart reliably, and the capture itself
+    // is one call per rule per file. A handler that somehow ran without a
+    // Program visit falls back to the conservative stubs above.
     // Copy instead of mutating: `create` may return a shared visitors
     // object (e.g. a module-level empty-visitors constant).
     const innerProgramHandler = visitors.Program;

@@ -3,15 +3,16 @@ import { wrapWithSemanticContext } from "./wrap-with-semantic-context.js";
 import type { Rule } from "./rule.js";
 
 describe("wrapWithSemanticContext", () => {
-  it("preserves the bound getFilename fallback without adding semantic visitors", () => {
+  it("preserves the bound getFilename fallback and adds the root-capture Program visitor", () => {
     let resolvedFilename: string | undefined;
+    const callExpressionHandler = (): void => {};
     const rule: Rule = {
       id: "filename-fallback",
       severity: "error",
       create: (context) => {
         resolvedFilename = context.filename;
         return {
-          CallExpression: () => {},
+          CallExpression: callExpressionHandler,
         };
       },
     };
@@ -26,6 +27,7 @@ describe("wrapWithSemanticContext", () => {
     const visitors = wrapWithSemanticContext(rule).create(hostContext);
 
     expect(resolvedFilename).toBe(hostContext.expectedFilename);
-    expect(visitors.Program).toBeUndefined();
+    expect(visitors.Program).toBeDefined();
+    expect(visitors.CallExpression).toBe(callExpressionHandler);
   });
 });

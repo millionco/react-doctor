@@ -507,7 +507,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(anchorIsValid.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -558,7 +557,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(ariaRole.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -740,7 +738,6 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(clientLocalstorageNoVersion.requires ?? [])]),
       ],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -913,7 +910,6 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(effectListenerCleanupMismatch.requires ?? [])]),
       ],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -926,7 +922,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(effectNeedsCleanup.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -939,7 +934,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(exhaustiveDeps.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -1213,7 +1207,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(interactiveSupportsFocus.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -1254,7 +1247,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(jotaiTqUseRawQueryAtom.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -1543,7 +1535,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set<Capability>(["react", ...(jsxNoJsxAsProp.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2131,7 +2122,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noCallComponentAsFunction.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2206,7 +2196,6 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noCreateRefInFunctionComponent.requires ?? [])]),
       ],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2243,7 +2232,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noDangerWithChildren.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2387,7 +2375,6 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noDocumentStartViewTransition.requires ?? [])]),
       ],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2446,7 +2433,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noEffectEventInDeps.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2506,7 +2492,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noFetchInEffect.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2564,7 +2549,6 @@ export const reactDoctorRules = [
       ...noGiantComponent,
       framework: "global",
       category: "Maintainability",
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2615,7 +2599,6 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noHydrationBranchOnBrowserGlobal.requires ?? [])]),
       ],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2642,7 +2625,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noImpureStateUpdater.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2654,7 +2636,6 @@ export const reactDoctorRules = [
       ...noIndeterminateAttribute,
       framework: "global",
       category: "Bugs",
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2834,7 +2815,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noLocaleFormatInRender.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2857,7 +2837,6 @@ export const reactDoctorRules = [
       ...noManyBooleanProps,
       framework: "global",
       category: "Maintainability",
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2872,7 +2851,6 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noMatchMediaInStateInitializer.requires ?? [])]),
       ],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -2908,7 +2886,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set<Capability>(["react", ...(noMultiComp.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3022,7 +2999,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noPassDataToParent.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3058,7 +3034,6 @@ export const reactDoctorRules = [
       ...noPolymorphicChildren,
       framework: "global",
       category: "Maintainability",
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3094,7 +3069,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noPropCallbackInRender.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3162,7 +3136,6 @@ export const reactDoctorRules = [
       ...noReact19DeprecatedApis,
       framework: "global",
       category: "Maintainability",
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3201,7 +3174,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noRefCurrentInRender.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3213,7 +3185,6 @@ export const reactDoctorRules = [
       ...noRenderInRender,
       framework: "global",
       category: "Maintainability",
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3396,7 +3367,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noThisInSfc.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3471,7 +3441,6 @@ export const reactDoctorRules = [
           ...(noUnguardedBrowserGlobalInRenderOrHookInit.requires ?? []),
         ]),
       ],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3508,7 +3477,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set<Capability>(["react", ...(noUnstableNestedComponents.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3521,7 +3489,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set<Capability>(["react", ...(noUsememoSimpleExpression.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3580,7 +3547,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set<Capability>(["react", ...(onlyExportComponents.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3640,7 +3606,6 @@ export const reactDoctorRules = [
       ...preactNoChildrenLength,
       framework: "preact",
       category: "Bugs",
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3743,7 +3708,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(preferHtmlDialog.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3755,7 +3719,6 @@ export const reactDoctorRules = [
       ...preferModuleScopePureFunction,
       framework: "global",
       category: "Maintainability",
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3767,7 +3730,6 @@ export const reactDoctorRules = [
       ...preferModuleScopeStaticValue,
       framework: "global",
       category: "Maintainability",
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3863,7 +3825,6 @@ export const reactDoctorRules = [
       ...queryDestructureResult,
       framework: "tanstack-query",
       category: "Bugs",
-      requiresSemanticContext: true,
     },
   },
   {
@@ -3875,7 +3836,6 @@ export const reactDoctorRules = [
       ...queryMutationMissingInvalidation,
       framework: "tanstack-query",
       category: "Bugs",
-      requiresSemanticContext: true,
     },
   },
   {
@@ -4029,7 +3989,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set<Capability>(["react", ...(renderingHoistJsx.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -4044,7 +4003,6 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(renderingHydrationMismatchTime.requires ?? [])]),
       ],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -4680,7 +4638,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(roleHasRequiredAriaProps.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -4693,7 +4650,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(roleSupportsAriaProps.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -4706,7 +4662,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(rulesOfHooks.requires ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -4827,7 +4782,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       tags: [...new Set(["server-action", ...(serverNoMutableModuleState.tags ?? [])])],
-      requiresSemanticContext: true,
     },
   },
   {
@@ -5001,7 +4955,6 @@ export const reactDoctorRules = [
       ...tanstackStartNoNavigateInRender,
       framework: "tanstack-start",
       category: "Bugs",
-      requiresSemanticContext: true,
     },
   },
   {

@@ -143,6 +143,36 @@ const STATEFUL_HTML_DESCENDANT_TAGS: ReadonlySet<string> = new Set([
   "canvas",
 ]);
 
+const STATEFUL_HTML_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
+  "autofocus",
+  "contenteditable",
+  "draggable",
+  "tabindex",
+]);
+
+const isStaticallyFalseAttributeValue = (attribute: EsTreeNode): boolean => {
+  if (!isNodeOfType(attribute, "JSXAttribute") || !attribute.value) return false;
+  const value = isNodeOfType(attribute.value, "JSXExpressionContainer")
+    ? attribute.value.expression
+    : attribute.value;
+  return isNodeOfType(value, "Literal") && (value.value === false || value.value === "false");
+};
+
+const hasStatefulHtmlAttribute = (openingElement: EsTreeNode): boolean => {
+  if (!isNodeOfType(openingElement, "JSXOpeningElement")) return false;
+  return openingElement.attributes.some((attribute) => {
+    if (
+      !isNodeOfType(attribute, "JSXAttribute") ||
+      !isNodeOfType(attribute.name, "JSXIdentifier")
+    ) {
+      return false;
+    }
+    const attributeName = attribute.name.name.toLowerCase();
+    if (!STATEFUL_HTML_ATTRIBUTE_NAMES.has(attributeName)) return false;
+    return attributeName === "tabindex" || !isStaticallyFalseAttributeValue(attribute);
+  });
+};
+
 const STATEFUL_DESCENDANT_SCAN_BUDGET = 200;
 
 interface RowContentScanOptions {
@@ -197,6 +227,7 @@ export const containsStatefulDescendant = (
       }
       // Member-expression JSX (e.g. `<Foo.Bar />`) — custom; stateful.
       if (name && isNodeOfType(name, "JSXMemberExpression")) return true;
+      if (hasStatefulHtmlAttribute(opening)) return true;
       const children = (node as { children?: ReadonlyArray<EsTreeNode> }).children ?? [];
       for (const child of children) stack.push(child);
       continue;

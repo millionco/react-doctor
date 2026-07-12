@@ -722,6 +722,38 @@ const CodePanel = ({ tokens }) => (
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("still flags primitive rows with DOM-managed stateful attributes", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const EditableLabels = ({ labels }) => (
+  <ul>
+    {labels.map((label, index) => (
+      <li contentEditable key={\`\${label}-\${index}\`}>{label}</li>
+    ))}
+  </ul>
+);
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent when enumerated stateful attributes are statically false", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const Labels = ({ labels }) => (
+  <ul>
+    {labels.map((label, index) => (
+      <li contentEditable={false} draggable="false" key={\`\${label}-\${index}\`}>{label}</li>
+    ))}
+  </ul>
+);
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     // glific InteractiveOptions: the map index is forwarded one hop into a
     // render helper whose FIRST parameter is the index.
     it("flags an index forwarded into a render helper's position-0 parameter", () => {

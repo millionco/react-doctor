@@ -316,6 +316,138 @@ const isAllOperandsDomContentConcat = (valueExpression: string): boolean => {
   });
 };
 
+const findMatchingBraceIndex = (fileContent: string, openingBraceIndex: number): number => {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let index = openingBraceIndex; index < fileContent.length; index += 1) {
+    const character = fileContent[index];
+    if (quote !== null) {
+      if (character === quote && fileContent[index - 1] !== "\\") quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === "{") depth += 1;
+    if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return fileContent.length;
+};
+
+interface FunctionParameterSource {
+  readonly functionName: string;
+  readonly parameterIndex: number;
+}
+
+const findContainingFunctionParameterSource = (
+  identifier: string,
+  sinkIndex: number,
+  fileContent: string,
+): FunctionParameterSource | null => {
+  const patterns = [
+    /function\s+([\w$]+)\s*\(([^)]*)\)\s*\{/g,
+    /(?:const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?\(([^)]*)\)\s*=>\s*\{/g,
+  ];
+  let closestSource: FunctionParameterSource | null = null;
+  let closestStartIndex = -1;
+  for (const pattern of patterns) {
+    for (const match of fileContent.matchAll(pattern)) {
+      const matchIndex = match.index;
+      if (matchIndex === undefined || matchIndex >= sinkIndex || matchIndex < closestStartIndex) {
+        continue;
+      }
+      const openingBraceIndex = matchIndex + match[0].lastIndexOf("{");
+      if (findMatchingBraceIndex(fileContent, openingBraceIndex) < sinkIndex) continue;
+      const parameterIndex = (match[2] ?? "")
+        .split(",")
+        .findIndex(
+          (parameter) => parameter.trim().match(/^(?:\.\.\.)?([\w$]+)/)?.[1] === identifier,
+        );
+      if (parameterIndex < 0) continue;
+      closestStartIndex = matchIndex;
+      closestSource = { functionName: match[1] ?? "", parameterIndex };
+    }
+  }
+  return closestSource;
+};
+
+const splitTopLevelArguments = (argumentText: string): string[] => {
+  const argumentsList: string[] = [];
+  let startIndex = 0;
+  let depth = 0;
+  let quote: string | null = null;
+  for (let index = 0; index < argumentText.length; index += 1) {
+    const character = argumentText[index];
+    if (quote !== null) {
+      if (character === quote && argumentText[index - 1] !== "\\") quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === "(" || character === "[" || character === "{") depth += 1;
+    if (character === ")" || character === "]" || character === "}") depth -= 1;
+    if (character === "," && depth === 0) {
+      argumentsList.push(argumentText.slice(startIndex, index).trim());
+      startIndex = index + 1;
+    }
+  }
+  argumentsList.push(argumentText.slice(startIndex).trim());
+  return argumentsList;
+};
+
+const isHtmlTainted = (
+  expression: string,
+  fileContent: string,
+  sinkIndex: number,
+  visitedIdentifiers: Set<string>,
+): boolean => {
+  const trimmedExpression = expression.trim();
+  if (STRING_LITERAL_VALUE_PATTERN.test(`${trimmedExpression};`)) return false;
+  if (MODULE_CONSTANT_VALUE_PATTERN.test(`${trimmedExpression};`)) return false;
+  if (SANITIZER_PATTERN.test(trimmedExpression)) return false;
+  if (ENV_CONFIG_VALUE_PATTERN.test(trimmedExpression)) return false;
+  if (I18N_VALUE_PATTERN.test(trimmedExpression)) return false;
+  if (ESCAPING_SERIALIZER_CALL_PATTERN.test(trimmedExpression)) return false;
+  if (HTML_TAINT_PATTERN.test(trimmedExpression)) return true;
+  const identifier = trimmedExpression.match(/^([\w$]+)\s*(?:[;,})\n]|$)/)?.[1];
+  if (identifier === undefined || visitedIdentifiers.has(identifier)) return false;
+  visitedIdentifiers.add(identifier);
+
+  const initializerPattern = new RegExp(
+    `(?:const|let|var)\\s+${escapeRegExp(identifier)}\\s*(?::[^=\\n]*)?=\\s*([^;\\n]+)`,
+  );
+  const initializer = initializerPattern.exec(fileContent)?.[1];
+  if (
+    initializer !== undefined &&
+    isHtmlTainted(initializer, fileContent, sinkIndex, visitedIdentifiers)
+  ) {
+    return true;
+  }
+
+  const parameterSource = findContainingFunctionParameterSource(identifier, sinkIndex, fileContent);
+  if (parameterSource === null || parameterSource.functionName.length === 0) return false;
+  const callPattern = new RegExp(
+    `\\b${escapeRegExp(parameterSource.functionName)}\\s*\\(([^)]*)\\)`,
+    "g",
+  );
+  for (const callMatch of fileContent.matchAll(callPattern)) {
+    const argument = splitTopLevelArguments(callMatch[1] ?? "")[parameterSource.parameterIndex];
+    if (
+      argument !== undefined &&
+      isHtmlTainted(argument, fileContent, sinkIndex, new Set(visitedIdentifiers))
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 export const dangerousHtmlSink = defineRule({
   id: "dangerous-html-sink",
   title: "HTML injection sink with dynamic content",
@@ -409,7 +541,11 @@ export const dangerousHtmlSink = defineRule({
       if (SANITIZER_PATTERN.test(judgedExpression)) continue;
       if (ENV_CONFIG_VALUE_PATTERN.test(judgedExpression)) continue;
       if (I18N_VALUE_PATTERN.test(judgedExpression)) continue;
-      if (!HTML_TAINT_PATTERN.test(judgedExpression)) continue;
+      const sinkIndex =
+        lines.slice(0, lineIndex).join("\n").length +
+        (lineIndex > 0 ? 1 : 0) +
+        line.search(DANGEROUS_HTML_PATTERN);
+      if (!isHtmlTainted(judgedExpression, file.content, sinkIndex, new Set())) continue;
       if (ESCAPING_SERIALIZER_CALL_PATTERN.test(valueExpression)) continue;
       // Highlighter output: a `highlighted*` value is escaped, token-wrapped
       // markup by naming convention (often passed as a prop or routed through

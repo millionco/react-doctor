@@ -99,6 +99,75 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("flags prop HTML routed through a const alias", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `export const Preview = ({ html }: { html: string }) => {
+  const payload = html;
+  return <div dangerouslySetInnerHTML={{ __html: payload }} />;
+};
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags prop HTML routed through a visible helper parameter", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `const inject = (element: HTMLElement, payload: string) => {
+  element.innerHTML = payload;
+};
+export const Preview = ({ html }: { html: string }) => {
+  const element = document.querySelector("#preview");
+  if (element) inject(element, html);
+};
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags prop HTML routed through a function-declaration helper", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `function inject(element: HTMLElement, payload: string) {
+  element.innerHTML = payload;
+}
+export const Preview = ({ html }: { html: string }) => {
+  const element = document.querySelector("#preview");
+  if (element) inject(element, html);
+};
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent when a visible helper receives only static or sanitized HTML", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `const inject = (element: HTMLElement, payload: string) => {
+  element.innerHTML = payload;
+};
+inject(staticElement, "<strong data-html='static'>Safe</strong>");
+inject(cleanElement, DOMPurify.sanitize(html));
+`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on declaration files with sink-shaped member names", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "lib/types/vimeo-preview-image.d.ts",
+      content: `export interface VimeoPreviewImage {
+  innerHTML: string;
+  html: string;
+}
+declare const preview: VimeoPreviewImage;
+preview.innerHTML = preview.html;
+`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
   it("flags innerHTML assigned from fetched data", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/widgets/banner.ts",

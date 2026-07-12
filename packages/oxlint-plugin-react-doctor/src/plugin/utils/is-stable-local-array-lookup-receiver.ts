@@ -6,6 +6,7 @@ import type {
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
+import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import {
   stripParenExpression,
@@ -15,16 +16,46 @@ import { walkAst } from "./walk-ast.js";
 
 const stabilityByOriginBinding = new WeakMap<
   EsTreeNode,
-  Map<string, Map<ReadonlySet<string>, boolean>>
+  WeakMap<EsTreeNode, Map<string, Map<ReadonlySet<string>, boolean>>>
 >();
 const directEvalScopesByAnalysis = new WeakMap<ScopeAnalysis, ScopeDescriptor[]>();
 const arrayPrototypeMutationByAnalysis = new WeakMap<ScopeAnalysis, Map<string, boolean>>();
 const DEFAULT_ALLOWED_ARRAY_METHOD_NAMES: ReadonlySet<string> = new Set(["includes"]);
+const MUTATING_ARRAY_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "copyWithin",
+  "fill",
+  "pop",
+  "push",
+  "reverse",
+  "set",
+  "shift",
+  "sort",
+  "splice",
+  "unshift",
+]);
 
 const isDescendantOf = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
     if (current === ancestor) return true;
+    current = current.parent;
+  }
+  return false;
+};
+
+const hasNestedFunctionBoundary = (node: EsTreeNode, containingLoop: EsTreeNode): boolean => {
+  let loopFunction: EsTreeNode | null = null;
+  let loopAncestor: EsTreeNode | null | undefined = containingLoop.parent;
+  while (loopAncestor) {
+    if (isFunctionLike(loopAncestor)) {
+      loopFunction = loopAncestor;
+      break;
+    }
+    loopAncestor = loopAncestor.parent;
+  }
+  let current: EsTreeNode | null | undefined = node.parent;
+  while (current) {
+    if (isFunctionLike(current)) return current !== loopFunction;
     current = current.parent;
   }
   return false;
@@ -428,6 +459,7 @@ const hasOnlySafeReferences = (
   initialSymbols: Set<SymbolDescriptor>,
   allowedMethodNames: ReadonlySet<string>,
   requiredPrototypeMethodName: string,
+  containingLoop: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
   if (hasReachableDirectEval(originSymbol, scopes)) return false;
@@ -448,6 +480,22 @@ const hasOnlySafeReferences = (
         symbols.add(aliasSymbol);
         pendingSymbols.push(aliasSymbol);
       }
+      const expressionRoot = getTransparentExpressionRoot(node);
+      const member = expressionRoot.parent;
+      if (
+        node.range[1] <= containingLoop.range[0] &&
+        !hasNestedFunctionBoundary(node, containingLoop) &&
+        member &&
+        isNodeOfType(member, "MemberExpression") &&
+        member.object === expressionRoot &&
+        (isWriteTarget(member) ||
+          (member.parent &&
+            isNodeOfType(member.parent, "CallExpression") &&
+            member.parent.callee === member &&
+            MUTATING_ARRAY_METHOD_NAMES.has(getStaticPropertyName(member) ?? "")))
+      ) {
+        continue;
+      }
       if (!isSafeBindingReference(node, allowedMethodNames, scopes)) return false;
     }
   }
@@ -466,6 +514,7 @@ export const isStableLocalArrayLookupReceiver = (
   if (!originSymbol) return false;
   const cachedStability = stabilityByOriginBinding
     .get(originSymbol.bindingIdentifier)
+    ?.get(containingLoop)
     ?.get(requiredPrototypeMethodName)
     ?.get(allowedMethodNames);
   if (cachedStability !== undefined) return cachedStability;
@@ -474,12 +523,18 @@ export const isStableLocalArrayLookupReceiver = (
     symbols,
     allowedMethodNames,
     requiredPrototypeMethodName,
+    containingLoop,
     scopes,
   );
-  let stabilityByMethod = stabilityByOriginBinding.get(originSymbol.bindingIdentifier);
+  let stabilityByLoop = stabilityByOriginBinding.get(originSymbol.bindingIdentifier);
+  if (!stabilityByLoop) {
+    stabilityByLoop = new WeakMap();
+    stabilityByOriginBinding.set(originSymbol.bindingIdentifier, stabilityByLoop);
+  }
+  let stabilityByMethod = stabilityByLoop.get(containingLoop);
   if (!stabilityByMethod) {
     stabilityByMethod = new Map();
-    stabilityByOriginBinding.set(originSymbol.bindingIdentifier, stabilityByMethod);
+    stabilityByLoop.set(containingLoop, stabilityByMethod);
   }
   let stabilityByAllowedMethods = stabilityByMethod.get(requiredPrototypeMethodName);
   if (!stabilityByAllowedMethods) {

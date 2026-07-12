@@ -9,8 +9,10 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
+import { isArrayExpressionStableWithin } from "../../utils/is-array-expression-stable-within.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenNativeArrayExpression } from "../../utils/is-proven-native-array-expression.js";
 import {
   hasUnmodifiedArrayPrototypeMethod,
   isStableLocalArrayLookupReceiver,
@@ -632,7 +634,9 @@ const isIterationCallbackCall = (
       scopes,
       STABLE_ITERATION_READ_METHOD_NAMES,
       methodName,
-    )
+    ) ||
+    (isProvenNativeArrayExpression(receiver) &&
+      isArrayExpressionStableWithin(receiver, node, scopes))
   );
 };
 
@@ -887,7 +891,11 @@ export const jsSetMapLookups = defineRule({
       if (!nearestLoop) return;
       if (
         !isNodeOfType(receiver, "ArrayExpression") &&
-        !isStableLocalArrayLookupReceiver(receiver, nearestLoop, context.scopes)
+        !isStableLocalArrayLookupReceiver(receiver, nearestLoop, context.scopes) &&
+        !(
+          isProvenNativeArrayExpression(receiver) &&
+          isArrayExpressionStableWithin(receiver, nearestLoop, context.scopes)
+        )
       ) {
         return;
       }

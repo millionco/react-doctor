@@ -5,13 +5,13 @@ import { jsSetMapLookups } from "./js-set-map-lookups.js";
 const expectFail = (code: string): void => {
   const result = runRule(jsSetMapLookups, code);
   expect(result.parseErrors).toEqual([]);
-  expect(result.diagnostics.length).toBeGreaterThan(0);
+  expect(result.diagnostics.length, code).toBeGreaterThan(0);
 };
 
 const expectPass = (code: string): void => {
   const result = runRule(jsSetMapLookups, code);
   expect(result.parseErrors).toEqual([]);
-  expect(result.diagnostics).toHaveLength(0);
+  expect(result.diagnostics, code).toHaveLength(0);
 };
 
 describe("js-performance/js-set-map-lookups — regressions", () => {
@@ -159,9 +159,14 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `function f(candidates: number[], allowedValues: readonly number[]){ for(const candidate of candidates){ (allowedValues as readonly number[]).includes(candidate); } }`,
     `function f(candidates: number[], allowedValues: readonly number[]){ for(const candidate of candidates){ allowedValues!.includes(candidate); } }`,
     `function f(candidates: number[], allowedValues: Uint8Array){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
-    `function f(candidates: number[]){ const allowedValues = Array(20); for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
-  ])("does not flag a caller-owned or non-literal native receiver", (code) => {
-    expectPass(code);
+  ])("flags a proven native caller-owned receiver", (code) => {
+    expectFail(code);
+  });
+
+  it("does not flag an unproven array-constructor receiver", () => {
+    expectPass(
+      `function f(candidates: number[]){ const allowedValues = Array(20); for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
+    );
   });
 
   it("flags NaN and sparse-hole lookups because Set preserves includes semantics", () => {
@@ -208,6 +213,26 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
   });
 
   it.each([
+    `function intersection<T>(values: T[], allowedValues: T[]): T[] { return values.filter((value) => allowedValues.includes(value)); }`,
+    `function removeUniq<T>(values: T[], removedValues: T[]): T[] { return values.filter((value) => !removedValues.includes(value)); }`,
+    `function partition<T extends { id: string }>(nodes: T[], initialValues: string[]): T[] { return nodes.filter((node) => initialValues.includes(node.id)); }`,
+    `interface Filter { values: string[] } function selected(options: { value: string }[], filter: Filter): string[] { return options.filter((option) => filter.values.includes(option.value)).map((option) => option.value); }`,
+  ])("flags a stable typed receiver in an iteration callback", (code) => {
+    expectFail(code);
+  });
+
+  it.each([
+    `function f(candidates: number[]){ const values: number[] = []; values.push(1,2,3,4,5,6,7,8,9); for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ values.push(1); for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ values[0] = 1; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ [values[0]] = [1]; for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ Object.assign(values, { 0: 1 }); for(const candidate of candidates){ values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ const alias = values; alias.splice(0, 1); for(const candidate of candidates){ values.includes(candidate); } }`,
+  ])("flags a receiver mutated before the repeated loop", (code) => {
+    expectFail(code);
+  });
+
+  it.each([
     `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ values.push(candidate); values.includes(candidate); } }`,
     `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ values[0] = candidate; values.includes(candidate); } }`,
     `function f(values: number[], candidates: number[]){ const alias = values; for(const candidate of candidates){ alias.splice(0, 1); values.includes(candidate); } }`,
@@ -229,8 +254,32 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `function f(values: number[], candidates: number[]){ let alias = values; for(const candidate of candidates){ [alias] = [[]]; values.includes(candidate); } }`,
     `interface State { values: number[] } function f(state: State, candidates: number[]){ for(const candidate of candidates){ state.values.reverse(); state.values.includes(candidate); } }`,
     `interface State { values: number[] } function f(state: State, candidates: number[]){ const alias = state; for(const candidate of candidates){ alias.values.push(candidate); state.values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ const mutate = () => values.push(1); for(const candidate of candidates){ candidates.forEach(mutate); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ candidates.forEach(() => values.push(1)); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ (() => values.push(1))(); values.includes(candidate); } }`,
+    `interface Bag { map(callback: () => void): void } function f(bag: Bag, values: number[], candidates: number[]){ for(const candidate of candidates){ bag.map(() => values.push(1)); values.includes(candidate); } }`,
   ])("does not flag a receiver mutated during repeated lookups", (code) => {
     expectPass(code);
+  });
+
+  it.each([
+    `interface State { values: number[]; count: number } function f(state: State, candidates: number[]){ for(const candidate of candidates){ state.count += 1; state.values.includes(candidate); } }`,
+    `interface State { values: number[]; otherValues: number[] } function f(state: State, candidates: number[]){ for(const candidate of candidates){ state.otherValues.push(candidate); state.values.includes(candidate); } }`,
+  ])("flags after an unrelated member mutation", (code) => {
+    expectFail(code);
+  });
+
+  it("does not treat a callback value as synchronously invoked by includes", () => {
+    expectFail(
+      `function f(values: Array<unknown>, candidates: number[]){ const mutate = () => values.push(1); for(const candidate of candidates){ values.includes(mutate); values.includes(candidate); } }`,
+    );
+  });
+
+  it.each([
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ setTimeout(() => values.push(1)); values.includes(candidate); } }`,
+    `function f(values: number[], candidates: number[]){ for(const candidate of candidates){ queueMicrotask(() => values.push(1)); values.includes(candidate); } }`,
+  ])("flags when mutation is deferred", (code) => {
+    expectFail(code);
   });
 
   it.each([
@@ -264,8 +313,6 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; const holder = { values }; for(const candidate of candidates){ values.includes(candidate); use(holder); } }`,
     `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; values.__proto__.includes = () => false; for(const candidate of candidates){ values.includes(candidate); } }`,
     `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; values.constructor.prototype.includes = () => false; for(const candidate of candidates){ values.includes(candidate); } }`,
-    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; [values[0]] = [1]; for(const candidate of candidates){ values.includes(candidate); } }`,
-    `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; ({ value: values[0] } = { value: 1 }); for(const candidate of candidates){ values.includes(candidate); } }`,
     `function f(candidates: number[]){ const values = [1,2,3,4,5,6,7,8,9]; for(const candidate of candidates){ values.includes(candidate); } return values; }`,
     `export const values = [1,2,3,4,5,6,7,8,9]; export function f(candidates: number[]){ for(const candidate of candidates){ values.includes(candidate); } }`,
     `const values = [1,2,3,4,5,6,7,8,9]; export const alias = values; export function f(candidates: number[]){ for(const candidate of candidates){ values.includes(candidate); } }`,
@@ -361,8 +408,8 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("does not infer stability from an unshadowed built-in Array type", () => {
-    expectPass(
+  it("infers native semantics from an unshadowed built-in Array type", () => {
+    expectFail(
       `function f(values: Array<number>, candidates: number[]){ for(const candidate of candidates){ values.includes(candidate); } }`,
     );
   });
@@ -371,8 +418,9 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `function f(candidates: readonly number[], allowedValues: readonly number[]){ for(const candidate of candidates){ allowedValues.includes(-0); } }`,
     `function f(candidates: readonly object[], allowedValues: readonly object[]){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
     `function f(candidates: readonly (string | boolean | bigint | undefined)[], allowedValues: readonly (string | boolean | bigint | undefined)[]){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
-  ])("does not infer local ownership from native includes semantics", (code) => {
-    expectPass(code);
+    `type Values<Value> = readonly Value[]; function f(candidates: number[], allowedValues: Values<number>){ for(const candidate of candidates){ allowedValues.includes(candidate); } }`,
+  ])("flags stable typed native includes receivers", (code) => {
+    expectFail(code);
   });
 
   it("does not flag `.indexOf()` assigned as an index position in a loop", () => {
@@ -405,8 +453,8 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("does not infer native callback dispatch from a structural array type", () => {
-    expectPass(
+  it("infers native callback dispatch from a native array type", () => {
+    expectFail(
       `function f(tokens: string[]){ const capturedTokenIndices = [1,2,3,4,5,6,7,8,9]; return tokens.filter((token, index) => !capturedTokenIndices.includes(index)); }`,
     );
   });
@@ -505,18 +553,18 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `function f(rows, { weekendDays = [0, 6] }: { weekendDays?: number[] }) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
     `function f(rows, { weekendDays = [0, 6] }: { weekendDays?: readonly number[] }) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
     `function f(rows, weekendDays: number[] = [0, 6]) { for (const row of rows) { if (weekendDays.includes(row.day)) row.weekend = true; } }`,
-  ])("does not flag a caller-controlled array with a small fallback", (code) => {
-    expectPass(code);
+  ])("flags a caller-controlled array with a small fallback", (code) => {
+    expectFail(code);
   });
 
-  it("does not flag a caller-controlled alias with a small fallback", () => {
-    expectPass(
+  it("flags a caller-controlled alias with a small fallback", () => {
+    expectFail(
       `function f(rows, { weekendDays = [0, 6] }: { weekendDays?: number[] }) { const days = weekendDays; for (const row of rows) { if (days.includes(row.day)) row.weekend = true; } }`,
     );
   });
 
-  it("does not flag a caller-controlled nullish fallback", () => {
-    expectPass(
+  it("flags a caller-controlled nullish fallback", () => {
+    expectFail(
       `function f(rows, options: { weekendDays?: number[] }) { const days = options.weekendDays ?? [0, 6]; for (const row of rows) { if (days.includes(row.day)) row.weekend = true; } }`,
     );
   });

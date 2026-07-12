@@ -16,6 +16,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const splitShadowLayers = (shadowValue: string): string[] => shadowValue.split(/,(?![^(]*\))/);
 
+const LEGACY_RGBA_ZERO_ALPHA_PATTERN =
+  /rgba\(\s*[^,]+\s*,\s*[^,]+\s*,\s*[^,]+\s*,\s*[+-]?(?:0+(?:\.0*)?|\.0+)\s*\)/i;
+
 const extractColorFromShadowLayer = (layer: string): ParsedRgb | null => {
   const rgbMatch = layer.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
   if (rgbMatch) {
@@ -51,6 +54,8 @@ const parseShadowLayerBlur = (layer: string): number => {
 
 const hasColoredGlowShadow = (shadowValue: string): boolean => {
   for (const layer of splitShadowLayers(shadowValue)) {
+    if (LEGACY_RGBA_ZERO_ALPHA_PATTERN.test(layer)) continue;
+
     const color = extractColorFromShadowLayer(layer);
     if (
       color &&

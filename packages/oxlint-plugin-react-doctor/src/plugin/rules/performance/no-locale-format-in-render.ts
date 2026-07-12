@@ -1,14 +1,16 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findEnclosingJsxOpeningElement } from "../../utils/find-enclosing-jsx-opening-element.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
+import { getRangeStart } from "../../utils/get-range-start.js";
 import { hasClientRenderEvidence } from "../../utils/has-client-render-evidence.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { hasSuppressHydrationWarningAttribute } from "../../utils/has-suppress-hydration-warning-attribute.js";
-import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
@@ -119,7 +121,7 @@ const isStaticUndefined = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => 
   );
 };
 
-const isPotentialMutationReference = (identifier: EsTreeNode, usageNode: EsTreeNode): boolean => {
+const isPotentialMutationReference = (identifier: EsTreeNode, readNode: EsTreeNode): boolean => {
   let expression: EsTreeNode = identifier;
   let parent = expression.parent;
   while (
@@ -147,7 +149,7 @@ const isPotentialMutationReference = (identifier: EsTreeNode, usageNode: EsTreeN
       parent = expression.parent;
     }
   }
-  if (!parent || isAstDescendant(identifier, usageNode)) return false;
+  if (!parent || isAstDescendant(identifier, readNode)) return false;
   if (isNodeOfType(parent, "AssignmentExpression") && parent.left === expression) return true;
   if (isNodeOfType(parent, "UpdateExpression") && parent.argument === expression) return true;
   if (
@@ -175,15 +177,96 @@ const isPotentialMutationReference = (identifier: EsTreeNode, usageNode: EsTreeN
   return false;
 };
 
-const wasMutatedBeforeUsage = (symbol: SymbolDescriptor, usageNode: EsTreeNode): boolean => {
+const getDirectCallForIdentifier = (identifier: EsTreeNode): EsTreeNode | null => {
+  let callee: EsTreeNode = identifier;
+  let parent = callee.parent;
+  while (
+    parent &&
+    TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type) &&
+    "expression" in parent &&
+    parent.expression === callee
+  ) {
+    callee = parent;
+    parent = callee.parent;
+  }
+  return isNodeOfType(parent, "CallExpression") && parent.callee === callee ? parent : null;
+};
+
+const isFunctionInvokedBeforeUsage = (
+  functionNode: EsTreeNode,
+  usageNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number>,
+): boolean => {
+  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  if (!bindingIdentifier) return false;
+  const symbol = scopes.symbolFor(bindingIdentifier);
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+  visitedSymbolIds.add(symbol.id);
+  const usageFunction = findEnclosingFunction(usageNode);
   const usageStart = getRangeStart(usageNode);
   if (usageStart === null) return true;
+  let wasInvokedBeforeUsage = false;
+  walkAst(scopes.rootScope.node, (child) => {
+    if (wasInvokedBeforeUsage || !isNodeOfType(child, "Identifier")) return;
+    if (scopes.symbolFor(child)?.declarationNode !== symbol.declarationNode) return;
+    const call = getDirectCallForIdentifier(child);
+    if (!call) return false;
+    const callFunction = findEnclosingFunction(call);
+    if (callFunction === usageFunction) {
+      const callStart = getRangeStart(call);
+      wasInvokedBeforeUsage = callStart === null || callStart < usageStart;
+      return;
+    }
+    if (!callFunction) {
+      wasInvokedBeforeUsage = usageFunction !== null;
+      return;
+    }
+    wasInvokedBeforeUsage = isFunctionInvokedBeforeUsage(
+      callFunction,
+      usageNode,
+      scopes,
+      new Set(visitedSymbolIds),
+    );
+  });
+  return wasInvokedBeforeUsage;
+};
+
+const wasMutatedBeforeUsage = (
+  symbol: SymbolDescriptor,
+  usageNode: EsTreeNode,
+  readNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const readStart = getRangeStart(readNode);
+  let readExpression = readNode;
+  let readParent = readExpression.parent;
+  while (
+    readParent &&
+    TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(readParent.type) &&
+    "expression" in readParent &&
+    readParent.expression === readExpression
+  ) {
+    readExpression = readParent;
+    readParent = readExpression.parent;
+  }
+  const isDirectUsageArgument =
+    (isNodeOfType(usageNode, "CallExpression") || isNodeOfType(usageNode, "NewExpression")) &&
+    usageNode.arguments?.some((argument) => argument === readExpression);
+  let usageBoundary = getRangeStart(usageNode);
+  if (isAstDescendant(readNode, usageNode)) usageBoundary = readStart;
+  if (isDirectUsageArgument) usageBoundary = usageNode.range?.[1] ?? null;
+  if (typeof usageBoundary !== "number") return true;
+  const usageFunction = findEnclosingFunction(usageNode);
   return symbol.references.some((reference) => {
     const referenceStart = getRangeStart(reference.identifier);
+    if (!isPotentialMutationReference(reference.identifier, readNode)) return false;
+    if (referenceStart === null) return true;
+    const mutationFunction = findEnclosingFunction(reference.identifier);
+    if (mutationFunction === usageFunction) return referenceStart < usageBoundary;
     return (
-      referenceStart !== null &&
-      referenceStart < usageStart &&
-      isPotentialMutationReference(reference.identifier, usageNode)
+      mutationFunction !== null &&
+      isFunctionInvokedBeforeUsage(mutationFunction, usageNode, scopes, new Set())
     );
   });
 };
@@ -205,7 +288,7 @@ const getObjectPropertyProof = (
       !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
       !isNodeOfType(symbol.declarationNode.id, "Identifier") ||
       visitedSymbolIds.has(symbol.id) ||
-      wasMutatedBeforeUsage(symbol, usageNode)
+      wasMutatedBeforeUsage(symbol, usageNode, unwrapped, scopes)
     ) {
       return UNKNOWN_PROPERTY_PROOF;
     }

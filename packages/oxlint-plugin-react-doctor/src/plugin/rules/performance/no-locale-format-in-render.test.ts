@@ -296,6 +296,135 @@ export const Timestamp = ({ value, locale }) => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("flags a mutation evaluated in an earlier formatter argument", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value }) => {
+  const options = { timeZone: "UTC" };
+  const formatter = new Intl.DateTimeFormat(
+    (options.timeZone = undefined, "en-US"),
+    options,
+  );
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a direct options alias mutated in a later formatter argument", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value }) => {
+  const options = { timeZone: "UTC" };
+  const formatter = new Intl.DateTimeFormat("en-US", options, options.timeZone = undefined);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a spread snapshot deterministic when its source is mutated afterward", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value }) => {
+  const options = { timeZone: "UTC" };
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    ...options,
+    marker: (options.timeZone = undefined),
+  });
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a mutation in a later-declared helper invoked before construction", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  clearTimeZone();
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+
+  function clearTimeZone() {
+    options.timeZone = undefined;
+  }
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a deferred callback mutation as render-time mutation", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  useEffect(() => {
+    options.timeZone = undefined;
+  }, []);
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat a named deferred helper as render-time mutation", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  useEffect(clearTimeZone, []);
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+
+  function clearTimeZone() {
+    options.timeZone = undefined;
+  }
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat a helper invoked after construction as an earlier mutation", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  clearTimeZone();
+  return <time>{formatter.format(new Date(value))}</time>;
+
+  function clearTimeZone() {
+    options.timeZone = undefined;
+  }
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a mutation reached through a synchronous helper chain", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC" };
+  prepareOptions();
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+
+  function prepareOptions() {
+    clearTimeZone();
+  }
+
+  function clearTimeZone() {
+    options.timeZone = undefined;
+  }
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a trailing spread whose timeZone is undefined", () => {
     const result = run(
       `"use client";

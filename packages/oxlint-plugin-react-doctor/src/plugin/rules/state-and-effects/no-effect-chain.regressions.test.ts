@@ -381,6 +381,35 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent for a block-bodied opaque context setter", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget({ disabled, setAutoPlaying }) {
+        const [playing, setPlaying] = useState(false);
+        useEffect(() => { if (disabled) setPlaying(false); }, [disabled]);
+        useEffect(() => { setAutoPlaying(playing); }, [playing, setAutoPlaying]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a block-bodied setter proven to come from local state", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget({ disabled }) {
+        const [playing, setPlaying] = useState(false);
+        const [autoPlaying, setAutoPlaying] = useState(false);
+        useEffect(() => { if (disabled) setPlaying(false); }, [disabled]);
+        useEffect(() => { setAutoPlaying(playing); }, [playing]);
+        return autoPlaying;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a state chain whose downstream effect calls a concise helper", () => {
     const result = runRule(
       noEffectChain,

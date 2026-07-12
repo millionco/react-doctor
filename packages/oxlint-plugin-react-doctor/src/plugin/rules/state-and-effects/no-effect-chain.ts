@@ -238,7 +238,10 @@ const callsStorageHookSetter = (
   return didFindStorageSetterCall;
 };
 
-const isExternalSyncNode = (node: EsTreeNode): boolean => {
+const isExternalSyncNode = (
+  node: EsTreeNode,
+  setterToStateName: ReadonlyMap<string, string>,
+): boolean => {
   if (isNodeOfType(node, "NewExpression")) {
     return (
       isNodeOfType(node.callee, "Identifier") &&
@@ -258,6 +261,13 @@ const isExternalSyncNode = (node: EsTreeNode): boolean => {
   if (
     isNodeOfType(node.callee, "Identifier") &&
     EXTERNAL_SYNC_DIRECT_CALLEE_NAMES.has(node.callee.name)
+  ) {
+    return true;
+  }
+  if (
+    isNodeOfType(node.callee, "Identifier") &&
+    isSetterIdentifier(node.callee.name) &&
+    !setterToStateName.has(node.callee.name)
   ) {
     return true;
   }
@@ -302,7 +312,7 @@ const isExternalSyncEffect = (
 
   let didFindExternalCall = false;
   visitSynchronousFunctionBodies(analysisFunctions, (child) => {
-    if (isExternalSyncNode(child)) didFindExternalCall = true;
+    if (isExternalSyncNode(child, setterToStateName)) didFindExternalCall = true;
   });
 
   return didFindExternalCall;

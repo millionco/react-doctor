@@ -42,6 +42,14 @@ describe("resolveJsxElementType", () => {
     ).toBe("ButtonTag");
   });
 
+  it("keeps lowercase JSX identifiers intrinsic", () => {
+    expect(
+      resolveFirstOpeningElementName(
+        'const button = "a" as const; const rendered = <button href="/account" />;',
+      ),
+    ).toBe("button");
+  });
+
   it("keeps imports, components, and member expressions opaque", () => {
     expect(
       resolveFirstOpeningElementName(

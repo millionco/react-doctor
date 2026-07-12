@@ -2,6 +2,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findVariableInitializer } from "./find-variable-initializer.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isUppercaseName } from "./is-uppercase-name.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const resolveConstantStringBinding = (name: EsTreeNodeOfType<"JSXIdentifier">): string | null => {
@@ -38,6 +39,7 @@ export const resolveJsxElementType = (
 ): string => {
   const name = openingElement.name;
   if (isNodeOfType(name, "JSXIdentifier")) {
+    if (!isUppercaseName(name.name)) return name.name;
     return resolveConstantStringBinding(name) ?? name.name;
   }
   return flattenJsxName(name);

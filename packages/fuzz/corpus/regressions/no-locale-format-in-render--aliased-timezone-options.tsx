@@ -3,8 +3,8 @@
 // source: react-bench Webstudio oracle patch
 "use client";
 
-export const Timestamp = ({ value, locale, resolvedTimeZone }) => {
-  const options = { dateStyle: "medium", timeZone: resolvedTimeZone };
-  const formatter = new Intl.DateTimeFormat(locale, options);
-  return <time>{formatter.format(new Date(value))}</time>;
-};
+const locale = "en-US";
+const options = { dateStyle: "medium", timeZone: "UTC" };
+const formatter = new Intl.DateTimeFormat(locale, options);
+
+export const Timestamp = () => <time>{formatter.format(new Date(0))}</time>;

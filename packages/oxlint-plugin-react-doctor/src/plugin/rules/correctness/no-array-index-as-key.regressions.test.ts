@@ -706,6 +706,22 @@ const CodePanel = ({ tokens }) => (
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("still flags opaque destructured siblings not represented in the key", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => (
+  <ul>
+    {rows.map(({ label, content }, index) => (
+      <li key={\`\${label}-\${index}\`}>{content}</li>
+    ))}
+  </ul>
+);
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     // glific InteractiveOptions: the map index is forwarded one hop into a
     // render helper whose FIRST parameter is the index.
     it("flags an index forwarded into a render helper's position-0 parameter", () => {

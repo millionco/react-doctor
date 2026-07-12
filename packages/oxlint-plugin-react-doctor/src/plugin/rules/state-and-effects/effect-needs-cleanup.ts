@@ -908,28 +908,7 @@ const callbackReturnsCleanupForUsage = (
       matchingCleanupReturns.push(child);
     }
   });
-  const functionCfg = context.cfg.cfgFor(callback);
-  if (!functionCfg || matchingCleanupReturns.length === 0) return false;
-  const matchingBlocks = new Set(
-    matchingCleanupReturns.flatMap((returnNode) => {
-      const block = functionCfg.blockOf(returnNode);
-      return block ? [block] : [];
-    }),
-  );
-  const visitedBlocks = new Set([functionCfg.entry]);
-  const pendingBlocks = [functionCfg.entry];
-  while (pendingBlocks.length > 0) {
-    const currentBlock = pendingBlocks.pop();
-    if (!currentBlock) break;
-    if (matchingBlocks.has(currentBlock)) continue;
-    for (const edge of currentBlock.successors) {
-      if (edge.to === functionCfg.exit) return false;
-      if (visitedBlocks.has(edge.to)) continue;
-      visitedBlocks.add(edge.to);
-      pendingBlocks.push(edge.to);
-    }
-  }
-  return true;
+  return doMatchingNodesCoverEveryPathFromFunctionEntry(callback, matchingCleanupReturns, context);
 };
 
 const hasRerunReleaseBeforeUsage = (

@@ -69,21 +69,27 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("flags `.indexOf() !== -1` membership tests in a loop", () => {
-    expectFail(
-      `function f(users, roles){ const out=[]; for(const u of users){ if(roles.indexOf(u.role) !== -1) out.push(u); } return out; }`,
+  it("does not flag `.indexOf() !== -1` membership when values can include NaN", () => {
+    expectPass(
+      `function f(candidates, allowedValues){ const out=[]; for(const candidate of candidates){ if(allowedValues.indexOf(candidate) !== -1) out.push(candidate); } return out; } f([NaN, 2], [NaN, 2]);`,
     );
   });
 
-  it("flags `.indexOf() >= 0` membership tests in a loop", () => {
-    expectFail(
+  it("does not flag `.indexOf() >= 0` membership tests in a loop", () => {
+    expectPass(
       `function f(users, roles){ const out=[]; for(const u of users){ if(roles.indexOf(u.role) >= 0) out.push(u); } return out; }`,
     );
   });
 
-  it("flags `~.indexOf()` membership tests in a loop", () => {
-    expectFail(
+  it("does not flag `~.indexOf()` membership tests in a loop", () => {
+    expectPass(
       `function f(users, roles){ const out=[]; for(const u of users){ if(~roles.indexOf(u.role)) out.push(u); } return out; }`,
+    );
+  });
+
+  it("does not flag `.includes()` with a fromIndex argument", () => {
+    expectPass(
+      `function f(users, roles){ const out=[]; for(const u of users){ if(roles.includes(u.role, 1)) out.push(u); } return out; }`,
     );
   });
 

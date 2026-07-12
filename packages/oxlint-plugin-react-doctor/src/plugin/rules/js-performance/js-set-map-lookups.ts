@@ -522,56 +522,6 @@ const isSubstringSearchLiteral = (callArgument: EsTreeNode | null | undefined): 
   return callArgument.value.length > 0 && SUBSTRING_PUNCTUATION_PATTERN.test(callArgument.value);
 };
 
-const MEMBERSHIP_COMPARISON_OPERATORS: ReadonlySet<string> = new Set([
-  "===",
-  "!==",
-  "==",
-  "!=",
-  ">",
-  ">=",
-  "<",
-  "<=",
-]);
-
-const isNegativeOneLiteral = (expression: EsTreeNode | null | undefined): boolean =>
-  Boolean(expression) &&
-  isNodeOfType(expression, "UnaryExpression") &&
-  expression.operator === "-" &&
-  isNodeOfType(expression.argument, "Literal") &&
-  expression.argument.value === 1;
-
-const isZeroLiteral = (expression: EsTreeNode | null | undefined): boolean =>
-  Boolean(expression) && isNodeOfType(expression, "Literal") && expression.value === 0;
-
-const PARENT_WRAPPER_TYPES: ReadonlySet<string> = new Set([
-  "ParenthesizedExpression",
-  "ChainExpression",
-  "TSAsExpression",
-  "TSSatisfiesExpression",
-  "TSNonNullExpression",
-]);
-
-// A `Set` has no `indexOf`, so the rewrite only exists when the result
-// is consumed as a membership test (`!== -1`, `>= 0`, `~`-prefixed).
-// A result kept as a position (`columnHeights.indexOf(Math.min(...))`)
-// has no Set equivalent and must stay silent.
-const isIndexOfResultUsedAsMembershipTest = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
-  let parent: EsTreeNode | null | undefined = node.parent;
-  while (parent && PARENT_WRAPPER_TYPES.has(parent.type)) {
-    parent = parent.parent;
-  }
-  if (!parent) return false;
-  if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "~") return true;
-  if (!isNodeOfType(parent, "BinaryExpression")) return false;
-  if (!MEMBERSHIP_COMPARISON_OPERATORS.has(parent.operator)) return false;
-  const leftOperand = parent.left as EsTreeNode;
-  const rightOperand = parent.right as EsTreeNode;
-  const otherOperand = stripParenExpression(leftOperand) === node ? rightOperand : leftOperand;
-  if (isNegativeOneLiteral(otherOperand)) return true;
-  // `indexOf(x) >= 0` is membership; `indexOf(x) === 0` is a prefix check.
-  return isZeroLiteral(otherOperand) && (parent.operator === ">=" || parent.operator === "<");
-};
-
 // `.filter(option => value.includes(option.value))` iterates like a loop —
 // the callback runs once per element, so a linear `.includes` inside it is
 // the same O(n·m) scan as inside a `for` statement.
@@ -767,8 +717,7 @@ export const jsSetMapLookups = defineRule({
       )
         return;
       const methodName = node.callee.property.name;
-      if (methodName !== "includes" && methodName !== "indexOf") return;
-      if (methodName === "indexOf" && !isIndexOfResultUsedAsMembershipTest(node)) return;
+      if (methodName !== "includes" || node.arguments.length !== 1) return;
       const rawReceiver = node.callee.object;
       if (!rawReceiver) return;
       const receiver = stripParenExpression(rawReceiver);

@@ -37,12 +37,20 @@ const isHeapProfileNode = (value: unknown): value is HeapProfileNode =>
 const isHeapProfile = (value: unknown): value is HeapProfile =>
   isRecord(value) && isHeapProfileNode(value.head);
 
-const collectNodes = (rootNode: HeapProfileNode): HeapProfileNode[] => {
+// JSON.parse output is always a strict tree, but guard against cyclic or
+// shared nodes anyway so a synthetic graph is rejected like the CPU path
+// instead of looping forever.
+const collectNodes = (rootNode: HeapProfileNode, profilePath: string): HeapProfileNode[] => {
   const nodes: HeapProfileNode[] = [];
+  const visitedNodes = new Set<HeapProfileNode>();
   const pendingNodes = [rootNode];
   while (pendingNodes.length > 0) {
     const node = pendingNodes.pop();
     if (node === undefined) continue;
+    if (visitedNodes.has(node)) {
+      throw new Error(`Invalid heap profile with cyclic nodes: ${profilePath}`);
+    }
+    visitedNodes.add(node);
     nodes.push(node);
     pendingNodes.push(...node.children);
   }
@@ -62,7 +70,7 @@ const toFrameSummaries = (
 const analyzeProfile = (profilePath: string): AnalyzedHeapProfile => {
   const parsedProfile: unknown = JSON.parse(fs.readFileSync(profilePath, "utf8"));
   if (!isHeapProfile(parsedProfile)) throw new Error(`Invalid heap profile: ${profilePath}`);
-  const nodes = collectNodes(parsedProfile.head);
+  const nodes = collectNodes(parsedProfile.head, profilePath);
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
   if (nodesById.size !== nodes.length) {
     throw new Error(`Invalid heap profile with duplicate node IDs: ${profilePath}`);

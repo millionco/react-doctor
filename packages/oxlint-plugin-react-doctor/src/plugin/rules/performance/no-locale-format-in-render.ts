@@ -545,6 +545,9 @@ const getObjectPropertyProof = (
 ): ObjectPropertyProof => {
   if (!objectExpression) return ABSENT_PROPERTY_PROOF;
   const unwrapped = stripParenExpression(objectExpression);
+  if (isNodeOfType(unwrapped, "Literal") || isStaticUndefined(unwrapped, scopes)) {
+    return ABSENT_PROPERTY_PROOF;
+  }
   if (isNodeOfType(unwrapped, "Identifier")) {
     const symbol = scopes.symbolFor(unwrapped);
     const usageBoundary =

@@ -315,6 +315,31 @@ export const Timestamp = ({ value, locale, overrides }) => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not let nullish spreads override an explicit timeZone proof", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const missing = undefined;
+  const options = { timeZone: "UTC", ...null, ...missing };
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not let primitive spreads override an explicit timeZone proof", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value, locale }) => {
+  const options = { timeZone: "UTC", ...false, ...42, ..."text" };
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  return <time>{formatter.format(new Date(value))}</time>;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not treat read-only option property uses as mutation", () => {
     const result = run(
       `"use client";

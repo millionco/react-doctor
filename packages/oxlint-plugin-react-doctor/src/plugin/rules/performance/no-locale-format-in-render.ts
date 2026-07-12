@@ -195,6 +195,7 @@ const getDirectCallForExpression = (expression: EsTreeNode): EsTreeNode | null =
 const isFunctionInvokedBeforeUsage = (
   functionNode: EsTreeNode,
   usageNode: EsTreeNode,
+  usageBoundary: number,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
 ): boolean => {
@@ -204,11 +205,16 @@ const isFunctionInvokedBeforeUsage = (
     const usageFunction = findEnclosingFunction(usageNode);
     if (immediateCallFunction === usageFunction) {
       const immediateCallStart = getRangeStart(immediateCall);
-      const usageStart = getRangeStart(usageNode);
-      return immediateCallStart === null || usageStart === null || immediateCallStart < usageStart;
+      return immediateCallStart === null || immediateCallStart < usageBoundary;
     }
     if (!immediateCallFunction) return usageFunction !== null;
-    return isFunctionInvokedBeforeUsage(immediateCallFunction, usageNode, scopes, visitedSymbolIds);
+    return isFunctionInvokedBeforeUsage(
+      immediateCallFunction,
+      usageNode,
+      usageBoundary,
+      scopes,
+      visitedSymbolIds,
+    );
   }
   const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
   if (!bindingIdentifier) return false;
@@ -216,8 +222,6 @@ const isFunctionInvokedBeforeUsage = (
   if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
   visitedSymbolIds.add(symbol.id);
   const usageFunction = findEnclosingFunction(usageNode);
-  const usageStart = getRangeStart(usageNode);
-  if (usageStart === null) return true;
   let wasInvokedBeforeUsage = false;
   walkAst(scopes.rootScope.node, (child) => {
     if (wasInvokedBeforeUsage || !isNodeOfType(child, "Identifier")) return;
@@ -227,7 +231,7 @@ const isFunctionInvokedBeforeUsage = (
     const callFunction = findEnclosingFunction(call);
     if (callFunction === usageFunction) {
       const callStart = getRangeStart(call);
-      wasInvokedBeforeUsage = callStart === null || callStart < usageStart;
+      wasInvokedBeforeUsage = callStart === null || callStart < usageBoundary;
       return;
     }
     if (!callFunction) {
@@ -237,6 +241,7 @@ const isFunctionInvokedBeforeUsage = (
     wasInvokedBeforeUsage = isFunctionInvokedBeforeUsage(
       callFunction,
       usageNode,
+      usageBoundary,
       scopes,
       new Set(visitedSymbolIds),
     );
@@ -278,7 +283,13 @@ const wasMutatedBeforeUsage = (
     if (mutationFunction === usageFunction) return referenceStart < usageBoundary;
     if (!mutationFunction) return usageFunction !== null;
     if (usageFunction && isAstDescendant(usageFunction, mutationFunction)) return true;
-    return isFunctionInvokedBeforeUsage(mutationFunction, usageNode, scopes, new Set());
+    return isFunctionInvokedBeforeUsage(
+      mutationFunction,
+      usageNode,
+      usageBoundary,
+      scopes,
+      new Set(),
+    );
   });
 };
 

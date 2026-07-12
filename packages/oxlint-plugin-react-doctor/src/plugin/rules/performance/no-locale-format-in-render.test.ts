@@ -323,6 +323,22 @@ export const Timestamp = ({ value }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an options alias mutated by a helper in a formatter argument", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value }) => {
+  const options = { timeZone: "UTC" };
+  const formatter = new Intl.DateTimeFormat((clearTimeZone(), "en-US"), options);
+  return <time>{formatter.format(new Date(value))}</time>;
+
+  function clearTimeZone() {
+    options.timeZone = undefined;
+  }
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps a spread snapshot deterministic when its source is mutated afterward", () => {
     const result = run(
       `"use client";
@@ -336,6 +352,44 @@ export const Timestamp = ({ value }) => {
 };`,
     );
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a spread snapshot deterministic when a later property calls a mutating helper", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value }) => {
+  const options = { timeZone: "UTC" };
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    ...options,
+    marker: clearTimeZone(),
+  });
+  return <time>{formatter.format(new Date(value))}</time>;
+
+  function clearTimeZone() {
+    options.timeZone = undefined;
+  }
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a spread source mutated by an earlier property helper", () => {
+    const result = run(
+      `"use client";
+export const Timestamp = ({ value }) => {
+  const options = { timeZone: "UTC" };
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    marker: clearTimeZone(),
+    ...options,
+  });
+  return <time>{formatter.format(new Date(value))}</time>;
+
+  function clearTimeZone() {
+    options.timeZone = undefined;
+  }
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags a mutation in a later-declared helper invoked before construction", () => {

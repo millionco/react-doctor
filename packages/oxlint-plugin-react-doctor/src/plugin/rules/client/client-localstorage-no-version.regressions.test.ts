@@ -21,6 +21,107 @@ describe("client/client-localstorage-no-version — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("stays silent when every read validates the parsed payload and falls back safely", () => {
+    const result = runRule(
+      clientLocalstorageNoVersion,
+      `const STORAGE_KEY = "keybindings";
+      const DEFAULT_KEY_BINDINGS = { next: "j", previous: "k" };
+      const isValidKeybindings = (value) => {
+        if (typeof value !== "object" || value === null) return false;
+        const keybindings = value as Record<string, unknown>;
+        return typeof keybindings.next === "string" &&
+          typeof keybindings.previous === "string";
+      };
+      const getStoredKeybindings = () => {
+        try {
+          const rawValue = localStorage.getItem(STORAGE_KEY);
+          if (!rawValue) return DEFAULT_KEY_BINDINGS;
+          const parsedValue = JSON.parse(rawValue);
+          return isValidKeybindings(parsedValue) ? parsedValue : DEFAULT_KEY_BINDINGS;
+        } catch {
+          return DEFAULT_KEY_BINDINGS;
+        }
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(keybindings));`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags readers that parse without validating the payload", () => {
+    const result = runRule(
+      clientLocalstorageNoVersion,
+      `const STORAGE_KEY = "preferences";
+      const getStoredPreferences = () => {
+        try {
+          const rawValue = localStorage.getItem(STORAGE_KEY);
+          return rawValue ? JSON.parse(rawValue) : {};
+        } catch {
+          return {};
+        }
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags validation without a parse-error fallback", () => {
+    const result = runRule(
+      clientLocalstorageNoVersion,
+      `const STORAGE_KEY = "preferences";
+      const isValidPreferences = (value) => typeof value.name === "string";
+      const rawValue = localStorage.getItem(STORAGE_KEY);
+      const parsedValue = JSON.parse(rawValue);
+      const preferences = isValidPreferences(parsedValue) ? parsedValue : {};
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags when validation does not guard the returned payload", () => {
+    const result = runRule(
+      clientLocalstorageNoVersion,
+      `const STORAGE_KEY = "preferences";
+      const isValidPreferences = (value) => typeof value.name === "string";
+      const getStoredPreferences = () => {
+        try {
+          const rawValue = localStorage.getItem(STORAGE_KEY);
+          const parsedValue = JSON.parse(rawValue);
+          isValidPreferences(parsedValue) ? parsedValue : {};
+          return parsedValue;
+        } catch {
+          return {};
+        }
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags when another reader of the same key skips validation", () => {
+    const result = runRule(
+      clientLocalstorageNoVersion,
+      `const STORAGE_KEY = "preferences";
+      const isValidPreferences = (value) => typeof value.name === "string";
+      const getSafePreferences = () => {
+        try {
+          const rawValue = localStorage.getItem(STORAGE_KEY);
+          const parsedValue = JSON.parse(rawValue);
+          return isValidPreferences(parsedValue) ? parsedValue : {};
+        } catch {
+          return {};
+        }
+      };
+      const getUncheckedPreferences = () => JSON.parse(localStorage.getItem(STORAGE_KEY));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   // Mined miss (glific orgEvalAccessCache): the key was a same-file string
   // constant, not an inline literal, so the Literal-only gate skipped it.
   it("flags a key held in a same-file const string (glific shape)", () => {

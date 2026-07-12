@@ -11,17 +11,18 @@ import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
+import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
 
 // HACK: §7 of "You Might Not Need an Effect" — chains of computations:
@@ -91,12 +92,7 @@ const collectWrittenStateNamesInEffect = (
   setterToStateName: Map<string, string>,
 ): Set<string> => {
   const writtenStateNames = new Set<string>();
-  if (
-    !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
-    !isNodeOfType(effectCallback, "FunctionExpression")
-  ) {
-    return writtenStateNames;
-  }
+  if (!isFunctionLike(effectCallback)) return writtenStateNames;
   walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier")) return;
@@ -194,12 +190,7 @@ const callsStorageHookSetter = (
   storageSetterNames: ReadonlySet<string>,
 ): boolean => {
   if (storageSetterNames.size === 0) return false;
-  if (
-    !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
-    !isNodeOfType(effectCallback, "FunctionExpression")
-  ) {
-    return false;
-  }
+  if (!isFunctionLike(effectCallback)) return false;
   let didFindStorageSetterCall = false;
   walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
     if (
@@ -217,12 +208,7 @@ const isExternalSyncEffect = (
   effectCallback: EsTreeNode,
   setterToStateName: ReadonlyMap<string, string>,
 ): boolean => {
-  if (
-    !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
-    !isNodeOfType(effectCallback, "FunctionExpression")
-  ) {
-    return false;
-  }
+  if (!isFunctionLike(effectCallback)) return false;
   // A cleanup return is the strongest signal that the effect owns
   // an external resource — once we see one, we don't need to inspect
   // the body for an external-sync call shape.

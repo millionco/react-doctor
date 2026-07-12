@@ -135,6 +135,56 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a state chain through function declaration callbacks", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [first, setFirst] = useState(0);
+        const [second, setSecond] = useState(0);
+        function writeFirst() { setFirst(1); }
+        function writeSecond() { setSecond(first + 1); }
+        useEffect(writeFirst, []);
+        useEffect(writeSecond, [first]);
+        return second;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for a function declaration that synchronizes external storage", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [value, setValue] = useState('');
+        function loadValue() { setValue(compute()); }
+        function persistValue() { localStorage.setItem('value', value); }
+        useEffect(loadValue, []);
+        useEffect(persistValue, [value]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a function declaration that calls a storage-hook setter", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [storedValue, setStoredValue] = useLocalStorage('value', 0);
+        function loadSource() { setSource(compute()); }
+        function persistSource() { setStoredValue(source); }
+        useEffect(loadSource, []);
+        useEffect(persistSource, [source]);
+        return storedValue;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags a state chain when the upstream effect explicitly returns a local setter call", () => {
     const result = runRule(
       noEffectChain,

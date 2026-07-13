@@ -174,6 +174,113 @@ const Panel = ({ items = [], version }) => <MemoList items={items} version={vers
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    ["an OR branch", `previous.version === next.version || previous.items === next.items`],
+    ["an AND branch", `previous.version === next.version && previous.items === next.items`],
+    [
+      "a conditional branch",
+      `previous.version === next.version ? previous.items === next.items : true`,
+    ],
+    ["a negated branch", `!(previous.version !== next.version || previous.items !== next.items)`],
+  ])(
+    "flags when stabilizing the empty prop changes %s for some other-prop state",
+    (_name, comparator) => {
+      const result = runRule(
+        rerenderMemoWithDefaultValue,
+        `import { memo } from "react";
+const MemoList = memo(
+  ({ items, version }) => <div>{items.length + version}</div>,
+  (previous, next) => ${comparator},
+);
+const Panel = ({ items = [], version }) => <MemoList items={items} version={version} />;`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBe(1);
+    },
+  );
+
+  it("stays silent when alternate-prop branches preserve the comparator result", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(
+  ({ items, version }) => <div>{items.length + version}</div>,
+  (previous, next) =>
+    previous.version === next.version
+      ? previous.items.length === next.items.length
+      : previous.items.every(Boolean) === next.items.every(Boolean),
+);
+const Panel = ({ items = [], version }) => <MemoList items={items} version={version} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags when different alternate props make comparator behavior unknown", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(
+  ({ items, left, right }) => <div>{items.length + left + right}</div>,
+  (previous, next) =>
+    previous.left === next.right || previous.items.length === next.items.length,
+);
+const Panel = ({ items = [], left, right }) => (
+  <MemoList items={items} left={left} right={right} />
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it.each([
+    [
+      "reversed previous and next operands",
+      `next.version === previous.version || previous.items === next.items`,
+    ],
+    [
+      "two independent alternate props",
+      `(previous.version === next.version && previous.mode === next.mode) || previous.items === next.items`,
+    ],
+    [
+      "a Boolean equality wrapper",
+      `(previous.version === next.version) === (previous.items === next.items)`,
+    ],
+    [
+      "local comparator helpers",
+      `same(previous.version, next.version) || same(previous.items, next.items)`,
+    ],
+  ])("flags target identity hidden behind %s", (_name, comparator) => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const same = (left, right) => left === right;
+const MemoList = memo(
+  ({ items, mode, version }) => <div>{items.length + mode + version}</div>,
+  (previous, next) => ${comparator},
+);
+const Panel = ({ items = [], mode, version }) => (
+  <MemoList items={items} mode={mode} version={version} />
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("stays silent when a comparator compares the same target reference to itself", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(
+  ({ items }) => <div>{items.length}</div>,
+  (previous, next) => previous.items === previous.items,
+);
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags a comparator that compares two distinct non-target props", () => {
     const result = runRule(
       rerenderMemoWithDefaultValue,

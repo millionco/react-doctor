@@ -1,4 +1,5 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
+import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { collectFunctionReturnStatements } from "./collect-function-return-statements.js";
 import { functionContainsReactRenderOutput } from "./function-contains-react-render-output.js";
@@ -18,20 +19,25 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 
 const REACT_COMPONENT_HOC_NAMES: ReadonlySet<string> = new Set(["memo", "forwardRef"]);
 
-const functionHasComponentEvidence = (functionNode: EsTreeNode, scopes: ScopeAnalysis): boolean =>
-  functionContainsReactRenderOutput(functionNode, scopes) ||
-  functionReturnsPropsChildren(functionNode, scopes) ||
+const functionHasComponentEvidence = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  controlFlow: ControlFlowAnalysis,
+): boolean =>
+  functionContainsReactRenderOutput(functionNode, scopes, controlFlow) ||
+  functionReturnsPropsChildren(functionNode, scopes, controlFlow) ||
   (functionContainsProvenReactHookCall(functionNode, scopes) &&
     functionReturnsOnlyNull(functionNode));
 
 const isProvenReactComponentExpression = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
+  controlFlow: ControlFlowAnalysis,
   visitedSymbolIds = new Set<number>(),
 ): boolean => {
   const candidate = stripParenExpression(expression);
   if (isInlineFunctionExpression(candidate)) {
-    return functionHasComponentEvidence(candidate, scopes);
+    return functionHasComponentEvidence(candidate, scopes, controlFlow);
   }
   if (isNodeOfType(candidate, "ClassExpression")) {
     return isProvenReactClassComponent(candidate, scopes);
@@ -48,7 +54,7 @@ const isProvenReactComponentExpression = (
     }
     visitedSymbolIds.add(symbol.id);
     if (isNodeOfType(symbol.declarationNode, "FunctionDeclaration")) {
-      return functionHasComponentEvidence(symbol.declarationNode, scopes);
+      return functionHasComponentEvidence(symbol.declarationNode, scopes, controlFlow);
     }
     if (
       isNodeOfType(symbol.declarationNode, "ClassDeclaration") ||
@@ -58,7 +64,7 @@ const isProvenReactComponentExpression = (
     }
     return Boolean(
       symbol.initializer &&
-      isProvenReactComponentExpression(symbol.initializer, scopes, visitedSymbolIds),
+      isProvenReactComponentExpression(symbol.initializer, scopes, controlFlow, visitedSymbolIds),
     );
   }
   if (!isNodeOfType(candidate, "CallExpression")) return false;
@@ -68,7 +74,7 @@ const isProvenReactComponentExpression = (
     return Boolean(
       wrappedComponent &&
       !isNodeOfType(wrappedComponent, "SpreadElement") &&
-      isProvenReactComponentExpression(wrappedComponent, scopes, visitedSymbolIds),
+      isProvenReactComponentExpression(wrappedComponent, scopes, controlFlow, visitedSymbolIds),
     );
   }
   if (!isReactApiCall(candidate, "useMemo", scopes, { resolveNamedAliases: true })) return false;
@@ -77,20 +83,26 @@ const isProvenReactComponentExpression = (
   const unwrappedFactory = stripParenExpression(factory);
   if (!isInlineFunctionExpression(unwrappedFactory)) return false;
   if (!isNodeOfType(unwrappedFactory.body, "BlockStatement")) {
-    return isProvenReactComponentExpression(unwrappedFactory.body, scopes, visitedSymbolIds);
+    return isProvenReactComponentExpression(
+      unwrappedFactory.body,
+      scopes,
+      controlFlow,
+      visitedSymbolIds,
+    );
   }
   const returnStatements = collectFunctionReturnStatements(unwrappedFactory);
   const returnedExpression = returnStatements[0]?.argument;
   return Boolean(
     returnStatements.length === 1 &&
     returnedExpression &&
-    isProvenReactComponentExpression(returnedExpression, scopes, visitedSymbolIds),
+    isProvenReactComponentExpression(returnedExpression, scopes, controlFlow, visitedSymbolIds),
   );
 };
 
 export const isProvenReactComponentSymbol = (
   symbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
+  controlFlow: ControlFlowAnalysis,
   componentReference: EsTreeNode,
 ): boolean => {
   const candidateSymbols =
@@ -103,7 +115,9 @@ export const isProvenReactComponentSymbol = (
   for (const candidateSymbol of candidateSymbols) {
     if (hasSymbolWriteBefore(candidateSymbol, componentReference, scopes)) continue;
     if (isComponentDeclaration(candidateSymbol.declarationNode)) {
-      if (functionHasComponentEvidence(candidateSymbol.declarationNode, scopes)) return true;
+      if (functionHasComponentEvidence(candidateSymbol.declarationNode, scopes, controlFlow)) {
+        return true;
+      }
       continue;
     }
     const initializer = candidateSymbol.initializer
@@ -115,7 +129,7 @@ export const isProvenReactComponentSymbol = (
       isUppercaseName(candidateSymbol.declarationNode.id.name) &&
       initializer
     ) {
-      if (isProvenReactComponentExpression(initializer, scopes)) return true;
+      if (isProvenReactComponentExpression(initializer, scopes, controlFlow)) return true;
       continue;
     }
     if (

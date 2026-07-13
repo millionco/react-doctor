@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { analyzeControlFlow } from "../semantic/control-flow-graph.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import { attachParentReferences } from "./attach-parent-references.js";
@@ -56,7 +57,7 @@ describe("functionContainsReactRenderOutput", () => {
   });
 
   it("detects JSX assigned to a returned let binding", () => {
-    const { functionNode, scopes } = parseFunctionFixture(
+    const { functionNode, scopes, program } = parseFunctionFixture(
       `function Card({ show }: { show: boolean }) {
         let content = null;
         if (show) content = <div className="card" />;
@@ -64,7 +65,9 @@ describe("functionContainsReactRenderOutput", () => {
       }`,
       "Card",
     );
-    expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(true);
+    expect(
+      functionContainsReactRenderOutput(functionNode, scopes, analyzeControlFlow(program)),
+    ).toBe(true);
   });
 
   it("ignores JSX assigned to a local that is never returned", () => {

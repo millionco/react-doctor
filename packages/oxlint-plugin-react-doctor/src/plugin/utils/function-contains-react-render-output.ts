@@ -9,6 +9,7 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall, type ReactApiCallOptions } from "./is-react-api-call.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
+import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 
 const NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES: ReadonlySet<string> = new Set([
@@ -159,6 +160,7 @@ const containsRenderOutput = (rootNode: EsTreeNode, scopes: ScopeAnalysis): bool
 
 interface RenderOutputCacheEntry {
   scopes: ScopeAnalysis;
+  controlFlow: ControlFlowAnalysis | undefined;
   hasRenderOutput: boolean;
 }
 
@@ -174,12 +176,18 @@ const renderOutputCache = new WeakMap<EsTreeNode, RenderOutputCacheEntry>();
 export const functionContainsReactRenderOutput = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
+  controlFlow?: ControlFlowAnalysis,
 ): boolean => {
   const cachedEntry = renderOutputCache.get(functionNode);
-  if (cachedEntry && cachedEntry.scopes === scopes) return cachedEntry.hasRenderOutput;
-  const hasRenderOutput = functionReturnsMatchingExpression(functionNode, scopes, (expression) =>
-    containsRenderOutput(expression, scopes),
+  if (cachedEntry && cachedEntry.scopes === scopes && cachedEntry.controlFlow === controlFlow) {
+    return cachedEntry.hasRenderOutput;
+  }
+  const hasRenderOutput = functionReturnsMatchingExpression(
+    functionNode,
+    scopes,
+    (expression) => containsRenderOutput(expression, scopes),
+    controlFlow,
   );
-  renderOutputCache.set(functionNode, { scopes, hasRenderOutput });
+  renderOutputCache.set(functionNode, { scopes, controlFlow, hasRenderOutput });
   return hasRenderOutput;
 };

@@ -34,7 +34,7 @@ export const noGiantComponent = defineRule({
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
         const lineCount = getOversizedComponentLineCount(node);
         if (lineCount === null) return;
-        if (!functionContainsReactRenderOutput(node, context.scopes)) return;
+        if (!functionContainsReactRenderOutput(node, context.scopes, context.cfg)) return;
         reportOversizedComponent(node.id, node.id.name);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
@@ -43,7 +43,7 @@ export const noGiantComponent = defineRule({
         if (!functionNode) return;
         const lineCount = getOversizedComponentLineCount(functionNode);
         if (lineCount === null) return;
-        if (!functionContainsReactRenderOutput(functionNode, context.scopes)) return;
+        if (!functionContainsReactRenderOutput(functionNode, context.scopes, context.cfg)) return;
         reportOversizedComponent(node.id, node.id.name);
       },
     };

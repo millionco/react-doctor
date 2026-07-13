@@ -64,7 +64,7 @@ export const noCreateRefInFunctionComponent = defineRule({
       // count as a component (filters PascalCase factories).
       const isComponentOrHook =
         isReactHookName(displayName) ||
-        functionContainsReactRenderOutput(enclosingFunction, context.scopes);
+        functionContainsReactRenderOutput(enclosingFunction, context.scopes, context.cfg);
       if (!isComponentOrHook) return;
 
       context.report({ node, message: MESSAGE });

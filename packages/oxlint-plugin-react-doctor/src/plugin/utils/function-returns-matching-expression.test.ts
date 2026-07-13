@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
+import { analyzeControlFlow } from "../semantic/control-flow-graph.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 import { attachParentReferences } from "../../test-utils/attach-parent-references.js";
+import { attachSourceLocations } from "../../test-utils/attach-source-locations.js";
 import { parseFixture } from "../../test-utils/parse-fixture.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
@@ -11,6 +13,7 @@ const mainFunctionReturnsJsx = (code: string): boolean => {
   const parsed = parseFixture(code);
   expect(parsed.errors).toEqual([]);
   attachParentReferences(parsed.program);
+  attachSourceLocations(parsed.program, code);
   let mainFunction: EsTreeNode | null = null;
   walkAst(parsed.program, (node) => {
     if (isNodeOfType(node, "FunctionDeclaration") && node.id?.name === "Main" && !mainFunction) {
@@ -23,6 +26,7 @@ const mainFunctionReturnsJsx = (code: string): boolean => {
     analyzeScopes(parsed.program),
     (expression) =>
       isNodeOfType(expression, "JSXElement") || isNodeOfType(expression, "JSXFragment"),
+    analyzeControlFlow(parsed.program),
   );
 };
 
@@ -63,6 +67,39 @@ describe("functionReturnsMatchingExpression", () => {
     expect(
       mainFunctionReturnsJsx(
         `function Main(condition) { let output = null; if (condition) output = "text"; return output; }`,
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores unreachable and overwritten JSX writes to returned bindings", () => {
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main() { let output = "label"; function unused() { output = <main />; } return output; }`,
+      ),
+    ).toBe(false);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main() { let output = "label"; return output; output = <main />; }`,
+      ),
+    ).toBe(false);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main() { let output = <main />; output = "label"; return output; }`,
+      ),
+    ).toBe(false);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main(condition) { let output; if (condition) { output = <main />; return "label"; } return output; }`,
+      ),
+    ).toBe(false);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main() { let output = <main />; for (output = "label"; false; ) {} return output; }`,
+      ),
+    ).toBe(false);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main() { return "label"; let output = <main />; return output; }`,
       ),
     ).toBe(false);
   });

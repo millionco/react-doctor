@@ -85,7 +85,12 @@ export const noPropTypes = defineRule({
       const component = getComponentFromPropTypesAssignment(node.left);
       if (!component) return;
       const symbol = context.scopes.symbolFor(component);
-      if (!symbol || !isProvenReactComponentSymbol(symbol, context.scopes, component)) return;
+      if (
+        !symbol ||
+        !isProvenReactComponentSymbol(symbol, context.scopes, context.cfg, component)
+      ) {
+        return;
+      }
       context.report({ node: node.left, message: buildMessage(component.name) });
     },
     PropertyDefinition(node: EsTreeNodeOfType<"PropertyDefinition">) {

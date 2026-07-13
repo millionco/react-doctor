@@ -1,4 +1,5 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
+import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
@@ -12,6 +13,7 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 export const functionReturnsPropsChildren = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
+  controlFlow?: ControlFlowAnalysis,
 ): boolean => {
   if (!isFunctionLike(functionNode) || functionNode.params.length === 0) return false;
   const firstParameter = stripParenExpression(functionNode.params[0]);
@@ -38,26 +40,31 @@ export const functionReturnsPropsChildren = (
       }
     }
   }
-  return functionReturnsMatchingExpression(functionNode, scopes, (expression) => {
-    const candidate = stripParenExpression(expression);
-    if (isNodeOfType(candidate, "Identifier")) {
-      const symbol = scopes.symbolFor(candidate);
-      return Boolean(
-        symbol &&
-        childrenBindingSymbolIds.has(symbol.id) &&
-        !hasSymbolWriteBefore(symbol, candidate, scopes),
+  return functionReturnsMatchingExpression(
+    functionNode,
+    scopes,
+    (expression) => {
+      const candidate = stripParenExpression(expression);
+      if (isNodeOfType(candidate, "Identifier")) {
+        const symbol = scopes.symbolFor(candidate);
+        return Boolean(
+          symbol &&
+          childrenBindingSymbolIds.has(symbol.id) &&
+          !hasSymbolWriteBefore(symbol, candidate, scopes),
+        );
+      }
+      if (!isNodeOfType(candidate, "MemberExpression")) return false;
+      if (getStaticPropertyName(candidate) !== "children") return false;
+      const receiver = stripParenExpression(candidate.object);
+      if (!isNodeOfType(receiver, "Identifier")) return false;
+      const receiverSymbol = scopes.symbolFor(receiver);
+      if (!receiverSymbol || !propsParameterSymbol) return false;
+      return (
+        receiverSymbol.id === propsParameterSymbol.id &&
+        !hasSymbolWriteBefore(receiverSymbol, candidate, scopes) &&
+        !hasStaticPropertyWriteBefore(receiver, "children", candidate, scopes)
       );
-    }
-    if (!isNodeOfType(candidate, "MemberExpression")) return false;
-    if (getStaticPropertyName(candidate) !== "children") return false;
-    const receiver = stripParenExpression(candidate.object);
-    if (!isNodeOfType(receiver, "Identifier")) return false;
-    const receiverSymbol = scopes.symbolFor(receiver);
-    if (!receiverSymbol || !propsParameterSymbol) return false;
-    return (
-      receiverSymbol.id === propsParameterSymbol.id &&
-      !hasSymbolWriteBefore(receiverSymbol, candidate, scopes) &&
-      !hasStaticPropertyWriteBefore(receiver, "children", candidate, scopes)
-    );
-  });
+    },
+    controlFlow,
+  );
 };

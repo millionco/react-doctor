@@ -55,6 +55,40 @@ describe("architecture/no-prop-types component provenance", () => {
     );
   });
 
+  it("ignores unreachable and overwritten JSX writes to returned utility values", () => {
+    expectDiagnosticCount(
+      `export function BuildLabel() {
+         let output = "label";
+         function unused() { output = <div />; }
+         return output;
+         output = <span />;
+       }
+       BuildLabel.propTypes = { value: () => true };
+       export function BuildTitle() {
+         let output = <strong>preview</strong>;
+         output = "title";
+         return output;
+       }
+       BuildTitle.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
+  it("ignores JSX writes on paths that exit before the returned binding", () => {
+    expectDiagnosticCount(
+      `export function BuildLabel(condition: boolean) {
+         let output;
+         if (condition) {
+           output = <div />;
+           return "label";
+         }
+         return output;
+       }
+       BuildLabel.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
   it("reports immutable aliases of local function components", () => {
     expectDiagnosticCount(
       `const Panel = (props: { value: string }) => <div>{props.value}</div>;

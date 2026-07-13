@@ -12,11 +12,16 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import type { ControlFlowAnalysis } from "../../semantic/control-flow-graph.js";
 
 const isJsxExpression = (node: EsTreeNode | null | undefined): boolean =>
   Boolean(node && isJsxElementOrFragment(stripParenExpression(node)));
 
-const callbackReturnsJsx = (callback: EsTreeNode | undefined, scopes: ScopeAnalysis): boolean => {
+const callbackReturnsJsx = (
+  callback: EsTreeNode | undefined,
+  scopes: ScopeAnalysis,
+  controlFlow: ControlFlowAnalysis,
+): boolean => {
   if (!callback) return false;
   if (
     !isNodeOfType(callback, "ArrowFunctionExpression") &&
@@ -24,7 +29,7 @@ const callbackReturnsJsx = (callback: EsTreeNode | undefined, scopes: ScopeAnaly
   ) {
     return false;
   }
-  return functionReturnsMatchingExpression(callback, scopes, isJsxExpression);
+  return functionReturnsMatchingExpression(callback, scopes, isJsxExpression, controlFlow);
 };
 
 const returnArgumentUsesAnyName = (
@@ -178,7 +183,7 @@ export const rerenderMemoBeforeEarlyReturn = defineRule({
             if (
               isNodeOfType(init, "CallExpression") &&
               isHookCall(init, "useMemo") &&
-              callbackReturnsJsx(init.arguments?.[0], context.scopes)
+              callbackReturnsJsx(init.arguments?.[0], context.scopes, context.cfg)
             ) {
               memoNode = declarator;
               callbackGuardTests = collectLeadingCallbackGuardTests(init.arguments?.[0]);

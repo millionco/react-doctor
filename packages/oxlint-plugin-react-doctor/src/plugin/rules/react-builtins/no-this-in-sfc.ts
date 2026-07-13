@@ -192,7 +192,9 @@ export const noThisInSfc = defineRule({
         // (`function Stack() { this.items = []; }`) or factory shares the
         // convention. Require the function to actually render JSX /
         // createElement so prototype-based helpers keep their real `this`.
-        if (!functionContainsReactRenderOutput(enclosingFunction, context.scopes)) return;
+        if (!functionContainsReactRenderOutput(enclosingFunction, context.scopes, context.cfg)) {
+          return;
+        }
         if (functionHasOwnThisMemberWrite(enclosingFunction)) return;
         context.report({ node, message: MESSAGE });
       },

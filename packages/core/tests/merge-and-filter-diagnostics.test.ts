@@ -46,6 +46,30 @@ const setupCase = (caseId: string, fileContents: string): string => {
 const baseDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic =>
   buildDiagnostic({ rule: "no-derived-state-effect", line: 2, ...overrides });
 
+interface ConditionalHookDiagnostics {
+  compiler: Diagnostic;
+  reactDoctor: Diagnostic;
+}
+
+const buildConditionalHookDiagnostics = (
+  filePath: string,
+  line: number = 2,
+): ConditionalHookDiagnostics => ({
+  compiler: buildDiagnostic({
+    filePath,
+    plugin: "react-hooks-js",
+    rule: "hooks",
+    message: "Hooks must always be called in a consistent order",
+    line,
+  }),
+  reactDoctor: buildDiagnostic({
+    filePath,
+    rule: "rules-of-hooks",
+    message: "React Hook is called conditionally",
+    line,
+  }),
+});
+
 describe("mergeAndFilterDiagnostics — respectInlineDisables option", () => {
   it("filters react-doctor-disable comments by default (respectInlineDisables defaults to true)", () => {
     const projectDir = setupCase(
@@ -86,6 +110,132 @@ describe("mergeAndFilterDiagnostics — respectInlineDisables option", () => {
       { respectInlineDisables: false },
     );
     expect(filtered).toHaveLength(0);
+  });
+});
+
+describe("mergeAndFilterDiagnostics — conditional Hook deduplication", () => {
+  it("prefers the React Doctor diagnostic when both findings survive", () => {
+    const projectDir = setupCase("hook-dedupe-default", "const value = 1;\n");
+    const diagnostics = buildConditionalHookDiagnostics("src/app.tsx", 1);
+
+    expect(
+      mergeAndFilterDiagnostics(
+        [diagnostics.compiler, diagnostics.reactDoctor],
+        projectDir,
+        null,
+        createNodeReadFileLinesSync(projectDir),
+      ),
+    ).toEqual([{ ...diagnostics.reactDoctor }]);
+  });
+
+  it("preserves the compiler finding when test-noise suppression drops the native rule", () => {
+    const projectDir = setupCase("hook-dedupe-test-noise", "const value = 1;\n");
+    const diagnostics = buildConditionalHookDiagnostics("src/app.test.tsx", 1);
+
+    expect(
+      mergeAndFilterDiagnostics(
+        [diagnostics.compiler, diagnostics.reactDoctor],
+        projectDir,
+        null,
+        createNodeReadFileLinesSync(projectDir),
+      ),
+    ).toEqual([{ ...diagnostics.compiler, fileContext: "test" }]);
+  });
+
+  it("preserves the compiler finding when config ignores the native rule", () => {
+    const projectDir = setupCase("hook-dedupe-config", "const value = 1;\n");
+    const diagnostics = buildConditionalHookDiagnostics("src/app.tsx", 1);
+
+    expect(
+      mergeAndFilterDiagnostics(
+        [diagnostics.compiler, diagnostics.reactDoctor],
+        projectDir,
+        { ignore: { rules: ["react-doctor/rules-of-hooks"] } },
+        createNodeReadFileLinesSync(projectDir),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        plugin: diagnostics.compiler.plugin,
+        rule: diagnostics.compiler.rule,
+      }),
+    ]);
+  });
+
+  it("preserves the compiler finding when a path override ignores the native rule", () => {
+    const projectDir = setupCase("hook-dedupe-path-override", "const value = 1;\n");
+    const diagnostics = buildConditionalHookDiagnostics("src/app.tsx", 1);
+
+    expect(
+      mergeAndFilterDiagnostics(
+        [diagnostics.compiler, diagnostics.reactDoctor],
+        projectDir,
+        {
+          ignore: {
+            overrides: [{ files: ["src/**"], rules: ["react-doctor/rules-of-hooks"] }],
+          },
+        },
+        createNodeReadFileLinesSync(projectDir),
+      ),
+    ).toEqual([diagnostics.compiler]);
+  });
+
+  it("preserves the compiler finding when an inline directive disables the native rule", () => {
+    const projectDir = setupCase(
+      "hook-dedupe-inline",
+      "// react-doctor-disable-next-line react-doctor/rules-of-hooks\nconst value = 1;\n",
+    );
+    const diagnostics = buildConditionalHookDiagnostics("src/app.tsx");
+
+    expect(
+      mergeAndFilterDiagnostics(
+        [diagnostics.compiler, diagnostics.reactDoctor],
+        projectDir,
+        null,
+        createNodeReadFileLinesSync(projectDir),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        plugin: diagnostics.compiler.plugin,
+        rule: diagnostics.compiler.rule,
+      }),
+    ]);
+  });
+
+  it("preserves the native finding when config ignores only the compiler rule", () => {
+    const projectDir = setupCase("hook-dedupe-compiler-config", "const value = 1;\n");
+    const diagnostics = buildConditionalHookDiagnostics("src/app.tsx", 1);
+
+    expect(
+      mergeAndFilterDiagnostics(
+        [diagnostics.compiler, diagnostics.reactDoctor],
+        projectDir,
+        { ignore: { rules: ["react-hooks-js/hooks"] } },
+        createNodeReadFileLinesSync(projectDir),
+      ),
+    ).toEqual([diagnostics.reactDoctor]);
+  });
+
+  it("preserves a lower-priority related finding when config ignores the preferred rule", () => {
+    const projectDir = setupCase("derived-state-dedupe-config", "const value = 1;\n");
+    const preferredDiagnostic = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      offset: 100,
+      length: 12,
+    });
+    const fallbackDiagnostic = buildDiagnostic({
+      rule: "no-derived-state",
+      offset: 100,
+      length: 12,
+    });
+
+    expect(
+      mergeAndFilterDiagnostics(
+        [fallbackDiagnostic, preferredDiagnostic],
+        projectDir,
+        { ignore: { rules: ["react-doctor/no-adjust-state-on-prop-change"] } },
+        createNodeReadFileLinesSync(projectDir),
+      ),
+    ).toEqual([fallbackDiagnostic]);
   });
 });
 

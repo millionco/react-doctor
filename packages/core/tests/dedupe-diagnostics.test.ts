@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { dedupeDiagnostics } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
+import { dedupeRelatedDiagnostics } from "../src/utils/dedupe-related-diagnostics.js";
 
 const buildDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
   filePath: "src/App.tsx",
@@ -62,10 +63,10 @@ describe("dedupeDiagnostics", () => {
       message: "Hooks must always be called in a consistent order",
     });
 
-    expect(dedupeDiagnostics([compilerDiagnostic, reactDoctorDiagnostic])).toEqual([
+    expect(dedupeRelatedDiagnostics([compilerDiagnostic, reactDoctorDiagnostic])).toEqual([
       reactDoctorDiagnostic,
     ]);
-    expect(dedupeDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
+    expect(dedupeRelatedDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
       reactDoctorDiagnostic,
     ]);
   });
@@ -83,7 +84,7 @@ describe("dedupeDiagnostics", () => {
       column: 20,
     });
 
-    expect(dedupeDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
+    expect(dedupeRelatedDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
       reactDoctorDiagnostic,
       compilerDiagnostic,
     ]);
@@ -96,7 +97,7 @@ describe("dedupeDiagnostics", () => {
       message: "Hooks must always be called in a consistent order",
     });
 
-    expect(dedupeDiagnostics([compilerDiagnostic])).toEqual([compilerDiagnostic]);
+    expect(dedupeRelatedDiagnostics([compilerDiagnostic])).toEqual([compilerDiagnostic]);
   });
 
   it("preserves native Hook findings when the compiler is disabled", () => {
@@ -105,7 +106,7 @@ describe("dedupeDiagnostics", () => {
       message: "React Hook is called conditionally",
     });
 
-    expect(dedupeDiagnostics([reactDoctorDiagnostic])).toEqual([reactDoctorDiagnostic]);
+    expect(dedupeRelatedDiagnostics([reactDoctorDiagnostic])).toEqual([reactDoctorDiagnostic]);
   });
 
   it("preserves unrelated compiler diagnostics at the same site", () => {
@@ -119,7 +120,7 @@ describe("dedupeDiagnostics", () => {
       message: "Calling setState synchronously within an effect can trigger cascading renders",
     });
 
-    expect(dedupeDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
+    expect(dedupeRelatedDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
       reactDoctorDiagnostic,
       compilerDiagnostic,
     ]);
@@ -137,7 +138,7 @@ describe("dedupeDiagnostics", () => {
       message: "Hooks must always be called in a consistent order",
     });
 
-    expect(dedupeDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
+    expect(dedupeRelatedDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
       reactDoctorDiagnostic,
       compilerDiagnostic,
     ]);
@@ -155,13 +156,13 @@ describe("dedupeDiagnostics", () => {
       offset: 100,
       length: 12,
     });
-    expect(dedupeDiagnostics([effect, generic, propChange])).toEqual([propChange]);
+    expect(dedupeRelatedDiagnostics([effect, generic, propChange])).toEqual([propChange]);
   });
 
   it("keeps mount initialization ahead of generic derived-state rules", () => {
     const generic = buildDiagnostic({ rule: "no-derived-state", offset: 100, length: 12 });
     const mount = buildDiagnostic({ rule: "no-initialize-state", offset: 100, length: 12 });
-    expect(dedupeDiagnostics([generic, mount])).toEqual([mount]);
+    expect(dedupeRelatedDiagnostics([generic, mount])).toEqual([mount]);
   });
 
   it("preserves separate writes inside one overlapping effect diagnostic", () => {
@@ -181,7 +182,10 @@ describe("dedupeDiagnostics", () => {
       length: 12,
       column: 20,
     });
-    expect(dedupeDiagnostics([effect, firstWrite, secondWrite])).toEqual([firstWrite, secondWrite]);
+    expect(dedupeRelatedDiagnostics([effect, firstWrite, secondWrite])).toEqual([
+      firstWrite,
+      secondWrite,
+    ]);
   });
 
   it("preserves diagnostics with different messages at the same location and rule", () => {

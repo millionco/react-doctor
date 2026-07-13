@@ -1,6 +1,7 @@
 import type { Diagnostic, ReactDoctorConfig } from "./types/index.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { DEFAULT_SHOW_WARNINGS } from "./constants.js";
+import { dedupeRelatedDiagnostics } from "./utils/dedupe-related-diagnostics.js";
 
 interface MergeAndFilterOptions {
   respectInlineDisables?: boolean;
@@ -42,5 +43,5 @@ export const mergeAndFilterDiagnostics = (
     const filtered = pipeline.apply(diagnostic);
     if (filtered !== null) result.push(filtered);
   }
-  return result;
+  return dedupeRelatedDiagnostics(result);
 };

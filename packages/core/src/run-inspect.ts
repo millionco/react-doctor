@@ -14,6 +14,7 @@ import type {
   SuppressedRuleCount,
 } from "./types/index.js";
 import { assignFixGroups } from "./utils/assign-fix-groups.js";
+import { dedupeRelatedDiagnostics } from "./utils/dedupe-related-diagnostics.js";
 import { sortDiagnosticsStable } from "./utils/sort-diagnostics-stable.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { checkExpoProject } from "./check-expo-project.js";
@@ -490,9 +491,11 @@ export const runInspect = <HooksR = never>(
       showWarnings,
     });
 
+    const filterPerElementPipeline = <ToEnv>(rawStream: Stream.Stream<Diagnostic, never, ToEnv>) =>
+      rawStream.pipe(Stream.filterMap(filterMapNullable<Diagnostic, Diagnostic>(transform.apply)));
+
     const applyPerElementPipeline = <ToEnv>(rawStream: Stream.Stream<Diagnostic, never, ToEnv>) =>
-      rawStream.pipe(
-        Stream.filterMap(filterMapNullable<Diagnostic, Diagnostic>(transform.apply)),
+      filterPerElementPipeline(rawStream).pipe(
         Stream.tap((diagnostic) => reporterService.emit(diagnostic)),
       );
 
@@ -841,7 +844,9 @@ export const runInspect = <HooksR = never>(
     // the existing lint-failure contract (score becomes null) with an
     // `OxlintBatchExceeded`-tagged reason so renderers dispatch on it, and
     // yield an empty chunk so the rest of the scan still completes.
-    const lintCollected = yield* Stream.runCollect(applyPerElementPipeline(rawLintStream)).pipe(
+    const filteredLintDiagnostics = yield* Stream.runCollect(
+      filterPerElementPipeline(rawLintStream),
+    ).pipe(
       Effect.timeoutOption(lintPhaseTimeoutMs),
       Effect.flatMap(
         Option.match({
@@ -858,6 +863,8 @@ export const runInspect = <HooksR = never>(
         }),
       ),
     );
+    const lintCollected = dedupeRelatedDiagnostics(filteredLintDiagnostics);
+    yield* Effect.forEach(lintCollected, reporterService.emit, { discard: true });
     const lintFailureState = yield* Ref.get(lintFailure);
     yield* afterLint(lintFailureState.didFail);
 

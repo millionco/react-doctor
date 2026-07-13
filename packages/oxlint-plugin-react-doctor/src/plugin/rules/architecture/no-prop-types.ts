@@ -1,9 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isProvenReactClassComponent } from "../../utils/is-proven-react-class-component.js";
+import { isProvenReactComponentSymbol } from "../../utils/is-proven-react-component-symbol.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 // HACK: React 19 removed runtime `propTypes` validation entirely —
 // React no longer reads `Component.propTypes`, so invalid props that
@@ -15,12 +19,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 //   Component.propTypes = { value: PropTypes.number };   // assignment
 //   class Component { static propTypes = { ... }; }       // class field
 //
-// The uppercase-receiver heuristic (mirrors `no-default-props`) keeps
-// the rule conservative: only a Capitalized identifier / class name is
-// treated as a component, so `config.propTypes = …` on a lowercase
-// object is never flagged. The whole rule is version-gated on
-// `react:19` so pre-19 projects — where `propTypes` still runs — stay
-// quiet.
+// The whole rule is version-gated on `react:19` so pre-19 projects —
+// where `propTypes` still runs — stay quiet.
 const PROP_TYPES_PROPERTY = "propTypes";
 
 const isPropTypesKey = (key: EsTreeNode | null | undefined, computed: boolean): boolean => {
@@ -29,24 +29,25 @@ const isPropTypesKey = (key: EsTreeNode | null | undefined, computed: boolean): 
   return isNodeOfType(key, "Identifier") && key.name === PROP_TYPES_PROPERTY;
 };
 
-const getComponentNameFromPropTypesAssignment = (left: EsTreeNode): string | null => {
+const getComponentFromPropTypesAssignment = (
+  left: EsTreeNode,
+): EsTreeNodeOfType<"Identifier"> | null => {
   if (!isNodeOfType(left, "MemberExpression")) return null;
   if (!isPropTypesKey(left.property, Boolean(left.computed))) return null;
-  if (!isNodeOfType(left.object, "Identifier")) return null;
-  if (!isUppercaseName(left.object.name)) return null;
-  return left.object.name;
+  const receiver = stripParenExpression(left.object);
+  if (!isNodeOfType(receiver, "Identifier")) return null;
+  if (!isUppercaseName(receiver.name)) return null;
+  return receiver;
 };
 
 const getComponentNameFromClassProperty = (
   node: EsTreeNodeOfType<"PropertyDefinition">,
+  scopes: ScopeAnalysis,
 ): string | null => {
   if (!node.static) return null;
   if (!isPropTypesKey(node.key, Boolean(node.computed))) return null;
-
-  const classBody = node.parent;
-  if (!isNodeOfType(classBody, "ClassBody")) return null;
-  const classNode = classBody.parent;
-  if (!classNode) return null;
+  const classNode = isNodeOfType(node.parent, "ClassBody") ? node.parent.parent : null;
+  if (!classNode || !isProvenReactClassComponent(classNode, scopes)) return null;
 
   if (
     (isNodeOfType(classNode, "ClassDeclaration") || isNodeOfType(classNode, "ClassExpression")) &&
@@ -81,12 +82,19 @@ export const noPropTypes = defineRule({
   create: (context: RuleContext) => ({
     AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
       if (node.operator !== "=") return;
-      const componentName = getComponentNameFromPropTypesAssignment(node.left);
-      if (!componentName) return;
-      context.report({ node: node.left, message: buildMessage(componentName) });
+      const component = getComponentFromPropTypesAssignment(node.left);
+      if (!component) return;
+      const symbol = context.scopes.symbolFor(component);
+      if (
+        !symbol ||
+        !isProvenReactComponentSymbol(symbol, context.scopes, context.cfg, component)
+      ) {
+        return;
+      }
+      context.report({ node: node.left, message: buildMessage(component.name) });
     },
     PropertyDefinition(node: EsTreeNodeOfType<"PropertyDefinition">) {
-      const componentName = getComponentNameFromClassProperty(node);
+      const componentName = getComponentNameFromClassProperty(node, context.scopes);
       if (!componentName) return;
       context.report({ node: node.key, message: buildMessage(componentName) });
     },

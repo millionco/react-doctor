@@ -25,10 +25,10 @@ const message = (name: string): string =>
 const symbolIsLocalComponent = (symbol: SymbolDescriptor, context: RuleContext): boolean => {
   const declaration = symbol.declarationNode;
   if (isComponentDeclaration(declaration)) {
-    return functionContainsReactRenderOutput(declaration, context.scopes);
+    return functionContainsReactRenderOutput(declaration, context.scopes, context.cfg);
   }
   if (isComponentAssignment(declaration) && symbol.initializer) {
-    return functionContainsReactRenderOutput(symbol.initializer, context.scopes);
+    return functionContainsReactRenderOutput(symbol.initializer, context.scopes, context.cfg);
   }
   return false;
 };

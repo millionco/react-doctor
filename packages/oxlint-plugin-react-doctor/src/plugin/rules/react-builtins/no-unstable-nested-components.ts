@@ -10,6 +10,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import type { ControlFlowAnalysis } from "../../semantic/control-flow-graph.js";
 
 const buildMessage = (parentName: string | null): string => {
   let message =
@@ -76,9 +77,15 @@ const expressionContainsJsxOrCreateElement = (root: EsTreeNode): boolean => {
 const functionContainsJsxOrCreateElement = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
+  controlFlow: ControlFlowAnalysis,
 ): boolean =>
   expressionContainsJsxOrCreateElement(functionNode) ||
-  functionReturnsMatchingExpression(functionNode, scopes, expressionContainsJsxOrCreateElement);
+  functionReturnsMatchingExpression(
+    functionNode,
+    scopes,
+    expressionContainsJsxOrCreateElement,
+    controlFlow,
+  );
 
 // True iff `classNode` extends React.Component / PureComponent (or a
 // bare `Component` / `PureComponent` symbol — matches the import shape
@@ -97,6 +104,7 @@ const isReactClassComponent = (classNode: EsTreeNode): boolean => {
 const findEnclosingComponent = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
+  controlFlow: ControlFlowAnalysis,
 ): { component: EsTreeNode; name: string | null } | null => {
   let walker: EsTreeNode | null | undefined = node.parent;
   while (walker) {
@@ -105,14 +113,14 @@ const findEnclosingComponent = (
       if (
         componentName &&
         isReactComponentName(componentName) &&
-        functionContainsJsxOrCreateElement(walker, scopes)
+        functionContainsJsxOrCreateElement(walker, scopes, controlFlow)
       ) {
         return { component: walker, name: componentName };
       }
       // Anonymous default-exported function returning JSX counts too.
       if (
         !componentName &&
-        functionContainsJsxOrCreateElement(walker, scopes) &&
+        functionContainsJsxOrCreateElement(walker, scopes, controlFlow) &&
         walker.parent &&
         isNodeOfType(walker.parent, "ExportDefaultDeclaration")
       ) {
@@ -501,7 +509,7 @@ export const noUnstableNestedComponents = defineRule({
         if (renderPropRegex.test(propInfo.propName)) return;
         if (settings.allowAsProps) return;
       }
-      const enclosing = findEnclosingComponent(candidateNode, context.scopes);
+      const enclosing = findEnclosingComponent(candidateNode, context.scopes, context.cfg);
       if (!enclosing) return;
       // A prop / object-callback candidate is instantiated by its
       // consumer, so don't gate it on local instantiation.
@@ -520,7 +528,7 @@ export const noUnstableNestedComponents = defineRule({
         "FunctionDeclaration" | "FunctionExpression" | "ArrowFunctionExpression"
       >,
     ): void => {
-      if (!functionContainsJsxOrCreateElement(node as EsTreeNode, context.scopes)) {
+      if (!functionContainsJsxOrCreateElement(node as EsTreeNode, context.scopes, context.cfg)) {
         return;
       }
       const inferredName = inferFunctionLikeName(node as EsTreeNode);

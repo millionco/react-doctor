@@ -48,7 +48,8 @@ describe("architecture/no-many-boolean-props — regressions", () => {
   it("flags a component that renders only via a .map callback", () => {
     const result = run(
       `function List({ showHeader, showFooter, isCompact, hasBorder, items }){
-        return items.map((item) => <li key={item}>{item}</li>);
+        const rows: string[] = items;
+        return rows.map((item) => <li key={item}>{item}</li>);
       }`,
     );
     expect(result.diagnostics).toHaveLength(1);
@@ -67,7 +68,8 @@ describe("architecture/no-many-boolean-props — regressions", () => {
   it("flags a props-object component that renders only via a .map callback", () => {
     const result = run(
       `function List(props){
-        return props.items.map((item) => <li data-a={props.showHeader} data-b={props.showFooter} data-c={props.isCompact} data-d={props.hasBorder} key={item}>{item}</li>);
+        const rows: string[] = props.items;
+        return rows.map((item) => <li data-a={props.showHeader} data-b={props.showFooter} data-c={props.isCompact} data-d={props.hasBorder} key={item}>{item}</li>);
       }`,
     );
     expect(result.diagnostics).toHaveLength(1);

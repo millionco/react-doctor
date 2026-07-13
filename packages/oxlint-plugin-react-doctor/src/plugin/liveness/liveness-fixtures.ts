@@ -299,7 +299,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "function fmt(locale, n) { return new Intl.NumberFormat(locale).format(n); }",
   },
   "js-hoist-regexp": {
-    code: 'for (const line of lines) { const m = new RegExp("\\\\d+", "gi"); m.test(line); }',
+    code: 'for (const line of lines) { const m = new RegExp("\\\\d+", "i"); m.test(line); }',
   },
   "js-index-maps": {
     code: "function g(ids, users){ const out=[]; for(const id of ids){ out.push(users.find((u)=> u.id === id)); } return out; }",
@@ -799,7 +799,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
       };`,
   },
   "no-prop-types": {
-    code: 'import PropTypes from "prop-types";\nconst Foo = () => null;\nFoo.propTypes = { name: PropTypes.string };',
+    code: 'import PropTypes from "prop-types";\nconst Foo = ({ name }) => <div>{name}</div>;\nFoo.propTypes = { name: PropTypes.string };',
   },
   "no-pure-black-background": {
     code: 'const El = () => <div className="bg-black" />;',

@@ -10,6 +10,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import type { ControlFlowAnalysis } from "../../semantic/control-flow-graph.js";
 import {
   ENTRY_POINT_BASENAMES,
   NON_FAST_REFRESH_PATH_SEGMENTS,
@@ -140,6 +141,7 @@ interface AnalyzerState {
   // reference smuggled inside a namespace-object export.
   localComponentNames: ReadonlySet<string>;
   scopes: ScopeAnalysis;
+  controlFlow: ControlFlowAnalysis;
 }
 
 const isReactHocName = (name: string, state: AnalyzerState): boolean => state.customHocs.has(name);
@@ -235,7 +237,7 @@ const objectExpressionBundlesComponents = (
     if (
       (isNodeOfType(value, "ArrowFunctionExpression") ||
         isNodeOfType(value, "FunctionExpression")) &&
-      functionContainsReactRenderOutput(value, state.scopes)
+      functionContainsReactRenderOutput(value, state.scopes, state.controlFlow)
     ) {
       return true;
     }
@@ -485,6 +487,7 @@ export const onlyExportComponents = defineRule({
           allowConstantExport: settings.allowConstantExport,
           localComponentNames,
           scopes: context.scopes,
+          controlFlow: context.cfg,
         };
         // A PascalCase name alone is a heuristic (`const FormatDate =
         // (d) => d.toISOString()` is a formatter, not a component), so a
@@ -497,7 +500,7 @@ export const onlyExportComponents = defineRule({
             if (
               isReactComponentName(child.id.name) &&
               !isInsideFunctionScope(child) &&
-              functionContainsReactRenderOutput(child, context.scopes)
+              functionContainsReactRenderOutput(child, context.scopes, context.cfg)
             ) {
               localComponentNames.add(child.id.name);
             }
@@ -526,7 +529,7 @@ export const onlyExportComponents = defineRule({
                   isNodeOfType(expression, "FunctionExpression"));
               if (
                 !isDirectFunction ||
-                functionContainsReactRenderOutput(expression, context.scopes)
+                functionContainsReactRenderOutput(expression, context.scopes, context.cfg)
               ) {
                 localComponentNames.add(child.id.name);
               }

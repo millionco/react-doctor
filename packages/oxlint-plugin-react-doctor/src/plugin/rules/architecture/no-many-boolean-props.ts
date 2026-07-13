@@ -154,7 +154,7 @@ export const noManyBooleanProps = defineRule({
       // factories like `function CreateValidator(options) { … }`, whose
       // `options.isStrict` accesses look like boolean props. Require
       // actual render output before treating the param as component props.
-      if (!functionContainsReactRenderOutput(functionNode, context.scopes)) return;
+      if (!functionContainsReactRenderOutput(functionNode, context.scopes, context.cfg)) return;
       if (isNodeOfType(propsBinding, "ObjectPattern")) {
         const callbackUsedNames = collectCallbackUsedNames(body, param, context.scopes);
         const booleanLikePropNames: string[] = [];

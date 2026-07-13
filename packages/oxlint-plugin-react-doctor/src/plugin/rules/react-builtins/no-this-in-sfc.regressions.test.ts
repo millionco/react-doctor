@@ -44,7 +44,8 @@ describe("react-builtins/no-this-in-sfc — regressions", () => {
     const result = runRule(
       noThisInSfc,
       `function Table(props) {
-        return this.props.rows.map((row) => <tr key={row.id} />);
+        const rows: Array<{ id: string }> = this.props.rows;
+        return rows.map((row) => <tr key={row.id} />);
       }`,
     );
     expect(result.parseErrors).toEqual([]);

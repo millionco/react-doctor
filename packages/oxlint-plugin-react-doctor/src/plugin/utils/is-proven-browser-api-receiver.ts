@@ -427,6 +427,7 @@ export const isProvenBrowserApiReceiver = (
             scopes,
             new Set(visitedSymbolIds),
           ),
+        undefined,
         "every",
       ),
     );

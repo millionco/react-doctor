@@ -76,7 +76,7 @@ import { shouldBlockCi } from "../utils/should-block-ci.js";
 import { shouldSkipPrompts } from "../utils/should-skip-prompts.js";
 import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
 import { warnIfAiTrainingEnvironment } from "../utils/warn-ai-training-environment.js";
-import { validateModeFlags } from "../utils/validate-mode-flags.js";
+import { validateIncludeUntrackedScope, validateModeFlags } from "../utils/validate-mode-flags.js";
 import { VERSION } from "../utils/version.js";
 
 interface CompletedScan {
@@ -443,8 +443,11 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       : null;
     const requestedScope = resolveScope(flags, userConfig);
     // Untracked files only exist in a local working tree, so this is a
-    // CLI-only modifier (like `--staged`) — off unless the user opts in.
+    // CLI-only modifier (like `--staged`) — off unless the user opts in. It
+    // needs a working-tree scope in effect, checked here against the RESOLVED
+    // scope so a `config.scope` / `config.diff` value satisfies it too.
     const includeUntracked = flags.includeUntracked ?? false;
+    validateIncludeUntrackedScope(includeUntracked, requestedScope.scope);
     // The internal `--changed-files-from` path (the GitHub Action) implies the
     // `changed` scope when the user didn't pick one explicitly — it always ran
     // in diff mode historically.

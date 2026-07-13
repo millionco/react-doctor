@@ -1,3 +1,4 @@
+import type { ScopeValue } from "@react-doctor/core";
 import { CliInputError } from "./cli-input-error.js";
 import type { InspectFlags } from "./inspect-flags.js";
 
@@ -9,10 +10,20 @@ const usedDiffAlias = (flags: InspectFlags): boolean =>
 const usedScope = (flags: InspectFlags): boolean =>
   typeof flags.scope === "string" && flags.scope.length > 0;
 
-// Scopes `--include-untracked` can fold working-tree-only files into. `full`
-// scans everything (untracked included already) and staged reads the index, so
-// neither applies; the deprecated `--diff <base>` alias resolves to `changed`.
-const UNTRACKED_SCOPES: ReadonlySet<string> = new Set(["files", "changed", "lines"]);
+// `--include-untracked` folds untracked files into a working-tree scope, so it
+// needs `files` / `changed` / `lines` in effect. This is checked against the
+// RESOLVED scope (so a `config.scope` / `config.diff` value counts, not just
+// the CLI flags), which is why it lives apart from `validateModeFlags`. `full`
+// already walks the filesystem and sees untracked files; no scope is a no-op.
+export const validateIncludeUntrackedScope = (
+  includeUntracked: boolean,
+  scope: ScopeValue | undefined,
+): void => {
+  if (!includeUntracked || (scope !== undefined && scope !== "full")) return;
+  throw new CliInputError(
+    "--include-untracked requires the files, changed, or lines scope (via --scope, --diff, or config).",
+  );
+};
 
 export const validateModeFlags = (flags: InspectFlags): void => {
   if (usedScope(flags) && usedDiffAlias(flags)) {
@@ -28,20 +39,13 @@ export const validateModeFlags = (flags: InspectFlags): void => {
       `Cannot combine --staged with --scope ${flags.scope}; use --scope files or --scope lines, or drop --scope.`,
     );
   }
-  if (flags.includeUntracked) {
-    if (flags.staged) {
-      throw new CliInputError(
-        "Cannot combine --include-untracked with --staged; the git index never holds untracked files.",
-      );
-    }
-    const scopeApplies =
-      (typeof flags.scope === "string" && UNTRACKED_SCOPES.has(flags.scope)) ||
-      usedDiffAlias(flags);
-    if (!scopeApplies) {
-      throw new CliInputError(
-        "--include-untracked requires a working-tree scope; pass --scope files, changed, or lines.",
-      );
-    }
+  // The scope requirement is enforced separately (against the resolved scope)
+  // by `validateIncludeUntrackedScope`; staged mode is flag-only, so reject it
+  // here — the git index never holds untracked files.
+  if (flags.includeUntracked && flags.staged) {
+    throw new CliInputError(
+      "Cannot combine --include-untracked with --staged; the git index never holds untracked files.",
+    );
   }
   if (flags.score && flags.json) {
     throw new CliInputError("Cannot combine --score and --json; pick one output mode.");

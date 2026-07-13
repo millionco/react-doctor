@@ -8,6 +8,11 @@ import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifie
 import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
+interface StaticMemberParts {
+  object: EsTreeNode;
+  propertyName: string;
+}
+
 const MESSAGE =
   "React Markdown parses dynamic raw HTML when `rehype-raw` is enabled. Add `rehype-sanitize` to `rehypePlugins` or sanitize the markdown before rendering it.";
 
@@ -17,7 +22,7 @@ const REHYPE_SANITIZE_MODULE = "rehype-sanitize";
 const DOMPURIFY_MODULES = new Set(["dompurify", "isomorphic-dompurify"]);
 const REACT_MARKDOWN_NAMED_EXPORTS = new Set(["MarkdownAsync", "MarkdownHooks"]);
 const REACT_MARKDOWN_NAMESPACE_EXPORTS = new Set(["default", ...REACT_MARKDOWN_NAMED_EXPORTS]);
-const DEFAULT_EXPORT_NAME = new Set(["default"]);
+const DEFAULT_EXPORT_NAMES = new Set(["default"]);
 
 const getImportDeclaration = (
   symbol: SymbolDescriptor,
@@ -47,9 +52,7 @@ const resolveImportedIdentifier = (
   return symbol?.kind === "import" ? symbol : null;
 };
 
-const getStaticMemberParts = (
-  node: EsTreeNode,
-): { object: EsTreeNode; propertyName: string } | null => {
+const getStaticMemberParts = (node: EsTreeNode): StaticMemberParts | null => {
   if (isNodeOfType(node, "MemberExpression")) {
     if (node.computed || !isNodeOfType(node.property, "Identifier")) return null;
     return { object: node.object, propertyName: node.property.name };
@@ -111,7 +114,7 @@ const isPluginFromModule = (
     visitedSymbolIds.add(symbol.id);
     return isPluginFromModule(symbol.initializer, moduleName, scopes, visitedSymbolIds);
   }
-  if (isNamespaceMemberFromModule(node, moduleName, DEFAULT_EXPORT_NAME, scopes)) return true;
+  if (isNamespaceMemberFromModule(node, moduleName, DEFAULT_EXPORT_NAMES, scopes)) return true;
   if (!isNodeOfType(node, "ArrayExpression")) return false;
   for (const element of node.elements) {
     if (!element || isNodeOfType(element, "SpreadElement")) continue;

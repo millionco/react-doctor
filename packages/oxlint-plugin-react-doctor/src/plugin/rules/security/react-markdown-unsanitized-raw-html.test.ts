@@ -202,6 +202,19 @@ describe("react-markdown-unsanitized-raw-html", () => {
       `,
     },
     {
+      name: "a const alias of a DOMPurify-sanitized input",
+      source: `
+        import Markdown from "react-markdown";
+        import raw from "rehype-raw";
+        import ImportedDOMPurify from "isomorphic-dompurify";
+        const DOMPurify = ImportedDOMPurify;
+        export const Preview = ({ content }) => {
+          const safeContent = DOMPurify.sanitize(content);
+          return <Markdown rehypePlugins={[raw]}>{safeContent}</Markdown>;
+        };
+      `,
+    },
+    {
       name: "literal JSX children",
       source: `
         import Markdown from "react-markdown";

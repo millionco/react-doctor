@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getImportBindingForName } from "./find-import-source-for-name.js";
 import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { hasStableCallTarget } from "./has-stable-call-target.js";
@@ -23,6 +24,13 @@ const REACT_CREATE_ELEMENT_OPTIONS: ReactApiCallOptions = {
   allowUnboundBareCalls: false,
 };
 
+const LODASH_SORT_BY_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  "lodash/sortBy",
+  "lodash/sortBy.js",
+  "lodash-es/sortBy",
+  "lodash-es/sortBy.js",
+]);
+
 const isArrayTypeAnnotation = (node: EsTreeNode): boolean => {
   if (isNodeOfType(node, "TSArrayType") || isNodeOfType(node, "TSTupleType")) return true;
   if (!isNodeOfType(node, "TSTypeReference")) return false;
@@ -42,6 +50,32 @@ const hasArrayTypeAnnotation = (identifier: EsTreeNode): boolean => {
   );
 };
 
+const isProvenArrayProducerCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = stripParenExpression(node.callee);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const symbol = scopes.symbolFor(callee);
+  if (!symbol || hasSymbolWriteBefore(symbol, callee)) return false;
+  if (
+    !isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier") &&
+    !isNodeOfType(symbol.declarationNode, "ImportSpecifier")
+  ) {
+    return false;
+  }
+  const importBinding = getImportBindingForName(callee, callee.name);
+  if (!importBinding || importBinding.isNamespace) return false;
+  if (
+    LODASH_SORT_BY_MODULE_SOURCES.has(importBinding.source) &&
+    importBinding.exportedName === "default"
+  ) {
+    return true;
+  }
+  return (
+    (importBinding.source === "lodash" || importBinding.source === "lodash-es") &&
+    importBinding.exportedName === "sortBy"
+  );
+};
+
 const isProvenArrayExpression = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -50,6 +84,7 @@ const isProvenArrayExpression = (
 ): boolean => {
   const candidate = stripParenExpression(expression);
   if (isNodeOfType(candidate, "ArrayExpression")) return true;
+  if (isProvenArrayProducerCall(candidate, scopes)) return true;
   if (!isNodeOfType(candidate, "Identifier")) return false;
   const symbol = scopes.symbolFor(candidate);
   if (!symbol || visitedSymbolIds.has(symbol.id) || hasSymbolWriteBefore(symbol, referenceNode)) {

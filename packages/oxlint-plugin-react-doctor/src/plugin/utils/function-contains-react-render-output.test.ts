@@ -88,6 +88,32 @@ describe("functionContainsReactRenderOutput", () => {
     }
   });
 
+  it("includes map render output after binding-proven lodash sortBy", () => {
+    const provenCases = [
+      `import sortBy from "lodash/sortBy";
+       function Card(items) { const sortedItems = sortBy(items); return sortedItems.map((item) => <div>{item}</div>); }`,
+      `import { sortBy as orderItems } from "lodash-es";
+       function Card(items) { const sortedItems = orderItems(items); return sortedItems.map((item) => <div>{item}</div>); }`,
+    ];
+    for (const code of provenCases) {
+      const { functionNode, scopes } = parseFunctionFixture(code, "Card");
+      expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(true);
+    }
+  });
+
+  it("ignores shadowed lodash sortBy lookalikes", () => {
+    const { functionNode, scopes } = parseFunctionFixture(
+      `import sortBy from "lodash/sortBy";
+       function Schema(items) {
+         const sortBy = (values) => ({ map: (callback) => ({ values, callback }) });
+         const sortedItems = sortBy(items);
+         return sortedItems.map((item) => <div>{item}</div>);
+       }`,
+      "Schema",
+    );
+    expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(false);
+  });
+
   it("ignores callback JSX when the returned API does not preserve its result", () => {
     const nonRenderingCases = [
       `function Schema(items: string[]) { return items.some((item) => <div>{item}</div>); }`,

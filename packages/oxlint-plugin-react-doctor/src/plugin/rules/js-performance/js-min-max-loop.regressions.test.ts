@@ -85,6 +85,7 @@ describe("js-performance/js-min-max-loop — regressions", () => {
     `const largest = [3, 1, 2].sort((a, b) => a - b)[-0];`,
     `const largest = [3, 1, 2].sort((a, b) => a - b)[+0];`,
     `const largest = [3, 1, 2].sort((a, b) => a - b)["0"];`,
+    `const largest = [3, 1, 2].sort((a, b) => a - b)[nums.length - 1];`,
     `const smallest = [3, 1, 2].sort(async (a, b) => a - b)[0];`,
     `const smallest = [3, 1, 2].sort(async function (a, b) { return a - b; })[0];`,
     `const smallest = [3, 1, 2].sort(function* (a, b) { return a - b; })[0];`,
@@ -136,6 +137,14 @@ describe("js-performance/js-min-max-loop — regressions", () => {
     `Object.assign(Array.prototype, { filter() {}, sort() { return [99]; } }); const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
     `const arrayPrototype = [].__proto__; arrayPrototype.sort = () => [99]; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
     `const arrayPrototype = Object.getPrototypeOf([]); arrayPrototype.sort = () => [99]; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `const arrayPrototype = Reflect.getPrototypeOf([]); arrayPrototype.sort = () => [99]; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `Math.min++; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `self.Math.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `const methodName = pickMethod(); Object.defineProperty(Math, methodName, { value: () => 99 }); const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `let Math = globalThis.Math; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `var Math = globalThis.Math; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `class Math {} const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `import Math from "./userland-math.js"; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
   ])("does not recommend a shadowed or mutated Math/Array builtin", (code) => {
     expectPass(code);
   });
@@ -152,6 +161,15 @@ describe("js-performance/js-min-max-loop — regressions", () => {
     `function mutateUserland(){ const Math = { min: () => 99 }; Math.min = () => 0; } const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
   ])("keeps reporting after unrelated or userland mutations", (code) => {
     expectFail(code);
+  });
+
+  it("reports every safe sort in a program through the per-program mutation-scan cache", () => {
+    const result = runRule(
+      jsMinMaxLoop,
+      `const smallestLeft = [3, 1, 2].sort((a, b) => a - b)[0]; const smallestRight = [9, 8, 7].sort((a, b) => a - b)[0];`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("does not flag a magnitude comparator", () => {

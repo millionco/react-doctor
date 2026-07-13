@@ -24,6 +24,9 @@ export const SPREAD_KEY_RESOLUTION_DEPTH = 3;
 // or-fewer literals twice is trivial cost, the rewrite is pure
 // ceremony at this scale.
 export const SMALL_LITERAL_ARRAY_MAX_ELEMENTS = 8;
+// `Math.min(...array)` passes one call argument per element and engines
+// cap argument counts (the smallest common limits are in the tens of
+// thousands); 1024 keeps the suggested rewrite far under any of them.
 export const MATH_EXTREMUM_SPREAD_MAX_ELEMENT_COUNT = 1024;
 
 // Materiality gate for `rendering-svg-precision`: a single stray

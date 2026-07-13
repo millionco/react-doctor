@@ -653,6 +653,55 @@ const getArrayElementType = (typeNode: EsTreeNode | null): EsTreeNode | null => 
   return null;
 };
 
+const getDestructuredDeclaredType = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+): EsTreeNode | null => {
+  const binding = findVariableInitializer(identifier, identifier.name);
+  if (!binding) return null;
+  const property = binding.bindingIdentifier.parent;
+  const objectPattern = property?.parent;
+  if (
+    !isNodeOfType(property, "Property") ||
+    !isNodeOfType(property.key, "Identifier") ||
+    !isNodeOfType(objectPattern, "ObjectPattern")
+  ) {
+    return null;
+  }
+  const propsType = getTypeAnnotation(objectPattern);
+  if (
+    !propsType ||
+    !isNodeOfType(propsType, "TSTypeReference") ||
+    !isNodeOfType(propsType.typeName, "Identifier")
+  ) {
+    return null;
+  }
+  const program = findProgramRoot(identifier);
+  if (!program) return null;
+  for (const statement of program.body) {
+    const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
+      ? statement.declaration
+      : statement;
+    if (
+      !declaration ||
+      !isNodeOfType(declaration, "TSInterfaceDeclaration") ||
+      !isNodeOfType(declaration.id, "Identifier") ||
+      declaration.id.name !== propsType.typeName.name
+    ) {
+      continue;
+    }
+    for (const member of declaration.body.body) {
+      if (
+        isNodeOfType(member, "TSPropertySignature") &&
+        isNodeOfType(member.key, "Identifier") &&
+        member.key.name === property.key.name
+      ) {
+        return getTypeAnnotation(member);
+      }
+    }
+  }
+  return null;
+};
+
 const getIdentifierDeclaredType = (
   identifier: EsTreeNodeOfType<"Identifier">,
 ): EsTreeNode | null => {
@@ -660,6 +709,8 @@ const getIdentifierDeclaredType = (
   if (!binding) return null;
   const directType = getTypeAnnotation(binding.bindingIdentifier);
   if (directType) return directType;
+  const destructuredType = getDestructuredDeclaredType(identifier);
+  if (destructuredType) return destructuredType;
   const declarator = binding.bindingIdentifier.parent;
   const declaration = declarator?.parent;
   const forOfStatement = declaration?.parent;
@@ -694,10 +745,7 @@ const isKnownSafeIndexOfQuery = (query: EsTreeNode | null | undefined): boolean 
   }
   if (!isNodeOfType(strippedQuery, "Identifier")) return false;
   if (isNativeIterationIndex(strippedQuery)) return true;
-  return (
-    strippedQuery.name === "undefined" &&
-    findVariableInitializer(strippedQuery, strippedQuery.name) === null
-  );
+  return false;
 };
 
 const findSameFileTypeAlias = (
@@ -773,6 +821,22 @@ const typeCanHaveSameValueZeroDifference = (
   ) {
     return true;
   }
+  if (
+    isNodeOfType(typeNode, "TSStringKeyword") ||
+    isNodeOfType(typeNode, "TSBooleanKeyword") ||
+    isNodeOfType(typeNode, "TSBigIntKeyword") ||
+    isNodeOfType(typeNode, "TSSymbolKeyword") ||
+    isNodeOfType(typeNode, "TSNullKeyword") ||
+    isNodeOfType(typeNode, "TSUndefinedKeyword") ||
+    isNodeOfType(typeNode, "TSObjectKeyword") ||
+    isNodeOfType(typeNode, "TSLiteralType") ||
+    isNodeOfType(typeNode, "TSFunctionType")
+  ) {
+    return false;
+  }
+  if (isNodeOfType(typeNode, "TSTypeLiteral")) {
+    return (typeNode.members?.length ?? 0) === 0;
+  }
   if (isNodeOfType(typeNode, "TSUnionType") || isNodeOfType(typeNode, "TSIntersectionType")) {
     return typeNode.types.some((memberType) =>
       typeCanHaveSameValueZeroDifference(memberType, reference, activeAliases, typeArguments),
@@ -798,7 +862,7 @@ const typeCanHaveSameValueZeroDifference = (
     !isNodeOfType(typeNode, "TSTypeReference") ||
     !isNodeOfType(typeNode.typeName, "Identifier")
   ) {
-    return false;
+    return true;
   }
   const substitutedType = typeArguments.get(typeNode.typeName.name);
   if (substitutedType) {
@@ -824,7 +888,7 @@ const typeCanHaveSameValueZeroDifference = (
     );
   }
   const typeAlias = findSameFileTypeAlias(reference, typeNode.typeName.name);
-  if (!typeAlias || activeAliases.has(typeAlias)) return false;
+  if (!typeAlias || activeAliases.has(typeAlias)) return true;
   activeAliases.add(typeAlias);
   const canDiffer = typeCanHaveSameValueZeroDifference(
     typeAlias.typeAnnotation,
@@ -1027,10 +1091,45 @@ const isKnownNativeArrayReceiver = (receiver: EsTreeNode): boolean => {
   );
 };
 
-const isKnownUnsafeIndexOfQuery = (query: EsTreeNode | null | undefined): boolean => {
+const isKnownDenseArrayReceiver = (receiver: EsTreeNode): boolean => {
+  const initializer = isNodeOfType(receiver, "Identifier")
+    ? getResolvedInitializer(receiver)?.initializer
+    : receiver;
+  if (!initializer) return false;
+  const strippedInitializer = stripParenExpression(initializer);
+  if (isNodeOfType(strippedInitializer, "ArrayExpression")) {
+    return (strippedInitializer.elements ?? []).every(
+      (element) => element !== null && !isNodeOfType(element, "SpreadElement"),
+    );
+  }
+  return (
+    isNodeOfType(strippedInitializer, "CallExpression") &&
+    isNodeOfType(strippedInitializer.callee, "MemberExpression") &&
+    isNodeOfType(strippedInitializer.callee.object, "Identifier") &&
+    strippedInitializer.callee.object.name === "Array" &&
+    isNodeOfType(strippedInitializer.callee.property, "Identifier") &&
+    (strippedInitializer.callee.property.name === "from" ||
+      strippedInitializer.callee.property.name === "of") &&
+    findVariableInitializer(
+      strippedInitializer.callee.object,
+      strippedInitializer.callee.object.name,
+    ) === null
+  );
+};
+
+const isKnownUnsafeIndexOfQuery = (
+  query: EsTreeNode | null | undefined,
+  receiver: EsTreeNode,
+): boolean => {
   if (!query) return true;
   const strippedQuery = stripParenExpression(query);
   if (isNodeOfType(strippedQuery, "Identifier")) {
+    if (
+      strippedQuery.name === "undefined" &&
+      findVariableInitializer(strippedQuery, strippedQuery.name) === null
+    ) {
+      return !isKnownDenseArrayReceiver(receiver);
+    }
     if (
       strippedQuery.name === "NaN" &&
       findVariableInitializer(strippedQuery, strippedQuery.name) === null
@@ -1048,93 +1147,23 @@ const isKnownUnsafeIndexOfQuery = (query: EsTreeNode | null | undefined): boolea
     }
     return typeCanHaveSameValueZeroDifference(declaredType, strippedQuery, new Set());
   }
-  return (
-    isNodeOfType(strippedQuery, "MemberExpression") &&
-    !strippedQuery.computed &&
-    isNodeOfType(strippedQuery.object, "Identifier") &&
-    strippedQuery.object.name === "Number" &&
-    isNodeOfType(strippedQuery.property, "Identifier") &&
-    strippedQuery.property.name === "NaN" &&
-    findVariableInitializer(strippedQuery.object, strippedQuery.object.name) === null
-  );
-};
-
-const getDestructuredArrayElementType = (
-  identifier: EsTreeNodeOfType<"Identifier">,
-): EsTreeNode | null => {
-  const binding = findVariableInitializer(identifier, identifier.name);
-  if (!binding) return null;
-  const property = binding.bindingIdentifier.parent;
-  const objectPattern = property?.parent;
-  if (
-    !isNodeOfType(property, "Property") ||
-    !isNodeOfType(property.key, "Identifier") ||
-    !isNodeOfType(objectPattern, "ObjectPattern")
-  ) {
-    return null;
+  if (isNodeOfType(strippedQuery, "MemberExpression")) {
+    return (
+      !strippedQuery.computed &&
+      isNodeOfType(strippedQuery.object, "Identifier") &&
+      strippedQuery.object.name === "Number" &&
+      isNodeOfType(strippedQuery.property, "Identifier") &&
+      strippedQuery.property.name === "NaN" &&
+      findVariableInitializer(strippedQuery.object, strippedQuery.object.name) === null
+    );
   }
-  const propsType = getTypeAnnotation(objectPattern);
-  if (
-    !propsType ||
-    !isNodeOfType(propsType, "TSTypeReference") ||
-    !isNodeOfType(propsType.typeName, "Identifier")
-  ) {
-    return null;
-  }
-  let program: EsTreeNode = identifier;
-  while (program.parent) program = program.parent;
-  if (!isNodeOfType(program, "Program")) return null;
-  for (const statement of program.body) {
-    const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
-      ? statement.declaration
-      : statement;
-    if (
-      !declaration ||
-      !isNodeOfType(declaration, "TSInterfaceDeclaration") ||
-      !isNodeOfType(declaration.id, "Identifier") ||
-      declaration.id.name !== propsType.typeName.name
-    ) {
-      continue;
-    }
-    for (const member of declaration.body.body) {
-      if (
-        isNodeOfType(member, "TSPropertySignature") &&
-        isNodeOfType(member.key, "Identifier") &&
-        member.key.name === property.key.name
-      ) {
-        const declaredType = getTypeAnnotation(member);
-        const elementType = getArrayElementType(declaredType);
-        if (!elementType) return declaredType;
-        if (
-          !isNodeOfType(elementType, "TSTypeReference") ||
-          !isNodeOfType(elementType.typeName, "Identifier")
-        ) {
-          return elementType;
-        }
-        const elementTypeName = elementType.typeName.name;
-        const typeParameterIndex = declaration.typeParameters?.params?.findIndex(
-          (typeParameter) =>
-            isNodeOfType(typeParameter, "TSTypeParameter") &&
-            isNodeOfType(typeParameter.name, "Identifier") &&
-            typeParameter.name.name === elementTypeName,
-        );
-        if (typeParameterIndex === undefined || typeParameterIndex < 0) return elementType;
-        return propsType.typeArguments?.params?.[typeParameterIndex] ?? elementType;
-      }
-    }
-  }
-  return null;
+  return true;
 };
 
 const isKnownUnsafeIndexOfReceiver = (receiver: EsTreeNode): boolean => {
   if (!isNodeOfType(receiver, "Identifier")) return false;
   const declaredType = getIdentifierDeclaredType(receiver);
-  if (arrayTypeCanHaveSameValueZeroDifference(declaredType, receiver, new Set())) return true;
-  const destructuredType = getDestructuredArrayElementType(receiver);
-  return (
-    arrayTypeCanHaveSameValueZeroDifference(destructuredType, receiver, new Set()) ||
-    typeCanHaveSameValueZeroDifference(destructuredType, receiver, new Set())
-  );
+  return arrayTypeCanHaveSameValueZeroDifference(declaredType, receiver, new Set());
 };
 
 // `.filter(option => value.includes(option.value))` iterates like a loop —
@@ -1345,18 +1374,12 @@ export const jsSetMapLookups = defineRule({
       const rawReceiver = node.callee.object;
       if (!rawReceiver) return;
       const receiver = stripParenExpression(rawReceiver);
-      if (
-        methodName === "includes" &&
-        node.arguments.length === 2 &&
-        !isKnownNativeArrayReceiver(receiver)
-      ) {
-        return;
-      }
+      if (!isKnownNativeArrayReceiver(receiver)) return;
       const query = node.arguments[0] as EsTreeNode | undefined;
       if (
         methodName === "indexOf" &&
         !isKnownSafeIndexOfQuery(query) &&
-        (isKnownUnsafeIndexOfQuery(query) || isKnownUnsafeIndexOfReceiver(receiver))
+        (isKnownUnsafeIndexOfQuery(query, receiver) || isKnownUnsafeIndexOfReceiver(receiver))
       ) {
         return;
       }

@@ -17,7 +17,7 @@ const expectPass = (code: string): void => {
 describe("js-performance/js-set-map-lookups — regressions", () => {
   it("flags `.includes()` against a named array inside a loop", () => {
     expectFail(
-      `function f(users, roles){ const a=[]; for(const u of users){ if(roles.includes(u.role)) a.push(u);} return a; }`,
+      `function f(users, roles: string[]){ const a=[]; for(const u of users){ if(roles.includes(u.role)) a.push(u);} return a; }`,
     );
   });
 
@@ -161,9 +161,15 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("flags `.indexOf(undefined)` because strict equality and SameValueZero agree", () => {
-    expectFail(
+  it("does not flag `.indexOf(undefined)` because sparse holes become undefined in a Set", () => {
+    expectPass(
       `function f(rows, allowedValues: Array<number | undefined>){ for (const row of rows){ if(allowedValues.indexOf(undefined) !== -1) return row; } }`,
+    );
+  });
+
+  it("flags `.indexOf(undefined)` on a proven dense array", () => {
+    expectFail(
+      `function f(rows){ const allowedValues = [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]; for (const row of rows){ if(allowedValues.indexOf(undefined) !== -1) return row; } }`,
     );
   });
 
@@ -186,6 +192,38 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
       }
     `);
   });
+
+  it.each(["{}", "NonNullable<unknown>", "PropertyKey"])(
+    "does not flag `.indexOf()` on a generic constrained to the broad %s domain",
+    (constraint) => {
+      expectPass(`
+        function f<T extends ${constraint}>(candidates: readonly T[], allowedValues: readonly T[]) {
+          return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+        }
+      `);
+    },
+  );
+
+  it("does not flag `.indexOf()` through an unresolved imported element domain", () => {
+    expectPass(`
+      import type { Numeric } from "./types";
+      function f(candidates: Numeric[], allowedValues: Numeric[]) {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it.each(["Number(candidate)", "parseFloat(candidate)", "candidate / total"])(
+    "does not flag an untyped `.indexOf()` query that can evaluate to NaN: %s",
+    (query) => {
+      expectPass(`
+        function f(candidates, total) {
+          const allowedValues = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+          return candidates.filter((candidate) => allowedValues.indexOf(${query}) !== -1);
+        }
+      `);
+    },
+  );
 
   it.each(["number", "number | string"])(
     "does not flag `.indexOf()` on a generic array constrained to %s",
@@ -256,6 +294,44 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `);
   });
 
+  it("flags `.indexOf()` through a same-file string array alias", () => {
+    expectFail(`
+      type TextValues = readonly string[];
+      function f(candidates: string[], allowedValues: TextValues) {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("does not flag one-argument userland `.includes()`", () => {
+    expectPass(`
+      interface Matcher { includes(value: string): boolean }
+      function f(candidates: string[], matcher: Matcher) {
+        return candidates.filter((candidate) => matcher.includes(candidate));
+      }
+    `);
+  });
+
+  it("does not flag one-argument userland `.indexOf()`", () => {
+    expectPass(`
+      interface Matcher { indexOf(value: string): number }
+      function f(candidates: string[], matcher: Matcher) {
+        return candidates.filter((candidate) => matcher.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it.each(["includes(candidate)", "indexOf(candidate) !== -1"])(
+    "flags a one-argument native array membership test: %s",
+    (membershipTest) => {
+      expectFail(`
+        function f(candidates: string[], allowedValues: readonly string[]) {
+          return candidates.filter((candidate) => allowedValues.${membershipTest});
+        }
+      `);
+    },
+  );
+
   it("does not flag `.indexOf()` on a destructured numeric tuple alias", () => {
     expectPass(`
       type NumericPair = readonly [number, number];
@@ -285,7 +361,7 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
 
   it("flags `.includes()` inside a `.filter()` iteration callback", () => {
     expectFail(
-      `function f(tokens, capturedTokenIndices){ return tokens.filter((token, index) => !capturedTokenIndices.includes(index)); }`,
+      `function f(tokens, capturedTokenIndices: number[]){ return tokens.filter((token, index) => !capturedTokenIndices.includes(index)); }`,
     );
   });
 
@@ -311,7 +387,7 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
 
   it("flags a caller-controlled nullish fallback", () => {
     expectFail(
-      `function f(rows, options: { weekendDays?: number[] }) { const days = options.weekendDays ?? [0, 6]; for (const row of rows) { if (days.includes(row.day)) row.weekend = true; } }`,
+      `function f(rows, options: { weekendDays?: number[] }) { const days: number[] = options.weekendDays ?? [0, 6]; for (const row of rows) { if (days.includes(row.day)) row.weekend = true; } }`,
     );
   });
 
@@ -383,7 +459,7 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
 
   it("still flags a loop-invariant array indexed by an OUTER constant", () => {
     expectFail(
-      `function f(groups, ids, bucket){ return ids.filter((id) => groups[bucket].includes(id)); }`,
+      `function f(groups, ids, bucket){ const allowedValues: string[] = groups[bucket]; return ids.filter((id) => allowedValues.includes(id)); }`,
     );
   });
 
@@ -412,13 +488,13 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
 
   it("still flags when an unbounded outer loop wraps the constant-enum map", () => {
     expectFail(
-      `function f(rows, enabled){ return rows.map((row) => AGENT_OPTIONS.map((option) => enabled.includes(row.id + option))); }`,
+      `function f(rows, enabled: string[]){ return rows.map((row) => AGENT_OPTIONS.map((option) => enabled.includes(row.id + option))); }`,
     );
   });
 
   it("still flags a lookup inside a map over unbounded data", () => {
     expectFail(
-      `function f(items, allowlist){ return items.map((item) => allowlist.includes(item.id)); }`,
+      `function f(items, allowlist: string[]){ return items.map((item) => allowlist.includes(item.id)); }`,
     );
   });
 
@@ -438,7 +514,7 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
   it("still flags a receiver resolving to a `.flat()` of an unbounded array", () => {
     expectFail(
       `function f(elements, groups) {
-        const types = groups.flat();
+        const types: string[] = groups.flat();
         return elements.filter((element) => types.includes(element.type));
       }`,
     );

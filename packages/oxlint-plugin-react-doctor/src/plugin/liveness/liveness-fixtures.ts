@@ -311,7 +311,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "const smallest = [3, 1, 2].sort((a, b) => a - b)[0];",
   },
   "js-set-map-lookups": {
-    code: "function f(users, roles){ const a=[]; for(const u of users){ if(roles.includes(u.role)) a.push(u);} return a; }",
+    code: "function f(users: Array<{ role: string }>, roles: string[]){ const a=[]; for(const u of users){ if(roles.includes(u.role)) a.push(u);} return a; }",
   },
   "js-tosorted-immutable": {
     code: "const arr = getItems();\nconst s = [...arr].sort();",

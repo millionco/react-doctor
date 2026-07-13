@@ -5,6 +5,7 @@ import { parseSourceText } from "./utils/parse-source-file.js";
 import { walkAst } from "./utils/walk-ast.js";
 
 const REANIMATED_LAYOUT_RULE_ID = "rn-animate-layout-property";
+const CASCADING_SET_STATE_RULE_ID = "no-cascading-set-state";
 
 // The full security-scan bucket: project-level scan rules executed by
 // @react-doctor/core's check-security-scan environment check instead of
@@ -59,6 +60,11 @@ describe("rule registry", () => {
   it("keeps the Reanimated layout-property rule retired", () => {
     expect(ruleRegistry[REANIMATED_LAYOUT_RULE_ID]?.lifecycle).toBe("retired");
     expect(ruleRegistry[REANIMATED_LAYOUT_RULE_ID]?.defaultEnabled).toBe(false);
+  });
+
+  it("keeps the cascading setState rule retired", () => {
+    expect(ruleRegistry[CASCADING_SET_STATE_RULE_ID]?.lifecycle).toBe("retired");
+    expect(ruleRegistry[CASCADING_SET_STATE_RULE_ID]?.defaultEnabled).toBe(false);
   });
 
   it("registers exactly the 42 known security-scan rules", () => {

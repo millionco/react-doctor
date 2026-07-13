@@ -531,9 +531,6 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-call-component-as-function": {
     code: "\n      const Row = ({ item }) => <li>{item}</li>;\n      const List = ({ items }) => (\n        <ul>{items.map((item) => Row({ item }))}</ul>\n      );\n      ",
   },
-  "no-cascading-set-state": {
-    code: '\n      import { useEffect, useState } from "react";\n      export const Init = ({ id }: { id: string }) => {\n        const [a, setA] = useState(0);\n        const [b, setB] = useState(0);\n        const [c, setC] = useState(0);\n        useEffect(() => {\n          setA(1);\n          setB(2);\n          setC(3);\n        }, [id]);\n        return <div>{a}{b}{c}</div>;\n      };\n    ',
-  },
   "no-chain-state-updates": {
     code: 'export const Search = () => {\n        const [query, setQuery] = useState("");\n        const [highlighted, setHighlighted] = useState(-1);\n        const clearLater = () => {\n          setTimeout(() => setQuery(""), 5000);\n        };\n        const onChange = (event) => setQuery(event.target.value);\n        useEffect(() => {\n          setHighlighted(-1);\n        }, [query]);\n        return <input onChange={onChange} onBlur={clearLater} />;\n      };',
   },

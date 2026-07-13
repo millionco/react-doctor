@@ -1,3 +1,7 @@
+// rule: js-set-map-lookups
+// weakness: other
+// source: React Bench / ASAP SameValueZero false-positive report
+
 export const retainStrictEqualityMembership = (
   candidates: readonly number[],
   allowedValues: readonly number[],

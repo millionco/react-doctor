@@ -111,6 +111,12 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
+  it("does not flag Lodash `includes` inside a Lodash iteration callback", () => {
+    expectPass(
+      `function f(_, tiles, nestedBoardIds){ _.forEach(tiles, (tile) => { if (!_.includes(nestedBoardIds, tile.id)) nestedBoardIds.push(tile.id); }); }`,
+    );
+  });
+
   it("does not treat a shadowed undefined fromIndex as zero", () => {
     expectPass(
       `function f(users, roles, undefined){ const out=[]; for(const user of users){ if(roles.includes(user.role, undefined)) out.push(user); } return out; }`,

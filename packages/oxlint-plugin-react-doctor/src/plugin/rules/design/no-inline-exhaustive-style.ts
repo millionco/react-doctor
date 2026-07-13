@@ -2,6 +2,7 @@ import { INLINE_STYLE_PROPERTY_THRESHOLD } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -28,14 +29,10 @@ const isStaticStyleProperty = (property: EsTreeNode): boolean => {
   return isStaticStyleValue(property.value);
 };
 
-const isOneShotModuleInitialization = (node: EsTreeNode): boolean => {
+const isOneShotModuleInitialization = (node: EsTreeNode, context: RuleContext): boolean => {
   let functionNode = findEnclosingFunction(node);
-  if (!functionNode) return true;
   while (functionNode) {
-    const callExpression = functionNode.parent;
-    if (!isNodeOfType(callExpression, "CallExpression") || callExpression.callee !== functionNode) {
-      return false;
-    }
+    if (!executesDuringRender(functionNode, context.scopes)) return false;
     functionNode = findEnclosingFunction(functionNode);
   }
   return true;
@@ -55,7 +52,7 @@ export const noInlineExhaustiveStyle = defineRule({
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         const expression = getInlineStyleExpression(node);
         if (!expression) return;
-        if (isOneShotModuleInitialization(expression)) return;
+        if (isOneShotModuleInitialization(expression, context)) return;
 
         const propertyCount = expression.properties?.filter(isStaticStyleProperty).length ?? 0;
 

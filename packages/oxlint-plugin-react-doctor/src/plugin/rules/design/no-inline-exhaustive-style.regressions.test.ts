@@ -55,6 +55,17 @@ describe("design/no-inline-exhaustive-style regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent in synchronous callbacks within a one-shot module initializer", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `export const stableElements = (() => [1].map(() => ${exhaustiveStyleElement}))();`,
+      { filename: "/proj/src/stable-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("reports styles rebuilt directly and in synchronous render callbacks", () => {
     const result = runRule(
       noInlineExhaustiveStyle,

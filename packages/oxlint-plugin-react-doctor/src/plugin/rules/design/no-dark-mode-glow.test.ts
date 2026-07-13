@@ -13,6 +13,7 @@ describe("no-dark-mode-glow", () => {
     "0 0 60px rgba(255, 0, 0, 0)",
     "0 0 60px rgba(255, 0, 0, 0.0)",
     "0 0 60px rgba(255, 0, 0, 0%)",
+    "0 0 60px rgb(255, 0, 0, 0)",
     "0 0 60px rgb(255 0 0 / 0)",
     "0 0 60px rgb(255 0 0 / 0%)",
     "0 0 60px rgba(255 0 0 / .0)",
@@ -25,10 +26,12 @@ describe("no-dark-mode-glow", () => {
   it.each([
     "0 0 60px rgba(255, 0, 0, 0.0001)",
     "0 0 60px rgba(255, 0, 0, 0.1%)",
+    "0 0 60px rgb(255, 0, 0, 0.0001)",
     "0 0 60px rgb(255 0 0 / 0.0001)",
     "0 0 60px rgb(255 0 0 / 0.1%)",
     "0 0 60px #f001",
     "0 0 60px #ff000001",
+    "0 0 60px #ff000010",
   ])("still flags a visible colored shadow: %s", (boxShadow) => {
     expect(run(boxShadow).diagnostics).toHaveLength(1);
   });

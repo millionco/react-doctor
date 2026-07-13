@@ -64,7 +64,6 @@ const isShadowLayerFullyTransparent = (layer: string): boolean => {
     return ZERO_ALPHA_PATTERN.test(colorArguments.slice(slashIndex + 1).trim());
   }
 
-  if (!rgbMatch[0].toLowerCase().startsWith("rgba(")) return false;
   const legacyArguments = colorArguments.split(",");
   return legacyArguments.length === 4 && ZERO_ALPHA_PATTERN.test(legacyArguments[3].trim());
 };

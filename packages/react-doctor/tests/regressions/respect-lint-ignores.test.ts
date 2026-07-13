@@ -45,6 +45,30 @@ export const FullName = ({ first, last }: { first: string; last: string }) => {
 };
 `;
 
+const DISABLED_DERIVED_STATE_SOURCE = DERIVED_STATE_SOURCE.replace(
+  "  useEffect(() => {",
+  "  // eslint-disable-next-line react-doctor/no-derived-state-effect\n  useEffect(() => {",
+);
+
+const makeRaceFixtureFiles = (paddingFileCount: number): Record<string, string> => ({
+  "src/candidate.tsx": DISABLED_DERIVED_STATE_SOURCE,
+  ...Object.fromEntries(
+    Array.from({ length: paddingFileCount }, (_, fileIndex) => [
+      `src/padding-${fileIndex}.tsx`,
+      `export const Padding${fileIndex} = () => <div />;\n`,
+    ]),
+  ),
+});
+
+const waitForNeutralizedDirective = async (candidatePath: string): Promise<void> => {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (fs.readFileSync(candidatePath, "utf8").includes("eslint_disable")) return;
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error("Timed out waiting for the audit scan to neutralize the directive");
+};
+
 describe("default behavior: respect existing eslint/oxlint suppressions", () => {
   it("a `// oxlint-disable-next-line` comment on the offending line silences the diagnostic", async () => {
     const projectDir = setupCase("oxlint-disable-next-line", {
@@ -294,5 +318,75 @@ export const FullName = ({ first, last }: { first: string; last: string }) => {
     });
 
     expect(diagnostics).toEqual([]);
+  });
+
+  it("keeps a concurrent ordinary scan outside an audit rewrite", async () => {
+    const projectDir = setupCase("audit-ordinary-race", makeRaceFixtureFiles(300));
+    const project = buildTestProject({ rootDirectory: projectDir });
+    const userConfig = {
+      rules: buildIsolatedDerivedStateRuleConfig("no-derived-state-effect"),
+    };
+    const candidatePath = path.join(projectDir, "src/candidate.tsx");
+    const auditPromise = runOxlint({
+      rootDirectory: projectDir,
+      project,
+      respectInlineDisables: false,
+      userConfig,
+    });
+    await waitForNeutralizedDirective(candidatePath);
+    const ordinaryPromise = runOxlint({
+      rootDirectory: projectDir,
+      project,
+      includePaths: ["src/candidate.tsx"],
+      respectInlineDisables: true,
+      userConfig,
+    });
+    const [auditDiagnostics, ordinaryDiagnostics] = await Promise.all([
+      auditPromise,
+      ordinaryPromise,
+    ]);
+
+    expect(
+      auditDiagnostics.filter((diagnostic) => diagnostic.rule === "no-derived-state-effect"),
+    ).toHaveLength(1);
+    expect(
+      ordinaryDiagnostics.filter((diagnostic) => diagnostic.rule === "no-derived-state-effect"),
+    ).toHaveLength(0);
+    expect(fs.readFileSync(candidatePath, "utf8")).toBe(DISABLED_DERIVED_STATE_SOURCE);
+  });
+
+  it("keeps overlapping audit scans isolated through restoration", async () => {
+    const projectDir = setupCase("audit-audit-race", makeRaceFixtureFiles(300));
+    const project = buildTestProject({ rootDirectory: projectDir });
+    const userConfig = {
+      rules: buildIsolatedDerivedStateRuleConfig("no-derived-state-effect"),
+    };
+    const candidatePath = path.join(projectDir, "src/candidate.tsx");
+    const targetedAuditPromise = runOxlint({
+      rootDirectory: projectDir,
+      project,
+      includePaths: ["src/candidate.tsx"],
+      respectInlineDisables: false,
+      userConfig,
+    });
+    await waitForNeutralizedDirective(candidatePath);
+    const fullAuditPromise = runOxlint({
+      rootDirectory: projectDir,
+      project,
+      respectInlineDisables: false,
+      userConfig,
+    });
+    const [targetedDiagnostics, fullDiagnostics] = await Promise.all([
+      targetedAuditPromise,
+      fullAuditPromise,
+    ]);
+
+    expect(
+      targetedDiagnostics.filter((diagnostic) => diagnostic.rule === "no-derived-state-effect"),
+    ).toHaveLength(1);
+    expect(
+      fullDiagnostics.filter((diagnostic) => diagnostic.rule === "no-derived-state-effect"),
+    ).toHaveLength(1);
+    expect(fs.readFileSync(candidatePath, "utf8")).toBe(DISABLED_DERIVED_STATE_SOURCE);
   });
 });

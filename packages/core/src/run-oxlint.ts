@@ -40,6 +40,7 @@ import { hashFileContents } from "./utils/hash-file-contents.js";
 import { listSourceFilesWithSize } from "./utils/list-source-files.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
+import { withRootScanIsolation } from "./utils/with-root-scan-isolation.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 
 interface RunOxlintOptions {
@@ -360,7 +361,7 @@ export const reactHooksJsPluginDropNote = (error: unknown): string | null => {
  *   5. on extends-related crashes, retry once with extends stripped
  *   6. always restore disable directives + clean up the temp dir
  */
-export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]> => {
+const runOxlintWithoutRootIsolation = async (options: RunOxlintOptions): Promise<Diagnostic[]> => {
   const {
     rootDirectory,
     project,
@@ -1027,3 +1028,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     fs.rmSync(configDirectory, { recursive: true, force: true });
   }
 };
+
+export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]> =>
+  withRootScanIsolation(options.rootDirectory, options.respectInlineDisables === false, () =>
+    runOxlintWithoutRootIsolation(options),
+  );

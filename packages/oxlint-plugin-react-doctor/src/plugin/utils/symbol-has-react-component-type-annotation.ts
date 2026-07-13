@@ -44,9 +44,6 @@ const isReactComponentType = (
   if (isNodeOfType(typeNode, "TSTypeAnnotation")) {
     return isReactComponentType(typeNode.typeAnnotation, scopes, visitedSymbolIds);
   }
-  if (isNodeOfType(typeNode, "TSParenthesizedType")) {
-    return isReactComponentType(typeNode.typeAnnotation, scopes, visitedSymbolIds);
-  }
   if (isNodeOfType(typeNode, "TSIntersectionType")) {
     return (typeNode.types ?? []).some((member) =>
       isReactComponentType(member, scopes, visitedSymbolIds),

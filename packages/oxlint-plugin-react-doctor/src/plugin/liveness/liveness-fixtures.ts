@@ -712,7 +712,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { Component } from "react";\nclass Board extends Component {\n  componentWillMount() {}\n  render() { return null; }\n}',
   },
   "no-legacy-context-api": {
-    code: 'class ColorProvider extends React.Component {\n  static childContextTypes = { color: PropTypes.string };\n  getChildContext() {\n    return { color: "red" };\n  }\n  render() {\n    return <div>{this.props.children}</div>;\n  }\n}',
+    code: 'import React from "react";\nclass ColorProvider extends React.Component {\n  static childContextTypes = { color: PropTypes.string };\n  getChildContext() {\n    return { color: "red" };\n  }\n  render() {\n    return <div>{this.props.children}</div>;\n  }\n}',
   },
   "no-locale-format-in-render": {
     code: '"use client";\nexport const Timestamp = ({ value }) => <time>{new Date(value).toLocaleString()}</time>;',

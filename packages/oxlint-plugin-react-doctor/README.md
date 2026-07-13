@@ -63,7 +63,7 @@ Each rule can be set to `"error"`, `"warn"`, or `"off"`:
 ```jsonc
 {
   "rules": {
-    "react-doctor/no-cascading-set-state": "error",
+    "react-doctor/effect-needs-cleanup": "error",
     "react-doctor/no-array-index-as-key": "warn",
   },
 }

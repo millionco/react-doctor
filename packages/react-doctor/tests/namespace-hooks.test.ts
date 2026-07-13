@@ -64,10 +64,9 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
     expect(issues[0].message).toContain("fetch() inside useEffect");
   });
 
-  it("detects no-cascading-set-state with React.useEffect", () => {
+  it("does not detect the retired no-cascading-set-state rule", () => {
     const issues = findDiagnosticsInFile(diagnostics, "no-cascading-set-state", "namespace-hooks");
-    expect(issues.length).toBeGreaterThan(0);
-    expect(issues[0].message).toContain("setState calls in one useEffect");
+    expect(issues).toHaveLength(0);
   });
 
   it("detects no-effect-event-handler with React.useEffect", () => {
@@ -140,7 +139,6 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
 
     const setterRules = new Set([
       "no-derived-state-effect",
-      "no-cascading-set-state",
       "rerender-functional-setstate",
       "rendering-hydration-no-flicker",
     ]);
@@ -158,7 +156,6 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
     const directImportRules = [
       "no-derived-state-effect",
       "no-fetch-in-effect",
-      "no-cascading-set-state",
       "no-effect-event-handler",
       "no-derived-useState",
       "rerender-lazy-state-init",

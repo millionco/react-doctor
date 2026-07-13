@@ -49,7 +49,7 @@ export const Game = ({ card }: { card: Card | null }) => {
     expect(hits.some((hit) => hit.message.includes("round"))).toBe(true);
   });
 
-  it("does NOT flag a single effect with multiple setters (covered by no-cascading-set-state)", async () => {
+  it("does NOT flag a single effect with multiple batched setters", async () => {
     const projectDir = setupReactProject(tempRoot, "no-effect-chain-single-effect", {
       files: {
         "src/Settings.tsx": `import { useEffect, useState } from "react";

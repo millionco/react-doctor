@@ -251,7 +251,7 @@ export const Toggle = ({ onOpen }: { onOpen: () => void }) => {
     expect((await collectRuleHits(projectDir, "no-event-handler")).length).toBeGreaterThan(0);
   });
 
-  it("no-cascading-set-state: still flags a synchronous forEach cascade", async () => {
+  it("no-cascading-set-state: stays quiet on a synchronous forEach batch", async () => {
     const projectDir = setupReactProject(tempRoot, "tp-cascade-foreach", {
       files: {
         "src/Sync.tsx": `import { useEffect, useState } from "react";
@@ -271,19 +271,10 @@ export const Sync = ({ items }: { items: number[] }) => {
 `,
       },
     });
-    expect((await collectRuleHits(projectDir, "no-cascading-set-state")).length).toBeGreaterThan(0);
+    expect(await collectRuleHits(projectDir, "no-cascading-set-state")).toHaveLength(0);
   });
 
-  // A stored handler registered via addEventListener used to be asserted here
-  // as a genuine smell. The FP verification corpus judged that exact shape a
-  // false positive (the dossier's largest cluster): the effect only registers
-  // the handler, its setters fire later per event, and React batches them into
-  // one render — so no cascade occurs on effect execution. That shape is now
-  // pinned as silent in no-cascading-set-state.regressions.test.ts and in the
-  // suppression suite above. The genuine-smell coverage moved to a stored
-  // helper the effect body CALLS synchronously, where the fan-out really does
-  // run on the effect's own dispatch.
-  it("no-cascading-set-state: flags a stored helper invoked synchronously that fans out over 3 setters", async () => {
+  it("no-cascading-set-state: stays quiet on a synchronous helper batch", async () => {
     const projectDir = setupReactProject(tempRoot, "tp-cascade-stored-helper", {
       files: {
         "src/Multi.tsx": `import { useEffect, useState } from "react";
@@ -304,10 +295,10 @@ export const Multi = ({ id }: { id: string }) => {
 `,
       },
     });
-    expect((await collectRuleHits(projectDir, "no-cascading-set-state")).length).toBeGreaterThan(0);
+    expect(await collectRuleHits(projectDir, "no-cascading-set-state")).toHaveLength(0);
   });
 
-  it("no-cascading-set-state: still flags 3 synchronous setters in the effect body", async () => {
+  it("no-cascading-set-state: stays quiet on synchronous effect setters", async () => {
     const projectDir = setupReactProject(tempRoot, "tp-cascade", {
       files: {
         "src/Init.tsx": `import { useEffect, useState } from "react";
@@ -325,6 +316,6 @@ export const Init = ({ id }: { id: string }) => {
 `,
       },
     });
-    expect((await collectRuleHits(projectDir, "no-cascading-set-state")).length).toBeGreaterThan(0);
+    expect(await collectRuleHits(projectDir, "no-cascading-set-state")).toHaveLength(0);
   });
 });

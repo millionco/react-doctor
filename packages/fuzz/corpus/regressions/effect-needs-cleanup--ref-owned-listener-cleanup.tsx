@@ -18,6 +18,7 @@ export const useResizeSession = () => {
   }, []);
   useEffect(() => stopResize, [stopResize]);
   return useCallback(() => {
+    stopResize();
     const handleMouseMove: EventListener = () => undefined;
     const handleMouseUp: EventListener = () => stopResize();
     activeSessionRef.current = { handleMouseMove, handleMouseUp };

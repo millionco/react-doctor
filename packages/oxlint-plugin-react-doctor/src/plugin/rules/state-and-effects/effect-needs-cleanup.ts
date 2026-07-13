@@ -56,6 +56,12 @@ interface SubscribeLikeUsage {
   handlerKey: string | null;
 }
 
+interface RefOwnedHandlerStorage {
+  handlerKey: string;
+  refCurrentKey: string;
+  assignmentNode: EsTreeNode;
+}
+
 const RESOURCE_NOUN_BY_KIND = {
   subscribe: "subscription",
   timer: "timer",
@@ -1839,7 +1845,7 @@ const findRefOwnedHandlerStorage = (
   retainedFunction: EsTreeNode,
   usage: SubscribeLikeUsage,
   context: RuleContext,
-) => {
+): RefOwnedHandlerStorage | null => {
   if (
     !isFunctionLike(retainedFunction) ||
     usage.kind !== "subscribe" ||
@@ -1854,7 +1860,7 @@ const findRefOwnedHandlerStorage = (
   const functionCfg = context.cfg.cfgFor(retainedFunction);
   const usageBlock = functionCfg?.blockOf(usage.node);
   if (usageStart === null || !functionCfg || !usageBlock) return null;
-  const matchingStorage = new Map<string, string>();
+  const matchingStorage = new Map<string, RefOwnedHandlerStorage>();
   walkAst(retainedFunction.body, (child: EsTreeNode) => {
     if (child !== retainedFunction.body && isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "AssignmentExpression") || child.operator !== "=") return;
@@ -1875,13 +1881,78 @@ const findRefOwnedHandlerStorage = (
       if (!isNodeOfType(property, "Property")) continue;
       const propertyName = getStaticPropertyKeyName(property);
       if (propertyName && resolveExpressionKey(property.value, context) === usage.handlerKey) {
-        matchingStorage.set(`${refCurrentKey}.${propertyName}`, refCurrentKey);
+        const handlerKey = `${refCurrentKey}.${propertyName}`;
+        matchingStorage.set(handlerKey, {
+          handlerKey,
+          refCurrentKey,
+          assignmentNode: child,
+        });
       }
     }
   });
   if (matchingStorage.size !== 1) return null;
-  const [handlerKey, refCurrentKey] = matchingStorage.entries().next().value ?? [];
-  return handlerKey && refCurrentKey ? { handlerKey, refCurrentKey } : null;
+  return matchingStorage.values().next().value ?? null;
+};
+
+const doMatchingNodesCoverEveryPathBeforeUsage = (
+  usageNode: EsTreeNode,
+  matchingNodes: ReadonlyArray<EsTreeNode>,
+  owner: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const functionCfg = context.cfg.cfgFor(owner);
+  const usageBlock = functionCfg?.blockOf(usageNode);
+  const usageStart = getRangeStart(usageNode);
+  if (!functionCfg || !usageBlock || usageStart === null) return false;
+  const matchingBlocks = new Set(
+    matchingNodes.flatMap((matchingNode) => {
+      if (context.cfg.enclosingFunction(matchingNode) !== owner) return [];
+      const matchingStart = getRangeStart(matchingNode);
+      if (matchingStart === null || matchingStart >= usageStart) return [];
+      const matchingBlock = functionCfg.blockOf(matchingNode);
+      return matchingBlock ? [matchingBlock] : [];
+    }),
+  );
+  if (matchingBlocks.size === 0) return false;
+  if (matchingBlocks.has(usageBlock)) return true;
+  const visitedBlocks = new Set([functionCfg.entry]);
+  const pendingBlocks = [functionCfg.entry];
+  while (pendingBlocks.length > 0) {
+    const currentBlock = pendingBlocks.pop();
+    if (!currentBlock) break;
+    if (matchingBlocks.has(currentBlock)) continue;
+    if (currentBlock === usageBlock) return false;
+    for (const edge of currentBlock.successors) {
+      if (visitedBlocks.has(edge.to)) continue;
+      visitedBlocks.add(edge.to);
+      pendingBlocks.push(edge.to);
+    }
+  }
+  return true;
+};
+
+const retainedFunctionReleasesPreviousRefOwnedUsage = (
+  retainedFunction: EsTreeNode,
+  cleanupFunction: EsTreeNode,
+  storageNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const cleanupCalls: EsTreeNode[] = [];
+  walkAst(retainedFunction.body, (child: EsTreeNode) => {
+    if (child !== retainedFunction.body && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      resolveRefOwnedCleanupFunction(child.callee, context) === cleanupFunction
+    ) {
+      cleanupCalls.push(child);
+    }
+  });
+  return doMatchingNodesCoverEveryPathBeforeUsage(
+    storageNode,
+    cleanupCalls,
+    retainedFunction,
+    context,
+  );
 };
 
 const isDirectRefOwnedRelease = (
@@ -1953,6 +2024,16 @@ const cleanupFunctionReleasesRefOwnedUsage = (
   }
   const storage = findRefOwnedHandlerStorage(retainedFunction, usage, context);
   if (!storage) return false;
+  if (
+    !retainedFunctionReleasesPreviousRefOwnedUsage(
+      retainedFunction,
+      cleanupFunction,
+      storage.assignmentNode,
+      context,
+    )
+  ) {
+    return false;
+  }
   let didFindRelease = false;
   walkAst(cleanupFunction.body, (child: EsTreeNode) => {
     if (didFindRelease) return false;

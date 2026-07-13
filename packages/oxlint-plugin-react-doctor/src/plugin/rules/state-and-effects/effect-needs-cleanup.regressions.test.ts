@@ -1868,10 +1868,114 @@ export const useResizableColumns = ({ cookieName }) => {
     return stopResize;
   }, [cookieName, stopResize]);
   const startResize = useCallback(() => {
+    stopResize();
     const handleMouseMove = (event) => console.log(event.clientX);
     activeSessionRef.current = { handleMouseMove };
     document.addEventListener("mousemove", handleMouseMove);
   }, []);
+  return startResize;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a retained setup that can overwrite a previous ref-owned listener", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const useResizableColumns = () => {
+  const activeSessionRef = useRef(null);
+  const stopResize = useCallback(() => {
+    const session = activeSessionRef.current;
+    if (!session) return;
+    document.removeEventListener("mousemove", session.handleMouseMove);
+    activeSessionRef.current = null;
+  }, []);
+  useEffect(() => stopResize, [stopResize]);
+  const startResize = useCallback(() => {
+    const handleMouseMove = () => undefined;
+    activeSessionRef.current = { handleMouseMove };
+    document.addEventListener("mousemove", handleMouseMove);
+  }, []);
+  return startResize;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "conditional pre-release",
+      setupPrefix: "if (enabled) stopResize();",
+    },
+    {
+      name: "deferred release",
+      setupPrefix: "queueMicrotask(stopResize);",
+    },
+    {
+      name: "nested callback release",
+      setupPrefix: "const releaseLater = () => stopResize(); releaseLater;",
+    },
+    {
+      name: "one-branch release",
+      setupPrefix: "if (enabled) stopResize(); else console.log('disabled');",
+    },
+  ])("keeps a $name setup diagnostic", ({ setupPrefix }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const useResizableColumns = ({ enabled }) => {
+  const activeSessionRef = useRef(null);
+  const stopResize = useCallback(() => {
+    const session = activeSessionRef.current;
+    if (!session) return;
+    document.removeEventListener("mousemove", session.handleMouseMove);
+    activeSessionRef.current = null;
+  }, []);
+  useEffect(() => stopResize, [stopResize]);
+  const startResize = useCallback(() => {
+    ${setupPrefix}
+    const handleMouseMove = () => undefined;
+    activeSessionRef.current = { handleMouseMove };
+    document.addEventListener("mousemove", handleMouseMove);
+  }, [enabled, stopResize]);
+  return startResize;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "guarded setup after an early return",
+      setupPrefix: "if (!enabled) return; stopResize();",
+    },
+    {
+      name: "release in both branches",
+      setupPrefix: "if (enabled) stopResize(); else stopResize();",
+    },
+  ])("accepts $name", ({ setupPrefix }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const useResizableColumns = ({ enabled }) => {
+  const activeSessionRef = useRef(null);
+  const stopResize = useCallback(() => {
+    const session = activeSessionRef.current;
+    if (!session) return;
+    document.removeEventListener("mousemove", session.handleMouseMove);
+    activeSessionRef.current = null;
+  }, []);
+  useEffect(() => stopResize, [stopResize]);
+  const startResize = useCallback(() => {
+    ${setupPrefix}
+    const handleMouseMove = () => undefined;
+    activeSessionRef.current = { handleMouseMove };
+    document.addEventListener("mousemove", handleMouseMove);
+  }, [enabled, stopResize]);
   return startResize;
 };`,
     );
@@ -1916,6 +2020,7 @@ export const useResizableColumns = ({ enabled }) => {
   ${cleanupDefinition}
   useEffect(() => stopResize, [stopResize]);
   const startResize = useCallback(() => {
+    stopResize();
     const handleMouseMove = (event) => console.log(event.clientX);
     activeSessionRef.current = { handleMouseMove };
     document.addEventListener("mousemove", handleMouseMove);
@@ -2099,6 +2204,7 @@ export const useResizableColumns = ({ enabled, eventName, target }) => {
   ${cleanupDefinition}
   ${unmountEffect}
   const startResize = useCallback(() => {
+    stopResize();
     const handleMouseMove = (event) => console.log(event.clientX);
     ${sessionAssignment}
     ${setupListener}
@@ -2137,6 +2243,7 @@ export const useResizableColumns = () => {
   }, []);
   useEffect(() => stopResize, [stopResize]);
   const startResize = useCallback(() => {
+    stopResize();
     const handleMouseMove = () => undefined;
     activeSessionRef.current = { handleMouseMove };
     document.addEventListener("mousemove", handleMouseMove);

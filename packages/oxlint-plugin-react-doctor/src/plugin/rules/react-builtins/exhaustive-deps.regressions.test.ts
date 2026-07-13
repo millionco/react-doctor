@@ -986,6 +986,19 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     expect(messages).toContain("unrelated");
   });
 
+  it("ignores a userland function named useCallback", () => {
+    const code = `
+      const useCallback = (callback, dependencies) => ({ callback, dependencies });
+      function Cell({ direct, fallback }) {
+        const effectiveCallback = direct ?? fallback;
+        return useCallback(() => effectiveCallback?.(), []);
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   describe("bounded identity source resolution", () => {
     it("accepts the exact derived callback dependency", () => {
       const code = `
@@ -1192,6 +1205,19 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(messages).toContain("direct, fallback");
     });
 
+    it("accepts an exact dependency on a chained const derived binding", () => {
+      const code = `
+        function Cell({ direct, fallback, override }) {
+          const baseCallback = direct ?? fallback;
+          const effectiveCallback = override ?? baseCallback;
+          return useCallback(() => effectiveCallback?.(), [effectiveCallback]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("accepts an exact dependency on a reassigned derived binding", () => {
       const code = `
         function Cell({ direct, fallback, override }) {
@@ -1233,6 +1259,20 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(messages).toContain("rebuilt every render");
     });
 
+    it("still reports an exact derived dependency with a fresh ternary branch as unstable", () => {
+      const code = `
+        function Cell({ direct, preferDirect }) {
+          const effectiveCallback = preferDirect ? direct : (() => {});
+          return useCallback(() => effectiveCallback(), [effectiveCallback]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("effectiveCallback");
+      expect(messages).toContain("rebuilt every render");
+    });
+
     it("does not let a narrower member satisfy an exact derived binding", () => {
       const code = `
         function Cell({ direct, fallback }) {
@@ -1244,19 +1284,6 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
       expect(messages).toContain("direct, fallback");
-    });
-
-    it("ignores a userland function named useCallback", () => {
-      const code = `
-        const useCallback = (callback, dependencies) => ({ callback, dependencies });
-        function Cell({ direct, fallback }) {
-          const effectiveCallback = direct ?? fallback;
-          return useCallback(() => effectiveCallback?.(), []);
-        }
-      `;
-      const result = runRule(exhaustiveDeps, code);
-      expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toEqual([]);
     });
 
     it("treats an immutable local alias of an imported function as stable", () => {
@@ -1452,6 +1479,31 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
             () => readPosition(chart),
             [chart, chartWidth, chartHeight],
           );
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("flags an unused useMemo dependency derived from a nested fresh fallback", () => {
+      const code = `
+        function Cell({ direct, other }) {
+          const derivedCallback = direct ?? (() => {});
+          return useMemo(() => other, [derivedCallback, other]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("`derivedCallback` changes even though it never uses it");
+    });
+
+    it("allows an unused useMemo dependency derived from reactive sources", () => {
+      const code = `
+        function Cell({ direct, fallback, other }) {
+          const derivedCallback = direct ?? fallback;
+          return useMemo(() => other, [derivedCallback, other]);
         }
       `;
       const result = runRule(exhaustiveDeps, code);

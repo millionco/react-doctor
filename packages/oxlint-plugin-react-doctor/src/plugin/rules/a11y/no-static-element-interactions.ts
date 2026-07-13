@@ -142,12 +142,12 @@ export const noStaticElementInteractions = defineRule({
         // it's stopping a bubble. If EVERY active handler is a pure
         // blocker, the element is non-interactive and the rule should
         // pass through.
-        let hasNonBlockerHandler = false;
         let hasAnyHandler = false;
         let isKeyboardTarget: boolean | null = null;
         // Only the FIRST attribute per handler name counts (mirrors the
         // per-handler `hasJsxPropIgnoreCase` first-match this replaces).
         let seenHandlerNames: Set<string> | null = null;
+        let nonBlockerHandlerNamesLower: Set<string> | null = null;
         for (const attribute of node.attributes) {
           if (!isNodeOfType(attribute, "JSXAttribute")) continue;
           const attributeName = getJsxAttributeName(attribute.name);
@@ -163,14 +163,21 @@ export const noStaticElementInteractions = defineRule({
           }
           hasAnyHandler = true;
           if (!isPureEventBlockerHandler(attribute)) {
-            hasNonBlockerHandler = true;
-            break;
+            (nonBlockerHandlerNamesLower ??= new Set()).add(handlerNameLower);
           }
         }
         if (!hasAnyHandler) return;
-        if (!hasNonBlockerHandler) return;
+        if (!nonBlockerHandlerNamesLower) return;
 
-        const onClick = hasJsxPropIgnoreCase(node.attributes, "onClick");
+        // The equivalent-descendant guard can only vouch for the click:
+        // any OTHER non-blocker handler (`onMouseDown` drag, …) stays
+        // keyboard-unreachable even when the click action is delegated,
+        // so consult the guard only when `onClick` is the sole
+        // non-blocker handler.
+        const onClick =
+          nonBlockerHandlerNamesLower.size === 1 && nonBlockerHandlerNamesLower.has("onclick")
+            ? hasJsxPropIgnoreCase(node.attributes, "onClick")
+            : null;
         if (
           onClick &&
           hasKeyboardActivatableDescendant(node.parent, onClick, context.scopes, context.settings)

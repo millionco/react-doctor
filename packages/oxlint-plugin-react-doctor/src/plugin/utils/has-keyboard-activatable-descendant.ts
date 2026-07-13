@@ -7,6 +7,7 @@ import { flattenJsxName } from "./flatten-jsx-name.js";
 import { hasJsxPropIgnoreCase } from "./has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "./is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { parseJsxValue } from "./parse-jsx-value.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const NATIVE_KEYBOARD_ACTIVATABLE_TAGS: ReadonlySet<string> = new Set([
@@ -19,6 +20,7 @@ const NATIVE_KEYBOARD_ACTIVATABLE_TAGS: ReadonlySet<string> = new Set([
 ]);
 const KEYBOARD_ACTIVATABLE_COMPONENT_NAME_PATTERN = /button|link|nav|anchor/i;
 const EQUIVALENT_ACTION_COMPONENT_NAME_PATTERN = /(?:button|link|anchor)$/i;
+const UPPERCASE_COMPONENT_NAME_PATTERN = /^[A-Z]/;
 const DESCENDANT_ACTION_PROP_NAMES = ["onClick", "onPress"] as const;
 
 const isStaticallyNullish = (expression: EsTreeNode): boolean => {
@@ -38,6 +40,7 @@ const resolveSingleHandlerAction = (
   visitedSymbolIds = new Set<number>(),
 ): EsTreeNode | null => {
   const strippedExpression = stripParenExpression(expression);
+  if (isStaticallyNullish(strippedExpression)) return null;
   if (isNodeOfType(strippedExpression, "ConditionalExpression")) {
     const consequent = strippedExpression.consequent as EsTreeNode;
     const alternate = strippedExpression.alternate as EsTreeNode;
@@ -153,21 +156,37 @@ const hasAccessibleNameEvidence = (element: EsTreeNodeOfType<"JSXElement">): boo
   return element.children.some((child) => childMayProvideAccessibleName(child as EsTreeNode));
 };
 
+const hasNegativeStaticTabIndex = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  const tabIndexAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "tabIndex");
+  if (!tabIndexAttribute?.value) return false;
+  const tabIndexValue = parseJsxValue(tabIndexAttribute.value);
+  return tabIndexValue !== null && tabIndexValue < 0;
+};
+
+const isHiddenSubtreeRoot = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  settings: Readonly<Record<string, unknown>> | undefined,
+): boolean =>
+  isHiddenFromScreenReader(openingElement, settings) ||
+  hasPotentiallyTruthyAttribute(openingElement, "hidden");
+
 const isKeyboardActivatableElement = (
   element: EsTreeNodeOfType<"JSXElement">,
-  settings: Readonly<Record<string, unknown>> | undefined,
   requiresAccessibleName: boolean,
 ): boolean => {
   const openingElement = element.openingElement;
   const elementName = flattenJsxName(openingElement.name as EsTreeNode);
   if (!elementName) return false;
   const isNativeElement = HTML_TAGS.has(elementName);
-  const componentNamePattern = requiresAccessibleName
-    ? EQUIVALENT_ACTION_COMPONENT_NAME_PATTERN
-    : KEYBOARD_ACTIVATABLE_COMPONENT_NAME_PATTERN;
-  if (
-    (isNativeElement && !NATIVE_KEYBOARD_ACTIVATABLE_TAGS.has(elementName)) ||
-    (!isNativeElement && !componentNamePattern.test(elementName))
+  if (isNativeElement) {
+    if (!NATIVE_KEYBOARD_ACTIVATABLE_TAGS.has(elementName)) return false;
+  } else if (requiresAccessibleName) {
+    if (!EQUIVALENT_ACTION_COMPONENT_NAME_PATTERN.test(elementName)) return false;
+  } else if (
+    !UPPERCASE_COMPONENT_NAME_PATTERN.test(elementName) ||
+    !KEYBOARD_ACTIVATABLE_COMPONENT_NAME_PATTERN.test(elementName)
   ) {
     return false;
   }
@@ -178,7 +197,7 @@ const isKeyboardActivatableElement = (
   if (
     hasPotentiallyTruthyAttribute(openingElement, "disabled") ||
     hasPotentiallyTruthyAttribute(openingElement, "isDisabled") ||
-    isHiddenFromScreenReader(openingElement, settings)
+    hasNegativeStaticTabIndex(openingElement)
   ) {
     return false;
   }
@@ -194,7 +213,8 @@ const findKeyboardActivatableDescendant = (
   const walk = (descendant: EsTreeNode): boolean =>
     findKeyboardActivatableDescendant(descendant, expectedAction, scopes, settings);
   if (isNodeOfType(node, "JSXElement")) {
-    if (isKeyboardActivatableElement(node, settings, expectedAction !== null)) {
+    if (expectedAction && isHiddenSubtreeRoot(node.openingElement, settings)) return false;
+    if (isKeyboardActivatableElement(node, expectedAction !== null)) {
       if (!expectedAction) return true;
       for (const actionPropName of DESCENDANT_ACTION_PROP_NAMES) {
         const attribute = hasJsxPropIgnoreCase(node.openingElement.attributes, actionPropName);

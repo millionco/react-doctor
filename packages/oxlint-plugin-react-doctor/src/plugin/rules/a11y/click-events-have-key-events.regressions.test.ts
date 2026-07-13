@@ -335,16 +335,28 @@ describe("a11y/click-events-have-key-events regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("does not flag a wrapper whose action is reachable through a nested Button click", () => {
+  it("does not flag a wrapper whose action is reachable through a conditional equivalent Button", () => {
     const result = runRule(
       clickEventsHaveKeyEvents,
-      `export const Card = ({ openCard, deleteCard }) => (
+      `export const Card = ({ openCard, showActions }) => (
         <div onClick={() => openCard()}>
-          <Button aria-label="Delete" onPress={() => deleteCard()}>Delete</Button>
+          {showActions ? <Button aria-label="Open" onPress={() => openCard()}>Open</Button> : null}
         </div>
       );`,
     );
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a wrapper whose only child is a lowercase custom element", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Shell = ({ handleClick }) => (
+        <div onClick={handleClick}>
+          <sidebar-nav />
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a plain clickable div with static content", () => {

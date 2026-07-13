@@ -2,6 +2,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis
 import type { EsTreeNode } from "./es-tree-node.js";
 import { collectFunctionReturnStatements } from "./collect-function-return-statements.js";
 import { functionContainsReactRenderOutput } from "./function-contains-react-render-output.js";
+import { functionContainsProvenReactHookCall } from "./function-contains-proven-react-hook-call.js";
 import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
 import { isComponentDeclaration } from "./is-component-declaration.js";
 import { isInlineFunctionExpression } from "./is-inline-function-expression.js";
@@ -13,6 +14,10 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 
 const REACT_COMPONENT_HOC_NAMES: ReadonlySet<string> = new Set(["memo", "forwardRef"]);
 
+const functionHasComponentEvidence = (functionNode: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  functionContainsReactRenderOutput(functionNode, scopes) ||
+  functionContainsProvenReactHookCall(functionNode, scopes);
+
 const isProvenReactComponentExpression = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -20,7 +25,7 @@ const isProvenReactComponentExpression = (
 ): boolean => {
   const candidate = stripParenExpression(expression);
   if (isInlineFunctionExpression(candidate)) {
-    return functionContainsReactRenderOutput(candidate, scopes);
+    return functionHasComponentEvidence(candidate, scopes);
   }
   if (isNodeOfType(candidate, "ClassExpression")) {
     return isProvenReactClassComponent(candidate, scopes);
@@ -32,7 +37,7 @@ const isProvenReactComponentExpression = (
     }
     visitedSymbolIds.add(symbol.id);
     if (isNodeOfType(symbol.declarationNode, "FunctionDeclaration")) {
-      return functionContainsReactRenderOutput(symbol.declarationNode, scopes);
+      return functionHasComponentEvidence(symbol.declarationNode, scopes);
     }
     if (
       isNodeOfType(symbol.declarationNode, "ClassDeclaration") ||
@@ -90,7 +95,7 @@ export const isProvenReactComponentSymbol = (
   for (const candidateSymbol of candidateSymbols) {
     if (hasSymbolWriteBefore(candidateSymbol, componentReference)) continue;
     if (isComponentDeclaration(candidateSymbol.declarationNode)) {
-      if (functionContainsReactRenderOutput(candidateSymbol.declarationNode, scopes)) return true;
+      if (functionHasComponentEvidence(candidateSymbol.declarationNode, scopes)) return true;
       continue;
     }
     const initializer = candidateSymbol.initializer

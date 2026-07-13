@@ -223,6 +223,51 @@ describe("architecture/no-prop-types component provenance", () => {
     );
   });
 
+  it("reports hook-owning components that render null or children", () => {
+    expectDiagnosticCount(
+      `import { useContext as useReactContext, useEffect as useReactEffect } from "react";
+       const Panel = ({ children }: { children: React.ReactNode }) => {
+         const visible = useReactContext(VisibilityContext);
+         return visible ? children : null;
+       };
+       Panel.propTypes = { children: () => true };
+       function Dialog() {
+         useReactEffect(() => {}, []);
+         return null;
+       }
+       Dialog.propTypes = { value: () => true };`,
+      2,
+    );
+  });
+
+  it("keeps same-named userland hooks and nested hook calls quiet", () => {
+    expectDiagnosticCount(
+      `import { useContext } from "./context";
+       import { useEffect as useReactEffect } from "react";
+       const Schema = () => { useContext(); return null; };
+       Schema.propTypes = { value: () => true };
+       const Protocol = () => {
+         const nested = () => { useReactEffect(() => {}, []); };
+         return null;
+       };
+       Protocol.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
+  it("tracks component identity across property mutation but not object copies", () => {
+    expectDiagnosticCount(
+      `const Panel = () => <div />;
+       Panel.metadata = { stable: true };
+       const PanelAlias = Panel;
+       PanelAlias.displayName = "Panel";
+       PanelAlias.propTypes = { value: () => true };
+       const Schema = { ...PanelAlias };
+       Schema.propTypes = { value: () => true };`,
+      1,
+    );
+  });
+
   it("keeps shadowed useMemo and non-component memoized values quiet", () => {
     expectDiagnosticCount(
       `const useMemo = (callback: () => unknown) => callback();

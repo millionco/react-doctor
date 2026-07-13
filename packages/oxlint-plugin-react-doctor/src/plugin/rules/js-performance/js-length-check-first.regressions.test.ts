@@ -208,6 +208,14 @@ describe("js-performance/js-length-check-first — regressions", () => {
       );`);
   });
 
+  it("flags a computed Object.freeze call outside the shared integrity-method boundary", () => {
+    expectFail(`const DEFAULTS = Object["freeze"]({ next: "j", previous: "k" });
+    const isComplete = (bindings) =>
+      Object.values(DEFAULTS).every((_, index) =>
+        typeof bindings[Object.keys(DEFAULTS)[index]] === "string"
+      );`);
+  });
+
   it("stays silent when keys are iterated and values are indexed", () => {
     expectPass(`const DEFAULTS = Object.freeze({ next: "j", previous: "k" });
     const isComplete = (bindings) =>

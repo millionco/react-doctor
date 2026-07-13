@@ -10,6 +10,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { getObjectIntegrityMethodName } from "../../utils/unwrap-object-integrity-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -71,18 +72,7 @@ const getGlobalObjectFreezeArgument = (
 ): EsTreeNode | null => {
   const callExpression = stripParenExpression(expression);
   if (!isNodeOfType(callExpression, "CallExpression")) return null;
-  const callee = stripParenExpression(callExpression.callee);
-  if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "freeze") {
-    return null;
-  }
-  const receiver = stripParenExpression(callee.object);
-  if (
-    !isNodeOfType(receiver, "Identifier") ||
-    receiver.name !== "Object" ||
-    !context.scopes.isGlobalReference(receiver)
-  ) {
-    return null;
-  }
+  if (getObjectIntegrityMethodName(callExpression, context.scopes) !== "freeze") return null;
   const callArguments = callExpression.arguments ?? [];
   if (callArguments.length !== 1 || isNodeOfType(callArguments[0], "SpreadElement")) return null;
   return callArguments[0];

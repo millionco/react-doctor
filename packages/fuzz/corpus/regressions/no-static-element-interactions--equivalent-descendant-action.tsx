@@ -21,6 +21,17 @@ export const EditableCell = ({ disabled, setOpen }: EditableCellProps) => (
   </div>
 );
 
+export const AliasedDisabledEditableCell = ({ disabled, setOpen }: EditableCellProps) => {
+  const noAction = null;
+  return (
+    <div onClick={disabled ? noAction : () => setOpen(true)}>
+      <Button aria-label="Edit" onPress={() => setOpen(true)}>
+        Edit
+      </Button>
+    </div>
+  );
+};
+
 export const AriaDisabledEditCell = ({ setOpen }: EditableCellProps) => (
   <div onClick={() => setOpen(true)}>
     <Button aria-disabled="true" aria-label="Edit" onPress={() => setOpen(true)}>

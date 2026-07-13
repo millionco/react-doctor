@@ -53,6 +53,42 @@ describe("a11y/no-static-element-interactions regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each(["const noAction = null;", "const emptyAction = null; const noAction = emptyAction;"])(
+    "does not flag an equivalent action behind a nullish const alias",
+    (aliasDeclaration) => {
+      const result = runRule(
+        noStaticElementInteractions,
+        `const Card = ({ disabled, open }) => {
+        ${aliasDeclaration}
+        return (
+          <div onClick={disabled ? noAction : () => open()}>
+            <Button aria-label="Open" onPress={() => open()}>Open</Button>
+          </div>
+        );
+      };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("still flags a conditional action whose nullish-looking alias is mutable", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `const Card = ({ disabled, open, replaceAction }) => {
+        let noAction = null;
+        noAction = replaceAction;
+        return (
+          <div onClick={disabled ? noAction : () => open()}>
+            <Button aria-label="Open" onPress={() => open()}>Open</Button>
+          </div>
+        );
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a wrapper whose accessible descendant performs a different action", () => {
     const result = runRule(
       noStaticElementInteractions,

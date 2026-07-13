@@ -9,6 +9,7 @@ import { isHiddenFromScreenReader } from "./is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isNullishExpression } from "./is-nullish-expression.js";
 import { parseJsxValue } from "./parse-jsx-value.js";
+import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const NATIVE_KEYBOARD_ACTIVATABLE_TAGS: ReadonlySet<string> = new Set([
@@ -27,20 +28,31 @@ const DESCENDANT_ACTION_PROP_NAMES = ["onClick", "onPress"] as const;
 const isStaticallyNullish = (expression: EsTreeNode): boolean =>
   isNullishExpression(stripParenExpression(expression));
 
+const isStaticallyNullishHandlerExpression = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const strippedExpression = stripParenExpression(expression);
+  if (isNullishExpression(strippedExpression)) return true;
+  const symbol = resolveConstIdentifierAlias(strippedExpression, scopes);
+  if (symbol?.kind !== "const" || !symbol.initializer) return false;
+  return isNullishExpression(stripParenExpression(symbol.initializer));
+};
+
 const resolveSingleHandlerAction = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds = new Set<number>(),
 ): EsTreeNode | null => {
   const strippedExpression = stripParenExpression(expression);
-  if (isStaticallyNullish(strippedExpression)) return null;
+  if (isStaticallyNullishHandlerExpression(strippedExpression, scopes)) return null;
   if (isNodeOfType(strippedExpression, "ConditionalExpression")) {
     const consequent = strippedExpression.consequent as EsTreeNode;
     const alternate = strippedExpression.alternate as EsTreeNode;
-    if (isStaticallyNullish(consequent)) {
+    if (isStaticallyNullishHandlerExpression(consequent, scopes)) {
       return resolveSingleHandlerAction(alternate, scopes, visitedSymbolIds);
     }
-    if (isStaticallyNullish(alternate)) {
+    if (isStaticallyNullishHandlerExpression(alternate, scopes)) {
       return resolveSingleHandlerAction(consequent, scopes, visitedSymbolIds);
     }
     return null;

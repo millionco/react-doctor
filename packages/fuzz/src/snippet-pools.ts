@@ -157,6 +157,7 @@ export const GUARD_SNIPPET_POOL = [
 
 // Library idioms — tanstack, mobx, styled-components, next/dynamic, redux.
 export const LIBRARY_SNIPPET_POOL = [
+  `const zodSchema = z.object({ value: z.string() }).strict();`,
   `const subscribeStore = useCallback((onStoreChange) => { store.on("change", onStoreChange); return () => store.off("change", onStoreChange); }, [store]); const snapshot = useSyncExternalStore(subscribeStore, getSnapshot);`,
   `const { data: queryData, isPending } = useQuery({ queryKey: ["items", value], queryFn: () => fetch(url).then((response) => response.json()) });`,
   `const mutation = useMutation({ mutationFn: (payload) => api.post(url, payload) });`,
@@ -433,6 +434,7 @@ export const IMPORT_LINE_POOL = [
   `import { useForm } from "react-hook-form";`,
   `import debounce from "lodash/debounce";`,
   `import { z } from "zod";`,
+  `import * as fuzzZod from "zod/v4"; const fuzzZodSchema = fuzzZod.object({ email: fuzzZod.string().email() }).strict();`,
   `import { forwardRef } from "react";\nconst FuzzForwardRefComponent = forwardRef((props) => <button>{props.label}</button>);`,
 ] as const;
 

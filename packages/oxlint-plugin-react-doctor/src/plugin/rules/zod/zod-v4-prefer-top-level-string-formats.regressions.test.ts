@@ -27,4 +27,34 @@ describe("zod-v4-prefer-top-level-string-formats — regressions", () => {
     });
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it.each([
+    'import { z } from "zod/v4";',
+    'import * as z from "zod/v4";',
+    'import { z as schema } from "zod/v4";',
+  ])("flags legacy string formats from the official v4 export: %s", (importStatement) => {
+    const namespaceName = importStatement.includes("as schema") ? "schema" : "z";
+    const code = `
+      ${importStatement}
+      const schemaValue = ${namespaceName}.string().email();
+    `;
+    const result = runRule(zodV4PreferTopLevelStringFormats, code, {
+      filename: "/repo/src/lib/schema.ts",
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["zod/v3", "zod/v4-mini", "zod/v4/core", "@acme/zod/v4"])(
+    "does NOT assign the full Zod v4 API to %s",
+    (moduleSource) => {
+      const code = `
+        import { z } from "${moduleSource}";
+        const schema = z.string().email();
+      `;
+      const result = runRule(zodV4PreferTopLevelStringFormats, code, {
+        filename: "/repo/src/lib/schema.ts",
+      });
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
 });

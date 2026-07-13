@@ -30,6 +30,32 @@ describe("zod-v4-no-deprecated-schema-apis", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    'import { z } from "zod/v4";',
+    'import * as z from "zod/v4";',
+    'import { z as schema } from "zod/v4";',
+  ])("flags deprecated schemas from the official v4 export: %s", (importStatement) => {
+    const namespaceName = importStatement.includes("as schema") ? "schema" : "z";
+    const code = `
+      ${importStatement}
+      const strict = ${namespaceName}.object({}).strict();
+    `;
+    const result = runRule(zodV4NoDeprecatedSchemaApis, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["zod/v3", "zod/v4-mini", "zod/v4/core", "@acme/zod/v4"])(
+    "does NOT assign the full Zod v4 API to %s",
+    (moduleSource) => {
+      const code = `
+        import { z } from "${moduleSource}";
+        const strict = z.object({}).strict();
+      `;
+      const result = runRule(zodV4NoDeprecatedSchemaApis, code);
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
   it("flags deprecated top-level factories and optional aliases", () => {
     const code = `
       import * as z from "zod";

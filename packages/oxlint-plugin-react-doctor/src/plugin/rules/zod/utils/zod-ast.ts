@@ -5,12 +5,7 @@ import { getStaticPropertyName } from "../../../utils/get-static-property-name.j
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 
-const ZOD_MODULE = "zod";
-
-// Every zod detection below bottoms out in `getImportInfoForIdentifier`,
-// which requires an import whose source is exactly `ZOD_MODULE` — so a file
-// with no such import can never report, and rules gate their visitors on it.
-export const ZOD_MODULE_SOURCES: ReadonlyArray<string> = [ZOD_MODULE];
+export const ZOD_MODULE_SOURCES: ReadonlyArray<string> = ["zod", "zod/v4"];
 
 interface ZodImportInfo {
   imported: string | null;
@@ -49,7 +44,7 @@ const computeImportInfoForIdentifier = (
   const declaration = specifier.parent;
   if (!declaration || !isNodeOfType(declaration, "ImportDeclaration")) return null;
   const source = declaration.source?.value;
-  if (source !== ZOD_MODULE) return null;
+  if (typeof source !== "string" || !ZOD_MODULE_SOURCES.includes(source)) return null;
 
   if (isNodeOfType(specifier, "ImportNamespaceSpecifier")) {
     return { imported: null, isDefault: false, isNamespace: true };

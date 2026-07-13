@@ -1,0 +1,265 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { preferUseEffectEvent } from "./prefer-use-effect-event.js";
+
+const runPreferUseEffectEvent = (code: string) => runRule(preferUseEffectEvent, code);
+
+describe("prefer-use-effect-event — callback stability regressions", () => {
+  it("stays silent for the authentic empty-dependency useCallback false positive", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect, useRef, useState } from "react";
+
+      export const NotificationControl = ({ open }) => {
+        const [, setIsOpen] = useState(open);
+        const triggerRef = useRef(null);
+        const closeAndFocusTrigger = useCallback(() => {
+          setIsOpen(false);
+          triggerRef.current?.focus();
+        }, []);
+
+        useEffect(() => {
+          if (!open) return;
+          const handleKeyDown = (event) => {
+            if (event.key === "Escape") closeAndFocusTrigger();
+          };
+          document.addEventListener("keydown", handleKeyDown);
+          return () => document.removeEventListener("keydown", handleKeyDown);
+        }, [closeAndFocusTrigger, open]);
+
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports a React useCallback whose nonempty dependencies can change", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect } from "react";
+
+      const Search = ({ query, open }) => {
+        const runSearch = useCallback(() => search(query), [query]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => runSearch(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [runSearch, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a React useCallback with a dynamic dependency list", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect } from "react";
+
+      const Search = ({ dependencies, open }) => {
+        const runSearch = useCallback(() => search(), dependencies);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => runSearch(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [runSearch, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a React useCallback with an omitted dependency list", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect } from "react";
+
+      const Search = ({ open }) => {
+        const runSearch = useCallback(() => search());
+        useEffect(() => {
+          const timeoutId = setTimeout(() => runSearch(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [runSearch, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves renamed React useCallback imports", () => {
+    const stableResult = runPreferUseEffectEvent(`
+      import { useCallback as useStableCallback, useEffect } from "react";
+
+      const Stable = ({ open }) => {
+        const handle = useStableCallback(() => work(), []);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => handle(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [handle, open]);
+        return null;
+      };
+    `);
+    const changingResult = runPreferUseEffectEvent(`
+      import { useCallback as useStableCallback, useEffect } from "react";
+
+      const Changing = ({ open, value }) => {
+        const handle = useStableCallback(() => work(value), [value]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => handle(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [handle, open]);
+        return null;
+      };
+    `);
+
+    expect(stableResult.parseErrors).toEqual([]);
+    expect(stableResult.diagnostics).toEqual([]);
+    expect(changingResult.parseErrors).toEqual([]);
+    expect(changingResult.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves React namespace useCallback calls", () => {
+    const stableResult = runPreferUseEffectEvent(`
+      import * as React from "react";
+
+      const Stable = ({ open }) => {
+        const handle = React.useCallback(() => work(), []);
+        React.useEffect(() => {
+          const timeoutId = setTimeout(() => handle(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [handle, open]);
+        return null;
+      };
+    `);
+    const changingResult = runPreferUseEffectEvent(`
+      import React from "react";
+
+      const Changing = ({ open, value }) => {
+        const handle = React.useCallback(() => work(value), [value]);
+        React.useEffect(() => {
+          const timeoutId = setTimeout(() => handle(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [handle, open]);
+        return null;
+      };
+    `);
+
+    expect(stableResult.parseErrors).toEqual([]);
+    expect(stableResult.diagnostics).toEqual([]);
+    expect(changingResult.parseErrors).toEqual([]);
+    expect(changingResult.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for a locally shadowed useCallback function", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Search = ({ open, value }) => {
+        const useCallback = (callback, dependencies) => callback;
+        const handle = useCallback(() => work(value), [value]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => handle(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [handle, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for useCallback imported from a non-React package", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+      import { useCallback } from "callback-library";
+
+      const Search = ({ open, value }) => {
+        const handle = useCallback(() => work(value), [value]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => handle(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [handle, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a non-React namespace useCallback method", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+      import * as CallbackLibrary from "callback-library";
+
+      const Search = ({ open, value }) => {
+        const handle = CallbackLibrary.useCallback(() => work(value), [value]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => handle(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [handle, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("unwraps TypeScript syntax around an empty dependency array", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect } from "react";
+
+      const Search = ({ open }) => {
+        const handle = useCallback(() => work(), [] as const);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => handle(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [handle, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a destructured callback prop positive", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Search = ({ onSearch, query }) => {
+        useEffect(() => {
+          const timeoutId = setTimeout(() => onSearch(query), 100);
+          return () => clearTimeout(timeoutId);
+        }, [onSearch, query]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a stable callback is referenced through an exact local alias", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect } from "react";
+
+      const Search = ({ open }) => {
+        const stableHandle = useCallback(() => work(), []);
+        const handleAlias = stableHandle;
+        useEffect(() => {
+          const timeoutId = setTimeout(() => handleAlias(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [handleAlias, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+});

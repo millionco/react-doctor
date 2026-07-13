@@ -10,6 +10,8 @@ import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -37,25 +39,50 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 //   (1) useEffect with at least 2 dep array elements, all Identifiers
 //   (2) at least one dep `F` is a function-shaped reactive value:
 //         - a destructured prop named `on[A-Z]…`, OR
-//         - a local declared via `const F = useCallback(...)`
+//         - a local declared via a potentially changing React `useCallback(...)`
 //   (3) every read of `F` inside the effect body sits inside a sub-
 //       handler (TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES, OR a
 //       MemberExpression whose property is in SUBSCRIPTION_METHOD_NAMES
 //       — same set the prefer-use-sync-external-store family uses)
 //   (4) `F` is NEVER read at the effect's own top level
-const collectFunctionTypedLocalBindings = (componentBody: EsTreeNode): Set<string> => {
-  const functionTypedLocals = new Set<string>();
-  if (!isNodeOfType(componentBody, "BlockStatement")) return functionTypedLocals;
+const isPotentiallyChangingReactUseCallback = (
+  initializer: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const unwrappedInitializer = stripParenExpression(initializer);
+  if (!isNodeOfType(unwrappedInitializer, "CallExpression")) return false;
+  if (
+    !isReactApiCall(unwrappedInitializer, "useCallback", context.scopes, {
+      allowGlobalReactNamespace: true,
+    })
+  ) {
+    return false;
+  }
+  const dependencyList = unwrappedInitializer.arguments?.[1];
+  if (!dependencyList) return true;
+  const unwrappedDependencyList = stripParenExpression(dependencyList);
+  return (
+    !isNodeOfType(unwrappedDependencyList, "ArrayExpression") ||
+    (unwrappedDependencyList.elements?.length ?? 0) > 0
+  );
+};
+
+const collectPotentiallyChangingCallbackBindings = (
+  componentBody: EsTreeNode,
+  context: RuleContext,
+): Set<string> => {
+  const potentiallyChangingCallbacks = new Set<string>();
+  if (!isNodeOfType(componentBody, "BlockStatement")) return potentiallyChangingCallbacks;
   for (const statement of componentBody.body ?? []) {
     if (!isNodeOfType(statement, "VariableDeclaration")) continue;
     for (const declarator of statement.declarations ?? []) {
       if (!isNodeOfType(declarator.id, "Identifier")) continue;
-      if (!isNodeOfType(declarator.init, "CallExpression")) continue;
-      if (!isHookCall(declarator.init, "useCallback")) continue;
-      functionTypedLocals.add(declarator.id.name);
+      if (!declarator.init || !isPotentiallyChangingReactUseCallback(declarator.init, context))
+        continue;
+      potentiallyChangingCallbacks.add(declarator.id.name);
     }
   }
-  return functionTypedLocals;
+  return potentiallyChangingCallbacks;
 };
 
 const findEnclosingFunctionInsideEffect = (
@@ -199,7 +226,10 @@ export const preferUseEffectEvent = defineRule({
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
-      const functionTypedLocalBindings = collectFunctionTypedLocalBindings(componentBody);
+      const potentiallyChangingCallbackBindings = collectPotentiallyChangingCallbackBindings(
+        componentBody,
+        context,
+      );
 
       for (const statement of componentBody.body ?? []) {
         if (!isNodeOfType(statement, "ExpressionStatement")) continue;
@@ -230,7 +260,7 @@ export const preferUseEffectEvent = defineRule({
           // on scalar props.
           const isFunctionTypedPropDep =
             propStackTracker.isPropName(depName) && REACT_HANDLER_PROP_PATTERN.test(depName);
-          const isFunctionTypedLocalDep = functionTypedLocalBindings.has(depName);
+          const isFunctionTypedLocalDep = potentiallyChangingCallbackBindings.has(depName);
           if (!isFunctionTypedPropDep && !isFunctionTypedLocalDep) continue;
 
           const classification = classifyCallableReadsInsideEffect(depName, callback);

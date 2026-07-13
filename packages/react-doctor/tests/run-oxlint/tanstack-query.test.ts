@@ -62,7 +62,7 @@ describe("runOxlint", () => {
       // The fixture has two useMutation calls: line ~51 with NO cache
       // update (must fire), and the setQueryData example a few lines
       // below (must NOT fire).
-      expect(mutationLines).toEqual([51]);
+      expect(mutationLines).toEqual([40]);
     });
   });
 

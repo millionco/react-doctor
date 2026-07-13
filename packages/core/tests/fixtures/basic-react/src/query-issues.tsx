@@ -1,16 +1,5 @@
 import { useEffect, useState } from "react";
-
-const useQuery = (options: any) => ({
-  data: null,
-  isLoading: false,
-  error: null,
-  refetch: () => {},
-});
-const useMutation = (options: any) => ({ mutate: () => {} });
-const QueryClient = class {
-  constructor(options?: any) {}
-};
-const QueryClientProvider = ({ client, children }: any) => children;
+import { QueryClient, QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
 const queryClient = { invalidateQueries: (_opts: any) => {} };
 
 const UnstableQueryClient = () => {

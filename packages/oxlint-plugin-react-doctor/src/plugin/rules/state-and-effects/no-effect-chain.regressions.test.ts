@@ -410,6 +410,69 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a chain when the upstream effect also calls an opaque prop setter", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget({ setLoading }) {
+        const [first, setFirst] = useState(0);
+        const [second, setSecond] = useState(0);
+        useEffect(() => { setFirst(1); setLoading(false); }, []);
+        useEffect(() => { setSecond(first + 1); }, [first]);
+        return second;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when the downstream effect returns a helper-owned subscription", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [ready, setReady] = useState(false);
+        useEffect(() => { setReady(true); }, []);
+        useEffect(() => { doWork(ready); return createSubscription(ready); }, [ready]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the upstream effect returns a helper-owned subscription", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [ready, setReady] = useState(false);
+        const [status, setStatus] = useState('');
+        useEffect(() => { setReady(true); return createSubscription(); }, []);
+        useEffect(() => { setStatus(ready ? 'on' : 'off'); }, [ready]);
+        return status;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["setAlias", "applyFirst"])(
+    "flags a chain through a local state-writing wrapper named %s",
+    (wrapperName) => {
+      const result = runRule(
+        noEffectChain,
+        `function Widget() {
+          const [ready, setReady] = useState(false);
+          const [first, setFirst] = useState(0);
+          const ${wrapperName} = () => { setFirst(1); };
+          useEffect(() => { setReady(true); }, []);
+          useEffect(() => { ${wrapperName}(); }, [ready]);
+          return first;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("flags a state chain whose downstream effect calls a concise helper", () => {
     const result = runRule(
       noEffectChain,

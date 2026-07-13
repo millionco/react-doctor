@@ -145,6 +145,7 @@ const EMPTY_CLEANUP_NAME_SET = new Set<string>();
 const isFunctionShapedReturn = (
   returnedValue: EsTreeNode,
   setterToStateName: ReadonlyMap<string, string>,
+  isExplicitReturnStatement: boolean,
 ): boolean => {
   if (
     isNodeOfType(returnedValue, "ArrowFunctionExpression") ||
@@ -154,13 +155,19 @@ const isFunctionShapedReturn = (
   }
   // Returning a CallExpression result — most cleanup-returning
   // primitives (subscribe, addEventListener helpers) return a
-  // function. Conservatively accept this shape.
+  // function. An explicit `return helper()` statement keeps the
+  // opaque-cleanup benefit of the doubt; a concise arrow's implicit
+  // return (`useEffect(() => helper(x), [x])`) is usually just a call,
+  // not a cleanup contract, so it must prove itself. A proven local
+  // state write (`return setSource(1)`) is never cleanup.
   if (isNodeOfType(returnedValue, "CallExpression")) {
     if (isNodeOfType(returnedValue.callee, "Identifier")) {
       if (setterToStateName.has(returnedValue.callee.name)) return false;
       if (isSetterIdentifier(returnedValue.callee.name)) return true;
     }
-    return isCleanupReturn(returnedValue, EMPTY_CLEANUP_NAME_SET, EMPTY_CLEANUP_NAME_SET);
+    return isCleanupReturn(returnedValue, EMPTY_CLEANUP_NAME_SET, EMPTY_CLEANUP_NAME_SET, {
+      allowOpaqueReturn: isExplicitReturnStatement,
+    });
   }
   // Returning a bare Identifier — could be the unsub binding from a
   // `const unsub = subscribe(...)` line. We can't statically prove
@@ -234,10 +241,32 @@ const callsStorageHookSetter = (
   return didFindStorageSetterCall;
 };
 
-const isExternalSyncNode = (
-  node: EsTreeNode,
+// A set*-named call that resolves to no local useState setter usually
+// synchronizes an external store (a context or prop setter such as
+// `setAutoPlaying`). The bare name is a weak signal, so it only exempts
+// effects that write no proven-local state — otherwise a prop setter
+// would silence a provable chain, and a local set*-named wrapper (whose
+// useState writes already count through the analysis functions) would
+// flip the verdict on a rename.
+const callsOpaqueExternalSetter = (
+  analysisFunctions: ReadonlySet<EsTreeNode>,
   setterToStateName: ReadonlyMap<string, string>,
 ): boolean => {
+  let didFindOpaqueSetterCall = false;
+  visitSynchronousFunctionBodies(analysisFunctions, (child) => {
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      isSetterIdentifier(child.callee.name) &&
+      !setterToStateName.has(child.callee.name)
+    ) {
+      didFindOpaqueSetterCall = true;
+    }
+  });
+  return didFindOpaqueSetterCall;
+};
+
+const isExternalSyncNode = (node: EsTreeNode): boolean => {
   if (isNodeOfType(node, "NewExpression")) {
     return (
       isNodeOfType(node.callee, "Identifier") &&
@@ -255,9 +284,7 @@ const isExternalSyncNode = (
 
   if (!isNodeOfType(node, "CallExpression")) return false;
   if (isNodeOfType(node.callee, "Identifier")) {
-    const calleeName = node.callee.name;
-    if (EXTERNAL_SYNC_DIRECT_CALLEE_NAMES.has(calleeName)) return true;
-    return isSetterIdentifier(calleeName) && !setterToStateName.has(calleeName);
+    return EXTERNAL_SYNC_DIRECT_CALLEE_NAMES.has(node.callee.name);
   }
   if (
     !isNodeOfType(node.callee, "MemberExpression") ||
@@ -284,13 +311,13 @@ const isExternalSyncEffect = (
   // an external resource — once we see one, we don't need to inspect
   // the body for an external-sync call shape.
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
-    if (isFunctionShapedReturn(effectCallback.body, setterToStateName)) return true;
+    if (isFunctionShapedReturn(effectCallback.body, setterToStateName, false)) return true;
   } else {
     for (const statement of effectCallback.body.body ?? []) {
       if (
         isNodeOfType(statement, "ReturnStatement") &&
         statement.argument &&
-        isFunctionShapedReturn(statement.argument, setterToStateName)
+        isFunctionShapedReturn(statement.argument, setterToStateName, true)
       ) {
         return true;
       }
@@ -299,7 +326,7 @@ const isExternalSyncEffect = (
 
   let didFindExternalCall = false;
   visitSynchronousFunctionBodies(analysisFunctions, (child) => {
-    if (isExternalSyncNode(child, setterToStateName)) didFindExternalCall = true;
+    if (isExternalSyncNode(child)) didFindExternalCall = true;
   });
 
   return didFindExternalCall;
@@ -337,13 +364,19 @@ export const noEffectChain = defineRule({
         const callback = getEffectCallback(effectCall, context.scopes);
         if (!callback) continue;
         const analysisFunctions = collectSynchronouslyInvokedFunctions(callback, context.scopes);
+        const writtenStateNames = collectWrittenStateNamesInEffect(
+          analysisFunctions,
+          setterToStateName,
+        );
         effectInfos.push({
           node: effectCall,
           depNames: collectDepIdentifierNames(effectCall),
-          writtenStateNames: collectWrittenStateNamesInEffect(analysisFunctions, setterToStateName),
+          writtenStateNames,
           isExternalSync:
             isExternalSyncEffect(callback, analysisFunctions, setterToStateName) ||
-            callsStorageHookSetter(analysisFunctions, storageSetterNames),
+            callsStorageHookSetter(analysisFunctions, storageSetterNames) ||
+            (writtenStateNames.size === 0 &&
+              callsOpaqueExternalSetter(analysisFunctions, setterToStateName)),
         });
       }
       if (effectInfos.length < 2) return;

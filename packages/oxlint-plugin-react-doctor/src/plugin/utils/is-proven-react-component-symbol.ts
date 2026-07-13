@@ -6,6 +6,7 @@ import { functionContainsReactRenderOutput } from "./function-contains-react-ren
 import { functionContainsProvenReactHookCall } from "./function-contains-proven-react-hook-call.js";
 import { functionReturnsPropsChildren } from "./function-returns-props-children.js";
 import { functionReturnsOnlyNull } from "./function-returns-only-null.js";
+import { isDefaultImportFromModule } from "./find-import-source-for-name.js";
 import { hasStableCallTarget } from "./has-stable-call-target.js";
 import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
 import { isComponentDeclaration } from "./is-component-declaration.js";
@@ -18,6 +19,10 @@ import { isUppercaseName } from "./is-uppercase-name.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const REACT_COMPONENT_HOC_NAMES: ReadonlySet<string> = new Set(["memo", "forwardRef"]);
+const LEGACY_REACT_COMPONENT_FACTORY_NAMES: ReadonlySet<string> = new Set([
+  "createClass",
+  "createReactClass",
+]);
 
 const functionHasComponentEvidence = (
   functionNode: EsTreeNode,
@@ -69,6 +74,14 @@ const isProvenReactComponentExpression = (
   }
   if (!isNodeOfType(candidate, "CallExpression")) return false;
   if (!hasStableCallTarget(candidate, scopes)) return false;
+  const factoryCallee = stripParenExpression(candidate.callee);
+  if (
+    (isNodeOfType(factoryCallee, "Identifier") &&
+      isDefaultImportFromModule(factoryCallee, factoryCallee.name, "create-react-class")) ||
+    isReactApiCall(candidate, LEGACY_REACT_COMPONENT_FACTORY_NAMES, scopes)
+  ) {
+    return true;
+  }
   if (isReactApiCall(candidate, REACT_COMPONENT_HOC_NAMES, scopes, { resolveNamedAliases: true })) {
     const wrappedComponent = candidate.arguments[0];
     return Boolean(

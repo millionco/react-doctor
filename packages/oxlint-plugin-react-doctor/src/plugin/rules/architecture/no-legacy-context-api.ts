@@ -1,10 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isUppercaseName } from "../../utils/is-uppercase-name.js";
+import { isProvenReactClassComponent } from "../../utils/is-proven-react-class-component.js";
+import { isProvenReactComponentSymbol } from "../../utils/is-proven-react-component-symbol.js";
+import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { symbolHasReactComponentTypeAnnotation } from "../../utils/symbol-has-react-component-type-annotation.js";
 
 // HACK: legacy context (`childContextTypes` + `getChildContext` on
 // providers, `contextTypes` on consumers) was deprecated in 16.3, warns
@@ -26,27 +29,11 @@ const buildLegacyContextMessage = (memberName: string): string => {
   return "contextTypes uses the old context API that React 19 removes, so your component stops receiving context. Use `static contextType = MyContext` or `useContext()` in a function component, & update the provider too.";
 };
 
-const isInsideClassBody = (node: EsTreeNode): boolean => {
-  let current = node.parent;
-  while (current) {
-    if (isNodeOfType(current, "ClassBody")) return true;
-    if (isFunctionLike(current)) {
-      return false;
-    }
-    current = current.parent;
-  }
-  return false;
-};
-
 export const noLegacyContextApi = defineRule({
   id: "no-legacy-context-api",
   title: "Legacy context API",
   severity: "error",
   category: "Correctness",
-  // Matches purely on the member NAME (`contextTypes`, `getChildContext`,
-  // `childContextTypes`) with no React guard, so a same-named method on a
-  // non-React class would false-fire. The legacy context API is React-only,
-  // so require it.
   requires: ["react"],
   tags: ["migration-hint"],
   recommendation:
@@ -61,6 +48,8 @@ export const noLegacyContextApi = defineRule({
         return;
       if (!isNodeOfType(memberNode.key, "Identifier")) return;
       if (!LEGACY_CONTEXT_NAMES.has(memberNode.key.name)) return;
+      if (memberNode.key.name === "getChildContext" ? memberNode.static : !memberNode.static)
+        return;
       context.report({
         node: memberNode.key,
         message: buildLegacyContextMessage(memberNode.key.name),
@@ -69,6 +58,8 @@ export const noLegacyContextApi = defineRule({
 
     return {
       ClassBody(node: EsTreeNodeOfType<"ClassBody">) {
+        const classNode = node.parent;
+        if (!classNode || !isProvenReactClassComponent(classNode, context.scopes)) return;
         for (const member of node.body ?? []) {
           checkMember(member);
         }
@@ -80,9 +71,18 @@ export const noLegacyContextApi = defineRule({
         if (left.computed) return;
         if (!isNodeOfType(left.property, "Identifier")) return;
         if (!LEGACY_CONTEXT_NAMES.has(left.property.name)) return;
-        if (!isNodeOfType(left.object, "Identifier")) return;
-        if (!isUppercaseName(left.object.name)) return;
-        if (isInsideClassBody(node)) return;
+        if (left.property.name === "getChildContext") return;
+        const component = stripParenExpression(left.object);
+        if (!isNodeOfType(component, "Identifier")) return;
+        const symbol = context.scopes.symbolFor(component);
+        if (
+          !symbol ||
+          (!isProvenReactComponentSymbol(symbol, context.scopes, context.cfg, component) &&
+            (hasSymbolWriteBefore(symbol, component, context.scopes) ||
+              !symbolHasReactComponentTypeAnnotation(symbol, context.scopes)))
+        ) {
+          return;
+        }
         context.report({
           node: left,
           message: buildLegacyContextMessage(left.property.name),

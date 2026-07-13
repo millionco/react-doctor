@@ -104,6 +104,76 @@ function Search() {
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 
+  it.each([
+    {
+      name: "a TypeScript-wrapped named hook",
+      importStatement: 'import { useQuery } from "@tanstack/react-query";',
+      hookCall: "(useQuery as typeof useQuery)({ queryKey: ['items'] })",
+    },
+    {
+      name: "a parenthesized namespace hook",
+      importStatement: 'import * as ReactQuery from "@tanstack/react-query";',
+      hookCall: "(ReactQuery.useQuery)({ queryKey: ['items'] })",
+    },
+    {
+      name: "a TypeScript-wrapped namespace hook",
+      importStatement: 'import * as ReactQuery from "@tanstack/react-query";',
+      hookCall: "(ReactQuery.useQuery as typeof ReactQuery.useQuery)({ queryKey: ['items'] })",
+    },
+    {
+      name: "a hook on a TypeScript-wrapped namespace",
+      importStatement: 'import * as ReactQuery from "@tanstack/react-query";',
+      hookCall: "(ReactQuery as typeof ReactQuery).useQuery({ queryKey: ['items'] })",
+    },
+    {
+      name: "a no-substitution template-computed namespace hook",
+      importStatement: 'import * as ReactQuery from "@tanstack/react-query";',
+      hookCall: "ReactQuery[`useQuery`]({ queryKey: ['items'] })",
+    },
+  ])("flags refetch from $name", ({ importStatement, hookCall }) => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `${importStatement}
+function Search() {
+  const query = ${hookCall};
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    {
+      name: "a dynamic template-computed namespace member",
+      declaration: 'const hookName = "useQuery";',
+      hookCall: "ReactQuery[`${hookName}`]({ queryKey: ['items'] })",
+    },
+    {
+      name: "a shadowed namespace",
+      declaration: "",
+      hookCall: "(ReactQuery as QueryLibrary).useQuery({ queryKey: ['items'] })",
+      parameter: ", ReactQuery",
+    },
+    {
+      name: "a userland wrapper around the hook",
+      declaration: "const useItemsQuery = (options) => ReactQuery.useQuery(options);",
+      hookCall: "useItemsQuery({ queryKey: ['items'] })",
+    },
+  ])("stays silent on $name", ({ declaration, hookCall, parameter = "" }) => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import * as ReactQuery from "@tanstack/react-query";
+${declaration}
+function Search({ QueryLibrary }${parameter}) {
+  const query = ${hookCall};
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("flags exact hook, namespace, and query-result const aliases", () => {
     const { diagnostics } = runRule(
       queryNoQueryInEffect,

@@ -1,6 +1,7 @@
 import { TANSTACK_QUERY_HOOKS } from "../../../constants/tanstack.js";
 import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
 import { getImportBindingForName } from "../../../utils/find-import-source-for-name.js";
+import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isTanstackQuerySource } from "../../../utils/is-tanstack-query-source.js";
 import { resolveConstIdentifierAlias } from "../../../utils/resolve-const-identifier-alias.js";
@@ -13,22 +14,11 @@ const resolveTanstackNamespaceHookName = (
   contextNode: EsTreeNode,
   scopes: ScopeAnalysis,
 ): string | null => {
-  if (
-    !(
-      (isNodeOfType(memberExpression.property, "Identifier") && !memberExpression.computed) ||
-      (isNodeOfType(memberExpression.property, "Literal") &&
-        memberExpression.computed &&
-        typeof memberExpression.property.value === "string")
-    ) ||
-    !isNodeOfType(memberExpression.object, "Identifier")
-  ) {
-    return null;
-  }
-  const hookName = isNodeOfType(memberExpression.property, "Identifier")
-    ? memberExpression.property.name
-    : String(memberExpression.property.value);
-  if (!TANSTACK_QUERY_HOOKS.has(hookName)) return null;
-  const resolvedNamespaceSymbol = resolveConstIdentifierAlias(memberExpression.object, scopes);
+  const hookName = getStaticPropertyKeyName(memberExpression, { allowComputedString: true });
+  const namespaceObject = stripParenExpression(memberExpression.object);
+  if (!hookName || !TANSTACK_QUERY_HOOKS.has(hookName)) return null;
+  if (!isNodeOfType(namespaceObject, "Identifier")) return null;
+  const resolvedNamespaceSymbol = resolveConstIdentifierAlias(namespaceObject, scopes);
   if (resolvedNamespaceSymbol?.kind !== "import") return null;
   const namespaceBinding = getImportBindingForName(contextNode, resolvedNamespaceSymbol.name);
   return namespaceBinding?.isNamespace && isTanstackQuerySource(namespaceBinding.source)
@@ -40,7 +30,7 @@ export const resolveTanstackQueryHookName = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
 ): string | null => {
-  const callee = callExpression.callee;
+  const callee = stripParenExpression(callExpression.callee);
   if (isNodeOfType(callee, "Identifier")) {
     const resolvedSymbol = resolveConstIdentifierAlias(callee, scopes);
     if (!resolvedSymbol) return null;

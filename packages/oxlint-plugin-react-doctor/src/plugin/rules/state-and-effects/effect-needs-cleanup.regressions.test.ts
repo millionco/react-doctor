@@ -1818,6 +1818,77 @@ export const OutsideAction = ({ onOutsideAction, shouldRecurse }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("rejects a break-truncated removal loop in a retained handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `const probeEvents = ["mousedown", "focusin"];
+export const Tracker = () => {
+  const onMove = (event) => console.log(event.type);
+  const arm = () => {
+    for (const event of probeEvents) {
+      document.addEventListener(event, onMove);
+    }
+  };
+  const disarm = () => {
+    for (const event of probeEvents) {
+      document.removeEventListener(event, onMove);
+      break;
+    }
+  };
+  return <button onClick={arm} onBlur={disarm}>track</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an exhaustive removal loop in a retained handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `const probeEvents = ["mousedown", "focusin"];
+export const Tracker = () => {
+  const onMove = (event) => console.log(event.type);
+  const arm = () => {
+    for (const event of probeEvents) {
+      document.addEventListener(event, onMove);
+    }
+  };
+  const disarm = () => {
+    for (const event of probeEvents) {
+      document.removeEventListener(event, onMove);
+    }
+  };
+  return <button onClick={arm} onBlur={disarm}>track</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a break-truncated removal loop in the returned effect cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    return () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction);
+        break;
+      }
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });
 
 describe("effect-needs-cleanup adversarial edge cases (observers / connections / retained functions)", () => {

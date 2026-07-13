@@ -36,10 +36,11 @@ describe("fuzz harness oracles", () => {
     expect(checkedCount).toBeGreaterThan(0);
   });
 
-  // The regression corpus holds confirmed false positives — valid programs
-  // by definition, so every seed must parse (a broken seed would silently
-  // stop exercising its weakness class).
-  it("loads a regression corpus whose every seed parses cleanly", () => {
+  // The corpus holds confirmed false positives (regressions/) and confirmed
+  // true positives (true-positives/) — every seed must parse (a broken seed
+  // would silently stop exercising its weakness class). Firing expectations
+  // live in each rule's unit suite, never here.
+  it("loads a corpus whose every seed parses cleanly", () => {
     const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     const corpus = loadFuzzCorpus(path.join(packageRoot, "corpus"));
     expect(corpus.length).toBeGreaterThan(0);

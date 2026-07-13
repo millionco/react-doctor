@@ -155,7 +155,10 @@ The fuzzer's power compounds through its regression corpus at
 `packages/fuzz/corpus/regressions/`. Every file there is a confirmed false
 positive — valid code a rule once wrongly flagged — and every fuzz run
 mutates and crosses over these seeds, concentrating pressure on the
-historically weakest detection logic.
+historically weakest detection logic. Confirmed true positives worth
+keeping as mutation seeds go in `packages/fuzz/corpus/true-positives/`
+instead; the harness enforces no firing expectations for either family
+(those live in the rule's unit suite).
 
 Whenever a NEW false positive is confirmed, before (or with) the rule fix:
 

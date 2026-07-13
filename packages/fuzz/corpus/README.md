@@ -1,10 +1,22 @@
-# Fuzz regression corpus
+# Fuzz corpus
 
-Every file here is a **confirmed false positive**: correct, idiomatic code
-that a rule once wrongly flagged. The harness always loads this directory
-(no env needed) and fuzzes these programs plus mutated/crossed-over
-descendants — concentrating inputs on the detection logic that has
-historically been weakest.
+The harness always loads this directory (no env needed) and fuzzes these
+programs plus mutated/crossed-over descendants — concentrating inputs on
+the detection logic that has historically been weakest.
+
+Two seed families, split by expected rule verdict:
+
+- `regressions/` — every file is a **confirmed false positive**: correct,
+  idiomatic code that a rule once wrongly flagged.
+- `true-positives/` — every file is a **confirmed true positive**: a
+  genuine bug a rule must flag, kept as a mutation seed so its shape keeps
+  applying pressure.
+
+The harness enforces **no firing expectations** for either family — its
+oracles are crash, slowness, verdict-preserving invariance, and verdict
+drops, and `firedProgramCount` is a coverage stat only. Whether a seed must
+or must not fire is pinned by the owning rule's unit test file, never by
+fuzzing.
 
 **The evolving loop (see the `fuzz` skill):** whenever a new false positive
 is confirmed — from a user report, an RDE eval, a react-bench run, review,
@@ -22,5 +34,4 @@ Header format:
 // source: <PR/issue/session reference>
 ```
 
-Files must parse cleanly as TSX (`pnpm test` enforces it) — they are valid
-programs by definition.
+Files must parse cleanly as TSX (`pnpm test` enforces it).

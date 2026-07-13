@@ -770,6 +770,48 @@ const findSameFileTypeAlias = (
   return null;
 };
 
+const hasDeclaredMembershipMethod = (
+  members: ReadonlyArray<EsTreeNode>,
+  methodName: string,
+): boolean =>
+  members.some(
+    (member) =>
+      (isNodeOfType(member, "TSMethodSignature") || isNodeOfType(member, "TSPropertySignature")) &&
+      isNodeOfType(member.key, "Identifier") &&
+      member.key.name === methodName,
+  );
+
+const isKnownUserlandMembershipReceiver = (receiver: EsTreeNode, methodName: string): boolean => {
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const declaredType = getIdentifierDeclaredType(receiver);
+  if (!declaredType) return false;
+  if (isNodeOfType(declaredType, "TSTypeLiteral")) {
+    return hasDeclaredMembershipMethod(declaredType.members ?? [], methodName);
+  }
+  if (
+    !isNodeOfType(declaredType, "TSTypeReference") ||
+    !isNodeOfType(declaredType.typeName, "Identifier")
+  ) {
+    return false;
+  }
+  const program = findProgramRoot(receiver);
+  if (!program) return false;
+  for (const statement of program.body) {
+    const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
+      ? statement.declaration
+      : statement;
+    if (
+      declaration &&
+      isNodeOfType(declaration, "TSInterfaceDeclaration") &&
+      isNodeOfType(declaration.id, "Identifier") &&
+      declaration.id.name === declaredType.typeName.name
+    ) {
+      return hasDeclaredMembershipMethod(declaration.body.body, methodName);
+    }
+  }
+  return false;
+};
+
 const findTypeParameter = (
   reference: EsTreeNode,
   typeName: string,
@@ -1374,7 +1416,9 @@ export const jsSetMapLookups = defineRule({
       const rawReceiver = node.callee.object;
       if (!rawReceiver) return;
       const receiver = stripParenExpression(rawReceiver);
-      if (!isKnownNativeArrayReceiver(receiver)) return;
+      const isKnownNativeArray = isKnownNativeArrayReceiver(receiver);
+      if (isKnownUserlandMembershipReceiver(receiver, methodName)) return;
+      if (methodName === "includes" && node.arguments.length === 2 && !isKnownNativeArray) return;
       const query = node.arguments[0] as EsTreeNode | undefined;
       if (
         methodName === "indexOf" &&

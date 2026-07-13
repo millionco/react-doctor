@@ -2,6 +2,7 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { collectPatternNames } from "./collect-pattern-names.js";
 import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
+import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -12,16 +13,31 @@ export const functionReturnsPropsChildren = (
   scopes: ScopeAnalysis,
 ): boolean => {
   if (!isFunctionLike(functionNode) || functionNode.params.length === 0) return false;
+  const firstParameter = stripParenExpression(functionNode.params[0]);
   const firstParameterNames = new Set<string>();
-  collectPatternNames(functionNode.params[0] ?? null, firstParameterNames);
+  collectPatternNames(firstParameter, firstParameterNames);
+  const childrenBindingNames = new Set<string>();
+  const firstParameterPattern = isNodeOfType(firstParameter, "AssignmentPattern")
+    ? stripParenExpression(firstParameter.left)
+    : firstParameter;
+  if (isNodeOfType(firstParameterPattern, "ObjectPattern")) {
+    for (const property of firstParameterPattern.properties) {
+      if (
+        isNodeOfType(property, "Property") &&
+        getStaticPropertyKeyName(property, { allowComputedString: true }) === "children"
+      ) {
+        collectPatternNames(property.value, childrenBindingNames);
+      }
+    }
+  }
   return functionReturnsMatchingExpression(functionNode, scopes, (expression) => {
     const candidate = stripParenExpression(expression);
     if (isNodeOfType(candidate, "Identifier")) {
       const symbol = scopes.symbolFor(candidate);
       return Boolean(
         symbol?.kind === "parameter" &&
-        symbol.name === "children" &&
-        firstParameterNames.has(symbol.name),
+        firstParameterNames.has(symbol.name) &&
+        (symbol.name === "children" || childrenBindingNames.has(symbol.name)),
       );
     }
     if (!isNodeOfType(candidate, "MemberExpression")) return false;

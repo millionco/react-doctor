@@ -414,4 +414,74 @@ describe("architecture/no-prop-types component provenance", () => {
       1,
     );
   });
+
+  it("reports renamed and defaulted children destructuring", () => {
+    expectDiagnosticCount(
+      `const Panel = ({ children: content }: { children: React.ReactNode }) => content;
+       Panel.propTypes = { children: () => true };
+       const Dialog = ({ children: content = null }: { children?: React.ReactNode }) => content;
+       Dialog.propTypes = { children: () => true };
+       const Schema = ({ label: content }: { label: unknown }) => content;
+       Schema.propTypes = { label: () => true };`,
+      2,
+    );
+  });
+
+  it("ignores uncalled and deferred nested factory mutations", () => {
+    expectDiagnosticCount(
+      `import ReactDefault from "react";
+       import styledDefault from "styled-components";
+       const ReactAlias = ReactDefault;
+       const mutateReact = () => {
+         ReactAlias.Component = class {};
+         ReactAlias.memo = (value: unknown) => value;
+       };
+       const Schema = ReactAlias.memo(() => <div />);
+       Schema.propTypes = { value: () => true };
+       class Protocol extends ReactAlias.Component { static propTypes = { value: () => true }; }
+       setTimeout(mutateReact, 0);
+       const mutateStyled = () => { styledDefault.div = (parts: TemplateStringsArray) => ({ parts }); };
+       queueMicrotask(mutateStyled);
+       const RecordShape = styledDefault.div\`color: red;\`;
+       RecordShape.propTypes = { value: () => true };`,
+      3,
+    );
+  });
+
+  it("tracks nested factory mutations only when invoked before capture", () => {
+    expectDiagnosticCount(
+      `import ReactDefault from "react";
+       import styledDefault from "styled-components";
+       const mutateReact = () => {
+         ReactDefault.Component = class {};
+         ReactDefault.memo = (value: unknown) => value;
+       };
+       mutateReact();
+       const Schema = ReactDefault.memo(() => <div />);
+       Schema.propTypes = { value: () => true };
+       class Protocol extends ReactDefault.Component { static propTypes = { value: () => true }; }
+       const mutateStyled = () => { styledDefault.div = (parts: TemplateStringsArray) => ({ parts }); };
+       mutateStyled();
+       const RecordShape = styledDefault.div\`color: red;\`;
+       RecordShape.propTypes = { value: () => true };`,
+      0,
+    );
+    expectDiagnosticCount(
+      `import ReactDefault from "react";
+       import styledDefault from "styled-components";
+       const mutateReact = () => {
+         ReactDefault.Component = class {};
+         ReactDefault.memo = (value: unknown) => value;
+       };
+       const Panel = ReactDefault.memo(() => <div />);
+       Panel.propTypes = { value: () => true };
+       class Dialog extends ReactDefault.Component { static propTypes = { value: () => true }; }
+       mutateReact();
+       const mutateStyled = () => { styledDefault.div = (parts: TemplateStringsArray) => ({ parts }); };
+       const Sheet = styledDefault.div\`color: red;\`;
+       Sheet.propTypes = { value: () => true };
+       mutateStyled();`,
+      3,
+    );
+  });
 });

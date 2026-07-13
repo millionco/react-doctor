@@ -237,6 +237,29 @@ describe("mergeAndFilterDiagnostics — conditional Hook deduplication", () => {
       ),
     ).toEqual([fallbackDiagnostic]);
   });
+
+  it("deduplicates related findings after a severity override", () => {
+    const projectDir = setupCase("derived-state-dedupe-severity", "const value = 1;\n");
+    const preferredDiagnostic = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      offset: 100,
+      length: 12,
+    });
+    const fallbackDiagnostic = buildDiagnostic({
+      rule: "no-derived-state",
+      offset: 100,
+      length: 12,
+    });
+
+    expect(
+      mergeAndFilterDiagnostics(
+        [fallbackDiagnostic, preferredDiagnostic],
+        projectDir,
+        { rules: { "react-doctor/no-adjust-state-on-prop-change": "error" } },
+        createNodeReadFileLinesSync(projectDir),
+      ),
+    ).toEqual([{ ...preferredDiagnostic, severity: "error" }]);
+  });
 });
 
 describe("mergeAndFilterDiagnostics — test-noise tag auto-suppression for async-parallel", () => {

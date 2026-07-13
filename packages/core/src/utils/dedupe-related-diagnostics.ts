@@ -45,7 +45,6 @@ export const dedupeRelatedDiagnostics = (diagnostics: ReadonlyArray<Diagnostic>)
       const overlappingDiagnosticIndex = uniqueDiagnostics.findIndex(
         (candidate) =>
           candidate.rule !== diagnostic.rule &&
-          candidate.severity === diagnostic.severity &&
           DERIVED_STATE_RULE_PRIORITY.has(candidate.rule) &&
           doDiagnosticSpansOverlap(candidate, diagnostic),
       );

@@ -29,17 +29,17 @@ const REACT_USE_BINDING_RESOLUTION: BindingResolution = {
   isReactNamespaceBinding: false,
 };
 
-const getScriptKind = (filename: string): ts.ScriptKind => {
+export const getScriptKind = (filename: string): ts.ScriptKind => {
   if (filename.endsWith(".tsx")) return ts.ScriptKind.TSX;
   if (filename.endsWith(".jsx")) return ts.ScriptKind.JSX;
   if (filename.endsWith(".ts")) return ts.ScriptKind.TS;
   return ts.ScriptKind.JS;
 };
 
-const getUtf16Offset = (sourceText: string, utf8Offset: number): number =>
+export const getUtf16Offset = (sourceText: string, utf8Offset: number): number =>
   Buffer.from(sourceText).subarray(0, utf8Offset).toString("utf8").length;
 
-const unwrapExpression = (expression: ts.Expression): ts.Expression => {
+export const unwrapExpression = (expression: ts.Expression): ts.Expression => {
   let currentExpression = expression;
   while (
     ts.isParenthesizedExpression(currentExpression) ||
@@ -53,7 +53,7 @@ const unwrapExpression = (expression: ts.Expression): ts.Expression => {
   return currentExpression;
 };
 
-const getStaticPropertyName = (node: ts.PropertyName | undefined): string | null => {
+export const getStaticPropertyName = (node: ts.PropertyName | undefined): string | null => {
   if (!node) return null;
   if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node))
     return node.text;
@@ -81,7 +81,10 @@ const findBindingIdentifier = (
   return null;
 };
 
-const bindingNameHasIdentifier = (bindingName: ts.BindingName, identifierName: string): boolean => {
+export const bindingNameHasIdentifier = (
+  bindingName: ts.BindingName,
+  identifierName: string,
+): boolean => {
   if (ts.isIdentifier(bindingName)) return bindingName.text === identifierName;
 
   return bindingName.elements.some((element) => {
@@ -252,7 +255,7 @@ const scopeContainsNonImportBinding = (
   return didFindBinding;
 };
 
-const isIdentifierShadowedByLocalBinding = (
+export const isIdentifierShadowedByLocalBinding = (
   identifier: ts.Identifier,
   sourceFile: ts.SourceFile,
 ): boolean => {

@@ -6,6 +6,7 @@ import {
   CORPUS_PROGRAM_PROBABILITY,
   DEFAULT_FUZZ_ITERATIONS,
   EXPLOIT_DESCENDANT_COUNT,
+  FUZZ_SEED_MULTIPLIER,
   MAX_NOISE_MUTATIONS,
   NOISE_MUTATION_PROBABILITY,
   SLOW_RULE_THRESHOLD_MS,
@@ -182,7 +183,7 @@ export const fuzzRuleWithStats = (
   };
 
   for (let iteration = 0; iteration < iterations; iteration += 1) {
-    const iterationSeed = (baseSeed * 1_000_003 + iteration) >>> 0;
+    const iterationSeed = (baseSeed * FUZZ_SEED_MULTIPLIER + iteration) >>> 0;
     const random = createSeededRandom(iterationSeed);
     let filename: string = random.pick(FUZZ_FILENAME_POOL);
 

@@ -20,6 +20,7 @@ import { appendReanimatedSharedValueHint } from "../../utils/append-reanimated-s
 import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
 import { shouldSuppressCompilerFindingInWorklet } from "./should-suppress-compiler-finding-in-worklet.js";
+import { shouldSuppressBrowserCapabilityStateSync } from "./should-suppress-browser-capability-state-sync.js";
 import { suppressMemoizationInBailedOutFunctions } from "./suppress-memoization-in-bailed-out-functions.js";
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
@@ -390,6 +391,7 @@ export const parseOxlintOutput = (
         isLintableSourceFile(diagnostic.filename) &&
         !isMinifiedDiagnosticFile(diagnostic.filename) &&
         !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory) &&
+        !shouldSuppressBrowserCapabilityStateSync(diagnostic, rootDirectory) &&
         !shouldSuppressCompilerFindingInWorklet(diagnostic, project, rootDirectory),
     )
     .map((diagnostic) => {

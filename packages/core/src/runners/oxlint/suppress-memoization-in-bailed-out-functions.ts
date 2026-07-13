@@ -3,6 +3,7 @@ import * as path from "node:path";
 import ts from "typescript";
 import type { Diagnostic } from "../../types/index.js";
 import { lineOfUtf8Offset } from "../../utils/line-of-utf8-offset.js";
+import { getScriptKind } from "./resolve-use-call-binding.js";
 
 const MANUAL_MEMOIZATION_PLUGIN = "react-doctor";
 const MANUAL_MEMOIZATION_RULE = "react-compiler-no-manual-memoization";
@@ -12,13 +13,6 @@ interface LineRange {
   readonly startLine: number;
   readonly endLine: number;
 }
-
-const getScriptKind = (filename: string): ts.ScriptKind => {
-  if (filename.endsWith(".tsx")) return ts.ScriptKind.TSX;
-  if (filename.endsWith(".jsx")) return ts.ScriptKind.JSX;
-  if (filename.endsWith(".ts")) return ts.ScriptKind.TS;
-  return ts.ScriptKind.JS;
-};
 
 const isManualMemoizationDiagnostic = (diagnostic: Diagnostic): boolean =>
   diagnostic.plugin === MANUAL_MEMOIZATION_PLUGIN && diagnostic.rule === MANUAL_MEMOIZATION_RULE;

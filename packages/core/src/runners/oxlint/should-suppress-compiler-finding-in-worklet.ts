@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import ts from "typescript";
 import type { ProjectInfo } from "../../types/index.js";
+import { findNodeAtOffset } from "../../utils/find-node-at-offset.js";
+import { getScriptKind, getUtf16Offset } from "./resolve-use-call-binding.js";
 
 // React Compiler diagnostics fire on `sharedValue.value` reads/writes even
 // inside Reanimated worklets. A worklet body is extracted by Reanimated's
@@ -48,16 +50,6 @@ interface OxlintDiagnosticCandidate {
   filename: string;
   labels: OxlintLabel[];
 }
-
-const getScriptKind = (filename: string): ts.ScriptKind => {
-  if (filename.endsWith(".tsx")) return ts.ScriptKind.TSX;
-  if (filename.endsWith(".jsx")) return ts.ScriptKind.JSX;
-  if (filename.endsWith(".ts")) return ts.ScriptKind.TS;
-  return ts.ScriptKind.JS;
-};
-
-const getUtf16Offset = (sourceText: string, utf8Offset: number): number =>
-  Buffer.from(sourceText).subarray(0, utf8Offset).toString("utf8").length;
 
 const hasWorkletDirective = (node: ts.SignatureDeclaration): boolean => {
   if (
@@ -112,17 +104,6 @@ const isFunctionWorklet = (functionNode: ts.SignatureDeclaration): boolean => {
     parent.arguments.some((argument) => argument === functionNode) &&
     isWorkletAcceptingCall(parent)
   );
-};
-
-const findNodeAtOffset = (sourceFile: ts.SourceFile, targetOffset: number): ts.Node | null => {
-  let matchedNode: ts.Node | null = null;
-  const visit = (node: ts.Node): void => {
-    if (node.getStart(sourceFile) > targetOffset || node.getEnd() <= targetOffset) return;
-    matchedNode = node;
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  return matchedNode;
 };
 
 const isOffsetInsideWorklet = (sourceFile: ts.SourceFile, targetOffset: number): boolean => {

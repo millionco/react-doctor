@@ -10,7 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "fuzz": "cross-env REACT_DOCTOR_FUZZ=1 vp test run tests/fuzz-rules.test.ts",
+    "fuzz": "cross-env REACT_DOCTOR_FUZZ=1 vp test run tests/fuzz-rules.test.ts tests/browser-capability-state-sync.test.ts",
     "test": "vp test run",
     "typecheck": "tsc --noEmit"
   },

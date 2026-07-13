@@ -19,6 +19,7 @@ const isStrict = process.env.FUZZ_STRICT === "1";
 const shouldCheckInvariants = isStrict || process.env.FUZZ_INVARIANTS === "1";
 const shouldPrintStats = process.env.FUZZ_PRINT_STATS === "1";
 const ruleFilter = process.env.FUZZ_RULE;
+const supplementalRuleIds = ["react-hooks-js/set-state-in-effect"];
 
 // A malformed env value silently degrading to zero iterations would make
 // the whole run a false green, so fail loudly instead. Only validated when
@@ -81,6 +82,9 @@ const formatFinding = (finding: FuzzFinding, reproducerPath: string): string =>
 const selectedRules = reactDoctorRules.filter(
   (entry) => ruleFilter === undefined || entry.id === ruleFilter || entry.id.includes(ruleFilter),
 );
+const hasSelectedSupplementalRule = supplementalRuleIds.some(
+  (ruleId) => ruleFilter !== undefined && ruleId.includes(ruleFilter),
+);
 
 // Adversarial fuzzing of every rule: generated + mutated React/TSX programs
 // with crash, pathological-slowness, and (in strict mode) metamorphic
@@ -111,11 +115,16 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
     }
   });
 
-  if (ruleFilter !== undefined && selectedRules.length === 0) {
+  if (ruleFilter !== undefined && selectedRules.length === 0 && !hasSelectedSupplementalRule) {
     it(`FUZZ_RULE matches at least one rule`, () => {
       expect.fail(
         `FUZZ_RULE=${JSON.stringify(ruleFilter)} matches no registry rule id — nothing was fuzzed`,
       );
+    });
+  }
+  if (hasSelectedSupplementalRule) {
+    it("runs the selected supplemental fuzz target", () => {
+      expect(selectedRules).toHaveLength(0);
     });
   }
 

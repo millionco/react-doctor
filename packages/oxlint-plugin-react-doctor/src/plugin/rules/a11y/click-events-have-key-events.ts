@@ -3,9 +3,9 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { hasKeyboardActivatableDescendant } from "../../utils/has-keyboard-activatable-descendant.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
@@ -240,38 +240,6 @@ const hasCompositeItemRole = (node: EsTreeNodeOfType<"JSXOpeningElement">): bool
   return Boolean(firstRole && COMPOSITE_ITEM_ROLES.has(firstRole.toLowerCase()));
 };
 
-// Natively keyboard-activatable tags: Enter/Space on them dispatches a
-// click that bubbles to the wrapper's onClick.
-const NATIVE_ACTIVATABLE_TAGS: ReadonlySet<string> = new Set([
-  "a",
-  "button",
-  "input",
-  "select",
-  "textarea",
-  "summary",
-]);
-
-const INTERACTIVE_COMPONENT_NAME_PATTERN = /button|link|nav|anchor/i;
-
-// The doc's FP example: a wrapper whose onClick only catches clicks
-// bubbling from an inner control that already handles keyboard —
-// keyboard activation of the inner button/link dispatches a click that
-// bubbles to the wrapper, so the handler IS keyboard-reachable.
-const containsKeyboardActivatableDescendant = (element: EsTreeNode | null | undefined): boolean => {
-  if (!element || !isNodeOfType(element, "JSXElement")) return false;
-  for (const child of element.children) {
-    const childNode = child as EsTreeNode;
-    if (!isNodeOfType(childNode, "JSXElement")) continue;
-    const name = flattenJsxName(childNode.openingElement.name as EsTreeNode);
-    if (name) {
-      if (NATIVE_ACTIVATABLE_TAGS.has(name)) return true;
-      if (/^[A-Z]/.test(name) && INTERACTIVE_COMPONENT_NAME_PATTERN.test(name)) return true;
-    }
-    if (containsKeyboardActivatableDescendant(childNode)) return true;
-  }
-  return false;
-};
-
 const isTargetCurrentTargetComparison = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "BinaryExpression")) return false;
   if (node.operator !== "===" && node.operator !== "==" && node.operator !== "!==") return false;
@@ -392,7 +360,9 @@ export const clickEventsHaveKeyEvents = defineRule({
         if (hasCompositeItemRole(node)) return;
         if (isHoverSelectionListItem(tag, node)) return;
         if (onClick && isBackdropDismissHandler(onClick)) return;
-        if (containsKeyboardActivatableDescendant(node.parent)) return;
+        if (hasKeyboardActivatableDescendant(node.parent, null, context.scopes, context.settings)) {
+          return;
+        }
 
         if (isHiddenFromScreenReader(node, context.settings)) return;
         // Presentational role (presentation / none) → not perceivable by AT.

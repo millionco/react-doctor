@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { hasKeyboardActivatableDescendant } from "../../utils/has-keyboard-activatable-descendant.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isAbstractRole } from "../../utils/is-abstract-role.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
@@ -168,6 +169,14 @@ export const noStaticElementInteractions = defineRule({
         }
         if (!hasAnyHandler) return;
         if (!hasNonBlockerHandler) return;
+
+        const onClick = hasJsxPropIgnoreCase(node.attributes, "onClick");
+        if (
+          onClick &&
+          hasKeyboardActivatableDescendant(node.parent, onClick, context.scopes, context.settings)
+        ) {
+          return;
+        }
 
         const elementType = getElementType(node, context.settings);
         // Custom JSX elements pass through.

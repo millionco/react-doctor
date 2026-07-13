@@ -254,6 +254,72 @@ describe("a11y/click-events-have-key-events regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag the Marigold conditional edit trigger with the same action", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `import { Button } from "react-aria-components";
+      export const EditableCell = ({ disabled, setOpen, children }) => (
+        <div onClick={disabled ? undefined : () => setOpen(true)}>
+          <span>{children}</span>
+          {!disabled && (
+            <div>
+              <Button aria-label="Edit" onPress={() => setOpen(true)}>Edit</Button>
+            </div>
+          )}
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a wrapper whose action is reachable through a nested Button click", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Card = ({ openCard, deleteCard }) => (
+        <div onClick={() => openCard()}>
+          <Button aria-label="Delete" onPress={() => deleteCard()}>Delete</Button>
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a wrapper whose matching Button is disabled", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Card = ({ openCard }) => (
+        <div onClick={() => openCard()}>
+          <Button isDisabled aria-label="Open" onPress={() => openCard()}>Open</Button>
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a wrapper whose matching Button may be disabled", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Card = ({ openCard, isDisabled }) => (
+        <div onClick={() => openCard()}>
+          <Button isDisabled={isDisabled} aria-label="Open" onPress={() => openCard()}>Open</Button>
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a wrapper around a same-action anchor without href", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Card = ({ openCard }) => (
+        <div onClick={() => openCard()}>
+          <a aria-label="Open" onClick={() => openCard()}>Open</a>
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("still flags a plain clickable div with static content", () => {
     const result = runRule(
       clickEventsHaveKeyEvents,

@@ -35,6 +35,36 @@ describe("a11y/no-static-element-interactions regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not flag the Marigold wrapper with an equivalent accessible edit Button", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `import { Button } from "react-aria-components";
+      export const EditableCell = ({ disabled, setOpen, children }) => (
+        <div onClick={disabled ? undefined : () => setOpen(true)}>
+          <span>{children}</span>
+          {!disabled && (
+            <div>
+              <Button aria-label="Edit" onPress={() => setOpen(true)}>Edit</Button>
+            </div>
+          )}
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a wrapper whose accessible descendant performs a different action", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Card = ({ openCard, deleteCard }) => (
+        <div onClick={() => openCard()}>
+          <Button aria-label="Delete" onPress={() => deleteCard()}>Delete</Button>
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a conditional role where both branches are valid roles", () => {
     const result = runRule(
       noStaticElementInteractions,

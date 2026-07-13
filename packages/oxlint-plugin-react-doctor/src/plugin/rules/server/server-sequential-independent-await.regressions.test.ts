@@ -51,6 +51,15 @@ describe("server-sequential-independent-await — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("keeps an object shorthand helper gate mutated through a mutable alias sequential", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `let initialized = false; const initializeProfile = async (value) => { await Promise.resolve(); return value * 2; }; const helpers = { initializeProfile }; let holder = helpers; holder.initializeProfile = async (value) => { initialized = true; return value; }; export async function load() { const profile = await helpers.initializeProfile(2); const preferences = await loadPreferences(3); return { profile, preferences, initialized }; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("keeps opaque and visibly stateful initialization gates sequential", () => {
     for (const code of [
       `export async function load(database) { const connection = await database.initialize(); const rows = await database.loadRows(); return { connection, rows }; }`,

@@ -60,6 +60,15 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("keeps an object shorthand helper mutated through a mutable alias sequential", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `let cursor = 0; const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; let holder = helpers; holder.query = async (item) => { cursor += item; return cursor; }; async function load(items) { for (const item of items) { await helpers.query(item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("keeps opaque and visibly stateful query calls intentionally sequential", () => {
     for (const code of [
       `async function load(database, items) { for (const item of items) { await database.query(item); } }`,

@@ -105,6 +105,38 @@ describe("js-performance/async-parallel — regressions", () => {
     );
   });
 
+  it("keeps object helpers mutated through mutable aliases serialized", () => {
+    expectPass(
+      `let cursor = 0; const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; let holder = helpers; const nestedHolder = holder; nestedHolder.query = async (item) => { cursor += item; return cursor; }; async function load() { await query(1); await helpers.query(2); await query(3); }`,
+    );
+  });
+
+  it("keeps object helpers mutated through assigned aliases serialized", () => {
+    expectPass(
+      `let cursor = 0; const query = async (item: number) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; let holder: typeof helpers; holder = helpers as typeof helpers; const nestedHolder = holder!; nestedHolder["query"] = async (item) => { cursor += item; return cursor; }; async function load() { await query(1); await helpers.query(2); await query(3); }`,
+    );
+  });
+
+  it("keeps object helpers deleted or updated through aliases serialized", () => {
+    for (const mutation of ["delete holder.query", "holder.query++"]) {
+      expectPass(
+        `const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; var holder = helpers; ${mutation}; async function load() { await query(1); await helpers.query(2); await query(3); }`,
+      );
+    }
+  });
+
+  it("ignores mutations through aliases of unrelated helper objects", () => {
+    expectFail(
+      `let cursor = 0; const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; const otherHelpers = { query }; let holder = otherHelpers; holder.query = async (item) => { cursor += item; return cursor; }; async function load() { await helpers.query(1); await helpers.query(2); await helpers.query(3); }`,
+    );
+  });
+
+  it("ignores similarly named shadowed mutable aliases", () => {
+    expectFail(
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; { const helpers = { query }; let holder = helpers; holder.query = async (item) => item + 1; } async function load() { await helpers.query(1); await helpers.query(2); await helpers.query(3); }`,
+    );
+  });
+
   it("keeps a shadowed direct helper distinct from the outer object helper", () => {
     expectPass(
       `const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; async function load() { const query = async (item) => { await Promise.resolve(); return item + 1; }; await query(1); await helpers.query(2); await query(3); }`,

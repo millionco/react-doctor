@@ -1,5 +1,6 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -7,6 +8,10 @@ import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const equivalentSymbolsByAnalysis = new WeakMap<ScopeAnalysis, Map<number, SymbolDescriptor[]>>();
+const potentiallyAliasedSymbolsByAnalysis = new WeakMap<
+  ScopeAnalysis,
+  Map<number, SymbolDescriptor[]>
+>();
 
 const CONDITIONAL_EXECUTION_NODE_TYPES: ReadonlySet<string> = new Set([
   "CatchClause",
@@ -71,6 +76,83 @@ const getEquivalentSymbols = (
   );
   symbolsByRootId.set(rootSymbol.id, equivalentSymbols);
   return equivalentSymbols;
+};
+
+const getDirectAliasSourceSymbol = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor | null => {
+  const unwrappedExpression = stripParenExpression(expression);
+  return isNodeOfType(unwrappedExpression, "Identifier")
+    ? scopes.symbolFor(unwrappedExpression)
+    : null;
+};
+
+const getDirectAssignmentSourceSymbol = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor | null => {
+  const assignmentTarget = findTransparentExpressionRoot(identifier);
+  const parent = assignmentTarget.parent;
+  if (
+    !parent ||
+    !isNodeOfType(parent, "AssignmentExpression") ||
+    parent.operator !== "=" ||
+    parent.left !== assignmentTarget
+  ) {
+    return null;
+  }
+  return getDirectAliasSourceSymbol(parent.right, scopes);
+};
+
+const isDirectAliasOfKnownSymbol = (
+  symbol: SymbolDescriptor,
+  knownSymbolIds: ReadonlySet<number>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    symbol.initializer &&
+    isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+    symbol.declarationNode.id === symbol.bindingIdentifier
+  ) {
+    const initializerSymbol = getDirectAliasSourceSymbol(symbol.initializer, scopes);
+    if (initializerSymbol && knownSymbolIds.has(initializerSymbol.id)) return true;
+  }
+  return symbol.references.some((reference) => {
+    const assignmentSourceSymbol = getDirectAssignmentSourceSymbol(reference.identifier, scopes);
+    return Boolean(assignmentSourceSymbol && knownSymbolIds.has(assignmentSourceSymbol.id));
+  });
+};
+
+const getPotentiallyAliasedSymbols = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor[] => {
+  const rootSymbol = resolveConstIdentifierAlias(identifier, scopes);
+  if (!rootSymbol) return [];
+  let symbolsByRootId = potentiallyAliasedSymbolsByAnalysis.get(scopes);
+  if (!symbolsByRootId) {
+    symbolsByRootId = new Map();
+    potentiallyAliasedSymbolsByAnalysis.set(scopes, symbolsByRootId);
+  }
+  const cachedSymbols = symbolsByRootId.get(rootSymbol.id);
+  if (cachedSymbols) return cachedSymbols;
+  const allSymbols: SymbolDescriptor[] = [];
+  collectScopeSymbols(scopes.rootScope, allSymbols);
+  const aliasedSymbolIds = new Set([rootSymbol.id]);
+  let didAddAlias = true;
+  while (didAddAlias) {
+    didAddAlias = false;
+    for (const symbol of allSymbols) {
+      if (aliasedSymbolIds.has(symbol.id)) continue;
+      if (!isDirectAliasOfKnownSymbol(symbol, aliasedSymbolIds, scopes)) continue;
+      aliasedSymbolIds.add(symbol.id);
+      didAddAlias = true;
+    }
+  }
+  const aliasedSymbols = allSymbols.filter((symbol) => aliasedSymbolIds.has(symbol.id));
+  symbolsByRootId.set(rootSymbol.id, aliasedSymbols);
+  return aliasedSymbols;
 };
 
 const findExecutionBoundary = (node: EsTreeNode): EsTreeNode | null => {
@@ -233,7 +315,7 @@ export const hasPossibleStaticPropertyWrite = (
   scopes: ScopeAnalysis,
 ): boolean => {
   if (!isNodeOfType(identifier, "Identifier")) return false;
-  return getEquivalentSymbols(identifier, scopes).some((symbol) =>
+  return getPotentiallyAliasedSymbols(identifier, scopes).some((symbol) =>
     symbol.references.some((reference) => {
       const writeTarget = getMemberWriteTarget(reference.identifier);
       if (!writeTarget) return false;

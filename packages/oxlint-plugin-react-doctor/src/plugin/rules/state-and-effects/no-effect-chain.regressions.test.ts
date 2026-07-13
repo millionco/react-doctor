@@ -3,6 +3,20 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noEffectChain } from "./no-effect-chain.js";
 
 describe("no-effect-chain — regressions", () => {
+  it("stays silent when an effect callback is received as a custom-hook parameter", () => {
+    const result = runRule(
+      noEffectChain,
+      `const useForwardedEffect = (effect) => {
+  const [value, setValue] = useState(0);
+  useEffect(effect, []);
+  setValue(value + 1);
+  return value;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it.each(["$", "($)", "void ($)", "(0, $)"])(
     "flags a cross-effect chain through discarded wrapper %s",
     (wrapper) => {

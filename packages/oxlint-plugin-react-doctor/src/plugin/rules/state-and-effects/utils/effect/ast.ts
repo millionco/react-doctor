@@ -262,6 +262,9 @@ const unwrapUseCallback = (node: EsTreeNode | null | undefined): EsTreeNode | nu
 // `const fn = useCallback(() => {}, [])` wrapper. Returns null
 // when the reference doesn't resolve to a function. Shared by
 // `getEffectFn`, `isCleanupReturnArgument`, and `resolvesToAsyncFunction`.
+export const hasParameterDef = (ref: Reference): boolean =>
+  Boolean(ref.resolved?.defs.some((def) => def.type === "Parameter"));
+
 export const resolveToFunction = (
   ref: Reference,
 ):
@@ -269,7 +272,7 @@ export const resolveToFunction = (
   | EsTreeNodeOfType<"FunctionExpression">
   | EsTreeNodeOfType<"FunctionDeclaration">
   | null => {
-  if (ref.resolved?.defs.some((def) => def.type === "Parameter")) return null;
+  if (hasParameterDef(ref)) return null;
 
   const definitionNode = ref.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
   if (!definitionNode) return null;

@@ -21,6 +21,22 @@ const expectBroadInferenceStaysSilent = (
 };
 
 describe("no-event-handler — must-detect regressions", () => {
+  it("stays silent when an effect returns an unknown cleanup parameter", () => {
+    const result = runRule(
+      noEventHandler,
+      `const useForwardedEffect = (cleanup) => {
+  const [active, setActive] = useState(false);
+  useEffect(() => {
+    if (active) window.alert("active");
+    return cleanup;
+  }, [active]);
+  return setActive;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on memo-derived state with mixed async writers", () => {
     expectBroadInferenceStaysSilent(
       `

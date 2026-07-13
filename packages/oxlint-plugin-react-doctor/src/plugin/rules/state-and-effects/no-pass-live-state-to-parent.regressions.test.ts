@@ -19,6 +19,20 @@ const expectFiresAtLeast = (code: string, minimumDiagnosticCount: number): void 
 };
 
 describe("no-pass-live-state-to-parent — must-detect regressions", () => {
+  it("stays silent when a callback parameter is passed through a parent callback", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `const useForwarder = (onRegister, callback) => {
+  useEffect(() => {
+    onRegister(callback);
+  }, [onRegister, callback]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("fires on onError(error) in an effect when the setter is also called in async handlers (inrupt Image)", () => {
     expectFiresAtLeast(
       `

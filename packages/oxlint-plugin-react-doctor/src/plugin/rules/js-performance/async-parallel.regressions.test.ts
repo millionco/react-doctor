@@ -111,6 +111,12 @@ describe("js-performance/async-parallel — regressions", () => {
     );
   });
 
+  it("keeps bound non-heuristic member calls mutated through aliases serialized", () => {
+    expectPass(
+      `let cursor = 0; const run = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { run }; let holder = helpers; holder.run = async (item) => { cursor += item; return cursor; }; async function load() { const first = await run(1); const second = await helpers.run(2); const third = await run(3); return [first, second, third]; }`,
+    );
+  });
+
   it("keeps object helpers mutated through assigned aliases serialized", () => {
     expectPass(
       `let cursor = 0; const query = async (item: number) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; let holder: typeof helpers; holder = helpers as typeof helpers; const nestedHolder = holder!; nestedHolder["query"] = async (item) => { cursor += item; return cursor; }; async function load() { await query(1); await helpers.query(2); await query(3); }`,

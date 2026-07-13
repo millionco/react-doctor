@@ -69,6 +69,24 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("keeps a mutated non-heuristic object helper sequential", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `let cursor = 0; const run = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { run }; let holder = helpers; holder.run = async (item) => { cursor += item; return cursor; }; async function load(items) { for (const item of items) { await helpers.run(item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags object helpers when only an unrelated alias is mutated", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const run = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { run }; const otherHelpers = { run }; let holder = otherHelpers; holder.run = async (item) => item + 1; async function load(items) { for (const item of items) { await helpers.run(item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("keeps opaque and visibly stateful query calls intentionally sequential", () => {
     for (const code of [
       `async function load(database, items) { for (const item of items) { await database.query(item); } }`,

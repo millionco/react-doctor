@@ -2,6 +2,7 @@ import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getOrderIndependentLocalFunction } from "../../utils/get-order-independent-local-function.js";
+import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { isAuthGuardName } from "../../utils/is-auth-guard-name.js";
 import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
@@ -143,6 +144,7 @@ const declarationAwaitsGate = (declaration: EsTreeNode, context: RuleContext): b
     // resolves NewExpression, which would over-suppress here).
     const argument = declarator.init.argument;
     if (!isNodeOfType(argument, "CallExpression")) continue;
+    if (hasPossibleStaticMemberCallWrite(argument, context.scopes)) return true;
     if (getOrderIndependentLocalFunction(argument, context.scopes) !== null) continue;
     const calleeName = getCalleeName(argument);
     if (!calleeName) continue;

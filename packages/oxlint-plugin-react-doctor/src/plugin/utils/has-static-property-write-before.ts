@@ -325,6 +325,23 @@ export const hasPossibleStaticPropertyWrite = (
   );
 };
 
+export const hasPossibleStaticMemberCallWrite = (
+  callExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const unwrappedCallExpression = stripParenExpression(callExpression);
+  if (!isNodeOfType(unwrappedCallExpression, "CallExpression")) return false;
+  const callee = stripParenExpression(unwrappedCallExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const propertyName = getStaticPropertyName(callee);
+  if (propertyName === null) return false;
+  const receiver = stripParenExpression(callee.object);
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    hasPossibleStaticPropertyWrite(receiver, propertyName, scopes)
+  );
+};
+
 export const hasStaticPropertyWriteBefore = (
   identifier: EsTreeNode,
   propertyName: string,

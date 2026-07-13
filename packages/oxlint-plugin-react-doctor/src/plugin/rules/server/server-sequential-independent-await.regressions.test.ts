@@ -60,6 +60,24 @@ describe("server-sequential-independent-await — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("keeps a mutated non-heuristic object helper sequential", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `let initialized = false; const run = async (value) => { await Promise.resolve(); return value * 2; }; const helpers = { run }; let holder = helpers; holder.run = async (value) => { initialized = true; return value; }; export async function load() { const profile = await helpers.run(2); const preferences = await loadPreferences(3); return { profile, preferences, initialized }; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags object helpers when only an unrelated alias is mutated", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `const run = async (value) => { await Promise.resolve(); return value * 2; }; const helpers = { run }; const otherHelpers = { run }; let holder = otherHelpers; holder.run = async (value) => value + 1; export async function load() { const profile = await helpers.run(2); const preferences = await loadPreferences(3); return { profile, preferences }; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("keeps opaque and visibly stateful initialization gates sequential", () => {
     for (const code of [
       `export async function load(database) { const connection = await database.initialize(); const rows = await database.loadRows(); return { connection, rows }; }`,

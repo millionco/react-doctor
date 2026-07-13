@@ -1,7 +1,7 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
-import { hasPossibleStaticPropertyWrite } from "./has-static-property-write-before.js";
+import { hasPossibleStaticMemberCallWrite } from "./has-static-property-write-before.js";
 import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -200,12 +200,6 @@ const resolveOrderIndependentLocalFunction = (
     const propertyName = getStaticPropertyName(unwrappedCallee);
     if (!propertyName) return null;
     const receiver = stripParenExpression(unwrappedCallee.object);
-    if (
-      isNodeOfType(receiver, "Identifier") &&
-      hasPossibleStaticPropertyWrite(receiver, propertyName, scopes)
-    ) {
-      return null;
-    }
     return resolveOrderIndependentObjectPropertyFunction(
       receiver,
       propertyName,
@@ -244,6 +238,7 @@ export const getOrderIndependentLocalFunction = (
 ): EsTreeNode | null => {
   const unwrappedCall = stripParenExpression(callExpression);
   if (!isNodeOfType(unwrappedCall, "CallExpression")) return null;
+  if (hasPossibleStaticMemberCallWrite(unwrappedCall, scopes)) return null;
   return resolveOrderIndependentLocalFunction(
     unwrappedCall.callee,
     unwrappedCall,

@@ -6,6 +6,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getOrderIndependentLocalFunction } from "../../utils/get-order-independent-local-function.js";
+import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -65,6 +66,14 @@ const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode, context: RuleContext): b
   if (getOrderIndependentLocalFunction(argument, context.scopes) !== null) return false;
   return isIntentionalSequencingCallee(argument.callee);
 };
+
+const isAwaitingPossiblyMutatedMemberCall = (
+  awaitNode: EsTreeNode,
+  context: RuleContext,
+): boolean =>
+  isNodeOfType(awaitNode, "AwaitExpression") &&
+  Boolean(awaitNode.argument) &&
+  hasPossibleStaticMemberCallWrite(awaitNode.argument, context.scopes);
 
 const PROMISE_CONCURRENCY_METHODS = new Set(["all", "allSettled", "race", "any"]);
 
@@ -130,6 +139,7 @@ const isAwaitingManualPromiseWait = (awaitNode: EsTreeNode): boolean => {
 };
 
 const isIntentionallySequentialAwait = (awaitNode: EsTreeNode, context: RuleContext): boolean =>
+  isAwaitingPossiblyMutatedMemberCall(awaitNode, context) ||
   isAwaitingSleepLikeCall(awaitNode, context) ||
   isAwaitingPromiseConcurrencyCall(awaitNode) ||
   isAwaitingManualPromiseWait(awaitNode);

@@ -11,6 +11,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { getCalleeIdentifierTrail } from "../../utils/get-callee-identifier-trail.js";
 import { getOrderIndependentLocalFunction } from "../../utils/get-order-independent-local-function.js";
+import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
 import { isTestLibraryImportSource } from "../../utils/is-test-library-import-source.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -93,6 +94,7 @@ const sequenceContainsSerializationSignal = (
   for (const statement of statements) {
     if (isNonCallAwait(statement)) return true;
     const awaitedCall = getAwaitedCall(statement);
+    if (awaitedCall && hasPossibleStaticMemberCallWrite(awaitedCall, context.scopes)) return true;
     const orderIndependentFunction = awaitedCall
       ? getOrderIndependentLocalFunction(awaitedCall, context.scopes)
       : null;

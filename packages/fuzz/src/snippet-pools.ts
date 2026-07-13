@@ -387,6 +387,7 @@ export const JSX_LEAF_POOL = [
 // Rare-but-parseable weirdness kept from the original generator, plus
 // trace-mined oddities (unicode, globalThis gymnastics, labels).
 export const EDGE_CASE_STATEMENT_POOL = [
+  `const contextCallback = config.onSelect; const effectiveCallback = onSelect ?? contextCallback; const derivedHandler = useCallback(() => effectiveCallback?.(), [effectiveCallback]);`,
   `const localeOptionsBase = { timeZone: "UTC" }; const localeOptionsAlias = localeOptionsBase; const { timeZone: localeTimeZone } = localeOptionsAlias;`,
   `const useState = () => [0, () => {}] as const;`,
   `const { useEffect: renamedEffect } = React;`,

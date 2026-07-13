@@ -1004,6 +1004,248 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    const authenticCellFixtures = [
+      [
+        "564623E direct-first whole-context callbacks",
+        `function Cell({ value, stringify, renderCellContent, onMouseDownCell, onDoubleClickCell, onKeyDownCell }) {
+          const contextStringify = useContext(StringifyContext);
+          const contextRenderCellContent = useContext(RenderCellContentContext);
+          const contextCallbacks = useContext(CellCallbacksContext);
+          const stringifyCell = stringify ?? contextStringify;
+          const renderContent = renderCellContent ?? contextRenderCellContent;
+          const onMouseDown = onMouseDownCell ?? contextCallbacks.onMouseDownCell;
+          const onDoubleClick = onDoubleClickCell ?? contextCallbacks.onDoubleClickCell;
+          const onKeyDown = onKeyDownCell ?? contextCallbacks.onKeyDownCell;
+          useMemo(() => stringifyCell(value), [stringifyCell, value]);
+          useMemo(() => renderContent?.({ value, stringify: stringifyCell }), [renderContent, stringifyCell, value]);
+          useCallback(() => onMouseDown?.(), [onMouseDown]);
+          useCallback(() => onDoubleClick?.(), [onDoubleClick]);
+          useCallback(() => onKeyDown?.(), [onKeyDown]);
+        }`,
+      ],
+      [
+        "nkHS2Qe context-first whole-context callbacks",
+        `function Cell({ value, stringify, renderCellContent, onMouseDownCell, onDoubleClickCell, onKeyDownCell }) {
+          const stringifyFromContext = useContext(StringifyContext);
+          const renderCellContentFromContext = useContext(RenderCellContentContext);
+          const callbacks = useContext(CellCallbacksContext);
+          const stringifyFunction = stringify ?? stringifyFromContext;
+          const renderCellContentFunction = renderCellContent ?? renderCellContentFromContext;
+          const onMouseDown = callbacks.onMouseDownCell ?? onMouseDownCell;
+          const onDoubleClick = callbacks.onDoubleClickCell ?? onDoubleClickCell;
+          const onKeyDown = callbacks.onKeyDownCell ?? onKeyDownCell;
+          useMemo(() => stringifyFunction(value), [stringifyFunction, value]);
+          useMemo(() => renderCellContentFunction?.({ value, stringify: stringifyFunction }), [renderCellContentFunction, stringifyFunction, value]);
+          useCallback(() => onMouseDown?.(), [onMouseDown]);
+          useCallback(() => onDoubleClick?.(), [onDoubleClick]);
+          useCallback(() => onKeyDown?.(), [onKeyDown]);
+        }`,
+      ],
+      [
+        "EiAdw4h renamed destructured props",
+        `function Cell({ value, stringify: stringifyProp, renderCellContent: renderCellContentProp, onMouseDownCell: onMouseDownCellProp, onDoubleClickCell: onDoubleClickCellProp, onKeyDownCell: onKeyDownCellProp }) {
+          const stringifyFromContext = useContext(StringifyContext);
+          const renderCellContentFromContext = useContext(RenderCellContentContext);
+          const callbacks = useContext(CellCallbacksContext);
+          const stringify = stringifyProp ?? stringifyFromContext;
+          const renderCellContent = renderCellContentProp ?? renderCellContentFromContext;
+          const onMouseDownCell = onMouseDownCellProp ?? callbacks.onMouseDownCell;
+          const onDoubleClickCell = onDoubleClickCellProp ?? callbacks.onDoubleClickCell;
+          const onKeyDownCell = onKeyDownCellProp ?? callbacks.onKeyDownCell;
+          useMemo(() => stringify(value), [stringify, value]);
+          useMemo(() => renderCellContent?.({ value, stringify }), [renderCellContent, stringify, value]);
+          useCallback(() => onMouseDownCell?.(), [onMouseDownCell]);
+          useCallback(() => onDoubleClickCell?.(), [onDoubleClickCell]);
+          useCallback(() => onKeyDownCell?.(), [onKeyDownCell]);
+        }`,
+      ],
+      [
+        "ERLwxXr destructured context members",
+        `function Cell({ value, stringify: directStringify, renderCellContent: directRenderCellContent, onMouseDownCell: directOnMouseDownCell, onDoubleClickCell: directOnDoubleClickCell, onKeyDownCell: directOnKeyDownCell }) {
+          const { onMouseDownCell: contextOnMouseDownCell, onDoubleClickCell: contextOnDoubleClickCell, onKeyDownCell: contextOnKeyDownCell } = useContext(CellCallbacksContext);
+          const contextStringify = useContext(StringifyContext);
+          const contextRenderCellContent = useContext(RenderCellContentContext);
+          const stringify = directStringify ?? contextStringify;
+          const renderCellContent = directRenderCellContent ?? contextRenderCellContent;
+          const onMouseDownCell = directOnMouseDownCell ?? contextOnMouseDownCell;
+          const onDoubleClickCell = directOnDoubleClickCell ?? contextOnDoubleClickCell;
+          const onKeyDownCell = directOnKeyDownCell ?? contextOnKeyDownCell;
+          useMemo(() => stringify(value), [stringify, value]);
+          useMemo(() => renderCellContent?.({ value, stringify }), [renderCellContent, stringify, value]);
+          useCallback(() => onMouseDownCell?.(), [onMouseDownCell]);
+          useCallback(() => onDoubleClickCell?.(), [onDoubleClickCell]);
+          useCallback(() => onKeyDownCell?.(), [onKeyDownCell]);
+        }`,
+      ],
+      [
+        "wJWmEDA resolved binding names",
+        `function Cell({ value, stringify, renderCellContent, onMouseDownCell, onDoubleClickCell, onKeyDownCell }) {
+          const contextStringify = useContext(StringifyContext);
+          const contextRenderCellContent = useContext(RenderCellContentContext);
+          const contextCallbacks = useContext(CellCallbacksContext);
+          const resolvedStringify = stringify ?? contextStringify;
+          const resolvedRenderCellContent = renderCellContent ?? contextRenderCellContent;
+          const resolvedOnMouseDownCell = onMouseDownCell ?? contextCallbacks.onMouseDownCell;
+          const resolvedOnDoubleClickCell = onDoubleClickCell ?? contextCallbacks.onDoubleClickCell;
+          const resolvedOnKeyDownCell = onKeyDownCell ?? contextCallbacks.onKeyDownCell;
+          useMemo(() => resolvedStringify(value), [resolvedStringify, value]);
+          useMemo(() => resolvedRenderCellContent?.({ value, stringify: resolvedStringify }), [resolvedRenderCellContent, resolvedStringify, value]);
+          useCallback(() => resolvedOnMouseDownCell?.(), [resolvedOnMouseDownCell]);
+          useCallback(() => resolvedOnDoubleClickCell?.(), [resolvedOnDoubleClickCell]);
+          useCallback(() => resolvedOnKeyDownCell?.(), [resolvedOnKeyDownCell]);
+        }`,
+      ],
+      [
+        "359ukck independently named context bindings",
+        `function Cell({ value, stringify: stringifyProp, renderCellContent: renderCellContentProp, onMouseDownCell: onMouseDownCellProp, onDoubleClickCell: onDoubleClickCellProp, onKeyDownCell: onKeyDownCellProp }) {
+          const stringifyContext = useContext(StringifyContext);
+          const renderCellContentContext = useContext(RenderCellContentContext);
+          const cellCallbacks = useContext(CellCallbacksContext);
+          const stringify = stringifyProp ?? stringifyContext;
+          const renderCellContent = renderCellContentProp ?? renderCellContentContext;
+          const onMouseDownCell = onMouseDownCellProp ?? cellCallbacks.onMouseDownCell;
+          const onDoubleClickCell = onDoubleClickCellProp ?? cellCallbacks.onDoubleClickCell;
+          const onKeyDownCell = onKeyDownCellProp ?? cellCallbacks.onKeyDownCell;
+          useMemo(() => stringify(value), [stringify, value]);
+          useMemo(() => renderCellContent?.({ value, stringify }), [renderCellContent, stringify, value]);
+          useCallback(() => onMouseDownCell?.(), [onMouseDownCell]);
+          useCallback(() => onDoubleClickCell?.(), [onDoubleClickCell]);
+          useCallback(() => onKeyDownCell?.(), [onKeyDownCell]);
+        }`,
+      ],
+    ] as const;
+
+    for (const [fixtureName, code] of authenticCellFixtures) {
+      it(`accepts all five exact derived dependencies from ${fixtureName}`, () => {
+        const result = runRule(exhaustiveDeps, code);
+        expect(result.parseErrors).toEqual([]);
+        expect(result.diagnostics).toEqual([]);
+      });
+    }
+
+    it("accepts exact conditional and logical derived dependencies", () => {
+      const code = `
+        function Cell({ direct, fallback, preferDirect }) {
+          const conditionalCallback = preferDirect ? direct : fallback;
+          const logicalCallback = direct || fallback;
+          useCallback(() => conditionalCallback?.(), [conditionalCallback]);
+          useEffect(() => logicalCallback?.(), [logicalCallback]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("reports an omitted derived dependency", () => {
+      const code = `
+        function Cell({ direct, fallback }) {
+          const effectiveCallback = direct ?? fallback;
+          return useCallback(() => effectiveCallback?.(), []);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("direct, fallback");
+    });
+
+    it("reports every omitted initializer source when one source is listed", () => {
+      const code = `
+        function Cell({ direct, fallback }) {
+          const effectiveCallback = direct ?? fallback;
+          return useCallback(() => effectiveCallback?.(), [direct]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("fallback");
+    });
+
+    it("reports initializer inputs read directly by the hook closure", () => {
+      const code = `
+        function Cell({ direct, fallback }) {
+          const effectiveCallback = direct ?? fallback;
+          return useCallback(() => {
+            direct?.();
+            fallback?.();
+          }, [effectiveCallback]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("direct, fallback");
+    });
+
+    it("accepts an exact dependency on a reassigned derived binding", () => {
+      const code = `
+        function Cell({ direct, fallback, override }) {
+          let effectiveCallback = direct ?? fallback;
+          effectiveCallback = override ?? effectiveCallback;
+          return useCallback(() => effectiveCallback?.(), [effectiveCallback]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("reports an omitted reassigned derived binding", () => {
+      const code = `
+        function Cell({ direct, fallback, override }) {
+          let effectiveCallback = direct ?? fallback;
+          effectiveCallback = override ?? effectiveCallback;
+          return useCallback(() => effectiveCallback?.(), []);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("effectiveCallback");
+    });
+
+    it("still reports an exact derived dependency with a fresh fallback as unstable", () => {
+      const code = `
+        function Cell({ direct }) {
+          const effectiveCallback = direct ?? (() => {});
+          return useCallback(() => effectiveCallback(), [effectiveCallback]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("effectiveCallback");
+      expect(messages).toContain("rebuilt every render");
+    });
+
+    it("does not let a narrower member satisfy an exact derived binding", () => {
+      const code = `
+        function Cell({ direct, fallback }) {
+          const effectiveCallback = direct ?? fallback;
+          return useCallback(() => consume(effectiveCallback), [effectiveCallback.current]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("direct, fallback");
+    });
+
+    it("ignores a userland function named useCallback", () => {
+      const code = `
+        const useCallback = (callback, dependencies) => ({ callback, dependencies });
+        function Cell({ direct, fallback }) {
+          const effectiveCallback = direct ?? fallback;
+          return useCallback(() => effectiveCallback?.(), []);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("treats an immutable local alias of an imported function as stable", () => {
       const code = `
         import { setConnectionStatus } from "./connection-status";

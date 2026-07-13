@@ -340,7 +340,11 @@ interface CaptureCollection {
 
 // Walks captures grouping by "dep key" (the canonical name of the
 // outermost member-expression chain).
-const collectCaptureDepKeys = (callback: EsTreeNode, scopes: ScopeAnalysis): CaptureCollection => {
+const collectCaptureDepKeys = (
+  callback: EsTreeNode,
+  scopes: ScopeAnalysis,
+  declaredKeys?: ReadonlySet<string>,
+): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
   const moduleScopeCapturedNames = new Set<string>();
@@ -378,6 +382,10 @@ const collectCaptureDepKeys = (callback: EsTreeNode, scopes: ScopeAnalysis): Cap
       continue;
     }
     if (depKey === symbol.name) {
+      if (declaredKeys?.has(depKey)) {
+        keys.add(depKey);
+        continue;
+      }
       const identitySourceKeys = resolveReactiveIdentitySourceKeys(symbol, scopes);
       if (identitySourceKeys) {
         if (identitySourceKeys.size === 0) stableCapturedNames.add(depKey);
@@ -581,19 +589,27 @@ const isRegExpLiteral = (node: EsTreeNode): boolean => {
   return Boolean((node as { regex?: unknown }).regex);
 };
 
-const isUnstableInitializer = (node: EsTreeNode | null): boolean => {
+const isUnstableInitializer = (node: EsTreeNode | null, isNestedInitializer = false): boolean => {
   if (!node) return false;
   const stripped = unwrapExpression(node);
   if (isRegExpLiteral(stripped)) return true;
   if (isNodeOfType(stripped, "ConditionalExpression")) {
-    return isUnstableInitializer(stripped.consequent) || isUnstableInitializer(stripped.alternate);
+    return (
+      isUnstableInitializer(stripped.consequent, true) ||
+      isUnstableInitializer(stripped.alternate, true)
+    );
   }
   if (isNodeOfType(stripped, "LogicalExpression")) {
-    return isUnstableInitializer(stripped.left) || isUnstableInitializer(stripped.right);
+    return (
+      isUnstableInitializer(stripped.left, true) || isUnstableInitializer(stripped.right, true)
+    );
   }
   return (
     isNodeOfType(stripped, "ObjectExpression") ||
     isNodeOfType(stripped, "ArrayExpression") ||
+    (isNestedInitializer &&
+      (isNodeOfType(stripped, "ArrowFunctionExpression") ||
+        isNodeOfType(stripped, "FunctionExpression"))) ||
     isNodeOfType(stripped, "ClassExpression") ||
     isNodeOfType(stripped, "ClassDeclaration") ||
     isNodeOfType(stripped, "JSXElement") ||
@@ -1302,14 +1318,6 @@ If the missing value is recreated every render, move it inside the hook or stabi
           return;
         }
 
-        const {
-          keys: captureKeys,
-          stableCapturedNames,
-          moduleScopeCapturedNames,
-          outerFunctionCapturedNames,
-        } = collectCaptureDepKeys(callbackToAnalyze ?? callbackArgument, context.scopes);
-        for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
-
         // Pre-scan: emit a single "literal deps" warning when the
         // deps array contains a non-string-literal value (numeric /
         // boolean / null / bigint). String-literal deps are usually
@@ -1406,6 +1414,17 @@ If the missing value is recreated every render, move it inside the hook or stabi
           declaredKeys.add(key);
           declaredKeyToReportNode.set(key, elementNode);
         }
+        const {
+          keys: captureKeys,
+          stableCapturedNames,
+          moduleScopeCapturedNames,
+          outerFunctionCapturedNames,
+        } = collectCaptureDepKeys(
+          callbackToAnalyze ?? callbackArgument,
+          context.scopes,
+          declaredKeys,
+        );
+        for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(
           captureKeys,
           declaredKeys,

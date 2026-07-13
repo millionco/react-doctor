@@ -753,6 +753,85 @@ export const OutsideAction = ({ onOutsideAction }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts an unconditional loop in a synchronously invoked cleanup helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin", "touchstart"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    const removeOutsideActionListeners = () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction);
+      }
+    };
+    return () => removeOutsideActionListeners();
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts equivalent statically proven capture after an unknown spread", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction, unknownOptions }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction, { ...unknownOptions, capture: true });
+    }
+    return () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction, true);
+      }
+    };
+  }, [onOutsideAction, unknownOptions]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts benign reads and calls on the document receiver", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    document.body;
+    void document.body;
+    document.createElement("div");
+    document.querySelector("main");
+    const root = document.querySelector("#root");
+    root?.classList.add("ready");
+    window.document.title;
+    globalThis.document.body;
+    window.document.createElement("span");
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    return () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction);
+      }
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it.each([
     {
       name: "different iterable",
@@ -822,6 +901,549 @@ export const OutsideAction = () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).not.toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "setup iterator reassignment",
+      setup:
+        'for (let event of outsideActionEvents) { event = "keydown"; document.addEventListener(event, onOutsideAction); }',
+      cleanup:
+        "for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "cleanup iterator reassignment",
+      setup:
+        "for (const event of outsideActionEvents) document.addEventListener(event, onOutsideAction);",
+      cleanup:
+        'for (let event of outsideActionEvents) { event = "keydown"; document.removeEventListener(event, onOutsideAction); }',
+    },
+  ])("rejects $name", ({ setup, cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin", "touchstart"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    ${setup}
+    return () => {
+      ${cleanup}
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "a reassigned iterable",
+      collectionDeclaration: 'let outsideActionEvents = ["mousedown", "focusin"] as const;',
+      beforeCleanup: 'outsideActionEvents = ["keydown"] as const;',
+      cleanup:
+        "for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "an exhausted one-shot iterator",
+      collectionDeclaration:
+        'const outsideActionEvents = (function* () { yield "mousedown"; yield "focusin"; })();',
+      beforeCleanup: "",
+      cleanup:
+        "for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "a mutable Set",
+      collectionDeclaration: 'const outsideActionEvents = new Set(["mousedown", "focusin"]);',
+      beforeCleanup: "",
+      cleanup:
+        "for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "a mutable object event name",
+      collectionDeclaration:
+        'const eventName = { toString: () => "mousedown" }; const outsideActionEvents = [eventName];',
+      beforeCleanup: 'eventName.toString = () => "keydown";',
+      cleanup:
+        "for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "an array mutated between setup and cleanup",
+      collectionDeclaration: 'const outsideActionEvents = ["mousedown", "focusin"] as const;',
+      beforeCleanup: 'outsideActionEvents.splice(0, 1, "keydown");',
+      cleanup:
+        "for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "an indexed array mutation between setup and cleanup",
+      collectionDeclaration: 'const outsideActionEvents = ["mousedown", "focusin"] as const;',
+      beforeCleanup: 'outsideActionEvents[0] = "keydown";',
+      cleanup:
+        "for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "mutation through an outbound const alias",
+      collectionDeclaration:
+        'const outsideActionEvents = ["mousedown", "focusin"] as const; const escapedEvents = outsideActionEvents;',
+      beforeCleanup: "escapedEvents.pop();",
+      cleanup:
+        "for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "an exported outbound const alias",
+      collectionDeclaration:
+        'const outsideActionEvents = ["mousedown", "focusin"] as const; export const escapedEvents = outsideActionEvents;',
+      beforeCleanup: "",
+      cleanup:
+        "for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "an exported array that can escape the module",
+      collectionDeclaration:
+        'export const outsideActionEvents = ["mousedown", "focusin"] as const;',
+      beforeCleanup: "",
+      cleanup:
+        "for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "a conditional removal inside the loop",
+      collectionDeclaration: 'const outsideActionEvents = ["mousedown", "focusin"] as const;',
+      beforeCleanup: "",
+      cleanup:
+        "for (const event of outsideActionEvents) { if (shouldCleanup) document.removeEventListener(event, onOutsideAction); }",
+    },
+    {
+      name: "an early break after the first removal",
+      collectionDeclaration: 'const outsideActionEvents = ["mousedown", "focusin"] as const;',
+      beforeCleanup: "",
+      cleanup:
+        "for (const event of outsideActionEvents) { document.removeEventListener(event, onOutsideAction); break; }",
+    },
+    {
+      name: "an early return after the first removal",
+      collectionDeclaration: 'const outsideActionEvents = ["mousedown", "focusin"] as const;',
+      beforeCleanup: "",
+      cleanup:
+        "for (const event of outsideActionEvents) { document.removeEventListener(event, onOutsideAction); return; }",
+    },
+    {
+      name: "a continue path before removal",
+      collectionDeclaration: 'const outsideActionEvents = ["mousedown", "focusin"] as const;',
+      beforeCleanup: "",
+      cleanup:
+        "for (const event of outsideActionEvents) { if (shouldCleanup) continue; document.removeEventListener(event, onOutsideAction); }",
+    },
+    {
+      name: "a throw path after removal",
+      collectionDeclaration: 'const outsideActionEvents = ["mousedown", "focusin"] as const;',
+      beforeCleanup: "",
+      cleanup:
+        'for (const event of outsideActionEvents) { document.removeEventListener(event, onOutsideAction); throw new Error("stop"); }',
+    },
+  ])("rejects cleanup through $name", ({ collectionDeclaration, beforeCleanup, cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+${collectionDeclaration}
+export const OutsideAction = ({ onOutsideAction, shouldCleanup }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    ${beforeCleanup}
+    return () => {
+      ${cleanup}
+    };
+  }, [onOutsideAction, shouldCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "handler reassignment",
+      setupDeclaration: "let listener = onOutsideAction;",
+      setupTarget: "document",
+      setupHandler: "listener",
+      beforeCleanup: "listener = onOtherAction;",
+      cleanupTarget: "document",
+      cleanupHandler: "listener",
+      setupOptions: "",
+      cleanupOptions: "",
+    },
+    {
+      name: "receiver reassignment",
+      setupDeclaration: "let target = document;",
+      setupTarget: "target",
+      setupHandler: "onOutsideAction",
+      beforeCleanup: "target = window;",
+      cleanupTarget: "target",
+      cleanupHandler: "onOutsideAction",
+      setupOptions: "",
+      cleanupOptions: "",
+    },
+    {
+      name: "a local receiver alias kept conservative",
+      setupDeclaration: "const target = document;",
+      setupTarget: "target",
+      setupHandler: "onOutsideAction",
+      beforeCleanup: "",
+      cleanupTarget: "target",
+      cleanupHandler: "onOutsideAction",
+      setupOptions: "",
+      cleanupOptions: "",
+    },
+    {
+      name: "parseable const handler reassignment",
+      setupDeclaration: "const listener = onOutsideAction;",
+      setupTarget: "document",
+      setupHandler: "listener",
+      beforeCleanup: "listener = onOtherAction;",
+      cleanupTarget: "document",
+      cleanupHandler: "listener",
+      setupOptions: "",
+      cleanupOptions: "",
+    },
+    {
+      name: "capture mismatch",
+      setupDeclaration: "",
+      setupTarget: "document",
+      setupHandler: "onOutsideAction",
+      beforeCleanup: "",
+      cleanupTarget: "document",
+      cleanupHandler: "onOutsideAction",
+      setupOptions: ", true",
+      cleanupOptions: ", false",
+    },
+    {
+      name: "capture omission mismatch",
+      setupDeclaration: "",
+      setupTarget: "document",
+      setupHandler: "onOutsideAction",
+      beforeCleanup: "",
+      cleanupTarget: "document",
+      cleanupHandler: "onOutsideAction",
+      setupOptions: ", true",
+      cleanupOptions: "",
+    },
+    {
+      name: "unknown mutable options",
+      setupDeclaration: "const listenerOptions = getListenerOptions();",
+      setupTarget: "document",
+      setupHandler: "onOutsideAction",
+      beforeCleanup: "",
+      cleanupTarget: "document",
+      cleanupHandler: "onOutsideAction",
+      setupOptions: ", listenerOptions",
+      cleanupOptions: ", listenerOptions",
+    },
+    {
+      name: "an unknown computed capture property",
+      setupDeclaration: 'const captureKey = "capture";',
+      setupTarget: "document",
+      setupHandler: "onOutsideAction",
+      beforeCleanup: "",
+      cleanupTarget: "document",
+      cleanupHandler: "onOutsideAction",
+      setupOptions: ", { [captureKey]: true }",
+      cleanupOptions: "",
+    },
+    {
+      name: "prototype-provided capture",
+      setupDeclaration: "",
+      setupTarget: "document",
+      setupHandler: "onOutsideAction",
+      beforeCleanup: "",
+      cleanupTarget: "document",
+      cleanupHandler: "onOutsideAction",
+      setupOptions: ", { __proto__: { capture: true } }",
+      cleanupOptions: "",
+    },
+    {
+      name: "a later unknown spread overriding capture",
+      setupDeclaration: "",
+      setupTarget: "document",
+      setupHandler: "onOutsideAction",
+      beforeCleanup: "",
+      cleanupTarget: "document",
+      cleanupHandler: "onOutsideAction",
+      setupOptions: ", { capture: true, ...unknownOptions }",
+      cleanupOptions: ", true",
+    },
+    {
+      name: "an unresolved global handler",
+      setupDeclaration: "",
+      setupTarget: "document",
+      setupHandler: "globalHandler",
+      beforeCleanup: "",
+      cleanupTarget: "document",
+      cleanupHandler: "globalHandler",
+      setupOptions: "",
+      cleanupOptions: "",
+    },
+    {
+      name: "an unresolved global receiver",
+      setupDeclaration: "",
+      setupTarget: "externalTarget",
+      setupHandler: "onOutsideAction",
+      beforeCleanup: "",
+      cleanupTarget: "externalTarget",
+      cleanupHandler: "onOutsideAction",
+      setupOptions: "",
+      cleanupOptions: "",
+    },
+  ])(
+    "rejects loop pairing with $name",
+    ({
+      setupDeclaration,
+      setupTarget,
+      setupHandler,
+      beforeCleanup,
+      cleanupTarget,
+      cleanupHandler,
+      setupOptions,
+      cleanupOptions,
+    }) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction, onOtherAction }) => {
+  useEffect(() => {
+    ${setupDeclaration}
+    for (const event of outsideActionEvents) {
+      ${setupTarget}.addEventListener(event, ${setupHandler}${setupOptions});
+    }
+    ${beforeCleanup}
+    return () => {
+      for (const event of outsideActionEvents) {
+        ${cleanupTarget}.removeEventListener(event, ${cleanupHandler}${cleanupOptions});
+      }
+    };
+  }, [onOtherAction, onOutsideAction]);
+  return null;
+};`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("rejects a for-of and forEach cross-shape pair conservatively", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    return () => {
+      outsideActionEvents.forEach((event) => {
+        document.removeEventListener(event, onOutsideAction);
+      });
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a conditionally invoked cleanup-loop helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction, shouldCleanup }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    const removeOutsideActionListeners = () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction);
+      }
+    };
+    return () => {
+      if (shouldCleanup) removeOutsideActionListeners();
+    };
+  }, [onOutsideAction, shouldCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "direct loops",
+      cleanup: `if (useFirstCleanup) {
+        for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);
+      } else {
+        for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);
+      }`,
+    },
+    {
+      name: "helper calls",
+      cleanup: `if (useFirstCleanup) {
+        removeOutsideActionListeners();
+      } else {
+        removeOutsideActionListeners();
+      }`,
+    },
+  ])("accepts exhaustive complementary $name", ({ cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction, useFirstCleanup }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    const removeOutsideActionListeners = () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction);
+      }
+    };
+    return () => {
+      ${cleanup}
+    };
+  }, [onOutsideAction, useFirstCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a later unconditional cleanup helper call after a conditional call", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction, shouldCleanupEarly }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    const removeOutsideActionListeners = () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction);
+      }
+    };
+    return () => {
+      if (shouldCleanupEarly) removeOutsideActionListeners();
+      removeOutsideActionListeners();
+    };
+  }, [onOutsideAction, shouldCleanupEarly]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "generator cleanup whose body is never executed",
+      cleanup:
+        "return function* cleanup() { for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction); };",
+    },
+    {
+      name: "async cleanup with deferred removal",
+      cleanup:
+        "return async () => { await Promise.resolve(); for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction); };",
+    },
+  ])("rejects a $name", ({ cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    ${cleanup}
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects loop cleanup returned from an async effect callback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(async () => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    return () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction);
+      }
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps generic on/off loops conservative because listener identity is library-specific", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["invalidate", "refresh"] as const;
+export const Subscriber = ({ socket, listener }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) socket.on(event, listener, "setup-scope");
+    return () => {
+      for (const event of outsideActionEvents) socket.off(event, listener, "cleanup-scope");
+    };
+  }, [listener, socket]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let one generic off loop satisfy duplicate on registrations", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["invalidate", "refresh"] as const;
+export const Subscriber = ({ socket, listener }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      socket.on(event, listener);
+      socket.on(event, listener);
+    }
+    return () => {
+      for (const event of outsideActionEvents) socket.off(event, listener);
+    };
+  }, [listener, socket]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });
 

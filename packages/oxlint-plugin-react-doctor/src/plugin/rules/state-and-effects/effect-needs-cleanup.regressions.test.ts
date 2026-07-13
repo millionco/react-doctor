@@ -2685,6 +2685,42 @@ export const Debounced = ({ value }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts helper-mediated timer cleanup after non-allocating early returns", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const pendingOpenRef = useRef(null);
+  const tooltipShowDelayTimerRef = useRef(null);
+  const cancelPendingOpen = () => {
+    if (tooltipShowDelayTimerRef.current) {
+      clearTimeout(tooltipShowDelayTimerRef.current);
+      tooltipShowDelayTimerRef.current = null;
+    }
+    pendingOpenRef.current = null;
+  };
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    if (!pendingOpen.anchor.isConnected) {
+      cancelPendingOpen();
+      return;
+    }
+    cancelPendingOpen();
+    const remainingDelay = Math.max(0, delayShow - pendingOpen.elapsed);
+    if (remainingDelay === 0) return;
+    tooltipShowDelayTimerRef.current = setTimeout(() => {
+      commitPendingOpen(pendingOpen);
+    }, remainingDelay);
+  }, [delayShow]);
+  useEffect(() => () => cancelPendingOpen(), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("rejects split cleanup that releases a different timer", () => {
     const result = runRule(
       effectNeedsCleanup,

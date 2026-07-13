@@ -1,5 +1,6 @@
 import type { SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getStaticKeyName } from "./get-static-key-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 export const getSymbolTypeAnnotation = (symbol: SymbolDescriptor): EsTreeNode | null => {
@@ -19,20 +20,11 @@ export const getSymbolTypeAnnotation = (symbol: SymbolDescriptor): EsTreeNode | 
   if (!patternAnnotation || !isNodeOfType(patternAnnotation, "TSTypeAnnotation")) return null;
   const objectType = patternAnnotation.typeAnnotation;
   if (!isNodeOfType(objectType, "TSTypeLiteral")) return null;
-  const propertyName = isNodeOfType(bindingProperty.key, "Identifier")
-    ? bindingProperty.key.name
-    : isNodeOfType(bindingProperty.key, "Literal") && typeof bindingProperty.key.value === "string"
-      ? bindingProperty.key.value
-      : null;
+  const propertyName = getStaticKeyName(bindingProperty.key);
   if (!propertyName) return null;
   for (const typeMember of objectType.members) {
     if (!isNodeOfType(typeMember, "TSPropertySignature")) continue;
-    const memberName = isNodeOfType(typeMember.key, "Identifier")
-      ? typeMember.key.name
-      : isNodeOfType(typeMember.key, "Literal") && typeof typeMember.key.value === "string"
-        ? typeMember.key.value
-        : null;
-    if (memberName !== propertyName) continue;
+    if (getStaticKeyName(typeMember.key) !== propertyName) continue;
     return typeMember.typeAnnotation?.typeAnnotation ?? null;
   }
   return null;

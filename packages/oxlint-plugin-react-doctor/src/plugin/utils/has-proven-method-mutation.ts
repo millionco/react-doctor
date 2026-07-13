@@ -19,12 +19,6 @@ interface SymbolEscape {
   callExpression: EsTreeNode;
 }
 
-const createMethodMutationIndex = (): MethodMutationIndex => ({
-  memberMutationCandidatesByReceiverIdentity: new Map(),
-  memberMutationCandidatesByReceiverIdentityAndMethod: new Map(),
-  receiverAssignmentCandidatesByIdentity: new Map(),
-});
-
 const addCandidate = (map: Map<string, EsTreeNode[]>, key: string, node: EsTreeNode): void => {
   const candidates = map.get(key) ?? [];
   candidates.push(node);
@@ -55,6 +49,21 @@ const getMethodCandidates = (
     .get(receiverIdentity)
     ?.get(methodName) ?? [];
 
+const recordMemberMutationTarget = (
+  index: MethodMutationIndex,
+  mutationTarget: EsTreeNode,
+  node: EsTreeNode,
+  context: RuleContext,
+): void => {
+  if (!isNodeOfType(mutationTarget, "MemberExpression")) return;
+  const methodName = getStaticPropertyName(mutationTarget);
+  const receiverIdentity = resolveExpressionKey(mutationTarget.object, context);
+  if (methodName && receiverIdentity) {
+    addCandidate(index.memberMutationCandidatesByReceiverIdentity, receiverIdentity, node);
+    addMethodCandidate(index, receiverIdentity, methodName, node);
+  }
+};
+
 const recordMethodMutationNode = (
   index: MethodMutationIndex,
   node: EsTreeNode,
@@ -66,24 +75,9 @@ const recordMethodMutationNode = (
     if (assignmentIdentity) {
       addCandidate(index.receiverAssignmentCandidatesByIdentity, assignmentIdentity, node);
     }
-    if (isNodeOfType(assignmentTarget, "MemberExpression")) {
-      const methodName = getStaticPropertyName(assignmentTarget);
-      const receiverIdentity = resolveExpressionKey(assignmentTarget.object, context);
-      if (methodName && receiverIdentity) {
-        addCandidate(index.memberMutationCandidatesByReceiverIdentity, receiverIdentity, node);
-        addMethodCandidate(index, receiverIdentity, methodName, node);
-      }
-    }
+    recordMemberMutationTarget(index, assignmentTarget, node, context);
   } else if (isNodeOfType(node, "UnaryExpression") && node.operator === "delete") {
-    const deletedTarget = stripParenExpression(node.argument);
-    if (isNodeOfType(deletedTarget, "MemberExpression")) {
-      const methodName = getStaticPropertyName(deletedTarget);
-      const receiverIdentity = resolveExpressionKey(deletedTarget.object, context);
-      if (methodName && receiverIdentity) {
-        addCandidate(index.memberMutationCandidatesByReceiverIdentity, receiverIdentity, node);
-        addMethodCandidate(index, receiverIdentity, methodName, node);
-      }
-    }
+    recordMemberMutationTarget(index, stripParenExpression(node.argument), node, context);
   }
   if (!isNodeOfType(node, "CallExpression")) return;
   const callee = stripParenExpression(node.callee);
@@ -107,6 +101,25 @@ const recordMethodMutationNode = (
       addMethodCandidate(index, targetIdentity, methodArgument.value, node);
     }
   }
+};
+
+const isGlobalDefinePropertyCallForMethod = (
+  callExpression: EsTreeNode,
+  methodName: string,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(callExpression, "CallExpression")) return false;
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const calleeObject = stripParenExpression(callee.object);
+  return (
+    getStaticPropertyName(callee) === "defineProperty" &&
+    isNodeOfType(calleeObject, "Identifier") &&
+    (calleeObject.name === "Object" || calleeObject.name === "Reflect") &&
+    context.scopes.isGlobalReference(calleeObject) &&
+    isNodeOfType(callExpression.arguments[1], "Literal") &&
+    callExpression.arguments[1].value === methodName
+  );
 };
 
 const isScopeAncestorOf = (ancestor: ScopeDescriptor, descendant: ScopeDescriptor): boolean => {
@@ -312,16 +325,6 @@ const mutationsCollectivelyDominateCall = (
   return true;
 };
 
-const isPrototypeReceiver = (
-  receiver: EsTreeNode,
-  prototypeOwnerNames: readonly string[],
-  context: RuleContext,
-): boolean =>
-  prototypeOwnerNames.some(
-    (prototypeOwnerName) =>
-      resolveExpressionKey(receiver, context) === `global:${prototypeOwnerName}.prototype`,
-  );
-
 const getLocalCalledFunction = (
   callExpression: EsTreeNode,
   context: RuleContext,
@@ -335,6 +338,25 @@ const getLocalCalledFunction = (
     ? stripParenExpression(candidate)
     : null;
 };
+
+const hasDominatingEscapeMutation = (
+  symbol: SymbolDescriptor,
+  callNode: EsTreeNode,
+  context: RuleContext,
+  mutationIndex: MethodMutationIndex,
+): boolean =>
+  getSymbolEscapeCalls(symbol, context).some(
+    (escape) =>
+      escape.callExpression !== callNode &&
+      mutationDominatesCall(escape.callExpression, callNode, context) &&
+      callMayMutateArgument(
+        escape.callExpression,
+        escape.argumentIndex,
+        context,
+        mutationIndex,
+        new Map(),
+      ),
+  );
 
 const factoryReturnsMutatedReceiver = (
   receiver: EsTreeNode,
@@ -363,17 +385,7 @@ const factoryReturnsMutatedReceiver = (
         : null;
       if (
         returnedSymbol &&
-        getSymbolEscapeCalls(returnedSymbol, context).some(
-          (escape) =>
-            mutationDominatesCall(escape.callExpression, returnStatement, context) &&
-            callMayMutateArgument(
-              escape.callExpression,
-              escape.argumentIndex,
-              context,
-              mutationIndex,
-              new Map(),
-            ),
-        )
+        hasDominatingEscapeMutation(returnedSymbol, returnStatement, context, mutationIndex)
       ) {
         return true;
       }
@@ -392,18 +404,10 @@ const factoryReturnsMutatedReceiver = (
               ),
             );
             if (isNodeOfType(mutationNode, "CallExpression")) {
-              const callee = stripParenExpression(mutationNode.callee);
-              const calleeObject = isNodeOfType(callee, "MemberExpression")
-                ? stripParenExpression(callee.object)
-                : null;
-              doesMutateMethod = Boolean(
-                isNodeOfType(callee, "MemberExpression") &&
-                getStaticPropertyName(callee) === "defineProperty" &&
-                isNodeOfType(calleeObject, "Identifier") &&
-                (calleeObject.name === "Object" || calleeObject.name === "Reflect") &&
-                context.scopes.isGlobalReference(calleeObject) &&
-                isNodeOfType(mutationNode.arguments[1], "Literal") &&
-                mutationNode.arguments[1].value === methodName,
+              doesMutateMethod = isGlobalDefinePropertyCallForMethod(
+                mutationNode,
+                methodName,
+                context,
               );
             }
             return (
@@ -428,6 +432,17 @@ const getSymbolEscapeCalls = (
   const nextVisitedSymbols = new Set(visitedSymbols);
   nextVisitedSymbols.add(symbol);
   const escapeCalls = new Map<EsTreeNode, Set<number>>();
+  const addEscapeCall = (callExpression: EsTreeNode, argumentIndex: number): void => {
+    const argumentIndexes = escapeCalls.get(callExpression) ?? new Set();
+    argumentIndexes.add(argumentIndex);
+    escapeCalls.set(callExpression, argumentIndexes);
+  };
+  const mergeAliasEscapeCalls = (aliasSymbol: SymbolDescriptor | null | undefined): void => {
+    if (!aliasSymbol) return;
+    for (const escape of getSymbolEscapeCalls(aliasSymbol, context, nextVisitedSymbols)) {
+      addEscapeCall(escape.callExpression, escape.argumentIndex);
+    }
+  };
   for (const reference of symbol.references) {
     let argumentExpression = reference.identifier;
     let didResolveExpression = true;
@@ -467,16 +482,9 @@ const getSymbolEscapeCalls = (
       expressionParent.init === argumentExpression &&
       isNodeOfType(expressionParent.id, "Identifier")
     ) {
-      const aliasSymbol = context.scopes
-        .scopeFor(expressionParent)
-        .symbolsByName.get(expressionParent.id.name);
-      if (aliasSymbol) {
-        for (const escape of getSymbolEscapeCalls(aliasSymbol, context, nextVisitedSymbols)) {
-          const argumentIndexes = escapeCalls.get(escape.callExpression) ?? new Set();
-          argumentIndexes.add(escape.argumentIndex);
-          escapeCalls.set(escape.callExpression, argumentIndexes);
-        }
-      }
+      mergeAliasEscapeCalls(
+        context.scopes.scopeFor(expressionParent).symbolsByName.get(expressionParent.id.name),
+      );
       continue;
     }
     if (
@@ -490,24 +498,14 @@ const getSymbolEscapeCalls = (
             isNodeOfType(stripParenExpression(assignmentTarget.object), "Identifier")
           ? stripParenExpression(assignmentTarget.object)
           : null;
-      const aliasSymbol = aliasIdentifier ? context.scopes.symbolFor(aliasIdentifier) : null;
-      if (aliasSymbol) {
-        for (const escape of getSymbolEscapeCalls(aliasSymbol, context, nextVisitedSymbols)) {
-          const argumentIndexes = escapeCalls.get(escape.callExpression) ?? new Set();
-          argumentIndexes.add(escape.argumentIndex);
-          escapeCalls.set(escape.callExpression, argumentIndexes);
-        }
-      }
+      mergeAliasEscapeCalls(aliasIdentifier ? context.scopes.symbolFor(aliasIdentifier) : null);
       continue;
     }
     if (isNodeOfType(expressionParent, "CallExpression")) {
       const argumentIndex = expressionParent.arguments.findIndex(
         (argument) => argument === argumentExpression,
       );
-      if (argumentIndex < 0) continue;
-      const argumentIndexes = escapeCalls.get(expressionParent) ?? new Set();
-      argumentIndexes.add(argumentIndex);
-      escapeCalls.set(expressionParent, argumentIndexes);
+      if (argumentIndex >= 0) addEscapeCall(expressionParent, argumentIndex);
     }
   }
   const result = [...escapeCalls].flatMap(([callExpression, argumentIndexes]) =>
@@ -600,7 +598,6 @@ const callMayMutateArgument = (
     return true;
   }
   const doesParameterEscape = getSymbolEscapeCalls(parameterSymbol, context).some((escape) => {
-    if (!isNodeOfType(escape.callExpression, "CallExpression")) return false;
     if (context.cfg.enclosingFunction(escape.callExpression) !== calledFunction) return false;
     return callMayMutateArgument(
       escape.callExpression,
@@ -643,22 +640,7 @@ const hasProvenMethodMutation = (
   if (
     receiverIdentity &&
     receiverSymbol &&
-    getSymbolEscapeCalls(receiverSymbol, context).some((escape) => {
-      if (!isNodeOfType(escape.callExpression, "CallExpression")) return false;
-      if (
-        escape.callExpression === callNode ||
-        !mutationDominatesCall(escape.callExpression, callNode, context)
-      ) {
-        return false;
-      }
-      return callMayMutateArgument(
-        escape.callExpression,
-        escape.argumentIndex,
-        context,
-        mutationIndex,
-        new Map(),
-      );
-    })
+    hasDominatingEscapeMutation(receiverSymbol, callNode, context, mutationIndex)
   ) {
     return true;
   }
@@ -700,29 +682,21 @@ const hasProvenMethodMutation = (
       mutatedReceiver = readsMutatedMemberReceiver(child.left, methodName);
     } else if (isNodeOfType(child, "UnaryExpression") && child.operator === "delete") {
       mutatedReceiver = readsMutatedMemberReceiver(child.argument, methodName);
-    } else if (isNodeOfType(child, "CallExpression")) {
-      const callee = stripParenExpression(child.callee);
-      const calleeObject = isNodeOfType(callee, "MemberExpression")
-        ? stripParenExpression(callee.object)
-        : null;
-      if (
-        isNodeOfType(callee, "MemberExpression") &&
-        getStaticPropertyName(callee) === "defineProperty" &&
-        isNodeOfType(calleeObject, "Identifier") &&
-        (calleeObject.name === "Object" || calleeObject.name === "Reflect") &&
-        context.scopes.isGlobalReference(calleeObject) &&
-        isNodeOfType(child.arguments[1], "Literal") &&
-        child.arguments[1].value === methodName
-      ) {
-        const target = child.arguments[0];
-        mutatedReceiver = target && !isNodeOfType(target, "SpreadElement") ? target : null;
-      }
+    } else if (
+      isNodeOfType(child, "CallExpression") &&
+      isGlobalDefinePropertyCallForMethod(child, methodName, context)
+    ) {
+      const target = child.arguments[0];
+      mutatedReceiver = target && !isNodeOfType(target, "SpreadElement") ? target : null;
     }
     if (!mutatedReceiver) continue;
+    const mutatedReceiverIdentity = resolveExpressionKey(mutatedReceiver, context);
     const doesMutationMatchReceiver =
-      (receiverIdentity !== null &&
-        resolveExpressionKey(mutatedReceiver, context) === receiverIdentity) ||
-      isPrototypeReceiver(mutatedReceiver, prototypeOwnerNames, context);
+      (receiverIdentity !== null && mutatedReceiverIdentity === receiverIdentity) ||
+      prototypeOwnerNames.some(
+        (prototypeOwnerName) =>
+          mutatedReceiverIdentity === `global:${prototypeOwnerName}.prototype`,
+      );
     if (!doesMutationMatchReceiver) continue;
     matchingMutationCandidates.push(child);
     if (mutationDominatesCall(child, callNode, context)) {
@@ -747,7 +721,11 @@ export interface MethodMutationAnalysis {
 }
 
 export const createMethodMutationAnalysis = (context: RuleContext): MethodMutationAnalysis => {
-  const mutationIndex = createMethodMutationIndex();
+  const mutationIndex: MethodMutationIndex = {
+    memberMutationCandidatesByReceiverIdentity: new Map(),
+    memberMutationCandidatesByReceiverIdentityAndMethod: new Map(),
+    receiverAssignmentCandidatesByIdentity: new Map(),
+  };
   return {
     record: (node) => recordMethodMutationNode(mutationIndex, node, context),
     hasProvenMutation: (

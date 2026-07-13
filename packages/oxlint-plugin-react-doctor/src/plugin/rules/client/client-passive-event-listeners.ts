@@ -697,21 +697,19 @@ export const clientPassiveEventListeners = defineRule({
       if (doesHandlerExposeEvent) return;
 
       const optionsArgument = node.arguments[2];
-      if (!optionsArgument) {
-        context.report({
-          node,
-          message: `"${eventName}" listener without { passive: true } makes scrolling janky for your users. Only add it if the handler doesn't call event.preventDefault(), since passive listeners silently ignore preventDefault().`,
-        });
-        return;
+      if (optionsArgument) {
+        if (!isNodeOfType(optionsArgument, "ObjectExpression")) return;
+        if (
+          hasExplicitPassiveValue(optionsArgument, false) ||
+          hasExplicitPassiveValue(optionsArgument, true)
+        ) {
+          return;
+        }
       }
-      if (!isNodeOfType(optionsArgument, "ObjectExpression")) return;
-      if (hasExplicitPassiveValue(optionsArgument, false)) return;
-      if (!hasExplicitPassiveValue(optionsArgument, true)) {
-        context.report({
-          node,
-          message: `"${eventName}" listener without { passive: true } makes scrolling janky for your users. Only add it if the handler doesn't call event.preventDefault(), since passive listeners silently ignore preventDefault().`,
-        });
-      }
+      context.report({
+        node,
+        message: `"${eventName}" listener without { passive: true } makes scrolling janky for your users. Only add it if the handler doesn't call event.preventDefault(), since passive listeners silently ignore preventDefault().`,
+      });
     };
     return {
       AssignmentExpression(node: EsTreeNode) {

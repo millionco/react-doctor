@@ -1,4 +1,5 @@
 import { resolveImportedExportName } from "./find-exported-function-body.js";
+import { getStaticKeyName } from "./get-static-key-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -50,13 +51,6 @@ const expressionContainsEventAlias = (
   return false;
 };
 
-const getPatternPropertyName = (node: EsTreeNode): string | null =>
-  isNodeOfType(node, "Identifier")
-    ? node.name
-    : isNodeOfType(node, "Literal") && typeof node.value === "string"
-      ? node.value
-      : null;
-
 const addAliasNamesFromPattern = (
   pattern: EsTreeNode,
   rawSource: EsTreeNode,
@@ -74,12 +68,11 @@ const addAliasNamesFromPattern = (
   if (isNodeOfType(pattern, "ObjectPattern") && isNodeOfType(source, "ObjectExpression")) {
     for (const patternProperty of pattern.properties) {
       if (!isNodeOfType(patternProperty, "Property")) continue;
-      const propertyName = getPatternPropertyName(patternProperty.key);
+      const propertyName = getStaticKeyName(patternProperty.key);
       if (!propertyName) continue;
       const sourceProperty = source.properties.find(
         (property) =>
-          isNodeOfType(property, "Property") &&
-          getPatternPropertyName(property.key) === propertyName,
+          isNodeOfType(property, "Property") && getStaticKeyName(property.key) === propertyName,
       );
       if (isNodeOfType(sourceProperty, "Property")) {
         addAliasNamesFromPattern(patternProperty.value, sourceProperty.value, aliasNames);

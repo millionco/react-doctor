@@ -107,20 +107,17 @@ export const functionReturnsMatchingExpression = (
     }
 
     if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
-      const branchMatches = [
-        expressionMatches(unwrappedExpression.consequent),
-        expressionMatches(unwrappedExpression.alternate),
-      ];
-      return matchMode === "every" ? branchMatches.every(Boolean) : branchMatches.some(Boolean);
+      return branchesMatch(unwrappedExpression.consequent, unwrappedExpression.alternate);
     }
     if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
-      const operandMatches = [
-        expressionMatches(unwrappedExpression.left),
-        expressionMatches(unwrappedExpression.right),
-      ];
-      return matchMode === "every" ? operandMatches.every(Boolean) : operandMatches.some(Boolean);
+      return branchesMatch(unwrappedExpression.left, unwrappedExpression.right);
     }
     return false;
+  };
+
+  const branchesMatch = (firstBranch: EsTreeNode, secondBranch: EsTreeNode): boolean => {
+    const didBranchMatch = [expressionMatches(firstBranch), expressionMatches(secondBranch)];
+    return matchMode === "every" ? didBranchMatch.every(Boolean) : didBranchMatch.some(Boolean);
   };
 
   return functionMatches(functionNode);

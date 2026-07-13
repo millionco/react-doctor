@@ -2,6 +2,7 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
 import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
+import { getStaticKeyName } from "./get-static-key-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { getSymbolTypeAnnotation } from "./get-symbol-type-annotation.js";
 import { hasEnclosingTypeParameterNamed } from "./has-enclosing-type-parameter-named.js";
@@ -92,16 +93,13 @@ const getDomPrototypeOwnerNamesForType = (typeName: string): readonly string[] =
   return [typeName, "EventTarget"];
 };
 
-const isDomEventTargetTypeName = (typeName: string): boolean =>
-  DOM_EVENT_TARGET_TYPE_NAMES.has(typeName) || DOM_ELEMENT_TYPE_NAME_PATTERN.test(typeName);
-
 const isTargetTypeName = (
   typeName: string,
   receiverKind: "dom-event-target" | "xml-http-request",
 ): boolean =>
   receiverKind === "xml-http-request"
     ? typeName === "XMLHttpRequest"
-    : isDomEventTargetTypeName(typeName);
+    : DOM_EVENT_TARGET_TYPE_NAMES.has(typeName) || DOM_ELEMENT_TYPE_NAME_PATTERN.test(typeName);
 
 const isUnshadowedTargetType = (
   typeNode: EsTreeNode,
@@ -214,6 +212,20 @@ export const getProvenDomEventTargetPrototypeOwnerNames = (
   return ["EventTarget"];
 };
 
+const isProvenTargetConstructorCall = (
+  callee: EsTreeNode,
+  receiverKind: "dom-event-target" | "xml-http-request",
+  scopes: ScopeAnalysis,
+): boolean => {
+  const constructorNames =
+    receiverKind === "xml-http-request"
+      ? ["XMLHttpRequest"]
+      : [...DOM_EVENT_TARGET_CONSTRUCTOR_NAMES];
+  return constructorNames.some((constructorName) =>
+    isGlobalConstructorReference(callee, constructorName, scopes, new Set()),
+  );
+};
+
 const hasAssertedTargetType = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -244,17 +256,7 @@ const hasAssertedTargetType = (
   if (didFindTargetAssertion && isNodeOfType(assertedSource, "MemberExpression")) return false;
   if (didFindTargetAssertion && isNodeOfType(assertedSource, "ObjectExpression")) return false;
   if (didFindTargetAssertion && isNodeOfType(assertedSource, "NewExpression")) {
-    if (receiverKind === "xml-http-request") {
-      return isGlobalConstructorReference(
-        assertedSource.callee,
-        "XMLHttpRequest",
-        scopes,
-        new Set(),
-      );
-    }
-    return [...DOM_EVENT_TARGET_CONSTRUCTOR_NAMES].some((constructorName) =>
-      isGlobalConstructorReference(assertedSource.callee, constructorName, scopes, new Set()),
-    );
+    return isProvenTargetConstructorCall(assertedSource.callee, receiverKind, scopes);
   }
   return didFindTargetAssertion;
 };
@@ -278,12 +280,7 @@ const getClassMemberDefinition = (memberExpression: EsTreeNode): EsTreeNode | nu
   if (!ancestor) return null;
   for (const classElement of ancestor.body) {
     if (!isNodeOfType(classElement, "PropertyDefinition") || classElement.static) continue;
-    const memberName = isNodeOfType(classElement.key, "Identifier")
-      ? classElement.key.name
-      : isNodeOfType(classElement.key, "Literal") && typeof classElement.key.value === "string"
-        ? classElement.key.value
-        : null;
-    if (memberName === propertyName) return classElement;
+    if (getStaticKeyName(classElement.key) === propertyName) return classElement;
   }
   return null;
 };
@@ -377,45 +374,42 @@ const hasTypedReactRefOrigin = (
   return Boolean(typeArgument && isUnshadowedTargetType(typeArgument, scopes, "dom-event-target"));
 };
 
-const isProvenDomEventTarget = (
-  rawExpression: EsTreeNode,
+export const isProvenBrowserApiReceiver = (
+  receiver: EsTreeNode,
+  receiverKind: "dom-event-target" | "xml-http-request",
   scopes: ScopeAnalysis,
-  visitedSymbolIds: Set<number>,
+  visitedSymbolIds: Set<number> = new Set(),
 ): boolean => {
-  if (hasAssertedTargetType(rawExpression, scopes, "dom-event-target")) return true;
-  const expression = stripParenExpression(rawExpression);
+  const isDomEventTarget = receiverKind === "dom-event-target";
+  if (hasAssertedTargetType(receiver, scopes, receiverKind)) return true;
+  const expression = stripParenExpression(receiver);
   if (isNodeOfType(expression, "Identifier")) {
     if (
-      isGlobalIdentifier(expression, "document", scopes) ||
-      isGlobalIdentifier(expression, "window", scopes)
+      isDomEventTarget &&
+      (isGlobalIdentifier(expression, "document", scopes) ||
+        isGlobalIdentifier(expression, "window", scopes))
     ) {
       return true;
     }
     const symbol = scopes.symbolFor(expression);
     if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
     const typeAnnotation = getSymbolTypeAnnotation(symbol);
-    if (typeAnnotation && isUnshadowedTargetType(typeAnnotation, scopes, "dom-event-target")) {
-      return true;
-    }
+    if (typeAnnotation && isUnshadowedTargetType(typeAnnotation, scopes, receiverKind)) return true;
     const initializer = getDirectConstInitializer(symbol);
     if (!initializer) return false;
     visitedSymbolIds.add(symbol.id);
-    return isProvenDomEventTarget(initializer, scopes, visitedSymbolIds);
+    return isProvenBrowserApiReceiver(initializer, receiverKind, scopes, visitedSymbolIds);
   }
   if (isNodeOfType(expression, "NewExpression")) {
-    for (const constructorName of DOM_EVENT_TARGET_CONSTRUCTOR_NAMES) {
-      if (isGlobalConstructorReference(expression.callee, constructorName, scopes, new Set())) {
-        return true;
-      }
-    }
-    return false;
+    return isProvenTargetConstructorCall(expression.callee, receiverKind, scopes);
   }
   if (isNodeOfType(expression, "CallExpression")) {
     const callee = stripParenExpression(expression.callee);
     if (
+      isDomEventTarget &&
       isNodeOfType(callee, "MemberExpression") &&
       DOM_EVENT_TARGET_FACTORY_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") &&
-      isProvenDomEventTarget(callee.object, scopes, visitedSymbolIds)
+      isProvenBrowserApiReceiver(callee.object, receiverKind, scopes, visitedSymbolIds)
     ) {
       return true;
     }
@@ -426,7 +420,12 @@ const isProvenDomEventTarget = (
         calledFunction,
         scopes,
         (returnedExpression) =>
-          isProvenDomEventTarget(returnedExpression, scopes, new Set(visitedSymbolIds)),
+          isProvenBrowserApiReceiver(
+            returnedExpression,
+            receiverKind,
+            scopes,
+            new Set(visitedSymbolIds),
+          ),
         "every",
       ),
     );
@@ -435,13 +434,17 @@ const isProvenDomEventTarget = (
   const classMember = getClassMemberDefinition(expression);
   if (classMember && isNodeOfType(classMember, "PropertyDefinition")) {
     const classMemberType = getClassMemberTypeAnnotation(classMember);
-    if (classMemberType && isUnshadowedTargetType(classMemberType, scopes, "dom-event-target")) {
+    if (classMemberType && isUnshadowedTargetType(classMemberType, scopes, receiverKind)) {
       return true;
     }
-    if (classMember.value && isProvenDomEventTarget(classMember.value, scopes, visitedSymbolIds)) {
+    if (
+      classMember.value &&
+      isProvenBrowserApiReceiver(classMember.value, receiverKind, scopes, visitedSymbolIds)
+    ) {
       return true;
     }
   }
+  if (!isDomEventTarget) return false;
   const propertyName = getStaticPropertyName(expression);
   if (propertyName === "current") {
     return hasTypedReactRefOrigin(expression.object, scopes, visitedSymbolIds);
@@ -457,62 +460,6 @@ const isProvenDomEventTarget = (
   return (
     propertyName !== null &&
     DOM_EVENT_TARGET_MEMBER_NAMES.has(propertyName) &&
-    isProvenDomEventTarget(object, scopes, visitedSymbolIds)
+    isProvenBrowserApiReceiver(object, receiverKind, scopes, visitedSymbolIds)
   );
 };
-
-const isProvenXmlHttpRequest = (
-  rawExpression: EsTreeNode,
-  scopes: ScopeAnalysis,
-  visitedSymbolIds: Set<number>,
-): boolean => {
-  if (hasAssertedTargetType(rawExpression, scopes, "xml-http-request")) return true;
-  const expression = stripParenExpression(rawExpression);
-  if (isNodeOfType(expression, "NewExpression")) {
-    return isGlobalConstructorReference(expression.callee, "XMLHttpRequest", scopes, new Set());
-  }
-  if (isNodeOfType(expression, "CallExpression")) {
-    const calledFunction = getSameFileCalledFunction(expression, scopes, visitedSymbolIds);
-    return Boolean(
-      calledFunction &&
-      functionReturnsMatchingExpression(
-        calledFunction,
-        scopes,
-        (returnedExpression) =>
-          isProvenXmlHttpRequest(returnedExpression, scopes, new Set(visitedSymbolIds)),
-        "every",
-      ),
-    );
-  }
-  if (isNodeOfType(expression, "MemberExpression")) {
-    const classMember = getClassMemberDefinition(expression);
-    if (!classMember || !isNodeOfType(classMember, "PropertyDefinition")) return false;
-    const classMemberType = getClassMemberTypeAnnotation(classMember);
-    if (classMemberType && isUnshadowedTargetType(classMemberType, scopes, "xml-http-request")) {
-      return true;
-    }
-    return Boolean(
-      classMember.value && isProvenXmlHttpRequest(classMember.value, scopes, visitedSymbolIds),
-    );
-  }
-  if (!isNodeOfType(expression, "Identifier")) return false;
-  const symbol = scopes.symbolFor(expression);
-  if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
-  const typeAnnotation = getSymbolTypeAnnotation(symbol);
-  if (typeAnnotation && isUnshadowedTargetType(typeAnnotation, scopes, "xml-http-request")) {
-    return true;
-  }
-  const initializer = getDirectConstInitializer(symbol);
-  if (!initializer) return false;
-  visitedSymbolIds.add(symbol.id);
-  return isProvenXmlHttpRequest(initializer, scopes, visitedSymbolIds);
-};
-
-export const isProvenBrowserApiReceiver = (
-  receiver: EsTreeNode,
-  receiverKind: "dom-event-target" | "xml-http-request",
-  scopes: ScopeAnalysis,
-): boolean =>
-  receiverKind === "xml-http-request"
-    ? isProvenXmlHttpRequest(receiver, scopes, new Set())
-    : isProvenDomEventTarget(receiver, scopes, new Set());

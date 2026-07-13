@@ -261,44 +261,71 @@ const getGlobalPath = (
   return extendGlobalPath(objectPath, propertyName);
 };
 
-const assignmentTargetMayInvalidateRegExpProof = (
+type RegExpEnvironmentHazard = "none" | "replaceAllIntegrityLost" | "globalRegExpReplaced";
+
+const strongerRegExpEnvironmentHazard = (
+  first: RegExpEnvironmentHazard,
+  second: RegExpEnvironmentHazard,
+): RegExpEnvironmentHazard => {
+  if (first === "globalRegExpReplaced" || second === "globalRegExpReplaced") {
+    return "globalRegExpReplaced";
+  }
+  if (first === "replaceAllIntegrityLost" || second === "replaceAllIntegrityLost") {
+    return "replaceAllIntegrityLost";
+  }
+  return "none";
+};
+
+const getAssignmentTargetRegExpHazard = (
   node: EsTreeNode | null | undefined,
   context: RuleContext,
   symbolCache: Map<number, string | false>,
-): boolean => {
-  if (!node) return false;
+): RegExpEnvironmentHazard => {
+  if (!node) return "none";
   const target = stripParenExpression(node);
   if (isNodeOfType(target, "MemberExpression")) {
     const objectPath = getGlobalPath(target.object, context, symbolCache);
     const propertyName = getStaticPropertyName(target);
-    if (objectPath === "global") return propertyName === null || propertyName === "RegExp";
-    if (objectPath === REGEXP_PROTOTYPE_PATH) return true;
-    return (
-      objectPath === STRING_PROTOTYPE_PATH &&
+    if (objectPath === "global") {
+      return propertyName === null || propertyName === "RegExp" ? "globalRegExpReplaced" : "none";
+    }
+    if (objectPath === REGEXP_PROTOTYPE_PATH) return "replaceAllIntegrityLost";
+    return objectPath === STRING_PROTOTYPE_PATH &&
       (propertyName === null || propertyName === "replaceAll")
-    );
+      ? "replaceAllIntegrityLost"
+      : "none";
   }
   if (isNodeOfType(target, "AssignmentPattern")) {
-    return assignmentTargetMayInvalidateRegExpProof(target.left, context, symbolCache);
+    return getAssignmentTargetRegExpHazard(target.left, context, symbolCache);
   }
   if (isNodeOfType(target, "RestElement")) {
-    return assignmentTargetMayInvalidateRegExpProof(target.argument, context, symbolCache);
+    return getAssignmentTargetRegExpHazard(target.argument, context, symbolCache);
   }
   if (isNodeOfType(target, "ArrayPattern")) {
-    return target.elements.some((element) =>
-      assignmentTargetMayInvalidateRegExpProof(element, context, symbolCache),
+    return target.elements.reduce<RegExpEnvironmentHazard>(
+      (strongest, element) =>
+        strongerRegExpEnvironmentHazard(
+          strongest,
+          getAssignmentTargetRegExpHazard(element, context, symbolCache),
+        ),
+      "none",
     );
   }
   if (isNodeOfType(target, "ObjectPattern")) {
-    return target.properties.some((property) =>
-      assignmentTargetMayInvalidateRegExpProof(
-        isNodeOfType(property, "Property") ? property.value : property,
-        context,
-        symbolCache,
-      ),
+    return target.properties.reduce<RegExpEnvironmentHazard>(
+      (strongest, property) =>
+        strongerRegExpEnvironmentHazard(
+          strongest,
+          getAssignmentTargetRegExpHazard(
+            isNodeOfType(property, "Property") ? property.value : property,
+            context,
+            symbolCache,
+          ),
+        ),
+      "none",
     );
   }
-  return false;
+  return "none";
 };
 
 const getWriteTarget = (node: EsTreeNode): EsTreeNode | null => {
@@ -327,14 +354,14 @@ const objectExpressionMayDefineProperty = (
   });
 };
 
-const callMayInvalidateRegExpProof = (
+const getCallRegExpHazard = (
   node: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
   symbolCache: Map<number, string | false>,
-): boolean => {
+): RegExpEnvironmentHazard => {
   const methodName = getGlobalPath(node.callee, context, symbolCache);
   const target = node.arguments?.[0];
-  if (!target) return false;
+  if (!target) return "none";
   const targetPath = getGlobalPath(target, context, symbolCache);
   const isSinglePropertyMutation =
     methodName === "Object.defineProperty" ||
@@ -344,27 +371,31 @@ const callMayInvalidateRegExpProof = (
   const isPropertyCollectionMutation =
     methodName === "Object.defineProperties" || methodName === "Object.assign";
   if (targetPath === REGEXP_PROTOTYPE_PATH) {
-    return (
-      isSinglePropertyMutation ||
+    return isSinglePropertyMutation ||
       isPropertyCollectionMutation ||
       methodName === "Object.setPrototypeOf" ||
       methodName === "Reflect.setPrototypeOf"
-    );
+      ? "replaceAllIntegrityLost"
+      : "none";
   }
-  if (targetPath !== STRING_PROTOTYPE_PATH && targetPath !== "global") return false;
+  if (targetPath !== STRING_PROTOTYPE_PATH && targetPath !== "global") return "none";
+  const mutationHazard: RegExpEnvironmentHazard =
+    targetPath === "global" ? "globalRegExpReplaced" : "replaceAllIntegrityLost";
   const guardedPropertyName = targetPath === "global" ? "RegExp" : "replaceAll";
   if (isSinglePropertyMutation) {
     const propertyName = getStaticStringValue(node.arguments?.[1]);
-    return propertyName === null || propertyName === guardedPropertyName;
+    return propertyName === null || propertyName === guardedPropertyName ? mutationHazard : "none";
   }
-  if (!isPropertyCollectionMutation) return false;
+  if (!isPropertyCollectionMutation) return "none";
   const definitionSources =
     methodName === "Object.defineProperties" && targetPath === "global"
       ? [node.arguments?.[1]]
       : (node.arguments?.slice(1) ?? []);
   return definitionSources.some((source) =>
     objectExpressionMayDefineProperty(source, guardedPropertyName),
-  );
+  )
+    ? mutationHazard
+    : "none";
 };
 
 const scopeTreeWritesGlobalRegExp = (scope: ScopeDescriptor): boolean =>
@@ -376,43 +407,48 @@ const scopeTreeWritesGlobalRegExp = (scope: ScopeDescriptor): boolean =>
       reference.identifier.name === "RegExp",
   ) || scope.children.some(scopeTreeWritesGlobalRegExp);
 
-const hasUnsafeRegExpEnvironment = (context: RuleContext): boolean => {
-  if (scopeTreeWritesGlobalRegExp(context.scopes.rootScope)) return true;
-  let hasUnsafeMutation = false;
+const scanRegExpEnvironmentHazard = (context: RuleContext): RegExpEnvironmentHazard => {
+  if (scopeTreeWritesGlobalRegExp(context.scopes.rootScope)) return "globalRegExpReplaced";
+  let strongestHazard: RegExpEnvironmentHazard = "none";
   const symbolCache = new Map<number, string | false>();
   walkAst(context.scopes.rootScope.node, (node: EsTreeNode): boolean | void => {
-    if (hasUnsafeMutation) return false;
+    if (strongestHazard === "globalRegExpReplaced") return false;
     const writeTarget = getWriteTarget(node);
-    hasUnsafeMutation =
-      (writeTarget !== null &&
-        assignmentTargetMayInvalidateRegExpProof(writeTarget, context, symbolCache)) ||
-      (isNodeOfType(node, "CallExpression") &&
-        callMayInvalidateRegExpProof(node, context, symbolCache));
-    if (hasUnsafeMutation) return false;
+    const nodeHazard = writeTarget
+      ? getAssignmentTargetRegExpHazard(writeTarget, context, symbolCache)
+      : isNodeOfType(node, "CallExpression")
+        ? getCallRegExpHazard(node, context, symbolCache)
+        : "none";
+    strongestHazard = strongerRegExpEnvironmentHazard(strongestHazard, nodeHazard);
+    if (strongestHazard === "globalRegExpReplaced") return false;
   });
-  return hasUnsafeMutation;
+  return strongestHazard;
 };
 
 // `RegExp(...)` without `new` constructs a fresh regex exactly like
 // `new RegExp(...)` does, so both call forms get the same treatment.
-const isStaticRegExpConstruction = (
+const getHoistableRegExpConstructionKind = (
   node: EsTreeNodeOfType<"NewExpression"> | EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
-): boolean => {
+): "stateless" | "statefulReplaceAll" | null => {
   const patternArgument = node.arguments?.[0] as EsTreeNode | undefined;
   const flagsArgument = node.arguments?.[1] as EsTreeNode | undefined;
   const callee = stripParenExpression(node.callee);
   const effectiveFlags = getEffectiveRegExpFlags(patternArgument, flagsArgument);
-  return (
-    isNodeOfType(callee, "Identifier") &&
-    callee.name === "RegExp" &&
-    context.scopes.isGlobalReference(callee) &&
-    isStaticPattern(patternArgument) &&
-    effectiveFlags !== null &&
-    hasValidRegExpFlags(effectiveFlags) &&
-    (!STATEFUL_REGEXP_FLAGS_PATTERN.test(effectiveFlags) ||
-      isSafeStatefulReplaceAllSearch(node, effectiveFlags, context))
-  );
+  if (
+    !isNodeOfType(callee, "Identifier") ||
+    callee.name !== "RegExp" ||
+    !context.scopes.isGlobalReference(callee) ||
+    !isStaticPattern(patternArgument) ||
+    effectiveFlags === null ||
+    !hasValidRegExpFlags(effectiveFlags)
+  ) {
+    return null;
+  }
+  if (!STATEFUL_REGEXP_FLAGS_PATTERN.test(effectiveFlags)) return "stateless";
+  return isSafeStatefulReplaceAllSearch(node, effectiveFlags, context)
+    ? "statefulReplaceAll"
+    : null;
 };
 
 const MESSAGE =
@@ -426,13 +462,21 @@ export const jsHoistRegexp = defineRule({
   recommendation:
     "Move `new RegExp(...)` (or large regex literals) to a constant outside the loop so it isn't rebuilt on every pass",
   create: (context: RuleContext) => {
-    let cachedUnsafeRegExpEnvironment: boolean | null = null;
+    let cachedEnvironmentHazard: RegExpEnvironmentHazard | null = null;
     const reportHoistableRegExpConstruction = (
       node: EsTreeNodeOfType<"NewExpression"> | EsTreeNodeOfType<"CallExpression">,
     ): void => {
-      if (!isStaticRegExpConstruction(node, context)) return;
-      cachedUnsafeRegExpEnvironment ??= hasUnsafeRegExpEnvironment(context);
-      if (!cachedUnsafeRegExpEnvironment) context.report({ node, message: MESSAGE });
+      const constructionKind = getHoistableRegExpConstructionKind(node, context);
+      if (constructionKind === null) return;
+      cachedEnvironmentHazard ??= scanRegExpEnvironmentHazard(context);
+      if (cachedEnvironmentHazard === "globalRegExpReplaced") return;
+      if (
+        constructionKind === "statefulReplaceAll" &&
+        cachedEnvironmentHazard === "replaceAllIntegrityLost"
+      ) {
+        return;
+      }
+      context.report({ node, message: MESSAGE });
     };
     return createLoopAwareVisitors(
       {

@@ -106,6 +106,23 @@ describe("js-performance/js-hoist-regexp — regressions", () => {
     );
   });
 
+  it("keeps flagging stateless constructions when replaceAll or prototype hooks are mutated", () => {
+    expectFail(
+      `String.prototype.replaceAll = customReplaceAll; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+      `Object.defineProperty(String.prototype, "replaceAll", { value: customReplaceAll }); for (const line of lines) { new RegExp("a", "i").test(line); }`,
+      `RegExp.prototype.exec = customExec; for (const line of lines) { new RegExp("a", "i").test(line); }`,
+    );
+  });
+
+  it("suppresses only the replaceAll carve-out when replaceAll hooks are mutated", () => {
+    const result = runRule(
+      jsHoistRegexp,
+      `String.prototype.replaceAll = customReplaceAll; for (const value of values) { "aba".replaceAll(new RegExp("a", "g"), value); new RegExp("b", "i").test(value); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps reporting for unrelated or userland prototype mutations", () => {
     expectFail(
       `String.prototype.trim = customTrim; for (const value of values) { "aba".replaceAll(new RegExp("a", "g"), value); }`,
@@ -126,6 +143,7 @@ describe("js-performance/js-hoist-regexp — regressions", () => {
   it("does not recommend moving constructors that throw for invalid static flags", () => {
     expectPass(
       `for (const line of lines) { new RegExp("a", "gg").test(line); }`,
+      `for (const line of lines) { new RegExp("a", "ii").test(line); }`,
       `for (const line of lines) { new RegExp("a", "q").test(line); }`,
       `for (const line of lines) { new RegExp("a", "uv").test(line); }`,
     );

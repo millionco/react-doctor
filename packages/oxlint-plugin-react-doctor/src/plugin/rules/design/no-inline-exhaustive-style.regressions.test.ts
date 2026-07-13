@@ -2,6 +2,21 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noInlineExhaustiveStyle } from "./no-inline-exhaustive-style.js";
 
+const exhaustiveStyleElement = `
+  <div
+    style={{
+      display: "flex",
+      width: "100%",
+      height: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "column",
+      backgroundColor: "white",
+      fontSize: 64,
+    }}
+  />
+`;
+
 describe("design/no-inline-exhaustive-style regressions", () => {
   it("stays silent for module-initialized JSX", () => {
     const result = runRule(
@@ -27,6 +42,77 @@ describe("design/no-inline-exhaustive-style regressions", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for one-shot module initializers", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `export const stableElement = (() => ${exhaustiveStyleElement})();`,
+      { filename: "/proj/src/stable-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent in deferred and memoized component callbacks", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        import { useMemo } from "react";
+        export const Panel = () => {
+          const stableElement = useMemo(() => ${exhaustiveStyleElement}, []);
+          const handleClick = () => ${exhaustiveStyleElement};
+          return <button onClick={handleClick}>{stableElement}</button>;
+        };
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports styles rebuilt directly and in synchronous render callbacks", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        export const Panel = ({ items }) => (
+          <section>
+            ${exhaustiveStyleElement}
+            {items.map(() => ${exhaustiveStyleElement})}
+          </section>
+        );
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("reports React class render paths but not other methods", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        class Panel extends React.Component {
+          buildElement() {
+            return ${exhaustiveStyleElement};
+          }
+
+          render() {
+            return <section>
+              ${exhaustiveStyleElement}
+              {this.props.items.map(() => ${exhaustiveStyleElement})}
+            </section>;
+          }
+        }
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   // OG components style everything inline because Satori (next/og,

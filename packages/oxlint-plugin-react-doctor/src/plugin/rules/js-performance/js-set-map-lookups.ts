@@ -6,11 +6,14 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getRangeStart } from "../../utils/get-range-start.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 // HACK: methods that ALWAYS return a string when called on a string
 // receiver. Used to recognize `.toLowerCase().includes(x)` chains as
@@ -737,6 +740,105 @@ const isNativeIterationIndex = (identifier: EsTreeNodeOfType<"Identifier">): boo
   return isNodeOfType(callbackCall, "CallExpression") && isIterationCallbackCall(callbackCall);
 };
 
+const hasSameIdentifierBinding = (
+  leftIdentifier: EsTreeNodeOfType<"Identifier">,
+  rightIdentifier: EsTreeNodeOfType<"Identifier">,
+): boolean => {
+  if (leftIdentifier.name !== rightIdentifier.name) return false;
+  const leftBinding = findVariableInitializer(leftIdentifier, leftIdentifier.name);
+  const rightBinding = findVariableInitializer(rightIdentifier, rightIdentifier.name);
+  return Boolean(
+    leftBinding && rightBinding && leftBinding.bindingIdentifier === rightBinding.bindingIdentifier,
+  );
+};
+
+const NON_NAN_RELATIONAL_OPERATORS: ReadonlySet<string> = new Set(["<", "<=", ">", ">="]);
+
+const testProvesIdentifierIsNotNaN = (
+  test: EsTreeNode | null | undefined,
+  identifier: EsTreeNodeOfType<"Identifier">,
+): boolean => {
+  if (!test) return false;
+  const strippedTest = stripParenExpression(test);
+  if (isNodeOfType(strippedTest, "LogicalExpression") && strippedTest.operator === "&&") {
+    return (
+      testProvesIdentifierIsNotNaN(strippedTest.left, identifier) ||
+      testProvesIdentifierIsNotNaN(strippedTest.right, identifier)
+    );
+  }
+  if (
+    !isNodeOfType(strippedTest, "BinaryExpression") ||
+    !NON_NAN_RELATIONAL_OPERATORS.has(strippedTest.operator)
+  ) {
+    return false;
+  }
+  return (
+    (isNodeOfType(strippedTest.left, "Identifier") &&
+      hasSameIdentifierBinding(strippedTest.left, identifier)) ||
+    (isNodeOfType(strippedTest.right, "Identifier") &&
+      hasSameIdentifierBinding(strippedTest.right, identifier))
+  );
+};
+
+const writeTargetContainsIdentifierBinding = (
+  writeTarget: EsTreeNode,
+  identifier: EsTreeNodeOfType<"Identifier">,
+): boolean => {
+  let containsBinding = false;
+  walkAst(writeTarget, (child) => {
+    if (isNodeOfType(child, "Identifier") && hasSameIdentifierBinding(child, identifier)) {
+      containsBinding = true;
+      return false;
+    }
+  });
+  return containsBinding;
+};
+
+const hasWriteBeforeQuery = (
+  body: EsTreeNode,
+  identifier: EsTreeNodeOfType<"Identifier">,
+): boolean => {
+  const queryStart = getRangeStart(identifier);
+  if (queryStart === null) return true;
+  let hasEarlierWrite = false;
+  walkAst(body, (child) => {
+    if (hasEarlierWrite) return false;
+    const childStart = getRangeStart(child);
+    if (childStart !== null && childStart >= queryStart) return false;
+    if (child !== body && isFunctionLike(child)) return false;
+    const writeTarget = isNodeOfType(child, "AssignmentExpression")
+      ? child.left
+      : isNodeOfType(child, "UpdateExpression")
+        ? child.argument
+        : isNodeOfType(child, "ForInStatement") || isNodeOfType(child, "ForOfStatement")
+          ? child.left
+          : null;
+    if (writeTarget && writeTargetContainsIdentifierBinding(writeTarget, identifier)) {
+      hasEarlierWrite = true;
+      return false;
+    }
+  });
+  return hasEarlierWrite;
+};
+
+const isProtectedByRelationalLoopGuard = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
+  let descendant: EsTreeNode = identifier;
+  let ancestor: EsTreeNode | null | undefined = identifier.parent;
+  while (ancestor) {
+    if (isFunctionLike(ancestor)) return false;
+    if (
+      (isNodeOfType(ancestor, "ForStatement") || isNodeOfType(ancestor, "WhileStatement")) &&
+      ancestor.body === descendant &&
+      testProvesIdentifierIsNotNaN(ancestor.test, identifier)
+    ) {
+      return !hasWriteBeforeQuery(ancestor.body, identifier);
+    }
+    descendant = ancestor;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
 const isKnownSafeIndexOfQuery = (query: EsTreeNode | null | undefined): boolean => {
   if (!query) return false;
   const strippedQuery = stripParenExpression(query);
@@ -745,7 +847,7 @@ const isKnownSafeIndexOfQuery = (query: EsTreeNode | null | undefined): boolean 
   }
   if (!isNodeOfType(strippedQuery, "Identifier")) return false;
   if (isNativeIterationIndex(strippedQuery)) return true;
-  return false;
+  return isProtectedByRelationalLoopGuard(strippedQuery);
 };
 
 const findSameFileTypeAlias = (

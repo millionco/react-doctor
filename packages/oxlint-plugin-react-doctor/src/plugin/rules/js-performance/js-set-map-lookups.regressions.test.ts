@@ -161,6 +161,38 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
+  it("flags a numeric `.indexOf()` query protected by a relational loop guard", () => {
+    expectFail(`
+      function f(joinable: number[], from: number, to: number) {
+        for (let position = from; position <= to; position += 1) {
+          if (joinable.indexOf(position) === -1) joinable.push(position);
+        }
+      }
+    `);
+  });
+
+  it("does not use a relational loop guard after the query binding is reassigned", () => {
+    expectPass(`
+      function f(joinable: number[], from: number, to: number) {
+        for (let position = from; position <= to; position += 1) {
+          position = Number.NaN;
+          if (joinable.indexOf(position) === -1) joinable.push(position);
+        }
+      }
+    `);
+  });
+
+  it("does not use an outer relational loop guard for a shadowed query binding", () => {
+    expectPass(`
+      function f(joinable: number[], from: number, to: number) {
+        for (let position = from; position <= to; position += 1) {
+          const read = (position: number) => joinable.indexOf(position) === -1;
+          if (read(Number.NaN)) return position;
+        }
+      }
+    `);
+  });
+
   it("does not flag `.indexOf(undefined)` because sparse holes become undefined in a Set", () => {
     expectPass(
       `function f(rows, allowedValues: Array<number | undefined>){ for (const row of rows){ if(allowedValues.indexOf(undefined) !== -1) return row; } }`,

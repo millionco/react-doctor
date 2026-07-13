@@ -72,6 +72,7 @@ describe("design/no-inline-exhaustive-style regressions", () => {
       `
         class ElementHolder {
           static stableElement = ${exhaustiveStyleElement};
+          [${exhaustiveStyleElement}] = "computed-once";
           instanceElement = ${exhaustiveStyleElement};
         }
 

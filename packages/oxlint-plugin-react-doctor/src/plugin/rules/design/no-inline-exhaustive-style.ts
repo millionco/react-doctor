@@ -30,11 +30,13 @@ const isStaticStyleProperty = (property: EsTreeNode): boolean => {
 };
 
 const isInsideInstanceField = (node: EsTreeNode): boolean => {
+  let descendantNode = node;
   let ancestorNode = node.parent;
   while (ancestorNode) {
     if (isNodeOfType(ancestorNode, "PropertyDefinition")) {
-      return ancestorNode.static !== true;
+      return ancestorNode.static !== true && ancestorNode.value === descendantNode;
     }
+    descendantNode = ancestorNode;
     ancestorNode = ancestorNode.parent;
   }
   return false;

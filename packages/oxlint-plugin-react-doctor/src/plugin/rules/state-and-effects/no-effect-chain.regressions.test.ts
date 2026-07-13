@@ -376,6 +376,41 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    [
+      "inline arrow",
+      "useEffect(async () => { const response = await fetch('/api/value'); setTarget(await response.json()); }, [source]);",
+    ],
+    [
+      "named declaration",
+      "async function synchronizeTarget() { const response = await fetch('/api/value'); setTarget(await response.json()); } useEffect(synchronizeTarget, [source]);",
+    ],
+    [
+      "exact alias",
+      "const synchronizeTarget = async () => { const response = await fetch('/api/value'); setTarget(await response.json()); }; const effectCallback = synchronizeTarget; useEffect(effectCallback, [source]);",
+    ],
+    [
+      "layout effect",
+      "const synchronizeTarget = async () => { const response = await fetch('/api/value'); setTarget(await response.json()); }; useLayoutEffect(synchronizeTarget, [source]);",
+    ],
+  ])(
+    "ignores an async %s effect callback as the downstream chain link",
+    (_callbackShape, downstreamEffect) => {
+      const result = runRule(
+        noEffectChain,
+        `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        useEffect(() => { setSource(1); }, []);
+        ${downstreamEffect}
+        return target;
+      }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
   it("flags the synchronous near-neighbor through an exact callback alias", () => {
     const result = runRule(
       noEffectChain,

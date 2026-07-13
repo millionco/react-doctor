@@ -85,9 +85,8 @@ const collectSynchronouslyInvokedFunctions = (
   effectCallback: EsTreeNode,
   scopes: ScopeAnalysis,
 ): ReadonlySet<EsTreeNode> => {
-  if (!isFunctionLike(effectCallback) || effectCallback.async) return new Set();
   const analysisFunctions = new Set<EsTreeNode>([effectCallback]);
-  const pendingFunctions: EsTreeNode[] = [effectCallback];
+  const pendingFunctions = [effectCallback];
   while (pendingFunctions.length > 0) {
     const currentFunction = pendingFunctions.pop();
     if (!currentFunction || !isFunctionLike(currentFunction)) continue;
@@ -363,7 +362,7 @@ export const noEffectChain = defineRule({
       const effectInfos: EffectInfo[] = [];
       for (const effectCall of findTopLevelEffectCalls(componentBody)) {
         const callback = getEffectCallback(effectCall, context.scopes);
-        if (!callback) continue;
+        if (!callback || !isFunctionLike(callback) || callback.async) continue;
         const analysisFunctions = collectSynchronouslyInvokedFunctions(callback, context.scopes);
         const writtenStateNames = collectWrittenStateNamesInEffect(
           analysisFunctions,

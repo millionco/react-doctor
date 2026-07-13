@@ -24,29 +24,6 @@ interface MutableConstInitializer {
   allowsPropertyDeletion: boolean;
 }
 
-const MUTATING_METHODS = new Set([
-  "push",
-  "pop",
-  "shift",
-  "unshift",
-  "splice",
-  "sort",
-  "reverse",
-  "fill",
-  "copyWithin",
-  "set",
-  "add",
-  "delete",
-  "clear",
-]);
-
-const OBJECT_MUTATING_METHODS = new Set([
-  "assign",
-  "defineProperty",
-  "defineProperties",
-  "setPrototypeOf",
-]);
-
 const ARRAY_MUTATING_METHODS = new Set([
   "push",
   "pop",
@@ -59,8 +36,25 @@ const ARRAY_MUTATING_METHODS = new Set([
   "copyWithin",
 ]);
 
-const getNestedPropertyKind = (propertyValue: EsTreeNode): string | null => {
-  const value = stripParenExpression(propertyValue);
+const MUTATING_METHODS = new Set([...ARRAY_MUTATING_METHODS, "set", "add", "delete", "clear"]);
+
+const NESTED_MUTATING_METHODS: Record<string, ReadonlySet<string>> = {
+  Array: ARRAY_MUTATING_METHODS,
+  Map: new Set(["set", "delete", "clear"]),
+  WeakMap: new Set(["set", "delete"]),
+  Set: new Set(["add", "delete", "clear"]),
+  WeakSet: new Set(["add", "delete"]),
+};
+
+const OBJECT_MUTATING_METHODS = new Set([
+  "assign",
+  "defineProperty",
+  "defineProperties",
+  "setPrototypeOf",
+]);
+
+const getMutableContainerKind = (containerExpression: EsTreeNode): string | null => {
+  const value = stripParenExpression(containerExpression);
   if (isNodeOfType(value, "ArrayExpression")) return "Array";
   if (isNodeOfType(value, "ObjectExpression")) return "Object";
   if (
@@ -100,11 +94,11 @@ const getMutableConstInitializer = (
     const writablePropertyNames = new Set<string>();
     const nestedPropertyKinds = new Map<string, string>();
     for (const property of initializer.properties) {
-      if (isNodeOfType(property, "Property") && property.kind !== "init") continue;
+      if (!isNodeOfType(property, "Property") || property.kind !== "init") continue;
       const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
-      if (propertyName === null || !isNodeOfType(property, "Property")) continue;
+      if (propertyName === null) continue;
       writablePropertyNames.add(propertyName);
-      const nestedPropertyKind = getNestedPropertyKind(property.value);
+      const nestedPropertyKind = getMutableContainerKind(property.value);
       if (nestedPropertyKind) nestedPropertyKinds.set(propertyName, nestedPropertyKind);
     }
     return {
@@ -115,35 +109,15 @@ const getMutableConstInitializer = (
     };
   }
 
-  if (isNodeOfType(initializer, "ArrayExpression")) {
-    return {
-      containerKind: "[]",
-      writablePropertyNames: null,
-      nestedPropertyKinds: null,
-      allowsPropertyDeletion: true,
-    };
-  }
-  if (isNodeOfType(initializer, "ObjectExpression")) {
-    return {
-      containerKind: "{}",
-      writablePropertyNames: null,
-      nestedPropertyKinds: null,
-      allowsPropertyDeletion: true,
-    };
-  }
-  if (
-    isNodeOfType(initializer, "NewExpression") &&
-    isNodeOfType(initializer.callee, "Identifier") &&
-    MUTABLE_CONTAINER_CONSTRUCTORS.has(initializer.callee.name)
-  ) {
-    return {
-      containerKind: `new ${initializer.callee.name}()`,
-      writablePropertyNames: null,
-      nestedPropertyKinds: null,
-      allowsPropertyDeletion: true,
-    };
-  }
-  return null;
+  const containerKindName = getMutableContainerKind(initializer);
+  if (!containerKindName) return null;
+  const containerKindLabels: Record<string, string> = { Array: "[]", Object: "{}" };
+  return {
+    containerKind: containerKindLabels[containerKindName] ?? `new ${containerKindName}()`,
+    writablePropertyNames: null,
+    nestedPropertyKinds: null,
+    allowsPropertyDeletion: true,
+  };
 };
 
 const getMemberPropertyName = (
@@ -260,38 +234,17 @@ const isSupportedNestedMethodMutation = (
   }
   const methodName = getMemberPropertyName(chainTip);
   if (!methodName) return false;
-  if (nestedPropertyKind === "Array") return ARRAY_MUTATING_METHODS.has(methodName);
-  if (nestedPropertyKind === "Map") {
-    return methodName === "set" || methodName === "delete" || methodName === "clear";
-  }
-  if (nestedPropertyKind === "WeakMap") return methodName === "set" || methodName === "delete";
-  if (nestedPropertyKind === "Set") {
-    return methodName === "add" || methodName === "delete" || methodName === "clear";
-  }
-  if (nestedPropertyKind === "WeakSet") return methodName === "add" || methodName === "delete";
-  return false;
+  return Boolean(NESTED_MUTATING_METHODS[nestedPropertyKind]?.has(methodName));
 };
 
+// The caller has already proven the call is `Object.<methodName>(container, …)`
+// with a global `Object` receiver and methodName in OBJECT_MUTATING_METHODS.
 const isKnownPropertyObjectMutation = (
-  referenceIdentifier: EsTreeNode,
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  methodName: string,
   writablePropertyNames: Set<string>,
-  scopes: ScopeAnalysis,
 ): boolean => {
-  const callExpression = referenceIdentifier.parent;
-  if (!callExpression || !isNodeOfType(callExpression, "CallExpression")) return false;
-  if (callExpression.arguments[0] !== referenceIdentifier) return false;
-  const callee = callExpression.callee;
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  const receiver = stripParenExpression(callee.object);
-  if (
-    !isNodeOfType(receiver, "Identifier") ||
-    receiver.name !== "Object" ||
-    !scopes.isGlobalReference(receiver) ||
-    getMemberPropertyName(callee) === "setPrototypeOf"
-  ) {
-    return false;
-  }
-  const methodName = getMemberPropertyName(callee);
+  if (methodName === "setPrototypeOf") return false;
   if (methodName === "defineProperty") {
     const propertyNameNode = callExpression.arguments[1];
     return Boolean(
@@ -302,7 +255,6 @@ const isKnownPropertyObjectMutation = (
     );
   }
   const propertyObject = callExpression.arguments[1];
-  if (methodName !== "assign" && methodName !== "defineProperties") return false;
   if (!isNodeOfType(propertyObject, "ObjectExpression")) {
     return writablePropertyNames.size > 0;
   }
@@ -343,9 +295,9 @@ const isMutatedThroughCallArgument = (
       referenceArgumentIndex === 0 &&
       (!initializer?.writablePropertyNames ||
         isKnownPropertyObjectMutation(
-          referenceIdentifier,
+          callExpression,
+          methodName,
           initializer.writablePropertyNames,
-          scopes,
         )),
     );
   }
@@ -412,14 +364,15 @@ const collectAliasGroup = (
   return aliasGroup;
 };
 
-// True when the binding's contents are written anywhere in the module: a
-// member assignment (`X.y = …`, `X.a[i] = …` at any depth), `delete X.y`, a
-// mutating method call (`X.push(...)`, `X.users.push(...)`, `X["set"](...)`),
-// `Object.assign(X, …)`, or an escape into a same-file callee that mutates
-// the parameter. Resolution is scope-aware, so a shadowed local or parameter
-// of the same name never counts. A const container that is never mutated is
-// an immutable lookup table — sharing it across requests is correct, so it
-// must NOT be flagged.
+// True when the binding's contents are written from inside a function — i.e.
+// potentially per request; writes at module scope run once during module
+// initialization and never count. A write is a member assignment (`X.y = …`,
+// `X.a[i] = …` at any depth), `delete X.y`, a mutating method call
+// (`X.push(...)`, `X.users.push(...)`, `X["set"](...)`), `Object.assign(X, …)`,
+// or an escape into a same-file callee that mutates the parameter. Resolution
+// is scope-aware, so a shadowed local or parameter of the same name never
+// counts. A const container that is never mutated is an immutable lookup
+// table — sharing it across requests is correct, so it must NOT be flagged.
 const isContainerContentsMutated = (
   containerSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,

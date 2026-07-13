@@ -12,6 +12,49 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it.each(["query", "execute", "wait"])(
+    "flags the pure local %s spelling without trusting its name",
+    (helperName) => {
+      const result = runRule(
+        asyncAwaitInLoop,
+        `const ${helperName} = async (item) => { await Promise.resolve(); return item * 2; }; async function load(items) { for (const item of items) { await ${helperName}(item); } }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    },
+  );
+
+  it("follows a const alias to an independent local helper", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; const run = query; async function load(items) { for (const item of items) { await run(item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags an independent statically computed local object helper", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const helpers = { query: async (item) => { await Promise.resolve(); return item * 2; } }; async function load(items) { for (const item of items) { await helpers["query"](item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("keeps opaque and visibly stateful query calls intentionally sequential", () => {
+    for (const code of [
+      `async function load(database, items) { for (const item of items) { await database.query(item); } }`,
+      `let cursor = 0; const query = async (item) => { await Promise.resolve(); cursor += item; return cursor; }; async function load(items) { for (const item of items) { await query(item); } }`,
+      `const Promise = { resolve: async () => undefined }; const query = async (item) => { await Promise.resolve(); return item * 2; }; async function load(items) { for (const item of items) { await query(item); } }`,
+      `const query = async (item) => { await Promise.resolve(); if (item < 0) throw new Error("invalid"); return item * 2; }; async function load(items) { for (const item of items) { await query(item); } }`,
+    ]) {
+      const result = runRule(asyncAwaitInLoop, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
   it("stays silent on a loop-carried dependency flowing through push + read", () => {
     const result = runRule(
       asyncAwaitInLoop,

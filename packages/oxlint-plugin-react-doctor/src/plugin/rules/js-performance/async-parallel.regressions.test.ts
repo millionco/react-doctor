@@ -27,6 +27,35 @@ describe("js-performance/async-parallel — regressions", () => {
     );
   });
 
+  it.each(["query", "execute", "wait"])("flags independent pure local %s calls", (helperName) => {
+    expectFail(
+      `const ${helperName} = async (item) => { await Promise.resolve(); return item * 2; }; async function load() { const first = await ${helperName}(1); const second = await ${helperName}(2); const third = await ${helperName}(3); return [first, second, third]; }`,
+    );
+  });
+
+  it("follows aliases and statically computed object properties", () => {
+    expectFail(
+      `const helpers = { query: async (item) => { await Promise.resolve(); return item * 2; } }; const aliasedHelpers = helpers; async function load() { const first = await aliasedHelpers["query"](1); const second = await aliasedHelpers["query"](2); const third = await aliasedHelpers["query"](3); return [first, second, third]; }`,
+    );
+  });
+
+  it("flags bare awaits through aliases of the same commutative helper", () => {
+    expectFail(
+      `const double = async (cell) => { await Promise.resolve(); cell.value *= 2; }; const transform = double; async function update(first, second, third) { await transform(first); await transform(second); await transform(third); }`,
+    );
+  });
+
+  it("keeps bare awaits conservative when the local proof does not establish one operation", () => {
+    for (const code of [
+      `const double = async (cell) => { await Promise.resolve(); if (cell.locked) return; cell.value *= 2; }; async function update(first, second, third) { await double(first); await double(second); await double(third); }`,
+      `const Promise = { resolve: async () => undefined }; const double = async (cell) => { await Promise.resolve(); cell.value *= 2; }; async function update(first, second, third) { await double(first); await double(second); await double(third); }`,
+      `const double = async (cell) => { await Promise.resolve(); cell.value *= 2; }; const increment = async (cell) => { await Promise.resolve(); cell.value += 1; }; async function update(first, second, third) { await double(first); await increment(second); await double(third); }`,
+      `let cursor = 0; const query = async (item) => { await Promise.resolve(); cursor += item; return cursor; }; async function load() { const first = await query(1); const second = await query(2); const third = await query(3); return [first, second, third]; }`,
+    ]) {
+      expectPass(code);
+    }
+  });
+
   it("flags three genuinely independent sequential awaits", () => {
     expectFail(
       `async function load(){ const a = await getA(); const b = await getB(); const c = await getC(); }`,

@@ -1,6 +1,7 @@
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getOrderIndependentLocalCallId } from "../../utils/get-order-independent-local-call-id.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { isAuthGuardName } from "../../utils/is-auth-guard-name.js";
 import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
@@ -133,7 +134,7 @@ const declarationAwaitsRequestScopedCall = (declaration: EsTreeNode): boolean =>
 // True when the first declaration awaits a guard / side-effect gate, so its
 // ordering before the next await is intentional (`await requireSession()`,
 // `await db.connect()`, `await beginTransaction()`).
-const declarationAwaitsGate = (declaration: EsTreeNode): boolean => {
+const declarationAwaitsGate = (declaration: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   for (const declarator of declaration.declarations ?? []) {
     if (!isNodeOfType(declarator.init, "AwaitExpression")) continue;
@@ -142,6 +143,7 @@ const declarationAwaitsGate = (declaration: EsTreeNode): boolean => {
     // resolves NewExpression, which would over-suppress here).
     const argument = declarator.init.argument;
     if (!isNodeOfType(argument, "CallExpression")) continue;
+    if (getOrderIndependentLocalCallId(argument, context.scopes) !== null) continue;
     const calleeName = getCalleeName(argument);
     if (!calleeName) continue;
     if (isAuthGuardName(calleeName)) return true;
@@ -187,7 +189,7 @@ export const serverSequentialIndependentAwait = defineRule({
         // A guard / side-effect gate (`await requireSession()`, `db.connect()`)
         // must run before the next await — its ordering is intentional, not a
         // parallelizable waterfall.
-        if (declarationAwaitsGate(currentStatement)) continue;
+        if (declarationAwaitsGate(currentStatement, context)) continue;
 
         context.report({
           node: nextStatement,

@@ -12,6 +12,39 @@ describe("server-sequential-independent-await — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it.each(["initializeProfile", "setupProfile", "requireProfile"])(
+    "flags the pure local %s helper without trusting its leading verb",
+    (helperName) => {
+      const result = runRule(
+        serverSequentialIndependentAwait,
+        `const ${helperName} = async (value) => { await Promise.resolve(); return value * 2; }; const loadPreferences = async (value) => { await Promise.resolve(); return value * 3; }; export async function load() { const profile = await ${helperName}(2); const preferences = await loadPreferences(3); return { profile, preferences }; }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    },
+  );
+
+  it("follows an alias to a pure local helper whose original name is a gate", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `const initializeProfile = async (value) => { await Promise.resolve(); return value * 2; }; const initializeAlias = initializeProfile; export async function load() { const profile = await initializeAlias(2); const preferences = await loadPreferences(3); return { profile, preferences }; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("keeps opaque and visibly stateful initialization gates sequential", () => {
+    for (const code of [
+      `export async function load(database) { const connection = await database.initialize(); const rows = await database.loadRows(); return { connection, rows }; }`,
+      `let session; const initializeSession = async (value) => { await Promise.resolve(); session = value; return session; }; export async function load() { const current = await initializeSession(2); const rows = await loadRows(); return { current, rows }; }`,
+      `const initializeSession = async (value) => { await Promise.resolve(); if (!value) throw new Error("missing"); return value; }; export async function load() { const current = await initializeSession(2); const rows = await loadRows(); return { current, rows }; }`,
+    ]) {
+      const result = runRule(serverSequentialIndependentAwait, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
   it("stays silent when the first await is an auth/permission gate", () => {
     const result = runRule(
       serverSequentialIndependentAwait,

@@ -112,6 +112,8 @@ export const HANDLER_SNIPPET_POOL = [
   `const timerRef = useRef(null); const handleQueue = () => { clearTimeout(timerRef.current); timerRef.current = setTimeout(handle, 250); }; const handleFlush = () => { clearTimeout(timerRef.current); timerRef.current = null; handle(); };`,
   `const handleBatch = async () => { for (const item of items) { await api.post(url, item); } };`,
   `const handleBatch = async () => { await Promise.all(items.map((item) => api.post(url, item))); };`,
+  `const query = async (item) => { await Promise.resolve(); return item * 2; }; const handleQueries = async () => { for (const item of items) { await query(item); } };`,
+  `const doubleCell = async (cell) => { await Promise.resolve(); cell.value *= 2; }; const handleCells = async () => { await doubleCell(items[0]); await doubleCell(items[1]); await doubleCell(items[2]); };`,
   `const handleMatch = () => { for (const item of items) { new RegExp("token", "i").test(String(item)); } };`,
   `const handleStatefulMatch = () => { for (const item of items) { new RegExp("token", "g").test(String(item)); } };`,
   `const handleReplaceAll = (text: string) => { for (const item of items) { text.replaceAll(new RegExp("token", "g"), String(item)); } };`,
@@ -207,6 +209,13 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  `const initializeProfile = async (value: number) => { await Promise.resolve(); return value * 2; };
+const loadPreferences = async (value: number) => { await Promise.resolve(); return value * 3; };
+export const loadProfile = async () => {
+  const profile = await initializeProfile(2);
+  const preferences = await loadPreferences(3);
+  return { profile, preferences };
+};`,
   `"use server";
 const state = Object.seal({ count: 0 });
 export const increment = async () => {

@@ -10,6 +10,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { getCalleeIdentifierTrail } from "../../utils/get-callee-identifier-trail.js";
+import { getOrderIndependentLocalCallId } from "../../utils/get-order-independent-local-call-id.js";
 import { isTestLibraryImportSource } from "../../utils/is-test-library-import-source.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -84,13 +85,24 @@ const isNonCallAwait = (statement: EsTreeNode): boolean => {
 // awaits is enough to mark the whole sequence as deliberately
 // serialized — collapsing it into `Promise.all([...])` would change
 // observable behavior.
-const sequenceContainsSerializationSignal = (statements: EsTreeNode[]): boolean => {
+const sequenceContainsSerializationSignal = (
+  statements: EsTreeNode[],
+  context: RuleContext,
+): boolean => {
+  let bareAwaitCallId: number | null = null;
   for (const statement of statements) {
-    if (isBareExpressionAwait(statement)) return true;
     if (isNonCallAwait(statement)) return true;
     const awaitedCall = getAwaitedCall(statement);
+    const orderIndependentCallId = awaitedCall
+      ? getOrderIndependentLocalCallId(awaitedCall, context.scopes)
+      : null;
+    if (isBareExpressionAwait(statement)) {
+      if (orderIndependentCallId === null) return true;
+      if (bareAwaitCallId !== null && bareAwaitCallId !== orderIndependentCallId) return true;
+      bareAwaitCallId = orderIndependentCallId;
+    }
     if (isOrderedUiFlowAwait(awaitedCall)) return true;
-    if (isIntentionalSequencingAwait(awaitedCall)) return true;
+    if (isIntentionalSequencingAwait(awaitedCall) && orderIndependentCallId === null) return true;
   }
   return false;
 };
@@ -188,7 +200,7 @@ export const asyncParallel = defineRule({
 
         const flushConsecutiveAwaits = (): void => {
           if (consecutiveAwaitStatements.length >= SEQUENTIAL_AWAIT_THRESHOLD) {
-            if (!sequenceContainsSerializationSignal(consecutiveAwaitStatements)) {
+            if (!sequenceContainsSerializationSignal(consecutiveAwaitStatements, context)) {
               reportIfIndependent(consecutiveAwaitStatements, context);
             }
           }

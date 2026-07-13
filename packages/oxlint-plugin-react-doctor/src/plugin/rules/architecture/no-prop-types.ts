@@ -3,7 +3,6 @@ import { isProvenReactClassComponent } from "../../utils/is-proven-react-class-c
 import { isProvenReactComponentSymbol } from "../../utils/is-proven-react-component-symbol.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -19,12 +18,10 @@ import type { RuleContext } from "../../utils/rule-context.js";
 //   Component.propTypes = { value: PropTypes.number };   // assignment
 //   class Component { static propTypes = { ... }; }       // class field
 //
-// The uppercase-receiver heuristic (mirrors `no-default-props`) keeps
-// the rule conservative: only a Capitalized identifier / class name is
-// treated as a component, so `config.propTypes = …` on a lowercase
-// object is never flagged. The whole rule is version-gated on
-// `react:19` so pre-19 projects — where `propTypes` still runs — stay
-// quiet.
+// Component provenance is resolved through render output, immutable value
+// snapshots, proven React wrappers, and React class ancestry. The whole rule
+// is version-gated on `react:19` so pre-19 projects — where `propTypes` still
+// runs — stay quiet.
 const PROP_TYPES_PROPERTY = "propTypes";
 
 const isPropTypesKey = (key: EsTreeNode | null | undefined, computed: boolean): boolean => {
@@ -90,9 +87,9 @@ export const noPropTypes = defineRule({
       if (node.operator !== "=") return;
       const component = getComponentFromPropTypesAssignment(node.left);
       if (!component) return;
-      const symbol = resolveConstIdentifierAlias(component, context.scopes);
+      const symbol = context.scopes.symbolFor(component);
       if (!symbol) return;
-      if (!isProvenReactComponentSymbol(symbol, context.scopes)) return;
+      if (!isProvenReactComponentSymbol(symbol, context.scopes, component)) return;
       context.report({ node: node.left, message: buildMessage(component.name) });
     },
     PropertyDefinition(node: EsTreeNodeOfType<"PropertyDefinition">) {

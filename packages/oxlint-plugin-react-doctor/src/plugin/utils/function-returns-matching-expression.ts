@@ -1,30 +1,18 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { collectFunctionReturnStatements } from "./collect-function-return-statements.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
-import { walkAst } from "./walk-ast.js";
 
 const collectReturnedExpressions = (functionNode: EsTreeNode): EsTreeNode[] => {
   if (!isFunctionLike(functionNode)) return [];
   const body = functionNode.body;
   if (!body) return [];
   if (!isNodeOfType(body, "BlockStatement")) return [body];
-  const returnedExpressions: EsTreeNode[] = [];
-  walkAst(body, (node) => {
-    if (
-      node !== body &&
-      (isFunctionLike(node) ||
-        isNodeOfType(node, "ClassDeclaration") ||
-        isNodeOfType(node, "ClassExpression"))
-    ) {
-      return false;
-    }
-    if (isNodeOfType(node, "ReturnStatement") && node.argument) {
-      returnedExpressions.push(node.argument);
-    }
-  });
-  return returnedExpressions;
+  return collectFunctionReturnStatements(functionNode).flatMap((returnStatement) =>
+    returnStatement.argument ? [returnStatement.argument] : [],
+  );
 };
 
 export const functionReturnsMatchingExpression = (

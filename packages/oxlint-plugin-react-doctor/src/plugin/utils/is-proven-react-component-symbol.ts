@@ -1,12 +1,13 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { collectFunctionReturnStatements } from "./collect-function-return-statements.js";
 import { functionContainsReactRenderOutput } from "./function-contains-react-render-output.js";
+import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
 import { isComponentDeclaration } from "./is-component-declaration.js";
 import { isInlineFunctionExpression } from "./is-inline-function-expression.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isProvenReactClassComponent } from "./is-proven-react-class-component.js";
 import { isReactApiCall } from "./is-react-api-call.js";
-import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { isUppercaseName } from "./is-uppercase-name.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
@@ -25,8 +26,10 @@ const isProvenReactComponentExpression = (
     return isProvenReactClassComponent(candidate, scopes);
   }
   if (isNodeOfType(candidate, "Identifier")) {
-    const symbol = resolveConstIdentifierAlias(candidate, scopes);
-    if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+    const symbol = scopes.symbolFor(candidate);
+    if (!symbol || visitedSymbolIds.has(symbol.id) || hasSymbolWriteBefore(symbol, candidate)) {
+      return false;
+    }
     visitedSymbolIds.add(symbol.id);
     if (isNodeOfType(symbol.declarationNode, "FunctionDeclaration")) {
       return functionContainsReactRenderOutput(symbol.declarationNode, scopes);
@@ -63,22 +66,19 @@ const isProvenReactComponentExpression = (
   if (!isNodeOfType(unwrappedFactory.body, "BlockStatement")) {
     return isProvenReactComponentExpression(unwrappedFactory.body, scopes, visitedSymbolIds);
   }
-  const returnedExpressions: EsTreeNode[] = [];
-  for (const statement of unwrappedFactory.body.body) {
-    if (isNodeOfType(statement, "ReturnStatement") && statement.argument) {
-      returnedExpressions.push(statement.argument);
-    }
-  }
+  const returnStatements = collectFunctionReturnStatements(unwrappedFactory);
+  const returnedExpression = returnStatements[0]?.argument;
   return Boolean(
-    returnedExpressions.length === 1 &&
-    returnedExpressions[0] &&
-    isProvenReactComponentExpression(returnedExpressions[0], scopes, visitedSymbolIds),
+    returnStatements.length === 1 &&
+    returnedExpression &&
+    isProvenReactComponentExpression(returnedExpression, scopes, visitedSymbolIds),
   );
 };
 
 export const isProvenReactComponentSymbol = (
   symbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
+  componentReference: EsTreeNode,
 ): boolean => {
   const candidateSymbols =
     symbol.kind === "ts-module"
@@ -88,7 +88,7 @@ export const isProvenReactComponentSymbol = (
         )
       : [symbol];
   for (const candidateSymbol of candidateSymbols) {
-    if (candidateSymbol.references.some((reference) => reference.flag !== "read")) continue;
+    if (hasSymbolWriteBefore(candidateSymbol, componentReference)) continue;
     if (isComponentDeclaration(candidateSymbol.declarationNode)) {
       if (functionContainsReactRenderOutput(candidateSymbol.declarationNode, scopes)) return true;
       continue;
@@ -97,7 +97,6 @@ export const isProvenReactComponentSymbol = (
       ? stripParenExpression(candidateSymbol.initializer)
       : null;
     if (
-      candidateSymbol.kind === "const" &&
       isNodeOfType(candidateSymbol.declarationNode, "VariableDeclarator") &&
       isNodeOfType(candidateSymbol.declarationNode.id, "Identifier") &&
       isUppercaseName(candidateSymbol.declarationNode.id.name) &&

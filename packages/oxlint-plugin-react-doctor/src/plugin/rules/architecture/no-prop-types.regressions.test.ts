@@ -110,13 +110,10 @@ describe("architecture/no-prop-types component provenance", () => {
     );
   });
 
-  it("keeps mutable, imported, and unrelated class aliases quiet", () => {
+  it("keeps imported and unrelated class aliases quiet", () => {
     expectDiagnosticCount(
       `import ImportedPanel from "./panel";
        ImportedPanel.propTypes = { value: () => true };
-       const LocalPanel = () => <div />;
-       let MutablePanel = LocalPanel;
-       MutablePanel.propTypes = { value: () => true };
        const React = { Component: class {} };
        const ComponentBase = React.Component;
        class Protocol extends ComponentBase { static propTypes = { value: () => true }; }`,
@@ -140,6 +137,48 @@ describe("architecture/no-prop-types component provenance", () => {
        Modal = class {};
        Modal.propTypes = { value: () => true };`,
       0,
+    );
+  });
+
+  it("preserves component values captured before a later reassignment", () => {
+    expectDiagnosticCount(
+      `function Panel() { return <div />; }
+       Panel.propTypes = { value: () => true };
+       Panel = Object.assign(() => null, { propTypes: {} });
+       function Dialog() { return <div />; }
+       const DialogAlias = Dialog;
+       Dialog = Object.assign(() => null, { propTypes: {} });
+       DialogAlias.propTypes = { value: () => true };
+       const Sheet = () => <div />;
+       let MutableSheet = Sheet;
+       MutableSheet.propTypes = { value: () => true };
+       MutableSheet = Object.assign(() => null, { propTypes: {} });`,
+      3,
+    );
+  });
+
+  it("keeps aliases captured after component reassignment quiet", () => {
+    expectDiagnosticCount(
+      `function Panel() { return <div />; }
+       Panel = Object.assign(() => null, { propTypes: {} });
+       const PanelAlias = Panel;
+       PanelAlias.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
+  it("tracks class base aliases at their capture point", () => {
+    expectDiagnosticCount(
+      `import ReactDefault from "react";
+       class StableBase extends ReactDefault.Component {}
+       const StableAlias = StableBase;
+       StableBase = class {};
+       class Dialog extends StableAlias { static propTypes = { value: () => true }; }
+       class ReassignedBase extends ReactDefault.Component {}
+       ReassignedBase = class {};
+       const ReassignedAlias = ReassignedBase;
+       class Protocol extends ReassignedAlias { static propTypes = { value: () => true }; }`,
+      1,
     );
   });
 
@@ -193,7 +232,17 @@ describe("architecture/no-prop-types component provenance", () => {
        const Protocol = useStableValue(() => ({ value: true }), []);
        Protocol.propTypes = { value: () => true };
        const Ambiguous = useStableValue(() => Math.random() > 0.5 ? (() => <div />) : { value: true }, []);
-       Ambiguous.propTypes = { value: () => true };`,
+       Ambiguous.propTypes = { value: () => true };
+       const Branched = useStableValue(() => {
+         if (Math.random() > 0.5) return { value: true };
+         return () => <div />;
+       }, []);
+       Branched.propTypes = { value: () => true };
+       const EarlyExit = useStableValue(() => {
+         if (Math.random() > 0.5) return;
+         return () => <div />;
+       }, []);
+       EarlyExit.propTypes = { value: () => true };`,
       0,
     );
   });

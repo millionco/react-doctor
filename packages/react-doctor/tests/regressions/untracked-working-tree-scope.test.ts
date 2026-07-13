@@ -26,7 +26,7 @@ const createRepository = (caseId: string): string => {
 const sorted = (filePaths: ReadonlyArray<string> | undefined): string[] =>
   [...(filePaths ?? [])].sort();
 
-describe("working-tree change scopes include untracked files", () => {
+describe("--include-untracked folds untracked files into working-tree scopes", () => {
   it("includes ordinary untracked files and excludes ignored files on the default branch", async () => {
     const repositoryDirectory = createRepository("default-branch");
     writeFile(
@@ -38,10 +38,14 @@ describe("working-tree change scopes include untracked files", () => {
       "export const Ignored = () => <button>Ignore</button>;\n",
     );
 
-    const diffInfo = await getDiffInfo(repositoryDirectory);
+    const diffInfo = await getDiffInfo(repositoryDirectory, undefined, true);
 
     expect(diffInfo?.isCurrentChanges).toBe(true);
     expect(sorted(diffInfo?.changedFiles)).toEqual(["src/new.tsx"]);
+
+    // Off by default: with no tracked changes, the untracked file is ignored
+    // and no working-tree diff is detected at all.
+    expect(await getDiffInfo(repositoryDirectory)).toBe(null);
   });
 
   it("combines tracked and untracked changes on a feature branch", async () => {
@@ -56,9 +60,13 @@ describe("working-tree change scopes include untracked files", () => {
       "export const New = () => <button>Save</button>;\n",
     );
 
-    const diffInfo = await getDiffInfo(repositoryDirectory, "main");
+    const diffInfo = await getDiffInfo(repositoryDirectory, "main", true);
 
     expect(sorted(diffInfo?.changedFiles)).toEqual(["src/app.tsx", "src/new.tsx"]);
+
+    // Off by default: only the tracked edit is in scope.
+    const trackedOnly = await getDiffInfo(repositoryDirectory, "main");
+    expect(sorted(trackedOnly?.changedFiles)).toEqual(["src/app.tsx"]);
   });
 
   it("treats every line in an untracked file as new without widening explicit commit ranges", async () => {
@@ -77,11 +85,12 @@ describe("working-tree change scopes include untracked files", () => {
       "export const New = () => (\n  <button>Save</button>\n);\n",
     );
 
-    const workingTreeDiff = await getDiffInfo(repositoryDirectory, baseSha);
+    const workingTreeDiff = await getDiffInfo(repositoryDirectory, baseSha, true);
     const lineRanges = await getChangedLineRanges({
       directory: repositoryDirectory,
       baseRef: baseSha,
       files: [...(workingTreeDiff?.changedFiles ?? [])],
+      includeUntracked: true,
     });
     const explicitRange = await getDiffInfo(repositoryDirectory, `${baseSha}..${headSha}`);
 

@@ -53,4 +53,26 @@ describe("validateModeFlags", () => {
     expect(() => validateModeFlags({ staged: true, scope: "lines" })).not.toThrow();
     expect(() => validateModeFlags({ staged: true })).not.toThrow();
   });
+
+  it("rejects --include-untracked without a working-tree scope", () => {
+    expect(() => validateModeFlags({ includeUntracked: true })).toThrow(
+      "--include-untracked requires a working-tree scope",
+    );
+    expect(() => validateModeFlags({ includeUntracked: true, scope: "full" })).toThrow(
+      "--include-untracked requires a working-tree scope",
+    );
+  });
+
+  it("rejects --include-untracked with --staged (the index has no untracked files)", () => {
+    expect(() =>
+      validateModeFlags({ includeUntracked: true, staged: true, scope: "files" }),
+    ).toThrow("Cannot combine --include-untracked with --staged");
+  });
+
+  it("allows --include-untracked with a working-tree scope or the --diff alias", () => {
+    expect(() => validateModeFlags({ includeUntracked: true, scope: "files" })).not.toThrow();
+    expect(() => validateModeFlags({ includeUntracked: true, scope: "changed" })).not.toThrow();
+    expect(() => validateModeFlags({ includeUntracked: true, scope: "lines" })).not.toThrow();
+    expect(() => validateModeFlags({ includeUntracked: true, diff: "main" })).not.toThrow();
+  });
 });

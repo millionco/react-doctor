@@ -442,6 +442,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       ? buildChangedFilesDiffInfo(readChangedFilesFrom(path.resolve(flags.changedFilesFrom)))
       : null;
     const requestedScope = resolveScope(flags, userConfig);
+    // Untracked files only exist in a local working tree, so this is a
+    // CLI-only modifier (like `--staged`) — off unless the user opts in.
+    const includeUntracked = flags.includeUntracked ?? false;
     // The internal `--changed-files-from` path (the GitHub Action) implies the
     // `changed` scope when the user didn't pick one explicitly — it always ran
     // in diff mode historically.
@@ -458,7 +461,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       (wantsDiffMode || (scopeRequest.scope === undefined && !skipPrompts && !isQuiet));
     const diffInfo =
       changedFilesDiffInfo ??
-      (shouldDetectDiff ? await getDiffInfo(resolvedDirectory, scopeRequest.base) : null);
+      (shouldDetectDiff
+        ? await getDiffInfo(resolvedDirectory, scopeRequest.base, includeUntracked)
+        : null);
     const scope = await finalizeScope({ requested: scopeRequest, diffInfo, skipPrompts, isQuiet });
     const isDiffMode = scope !== "full";
 
@@ -497,6 +502,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
             directory: resolvedDirectory,
             baseRef: linesBaseRef ?? undefined,
             files: [...diffInfo.changedFiles],
+            includeUntracked,
           })
         : null;
     if (scope === "lines" && changedLineRanges === null && !isQuiet) {

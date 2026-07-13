@@ -14,6 +14,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--dead-code",
     "--debug",
     "--help",
+    "--include-untracked",
     "--json",
     "--json-compact",
     "--lint",

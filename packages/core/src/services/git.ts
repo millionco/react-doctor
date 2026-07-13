@@ -25,8 +25,6 @@ import {
 import { parseChangedLineRanges } from "../parse-changed-line-ranges.js";
 import { isDirectory } from "../project-info/fs-utils.js";
 import type { ChangedFileLineRanges } from "../types/index.js";
-import { mergeUniqueFilePaths } from "../utils/merge-unique-file-paths.js";
-import { LAST_UNTRACKED_SOURCE_LINE_NUMBER } from "./constants.js";
 
 interface GitInvocationResult {
   readonly status: number;
@@ -164,6 +162,10 @@ const parseGithubViewerPermission = (stdout: string): string | null => {
 const splitNullSeparated = (value: string): ReadonlyArray<string> =>
   value.split("\0").filter((entry) => entry.length > 0);
 
+// An untracked file has no base to diff against, so `--scope lines` treats
+// every line as changed by spanning the whole file (1 → last possible line).
+const UNTRACKED_FILE_LAST_LINE = Number.MAX_SAFE_INTEGER;
+
 export interface GitDiffSelection {
   /**
    * `null` when `HEAD` is detached (e.g. GitHub Actions
@@ -186,6 +188,12 @@ export interface GitDiffSelection {
 interface GitDiffSelectionInput {
   readonly directory: string;
   readonly explicitBaseBranch?: string;
+  /**
+   * Fold ordinary untracked files (`git ls-files --others`, minus ignored
+   * ones) into the working-tree selection. Off by default — opt in via the
+   * CLI `--include-untracked` flag. Never applies to an explicit `A..B` range.
+   */
+  readonly includeUntracked?: boolean;
 }
 
 interface GitShowOptions {
@@ -220,6 +228,11 @@ interface GitChangedLineRangesInput {
   readonly cached?: boolean;
   /** Files to limit the diff to (relative to `directory`). */
   readonly files: ReadonlyArray<string>;
+  /**
+   * When `true`, treat any of `files` that is an ordinary untracked file as
+   * fully changed (every line new). Off by default; ignored when `cached`.
+   */
+  readonly includeUntracked?: boolean;
 }
 
 /**
@@ -464,6 +477,22 @@ export class Git extends Context.Service<
           Effect.map((result) => (result.status === 0 ? splitNullSeparated(result.stdout) : null)),
         );
 
+      // Unions opted-in untracked files into a working-tree selection. A `null`
+      // listing (git failed) propagates so the caller degrades rather than
+      // silently dropping the new files; off, it's a no-op passthrough.
+      const mergeUntracked = (
+        directory: string,
+        trackedFilePaths: ReadonlyArray<string>,
+        includeUntracked: boolean,
+      ): Effect.Effect<ReadonlyArray<string> | null, ReactDoctorError> =>
+        includeUntracked
+          ? listUntrackedFilePaths(directory).pipe(
+              Effect.map((untracked) =>
+                untracked === null ? null : [...new Set([...trackedFilePaths, ...untracked])],
+              ),
+            )
+          : Effect.succeed(trackedFilePaths);
+
       const currentBranch = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
         runGit(directory, ["rev-parse", "--abbrev-ref", "HEAD"]).pipe(
           Effect.map((result) => {
@@ -668,7 +697,7 @@ export class Git extends Context.Service<
         githubViewerPermission,
         branchExists,
         mergeBase,
-        diffSelection: ({ directory, explicitBaseBranch }) =>
+        diffSelection: ({ directory, explicitBaseBranch, includeUntracked = false }) =>
           Effect.gen(function* () {
             if (explicitBaseBranch !== undefined && explicitBaseBranch.trim().length === 0) {
               return yield* Effect.fail(
@@ -727,27 +756,21 @@ export class Git extends Context.Service<
             }
 
             if (resolvedCurrentBranch !== null && resolvedCurrentBranch === baseBranch) {
-              const [uncommitted, untrackedFilePaths] = yield* Effect.all(
-                [
-                  runGit(directory, [
-                    "diff",
-                    "-z",
-                    "--name-only",
-                    "--diff-filter=ACMR",
-                    "--relative",
-                    "HEAD",
-                  ]),
-                  listUntrackedFilePaths(directory),
-                ],
-                { concurrency: 2 },
-              );
+              const uncommitted = yield* runGit(directory, [
+                "diff",
+                "-z",
+                "--name-only",
+                "--diff-filter=ACMR",
+                "--relative",
+                "HEAD",
+              ]);
               if (uncommitted.status !== 0) return null;
-              if (untrackedFilePaths === null) return null;
-              const files = mergeUniqueFilePaths(
+              const files = yield* mergeUntracked(
+                directory,
                 splitNullSeparated(uncommitted.stdout),
-                untrackedFilePaths,
+                includeUntracked,
               );
-              if (files.length === 0) return null;
+              if (files === null || files.length === 0) return null;
               return {
                 currentBranch: resolvedCurrentBranch,
                 baseBranch,
@@ -761,30 +784,26 @@ export class Git extends Context.Service<
             const mergeBaseRef = trimOrNull(mergeBase.stdout);
             if (mergeBaseRef === null) return null;
 
-            const [diff, untrackedFilePaths] = yield* Effect.all(
-              [
-                runGit(directory, [
-                  "diff",
-                  "-z",
-                  "--name-only",
-                  "--diff-filter=ACMR",
-                  "--relative",
-                  mergeBaseRef,
-                ]),
-                listUntrackedFilePaths(directory),
-              ],
-              { concurrency: 2 },
-            );
+            const diff = yield* runGit(directory, [
+              "diff",
+              "-z",
+              "--name-only",
+              "--diff-filter=ACMR",
+              "--relative",
+              mergeBaseRef,
+            ]);
             if (diff.status !== 0) return null;
-            if (untrackedFilePaths === null) return null;
+            const changedFiles = yield* mergeUntracked(
+              directory,
+              splitNullSeparated(diff.stdout),
+              includeUntracked,
+            );
+            if (changedFiles === null) return null;
             return {
               currentBranch: resolvedCurrentBranch,
               baseBranch,
               diffBaseRef: mergeBaseRef,
-              changedFiles: mergeUniqueFilePaths(
-                splitNullSeparated(diff.stdout),
-                untrackedFilePaths,
-              ),
+              changedFiles,
               isCurrentChanges: false,
             } satisfies GitDiffSelection;
           }).pipe(Effect.withSpan("Git.diffSelection")),
@@ -855,7 +874,7 @@ export class Git extends Context.Service<
             if (result.status === 128) return null;
             return { status: result.status, stdout: result.stdout } satisfies GitGrepResult;
           }).pipe(Effect.withSpan("Git.grep")),
-        changedLineRanges: ({ directory, baseRef, cached, files }) =>
+        changedLineRanges: ({ directory, baseRef, cached, files, includeUntracked = false }) =>
           Effect.gen(function* () {
             if (files.length === 0) return [];
             // An unsafe base ref can't reach git (CVE-2018-17456 shape) and a
@@ -874,7 +893,7 @@ export class Git extends Context.Service<
             ]);
             if (result.status !== 0) return null;
             const changedLineRanges = parseChangedLineRanges(result.stdout);
-            if (cached) return changedLineRanges;
+            if (cached || !includeUntracked) return changedLineRanges;
             const untrackedFilePaths = yield* listUntrackedFilePaths(directory, files);
             if (untrackedFilePaths === null) return null;
             return [
@@ -882,7 +901,7 @@ export class Git extends Context.Service<
               ...untrackedFilePaths.map(
                 (file): ChangedFileLineRanges => ({
                   file,
-                  ranges: [[1, LAST_UNTRACKED_SOURCE_LINE_NUMBER]],
+                  ranges: [[1, UNTRACKED_FILE_LAST_LINE]],
                 }),
               ),
             ];

@@ -9,6 +9,11 @@ const usedDiffAlias = (flags: InspectFlags): boolean =>
 const usedScope = (flags: InspectFlags): boolean =>
   typeof flags.scope === "string" && flags.scope.length > 0;
 
+// Scopes `--include-untracked` can fold working-tree-only files into. `full`
+// scans everything (untracked included already) and staged reads the index, so
+// neither applies; the deprecated `--diff <base>` alias resolves to `changed`.
+const UNTRACKED_SCOPES: ReadonlySet<string> = new Set(["files", "changed", "lines"]);
+
 export const validateModeFlags = (flags: InspectFlags): void => {
   if (usedScope(flags) && usedDiffAlias(flags)) {
     throw new CliInputError("Cannot combine --scope and --diff; --diff is the deprecated alias.");
@@ -22,6 +27,21 @@ export const validateModeFlags = (flags: InspectFlags): void => {
     throw new CliInputError(
       `Cannot combine --staged with --scope ${flags.scope}; use --scope files or --scope lines, or drop --scope.`,
     );
+  }
+  if (flags.includeUntracked) {
+    if (flags.staged) {
+      throw new CliInputError(
+        "Cannot combine --include-untracked with --staged; the git index never holds untracked files.",
+      );
+    }
+    const scopeApplies =
+      (typeof flags.scope === "string" && UNTRACKED_SCOPES.has(flags.scope)) ||
+      usedDiffAlias(flags);
+    if (!scopeApplies) {
+      throw new CliInputError(
+        "--include-untracked requires a working-tree scope; pass --scope files, changed, or lines.",
+      );
+    }
   }
   if (flags.score && flags.json) {
     throw new CliInputError("Cannot combine --score and --json; pick one output mode.");

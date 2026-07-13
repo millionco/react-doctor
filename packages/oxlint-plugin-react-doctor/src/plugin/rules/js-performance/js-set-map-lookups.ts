@@ -1,22 +1,12 @@
 import { LOOP_TYPES } from "../../constants/js.js";
 import { SMALL_LITERAL_ARRAY_MAX_ELEMENTS } from "../../constants/thresholds.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
-import { isArrayExpressionStableWithin } from "../../utils/is-array-expression-stable-within.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isProvenNativeArrayExpression } from "../../utils/is-proven-native-array-expression.js";
-import {
-  hasUnmodifiedArrayPrototypeMethod,
-  isStableLocalArrayLookupReceiver,
-} from "../../utils/is-stable-local-array-lookup-receiver.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -399,45 +389,6 @@ const isSmallInlineLiteralArray = (receiver: EsTreeNode | null | undefined): boo
   return elements.every((element) => element == null || !isNodeOfType(element, "SpreadElement"));
 };
 
-const STATIC_PRIMITIVE_GLOBAL_NAMES: ReadonlySet<string> = new Set([
-  "Infinity",
-  "NaN",
-  "undefined",
-]);
-
-const isProvenStaticPrimitive = (expression: EsTreeNode): boolean => {
-  const strippedExpression = stripParenExpression(expression);
-  if (isNodeOfType(strippedExpression, "Literal")) {
-    return (
-      strippedExpression.value === null ||
-      (typeof strippedExpression.value !== "object" &&
-        typeof strippedExpression.value !== "function")
-    );
-  }
-  if (isNodeOfType(strippedExpression, "TemplateLiteral")) {
-    return strippedExpression.expressions.length === 0;
-  }
-  if (isNodeOfType(strippedExpression, "Identifier")) {
-    return (
-      STATIC_PRIMITIVE_GLOBAL_NAMES.has(strippedExpression.name) &&
-      findVariableInitializer(strippedExpression, strippedExpression.name) === null
-    );
-  }
-  return (
-    isNodeOfType(strippedExpression, "UnaryExpression") &&
-    strippedExpression.operator !== "delete" &&
-    isProvenStaticPrimitive(strippedExpression.argument)
-  );
-};
-
-const isDynamicInlineArray = (receiver: EsTreeNode): boolean =>
-  isNodeOfType(receiver, "ArrayExpression") &&
-  receiver.elements.some(
-    (element) =>
-      element !== null &&
-      (isNodeOfType(element, "SpreadElement") || !isProvenStaticPrimitive(element)),
-  );
-
 // `SEVERITY_ORDER.includes(c.severity)` — a SCREAMING_SNAKE_CASE receiver
 // is a module constant: a fixed allowlist whose size does not grow with
 // the data being looped over, so the scan is O(1) w.r.t. input and the
@@ -447,25 +398,6 @@ const isScreamingSnakeCaseConstantReceiver = (receiver: EsTreeNode | null | unde
   isNodeOfType(receiver, "Identifier") &&
   receiver.name.length > 1 &&
   /^[A-Z][A-Z0-9_]*$/.test(receiver.name);
-
-const resolvesFromScreamingSnakeCaseConstant = (receiver: EsTreeNode): boolean => {
-  const visitedBindings = new Set<EsTreeNode>();
-  let current = stripParenExpression(receiver);
-  while (isNodeOfType(current, "Identifier")) {
-    if (isScreamingSnakeCaseConstantReceiver(current)) return true;
-    const binding = findVariableInitializer(current, current.name);
-    if (
-      !binding?.initializer ||
-      visitedBindings.has(binding.bindingIdentifier) ||
-      !isNodeOfType(binding.initializer, "Identifier")
-    ) {
-      return false;
-    }
-    visitedBindings.add(binding.bindingIdentifier);
-    current = binding.initializer;
-  }
-  return false;
-};
 
 // `propSchema.enum.includes(value)` — a JSON-schema `enum` is a tiny
 // per-property constant list that differs each iteration, so a hoisted
@@ -493,19 +425,21 @@ interface ResolvedInitializer {
 // tiny fixed allowlist.
 const getResolvedInitializer = (receiver: EsTreeNode): ResolvedInitializer | null => {
   if (!isNodeOfType(receiver, "Identifier")) return null;
-  const visitedBindings = new Set<EsTreeNode>();
-  let currentIdentifier = receiver;
-  let didResolveDefault = false;
-  while (true) {
-    const binding = findVariableInitializer(currentIdentifier, currentIdentifier.name);
-    if (!binding?.initializer || visitedBindings.has(binding.bindingIdentifier)) return null;
-    visitedBindings.add(binding.bindingIdentifier);
-    didResolveDefault ||= isNodeOfType(binding.bindingIdentifier.parent, "AssignmentPattern");
-    if (!isNodeOfType(binding.initializer, "Identifier")) {
-      return { initializer: binding.initializer, isDefault: didResolveDefault };
+  const binding = findVariableInitializer(receiver, receiver.name);
+  const initializer = binding?.initializer ?? null;
+  if (!binding || !initializer) return null;
+  const isDefault = isNodeOfType(binding.bindingIdentifier.parent, "AssignmentPattern");
+  // Follow one alias hop: `const supported = LOCALES;`.
+  if (isNodeOfType(initializer, "Identifier")) {
+    const aliased = findVariableInitializer(initializer, initializer.name);
+    if (aliased?.initializer) {
+      return {
+        initializer: aliased.initializer,
+        isDefault: isDefault || isNodeOfType(aliased.bindingIdentifier.parent, "AssignmentPattern"),
+      };
     }
-    currentIdentifier = binding.initializer;
   }
+  return { initializer, isDefault };
 };
 
 // `cookie.split(';')` produces string elements; a binding iterating over a
@@ -588,6 +522,310 @@ const isSubstringSearchLiteral = (callArgument: EsTreeNode | null | undefined): 
   return callArgument.value.length > 0 && SUBSTRING_PUNCTUATION_PATTERN.test(callArgument.value);
 };
 
+const MEMBERSHIP_COMPARISON_OPERATORS: ReadonlySet<string> = new Set([
+  "===",
+  "!==",
+  "==",
+  "!=",
+  ">",
+  ">=",
+  "<",
+  "<=",
+]);
+
+const isNegativeOneLiteral = (expression: EsTreeNode | null | undefined): boolean =>
+  Boolean(expression) &&
+  isNodeOfType(expression, "UnaryExpression") &&
+  expression.operator === "-" &&
+  isNodeOfType(expression.argument, "Literal") &&
+  expression.argument.value === 1;
+
+const isZeroLiteral = (expression: EsTreeNode | null | undefined): boolean =>
+  Boolean(expression) && isNodeOfType(expression, "Literal") && expression.value === 0;
+
+const isZeroFromIndex = (expression: EsTreeNode | null | undefined): boolean => {
+  if (isZeroLiteral(expression)) return true;
+  if (
+    expression &&
+    isNodeOfType(expression, "UnaryExpression") &&
+    expression.operator === "-" &&
+    isZeroLiteral(expression.argument)
+  ) {
+    return true;
+  }
+  return (
+    Boolean(expression) &&
+    isNodeOfType(expression, "Identifier") &&
+    expression.name === "undefined" &&
+    findVariableInitializer(expression, expression.name) === null
+  );
+};
+
+const hasSemanticsPreservingIncludesArguments = (
+  node: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  if (node.arguments.length === 1) {
+    return !isNodeOfType(node.arguments[0], "SpreadElement");
+  }
+  if (node.arguments.length !== 2) return false;
+  if (
+    isNodeOfType(node.arguments[0], "SpreadElement") ||
+    isNodeOfType(node.arguments[1], "SpreadElement")
+  ) {
+    return false;
+  }
+  return isZeroFromIndex(node.arguments[1]);
+};
+
+const PARENT_WRAPPER_TYPES: ReadonlySet<string> = new Set([
+  "ParenthesizedExpression",
+  "ChainExpression",
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSNonNullExpression",
+]);
+
+const isIndexOfResultUsedAsMembershipTest = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
+  let parent: EsTreeNode | null | undefined = node.parent;
+  while (parent && PARENT_WRAPPER_TYPES.has(parent.type)) {
+    parent = parent.parent;
+  }
+  if (!parent) return false;
+  if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "~") return true;
+  if (!isNodeOfType(parent, "BinaryExpression")) return false;
+  if (!MEMBERSHIP_COMPARISON_OPERATORS.has(parent.operator)) return false;
+  const leftOperand = parent.left as EsTreeNode;
+  const rightOperand = parent.right as EsTreeNode;
+  const otherOperand = stripParenExpression(leftOperand) === node ? rightOperand : leftOperand;
+  if (isNegativeOneLiteral(otherOperand)) return true;
+  return isZeroLiteral(otherOperand) && (parent.operator === ">=" || parent.operator === "<");
+};
+
+const getTypeAnnotation = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
+  if (!node || !("typeAnnotation" in node)) return null;
+  const annotation = node.typeAnnotation;
+  if (!annotation || !isNodeOfType(annotation, "TSTypeAnnotation")) return null;
+  return annotation.typeAnnotation;
+};
+
+const getArrayElementType = (typeNode: EsTreeNode | null): EsTreeNode | null => {
+  if (!typeNode) return null;
+  if (isNodeOfType(typeNode, "TSArrayType")) return typeNode.elementType;
+  if (
+    isNodeOfType(typeNode, "TSTypeReference") &&
+    isNodeOfType(typeNode.typeName, "Identifier") &&
+    (typeNode.typeName.name === "Array" || typeNode.typeName.name === "ReadonlyArray")
+  ) {
+    return typeNode.typeArguments?.params?.[0] ?? null;
+  }
+  if (isNodeOfType(typeNode, "TSUnionType")) {
+    const arrayElementTypes = typeNode.types.map(getArrayElementType).filter(Boolean);
+    return arrayElementTypes.length === 1 ? arrayElementTypes[0] : null;
+  }
+  return null;
+};
+
+const getIdentifierDeclaredType = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+): EsTreeNode | null => {
+  const binding = findVariableInitializer(identifier, identifier.name);
+  if (!binding) return null;
+  const directType = getTypeAnnotation(binding.bindingIdentifier);
+  if (directType) return directType;
+  const declarator = binding.bindingIdentifier.parent;
+  const declaration = declarator?.parent;
+  const forOfStatement = declaration?.parent;
+  if (
+    isNodeOfType(declarator, "VariableDeclarator") &&
+    isNodeOfType(declaration, "VariableDeclaration") &&
+    isNodeOfType(forOfStatement, "ForOfStatement") &&
+    forOfStatement.left === declaration &&
+    isNodeOfType(forOfStatement.right, "Identifier")
+  ) {
+    return getArrayElementType(getIdentifierDeclaredType(forOfStatement.right));
+  }
+  return null;
+};
+
+const isNativeIterationIndex = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
+  const binding = findVariableInitializer(identifier, identifier.name);
+  if (!binding) return false;
+  const callback = binding.bindingIdentifier.parent;
+  if (!isInlineFunctionExpression(callback) || callback.params?.[1] !== binding.bindingIdentifier) {
+    return false;
+  }
+  const callbackCall = callback.parent;
+  return isNodeOfType(callbackCall, "CallExpression") && isIterationCallbackCall(callbackCall);
+};
+
+const isKnownSafeIndexOfQuery = (query: EsTreeNode | null | undefined): boolean => {
+  if (!query) return false;
+  const strippedQuery = stripParenExpression(query);
+  if (isNodeOfType(strippedQuery, "Literal")) {
+    return typeof strippedQuery.value !== "number" || Number.isFinite(strippedQuery.value);
+  }
+  return isNodeOfType(strippedQuery, "Identifier") && isNativeIterationIndex(strippedQuery);
+};
+
+const isUnsafeEqualityType = (typeNode: EsTreeNode | null): boolean => {
+  if (!typeNode) return false;
+  if (
+    isNodeOfType(typeNode, "TSNumberKeyword") ||
+    isNodeOfType(typeNode, "TSUndefinedKeyword") ||
+    isNodeOfType(typeNode, "TSAnyKeyword") ||
+    isNodeOfType(typeNode, "TSUnknownKeyword")
+  ) {
+    return true;
+  }
+  if (isNodeOfType(typeNode, "TSUnionType")) {
+    return typeNode.types.some(isUnsafeEqualityType);
+  }
+  return false;
+};
+
+const isPotentiallyNumericType = (typeNode: EsTreeNode | null): boolean => {
+  if (!typeNode) return false;
+  if (
+    isNodeOfType(typeNode, "TSNumberKeyword") ||
+    isNodeOfType(typeNode, "TSAnyKeyword") ||
+    isNodeOfType(typeNode, "TSUnknownKeyword")
+  ) {
+    return true;
+  }
+  return isNodeOfType(typeNode, "TSUnionType") && typeNode.types.some(isPotentiallyNumericType);
+};
+
+const isKnownUnsafeIndexOfQuery = (query: EsTreeNode | null | undefined): boolean => {
+  if (!query) return true;
+  const strippedQuery = stripParenExpression(query);
+  if (isNodeOfType(strippedQuery, "Identifier")) {
+    if (
+      (strippedQuery.name === "NaN" || strippedQuery.name === "undefined") &&
+      findVariableInitializer(strippedQuery, strippedQuery.name) === null
+    ) {
+      return true;
+    }
+    const declaredType = getIdentifierDeclaredType(strippedQuery);
+    const binding = findVariableInitializer(strippedQuery, strippedQuery.name);
+    if (
+      binding?.initializer &&
+      isKnownSafeIndexOfQuery(binding.initializer) &&
+      !isPotentiallyNumericType(declaredType)
+    ) {
+      return false;
+    }
+    return isUnsafeEqualityType(declaredType);
+  }
+  return (
+    isNodeOfType(strippedQuery, "MemberExpression") &&
+    !strippedQuery.computed &&
+    isNodeOfType(strippedQuery.object, "Identifier") &&
+    strippedQuery.object.name === "Number" &&
+    isNodeOfType(strippedQuery.property, "Identifier") &&
+    strippedQuery.property.name === "NaN" &&
+    findVariableInitializer(strippedQuery.object, strippedQuery.object.name) === null
+  );
+};
+
+const isUnconstrainedTypeParameter = (reference: EsTreeNode, typeName: string): boolean => {
+  let ancestor: EsTreeNode | null | undefined = reference.parent;
+  while (ancestor) {
+    if (isInlineFunctionExpression(ancestor) || isNodeOfType(ancestor, "FunctionDeclaration")) {
+      const matchingTypeParameter = ancestor.typeParameters?.params?.find(
+        (typeParameter) =>
+          isNodeOfType(typeParameter, "TSTypeParameter") &&
+          isNodeOfType(typeParameter.name, "Identifier") &&
+          typeParameter.name.name === typeName,
+      );
+      if (matchingTypeParameter && isNodeOfType(matchingTypeParameter, "TSTypeParameter")) {
+        return !matchingTypeParameter.constraint;
+      }
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const getDestructuredArrayElementType = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+): EsTreeNode | null => {
+  const binding = findVariableInitializer(identifier, identifier.name);
+  if (!binding) return null;
+  const property = binding.bindingIdentifier.parent;
+  const objectPattern = property?.parent;
+  if (
+    !isNodeOfType(property, "Property") ||
+    !isNodeOfType(property.key, "Identifier") ||
+    !isNodeOfType(objectPattern, "ObjectPattern")
+  ) {
+    return null;
+  }
+  const propsType = getTypeAnnotation(objectPattern);
+  if (
+    !propsType ||
+    !isNodeOfType(propsType, "TSTypeReference") ||
+    !isNodeOfType(propsType.typeName, "Identifier")
+  ) {
+    return null;
+  }
+  let program: EsTreeNode = identifier;
+  while (program.parent) program = program.parent;
+  if (!isNodeOfType(program, "Program")) return null;
+  for (const statement of program.body) {
+    const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
+      ? statement.declaration
+      : statement;
+    if (
+      !declaration ||
+      !isNodeOfType(declaration, "TSInterfaceDeclaration") ||
+      !isNodeOfType(declaration.id, "Identifier") ||
+      declaration.id.name !== propsType.typeName.name
+    ) {
+      continue;
+    }
+    for (const member of declaration.body.body) {
+      if (
+        isNodeOfType(member, "TSPropertySignature") &&
+        isNodeOfType(member.key, "Identifier") &&
+        member.key.name === property.key.name
+      ) {
+        const elementType = getArrayElementType(getTypeAnnotation(member));
+        if (
+          !elementType ||
+          !isNodeOfType(elementType, "TSTypeReference") ||
+          !isNodeOfType(elementType.typeName, "Identifier")
+        ) {
+          return elementType;
+        }
+        const elementTypeName = elementType.typeName.name;
+        const typeParameterIndex = declaration.typeParameters?.params?.findIndex(
+          (typeParameter) =>
+            isNodeOfType(typeParameter, "TSTypeParameter") &&
+            isNodeOfType(typeParameter.name, "Identifier") &&
+            typeParameter.name.name === elementTypeName,
+        );
+        if (typeParameterIndex === undefined || typeParameterIndex < 0) return elementType;
+        return propsType.typeArguments?.params?.[typeParameterIndex] ?? elementType;
+      }
+    }
+  }
+  return null;
+};
+
+const isKnownUnsafeIndexOfReceiver = (receiver: EsTreeNode): boolean => {
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const elementType =
+    getArrayElementType(getIdentifierDeclaredType(receiver)) ??
+    getDestructuredArrayElementType(receiver);
+  if (!elementType) return false;
+  if (isUnsafeEqualityType(elementType)) return true;
+  return (
+    isNodeOfType(elementType, "TSTypeReference") &&
+    isNodeOfType(elementType.typeName, "Identifier") &&
+    isUnconstrainedTypeParameter(receiver, elementType.typeName.name)
+  );
+};
+
 // `.filter(option => value.includes(option.value))` iterates like a loop —
 // the callback runs once per element, so a linear `.includes` inside it is
 // the same O(n·m) scan as inside a `for` statement.
@@ -606,104 +844,26 @@ const ITERATION_CALLBACK_METHOD_NAMES: ReadonlySet<string> = new Set([
   "reduceRight",
 ]);
 
-const STABLE_ITERATION_READ_METHOD_NAMES: ReadonlySet<string> = new Set([
-  ...ITERATION_CALLBACK_METHOD_NAMES,
-  "includes",
-]);
-
-const isIterationCallbackCall = (
-  node: EsTreeNodeOfType<"CallExpression">,
-  scopes: ScopeAnalysis,
-): boolean => {
+const isIterationCallbackCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (
     !isNodeOfType(node.callee, "MemberExpression") ||
     !isNodeOfType(node.callee.property, "Identifier")
   ) {
     return false;
   }
-  const methodName = node.callee.property.name;
-  if (!ITERATION_CALLBACK_METHOD_NAMES.has(methodName)) return false;
-  if (!isInlineFunctionExpression(node.arguments?.[0])) return false;
-  if (!hasUnmodifiedArrayPrototypeMethod(scopes, methodName)) return false;
-  const receiver = stripParenExpression(node.callee.object);
-  return (
-    isNodeOfType(receiver, "ArrayExpression") ||
-    isStableLocalArrayLookupReceiver(
-      receiver,
-      node,
-      scopes,
-      STABLE_ITERATION_READ_METHOD_NAMES,
-      methodName,
-    ) ||
-    (isProvenNativeArrayExpression(receiver) &&
-      isArrayExpressionStableWithin(receiver, node, scopes))
-  );
+  if (!ITERATION_CALLBACK_METHOD_NAMES.has(node.callee.property.name)) return false;
+  return isInlineFunctionExpression(node.arguments?.[0]);
 };
 
 const LOOP_CONTEXT_STATEMENT_TYPES: ReadonlySet<string> = new Set(LOOP_TYPES);
 
-const getImmediatelyInvokedCall = (
-  functionNode: EsTreeNode,
-): EsTreeNodeOfType<"CallExpression"> | null => {
-  let wrappedFunction = functionNode;
-  let parent = functionNode.parent;
-  while (parent && stripParenExpression(parent) === functionNode) {
-    wrappedFunction = parent;
-    parent = parent.parent;
-  }
-  return parent && isNodeOfType(parent, "CallExpression") && parent.callee === wrappedFunction
-    ? parent
-    : null;
-};
-
-const isConsumedGeneratorInvocation = (functionNode: EsTreeNode): boolean => {
-  const invocation = getImmediatelyInvokedCall(functionNode);
-  if (!invocation) return false;
-  const parent = invocation.parent;
-  if (!parent) return false;
-  if (isNodeOfType(parent, "SpreadElement") && parent.argument === invocation) return true;
-  if (isNodeOfType(parent, "ForOfStatement") && parent.right === invocation) return true;
-  return (
-    isNodeOfType(parent, "MemberExpression") &&
-    parent.object === invocation &&
-    getStaticPropertyName(parent) === "next" &&
-    Boolean(
-      parent.parent &&
-      isNodeOfType(parent.parent, "CallExpression") &&
-      parent.parent.callee === parent,
-    )
-  );
-};
-
-const isFunctionBoundaryForLoopTraversal = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  if (!isFunctionLike(node)) return false;
-  if (node.generator) return !isConsumedGeneratorInvocation(node);
-  if (isImmediatelyInvokedFunction(node)) return false;
-  let wrappedFunction: EsTreeNode = node;
-  let parent = node.parent;
-  while (parent && stripParenExpression(parent) === node) {
-    wrappedFunction = parent;
-    parent = parent.parent;
-  }
-  return !(
-    parent &&
-    isNodeOfType(parent, "CallExpression") &&
-    parent.arguments[0] === wrappedFunction &&
-    isIterationCallbackCall(parent, scopes)
-  );
-};
-
-const findNearestLoopContext = (node: EsTreeNode, scopes: ScopeAnalysis): EsTreeNode | null => {
+const findNearestLoopContext = (node: EsTreeNode): EsTreeNode | null => {
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor) {
     if (LOOP_CONTEXT_STATEMENT_TYPES.has(ancestor.type)) return ancestor;
-    if (isNodeOfType(ancestor, "PropertyDefinition") && !ancestor.static) {
-      return null;
-    }
-    if (isNodeOfType(ancestor, "CallExpression") && isIterationCallbackCall(ancestor, scopes)) {
+    if (isNodeOfType(ancestor, "CallExpression") && isIterationCallbackCall(ancestor)) {
       return ancestor;
     }
-    if (isFunctionBoundaryForLoopTraversal(ancestor, scopes)) return null;
     ancestor = ancestor.parent;
   }
   return null;
@@ -713,15 +873,11 @@ const findNearestLoopContext = (node: EsTreeNode, scopes: ScopeAnalysis): EsTree
 // tokens = raw.split('.').slice(0, 3)` in the loop body) is rebuilt every
 // pass — converting it to a Set each iteration costs more than the scan,
 // so hoisting advice does not apply.
-const isReceiverDeclaredInNearestLoop = (
-  receiver: EsTreeNode,
-  lookupCall: EsTreeNode,
-  scopes: ScopeAnalysis,
-): boolean => {
+const isReceiverDeclaredInNearestLoop = (receiver: EsTreeNode, lookupCall: EsTreeNode): boolean => {
   if (!isNodeOfType(receiver, "Identifier")) return false;
   const binding = findVariableInitializer(receiver, receiver.name);
   if (!binding || !binding.initializer) return false;
-  const nearestLoop = findNearestLoopContext(lookupCall, scopes);
+  const nearestLoop = findNearestLoopContext(lookupCall);
   if (!nearestLoop) return false;
   let ancestor: EsTreeNode | null | undefined = binding.bindingIdentifier;
   while (ancestor) {
@@ -737,10 +893,7 @@ const isReceiverDeclaredInNearestLoop = (
 // no repeated lookup to hoist into a Set. The owning loop may be an OUTER
 // one (`items.filter((country) => regions.map((r) => country.regions
 // .includes(r)))`), so every enclosing loop's bindings count.
-const collectEnclosingLoopIterationBindingNames = (
-  lookupCall: EsTreeNode,
-  scopes: ScopeAnalysis,
-): Set<string> => {
+const collectEnclosingLoopIterationBindingNames = (lookupCall: EsTreeNode): Set<string> => {
   const iterationNames = new Set<string>();
   let ancestor: EsTreeNode | null | undefined = lookupCall.parent;
   while (ancestor) {
@@ -754,7 +907,7 @@ const collectEnclosingLoopIterationBindingNames = (
         collectPatternNames(left, iterationNames);
       }
     }
-    if (isNodeOfType(ancestor, "CallExpression") && isIterationCallbackCall(ancestor, scopes)) {
+    if (isNodeOfType(ancestor, "CallExpression") && isIterationCallbackCall(ancestor)) {
       const callback = ancestor.arguments?.[0];
       if (isInlineFunctionExpression(callback)) {
         for (const param of callback.params ?? []) {
@@ -762,7 +915,6 @@ const collectEnclosingLoopIterationBindingNames = (
         }
       }
     }
-    if (isFunctionBoundaryForLoopTraversal(ancestor, scopes)) break;
     ancestor = ancestor.parent;
   }
   return iterationNames;
@@ -783,14 +935,10 @@ const collectReceiverDependencyNames = (receiver: EsTreeNode): Set<string> => {
   return dependencyNames;
 };
 
-const isPerIterationReceiver = (
-  receiver: EsTreeNode,
-  lookupCall: EsTreeNode,
-  scopes: ScopeAnalysis,
-): boolean => {
+const isPerIterationReceiver = (receiver: EsTreeNode, lookupCall: EsTreeNode): boolean => {
   const dependencyNames = collectReceiverDependencyNames(receiver);
   if (dependencyNames.size === 0) return false;
-  const iterationNames = collectEnclosingLoopIterationBindingNames(lookupCall, scopes);
+  const iterationNames = collectEnclosingLoopIterationBindingNames(lookupCall);
   for (const dependencyName of dependencyNames) {
     if (iterationNames.has(dependencyName)) return true;
   }
@@ -830,22 +978,18 @@ const isBoundedConstantCollection = (collection: EsTreeNode): boolean => {
 // beat — building it already costs O(n). Any unbounded enclosing loop
 // (plain for/while, or iteration over data) voids the bound and keeps the
 // diagnostic.
-const isLookupBoundedByConstantIteration = (
-  lookupCall: EsTreeNode,
-  scopes: ScopeAnalysis,
-): boolean => {
+const isLookupBoundedByConstantIteration = (lookupCall: EsTreeNode): boolean => {
   let sawBoundedLoop = false;
   let ancestor: EsTreeNode | null | undefined = lookupCall.parent;
   while (ancestor) {
     const isLoopStatement = LOOP_CONTEXT_STATEMENT_TYPES.has(ancestor.type);
     const isCallbackLoop =
-      isNodeOfType(ancestor, "CallExpression") && isIterationCallbackCall(ancestor, scopes);
+      isNodeOfType(ancestor, "CallExpression") && isIterationCallbackCall(ancestor);
     if (isLoopStatement || isCallbackLoop) {
       const collection = getIteratedCollection(ancestor);
       if (!collection || !isBoundedConstantCollection(collection)) return false;
       sawBoundedLoop = true;
     }
-    if (isFunctionBoundaryForLoopTraversal(ancestor, scopes)) break;
     ancestor = ancestor.parent;
   }
   return sawBoundedLoop;
@@ -859,57 +1003,51 @@ export const jsSetMapLookups = defineRule({
   recommendation:
     "Use a `Set` or `Map` when you check for the same items over and over. `Array.includes`/`find` scans the whole list each time",
   create: (context: RuleContext) => {
+    let loopDepth = 0;
     const visitors: RuleVisitors = {};
+    for (const loopType of LOOP_TYPES) {
+      visitors[loopType] = () => {
+        loopDepth++;
+      };
+      visitors[`${loopType}:exit`] = () => {
+        loopDepth--;
+      };
+    }
 
     const inspectLookupCall = (node: EsTreeNodeOfType<"CallExpression">): void => {
       if (
         !isNodeOfType(node.callee, "MemberExpression") ||
-        node.callee.computed ||
-        node.callee.optional ||
-        node.optional ||
         !isNodeOfType(node.callee.property, "Identifier")
       )
         return;
       const methodName = node.callee.property.name;
-      if (methodName !== "includes" || node.arguments.length !== 1) return;
-      if (isNodeOfType(node.arguments[0], "SpreadElement")) return;
+      if (methodName !== "includes" && methodName !== "indexOf") return;
+      if (methodName === "includes" && !hasSemanticsPreservingIncludesArguments(node)) return;
+      if (
+        methodName === "indexOf" &&
+        (node.arguments.length !== 1 ||
+          isNodeOfType(node.arguments[0], "SpreadElement") ||
+          !isIndexOfResultUsedAsMembershipTest(node))
+      ) {
+        return;
+      }
       const rawReceiver = node.callee.object;
       if (!rawReceiver) return;
       const receiver = stripParenExpression(rawReceiver);
-      if (!hasUnmodifiedArrayPrototypeMethod(context.scopes, "includes")) return;
-      if (isNodeOfType(receiver, "CallExpression") || isNodeOfType(receiver, "NewExpression")) {
-        return;
-      }
+      const query = node.arguments[0] as EsTreeNode | undefined;
       if (
-        isNodeOfType(receiver, "MemberExpression") &&
-        receiver.computed &&
-        getStaticPropertyName(receiver) === null
+        methodName === "indexOf" &&
+        !isKnownSafeIndexOfQuery(query) &&
+        (isKnownUnsafeIndexOfQuery(query) || isKnownUnsafeIndexOfReceiver(receiver))
       ) {
         return;
       }
-      const nearestLoop = findNearestLoopContext(node, context.scopes);
-      if (!nearestLoop) return;
-      if (
-        !isNodeOfType(receiver, "ArrayExpression") &&
-        !isStableLocalArrayLookupReceiver(receiver, nearestLoop, context.scopes) &&
-        !(
-          isProvenNativeArrayExpression(receiver) &&
-          isArrayExpressionStableWithin(receiver, nearestLoop, context.scopes)
-        )
-      ) {
-        return;
-      }
+      if (isLikelyStringReceiver(receiver)) return;
       if (isSmallInlineLiteralArray(receiver)) return;
-      if (isDynamicInlineArray(receiver)) return;
-      if (resolvesFromScreamingSnakeCaseConstant(receiver)) return;
+      if (isScreamingSnakeCaseConstantReceiver(receiver)) return;
       if (isSmallFixedListMember(receiver)) return;
-      if (isSubstringSearchLiteral(node.arguments?.[0] as EsTreeNode | undefined)) return;
-      if (
-        isIndexedArrayElementWithStringArgument(
-          receiver,
-          node.arguments?.[0] as EsTreeNode | undefined,
-        )
-      ) {
+      if (isSubstringSearchLiteral(query)) return;
+      if (isIndexedArrayElementWithStringArgument(receiver, query)) {
         return;
       }
       const resolvedInitializer = getResolvedInitializer(receiver);
@@ -923,9 +1061,18 @@ export const jsSetMapLookups = defineRule({
         }
       }
       if (isStringElementOfSplitIteration(receiver)) return;
-      if (isReceiverDeclaredInNearestLoop(receiver, node, context.scopes)) return;
-      if (isPerIterationReceiver(receiver, node, context.scopes)) return;
-      if (isLookupBoundedByConstantIteration(node, context.scopes)) return;
+      if (isReceiverDeclaredInNearestLoop(receiver, node)) return;
+      if (isPerIterationReceiver(receiver, node)) return;
+      if (isLookupBoundedByConstantIteration(node)) return;
+      // `splitHotkeyBinding(b).includes(k)` — the array is rebuilt on
+      // every call, so there is nothing to hoist into a Set.
+      if (
+        isNodeOfType(receiver, "CallExpression") &&
+        isNodeOfType(receiver.callee, "Identifier") &&
+        receiver.callee.name.startsWith("split")
+      ) {
+        return;
+      }
       context.report({
         node,
         message: `This scales poorly because \`array.${methodName}()\` inside a loop scans the whole list every time. Use a Set for constant-time lookups.`,
@@ -933,7 +1080,14 @@ export const jsSetMapLookups = defineRule({
     };
 
     visitors.CallExpression = (node: EsTreeNodeOfType<"CallExpression">) => {
-      inspectLookupCall(node);
+      if (isIterationCallbackCall(node)) {
+        loopDepth++;
+        return;
+      }
+      if (loopDepth > 0) inspectLookupCall(node);
+    };
+    visitors["CallExpression:exit"] = (node: EsTreeNodeOfType<"CallExpression">) => {
+      if (isIterationCallbackCall(node)) loopDepth--;
     };
 
     return visitors;

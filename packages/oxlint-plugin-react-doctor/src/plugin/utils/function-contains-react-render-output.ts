@@ -73,11 +73,9 @@ export const functionContainsReactRenderOutput = (
 ): boolean => {
   const cachedEntry = renderOutputCache.get(functionNode);
   if (cachedEntry && cachedEntry.scopes === scopes) return cachedEntry.hasRenderOutput;
-  const hasRenderOutput =
-    containsRenderOutput(functionNode, scopes) ||
-    functionReturnsMatchingExpression(functionNode, scopes, (expression) =>
-      isRenderOutputExpression(expression, scopes),
-    );
+  const hasRenderOutput = functionReturnsMatchingExpression(functionNode, scopes, (expression) =>
+    containsRenderOutput(expression, scopes),
+  );
   renderOutputCache.set(functionNode, { scopes, hasRenderOutput });
   return hasRenderOutput;
 };

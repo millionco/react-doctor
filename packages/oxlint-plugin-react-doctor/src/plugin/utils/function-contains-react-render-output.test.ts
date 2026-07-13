@@ -74,6 +74,17 @@ describe("functionContainsReactRenderOutput", () => {
     expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(true);
   });
 
+  it("ignores JSX inside a discarded callback result", () => {
+    const { functionNode, scopes } = parseFunctionFixture(
+      `function Schema(items: string[]) {
+        items.map((item) => <div>{item}</div>);
+        return { count: items.length };
+      }`,
+      "Schema",
+    );
+    expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(false);
+  });
+
   const createElementCases: CreateElementRenderTestCase[] = [
     {
       name: "renamed named React imports",

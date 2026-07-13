@@ -319,4 +319,47 @@ describe("architecture/no-prop-types component provenance", () => {
       0,
     );
   });
+
+  it("ignores hook-owning object helpers and JSX in discarded callbacks", () => {
+    expectDiagnosticCount(
+      `import { useMemo } from "react";
+       const Schema = (items: string[]) => {
+         const count = useMemo(() => items.length, [items]);
+         items.map((item) => <div>{item}</div>);
+         return { count };
+       };
+       Schema.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
+  it("only treats children from the props parameter as render output", () => {
+    expectDiagnosticCount(
+      `const Schema = (value: string, options: { children: unknown }) => options.children;
+       Schema.propTypes = { value: () => true };
+       const Protocol = (value: string, children: unknown) => children;
+       Protocol.propTypes = { value: () => true };
+       const Panel = (props: { children: React.ReactNode }, options: unknown) => props.children;
+       Panel.propTypes = { children: () => true };`,
+      1,
+    );
+  });
+
+  it("ignores component factories whose relevant properties were replaced", () => {
+    expectDiagnosticCount(
+      `import ReactDefault from "react";
+       import styledDefault from "styled-components";
+       const ReactAlias = ReactDefault;
+       ReactAlias.Component = class {};
+       class Schema extends ReactAlias.Component { static propTypes = { value: () => true }; }
+       ReactAlias.memo = (value: unknown) => value;
+       const Protocol = ReactAlias.memo(() => <div />);
+       Protocol.propTypes = { value: () => true };
+       const styledAlias = styledDefault;
+       styledAlias.div = (parts: TemplateStringsArray) => ({ parts });
+       const RecordShape = styledAlias.div\`color: red;\`;
+       RecordShape.propTypes = { value: () => true };`,
+      0,
+    );
+  });
 });

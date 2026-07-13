@@ -4,7 +4,10 @@ import { collectFunctionReturnStatements } from "./collect-function-return-state
 import { functionContainsReactRenderOutput } from "./function-contains-react-render-output.js";
 import { functionContainsProvenReactHookCall } from "./function-contains-proven-react-hook-call.js";
 import { functionReturnsPropsChildren } from "./function-returns-props-children.js";
+import { functionReturnsOnlyNull } from "./function-returns-only-null.js";
+import { getStaticPropertyName } from "./get-static-property-name.js";
 import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
+import { hasStaticPropertyWriteBefore } from "./has-static-property-write-before.js";
 import { isComponentDeclaration } from "./is-component-declaration.js";
 import { isInlineFunctionExpression } from "./is-inline-function-expression.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -18,8 +21,22 @@ const REACT_COMPONENT_HOC_NAMES: ReadonlySet<string> = new Set(["memo", "forward
 
 const functionHasComponentEvidence = (functionNode: EsTreeNode, scopes: ScopeAnalysis): boolean =>
   functionContainsReactRenderOutput(functionNode, scopes) ||
-  functionContainsProvenReactHookCall(functionNode, scopes) ||
-  functionReturnsPropsChildren(functionNode, scopes);
+  functionReturnsPropsChildren(functionNode, scopes) ||
+  (functionContainsProvenReactHookCall(functionNode, scopes) &&
+    functionReturnsOnlyNull(functionNode));
+
+const hasStableReactApiMember = (callExpression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(callExpression, "CallExpression")) return false;
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return true;
+  const propertyName = getStaticPropertyName(callee);
+  const receiver = stripParenExpression(callee.object);
+  return Boolean(
+    propertyName &&
+    isNodeOfType(receiver, "Identifier") &&
+    !hasStaticPropertyWriteBefore(receiver, propertyName, callee, scopes),
+  );
+};
 
 const isProvenReactComponentExpression = (
   expression: EsTreeNode,
@@ -58,7 +75,8 @@ const isProvenReactComponentExpression = (
   if (
     isReactApiCall(candidate, REACT_COMPONENT_HOC_NAMES, scopes, {
       resolveNamedAliases: true,
-    })
+    }) &&
+    hasStableReactApiMember(candidate, scopes)
   ) {
     const wrappedComponent = candidate.arguments[0];
     return Boolean(
@@ -67,7 +85,12 @@ const isProvenReactComponentExpression = (
       isProvenReactComponentExpression(wrappedComponent, scopes, visitedSymbolIds),
     );
   }
-  if (!isReactApiCall(candidate, "useMemo", scopes, { resolveNamedAliases: true })) return false;
+  if (
+    !isReactApiCall(candidate, "useMemo", scopes, { resolveNamedAliases: true }) ||
+    !hasStableReactApiMember(candidate, scopes)
+  ) {
+    return false;
+  }
   const factory = candidate.arguments[0];
   if (!factory || isNodeOfType(factory, "SpreadElement")) return false;
   const unwrappedFactory = stripParenExpression(factory);

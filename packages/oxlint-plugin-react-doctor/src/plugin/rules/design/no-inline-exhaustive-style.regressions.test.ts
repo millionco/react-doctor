@@ -3,6 +3,32 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noInlineExhaustiveStyle } from "./no-inline-exhaustive-style.js";
 
 describe("design/no-inline-exhaustive-style regressions", () => {
+  it("stays silent for module-initialized JSX", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        export const stableElement = (
+          <div
+            style={{
+              display: "flex",
+              width: "100%",
+              height: "100%",
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "column",
+              backgroundColor: "white",
+              fontSize: 64,
+            }}
+          />
+        );
+      `,
+      { filename: "/proj/src/stable-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // OG components style everything inline because Satori (next/og,
   // @vercel/og) supports no other styling channel and rasterizes the JSX
   // to a static image — so the "rebuilds every render" cost never applies.

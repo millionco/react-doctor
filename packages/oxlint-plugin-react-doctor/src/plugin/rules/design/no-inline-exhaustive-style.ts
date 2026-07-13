@@ -5,6 +5,7 @@ import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-re
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -41,6 +42,7 @@ export const noInlineExhaustiveStyle = defineRule({
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         const expression = getInlineStyleExpression(node);
         if (!expression) return;
+        if (!findEnclosingFunction(expression)) return;
 
         const propertyCount = expression.properties?.filter(isStaticStyleProperty).length ?? 0;
 

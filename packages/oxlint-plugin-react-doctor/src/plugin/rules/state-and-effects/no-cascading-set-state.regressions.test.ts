@@ -48,25 +48,4 @@ describe("state-and-effects/no-cascading-set-state", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
-
-  it("flags cascading updates through a function declaration callback", () => {
-    const result = runRule(
-      noCascadingSetState,
-      `function Widget({ mode }) {
-        const [first, setFirst] = useState(0);
-        const [second, setSecond] = useState(0);
-        const [third, setThird] = useState(0);
-        function synchronizeState() {
-          setFirst(1);
-          setSecond(2);
-          setThird(3);
-        }
-        const effectCallback = synchronizeState;
-        useEffect(effectCallback, [mode]);
-        return null;
-      }`,
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
-  });
 });

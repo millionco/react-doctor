@@ -10,7 +10,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { getCalleeIdentifierTrail } from "../../utils/get-callee-identifier-trail.js";
-import { getOrderIndependentLocalCallId } from "../../utils/get-order-independent-local-call-id.js";
+import { getOrderIndependentLocalFunction } from "../../utils/get-order-independent-local-function.js";
 import { isTestLibraryImportSource } from "../../utils/is-test-library-import-source.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -89,20 +89,20 @@ const sequenceContainsSerializationSignal = (
   statements: EsTreeNode[],
   context: RuleContext,
 ): boolean => {
-  let bareAwaitCallId: number | null = null;
+  let bareAwaitFunction: EsTreeNode | null = null;
   for (const statement of statements) {
     if (isNonCallAwait(statement)) return true;
     const awaitedCall = getAwaitedCall(statement);
-    const orderIndependentCallId = awaitedCall
-      ? getOrderIndependentLocalCallId(awaitedCall, context.scopes)
+    const orderIndependentFunction = awaitedCall
+      ? getOrderIndependentLocalFunction(awaitedCall, context.scopes)
       : null;
     if (isBareExpressionAwait(statement)) {
-      if (orderIndependentCallId === null) return true;
-      if (bareAwaitCallId !== null && bareAwaitCallId !== orderIndependentCallId) return true;
-      bareAwaitCallId = orderIndependentCallId;
+      if (orderIndependentFunction === null) return true;
+      if (bareAwaitFunction !== null && bareAwaitFunction !== orderIndependentFunction) return true;
+      bareAwaitFunction = orderIndependentFunction;
     }
     if (isOrderedUiFlowAwait(awaitedCall)) return true;
-    if (isIntentionalSequencingAwait(awaitedCall) && orderIndependentCallId === null) return true;
+    if (isIntentionalSequencingAwait(awaitedCall) && orderIndependentFunction === null) return true;
   }
   return false;
 };

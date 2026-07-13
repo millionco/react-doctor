@@ -1,7 +1,7 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
-import { hasStaticPropertyWriteBefore } from "./has-static-property-write-before.js";
+import { hasPossibleStaticPropertyWrite } from "./has-static-property-write-before.js";
 import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -140,13 +140,13 @@ const getObjectPropertyName = (property: EsTreeNode): string | null => {
   return null;
 };
 
-const resolveOrderIndependentObjectPropertyCallId = (
+const resolveOrderIndependentObjectPropertyFunction = (
   objectExpression: EsTreeNode,
   propertyName: string,
   callExpression: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
-): number | null => {
+): EsTreeNode | null => {
   const unwrappedObject = stripParenExpression(objectExpression);
   if (isNodeOfType(unwrappedObject, "Identifier")) {
     const symbol = scopes.symbolFor(unwrappedObject);
@@ -160,7 +160,7 @@ const resolveOrderIndependentObjectPropertyCallId = (
       return null;
     }
     visitedSymbolIds.add(symbol.id);
-    return resolveOrderIndependentObjectPropertyCallId(
+    return resolveOrderIndependentObjectPropertyFunction(
       symbol.initializer,
       propertyName,
       callExpression,
@@ -178,18 +178,23 @@ const resolveOrderIndependentObjectPropertyCallId = (
   }
   if (!matchingProperty || !isNodeOfType(matchingProperty, "Property")) return null;
   const propertyValue = stripParenExpression(matchingProperty.value);
-  if (!isFunctionLike(propertyValue) || !isOrderIndependentFunction(propertyValue, scopes)) {
-    return null;
+  if (isFunctionLike(propertyValue)) {
+    return isOrderIndependentFunction(propertyValue, scopes) ? propertyValue : null;
   }
-  return -(matchingProperty.range[0] + 1);
+  return resolveOrderIndependentLocalFunction(
+    propertyValue,
+    callExpression,
+    scopes,
+    visitedSymbolIds,
+  );
 };
 
-const resolveOrderIndependentLocalCallId = (
+const resolveOrderIndependentLocalFunction = (
   callee: EsTreeNode,
   callExpression: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
-): number | null => {
+): EsTreeNode | null => {
   const unwrappedCallee = stripParenExpression(callee);
   if (isNodeOfType(unwrappedCallee, "MemberExpression")) {
     const propertyName = getStaticPropertyName(unwrappedCallee);
@@ -197,11 +202,11 @@ const resolveOrderIndependentLocalCallId = (
     const receiver = stripParenExpression(unwrappedCallee.object);
     if (
       isNodeOfType(receiver, "Identifier") &&
-      hasStaticPropertyWriteBefore(receiver, propertyName, unwrappedCallee, scopes)
+      hasPossibleStaticPropertyWrite(receiver, propertyName, scopes)
     ) {
       return null;
     }
-    return resolveOrderIndependentObjectPropertyCallId(
+    return resolveOrderIndependentObjectPropertyFunction(
       receiver,
       propertyName,
       callExpression,
@@ -222,19 +227,24 @@ const resolveOrderIndependentLocalCallId = (
   if (!symbol.initializer) return null;
   const initializer = stripParenExpression(symbol.initializer);
   if (isFunctionLike(initializer)) {
-    return isOrderIndependentFunction(initializer, scopes) ? symbol.id : null;
+    return isOrderIndependentFunction(initializer, scopes) ? initializer : null;
   }
   if (symbol.kind !== "const") return null;
-  return resolveOrderIndependentLocalCallId(initializer, callExpression, scopes, visitedSymbolIds);
+  return resolveOrderIndependentLocalFunction(
+    initializer,
+    callExpression,
+    scopes,
+    visitedSymbolIds,
+  );
 };
 
-export const getOrderIndependentLocalCallId = (
+export const getOrderIndependentLocalFunction = (
   callExpression: EsTreeNode,
   scopes: ScopeAnalysis,
-): number | null => {
+): EsTreeNode | null => {
   const unwrappedCall = stripParenExpression(callExpression);
   if (!isNodeOfType(unwrappedCall, "CallExpression")) return null;
-  return resolveOrderIndependentLocalCallId(
+  return resolveOrderIndependentLocalFunction(
     unwrappedCall.callee,
     unwrappedCall,
     scopes,

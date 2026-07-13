@@ -173,6 +173,33 @@ const isMemberWriteTarget = (memberExpression: EsTreeNode): boolean => {
   );
 };
 
+const getMemberWriteTarget = (identifier: EsTreeNode): EsTreeNode | null => {
+  let parent = identifier.parent;
+  while (parent && stripParenExpression(parent) === identifier) {
+    parent = parent.parent;
+  }
+  if (
+    !parent ||
+    !isNodeOfType(parent, "MemberExpression") ||
+    stripParenExpression(parent.object) !== identifier ||
+    !isMemberWriteTarget(parent)
+  ) {
+    return null;
+  }
+  return parent;
+};
+
+const getStaticPropertyWriteTarget = (
+  identifier: EsTreeNode,
+  propertyName: string,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  const writeTarget = getMemberWriteTarget(identifier);
+  return writeTarget && getResolvedStaticPropertyName(writeTarget, scopes) === propertyName
+    ? writeTarget
+    : null;
+};
+
 const symbolHasStaticPropertyWriteBefore = (
   symbol: SymbolDescriptor,
   propertyName: string,
@@ -180,32 +207,41 @@ const symbolHasStaticPropertyWriteBefore = (
   scopes: ScopeAnalysis,
 ): boolean =>
   symbol.references.some((reference) => {
-    let parent = reference.identifier.parent;
-    while (parent && stripParenExpression(parent) === reference.identifier) {
-      parent = parent.parent;
-    }
+    const writeTarget = getStaticPropertyWriteTarget(reference.identifier, propertyName, scopes);
+    if (!writeTarget) return false;
+    const writeBoundary = findExecutionBoundary(writeTarget);
+    const referenceBoundary = findExecutionBoundary(referenceNode);
     if (
-      !parent ||
-      !isNodeOfType(parent, "MemberExpression") ||
-      stripParenExpression(parent.object) !== reference.identifier ||
-      getResolvedStaticPropertyName(parent, scopes) !== propertyName ||
-      !isMemberWriteTarget(parent)
+      !writeBoundary ||
+      !referenceBoundary ||
+      !isOnUnconditionalPath(writeTarget, writeBoundary)
     ) {
       return false;
     }
-    const writeBoundary = findExecutionBoundary(parent);
-    const referenceBoundary = findExecutionBoundary(referenceNode);
-    if (!writeBoundary || !referenceBoundary || !isOnUnconditionalPath(parent, writeBoundary)) {
-      return false;
-    }
     if (writeBoundary === referenceBoundary) {
-      return parent.range[0] < referenceNode.range[0];
+      return writeTarget.range[0] < referenceNode.range[0];
     }
     return (
       isFunctionLike(writeBoundary) &&
       isFunctionSynchronouslyInvokedBefore(writeBoundary, referenceNode, scopes)
     );
   });
+
+export const hasPossibleStaticPropertyWrite = (
+  identifier: EsTreeNode,
+  propertyName: string,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  return getEquivalentSymbols(identifier, scopes).some((symbol) =>
+    symbol.references.some((reference) => {
+      const writeTarget = getMemberWriteTarget(reference.identifier);
+      if (!writeTarget) return false;
+      const writtenPropertyName = getResolvedStaticPropertyName(writeTarget, scopes);
+      return writtenPropertyName === null || writtenPropertyName === propertyName;
+    }),
+  );
+};
 
 export const hasStaticPropertyWriteBefore = (
   identifier: EsTreeNode,

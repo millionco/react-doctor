@@ -5,7 +5,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
-import { getOrderIndependentLocalCallId } from "../../utils/get-order-independent-local-call-id.js";
+import { getOrderIndependentLocalFunction } from "../../utils/get-order-independent-local-function.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -62,7 +62,7 @@ const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode, context: RuleContext): b
   const argument = awaitNode.argument;
   if (!argument) return false;
   if (!isNodeOfType(argument, "CallExpression")) return false;
-  if (getOrderIndependentLocalCallId(argument, context.scopes) !== null) return false;
+  if (getOrderIndependentLocalFunction(argument, context.scopes) !== null) return false;
   return isIntentionalSequencingCallee(argument.callee);
 };
 

@@ -114,6 +114,7 @@ export const HANDLER_SNIPPET_POOL = [
   `const handleBatch = async () => { await Promise.all(items.map((item) => api.post(url, item))); };`,
   `const query = async (item) => { await Promise.resolve(); return item * 2; }; const handleQueries = async () => { for (const item of items) { await query(item); } };`,
   `const doubleCell = async (cell) => { await Promise.resolve(); cell.value *= 2; }; const handleCells = async () => { await doubleCell(items[0]); await doubleCell(items[1]); await doubleCell(items[2]); };`,
+  `const queryItem = async (item) => { await Promise.resolve(); return item * 2; }; const queryHelpers = { queryItem }; const handleMixedQueries = async () => { await queryItem(items[0]); await queryHelpers.queryItem(items[1]); await queryHelpers["queryItem"](items[2]); };`,
   `const handleMatch = () => { for (const item of items) { new RegExp("token", "i").test(String(item)); } };`,
   `const handleStatefulMatch = () => { for (const item of items) { new RegExp("token", "g").test(String(item)); } };`,
   `const handleReplaceAll = (text: string) => { for (const item of items) { text.replaceAll(new RegExp("token", "g"), String(item)); } };`,

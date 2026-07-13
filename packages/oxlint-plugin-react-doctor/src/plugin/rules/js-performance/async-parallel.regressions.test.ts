@@ -45,6 +45,87 @@ describe("js-performance/async-parallel — regressions", () => {
     );
   });
 
+  it("flags alternating direct and static calls to the same helper", () => {
+    expectFail(
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; async function load() { await query(1); await helpers.query(2); await helpers["query"](3); }`,
+    );
+  });
+
+  it("follows multi-hop aliases through a statically named object property", () => {
+    expectFail(
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; const aliasedQuery = query; const helpers = { ["run"]: aliasedQuery }; const aliasedHelpers = helpers; async function load() { await query(1); await aliasedHelpers.run(2); await aliasedQuery(3); }`,
+    );
+  });
+
+  it("recognizes distinct properties that reference the same helper", () => {
+    expectFail(
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query, run: query }; async function load() { await query(1); await helpers.query(2); await helpers.run(3); }`,
+    );
+  });
+
+  it("uses the last duplicate object property value", () => {
+    expectFail(
+      `const otherQuery = async (item) => { await Promise.resolve(); return item + 1; }; const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query: otherQuery, query }; async function load() { await query(1); await helpers.query(2); await query(3); }`,
+    );
+  });
+
+  it("follows static object methods through a direct alias", () => {
+    expectFail(
+      `const helpers = { async query(item) { await Promise.resolve(); return item * 2; } }; const query = helpers.query; async function load() { await query(1); await helpers.query(2); await query(3); }`,
+    );
+  });
+
+  it("follows transparent TypeScript wrappers on direct and object helpers", () => {
+    expectFail(
+      `const query = async (item: number) => { await Promise.resolve(); return item * 2; }; const helpers = { query: query as typeof query }; async function load() { await (query!)(1); await (helpers.query!)(2); await (query)(3); }`,
+    );
+  });
+
+  it("keeps distinct same-named object helpers serialized", () => {
+    expectPass(
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query: async (item) => { await Promise.resolve(); return item * 2; } }; async function load() { await query(1); await helpers.query(2); await query(3); }`,
+    );
+  });
+
+  it("keeps reassigned object helpers serialized", () => {
+    expectPass(
+      `let cursor = 0; const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; helpers.query = async (item) => { cursor += item; return cursor; }; async function load() { await query(1); await helpers.query(2); await query(3); }`,
+    );
+  });
+
+  it("keeps dynamically reassigned object helpers serialized", () => {
+    expectPass(
+      `let cursor = 0; const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; const propertyName = getPropertyName(); helpers[propertyName] = async (item) => { cursor += item; return cursor; }; async function load() { await query(1); await helpers.query(2); await query(3); }`,
+    );
+  });
+
+  it("keeps a shadowed direct helper distinct from the outer object helper", () => {
+    expectPass(
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; async function load() { const query = async (item) => { await Promise.resolve(); return item + 1; }; await query(1); await helpers.query(2); await query(3); }`,
+    );
+  });
+
+  it("keeps object spreads and last-property overrides conservative", () => {
+    for (const code of [
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; const overrides = getOverrides(); const helpers = { query, ...overrides }; async function load() { await query(1); await helpers.query(2); await query(3); }`,
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; const otherQuery = async (item) => { await Promise.resolve(); return item + 1; }; const helpers = { query, query: otherQuery }; async function load() { await query(1); await helpers.query(2); await query(3); }`,
+    ]) {
+      expectPass(code);
+    }
+  });
+
+  it("keeps destructured object helper reads conservative", () => {
+    expectPass(
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; const { query: runQuery } = helpers; async function load() { await query(1); await runQuery(2); await helpers.query(3); }`,
+    );
+  });
+
+  it("resolves shadowed direct and object helpers to the local binding", () => {
+    expectFail(
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; async function load() { const query = async (item) => { await Promise.resolve(); return item + 1; }; const helpers = { query }; await query(1); await helpers.query(2); await query(3); }`,
+    );
+  });
+
   it("keeps bare awaits conservative when the local proof does not establish one operation", () => {
     for (const code of [
       `const double = async (cell) => { await Promise.resolve(); if (cell.locked) return; cell.value *= 2; }; async function update(first, second, third) { await double(first); await double(second); await double(third); }`,

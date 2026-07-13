@@ -42,6 +42,24 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("follows an object shorthand alias to an independent local helper", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; async function load(items) { for (const item of items) { await helpers.query(item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("keeps a dynamically reassigned object shorthand helper sequential", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `let cursor = 0; const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; helpers[getPropertyName()] = async (item) => { cursor += item; return cursor; }; async function load(items) { for (const item of items) { await helpers.query(item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("keeps opaque and visibly stateful query calls intentionally sequential", () => {
     for (const code of [
       `async function load(database, items) { for (const item of items) { await database.query(item); } }`,

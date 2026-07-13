@@ -23,6 +23,7 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
@@ -1819,6 +1820,279 @@ const fileContainsReleaseForUsage = (usage: SubscribeLikeUsage, context: RuleCon
   return didFindRelease;
 };
 
+const resolveRefOwnedCleanupFunction = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const resolvedExpression = resolveStableValue(expression, context);
+  if (isFunctionLike(resolvedExpression)) return resolvedExpression;
+  if (
+    !isNodeOfType(resolvedExpression, "CallExpression") ||
+    !isReactApiCall(resolvedExpression, "useCallback", context.scopes)
+  ) {
+    return null;
+  }
+  return getEffectCallback(resolvedExpression);
+};
+
+const findRefOwnedHandlerStorage = (
+  retainedFunction: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+) => {
+  if (
+    !isFunctionLike(retainedFunction) ||
+    usage.kind !== "subscribe" ||
+    usage.registrationVerbName !== "addEventListener" ||
+    usage.handlerKey === null ||
+    !usage.receiverKey?.startsWith("global:") ||
+    !usage.eventKey?.startsWith("literal:")
+  ) {
+    return null;
+  }
+  const usageStart = getRangeStart(usage.node);
+  const functionCfg = context.cfg.cfgFor(retainedFunction);
+  const usageBlock = functionCfg?.blockOf(usage.node);
+  if (usageStart === null || !functionCfg || !usageBlock) return null;
+  const matchingStorage = new Map<string, string>();
+  walkAst(retainedFunction.body, (child: EsTreeNode) => {
+    if (child !== retainedFunction.body && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "AssignmentExpression") || child.operator !== "=") return;
+    const assignmentStart = getRangeStart(child);
+    const refCurrentExpression = stripParenExpression(child.left);
+    if (
+      assignmentStart === null ||
+      assignmentStart >= usageStart ||
+      functionCfg.blockOf(child) !== usageBlock ||
+      !resolveReactRefSymbol(refCurrentExpression, context.scopes)
+    ) {
+      return;
+    }
+    const refCurrentKey = resolveExpressionKey(refCurrentExpression, context);
+    const storedSession = stripParenExpression(child.right);
+    if (!refCurrentKey || !isNodeOfType(storedSession, "ObjectExpression")) return;
+    for (const property of storedSession.properties ?? []) {
+      if (!isNodeOfType(property, "Property")) continue;
+      const propertyName = getStaticPropertyKeyName(property);
+      if (propertyName && resolveExpressionKey(property.value, context) === usage.handlerKey) {
+        matchingStorage.set(`${refCurrentKey}.${propertyName}`, refCurrentKey);
+      }
+    }
+  });
+  if (matchingStorage.size !== 1) return null;
+  const [handlerKey, refCurrentKey] = matchingStorage.entries().next().value ?? [];
+  return handlerKey && refCurrentKey ? { handlerKey, refCurrentKey } : null;
+};
+
+const isDirectRefOwnedRelease = (
+  releaseNode: EsTreeNode,
+  cleanupFunction: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  storedHandlerKey: string,
+  refCurrentKey: string,
+  context: RuleContext,
+): boolean => {
+  if (!isFunctionLike(cleanupFunction)) return false;
+  const releaseCall = isNodeOfType(releaseNode, "ChainExpression")
+    ? releaseNode.expression
+    : releaseNode;
+  if (
+    !isNodeOfType(releaseCall, "CallExpression") ||
+    !isNodeOfType(releaseCall.callee, "MemberExpression") ||
+    releaseCall.callee.computed ||
+    !isNodeOfType(releaseCall.callee.property, "Identifier") ||
+    releaseCall.callee.property.name !== "removeEventListener" ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    usage.node.arguments?.[2] !== undefined ||
+    releaseCall.arguments?.[2] !== undefined
+  ) {
+    return false;
+  }
+  const releaseRoot = findTransparentExpressionRoot(releaseNode);
+  const releaseStatement = releaseRoot.parent;
+  const releaseBlock = releaseStatement?.parent;
+  const releaseGuard = releaseBlock?.parent;
+  const isDirectCleanupStatement = releaseBlock === cleanupFunction.body;
+  const isRefPresenceGuardedStatement = Boolean(
+    isNodeOfType(releaseBlock, "BlockStatement") &&
+    isNodeOfType(releaseGuard, "IfStatement") &&
+    releaseGuard.consequent === releaseBlock &&
+    releaseGuard.alternate === null &&
+    resolveExpressionKey(releaseGuard.test, context) === refCurrentKey,
+  );
+  if (
+    !isNodeOfType(releaseStatement, "ExpressionStatement") ||
+    !isNodeOfType(cleanupFunction.body, "BlockStatement") ||
+    (!isDirectCleanupStatement && !isRefPresenceGuardedStatement)
+  ) {
+    return false;
+  }
+  return (
+    usage.receiverKey !== null &&
+    usage.receiverKey === resolveExpressionKey(releaseCall.callee.object, context) &&
+    usage.eventKey !== null &&
+    usage.eventKey === resolveExpressionKey(releaseCall.arguments?.[0], context) &&
+    resolveExpressionKey(releaseCall.arguments?.[1], context) === storedHandlerKey
+  );
+};
+
+const cleanupFunctionReleasesRefOwnedUsage = (
+  cleanupFunction: EsTreeNode,
+  componentFunction: EsTreeNode,
+  retainedFunction: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isFunctionLike(cleanupFunction) ||
+    !isFunctionLike(componentFunction) ||
+    cleanupFunction.async ||
+    cleanupFunction.generator
+  ) {
+    return false;
+  }
+  const storage = findRefOwnedHandlerStorage(retainedFunction, usage, context);
+  if (!storage) return false;
+  let didFindRelease = false;
+  walkAst(cleanupFunction.body, (child: EsTreeNode) => {
+    if (didFindRelease) return false;
+    if (child !== cleanupFunction.body && isFunctionLike(child)) return false;
+    if (
+      isDirectRefOwnedRelease(
+        child,
+        cleanupFunction,
+        usage,
+        storage.handlerKey,
+        storage.refCurrentKey,
+        context,
+      )
+    ) {
+      didFindRelease = true;
+      return false;
+    }
+  });
+  if (!didFindRelease) return false;
+  let hasUnsafeRefWrite = false;
+  walkAst(componentFunction.body, (child: EsTreeNode) => {
+    if (hasUnsafeRefWrite) return false;
+    if (
+      isNodeOfType(child, "UnaryExpression") &&
+      child.operator === "delete" &&
+      resolveExpressionKey(child.argument, context) === storage.handlerKey
+    ) {
+      hasUnsafeRefWrite = true;
+      return false;
+    }
+    if (!isNodeOfType(child, "AssignmentExpression")) return;
+    const assignedKey = resolveExpressionKey(child.left, context);
+    if (assignedKey === storage.handlerKey) {
+      hasUnsafeRefWrite = true;
+      return false;
+    }
+    if (assignedKey !== storage.refCurrentKey) return;
+    const assignedValue = stripParenExpression(child.right);
+    if (
+      isNodeOfType(assignedValue, "Literal") &&
+      assignedValue.value === null &&
+      findEnclosingFunction(child) === cleanupFunction
+    ) {
+      return;
+    }
+    const assignedSession = isNodeOfType(assignedValue, "ObjectExpression") ? assignedValue : null;
+    const storesMatchingHandler = (assignedSession?.properties ?? []).some(
+      (property) =>
+        isNodeOfType(property, "Property") &&
+        `${storage.refCurrentKey}.${getStaticPropertyKeyName(property) ?? ""}` ===
+          storage.handlerKey &&
+        resolveExpressionKey(property.value, context) === usage.handlerKey,
+    );
+    if (findEnclosingFunction(child) !== retainedFunction || !storesMatchingHandler) {
+      hasUnsafeRefWrite = true;
+      return false;
+    }
+  });
+  return !hasUnsafeRefWrite;
+};
+
+const effectReturnsRefOwnedCleanup = (
+  effectCallback: EsTreeNode,
+  componentFunction: EsTreeNode,
+  retainedFunction: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  const matchesReturnedCleanup = (returnedValue: EsTreeNode): boolean => {
+    const cleanupFunction = resolveRefOwnedCleanupFunction(returnedValue, context);
+    return Boolean(
+      cleanupFunction &&
+      cleanupFunctionReleasesRefOwnedUsage(
+        cleanupFunction,
+        componentFunction,
+        retainedFunction,
+        usage,
+        context,
+      ),
+    );
+  };
+  if (!isFunctionLike(effectCallback)) return false;
+  if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
+    return matchesReturnedCleanup(stripParenExpression(effectCallback.body));
+  }
+  const matchingReturns: EsTreeNode[] = [];
+  walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
+    if (
+      isNodeOfType(child, "ReturnStatement") &&
+      child.argument &&
+      matchesReturnedCleanup(stripParenExpression(child.argument))
+    ) {
+      matchingReturns.push(child);
+    }
+  });
+  return doMatchingNodesCoverEveryPathFromFunctionEntry(effectCallback, matchingReturns, context);
+};
+
+const hasGuaranteedRefOwnedUnmountCleanup = (
+  retainedFunction: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  const componentFunction = findEnclosingFunction(retainedFunction);
+  if (!componentFunction || !isFunctionLike(componentFunction)) return false;
+  let didFindCleanupEffect = false;
+  walkAst(componentFunction.body, (child: EsTreeNode) => {
+    if (didFindCleanupEffect) return false;
+    if (
+      !isNodeOfType(child, "CallExpression") ||
+      findEnclosingFunction(child) !== componentFunction ||
+      !isReactApiCall(child, "useEffect", context.scopes)
+    ) {
+      return;
+    }
+    const effectStatement = findTransparentExpressionRoot(child).parent;
+    if (
+      !isNodeOfType(effectStatement, "ExpressionStatement") ||
+      effectStatement.parent !== componentFunction.body
+    ) {
+      return;
+    }
+    const effectCallback = getEffectCallback(child);
+    if (
+      effectCallback &&
+      effectReturnsRefOwnedCleanup(
+        effectCallback,
+        componentFunction,
+        retainedFunction,
+        usage,
+        context,
+      )
+    ) {
+      didFindCleanupEffect = true;
+      return false;
+    }
+  });
+  return didFindCleanupEffect;
+};
+
 const isUseSyncExternalStoreSubscribeFunction = (
   functionNode: EsTreeNode,
   context: RuleContext,
@@ -1903,7 +2177,8 @@ const findRetainedFunctionLeak = (
   const hasReleaseForUsage = (usage: SubscribeLikeUsage): boolean =>
     isExternalStoreSubscribeFunction
       ? effectHasCleanupForUsage(retainedFunction, usage, context)
-      : fileContainsReleaseForUsage(usage, context);
+      : fileContainsReleaseForUsage(usage, context) ||
+        hasGuaranteedRefOwnedUnmountCleanup(retainedFunction, usage, context);
   walkAst(body, (child: EsTreeNode) => {
     if (leak !== null) return false;
     if (isFunctionLike(child)) return false;

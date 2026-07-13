@@ -46,6 +46,7 @@ const isStableReactHookDependency = (dependency: EsTreeNode, context: RuleContex
       const hookCall = stripParenExpression(declarator.init);
       return isReactApiCall(hookCall, STABLE_REACT_HOOK_VALUE_NAMES, context.scopes, {
         allowGlobalReactNamespace: true,
+        resolveNamedAliases: true,
       });
     }
 
@@ -102,6 +103,7 @@ const isPotentiallyChangingReactUseCallback = (
   if (
     !isReactApiCall(unwrappedInitializer, "useCallback", context.scopes, {
       allowGlobalReactNamespace: true,
+      resolveNamedAliases: true,
     })
   ) {
     return false;

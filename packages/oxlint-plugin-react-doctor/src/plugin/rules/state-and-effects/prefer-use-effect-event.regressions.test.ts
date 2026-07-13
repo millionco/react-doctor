@@ -326,13 +326,13 @@ describe("prefer-use-effect-event — callback stability regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent when a stable callback is referenced through an exact local alias", () => {
+  it("stays silent for a changing callback behind a local alias because aliases are never collected", () => {
     const result = runPreferUseEffectEvent(`
       import { useCallback, useEffect } from "react";
 
-      const Search = ({ open }) => {
-        const stableHandle = useCallback(() => work(), []);
-        const handleAlias = stableHandle;
+      const Search = ({ open, value }) => {
+        const changingHandle = useCallback(() => work(value), [value]);
+        const handleAlias = changingHandle;
         useEffect(() => {
           const timeoutId = setTimeout(() => handleAlias(), 100);
           return () => clearTimeout(timeoutId);
@@ -343,5 +343,157 @@ describe("prefer-use-effect-event — callback stability regressions", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("resolves useCallback destructured from the React namespace", () => {
+    const changingResult = runPreferUseEffectEvent(`
+      import * as React from "react";
+
+      const { useCallback, useEffect } = React;
+
+      const Search = ({ open, value }) => {
+        const handle = useCallback(() => work(value), [value]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => handle(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [handle, open]);
+        return null;
+      };
+    `);
+    const stableResult = runPreferUseEffectEvent(`
+      import * as React from "react";
+
+      const { useCallback, useEffect, useRef } = React;
+
+      const Search = ({ open }) => {
+        const inputRef = useRef(null);
+        const handle = useCallback(() => inputRef.current?.focus(), [inputRef]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => handle(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [handle, open]);
+        return null;
+      };
+    `);
+
+    expect(changingResult.parseErrors).toEqual([]);
+    expect(changingResult.diagnostics).toHaveLength(1);
+    expect(stableResult.parseErrors).toEqual([]);
+    expect(stableResult.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a React useCallback depends only on a useRef value", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect, useRef } from "react";
+
+      const Composer = ({ open }) => {
+        const inputRef = useRef(null);
+        const focusInput = useCallback(() => inputRef.current?.focus(), [inputRef]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => focusInput(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [focusInput, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a React useCallback depends only on startTransition", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect, useTransition } from "react";
+
+      const Composer = ({ open }) => {
+        const [, startTransition] = useTransition();
+        const runDeferred = useCallback(() => startTransition(() => work()), [startTransition]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => runDeferred(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [runDeferred, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a React useCallback depends only on a useEffectEvent handler", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect, useEffectEvent } from "react";
+
+      const Composer = ({ open }) => {
+        const onTick = useEffectEvent(() => work());
+        const schedule = useCallback(() => onTick(), [onTick]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => schedule(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [schedule, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a React useCallback depends only on a useActionState action", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect, useActionState } from "react";
+
+      const Composer = ({ open }) => {
+        const [, submitAction] = useActionState(submitForm, null);
+        const submit = useCallback(() => submitAction(), [submitAction]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => submit(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [submit, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports a React useCallback whose dependency array has a sparse hole", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect, useState } from "react";
+
+      const Composer = ({ open }) => {
+        const [, setComposeOpen] = useState(false);
+        const openComposer = useCallback(() => setComposeOpen(true), [setComposeOpen, , setComposeOpen]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => openComposer(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [openComposer, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports when a stable dispatch reaches the dependency array through a let alias", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect, useReducer } from "react";
+
+      const Composer = ({ open }) => {
+        const [, dispatch] = useReducer(reducer, initialState);
+        let dispatchAlias = dispatch;
+        const openComposer = useCallback(() => dispatchAlias({ type: "open" }), [dispatchAlias]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => openComposer(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [openComposer, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

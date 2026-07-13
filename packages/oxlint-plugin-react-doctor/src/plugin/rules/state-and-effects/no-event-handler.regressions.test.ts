@@ -510,6 +510,36 @@ describe("no-event-handler — must-detect regressions", () => {
 });
 
 describe("no-event-handler — regressions", () => {
+  it("stays silent on guarded parent registration with the returned cleanup", () => {
+    const result = runRule(
+      noEventHandler,
+      `function AccordionItem({ isStandalone, itemKey }) {
+        const itemStateContext = useAccordionItemState();
+        useEffect(() => {
+          if (!isStandalone) return itemStateContext?.registerItemKey(itemKey);
+        }, [isStandalone, itemKey, itemStateContext]);
+        return <div>{itemKey}</div>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports handler-written state relayed through a guarded effect", () => {
+    const result = runRule(
+      noEventHandler,
+      `function AccordionItem({ onOpen }) {
+        const [didRequestOpen, setDidRequestOpen] = useState(false);
+        useEffect(() => {
+          if (didRequestOpen) onOpen();
+        }, [didRequestOpen, onOpen]);
+        return <button onClick={() => setDidRequestOpen(true)}>Open</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   // Flipped by the 67k-diagnostic verification run: a `[]`-deps effect whose
   // tested state is only ever set by the mount effect itself is one-time
   // initialization (no-initialize-state territory), not a faked event

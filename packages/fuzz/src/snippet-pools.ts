@@ -49,6 +49,7 @@ export const EFFECT_SNIPPET_POOL = [
   `const onTick = useEffectEvent(() => handle(value)); useEffect(() => { onTick(); }, [onTick]);`,
   `const [, setOpen] = useState(false); const stableHandle = useCallback(() => setOpen(true), [setOpen]); useEffect(() => { const timeoutId = setTimeout(() => stableHandle(), 100); return () => clearTimeout(timeoutId); }, [stableHandle, value]);`,
   `const deferredHandle = useCallback(() => handle(value), [value]); useEffect(() => { const timeoutId = setTimeout(() => deferredHandle(), 100); return () => clearTimeout(timeoutId); }, [deferredHandle, value]);`,
+  `const [didSubmit, setDidSubmit] = useState(false); useEffect(() => { if (didSubmit) handle(value); }, [didSubmit, value]); const eventRelayButton = <button onClick={() => setDidSubmit(true)}>Submit</button>;`,
   `const [phase, setPhase] = useState(""); const [total, setTotal] = useState(0); const [ready, setReady] = useState(false); useEffect(() => { setPhase("sync"); setTotal(items.length); setReady(true); }, [items]);`,
   `const [snapshot, setSnapshot] = useState(sharedSnapshot); useEffect(() => subscribeSnapshot(setSnapshot), []);`,
 ] as const;

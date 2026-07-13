@@ -12,6 +12,7 @@ import type {
   SuppressedRuleCount,
 } from "@react-doctor/core";
 import { buildRuleBlastRadii } from "./diagnostic-grouping.js";
+import { hasLintHardFailure } from "./has-lint-hard-failure.js";
 import { isInspectResultComplete } from "./is-inspect-result-complete.js";
 import { ACTION_INPUT_ENVIRONMENT_VARIABLES, detectRunnerOs } from "./is-ci-environment.js";
 import { summarizeRuleFirings } from "./record-scan-metrics.js";
@@ -247,13 +248,17 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   );
   const complete = isInspectResultComplete(result);
   // `scoreOnly` runs never raise a non-zero exit for ordinary findings, and a
-  // degraded baseline run (`gateExempt`) skips the finding gate. Incomplete
-  // analysis is an operational failure rather than a finding, so it exits one
-  // in every mode and remains distinct from `wouldBlock`.
+  // degraded baseline run (`gateExempt`) skips the finding gate. A hard lint
+  // failure (engine/plugin/binding) destroys the scan's findings, so it exits
+  // one in every mode except the advisory `--blocking none`; fail-open
+  // degradations and deliberate skips stay advisory and surface through
+  // `outcome.complete` instead.
+  const didLintHardFail = hasLintHardFailure(result);
+  const failsOnHardFailure = didLintHardFail && blockingLevel !== "none";
   const wouldBlock =
     !input.scoreOnly && !input.gateExempt && shouldBlockCi(gateDiagnostics, blockingLevel);
   const isClean = result.diagnostics.length === 0 && complete;
-  const outcome = !complete ? "error" : wouldBlock ? "blocked" : isClean ? "clean" : "ok";
+  const outcome = didLintHardFail ? "error" : wouldBlock ? "blocked" : isClean ? "clean" : "ok";
 
   const firings = summarizeRuleFirings(result.diagnostics);
   const countByRule = new Map<string, number>();
@@ -330,7 +335,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   const attributes: RunEventAttributes = {
     ...withNamespace("outcome", {
       status: outcome,
-      exitCode: !complete || wouldBlock ? 1 : 0,
+      exitCode: failsOnHardFailure || wouldBlock ? 1 : 0,
       wouldBlock,
       blocking: blockingLevel,
       clean: isClean,

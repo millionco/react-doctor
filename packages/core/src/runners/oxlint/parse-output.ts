@@ -271,10 +271,16 @@ const isMappableOxlintDiagnostic = (value: unknown): boolean =>
   Array.isArray(value.labels) &&
   value.labels.every(isOxlintLabel);
 
+// oxlint attributes every routine diagnostic — including code-less parse
+// errors and unused-directive warnings — to a file. A diagnostic without a
+// filename is the engine reporting its own failure (e.g. "Error running JS
+// plugin." from a throwing configured plugin), which means the lint results
+// are incomplete and a clean report would be a false clean.
+const isEngineFailureDiagnostic = (value: unknown): boolean =>
+  !isRecord(value) || typeof value.filename !== "string" || value.filename.length === 0;
+
 const isOxlintOutput = (value: unknown): value is OxlintOutput =>
-  isRecord(value) &&
-  Array.isArray(value.diagnostics) &&
-  value.diagnostics.every(isMappableOxlintDiagnostic);
+  isRecord(value) && Array.isArray(value.diagnostics);
 
 /**
  * Parses one oxlint subprocess's stdout into a flat `Diagnostic[]`.
@@ -312,6 +318,15 @@ export const parseOxlintOutput = (
     throw new ReactDoctorError({
       reason: new OxlintOutputUnparseable({
         preview: stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS),
+      }),
+    });
+  }
+
+  const engineFailureDiagnostic = parsed.diagnostics.find(isEngineFailureDiagnostic);
+  if (engineFailureDiagnostic !== undefined) {
+    throw new ReactDoctorError({
+      reason: new OxlintOutputUnparseable({
+        preview: JSON.stringify(engineFailureDiagnostic).slice(0, ERROR_PREVIEW_LENGTH_CHARS),
       }),
     });
   }
@@ -371,7 +386,7 @@ export const parseOxlintOutput = (
   const mappedDiagnostics = parsed.diagnostics
     .filter(
       (diagnostic) =>
-        diagnostic.code &&
+        isMappableOxlintDiagnostic(diagnostic) &&
         isLintableSourceFile(diagnostic.filename) &&
         !isMinifiedDiagnosticFile(diagnostic.filename) &&
         !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory) &&

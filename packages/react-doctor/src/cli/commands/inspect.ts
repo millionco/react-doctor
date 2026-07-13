@@ -31,8 +31,8 @@ import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-stage
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { filterDiagnosticsByCategories } from "../utils/filter-diagnostics-by-categories.js";
 import { handleError, handleUserError } from "../utils/handle-error.js";
+import { hasLintHardFailure } from "../utils/has-lint-hard-failure.js";
 import { isDebugFlagEnabled } from "../utils/is-debug-flag.js";
-import { isInspectResultComplete } from "../utils/is-inspect-result-complete.js";
 import { isShareOptedOut } from "../utils/is-share-opted-out.js";
 import { isExpectedUserError } from "../utils/is-expected-user-error.js";
 import { handoffToAgent } from "../utils/handoff-to-agent.js";
@@ -126,10 +126,14 @@ interface FinalizeScansInput {
 /**
  * Post-scan finalization shared by the staged-arm and project-loop
  * paths of `inspectAction`: emit the JSON report (when in JSON mode)
- * and set `process.exitCode = 1` when any scan is incomplete or a
- * diagnostic at or above the `--blocking` threshold (default `"error"`)
- * reaches the `ciFailure` surface. `--blocking none` keeps findings
- * advisory but does not convert an incomplete analysis into success.
+ * and set `process.exitCode = 1` when any scan's lint pass hard-failed
+ * (an engine/plugin/binding failure destroys the findings, so success
+ * would be a false clean) or a diagnostic at or above the `--blocking`
+ * threshold (default `"error"`) reaches the `ciFailure` surface.
+ * `--blocking none` keeps the scan advisory (always exits 0), and
+ * fail-open degradations — `--no-lint`, `--max-duration` truncation,
+ * supply-chain/security skips — stay advisory too, surfaced through
+ * `complete: false` in the JSON report.
  */
 const finalizeScans = (input: FinalizeScansInput): void => {
   // Aggregate the per-project baseline deltas into one report-level block so the
@@ -196,10 +200,9 @@ const finalizeScans = (input: FinalizeScansInput): void => {
     );
   }
 
-  const hasIncompleteScan = input.completedScans.some(
-    ({ result }) => !isInspectResultComplete(result),
-  );
-  if (hasIncompleteScan) {
+  const blockingLevel = resolveBlockingLevel(input.flags, input.userConfig);
+  const hasHardFailedScan = input.completedScans.some(({ result }) => hasLintHardFailure(result));
+  if (hasHardFailedScan && blockingLevel !== "none") {
     process.exitCode = 1;
     return;
   }
@@ -207,7 +210,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
   if (input.isScoreOnly || baselineDegraded) return;
 
   const ciFailureDiagnostics = filterScansForSurface(input.completedScans, "ciFailure");
-  if (shouldBlockCi(ciFailureDiagnostics, resolveBlockingLevel(input.flags, input.userConfig))) {
+  if (shouldBlockCi(ciFailureDiagnostics, blockingLevel)) {
     process.exitCode = 1;
   }
 };

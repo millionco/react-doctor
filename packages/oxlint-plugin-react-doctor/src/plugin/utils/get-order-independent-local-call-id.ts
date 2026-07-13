@@ -113,12 +113,15 @@ const isOrderIndependentFunction = (functionNode: EsTreeNode, scopes: ScopeAnaly
   }
   const statements = functionNode.body.body;
   let statementIndex = 0;
-  while (
-    statementIndex < statements.length - 1 &&
-    (isHarmlessPromiseResolveAwait(statements[statementIndex], scopes) ||
-      (isNodeOfType(statements[statementIndex], "ExpressionStatement") &&
-        isPureParameterExpression(statements[statementIndex].expression, parameterNames)))
-  ) {
+  while (statementIndex < statements.length - 1) {
+    const statement = statements[statementIndex];
+    if (
+      !isHarmlessPromiseResolveAwait(statement, scopes) &&
+      (!isNodeOfType(statement, "ExpressionStatement") ||
+        !isPureParameterExpression(statement.expression, parameterNames))
+    ) {
+      break;
+    }
     statementIndex++;
   }
   if (statementIndex !== statements.length - 1) return false;

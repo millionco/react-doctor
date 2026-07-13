@@ -443,11 +443,8 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       : null;
     const requestedScope = resolveScope(flags, userConfig);
     // Untracked files only exist in a local working tree, so this is a
-    // CLI-only modifier (like `--staged`) — off unless the user opts in. It
-    // needs a working-tree scope in effect, checked here against the RESOLVED
-    // scope so a `config.scope` / `config.diff` value satisfies it too.
+    // CLI-only modifier (like `--staged`) — off unless the user opts in.
     const includeUntracked = flags.includeUntracked ?? false;
-    validateIncludeUntrackedScope(includeUntracked, requestedScope.scope);
     // The internal `--changed-files-from` path (the GitHub Action) implies the
     // `changed` scope when the user didn't pick one explicitly — it always ran
     // in diff mode historically.
@@ -455,6 +452,10 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       requestedScope.scope === undefined && changedFilesDiffInfo !== null
         ? { ...requestedScope, scope: "changed" }
         : requestedScope;
+    // Validate against the EFFECTIVE scope (post `--changed-files-from`
+    // promotion), so a working-tree scope from a flag, `config.scope` /
+    // `config.diff`, or that internal path all satisfy the requirement.
+    validateIncludeUntrackedScope(includeUntracked, scopeRequest.scope);
     const wantsDiffMode = scopeRequest.scope !== undefined && scopeRequest.scope !== "full";
     // HACK: also call getDiffInfo when we MIGHT prompt the user — without it the
     // "full vs changed" prompt never appears for users on a feature branch who

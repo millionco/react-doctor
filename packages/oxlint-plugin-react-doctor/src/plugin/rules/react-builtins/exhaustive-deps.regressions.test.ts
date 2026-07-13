@@ -1943,6 +1943,69 @@ describe("react-builtins/exhaustive-deps — upstream disable-comment suppressio
     });
   });
 
+  it("honors an explicitly annotated session snapshot", () => {
+    const code = `
+      interface User { role: "user" | "admin" }
+      declare const warmupRouteChunks: (role: User["role"], sessionKey: string) => void;
+
+      function IntentionalSessionSnapshot({ sessionKey, user }: { sessionKey: string; user: User }) {
+        useEffect(() => {
+          const role = user.role;
+          warmupRouteChunks(role, sessionKey);
+          // eslint-disable-next-line react-hooks/exhaustive-deps -- role is intentionally snapshotted for this session
+        }, [sessionKey]);
+      }
+    `;
+    withTempFile(code, (filename) => {
+      const result = runRule(exhaustiveDeps, code, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+  });
+
+  it("retains the syntax-identical unmarked live-role warning", () => {
+    const code = `
+      interface User { role: "user" | "admin" }
+      declare const warmupRouteChunks: (role: User["role"], sessionKey: string) => void;
+
+      function LiveRole({ sessionKey, user }: { sessionKey: string; user: User }) {
+        useEffect(() => {
+          const role = user.role;
+          warmupRouteChunks(role, sessionKey);
+        }, [sessionKey]);
+      }
+    `;
+    withTempFile(code, (filename) => {
+      const result = runRule(exhaustiveDeps, code, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("user.role");
+    });
+  });
+
+  it("accepts the explicit session-object encoding", () => {
+    const code = `
+      interface User { role: "user" | "admin" }
+      declare const warmupRouteChunks: (role: User["role"], sessionKey: string) => void;
+
+      function ExplicitSessionSnapshot({ sessionKey, user }: { sessionKey: string; user: User }) {
+        const sessionRef = useRef<{ key: string; role: User["role"] } | null>(null);
+        if (sessionRef.current?.key !== sessionKey) {
+          sessionRef.current = { key: sessionKey, role: user.role };
+        }
+        const session = sessionRef.current;
+        useEffect(() => {
+          warmupRouteChunks(session.role, session.key);
+        }, [session]);
+      }
+    `;
+    withTempFile(code, (filename) => {
+      const result = runRule(exhaustiveDeps, code, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+  });
+
   it("ignores disable comments naming a different rule", () => {
     const code = [
       "function MyComponent({ autoStart }) {",

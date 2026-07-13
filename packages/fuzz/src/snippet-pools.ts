@@ -70,6 +70,7 @@ export const EFFECT_SNIPPET_POOL = [
   `useFuzzDocumentEvents(() => handle(value), [value]);`,
   `const fuzzDocumentEventArguments = condition ? [] : [() => handle(value), [value]]; useFuzzDocumentEvents(...fuzzDocumentEventArguments);`,
   `const fuzzDocumentEventOptions = { callback: () => handle(value) }; fuzzDocumentEventOptions.callback = handle; useFuzzDocumentEventOptions(fuzzDocumentEventOptions);`,
+  `const fuzzSessionKey = String(value); const fuzzSessionUser = { role: value ? "admin" : "user" }; useEffect(() => { showLiveRole(fuzzSessionUser.role); }, [fuzzSessionKey]);`,
 ] as const;
 
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),

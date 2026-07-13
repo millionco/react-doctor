@@ -322,6 +322,50 @@ describe("no-impure-state-updater", () => {
          return count;
        };`,
     ],
+    [
+      "a data parameter forwarded to a setter",
+      `import { useState } from "react";
+       const Repro = () => {
+         const [selected, setSelected] = useState(null);
+         const [open, setOpen] = useState(false);
+         const openEditModal = (row) => {
+           setSelected(row);
+           setOpen(true);
+         };
+         return <button onClick={() => openEditModal({ id: "x" })}>{String(open)}</button>;
+       };`,
+    ],
+    [
+      "a data parameter forwarded from a promise callback",
+      `import { useState } from "react";
+       const Panel = () => {
+         const [colorMode, setColorMode] = useState(null);
+         const sync = () => resolveColorMode().then((nativeColorMode) => setColorMode(nativeColorMode));
+         return <button onClick={sync}>{colorMode}</button>;
+       };`,
+    ],
+    [
+      "a destructured parameter forwarded to a setter",
+      `import { useState } from "react";
+       const Panel = () => {
+         const [colorMode, setColorMode] = useState(null);
+         const onChange = ({ colorMode: nextColorMode }) => setColorMode(nextColorMode);
+         return <select onChange={onChange}>{colorMode}</select>;
+       };`,
+    ],
+    [
+      "a data parameter forwarded inside a memoized callback",
+      `import { useCallback, useState } from "react";
+       const Panel = () => {
+         const [diff, setDiff] = useState(null);
+         const [path, setPath] = useState(null);
+         const apply = useCallback((nextDiff) => {
+           setDiff(nextDiff);
+           setPath(nextDiff.path);
+         }, []);
+         return <button onClick={() => apply({ path: "x" })}>{path}</button>;
+       };`,
+    ],
   ])("stays silent for %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);

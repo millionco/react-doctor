@@ -128,14 +128,6 @@ const getWrapperHookWrappedFunction = (initializer: EsTreeNode): EsTreeNode | nu
   return wrapped;
 };
 
-// A def whose node is the enclosing function (a Parameter) must not count
-// as "resolves to a function": the BINDING holds a value, not a callable.
-const hasParameterDef = (ref: Reference): boolean =>
-  Boolean(ref.resolved?.defs.some((def) => def.type === "Parameter"));
-
-const resolvesToFunctionBinding = (ref: Reference): boolean =>
-  !hasParameterDef(ref) && Boolean(resolveToFunction(ref));
-
 const HANDLER_NAMED_PROP_PATTERN = /^(on|handle)[A-Z]/;
 
 // A wrapped body forwards to the parent only when it touches a
@@ -838,11 +830,11 @@ export const noPassDataToParent = defineRule({
             if (isParentWiredHookResultRef(analysis, argRef)) return false;
             if (isParentWiredHookCalleeRef(analysis, argRef)) return false;
             // Only real function BINDINGS are registration callbacks; a
-            // parameter reference resolves to its enclosing function via
-            // defs[0].node, which must not be mistaken for one — parameters
-            // carry the data being handed up (cloudscape custom-forms,
-            // a delta-audit recall regression).
-            if (resolvesToFunctionBinding(argRef)) return false;
+            // parameter reference resolves to null (its binding holds data,
+            // not a callable), so a forwarded data parameter is not mistaken
+            // for one (cloudscape custom-forms, a delta-audit recall
+            // regression).
+            if (resolveToFunction(argRef)) return false;
             // An imported binding in argument (not callee) position is
             // static module config (`subscribe(EVENT_NAME, handler)`),
             // not component-derived data.

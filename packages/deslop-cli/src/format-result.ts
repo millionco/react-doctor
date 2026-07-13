@@ -68,10 +68,7 @@ const UNUSED_ISSUE_COUNT_FIELDS: readonly IssueCountField[] = [
 ];
 
 const countUnusedIssues = (result: ScanResult): number =>
-  UNUSED_ISSUE_COUNT_FIELDS.reduce(
-    (total, { fieldName }) => total + result[fieldName].length,
-    0,
-  );
+  UNUSED_ISSUE_COUNT_FIELDS.reduce((total, { fieldName }) => total + result[fieldName].length, 0);
 
 const formatIssueCount = (count: number, singularLabel: string, pluralLabel: string): string => {
   const label = count === 1 ? singularLabel : pluralLabel;
@@ -317,14 +314,15 @@ export const formatHumanReadableResult = (result: ScanResult): string => {
   const totalIssues = countUnusedIssues(result) + result.circularDependencies.length;
 
   if (totalIssues === 0) {
-    lines.push("No unused files, exports, dependencies, code-quality findings, or circular imports found.");
+    lines.push(
+      "No unused files, exports, dependencies, code-quality findings, or circular imports found.",
+    );
   }
 
   return lines.join("\n").trimEnd() + "\n";
 };
 
-export const hasUnusedIssues = (result: ScanResult): boolean =>
-  countUnusedIssues(result) > 0;
+export const hasUnusedIssues = (result: ScanResult): boolean => countUnusedIssues(result) > 0;
 
 export const hasCircularIssues = (result: ScanResult): boolean =>
   result.circularDependencies.length > 0;

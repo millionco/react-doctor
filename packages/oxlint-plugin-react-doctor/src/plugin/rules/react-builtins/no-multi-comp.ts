@@ -13,6 +13,7 @@ import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
+import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { forEachChildNode, walkAst } from "../../utils/walk-ast.js";
 import { REACT_HOC_NAMES, REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
@@ -114,23 +115,6 @@ const isReactHocMemberReference = (node: EsTreeNode, scopes: ScopeAnalysis): boo
     isReactNamespaceExpression(node.object, scopes),
   );
 
-const getDestructuredPropertyName = (symbol: SymbolDescriptor): string | null => {
-  const property = symbol.bindingIdentifier.parent;
-  if (
-    !property ||
-    !isNodeOfType(property, "Property") ||
-    !property.parent ||
-    !isNodeOfType(property.parent, "ObjectPattern")
-  ) {
-    return null;
-  }
-  if (isNodeOfType(property.key, "Identifier") && !property.computed) return property.key.name;
-  if (isNodeOfType(property.key, "Literal") && typeof property.key.value === "string") {
-    return property.key.value;
-  }
-  return null;
-};
-
 // Recursively unwraps a symbol's initializer to see if it ultimately
 // points to memo / forwardRef / React.memo / React.forwardRef. Handles:
 //   const memo = React.memo;             (init = MemberExpression)
@@ -152,7 +136,7 @@ const symbolMapsToHoc = (
   }
   const init = symbol.initializer;
   if (!init) return false;
-  const destructuredPropertyName = getDestructuredPropertyName(symbol);
+  const destructuredPropertyName = getDestructuredBindingPropertyName(symbol.bindingIdentifier);
   if (
     destructuredPropertyName &&
     REACT_HOC_NAMES.has(destructuredPropertyName) &&

@@ -1,7 +1,12 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getDestructuredBindingPropertyName } from "./get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
-import { hasPossibleStaticMemberCallWrite } from "./has-static-property-write-before.js";
+import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
+import {
+  hasPossibleStaticMemberCallWrite,
+  hasPossibleStaticPropertyMutationOrEscape,
+} from "./has-static-property-write-before.js";
 import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -57,17 +62,23 @@ const isPureParameterExpression = (
   return false;
 };
 
-const isHarmlessPromiseResolveAwait = (statement: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const isOrderIndependentPromiseResolveCall = (
+  expression: EsTreeNode,
+  parameterNames: Set<string>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (!isNodeOfType(unwrappedExpression, "CallExpression")) return false;
   if (
-    !isNodeOfType(statement, "ExpressionStatement") ||
-    !isNodeOfType(statement.expression, "AwaitExpression")
+    !unwrappedExpression.arguments.every(
+      (argument) =>
+        !isNodeOfType(argument, "SpreadElement") &&
+        isPureParameterExpression(argument, parameterNames),
+    )
   ) {
     return false;
   }
-  const awaitedExpression = stripParenExpression(statement.expression.argument);
-  if (!isNodeOfType(awaitedExpression, "CallExpression")) return false;
-  if (awaitedExpression.arguments.length !== 0) return false;
-  const callee = stripParenExpression(awaitedExpression.callee);
+  const callee = stripParenExpression(unwrappedExpression.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   if (getStaticPropertyName(callee) !== "resolve") return false;
   const receiver = stripParenExpression(callee.object);
@@ -75,6 +86,24 @@ const isHarmlessPromiseResolveAwait = (statement: EsTreeNode, scopes: ScopeAnaly
     isNodeOfType(receiver, "Identifier") &&
     receiver.name === "Promise" &&
     scopes.isGlobalReference(receiver)
+  );
+};
+
+const isHarmlessPromiseResolveAwait = (
+  statement: EsTreeNode,
+  parameterNames: Set<string>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !isNodeOfType(statement, "ExpressionStatement") ||
+    !isNodeOfType(statement.expression, "AwaitExpression")
+  ) {
+    return false;
+  }
+  return isOrderIndependentPromiseResolveCall(
+    statement.expression.argument,
+    parameterNames,
+    scopes,
   );
 };
 
@@ -101,43 +130,52 @@ const isCommutativeParameterMutation = (
 };
 
 const isOrderIndependentFunction = (functionNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  if (!isFunctionLike(functionNode) || !functionNode.async) return false;
+  if (!isFunctionLike(functionNode)) return false;
   const parameterNames = new Set<string>();
   for (const parameter of functionNode.params) {
     if (!isNodeOfType(parameter, "Identifier")) return false;
     parameterNames.add(parameter.name);
   }
+  if (!functionNode.async) {
+    if (!isNodeOfType(functionNode.body, "BlockStatement")) {
+      return isOrderIndependentPromiseResolveCall(functionNode.body, parameterNames, scopes);
+    }
+    if (functionNode.body.body.length !== 1) return false;
+    const [returnStatement] = functionNode.body.body;
+    return Boolean(
+      isNodeOfType(returnStatement, "ReturnStatement") &&
+      returnStatement.argument &&
+      isOrderIndependentPromiseResolveCall(returnStatement.argument, parameterNames, scopes),
+    );
+  }
   if (!isNodeOfType(functionNode.body, "BlockStatement")) {
     return isPureParameterExpression(functionNode.body, parameterNames);
   }
   const statements = functionNode.body.body;
-  let statementIndex = 0;
-  while (statementIndex < statements.length - 1) {
+  for (let statementIndex = 0; statementIndex < statements.length; statementIndex++) {
     const statement = statements[statementIndex];
+    const isTerminalStatement = statementIndex === statements.length - 1;
+    if (isHarmlessPromiseResolveAwait(statement, parameterNames, scopes)) continue;
     if (
-      !isHarmlessPromiseResolveAwait(statement, scopes) &&
-      (!isNodeOfType(statement, "ExpressionStatement") ||
-        !isPureParameterExpression(statement.expression, parameterNames))
+      isNodeOfType(statement, "ExpressionStatement") &&
+      isPureParameterExpression(statement.expression, parameterNames)
     ) {
-      break;
+      continue;
     }
-    statementIndex++;
+    if (isCommutativeParameterMutation(statement, parameterNames)) return isTerminalStatement;
+    if (!isNodeOfType(statement, "ReturnStatement") || !isTerminalStatement) return false;
+    return (
+      !statement.argument ||
+      isPureParameterExpression(statement.argument, parameterNames) ||
+      isOrderIndependentPromiseResolveCall(statement.argument, parameterNames, scopes)
+    );
   }
-  if (statementIndex !== statements.length - 1) return false;
-  const terminalStatement = statements[statementIndex];
-  if (isNodeOfType(terminalStatement, "ReturnStatement") && terminalStatement.argument) {
-    return isPureParameterExpression(terminalStatement.argument, parameterNames);
-  }
-  return isCommutativeParameterMutation(terminalStatement, parameterNames);
+  return true;
 };
 
 const getObjectPropertyName = (property: EsTreeNode): string | null => {
   if (!isNodeOfType(property, "Property")) return null;
-  if (!property.computed && isNodeOfType(property.key, "Identifier")) return property.key.name;
-  if (property.computed && isNodeOfType(property.key, "Literal")) {
-    return typeof property.key.value === "string" ? property.key.value : null;
-  }
-  return null;
+  return getStaticPropertyKeyName(property, { allowComputedString: true });
 };
 
 const resolveOrderIndependentObjectPropertyFunction = (
@@ -155,7 +193,8 @@ const resolveOrderIndependentObjectPropertyFunction = (
       symbol.kind !== "const" ||
       !symbol.initializer ||
       visitedSymbolIds.has(symbol.id) ||
-      hasSymbolWriteBefore(symbol, callExpression, scopes)
+      hasSymbolWriteBefore(symbol, callExpression, scopes) ||
+      hasPossibleStaticPropertyMutationOrEscape(unwrappedObject, propertyName, scopes)
     ) {
       return null;
     }
@@ -172,6 +211,7 @@ const resolveOrderIndependentObjectPropertyFunction = (
   let matchingProperty: EsTreeNode | null = null;
   for (const property of unwrappedObject.properties) {
     if (!isNodeOfType(property, "Property")) return null;
+    if (property.kind !== "init") return null;
     const candidatePropertyName = getObjectPropertyName(property);
     if (candidatePropertyName === null) return null;
     if (candidatePropertyName === propertyName) matchingProperty = property;
@@ -198,7 +238,7 @@ const resolveOrderIndependentLocalFunction = (
   const unwrappedCallee = stripParenExpression(callee);
   if (isNodeOfType(unwrappedCallee, "MemberExpression")) {
     const propertyName = getStaticPropertyName(unwrappedCallee);
-    if (!propertyName) return null;
+    if (propertyName === null) return null;
     const receiver = stripParenExpression(unwrappedCallee.object);
     return resolveOrderIndependentObjectPropertyFunction(
       receiver,
@@ -220,6 +260,16 @@ const resolveOrderIndependentLocalFunction = (
   visitedSymbolIds.add(symbol.id);
   if (!symbol.initializer) return null;
   const initializer = stripParenExpression(symbol.initializer);
+  const destructuredPropertyName = getDestructuredBindingPropertyName(symbol.bindingIdentifier);
+  if (destructuredPropertyName !== null) {
+    return resolveOrderIndependentObjectPropertyFunction(
+      initializer,
+      destructuredPropertyName,
+      callExpression,
+      scopes,
+      visitedSymbolIds,
+    );
+  }
   if (isFunctionLike(initializer)) {
     return isOrderIndependentFunction(initializer, scopes) ? initializer : null;
   }

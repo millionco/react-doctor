@@ -11,6 +11,7 @@ import {
   STRING_READ_METHOD_NAMES,
 } from "../../constants/data-sink-method-names.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
+import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isComponentFunction } from "../../utils/is-component-function.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -220,20 +221,6 @@ const hasMutableBindingWrite = (reference: Reference): boolean =>
     ),
   );
 
-const getDestructuredPropertyName = (bindingIdentifier: EsTreeNode): string | null => {
-  const property = bindingIdentifier.parent;
-  if (!property || !isNodeOfType(property, "Property")) return null;
-  if (property.computed) {
-    return isNodeOfType(property.key as EsTreeNode, "Literal") &&
-      typeof (property.key as { value?: unknown }).value === "string"
-      ? String((property.key as { value: string }).value)
-      : null;
-  }
-  return isNodeOfType(property.key as EsTreeNode, "Identifier")
-    ? (property.key as { name: string }).name
-    : null;
-};
-
 const getParentCallbackPropName = (
   analysis: ProgramAnalysis,
   expression: EsTreeNode,
@@ -253,7 +240,7 @@ const getParentCallbackPropName = (
       );
       const bindingIdentifier = parameterDefinition?.name as unknown as EsTreeNode | undefined;
       return (
-        (bindingIdentifier && getDestructuredPropertyName(bindingIdentifier)) ??
+        (bindingIdentifier && getDestructuredBindingPropertyName(bindingIdentifier)) ??
         unwrappedExpression.name
       );
     }
@@ -275,7 +262,7 @@ const getParentCallbackPropName = (
     if (isNodeOfType(declarator.id, "ObjectPattern")) {
       const bindingIdentifier = callbackVariable.defs[0]?.name as unknown as EsTreeNode | undefined;
       const propertyName = bindingIdentifier
-        ? getDestructuredPropertyName(bindingIdentifier)
+        ? getDestructuredBindingPropertyName(bindingIdentifier)
         : null;
       const propsReference = getDownstreamRefs(analysis, declarator.init as EsTreeNode).find(
         (candidateReference) => isWholePropsObjectReference(analysis, candidateReference),

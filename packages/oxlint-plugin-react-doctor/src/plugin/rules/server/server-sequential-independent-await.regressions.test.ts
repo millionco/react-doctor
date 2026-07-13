@@ -12,6 +12,26 @@ describe("server-sequential-independent-await — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("flags a visible Promise-returning initialize helper like its alpha rename", () => {
+    for (const helperName of ["initializeProfile", "loadProfile"]) {
+      const result = runRule(
+        serverSequentialIndependentAwait,
+        `const ${helperName} = (value: number): Promise<number> => Promise.resolve(value * 2); const loadPreferences = (value: number): Promise<number> => Promise.resolve(value * 3); export async function load() { const profile = await ${helperName}(2); const preferences = await loadPreferences(3); return { profile, preferences }; }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps an awaited synchronous initialize helper as a gate", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `const initializeProfile = (value: number): number => value * 2; const loadPreferences = async (): Promise<number> => 3; export async function load() { const profile = await initializeProfile(2); const preferences = await loadPreferences(); return { profile, preferences }; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it.each(["initializeProfile", "setupProfile", "requireProfile"])(
     "flags the pure local %s helper without trusting its leading verb",
     (helperName) => {
@@ -46,6 +66,19 @@ describe("server-sequential-independent-await — regressions", () => {
     const result = runRule(
       serverSequentialIndependentAwait,
       `let initialized = false; const initializeProfile = async (value) => { await Promise.resolve(); return value * 2; }; const helpers = { initializeProfile }; helpers.initializeProfile = async (value) => { initialized = true; return value; }; export async function load() { const profile = await helpers.initializeProfile(2); const preferences = await loadPreferences(3); return { profile, preferences, initialized }; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `Object.assign(helpers, { initializeProfile: async (value) => { await Promise.resolve(); initialized = true; return value; } });`,
+    `Object.defineProperty(helpers, "initializeProfile", { value: async (value) => { await Promise.resolve(); initialized = true; return value; } });`,
+    `const install = (target) => { target.initializeProfile = async (value) => { await Promise.resolve(); initialized = true; return value; }; }; install(helpers);`,
+  ])("keeps an escaped and overwritten initialize helper sequential", (overwrite) => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `let initialized = false; const initializeProfile = async (value) => { await Promise.resolve(); return value * 2; }; const helpers = { initializeProfile }; ${overwrite} const loadPreferences = async () => initialized; export async function load() { const profile = await helpers.initializeProfile(2); const preferences = await loadPreferences(); return { profile, preferences }; }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);

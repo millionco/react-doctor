@@ -27,6 +27,48 @@ describe("js-performance/async-parallel — regressions", () => {
     );
   });
 
+  it.each([
+    `const inspect = async (value: number): Promise<void> => { await Promise.resolve(); }; async function load() { await inspect(1); await inspect(2); await inspect(3); }`,
+    `const inspect = async (value: number): Promise<void> => { await Promise.resolve(); return; }; async function load() { await inspect(1); await inspect(2); await inspect(3); }`,
+    `const inspect = async (value: number): Promise<void> => { await Promise.resolve(); void value; }; async function load() { await inspect(1); await inspect(2); await inspect(3); }`,
+  ])("flags independent bare awaits of a visible pure Promise<void> helper", (code) => {
+    expectFail(code);
+  });
+
+  it.each([
+    `const inspect = async (value: number): Promise<void> => { await Promise.resolve(); }; async function load() { const first = await inspect(1); const second = await inspect(2); const third = await inspect(3); void first; void second; void third; }`,
+    `const inspect = async (value: number): Promise<void> => { await Promise.resolve(); return; }; async function load() { const first = await inspect(1); const second = await inspect(2); const third = await inspect(3); void first; void second; void third; }`,
+    `const inspect = async (value: number): Promise<void> => { await Promise.resolve(); void value; }; async function load() { const first = await inspect(1); const second = await inspect(2); const third = await inspect(3); void first; void second; void third; }`,
+  ])("retains bound-and-discarded pure Promise<void> positives", (code) => {
+    expectFail(code);
+  });
+
+  it("follows an exact destructured alias to a commutative Promise<void> helper", () => {
+    expectFail(
+      `const inspect = async (cell: { value: number }): Promise<void> => { await Promise.resolve(); cell.value *= 2; }; const helpers = { inspect }; const { inspect: run } = helpers; async function load(first: { value: number }, second: { value: number }, third: { value: number }) { await run(first); await run(second); await run(third); }`,
+    );
+  });
+
+  it("retains the bound-and-discarded destructured-alias positive", () => {
+    expectFail(
+      `const inspect = async (cell: { value: number }): Promise<void> => { await Promise.resolve(); cell.value *= 2; }; const helpers = { inspect }; const { inspect: run } = helpers; async function load(first: { value: number }, second: { value: number }, third: { value: number }) { const firstResult = await run(first); const secondResult = await run(second); const thirdResult = await run(third); void firstResult; void secondResult; void thirdResult; }`,
+    );
+  });
+
+  it("flags a visible Promise-returning query helper like its alpha rename", () => {
+    for (const helperName of ["query", "loadValue"]) {
+      expectFail(
+        `const ${helperName} = (value: number): Promise<number> => Promise.resolve(value * 2); async function load() { const first = await ${helperName}(1); const second = await ${helperName}(2); const third = await ${helperName}(3); return [first, second, third]; }`,
+      );
+    }
+  });
+
+  it("keeps awaits of a synchronous helper quiet", () => {
+    expectPass(
+      `const inspect = (value: number): number => value * 2; async function load() { await inspect(1); await inspect(2); await inspect(3); }`,
+    );
+  });
+
   it("flags repeated commutative mutations when call arguments alias", () => {
     expectFail(
       `const double = async (cell) => { await Promise.resolve(); cell.value *= 2; }; async function update(cell) { await double(cell); await double(cell); await double(cell); }`,
@@ -105,6 +147,16 @@ describe("js-performance/async-parallel — regressions", () => {
     );
   });
 
+  it.each([
+    `Object.assign(helpers, { query: async (item) => { const previous = cursor; await Promise.resolve(); cursor = previous + item; return cursor; } });`,
+    `Object.defineProperty(helpers, "query", { value: async (item) => { const previous = cursor; await Promise.resolve(); cursor = previous + item; return cursor; } });`,
+    `const install = (target) => { target.query = async (item) => { const previous = cursor; await Promise.resolve(); cursor = previous + item; return cursor; }; }; install(helpers);`,
+  ])("keeps helpers overwritten through an escaping object reference serialized", (overwrite) => {
+    expectPass(
+      `let cursor = 0; const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; ${overwrite} async function load() { const first = await helpers.query(1); const second = await helpers.query(2); const third = await helpers.query(3); return [first, second, third]; }`,
+    );
+  });
+
   it("keeps object helpers mutated through mutable aliases serialized", () => {
     expectPass(
       `let cursor = 0; const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; let holder = helpers; const nestedHolder = holder; nestedHolder.query = async (item) => { cursor += item; return cursor; }; async function load() { await query(1); await helpers.query(2); await query(3); }`,
@@ -158,8 +210,8 @@ describe("js-performance/async-parallel — regressions", () => {
     }
   });
 
-  it("keeps destructured object helper reads conservative", () => {
-    expectPass(
+  it("follows an exact destructured object helper read", () => {
+    expectFail(
       `const query = async (item) => { await Promise.resolve(); return item * 2; }; const helpers = { query }; const { query: runQuery } = helpers; async function load() { await query(1); await runQuery(2); await helpers.query(3); }`,
     );
   });
@@ -179,6 +231,12 @@ describe("js-performance/async-parallel — regressions", () => {
     ]) {
       expectPass(code);
     }
+  });
+
+  it("keeps bare awaits with effectful argument evaluation serialized", () => {
+    expectPass(
+      `const cell = { value: 1 }; const observed = []; const getCell = () => { observed.push(cell.value); return cell; }; const double = async (target) => { await Promise.resolve(); target.value *= 2; }; async function update() { await double(getCell()); await double(getCell()); await double(getCell()); }`,
+    );
   });
 
   it("flags three genuinely independent sequential awaits", () => {

@@ -7,6 +7,7 @@ import {
   isNamespaceImportFromModule,
 } from "../../utils/find-import-source-for-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
@@ -191,25 +192,6 @@ const isSafeStatefulReplaceAllSearch = (
     callee.property.name === "replaceAll" &&
     isProvenNativeStringReceiver(callee.object, context)
   );
-};
-
-const getDestructuredBindingPropertyName = (bindingIdentifier: EsTreeNode): string | null => {
-  let bindingNode = bindingIdentifier;
-  if (
-    isNodeOfType(bindingNode.parent, "AssignmentPattern") &&
-    bindingNode.parent.left === bindingNode
-  ) {
-    bindingNode = bindingNode.parent;
-  }
-  const property = bindingNode.parent;
-  if (
-    !isNodeOfType(property, "Property") ||
-    property.value !== bindingNode ||
-    !isNodeOfType(property.parent, "ObjectPattern")
-  ) {
-    return null;
-  }
-  return getStaticPropertyKeyName(property, { allowComputedString: true });
 };
 
 const extendGlobalPath = (basePath: string, propertyName: string | null): string | null => {

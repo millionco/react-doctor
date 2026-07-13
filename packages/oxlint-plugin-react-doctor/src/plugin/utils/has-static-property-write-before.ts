@@ -105,6 +105,26 @@ const getDirectAssignmentSourceSymbol = (
   return getDirectAliasSourceSymbol(parent.right, scopes);
 };
 
+const isDirectAliasSourceReference = (identifier: EsTreeNode): boolean => {
+  const aliasSource = findTransparentExpressionRoot(identifier);
+  const parent = aliasSource.parent;
+  if (
+    parent &&
+    isNodeOfType(parent, "VariableDeclarator") &&
+    parent.init === aliasSource &&
+    (isNodeOfType(parent.id, "Identifier") || isNodeOfType(parent.id, "ObjectPattern"))
+  ) {
+    return true;
+  }
+  return Boolean(
+    parent &&
+    isNodeOfType(parent, "AssignmentExpression") &&
+    parent.operator === "=" &&
+    parent.right === aliasSource &&
+    isNodeOfType(stripParenExpression(parent.left), "Identifier"),
+  );
+};
+
 const isDirectAliasOfKnownSymbol = (
   symbol: SymbolDescriptor,
   knownSymbolIds: ReadonlySet<number>,
@@ -309,6 +329,17 @@ const symbolHasStaticPropertyWriteBefore = (
     );
   });
 
+const isStableStaticPropertyReference = (identifier: EsTreeNode): boolean => {
+  if (isDirectAliasSourceReference(identifier)) return true;
+  const identifierRoot = findTransparentExpressionRoot(identifier);
+  const memberExpression = identifierRoot.parent;
+  return Boolean(
+    memberExpression &&
+    isNodeOfType(memberExpression, "MemberExpression") &&
+    stripParenExpression(memberExpression.object) === identifierRoot,
+  );
+};
+
 export const hasPossibleStaticPropertyWrite = (
   identifier: EsTreeNode,
   propertyName: string,
@@ -322,6 +353,18 @@ export const hasPossibleStaticPropertyWrite = (
       const writtenPropertyName = getResolvedStaticPropertyName(writeTarget, scopes);
       return writtenPropertyName === null || writtenPropertyName === propertyName;
     }),
+  );
+};
+
+export const hasPossibleStaticPropertyMutationOrEscape = (
+  identifier: EsTreeNode,
+  propertyName: string,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  if (hasPossibleStaticPropertyWrite(identifier, propertyName, scopes)) return true;
+  return getPotentiallyAliasedSymbols(identifier, scopes).some((symbol) =>
+    symbol.references.some((reference) => !isStableStaticPropertyReference(reference.identifier)),
   );
 };
 

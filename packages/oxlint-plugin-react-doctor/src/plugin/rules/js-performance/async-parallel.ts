@@ -65,6 +65,18 @@ const isBareExpressionAwait = (statement: EsTreeNode): boolean =>
   isNodeOfType(statement, "ExpressionStatement") &&
   isNodeOfType(statement.expression, "AwaitExpression");
 
+const hasOrderIndependentBareAwaitArguments = (callExpression: EsTreeNode): boolean => {
+  const unwrappedCallExpression = stripParenExpression(callExpression);
+  if (!isNodeOfType(unwrappedCallExpression, "CallExpression")) return false;
+  return unwrappedCallExpression.arguments.every((argument) => {
+    if (isNodeOfType(argument, "SpreadElement")) return false;
+    const unwrappedArgument = stripParenExpression(argument);
+    return (
+      isNodeOfType(unwrappedArgument, "Identifier") || isNodeOfType(unwrappedArgument, "Literal")
+    );
+  });
+};
+
 // Awaiting something that is not a call (`await feManifestPromise`)
 // settles work that already started — sequencing it costs no wall time,
 // so there is nothing to parallelize.
@@ -100,6 +112,7 @@ const sequenceContainsSerializationSignal = (
       : null;
     if (isBareExpressionAwait(statement)) {
       if (orderIndependentFunction === null) return true;
+      if (!awaitedCall || !hasOrderIndependentBareAwaitArguments(awaitedCall)) return true;
       if (bareAwaitFunction !== null && bareAwaitFunction !== orderIndependentFunction) return true;
       bareAwaitFunction = orderIndependentFunction;
     }

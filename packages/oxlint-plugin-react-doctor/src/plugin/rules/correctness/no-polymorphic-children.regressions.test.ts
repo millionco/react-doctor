@@ -106,6 +106,24 @@ describe("correctness/no-polymorphic-children — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when a module constant defines the large-string threshold", () => {
+    const result = runRule(
+      noPolymorphicChildren,
+      `
+      const VIRTUALIZATION_THRESHOLD = 50_000;
+
+      const CodeBlock = ({ children, ...preProps }) => {
+        if (typeof children === 'string' && children.length > VIRTUALIZATION_THRESHOLD) {
+          return <VirtualizedCode text={children} />;
+        }
+        return <pre {...preProps}>{children}</pre>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when a leading guard precedes large-string virtualization", () => {
     const result = runRule(
       noPolymorphicChildren,

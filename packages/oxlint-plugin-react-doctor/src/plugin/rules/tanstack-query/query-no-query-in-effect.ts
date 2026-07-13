@@ -9,6 +9,39 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { resolveTanstackQueryHookNameFromInitializer } from "./utils/resolve-tanstack-query-hook-name.js";
+
+const isTanstackQueryResult = (expression: EsTreeNode, context: RuleContext): boolean =>
+  Boolean(resolveTanstackQueryHookNameFromInitializer(expression, context.scopes));
+
+const isTanstackRefetchIdentifier = (identifier: EsTreeNode, context: RuleContext): boolean => {
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(identifier);
+  if (!symbol || !isNodeOfType(symbol.declarationNode, "VariableDeclarator")) return false;
+  const bindingProperty = symbol.bindingIdentifier.parent;
+  if (!isNodeOfType(bindingProperty, "Property")) return false;
+  if (getStaticPropertyKeyName(bindingProperty) !== "refetch") return false;
+  const initializer = symbol.declarationNode.init;
+  return Boolean(initializer && isTanstackQueryResult(initializer, context));
+};
+
+const isTanstackRefetchCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const callee = callExpression.callee;
+  if (isNodeOfType(callee, "Identifier")) {
+    return isTanstackRefetchIdentifier(callee, context);
+  }
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "refetch" &&
+    isTanstackQueryResult(callee.object, context)
+  );
+};
 
 export const queryNoQueryInEffect = defineRule({
   id: "query-no-query-in-effect",
@@ -36,15 +69,7 @@ export const queryNoQueryInEffect = defineRule({
           return false;
         if (!isNodeOfType(child, "CallExpression")) return;
 
-        const callee = child.callee;
-        const isRefetchCall =
-          (isNodeOfType(callee, "Identifier") && callee.name === "refetch") ||
-          (isNodeOfType(callee, "MemberExpression") &&
-            !callee.computed &&
-            isNodeOfType(callee.property, "Identifier") &&
-            callee.property.name === "refetch");
-
-        if (isRefetchCall) {
+        if (isTanstackRefetchCall(child, context)) {
           context.report({
             node: child,
             message:

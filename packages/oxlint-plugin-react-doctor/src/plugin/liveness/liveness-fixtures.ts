@@ -1017,7 +1017,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'const posts = useQuery({ queryKey: ["posts"], queryFn: fetchPosts });\n      useMutation({ mutationFn: deletePost });',
   },
   "query-no-query-in-effect": {
-    code: "function Dashboard() { useEffect(() => { refetch(); }, [dep]); return null; }",
+    code: 'import { useQuery } from "@tanstack/react-query"; function Dashboard() { const query = useQuery({ queryKey: ["item"] }); useEffect(() => { query.refetch(); }, [query]); return null; }',
   },
   "query-no-rest-destructuring": {
     code: 'import { useQuery } from "@tanstack/react-query"; const { data, ...rest } = useQuery({ queryKey: ["x"] });',

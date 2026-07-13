@@ -331,6 +331,48 @@ describe("a11y/no-static-element-interactions regressions", () => {
     },
   );
 
+  it.each(['aria-disabled="true"', "aria-disabled={true}", "aria-disabled={isDisabled}"])(
+    "still flags a wrapper whose equivalent Button sets %s",
+    (disabledAttribute) => {
+      const result = runRule(
+        noStaticElementInteractions,
+        `const Card = ({ open, isDisabled }) => (
+          <div onClick={() => open()}>
+            <Button ${disabledAttribute} aria-label="Open" onPress={() => open()}>Open</Button>
+          </div>
+        );`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("does not flag a wrapper whose equivalent Button is statically aria-enabled", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `const Card = ({ open }) => (
+        <div onClick={() => open()}>
+          <Button aria-disabled={false} aria-label="Open" onPress={() => open()}>Open</Button>
+        </div>
+      );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a wrapper whose same-action descendant is a lowercase custom element", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `const Card = ({ open }) => (
+        <div onClick={() => open()}>
+          <app-button aria-label="Open" onClick={() => open()}>Open</app-button>
+        </div>
+      );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a wrapper whose equivalent anchor lacks an href", () => {
     const result = runRule(
       noStaticElementInteractions,

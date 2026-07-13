@@ -20,3 +20,19 @@ export const EditableCell = ({ disabled, setOpen }: EditableCellProps) => (
     )}
   </div>
 );
+
+export const AriaDisabledEditCell = ({ setOpen }: EditableCellProps) => (
+  <div onClick={() => setOpen(true)}>
+    <Button aria-disabled="true" aria-label="Edit" onPress={() => setOpen(true)}>
+      Edit
+    </Button>
+  </div>
+);
+
+export const CustomElementEditCell = ({ setOpen }: EditableCellProps) => (
+  <div onClick={() => setOpen(true)}>
+    <app-button aria-label="Edit" onClick={() => setOpen(true)}>
+      Edit
+    </app-button>
+  </div>
+);

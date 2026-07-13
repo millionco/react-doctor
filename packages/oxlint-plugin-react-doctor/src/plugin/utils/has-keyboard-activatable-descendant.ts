@@ -7,6 +7,7 @@ import { flattenJsxName } from "./flatten-jsx-name.js";
 import { hasJsxPropIgnoreCase } from "./has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "./is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isNullishExpression } from "./is-nullish-expression.js";
 import { parseJsxValue } from "./parse-jsx-value.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
@@ -23,16 +24,8 @@ const EQUIVALENT_ACTION_COMPONENT_NAME_PATTERN = /(?:button|link|anchor)$/i;
 const UPPERCASE_COMPONENT_NAME_PATTERN = /^[A-Z]/;
 const DESCENDANT_ACTION_PROP_NAMES = ["onClick", "onPress"] as const;
 
-const isStaticallyNullish = (expression: EsTreeNode): boolean => {
-  const strippedExpression = stripParenExpression(expression);
-  if (isNodeOfType(strippedExpression, "Literal")) return strippedExpression.value === null;
-  if (isNodeOfType(strippedExpression, "Identifier")) {
-    return strippedExpression.name === "undefined";
-  }
-  return (
-    isNodeOfType(strippedExpression, "UnaryExpression") && strippedExpression.operator === "void"
-  );
-};
+const isStaticallyNullish = (expression: EsTreeNode): boolean =>
+  isNullishExpression(stripParenExpression(expression));
 
 const resolveSingleHandlerAction = (
   expression: EsTreeNode,
@@ -99,7 +92,9 @@ const hasPotentiallyTruthyAttribute = (
   const attribute = hasJsxPropIgnoreCase(openingElement.attributes, attributeName);
   if (!attribute) return false;
   if (!attribute.value) return true;
-  if (isNodeOfType(attribute.value, "Literal")) return attribute.value.value === true;
+  if (isNodeOfType(attribute.value, "Literal")) {
+    return attribute.value.value === true || attribute.value.value === "true";
+  }
   if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return true;
   const expression = stripParenExpression(attribute.value.expression as EsTreeNode);
   return !isNodeOfType(expression, "Literal") || expression.value !== false;
@@ -183,7 +178,12 @@ const isKeyboardActivatableElement = (
   if (isNativeElement) {
     if (!NATIVE_KEYBOARD_ACTIVATABLE_TAGS.has(elementName)) return false;
   } else if (requiresAccessibleName) {
-    if (!EQUIVALENT_ACTION_COMPONENT_NAME_PATTERN.test(elementName)) return false;
+    if (
+      !UPPERCASE_COMPONENT_NAME_PATTERN.test(elementName) ||
+      !EQUIVALENT_ACTION_COMPONENT_NAME_PATTERN.test(elementName)
+    ) {
+      return false;
+    }
   } else if (
     !UPPERCASE_COMPONENT_NAME_PATTERN.test(elementName) ||
     !KEYBOARD_ACTIVATABLE_COMPONENT_NAME_PATTERN.test(elementName)
@@ -197,6 +197,7 @@ const isKeyboardActivatableElement = (
   if (
     hasPotentiallyTruthyAttribute(openingElement, "disabled") ||
     hasPotentiallyTruthyAttribute(openingElement, "isDisabled") ||
+    hasPotentiallyTruthyAttribute(openingElement, "aria-disabled") ||
     hasNegativeStaticTabIndex(openingElement)
   ) {
     return false;

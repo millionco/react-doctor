@@ -14,6 +14,10 @@ export class Modal extends React.Component<ModalProps> {
   };
 
   render() {
-    return <div onClick={this.handleBoxClick}>{this.props.children}</div>;
+    return (
+      <div onClick={this.handleBoxClick as React.MouseEventHandler<HTMLDivElement>}>
+        {this.props.children}
+      </div>
+    );
   }
 }

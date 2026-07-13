@@ -47,12 +47,29 @@ describe("a11y/click-events-have-key-events regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    "this.handleBoxClick as React.MouseEventHandler<HTMLDivElement>",
+    "this.handleBoxClick!",
+  ])("does not flag a wrapped class method propagation shield: %s", (handlerExpression) => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `class Modal extends React.Component {
+        handleBoxClick = (event) => event.stopPropagation();
+        render() {
+          return <div onClick={${handlerExpression}}>Content</div>;
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags a class method that performs an action after blocking propagation", () => {
     const result = runRule(
       clickEventsHaveKeyEvents,
       `class Modal extends React.Component {
         handleBoxClick(event) { event.stopPropagation(); this.props.openModal(); }
-        render() { return <div onClick={this.handleBoxClick}>{this.props.children}</div>; }
+        render() { return <div onClick={this.handleBoxClick as React.MouseEventHandler<HTMLDivElement>}>{this.props.children}</div>; }
       }`,
     );
     expect(result.diagnostics).toHaveLength(1);

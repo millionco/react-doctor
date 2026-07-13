@@ -15,6 +15,18 @@ const expectPass = (code: string): void => {
 };
 
 describe("js-performance/async-parallel — regressions", () => {
+  it("flags independent visible helpers even when they are named query", () => {
+    expectFail(
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; async function load() { const first = await query(1); const second = await query(2); const third = await query(3); return [first, second, third]; }`,
+    );
+  });
+
+  it("flags independent bare awaits of a visible commutative Promise<void> helper", () => {
+    expectFail(
+      `const double = async (cell) => { await Promise.resolve(); cell.value *= 2; }; async function update(first, second, third) { await double(first); await double(second); await double(third); }`,
+    );
+  });
+
   it("flags three genuinely independent sequential awaits", () => {
     expectFail(
       `async function load(){ const a = await getA(); const b = await getB(); const c = await getC(); }`,

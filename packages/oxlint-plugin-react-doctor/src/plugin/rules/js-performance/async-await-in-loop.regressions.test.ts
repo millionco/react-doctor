@@ -3,6 +3,15 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { asyncAwaitInLoop } from "./async-await-in-loop.js";
 
 describe("js-performance/async-await-in-loop — regressions", () => {
+  it("flags an independent visible helper even when it is named query", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const query = async (item) => { await Promise.resolve(); return item * 2; }; async function load(items) { for (const item of items) { await query(item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("stays silent on a loop-carried dependency flowing through push + read", () => {
     const result = runRule(
       asyncAwaitInLoop,

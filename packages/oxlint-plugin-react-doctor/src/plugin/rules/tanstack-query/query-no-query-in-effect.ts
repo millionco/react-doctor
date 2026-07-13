@@ -10,6 +10,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getRangeStart } from "../../utils/get-range-start.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -26,25 +27,24 @@ const isStaticRefetchMember = (memberExpression: EsTreeNodeOfType<"MemberExpress
     memberExpression.computed &&
     memberExpression.property.value === "refetch");
 
-const refetchMemberWriteCache = new WeakMap<EsTreeNode, Map<number, boolean>>();
-
-const hasRefetchMemberWrite = (expression: EsTreeNode, context: RuleContext): boolean => {
+const hasRefetchMemberWriteBefore = (
+  expression: EsTreeNode,
+  boundary: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   const unwrappedExpression = stripParenExpression(expression);
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return false;
   const resultSymbol = resolveConstIdentifierAlias(unwrappedExpression, context.scopes);
   if (!resultSymbol) return false;
   const program = findProgramRoot(expression);
   if (!program) return true;
-  let writesBySymbolId = refetchMemberWriteCache.get(program);
-  if (!writesBySymbolId) {
-    writesBySymbolId = new Map();
-    refetchMemberWriteCache.set(program, writesBySymbolId);
-  }
-  const cachedResult = writesBySymbolId.get(resultSymbol.id);
-  if (cachedResult !== undefined) return cachedResult;
+  const boundaryStart = getRangeStart(boundary);
+  if (boundaryStart === null) return true;
   let hasWrite = false;
   walkAst(program, (node) => {
     if (!isNodeOfType(node, "MemberExpression") || !isStaticRefetchMember(node)) return;
+    const writeStart = getRangeStart(node);
+    if (writeStart === null || writeStart >= boundaryStart) return;
     const parent = node.parent;
     const isWrite =
       (isNodeOfType(parent, "AssignmentExpression") && parent.left === node) ||
@@ -59,7 +59,6 @@ const hasRefetchMemberWrite = (expression: EsTreeNode, context: RuleContext): bo
       return false;
     }
   });
-  writesBySymbolId.set(resultSymbol.id, hasWrite);
   return hasWrite;
 };
 
@@ -73,7 +72,7 @@ const isTanstackRefetchExpression = (
     return (
       isStaticRefetchMember(unwrappedExpression) &&
       isTanstackQueryResult(unwrappedExpression.object, context) &&
-      !hasRefetchMemberWrite(unwrappedExpression.object, context)
+      !hasRefetchMemberWriteBefore(unwrappedExpression.object, unwrappedExpression, context)
     );
   }
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return false;
@@ -94,7 +93,11 @@ const isTanstackRefetchExpression = (
     getStaticPropertyKeyName(bindingProperty, { allowComputedString: true }) === "refetch"
   ) {
     const initializer = symbol.declarationNode.init;
-    return Boolean(initializer && isTanstackQueryResult(initializer, context));
+    return Boolean(
+      initializer &&
+      isTanstackQueryResult(initializer, context) &&
+      !hasRefetchMemberWriteBefore(initializer, symbol.declarationNode, context),
+    );
   }
   return Boolean(
     symbol.declarationNode.id === symbol.bindingIdentifier &&

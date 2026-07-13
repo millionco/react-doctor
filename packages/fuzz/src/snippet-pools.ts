@@ -204,6 +204,7 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `reaction(() => store.value, (next) => persist(next));`,
   `let sharedSnapshot = "idle"; const snapshotListeners = new Set(); function subscribeSnapshot(listener) { snapshotListeners.add(listener); return () => snapshotListeners.delete(listener); }`,
   `const FuzzPolyfillScript = () => <script src="https://polyfill.io/v3/polyfill.min.js" />;`,
+  `import FuzzRawMarkdown from "react-markdown"; import fuzzRawPlugin from "rehype-raw"; export const FuzzRawMarkdownPreview = ({ value }) => <FuzzRawMarkdown rehypePlugins={[fuzzRawPlugin]}>{String(value)}</FuzzRawMarkdown>;`,
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
@@ -387,6 +388,7 @@ export const JSX_LEAF_POOL = [
   `<time>{new Date(value).toLocaleString()}</time>`,
   `<span>{new Intl.DateTimeFormat().format(state)}</span>`,
   `<time>{new Intl.DateTimeFormat("en-US", localeOptionsAlias).format(new Date(value))}</time>`,
+  `<FuzzMarkdown rehypePlugins={[fuzzRehypeRaw]}>{String(value)}</FuzzMarkdown>`,
 ] as const;
 
 // Rare-but-parseable weirdness kept from the original generator, plus
@@ -448,6 +450,7 @@ export const IMPORT_LINE_POOL = [
   `import { z as fuzzZodErrorCustomization } from "zod/v4"; const fuzzZodRequiredSchema = fuzzZodErrorCustomization.string("Required");`,
   `import { ZodError as FuzzZodError } from "zod/v4"; const fuzzZodFlattenedError = new FuzzZodError([]).flatten();`,
   `import { forwardRef } from "react";\nconst FuzzForwardRefComponent = forwardRef((props) => <button>{props.label}</button>);`,
+  `import FuzzMarkdown from "react-markdown";\nimport fuzzRehypeRaw from "rehype-raw";`,
 ] as const;
 
 // Filenames rotate per iteration because a large rule population is

@@ -306,6 +306,7 @@ import { queryStableQueryClient } from "./rules/tanstack-query/query-stable-quer
 import { rawSqlInjectionRisk } from "./rules/security-scan/raw-sql-injection-risk.js";
 import { reactCompilerNoManualMemoization } from "./rules/architecture/react-compiler-no-manual-memoization.js";
 import { reactInJsxScope } from "./rules/react-builtins/react-in-jsx-scope.js";
+import { reactMarkdownUnsanitizedRawHtml } from "./rules/security/react-markdown-unsanitized-raw-html.js";
 import { reduxUseselectorInlineDerivation } from "./rules/state-and-effects/redux-useselector-inline-derivation.js";
 import { reduxUseselectorReturnsNewCollection } from "./rules/state-and-effects/redux-useselector-returns-new-collection.js";
 import { renderingAnimateSvgWrapper } from "./rules/performance/rendering-animate-svg-wrapper.js";
@@ -3926,6 +3927,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(reactInJsxScope.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/react-markdown-unsanitized-raw-html",
+    id: "react-markdown-unsanitized-raw-html",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactMarkdownUnsanitizedRawHtml,
+      framework: "global",
+      category: "Security",
     },
   },
   {

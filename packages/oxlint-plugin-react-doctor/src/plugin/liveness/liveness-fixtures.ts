@@ -1042,6 +1042,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "var App, a = <App />;",
     forceJsx: true,
   },
+  "react-markdown-unsanitized-raw-html": {
+    code: 'import Markdown from "react-markdown";\nimport raw from "rehype-raw";\nexport const Preview = ({ content }) => <Markdown rehypePlugins={[raw]}>{content}</Markdown>;',
+    filePath: "src/preview.tsx",
+  },
   "redux-useselector-inline-derivation": {
     code: '\n      import { useSelector } from "react-redux";\n\n      const activeUsers = useSelector((state) =>\n        state.users.filter((user) => new Date(user.loginDate).getFullYear() === 2023),\n      );\n    ',
   },

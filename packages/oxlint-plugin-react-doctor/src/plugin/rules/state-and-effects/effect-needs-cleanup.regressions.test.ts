@@ -1820,6 +1820,14 @@ export const OutsideAction = ({ onOutsideAction, shouldRecurse }) => {
   });
 });
 
+interface RefOwnedKeepCase {
+  name: string;
+  releaseStatement?: string;
+  unmountEffect?: string;
+  sessionAssignment?: string;
+  setupListener?: string;
+}
+
 describe("effect-needs-cleanup ref-owned retained listener cleanup", () => {
   it("accepts exact ref-owned listeners released by a stable unmount cleanup", () => {
     const result = runRule(
@@ -2072,176 +2080,85 @@ export const useResizableColumns = ({ enabled }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it.each([
-    {
-      name: "no unmount effect",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        document.removeEventListener("mousemove", session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
-      unmountEffect: "",
-      sessionAssignment: "activeSessionRef.current = { handleMouseMove };",
-      setupListener: 'document.addEventListener("mousemove", handleMouseMove);',
-    },
+  const refOwnedKeepCases: RefOwnedKeepCase[] = [
+    { name: "no unmount effect", unmountEffect: "" },
     {
       name: "effect invocation without a returned cleanup",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        document.removeEventListener("mousemove", session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
       unmountEffect: "useEffect(() => { stopResize(); }, [stopResize]);",
-      sessionAssignment: "activeSessionRef.current = { handleMouseMove };",
-      setupListener: 'document.addEventListener("mousemove", handleMouseMove);',
     },
     {
       name: "conditional unmount return",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        document.removeEventListener("mousemove", session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
       unmountEffect:
         "useEffect(() => { if (enabled) return stopResize; return undefined; }, [enabled, stopResize]);",
-      sessionAssignment: "activeSessionRef.current = { handleMouseMove };",
-      setupListener: 'document.addEventListener("mousemove", handleMouseMove);',
     },
     {
       name: "mismatched event name",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        document.removeEventListener("mouseup", session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
-      unmountEffect: "useEffect(() => stopResize, [stopResize]);",
-      sessionAssignment: "activeSessionRef.current = { handleMouseMove };",
-      setupListener: 'document.addEventListener("mousemove", handleMouseMove);',
+      releaseStatement: 'document.removeEventListener("mouseup", session.handleMouseMove);',
     },
     {
       name: "mismatched target",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        window.removeEventListener("mousemove", session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
-      unmountEffect: "useEffect(() => stopResize, [stopResize]);",
-      sessionAssignment: "activeSessionRef.current = { handleMouseMove };",
-      setupListener: 'document.addEventListener("mousemove", handleMouseMove);',
+      releaseStatement: 'window.removeEventListener("mousemove", session.handleMouseMove);',
     },
     {
       name: "mismatched stored callback",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        document.removeEventListener("mousemove", session.handleMouseUp);
-        activeSessionRef.current = null;
-      }, []);`,
-      unmountEffect: "useEffect(() => stopResize, [stopResize]);",
+      releaseStatement: 'document.removeEventListener("mousemove", session.handleMouseUp);',
       sessionAssignment: "activeSessionRef.current = { handleMouseMove, handleMouseUp: () => {} };",
-      setupListener: 'document.addEventListener("mousemove", handleMouseMove);',
     },
     {
       name: "unrelated conditional removal",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        if (enabled) document.removeEventListener("mousemove", session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
-      unmountEffect: "useEffect(() => stopResize, [stopResize]);",
-      sessionAssignment: "activeSessionRef.current = { handleMouseMove };",
-      setupListener: 'document.addEventListener("mousemove", handleMouseMove);',
+      releaseStatement:
+        'if (enabled) document.removeEventListener("mousemove", session.handleMouseMove);',
     },
     {
       name: "unsafe ref overwrite",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        document.removeEventListener("mousemove", session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
-      unmountEffect: "useEffect(() => stopResize, [stopResize]);",
       sessionAssignment:
         "activeSessionRef.current = { handleMouseMove }; activeSessionRef.current = null;",
-      setupListener: 'document.addEventListener("mousemove", handleMouseMove);',
     },
     {
       name: "stored handler overwrite",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        document.removeEventListener("mousemove", session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
-      unmountEffect: "useEffect(() => stopResize, [stopResize]);",
       sessionAssignment:
         "activeSessionRef.current = { handleMouseMove }; activeSessionRef.current.handleMouseMove = () => {};",
-      setupListener: 'document.addEventListener("mousemove", handleMouseMove);',
     },
     {
       name: "stored handler deletion",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        document.removeEventListener("mousemove", session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
-      unmountEffect: "useEffect(() => stopResize, [stopResize]);",
       sessionAssignment:
         "activeSessionRef.current = { handleMouseMove }; delete activeSessionRef.current.handleMouseMove;",
-      setupListener: 'document.addEventListener("mousemove", handleMouseMove);',
     },
     {
       name: "capture mismatch",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        document.removeEventListener("mousemove", session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
-      unmountEffect: "useEffect(() => stopResize, [stopResize]);",
-      sessionAssignment: "activeSessionRef.current = { handleMouseMove };",
       setupListener: 'document.addEventListener("mousemove", handleMouseMove, true);',
     },
     {
       name: "render-varying target",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        target.removeEventListener("mousemove", session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
-      unmountEffect: "useEffect(() => stopResize, [stopResize]);",
-      sessionAssignment: "activeSessionRef.current = { handleMouseMove };",
+      releaseStatement: 'target.removeEventListener("mousemove", session.handleMouseMove);',
       setupListener: 'target.addEventListener("mousemove", handleMouseMove);',
     },
     {
       name: "render-varying event name",
-      cleanupDefinition: `const stopResize = useCallback(() => {
-        const session = activeSessionRef.current;
-        if (!session) return;
-        document.removeEventListener(eventName, session.handleMouseMove);
-        activeSessionRef.current = null;
-      }, []);`,
-      unmountEffect: "useEffect(() => stopResize, [stopResize]);",
-      sessionAssignment: "activeSessionRef.current = { handleMouseMove };",
+      releaseStatement: "document.removeEventListener(eventName, session.handleMouseMove);",
       setupListener: "document.addEventListener(eventName, handleMouseMove);",
     },
-  ])(
+  ];
+
+  it.each(refOwnedKeepCases)(
     "keeps $name diagnostic",
-    ({ cleanupDefinition, unmountEffect, sessionAssignment, setupListener }) => {
+    ({
+      releaseStatement = 'document.removeEventListener("mousemove", session.handleMouseMove);',
+      unmountEffect = "useEffect(() => stopResize, [stopResize]);",
+      sessionAssignment = "activeSessionRef.current = { handleMouseMove };",
+      setupListener = 'document.addEventListener("mousemove", handleMouseMove);',
+    }) => {
       const result = runRule(
         effectNeedsCleanup,
         `import { useCallback, useEffect, useRef } from "react";
 export const useResizableColumns = ({ enabled, eventName, target }) => {
   const activeSessionRef = useRef(null);
-  ${cleanupDefinition}
+  const stopResize = useCallback(() => {
+    const session = activeSessionRef.current;
+    if (!session) return;
+    ${releaseStatement}
+    activeSessionRef.current = null;
+  }, []);
   ${unmountEffect}
   const startResize = useCallback(() => {
     stopResize();

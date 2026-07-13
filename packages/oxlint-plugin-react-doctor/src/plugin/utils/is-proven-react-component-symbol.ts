@@ -62,12 +62,8 @@ const isProvenReactComponentExpression = (
     );
   }
   if (!isNodeOfType(candidate, "CallExpression")) return false;
-  if (
-    isReactApiCall(candidate, REACT_COMPONENT_HOC_NAMES, scopes, {
-      resolveNamedAliases: true,
-    }) &&
-    hasStableCallTarget(candidate, scopes)
-  ) {
+  if (!hasStableCallTarget(candidate, scopes)) return false;
+  if (isReactApiCall(candidate, REACT_COMPONENT_HOC_NAMES, scopes, { resolveNamedAliases: true })) {
     const wrappedComponent = candidate.arguments[0];
     return Boolean(
       wrappedComponent &&
@@ -75,12 +71,7 @@ const isProvenReactComponentExpression = (
       isProvenReactComponentExpression(wrappedComponent, scopes, visitedSymbolIds),
     );
   }
-  if (
-    !isReactApiCall(candidate, "useMemo", scopes, { resolveNamedAliases: true }) ||
-    !hasStableCallTarget(candidate, scopes)
-  ) {
-    return false;
-  }
+  if (!isReactApiCall(candidate, "useMemo", scopes, { resolveNamedAliases: true })) return false;
   const factory = candidate.arguments[0];
   if (!factory || isNodeOfType(factory, "SpreadElement")) return false;
   const unwrappedFactory = stripParenExpression(factory);

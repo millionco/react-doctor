@@ -7,8 +7,6 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
-const STYLED_COMPONENT_MODULE_SOURCES: ReadonlySet<string> = new Set(["styled-components"]);
-
 const findFactoryRoot = (node: EsTreeNode): EsTreeNode | null => {
   const candidate = stripParenExpression(node);
   if (isNodeOfType(candidate, "Identifier")) return candidate;
@@ -51,7 +49,6 @@ export const isProvenStyledComponentExpression = (
   return Boolean(
     importDeclaration &&
     isNodeOfType(importDeclaration, "ImportDeclaration") &&
-    typeof importDeclaration.source.value === "string" &&
-    STYLED_COMPONENT_MODULE_SOURCES.has(importDeclaration.source.value),
+    importDeclaration.source.value === "styled-components",
   );
 };

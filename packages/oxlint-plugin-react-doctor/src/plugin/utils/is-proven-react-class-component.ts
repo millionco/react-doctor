@@ -10,20 +10,6 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 
 const REACT_COMPONENT_CLASS_NAMES: ReadonlySet<string> = new Set(["Component", "PureComponent"]);
 
-const isReactComponentClassMember = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const expression = stripParenExpression(node);
-  if (!isNodeOfType(expression, "MemberExpression")) return false;
-  const propertyName = getStaticPropertyName(expression);
-  const receiver = stripParenExpression(expression.object);
-  return Boolean(
-    propertyName &&
-    REACT_COMPONENT_CLASS_NAMES.has(propertyName) &&
-    isNodeOfType(receiver, "Identifier") &&
-    !hasStaticPropertyWriteBefore(receiver, propertyName, expression, scopes) &&
-    isReactNamespaceImport(receiver, scopes),
-  );
-};
-
 const isReactComponentClassValue = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -32,7 +18,15 @@ const isReactComponentClassValue = (
 ): boolean => {
   const expression = stripParenExpression(node);
   if (isNodeOfType(expression, "MemberExpression")) {
-    return isReactComponentClassMember(expression, scopes);
+    const propertyName = getStaticPropertyName(expression);
+    const receiver = stripParenExpression(expression.object);
+    return Boolean(
+      propertyName &&
+      REACT_COMPONENT_CLASS_NAMES.has(propertyName) &&
+      isNodeOfType(receiver, "Identifier") &&
+      !hasStaticPropertyWriteBefore(receiver, propertyName, expression, scopes) &&
+      isReactNamespaceImport(receiver, scopes),
+    );
   }
   if (isNodeOfType(expression, "ClassExpression")) {
     return isProvenReactClassComponent(expression, scopes, visitedClassNodes, visitedSymbolIds);

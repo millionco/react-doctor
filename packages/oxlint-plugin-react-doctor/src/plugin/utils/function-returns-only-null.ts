@@ -17,9 +17,8 @@ export const functionReturnsOnlyNull = (functionNode: EsTreeNode): boolean => {
   const returnStatements = collectFunctionReturnStatements(functionNode);
   return (
     returnStatements.length > 0 &&
-    returnStatements.every((returnStatement) => {
-      const returnExpression = returnStatement.argument;
-      return Boolean(returnExpression && isNullExpression(returnExpression));
-    })
+    returnStatements.every((returnStatement) =>
+      Boolean(returnStatement.argument && isNullExpression(returnStatement.argument)),
+    )
   );
 };

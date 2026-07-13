@@ -180,11 +180,9 @@ const symbolHasStaticPropertyWriteBefore = (
   scopes: ScopeAnalysis,
 ): boolean =>
   symbol.references.some((reference) => {
-    let receiver: EsTreeNode = reference.identifier;
-    let parent = receiver.parent;
+    let parent = reference.identifier.parent;
     while (parent && stripParenExpression(parent) === reference.identifier) {
-      receiver = parent;
-      parent = receiver.parent;
+      parent = parent.parent;
     }
     if (
       !parent ||

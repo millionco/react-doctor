@@ -7,6 +7,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 // HACK: React 19 removed runtime `propTypes` validation entirely —
 // React no longer reads `Component.propTypes`, so invalid props that
@@ -18,10 +19,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 //   Component.propTypes = { value: PropTypes.number };   // assignment
 //   class Component { static propTypes = { ... }; }       // class field
 //
-// Component provenance is resolved through render output, immutable value
-// snapshots, proven React wrappers, and React class ancestry. The whole rule
-// is version-gated on `react:19` so pre-19 projects — where `propTypes` still
-// runs — stay quiet.
+// The whole rule is version-gated on `react:19` so pre-19 projects —
+// where `propTypes` still runs — stay quiet.
 const PROP_TYPES_PROPERTY = "propTypes";
 
 const isPropTypesKey = (key: EsTreeNode | null | undefined, computed: boolean): boolean => {
@@ -43,14 +42,12 @@ const getComponentFromPropTypesAssignment = (
 
 const getComponentNameFromClassProperty = (
   node: EsTreeNodeOfType<"PropertyDefinition">,
+  scopes: ScopeAnalysis,
 ): string | null => {
   if (!node.static) return null;
   if (!isPropTypesKey(node.key, Boolean(node.computed))) return null;
-
-  const classBody = node.parent;
-  if (!isNodeOfType(classBody, "ClassBody")) return null;
-  const classNode = classBody.parent;
-  if (!classNode) return null;
+  const classNode = isNodeOfType(node.parent, "ClassBody") ? node.parent.parent : null;
+  if (!classNode || !isProvenReactClassComponent(classNode, scopes)) return null;
 
   if (
     (isNodeOfType(classNode, "ClassDeclaration") || isNodeOfType(classNode, "ClassExpression")) &&
@@ -88,17 +85,12 @@ export const noPropTypes = defineRule({
       const component = getComponentFromPropTypesAssignment(node.left);
       if (!component) return;
       const symbol = context.scopes.symbolFor(component);
-      if (!symbol) return;
-      if (!isProvenReactComponentSymbol(symbol, context.scopes, component)) return;
+      if (!symbol || !isProvenReactComponentSymbol(symbol, context.scopes, component)) return;
       context.report({ node: node.left, message: buildMessage(component.name) });
     },
     PropertyDefinition(node: EsTreeNodeOfType<"PropertyDefinition">) {
-      const componentName = getComponentNameFromClassProperty(node);
+      const componentName = getComponentNameFromClassProperty(node, context.scopes);
       if (!componentName) return;
-      const classBody = node.parent;
-      if (!isNodeOfType(classBody, "ClassBody")) return;
-      const classNode = classBody.parent;
-      if (!classNode || !isProvenReactClassComponent(classNode, context.scopes)) return;
       context.report({ node: node.key, message: buildMessage(componentName) });
     },
   }),

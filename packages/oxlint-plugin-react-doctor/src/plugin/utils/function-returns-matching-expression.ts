@@ -6,10 +6,8 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const collectReturnedExpressions = (functionNode: EsTreeNode): EsTreeNode[] => {
-  if (!isFunctionLike(functionNode)) return [];
-  const body = functionNode.body;
-  if (!body) return [];
-  if (!isNodeOfType(body, "BlockStatement")) return [body];
+  if (!isFunctionLike(functionNode) || !functionNode.body) return [];
+  if (!isNodeOfType(functionNode.body, "BlockStatement")) return [functionNode.body];
   return collectFunctionReturnStatements(functionNode).flatMap((returnStatement) =>
     returnStatement.argument ? [returnStatement.argument] : [],
   );

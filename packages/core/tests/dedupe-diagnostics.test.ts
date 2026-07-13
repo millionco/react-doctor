@@ -16,6 +16,21 @@ const buildDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
   ...overrides,
 });
 
+const buildNativeHookDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic =>
+  buildDiagnostic({
+    rule: "rules-of-hooks",
+    message: "React Hook is called conditionally",
+    ...overrides,
+  });
+
+const buildCompilerHookDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic =>
+  buildDiagnostic({
+    plugin: "react-hooks-js",
+    rule: "hooks",
+    message: "Hooks must always be called in a consistent order",
+    ...overrides,
+  });
+
 describe("dedupeDiagnostics", () => {
   it("returns an empty array for an empty input", () => {
     expect(dedupeDiagnostics([])).toEqual([]);
@@ -53,15 +68,8 @@ describe("dedupeDiagnostics", () => {
   });
 
   it("keeps the React Doctor rules-of-hooks diagnostic when the compiler reports the same site", () => {
-    const reactDoctorDiagnostic = buildDiagnostic({
-      rule: "rules-of-hooks",
-      message: "React Hook is called conditionally",
-    });
-    const compilerDiagnostic = buildDiagnostic({
-      plugin: "react-hooks-js",
-      rule: "hooks",
-      message: "Hooks must always be called in a consistent order",
-    });
+    const reactDoctorDiagnostic = buildNativeHookDiagnostic();
+    const compilerDiagnostic = buildCompilerHookDiagnostic();
 
     expect(dedupeRelatedDiagnostics([compilerDiagnostic, reactDoctorDiagnostic])).toEqual([
       reactDoctorDiagnostic,
@@ -72,17 +80,8 @@ describe("dedupeDiagnostics", () => {
   });
 
   it("preserves compiler Hook findings at a nearby distinct site", () => {
-    const reactDoctorDiagnostic = buildDiagnostic({
-      rule: "rules-of-hooks",
-      message: "React Hook is called conditionally",
-      column: 5,
-    });
-    const compilerDiagnostic = buildDiagnostic({
-      plugin: "react-hooks-js",
-      rule: "hooks",
-      message: "Hooks must always be called in a consistent order",
-      column: 20,
-    });
+    const reactDoctorDiagnostic = buildNativeHookDiagnostic({ column: 5 });
+    const compilerDiagnostic = buildCompilerHookDiagnostic({ column: 20 });
 
     expect(dedupeRelatedDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
       reactDoctorDiagnostic,
@@ -91,29 +90,19 @@ describe("dedupeDiagnostics", () => {
   });
 
   it("preserves standalone compiler Hook findings", () => {
-    const compilerDiagnostic = buildDiagnostic({
-      plugin: "react-hooks-js",
-      rule: "hooks",
-      message: "Hooks must always be called in a consistent order",
-    });
+    const compilerDiagnostic = buildCompilerHookDiagnostic();
 
     expect(dedupeRelatedDiagnostics([compilerDiagnostic])).toEqual([compilerDiagnostic]);
   });
 
   it("preserves native Hook findings when the compiler is disabled", () => {
-    const reactDoctorDiagnostic = buildDiagnostic({
-      rule: "rules-of-hooks",
-      message: "React Hook is called conditionally",
-    });
+    const reactDoctorDiagnostic = buildNativeHookDiagnostic();
 
     expect(dedupeRelatedDiagnostics([reactDoctorDiagnostic])).toEqual([reactDoctorDiagnostic]);
   });
 
   it("preserves unrelated compiler diagnostics at the same site", () => {
-    const reactDoctorDiagnostic = buildDiagnostic({
-      rule: "rules-of-hooks",
-      message: "React Hook is called conditionally",
-    });
+    const reactDoctorDiagnostic = buildNativeHookDiagnostic();
     const compilerDiagnostic = buildDiagnostic({
       plugin: "react-hooks-js",
       rule: "set-state-in-effect",
@@ -127,16 +116,8 @@ describe("dedupeDiagnostics", () => {
   });
 
   it("preserves compiler Hook findings in a different file at the same position", () => {
-    const reactDoctorDiagnostic = buildDiagnostic({
-      rule: "rules-of-hooks",
-      message: "React Hook is called conditionally",
-    });
-    const compilerDiagnostic = buildDiagnostic({
-      filePath: "src/Other.tsx",
-      plugin: "react-hooks-js",
-      rule: "hooks",
-      message: "Hooks must always be called in a consistent order",
-    });
+    const reactDoctorDiagnostic = buildNativeHookDiagnostic();
+    const compilerDiagnostic = buildCompilerHookDiagnostic({ filePath: "src/Other.tsx" });
 
     expect(dedupeRelatedDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
       reactDoctorDiagnostic,

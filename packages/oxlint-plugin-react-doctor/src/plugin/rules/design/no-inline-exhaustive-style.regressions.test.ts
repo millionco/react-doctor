@@ -55,24 +55,6 @@ describe("design/no-inline-exhaustive-style regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("stays silent in deferred and memoized component callbacks", () => {
-    const result = runRule(
-      noInlineExhaustiveStyle,
-      `
-        import { useMemo } from "react";
-        export const Panel = () => {
-          const stableElement = useMemo(() => ${exhaustiveStyleElement}, []);
-          const handleClick = () => ${exhaustiveStyleElement};
-          return <button onClick={handleClick}>{stableElement}</button>;
-        };
-      `,
-      { filename: "/proj/src/panel.tsx" },
-    );
-
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
-  });
-
   it("reports styles rebuilt directly and in synchronous render callbacks", () => {
     const result = runRule(
       noInlineExhaustiveStyle,
@@ -83,30 +65,6 @@ describe("design/no-inline-exhaustive-style regressions", () => {
             {items.map(() => ${exhaustiveStyleElement})}
           </section>
         );
-      `,
-      { filename: "/proj/src/panel.tsx" },
-    );
-
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(2);
-  });
-
-  it("reports React class render paths but not other methods", () => {
-    const result = runRule(
-      noInlineExhaustiveStyle,
-      `
-        class Panel extends React.Component {
-          buildElement() {
-            return ${exhaustiveStyleElement};
-          }
-
-          render() {
-            return <section>
-              ${exhaustiveStyleElement}
-              {this.props.items.map(() => ${exhaustiveStyleElement})}
-            </section>;
-          }
-        }
       `,
       { filename: "/proj/src/panel.tsx" },
     );

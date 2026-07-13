@@ -501,7 +501,7 @@ const readListenerCandidate = (
   const targetKey = resolveTargetKey(targetNode, context);
   const eventName = resolveStaticEventName(node.arguments?.[0], context);
   const callbackIdentity = resolveCallbackIdentity(node.arguments?.[1], context);
-  const capture = resolveEventListenerCapture(node.arguments?.[2]);
+  const capture = resolveEventListenerCapture(node.arguments?.[2], { allowComputedString: true });
   if (targetKey === null || eventName === null) return null;
   return { node, targetKey, eventName, callbackIdentity, capture };
 };
@@ -548,7 +548,7 @@ const readDestructuredRemovalCandidate = (
     targetKey,
     eventName,
     callbackIdentity: resolveCallbackIdentity(node.arguments?.[2], context),
-    capture: resolveEventListenerCapture(node.arguments?.[3]),
+    capture: resolveEventListenerCapture(node.arguments?.[3], { allowComputedString: true }),
   };
 };
 

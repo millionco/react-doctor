@@ -32,6 +32,7 @@ import {
   isCleanupReturningSubscribeLikeCallExpression,
   isSubscribeLikeCallExpression,
 } from "./utils/is-subscribe-like-call-expression.js";
+import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -659,32 +660,6 @@ const resolveStableLoopHandlerSymbolId = (
     return null;
   }
   return symbol.id;
-};
-
-const resolveStaticEventListenerCapture = (
-  expression: EsTreeNode | null | undefined,
-): boolean | null => {
-  if (!expression) return false;
-  const unwrappedExpression = stripParenExpression(expression);
-  if (isNodeOfType(unwrappedExpression, "Literal")) {
-    return typeof unwrappedExpression.value === "boolean" ? unwrappedExpression.value : null;
-  }
-  if (!isNodeOfType(unwrappedExpression, "ObjectExpression")) return null;
-  let captureValue: boolean | null = false;
-  for (const property of unwrappedExpression.properties ?? []) {
-    if (isNodeOfType(property, "SpreadElement")) {
-      captureValue = null;
-      continue;
-    }
-    if (!isNodeOfType(property, "Property")) return null;
-    const propertyName = getStaticPropertyKeyName(property);
-    if (propertyName === null || (!property.computed && propertyName === "__proto__")) return null;
-    if (propertyName !== "capture") continue;
-    const value = stripParenExpression(property.value);
-    captureValue =
-      isNodeOfType(value, "Literal") && typeof value.value === "boolean" ? value.value : null;
-  }
-  return captureValue;
 };
 
 const isDirectExhaustiveForOfRelease = (
@@ -1676,7 +1651,7 @@ const doesReleaseCallMatchUsage = (
     ) {
       return false;
     }
-    if (usageForOfStatement) {
+    if (usageForOfStatement && releaseForOfStatement) {
       const registrationHandlerSymbolId = resolveStableLoopHandlerSymbolId(
         usage.node.arguments?.[1],
         context,
@@ -1701,8 +1676,12 @@ const doesReleaseCallMatchUsage = (
       ) {
         return false;
       }
-      const registrationCapture = resolveStaticEventListenerCapture(usage.node.arguments?.[2]);
-      const releaseCapture = resolveStaticEventListenerCapture(callNode.arguments?.[2]);
+      const registrationCapture = resolveEventListenerCapture(usage.node.arguments?.[2], {
+        allowIndeterminateEntries: true,
+      });
+      const releaseCapture = resolveEventListenerCapture(callNode.arguments?.[2], {
+        allowIndeterminateEntries: true,
+      });
       if (
         registrationCapture === null ||
         releaseCapture === null ||
@@ -1710,6 +1689,7 @@ const doesReleaseCallMatchUsage = (
       ) {
         return false;
       }
+      if (!isDirectExhaustiveForOfRelease(callNode, releaseForOfStatement)) return false;
     }
   }
   if (releaseVerbName === "on") {

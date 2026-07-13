@@ -28,7 +28,7 @@ export const NON_BLOCKING_REACT_DOCTOR_COMMAND = [
 ].join(" ");
 const PACKAGE_JSON_FILE_NAME = "package.json";
 
-const executeGit = (projectRoot: string, args: ReadonlyArray<string>): string | null => {
+export const runGitRaw = (projectRoot: string, args: ReadonlyArray<string>): string | null => {
   try {
     return execFileSync("git", [...args], {
       cwd: projectRoot,
@@ -42,10 +42,7 @@ const executeGit = (projectRoot: string, args: ReadonlyArray<string>): string | 
 };
 
 export const runGit = (projectRoot: string, args: ReadonlyArray<string>): string | null =>
-  executeGit(projectRoot, args)?.trim() ?? null;
-
-export const runGitRaw = (projectRoot: string, args: ReadonlyArray<string>): string | null =>
-  executeGit(projectRoot, args);
+  runGitRaw(projectRoot, args)?.trim() ?? null;
 
 export const resolveGitPath = (baseDirectory: string, value: string): string =>
   path.isAbsolute(value) ? value : path.resolve(baseDirectory, value);

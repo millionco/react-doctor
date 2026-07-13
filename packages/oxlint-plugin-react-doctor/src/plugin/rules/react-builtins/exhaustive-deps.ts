@@ -343,7 +343,7 @@ interface CaptureCollection {
 const collectCaptureDepKeys = (
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
-  declaredKeys?: ReadonlySet<string>,
+  declaredExactBindingKeys?: ReadonlySet<string>,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -382,7 +382,7 @@ const collectCaptureDepKeys = (
       continue;
     }
     if (depKey === symbol.name) {
-      if (declaredKeys?.has(depKey)) {
+      if (declaredExactBindingKeys?.has(depKey)) {
         keys.add(depKey);
         continue;
       }
@@ -1338,6 +1338,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
         }
 
         const declaredKeys = new Set<string>();
+        const declaredExactBindingKeys = new Set<string>();
         const declaredKeyToReportNode = new Map<string, EsTreeNode>();
         const seenDeclaredKeys = new Set<string>();
         let didReportRefCurrentDep = false;
@@ -1412,6 +1413,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           }
           seenDeclaredKeys.add(key);
           declaredKeys.add(key);
+          if (isNodeOfType(stripped, "Identifier")) declaredExactBindingKeys.add(key);
           declaredKeyToReportNode.set(key, elementNode);
         }
         const {
@@ -1422,7 +1424,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
         } = collectCaptureDepKeys(
           callbackToAnalyze ?? callbackArgument,
           context.scopes,
-          declaredKeys,
+          declaredExactBindingKeys,
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

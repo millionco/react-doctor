@@ -1004,6 +1004,19 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("does not treat a call dependency as the exact derived binding", () => {
+      const code = `
+        function Cell({ direct, fallback }) {
+          const effectiveCallback = direct ?? fallback;
+          return useCallback(() => effectiveCallback?.(), [effectiveCallback()]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("direct, fallback");
+    });
+
     const authenticCellFixtures = [
       [
         "564623E direct-first whole-context callbacks",

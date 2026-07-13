@@ -67,6 +67,162 @@ describe("no-prop-callback-in-render", () => {
          if (error) onError(error);
        };`,
     ],
+    [
+      "a handler method on a custom hook options parameter",
+      `const useNotifyError = (options) => {
+         options.onError();
+       };`,
+    ],
+    [
+      "a static-computed handler method on a custom hook options parameter",
+      `const useNotifyError = (options) => {
+         options["handleError"]();
+       };`,
+    ],
+    [
+      "an optional handler method on a custom hook options parameter",
+      `const useNotifyError = (options) => {
+         options?.onError?.();
+       };`,
+    ],
+    [
+      "call on a custom hook callback parameter",
+      `const useNotifyError = (notify) => {
+         notify.call(null);
+       };`,
+    ],
+    [
+      "static-computed apply on a custom hook callback parameter",
+      `const useNotifyError = (notify) => {
+         notify["apply"](null, []);
+       };`,
+    ],
+    [
+      "a destructured callback from a custom hook options parameter",
+      `const useNotifyError = (options) => {
+         const { notify } = options;
+         notify();
+       };`,
+    ],
+    [
+      "an opaque method on a custom hook parameter",
+      `const useRegistry = (registry) => {
+         registry.query();
+       };`,
+    ],
+    [
+      "a mutating method on a typed store hook parameter",
+      `interface Store<T> { setState(value: T): void }
+       const useStoreSync = <T,>(store: Store<T>, state: T) => {
+         store.setState(state);
+       };`,
+    ],
+    [
+      "a mutating array method on a custom hook parameter",
+      `const useMutateItems = (items: string[]) => {
+         items.sort();
+       };`,
+    ],
+    [
+      "a mutating Set method on a custom hook parameter",
+      `const useMutateValues = (values: Set<string>) => {
+         values.add("next");
+       };`,
+    ],
+    [
+      "a mutating Map method on a custom hook parameter",
+      `const useMutateEntries = (entries: Map<string, number>) => {
+         entries.set("next", 1);
+       };`,
+    ],
+    [
+      "a method on a locally shadowed native type name",
+      `type Array<T> = { forEach(callback: (value: T) => void): void };
+       const useItems = (items: Array<string>) => {
+         items.forEach((item) => consume(item));
+       };`,
+    ],
+    [
+      "a callback parameter passed to native iteration",
+      `const useVisitItems = (items: readonly string[], onVisit: (item: string) => void) => {
+         items.forEach(onVisit);
+       };`,
+    ],
+    [
+      "callback values invoked by native iteration",
+      `const useRunCallbacks = (callbacks: ReadonlyArray<() => void>) => {
+         callbacks.forEach((callback) => callback());
+       };`,
+    ],
+    [
+      "callback methods invoked by native iteration",
+      `interface Action { run(): void }
+       const useRunActions = (actions: readonly Action[]) => {
+         actions.forEach((action) => action.run());
+       };`,
+    ],
+    [
+      "callback values invoked by a local iterator binding",
+      `const useRunCallbacks = (callbacks: ReadonlyArray<() => void>) => {
+         const runCallback = (callback: () => void) => callback();
+         callbacks.forEach(runCallback);
+       };`,
+    ],
+    [
+      "aliased callback values invoked by native iteration",
+      `const useRunCallbacks = (callbacks: ReadonlyArray<() => void>) => {
+         callbacks.forEach((callback) => {
+           const firstAlias = callback;
+           const secondAlias = firstAlias;
+           secondAlias();
+         });
+       };`,
+    ],
+    [
+      "destructured callback methods invoked by native iteration",
+      `interface Action { run(): void }
+       const useRunActions = (actions: readonly Action[]) => {
+         actions.forEach((action) => {
+           const { run } = action;
+           run();
+         });
+       };`,
+    ],
+    [
+      "reassigned callback values invoked by native iteration",
+      `const useRunCallbacks = (callbacks: ReadonlyArray<() => void>) => {
+         callbacks.forEach((callback) => {
+           let assignedCallback = () => {};
+           assignedCallback = callback;
+           assignedCallback();
+         });
+       };`,
+    ],
+    [
+      "rest-destructured callback methods invoked by native iteration",
+      `interface Action { run(): void }
+       const useRunActions = (actions: readonly Action[]) => {
+         actions.forEach((action) => {
+           const { ...actionAlias } = action;
+           actionAlias.run();
+         });
+       };`,
+    ],
+    [
+      "array-destructured callback values invoked by native iteration",
+      `const useRunCallbacks = (callbackGroups: ReadonlyArray<readonly [() => void]>) => {
+         callbackGroups.forEach((callbackGroup) => {
+           const [callback] = callbackGroup;
+           callback();
+         });
+       };`,
+    ],
+    [
+      "a callback retrieved from a native collection",
+      `const useRunCallback = (callbacks: ReadonlyMap<string, () => void>) => {
+         callbacks.get("ready")?.();
+       };`,
+    ],
   ])("reports %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -170,6 +326,73 @@ describe("no-prop-callback-in-render", () => {
          items.forEach((item) => { item.validate(); });
          return null;
        };`,
+    ],
+    [
+      "native array iteration on a typed custom hook parameter",
+      `const useItemTotal = (items: readonly string[]) => {
+         let total = 0;
+         items.forEach((item) => { total += item.length; });
+         return total;
+       };`,
+    ],
+    [
+      "native array transforms on a custom hook parameter",
+      `const useItems = (items: readonly string[]) => {
+         items.map((item) => item.length);
+         items.filter((item) => item.length > 0);
+       };`,
+    ],
+    [
+      "native Map and Set iteration on custom hook parameters",
+      `const useEntries = (entries: ReadonlyMap<string, number>, values: ReadonlySet<number>) => {
+         entries.forEach((value) => { consume(value); });
+         values.forEach((value) => { consume(value); });
+       };`,
+    ],
+    [
+      "a read method shared by native collection union members",
+      `const useEntries = (values: readonly string[] | ReadonlySet<string>) => {
+         values.forEach((value) => { consume(value); });
+       };`,
+    ],
+    [
+      "a native string method on a custom hook parameter",
+      `const useNormalizedValue = (value: string) => {
+         value.trim();
+       };`,
+    ],
+    [
+      "non-invoking function and Promise methods on typed custom hook parameters",
+      `const useDeferredValue = (callback: () => void, promise: Promise<string>) => {
+         callback.bind(null);
+         promise.then((value) => consume(value));
+       };`,
+    ],
+    [
+      "native iteration through a stable parameter alias",
+      `const useItemTotal = (items: readonly string[]) => {
+         const values = items;
+         values.forEach((item) => { consume(item); });
+       };`,
+    ],
+    [
+      "native iteration with a local callback binding",
+      `const useItemTotal = (items: readonly string[]) => {
+         const visitItem = (item: string) => consume(item);
+         items.forEach(visitItem);
+       };`,
+    ],
+    [
+      "native iteration through TypeScript and optional-chain wrappers",
+      `const useItemTotal = (items: readonly string[]) => {
+         (items as string[])?.forEach?.((item) => { consume(item); });
+       };`,
+    ],
+    [
+      "native iteration on a later function-declaration parameter",
+      `function useItemTotal(seed: number, items: readonly string[] = []) {
+         items.forEach((item) => { consume(seed, item); });
+       }`,
     ],
   ])("stays silent for %s", (_name, code) => {
     const result = run(code);

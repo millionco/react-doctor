@@ -1,5 +1,6 @@
 import type { Reference } from "eslint-scope";
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
+import { getStaticPropertyName } from "../../../../utils/get-static-property-name.js";
 import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
@@ -8,6 +9,7 @@ import {
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
   stripParenExpression,
 } from "../../../../utils/strip-paren-expression.js";
+import { walkAst } from "../../../../utils/walk-ast.js";
 import {
   getDownstreamRefs,
   getRef,
@@ -18,8 +20,10 @@ import {
   resolvesToAsyncFunction,
   resolveToFunction,
 } from "./ast.js";
+import { FIRST_ARGUMENT_INDEX, SECOND_ARGUMENT_INDEX } from "./constants.js";
 import { getAstChildKeys } from "./get-ast-child-keys.js";
 import { getScopeForNode, type ProgramAnalysis } from "./get-program-analysis.js";
+import { isProvenNativeReadMethod } from "./is-proven-native-read-method.js";
 
 // 1:1 port of upstream `src/util/react.js` from
 // `eslint-plugin-react-you-might-not-need-an-effect`. See `./ast.ts`
@@ -455,6 +459,162 @@ export const isPropCall = (analysis: ProgramAnalysis, ref: Reference): boolean =
   isEventualCallTo(analysis, ref, (innerRef) => isPropAlias(analysis, innerRef));
 
 const HANDLER_NAMED_METHOD_PATTERN = /^(on|handle)[A-Z]/;
+const SYNCHRONOUS_CALLBACK_ARGUMENT_INDEX_BY_METHOD: ReadonlyMap<string, number> = new Map([
+  ["every", FIRST_ARGUMENT_INDEX],
+  ["filter", FIRST_ARGUMENT_INDEX],
+  ["find", FIRST_ARGUMENT_INDEX],
+  ["findIndex", FIRST_ARGUMENT_INDEX],
+  ["findLast", FIRST_ARGUMENT_INDEX],
+  ["findLastIndex", FIRST_ARGUMENT_INDEX],
+  ["flatMap", FIRST_ARGUMENT_INDEX],
+  ["forEach", FIRST_ARGUMENT_INDEX],
+  ["map", FIRST_ARGUMENT_INDEX],
+  ["reduce", FIRST_ARGUMENT_INDEX],
+  ["reduceRight", FIRST_ARGUMENT_INDEX],
+  ["replace", SECOND_ARGUMENT_INDEX],
+  ["replaceAll", SECOND_ARGUMENT_INDEX],
+  ["some", FIRST_ARGUMENT_INDEX],
+]);
+
+interface PropCallbackInvocationOptions {
+  ignoreProvenNativeCustomHookMethod?: boolean;
+}
+
+const addSimpleBindingNames = (pattern: EsTreeNode, names: Set<string>): boolean => {
+  if (isNodeOfType(pattern, "Identifier")) {
+    if (names.has(pattern.name)) return false;
+    names.add(pattern.name);
+    return true;
+  }
+  if (isNodeOfType(pattern, "AssignmentPattern")) {
+    return addSimpleBindingNames(pattern.left, names);
+  }
+  if (isNodeOfType(pattern, "RestElement")) {
+    return addSimpleBindingNames(pattern.argument, names);
+  }
+  if (isNodeOfType(pattern, "ObjectPattern")) {
+    let didAddName = false;
+    for (const property of pattern.properties) {
+      const binding = isNodeOfType(property, "Property") ? property.value : property;
+      didAddName = addSimpleBindingNames(binding, names) || didAddName;
+    }
+    return didAddName;
+  }
+  if (isNodeOfType(pattern, "ArrayPattern")) {
+    let didAddName = false;
+    for (const element of pattern.elements) {
+      if (element) didAddName = addSimpleBindingNames(element, names) || didAddName;
+    }
+    return didAddName;
+  }
+  return false;
+};
+
+const getSimpleParameterNames = (callback: EsTreeNode): Set<string> => {
+  if (!isFunctionLike(callback)) return new Set();
+  const names = new Set<string>();
+  for (const parameter of callback.params ?? []) {
+    addSimpleBindingNames(parameter, names);
+  }
+  return names;
+};
+
+const inlineCallbackInvokesParameter = (callback: EsTreeNode): boolean => {
+  const parameterNames = getSimpleParameterNames(callback);
+  if (parameterNames.size === 0 || !isFunctionLike(callback)) return false;
+  let didAddAlias = true;
+  while (didAddAlias) {
+    didAddAlias = false;
+    walkAst(callback.body, (candidate) => {
+      if (candidate !== callback.body && isFunctionLike(candidate)) return false;
+      if (
+        isNodeOfType(candidate, "AssignmentExpression") &&
+        candidate.operator === "=" &&
+        isNodeOfType(candidate.left, "Identifier")
+      ) {
+        const assignedValue = stripParenExpression(candidate.right);
+        const assignedValueRoot = isNodeOfType(assignedValue, "MemberExpression")
+          ? stripParenExpression(assignedValue.object)
+          : assignedValue;
+        if (
+          isNodeOfType(assignedValueRoot, "Identifier") &&
+          parameterNames.has(assignedValueRoot.name) &&
+          !parameterNames.has(candidate.left.name)
+        ) {
+          parameterNames.add(candidate.left.name);
+          didAddAlias = true;
+        }
+        return;
+      }
+      if (!isNodeOfType(candidate, "VariableDeclarator") || !candidate.init) return;
+      const initializer = stripParenExpression(candidate.init);
+      const initializerRoot = isNodeOfType(initializer, "MemberExpression")
+        ? stripParenExpression(initializer.object)
+        : initializer;
+      if (
+        !isNodeOfType(initializerRoot, "Identifier") ||
+        !parameterNames.has(initializerRoot.name)
+      ) {
+        return;
+      }
+      if (addSimpleBindingNames(candidate.id, parameterNames)) {
+        didAddAlias = true;
+      }
+    });
+  }
+  let didInvokeParameter = false;
+  walkAst(callback.body, (candidate) => {
+    if (didInvokeParameter) return false;
+    if (candidate !== callback.body && isFunctionLike(candidate)) return false;
+    if (!isNodeOfType(candidate, "CallExpression")) return;
+    const callee = stripParenExpression(candidate.callee);
+    if (isNodeOfType(callee, "Identifier") && parameterNames.has(callee.name)) {
+      didInvokeParameter = true;
+      return false;
+    }
+    if (isNodeOfType(callee, "MemberExpression")) {
+      const receiver = stripParenExpression(callee.object);
+      if (isNodeOfType(receiver, "Identifier") && parameterNames.has(receiver.name)) {
+        didInvokeParameter = true;
+        return false;
+      }
+    }
+  });
+  return didInvokeParameter;
+};
+
+const isNativeMethodSuppressionSafe = (
+  analysis: ProgramAnalysis,
+  callExpression: EsTreeNode,
+  methodName: string,
+): boolean => {
+  if (!isNodeOfType(callExpression, "CallExpression")) return false;
+  const callResultParent = callExpression.parent;
+  const callResultConsumer = isNodeOfType(callResultParent, "ChainExpression")
+    ? callResultParent.parent
+    : callResultParent;
+  if (
+    isNodeOfType(callResultConsumer, "CallExpression") &&
+    (callResultConsumer.callee === callExpression || callResultConsumer.callee === callResultParent)
+  ) {
+    return false;
+  }
+  const callbackArgumentIndex = SYNCHRONOUS_CALLBACK_ARGUMENT_INDEX_BY_METHOD.get(methodName);
+  if (callbackArgumentIndex === undefined) return true;
+  const callbackArgument = callExpression.arguments?.[callbackArgumentIndex];
+  if (!callbackArgument) return true;
+  const callbackValue = stripParenExpression(callbackArgument);
+  if (isFunctionLike(callbackValue)) return !inlineCallbackInvokesParameter(callbackValue);
+  if (!isNodeOfType(callbackValue, "Identifier")) return false;
+  const callbackRef = getRef(analysis, callbackValue);
+  if (!callbackRef || isPropAlias(analysis, callbackRef)) return false;
+  const callbackFunction = resolveToFunction(callbackRef);
+  return Boolean(
+    callbackFunction &&
+    isFunctionLike(callbackFunction) &&
+    !inlineCallbackInvokesParameter(callbackFunction),
+  );
+};
 
 // A prop reference invoked AS a callback: `onEnd(x)`, an alias call, or a
 // method called on a whole (non-destructured) parameter object
@@ -465,7 +625,11 @@ const HANDLER_NAMED_METHOD_PATTERN = /^(on|handle)[A-Z]/;
 // `callbacks.onProgress(x)` invoke a parent-supplied callback grouped under
 // an object prop, so `on[A-Z]` / `handle[A-Z]` method names stay callbacks
 // (internxt FileVideoViewer, caught by the 0.7.1→sweep delta audit).
-export const isPropCallbackInvocationRef = (analysis: ProgramAnalysis, ref: Reference): boolean => {
+export const isPropCallbackInvocationRef = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  options: PropCallbackInvocationOptions = {},
+): boolean => {
   if (!isPropAlias(analysis, ref)) return false;
   const identifier = ref.identifier as unknown as EsTreeNode;
   let effectiveNode = identifier;
@@ -484,12 +648,18 @@ export const isPropCallbackInvocationRef = (analysis: ProgramAnalysis, ref: Refe
   if (isNodeOfType(parent, "MemberExpression") && parent.object === effectiveNode) {
     const memberParent = (parent as unknown as { parent?: EsTreeNode | null }).parent;
     if (isNodeOfType(memberParent, "CallExpression") && memberParent.callee === parent) {
-      if (
-        !parent.computed &&
-        isNodeOfType(parent.property, "Identifier") &&
-        HANDLER_NAMED_METHOD_PATTERN.test(parent.property.name)
-      ) {
+      const propertyName = getStaticPropertyName(parent);
+      if (propertyName && HANDLER_NAMED_METHOD_PATTERN.test(propertyName)) {
         return true;
+      }
+      if (
+        options.ignoreProvenNativeCustomHookMethod &&
+        isCustomHookParameter(ref) &&
+        propertyName &&
+        isProvenNativeReadMethod(ref, propertyName) &&
+        isNativeMethodSuppressionSafe(analysis, memberParent, propertyName)
+      ) {
+        return false;
       }
       return isWholePropsObjectReference(analysis, ref);
     }

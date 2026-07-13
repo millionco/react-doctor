@@ -1,1 +1,3 @@
+export const FIRST_ARGUMENT_INDEX = 0;
 export const MAX_EXPRESSION_SNIPPET_ITEMS_COUNT = 3;
+export const SECOND_ARGUMENT_INDEX = 1;

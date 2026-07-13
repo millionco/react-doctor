@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState } from "react";
 
 interface Row {
   readonly id: string;
@@ -20,7 +20,7 @@ export function Component() {
 
   return (
     <div>
-      <button type="button" onClick={() => withParam({ id: 'x' })}>
+      <button type="button" onClick={() => withParam({ id: "x" })}>
         p
       </button>
       <button type="button" onClick={withoutParam}>

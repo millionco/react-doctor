@@ -987,6 +987,23 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
   });
 
   describe("bounded identity source resolution", () => {
+    it("accepts the exact derived callback dependency", () => {
+      const code = `
+        function Cell({ onMouseDownCell }) {
+          const contextCallbacks = useContext(CellCallbacksContext);
+          const effectiveOnMouseDownCell =
+            onMouseDownCell ?? contextCallbacks.onMouseDownCell;
+          return useCallback(
+            (event) => effectiveOnMouseDownCell?.(event),
+            [effectiveOnMouseDownCell],
+          );
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("treats an immutable local alias of an imported function as stable", () => {
       const code = `
         import { setConnectionStatus } from "./connection-status";

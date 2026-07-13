@@ -85,8 +85,9 @@ const collectSynchronouslyInvokedFunctions = (
   effectCallback: EsTreeNode,
   scopes: ScopeAnalysis,
 ): ReadonlySet<EsTreeNode> => {
+  if (!isFunctionLike(effectCallback) || effectCallback.async) return new Set();
   const analysisFunctions = new Set<EsTreeNode>([effectCallback]);
-  const pendingFunctions = [effectCallback];
+  const pendingFunctions: EsTreeNode[] = [effectCallback];
   while (pendingFunctions.length > 0) {
     const currentFunction = pendingFunctions.pop();
     if (!currentFunction || !isFunctionLike(currentFunction)) continue;

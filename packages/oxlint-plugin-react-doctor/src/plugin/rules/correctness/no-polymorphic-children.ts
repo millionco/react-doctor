@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -167,17 +168,32 @@ const isPropsChildrenLength = (node: EsTreeNode, scopes: ScopeAnalysis): boolean
   );
 };
 
+const resolveStaticNumericValue = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: ReadonlySet<number> = new Set(),
+): number | null => {
+  const unwrappedNode = stripParenExpression(node);
+  if (isNodeOfType(unwrappedNode, "Literal") && typeof unwrappedNode.value === "number") {
+    return Number.isFinite(unwrappedNode.value) ? unwrappedNode.value : null;
+  }
+  if (!isNodeOfType(unwrappedNode, "Identifier")) return null;
+  const symbol = scopes.symbolFor(unwrappedNode);
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
+  const initializer = getDirectConstInitializer(symbol);
+  if (!initializer) return null;
+  return resolveStaticNumericValue(initializer, scopes, new Set(visitedSymbolIds).add(symbol.id));
+};
+
 const isLargeTextLengthComparison = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const unwrappedNode = stripParenExpression(node);
   if (!isNodeOfType(unwrappedNode, "BinaryExpression")) return false;
   const leftIsLength = isPropsChildrenLength(unwrappedNode.left, scopes);
   const rightIsLength = isPropsChildrenLength(unwrappedNode.right, scopes);
   const thresholdNode = leftIsLength ? unwrappedNode.right : unwrappedNode.left;
-  if ((!leftIsLength && !rightIsLength) || !isNodeOfType(thresholdNode, "Literal")) return false;
-  if (
-    typeof thresholdNode.value !== "number" ||
-    thresholdNode.value < LARGE_TEXT_OPTIMIZATION_THRESHOLD_CHARS
-  ) {
+  if (!leftIsLength && !rightIsLength) return false;
+  const thresholdValue = resolveStaticNumericValue(thresholdNode, scopes);
+  if (thresholdValue === null || thresholdValue < LARGE_TEXT_OPTIMIZATION_THRESHOLD_CHARS) {
     return false;
   }
   return leftIsLength

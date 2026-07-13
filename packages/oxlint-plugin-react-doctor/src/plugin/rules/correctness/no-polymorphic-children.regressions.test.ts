@@ -124,6 +124,146 @@ describe("correctness/no-polymorphic-children — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent for aliased, wrapped, and commuted large-string guards", () => {
+    const result = runRule(
+      noPolymorphicChildren,
+      `
+      const MINIMUM_VIRTUALIZED_LENGTH = 50_000 as const;
+      const VIRTUALIZATION_THRESHOLD = MINIMUM_VIRTUALIZED_LENGTH;
+
+      const CodeBlock = ({ children }) => {
+        if ('string' === typeof children && VIRTUALIZATION_THRESHOLD < children.length) {
+          return <VirtualizedCode text={children} />;
+        }
+        return <pre>{children}</pre>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for the negated fallback form of a large-string guard", () => {
+    const result = runRule(
+      noPolymorphicChildren,
+      `
+      const VIRTUALIZATION_THRESHOLD = 50_000;
+
+      const CodeBlock = ({ children }) => {
+        if (typeof children !== 'string' || children.length <= VIRTUALIZATION_THRESHOLD) {
+          return <pre>{children}</pre>;
+        }
+        return <VirtualizedCode text={children} />;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a helper narrows large strings before rendering", () => {
+    const result = runRule(
+      noPolymorphicChildren,
+      `
+      const VIRTUALIZATION_THRESHOLD = 50_000;
+      const getVirtualizableText = (content) =>
+        typeof content === 'string' && content.length > VIRTUALIZATION_THRESHOLD
+          ? content
+          : null;
+
+      const CodeBlock = ({ children }) => {
+        const virtualizableText = getVirtualizableText(children);
+        if (virtualizableText !== null) {
+          return <VirtualizedCode text={virtualizableText} />;
+        }
+        return <pre>{children}</pre>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a small module-constant threshold", () => {
+    const result = runRule(
+      noPolymorphicChildren,
+      `
+      const WIDE_LABEL_THRESHOLD = 3;
+
+      const Button = ({ children }) => {
+        if (typeof children === 'string' && children.length > WIDE_LABEL_THRESHOLD) {
+          return <button className="wide">{children}</button>;
+        }
+        return <div className="compact">{children}</div>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags mutable and unknown thresholds", () => {
+    const mutableResult = runRule(
+      noPolymorphicChildren,
+      `
+      let threshold = 50_000;
+      threshold = 3;
+
+      const Button = ({ children }) => {
+        if (typeof children === 'string' && children.length > threshold) {
+          return <button className="wide">{children}</button>;
+        }
+        return <div className="compact">{children}</div>;
+      };
+      `,
+    );
+    const unknownResult = runRule(
+      noPolymorphicChildren,
+      `
+      const Button = ({ children, threshold }) => {
+        if (typeof children === 'string' && children.length > threshold) {
+          return <button className="wide">{children}</button>;
+        }
+        return <div className="compact">{children}</div>;
+      };
+      `,
+    );
+    const importedResult = runRule(
+      noPolymorphicChildren,
+      `
+      import { VIRTUALIZATION_THRESHOLD } from './config';
+
+      const Button = ({ children }) => {
+        if (typeof children === 'string' && children.length > VIRTUALIZATION_THRESHOLD) {
+          return <button className="wide">{children}</button>;
+        }
+        return <div className="compact">{children}</div>;
+      };
+      `,
+    );
+    const memberResult = runRule(
+      noPolymorphicChildren,
+      `
+      const config = { virtualizationThreshold: 50_000 };
+
+      const Button = ({ children }) => {
+        if (typeof children === 'string' && children.length > config.virtualizationThreshold) {
+          return <button className="wide">{children}</button>;
+        }
+        return <div className="compact">{children}</div>;
+      };
+      `,
+    );
+    expect(mutableResult.parseErrors).toEqual([]);
+    expect(mutableResult.diagnostics).toHaveLength(1);
+    expect(unknownResult.parseErrors).toEqual([]);
+    expect(unknownResult.diagnostics).toHaveLength(1);
+    expect(importedResult.parseErrors).toEqual([]);
+    expect(importedResult.diagnostics).toHaveLength(1);
+    expect(memberResult.parseErrors).toEqual([]);
+    expect(memberResult.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when a leading guard precedes large-string virtualization", () => {
     const result = runRule(
       noPolymorphicChildren,

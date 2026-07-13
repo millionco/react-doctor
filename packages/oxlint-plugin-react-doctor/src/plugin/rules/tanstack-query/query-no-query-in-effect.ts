@@ -20,12 +20,7 @@ const isTanstackQueryResult = (expression: EsTreeNode, context: RuleContext): bo
   Boolean(resolveTanstackQueryHookNameFromInitializer(expression, context.scopes));
 
 const isStaticRefetchMember = (memberExpression: EsTreeNodeOfType<"MemberExpression">): boolean =>
-  (isNodeOfType(memberExpression.property, "Identifier") &&
-    !memberExpression.computed &&
-    memberExpression.property.name === "refetch") ||
-  (isNodeOfType(memberExpression.property, "Literal") &&
-    memberExpression.computed &&
-    memberExpression.property.value === "refetch");
+  getStaticPropertyKeyName(memberExpression, { allowComputedString: true }) === "refetch";
 
 const hasRefetchMemberWriteBefore = (
   expression: EsTreeNode,

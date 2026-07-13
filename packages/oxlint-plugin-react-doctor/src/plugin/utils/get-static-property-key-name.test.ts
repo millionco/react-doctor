@@ -115,4 +115,23 @@ describe("getStaticPropertyKeyName", () => {
       "computed",
     );
   });
+
+  it("reads static member keys including no-substitution templates", () => {
+    const parsed = parseFixture(`
+      object.plain;
+      object["computed"];
+      object[\`templated\`];
+      object[\`dynamic-\${suffix}\`];
+    `);
+    expect(parsed.errors).toEqual([]);
+    const members: EsTreeNode[] = [];
+    walkAst(parsed.program, (node: EsTreeNode) => {
+      if (isNodeOfType(node, "MemberExpression")) members.push(node);
+    });
+    expect(getStaticPropertyKeyName(members[0]!)).toBe("plain");
+    expect(getStaticPropertyKeyName(members[1]!)).toBe(null);
+    expect(getStaticPropertyKeyName(members[1]!, { allowComputedString: true })).toBe("computed");
+    expect(getStaticPropertyKeyName(members[2]!, { allowComputedString: true })).toBe("templated");
+    expect(getStaticPropertyKeyName(members[3]!, { allowComputedString: true })).toBe(null);
+  });
 });

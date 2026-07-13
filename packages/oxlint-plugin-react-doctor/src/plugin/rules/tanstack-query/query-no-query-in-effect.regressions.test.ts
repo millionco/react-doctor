@@ -317,6 +317,68 @@ function Search({ customRefetch }) {
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("stays silent when a template-computed refetch is overwritten before capture", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  query[\`refetch\`] = customRefetch;
+  const { refetch } = query;
+  useEffect(() => { refetch(); }, [refetch]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when an exact alias template-overwrites refetch before capture", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const exactQuery = query;
+  exactQuery[\`refetch\`] = customRefetch;
+  const { refetch } = query;
+  useEffect(() => { refetch(); }, [refetch]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags a refetch captured before a template-computed overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const { refetch } = query;
+  query[\`refetch\`] = customRefetch;
+  useEffect(() => { refetch(); }, [refetch]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags capture before an exact alias template-overwrites refetch", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const exactQuery = query;
+  const { refetch } = query;
+  exactQuery[\`refetch\`] = customRefetch;
+  useEffect(() => { refetch(); }, [refetch]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("flags an exact alias of a proven query refetch method", () => {
     const { diagnostics } = runRule(
       queryNoQueryInEffect,

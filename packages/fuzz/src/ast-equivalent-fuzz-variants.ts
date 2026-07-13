@@ -1,6 +1,7 @@
 import { parseFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
 import type { EsTreeNode } from "../../oxlint-plugin-react-doctor/src/plugin/utils/es-tree-node.js";
 import { isFunctionLike } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-function-like.js";
+import { isHookCall } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-hook-call.js";
 import { isNodeOfType } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-node-of-type.js";
 import { stripParenExpression } from "../../oxlint-plugin-react-doctor/src/plugin/utils/strip-paren-expression.js";
 import { walkAst } from "../../oxlint-plugin-react-doctor/src/plugin/utils/walk-ast.js";
@@ -26,30 +27,6 @@ const hasSpan = (node: EsTreeNode | null | undefined): node is EsTreeNode & Requ
 const EFFECT_HOOK_NAMES = new Set(["useEffect", "useInsertionEffect", "useLayoutEffect"]);
 const EFFECT_CALLBACK_ALIAS_PREFIX = "__reactDoctorFuzzEffectCallback";
 
-const applySpanReplacements = (
-  code: string,
-  replacements: ReadonlyArray<SpanReplacement>,
-): string => {
-  let result = code;
-  const orderedReplacements = [...replacements].sort((left, right) => right.start - left.start);
-  for (const replacement of orderedReplacements) {
-    result = result.slice(0, replacement.start) + replacement.text + result.slice(replacement.end);
-  }
-  return result;
-};
-
-const getEffectHookName = (callee: EsTreeNode): string | null => {
-  if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (
-    isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.property, "Identifier")
-  ) {
-    return callee.property.name;
-  }
-  return null;
-};
-
 const buildEffectCallbackAliasVariant = (
   code: string,
   program: EsTreeNode,
@@ -60,9 +37,7 @@ const buildEffectCallbackAliasVariant = (
   walkAst(program, (statement) => {
     if (!isNodeOfType(statement, "ExpressionStatement") || !hasSpan(statement)) return;
     const node = statement.expression;
-    if (!isNodeOfType(node, "CallExpression")) return;
-    const hookName = getEffectHookName(node.callee);
-    if (!hookName || !EFFECT_HOOK_NAMES.has(hookName)) return;
+    if (!isNodeOfType(node, "CallExpression") || !isHookCall(node, EFFECT_HOOK_NAMES)) return;
     const callback = node.arguments[0];
     if (!callback || isNodeOfType(callback, "SpreadElement") || !hasSpan(callback)) return;
     if (!isFunctionLike(stripParenExpression(callback))) return;
@@ -81,9 +56,17 @@ const buildEffectCallbackAliasVariant = (
     );
   });
   if (replacements.length === 0) return null;
+  replacements.sort((left, right) => right.start - left.start);
+  let variantCode = code;
+  for (const replacement of replacements) {
+    variantCode =
+      variantCode.slice(0, replacement.start) +
+      replacement.text +
+      variantCode.slice(replacement.end);
+  }
   return {
     label: "inline effect callbacks extracted to const bindings",
-    code: applySpanReplacements(code, replacements),
+    code: variantCode,
   };
 };
 

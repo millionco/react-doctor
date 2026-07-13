@@ -93,12 +93,8 @@ const collectSynchronouslyInvokedFunctions = (
     walkInsideStatementBlocks(currentFunction.body, (child) => {
       if (!isNodeOfType(child, "CallExpression")) return;
       const invokedFunction = resolveExactLocalFunction(child.callee, scopes);
-      if (!invokedFunction || analysisFunctions.has(invokedFunction)) {
-        return;
-      }
-      if (isFunctionLike(invokedFunction) && invokedFunction.async) {
-        return;
-      }
+      if (!invokedFunction || analysisFunctions.has(invokedFunction)) return;
+      if (isFunctionLike(invokedFunction) && invokedFunction.async) return;
       analysisFunctions.add(invokedFunction);
       pendingFunctions.push(invokedFunction);
     });
@@ -137,6 +133,8 @@ const collectWrittenStateNamesInEffect = (
   return writtenStateNames;
 };
 
+const EMPTY_CLEANUP_NAME_SET = new Set<string>();
+
 // HACK: a useEffect cleanup return value MUST be a function (or
 // undefined). Anything else is either user error or "I'm using
 // `return` for early-exit, not for cleanup". For the chain detector,
@@ -144,8 +142,6 @@ const collectWrittenStateNamesInEffect = (
 // external resource" — bare literals (`return null`, `return 0`) and
 // state reads (`return foo`) get ignored so they don't silently
 // disable chain detection.
-const EMPTY_CLEANUP_NAME_SET = new Set<string>();
-
 const isFunctionShapedReturn = (
   returnedValue: EsTreeNode,
   setterToStateName: ReadonlyMap<string, string>,
@@ -258,18 +254,10 @@ const isExternalSyncNode = (
   }
 
   if (!isNodeOfType(node, "CallExpression")) return false;
-  if (
-    isNodeOfType(node.callee, "Identifier") &&
-    EXTERNAL_SYNC_DIRECT_CALLEE_NAMES.has(node.callee.name)
-  ) {
-    return true;
-  }
-  if (
-    isNodeOfType(node.callee, "Identifier") &&
-    isSetterIdentifier(node.callee.name) &&
-    !setterToStateName.has(node.callee.name)
-  ) {
-    return true;
+  if (isNodeOfType(node.callee, "Identifier")) {
+    const calleeName = node.callee.name;
+    if (EXTERNAL_SYNC_DIRECT_CALLEE_NAMES.has(calleeName)) return true;
+    return isSetterIdentifier(calleeName) && !setterToStateName.has(calleeName);
   }
   if (
     !isNodeOfType(node.callee, "MemberExpression") ||
@@ -298,8 +286,7 @@ const isExternalSyncEffect = (
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
     if (isFunctionShapedReturn(effectCallback.body, setterToStateName)) return true;
   } else {
-    const statements = effectCallback.body.body ?? [];
-    for (const statement of statements) {
+    for (const statement of effectCallback.body.body ?? []) {
       if (
         isNodeOfType(statement, "ReturnStatement") &&
         statement.argument &&

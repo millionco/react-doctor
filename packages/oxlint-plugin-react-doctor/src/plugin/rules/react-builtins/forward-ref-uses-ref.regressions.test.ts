@@ -117,6 +117,82 @@ describe("react-builtins/forward-ref-uses-ref binding provenance", () => {
     );
   });
 
+  it("reports unbound global React namespace calls", () => {
+    expectDiagnosticCount(
+      `React.forwardRef((props) => <button>{props.label}</button>);
+       SomeOtherGlobal.forwardRef((props) => <button>{props.label}</button>);`,
+      1,
+    );
+  });
+
+  it("reports named default React imports", () => {
+    expectDiagnosticCount(
+      `import { default as ReactDefault } from "react";
+       ReactDefault.forwardRef((props) => <button>{props.label}</button>);`,
+      1,
+    );
+  });
+
+  it("reports destructured forwardRef from React namespace imports", () => {
+    expectDiagnosticCount(
+      `import * as ReactNamespace from "react";
+       const { forwardRef } = ReactNamespace;
+       const { forwardRef: renamedForwardRef } = ReactNamespace;
+       forwardRef((props) => <button>{props.label}</button>);
+       renamedForwardRef((props) => <button>{props.label}</button>);`,
+      2,
+    );
+  });
+
+  it("reports destructured forwardRef from the global React namespace", () => {
+    expectDiagnosticCount(
+      `const { forwardRef } = React;
+       forwardRef((props) => <button>{props.label}</button>);`,
+      1,
+    );
+  });
+
+  it("keeps destructured lookalikes conservative", () => {
+    expectDiagnosticCount(
+      `import * as ReactNamespace from "react";
+       import * as OtherNamespace from "other-react";
+       const { forwardRef: otherForwardRef } = OtherNamespace;
+       let { forwardRef: mutableForwardRef } = ReactNamespace;
+       const { ["forwardRef"]: computedForwardRef } = ReactNamespace;
+       otherForwardRef((value) => value.toUpperCase());
+       mutableForwardRef((value) => value.toUpperCase());
+       computedForwardRef((value) => value.toUpperCase());`,
+      0,
+    );
+  });
+
+  it("ignores hoisted local forwardRef function declarations", () => {
+    expectDiagnosticCount(
+      `forwardRef((value) => value.toUpperCase());
+       function forwardRef(transform: (value: string) => string): string {
+         return transform("hello");
+       }`,
+      0,
+    );
+  });
+
+  it("reports the inner forwardRef nested inside memo", () => {
+    expectDiagnosticCount(
+      `import { memo, forwardRef } from "react";
+       memo(forwardRef((props) => <button>{props.label}</button>));`,
+      1,
+    );
+  });
+
+  it("ignores spread-argument forwardRef calls", () => {
+    expectDiagnosticCount(
+      `import { forwardRef } from "react";
+       const renderCallbacks = [(props) => <button>{props.label}</button>];
+       forwardRef(...renderCallbacks);`,
+      0,
+    );
+  });
+
   it("keeps CommonJS, dynamic, and unbound calls conservative", () => {
     expectDiagnosticCount(
       `const ReactCommonJs = require("react");

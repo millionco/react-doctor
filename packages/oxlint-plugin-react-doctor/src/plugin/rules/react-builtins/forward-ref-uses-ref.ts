@@ -22,6 +22,7 @@ export const forwardRefUsesRef = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (
         !isReactApiCall(node, "forwardRef", context.scopes, {
+          allowGlobalReactNamespace: true,
           resolveNamedAliases: true,
         })
       ) {

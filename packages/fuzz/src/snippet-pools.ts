@@ -162,6 +162,7 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `const GLOBAL_CACHE = new Map<string, unknown>();`,
   `const FuzzPropTypesPanel = ({ value }) => <div>{value}</div>; FuzzPropTypesPanel.propTypes = { value: () => true };`,
   `const FuzzRenamedChildrenPanel = ({ children: content = null }) => content; FuzzRenamedChildrenPanel.propTypes = { children: () => true };`,
+  `const FuzzNestedChildrenSchema = ({ children: { value } }) => value; FuzzNestedChildrenSchema.propTypes = { value: () => true };`,
   `let moduleMutableState = 0;`,
   `const ThemeContext = React.createContext({ mode: "light" });`,
   `const ItemsContext = React.createContext(null);`,

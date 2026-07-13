@@ -427,6 +427,18 @@ describe("architecture/no-prop-types component provenance", () => {
     );
   });
 
+  it("ignores positional names and nested children destructuring", () => {
+    expectDiagnosticCount(
+      `const Children = (children: unknown) => children;
+       Children.propTypes = { children: () => true };
+       const Schema = ({ children: { value } }: { children: { value: unknown } }) => value;
+       Schema.propTypes = { value: () => true };
+       const RecordShape = ({ children: [value] }: { children: unknown[] }) => value;
+       RecordShape.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
   it("ignores uncalled and deferred nested factory mutations", () => {
     expectDiagnosticCount(
       `import ReactDefault from "react";

@@ -2,7 +2,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vite-plus/test";
+import { analyzeReducedMotionSource } from "../../core/src/check-reduced-motion.js";
 import { reactDoctorRules } from "../../oxlint-plugin-react-doctor/src/plugin/rule-registry.js";
+import { defineRule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/define-rule.js";
 import { fuzzRuleWithStats } from "../src/fuzz-rule.js";
 import type { FuzzFinding } from "../src/fuzz-rule.js";
 import { loadFuzzCorpus } from "../src/load-fuzz-corpus.js";
@@ -41,6 +43,27 @@ const fuzzTestTimeoutMs = Math.max(
 );
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+const requireReducedMotionFuzzRule = defineRule({
+  id: "require-reduced-motion",
+  title: "Missing reduced-motion handling",
+  severity: "error",
+  recommendation: "Add real reduced-motion handling for motion-library use.",
+  scan: (file) => {
+    const evidence = analyzeReducedMotionSource({
+      fileName: file.relativePath,
+      sourceText: file.content,
+    });
+    return evidence.hasMotionUse && !evidence.hasReducedMotionHandling
+      ? [{ message: "Motion use has no reduced-motion handling.", line: 1, column: 1 }]
+      : [];
+  },
+});
+
+const fuzzRuleEntries = [
+  ...reactDoctorRules,
+  { id: requireReducedMotionFuzzRule.id, rule: requireReducedMotionFuzzRule },
+];
+
 // The built-in corpus combines confirmed false-positive regressions with
 // intentional liveness targets; FUZZ_CORPUS_DIR adds external real-world
 // files on top.
@@ -78,7 +101,7 @@ const formatFinding = (finding: FuzzFinding, reproducerPath: string): string =>
     `reproducer: ${reproducerPath}`,
   ].join("\n");
 
-const selectedRules = reactDoctorRules.filter(
+const selectedRules = fuzzRuleEntries.filter(
   (entry) => ruleFilter === undefined || entry.id === ruleFilter || entry.id.includes(ruleFilter),
 );
 

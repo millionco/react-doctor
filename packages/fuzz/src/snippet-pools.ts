@@ -180,6 +180,7 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { motion as FuzzMotion } from "framer-motion"; const FuzzMotionComponent = FuzzMotion.div;`,
   `const GLOBAL_CACHE = new Map<string, unknown>();`,
   `const FuzzPropTypesPanel = ({ value }) => <div>{value}</div>; FuzzPropTypesPanel.propTypes = { value: () => true };`,
   `function FuzzNestedWritePanel() { return <div />; } function unusedFuzzNestedWrite() { FuzzNestedWritePanel = () => null; } FuzzNestedWritePanel.propTypes = { value: () => true };`,
@@ -432,6 +433,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 ] as const;
 
 export const IMPORT_LINE_POOL = [
+  `import { motion, MotionConfig, useReducedMotion } from "framer-motion";`,
   `import React from "react";`,
   `import * as React from "react";`,
   `import { useState, useEffect, useMemo, useCallback, useRef, useContext, useReducer, useTransition, useDeferredValue, useId, useLayoutEffect, useSyncExternalStore } from "react";`,

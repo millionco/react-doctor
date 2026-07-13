@@ -574,7 +574,12 @@ export const App = () => {
       name: "issue-94-negative",
       dependencies: { react: "^19.0.0", "framer-motion": "^11.0.0" },
     });
-    writeFile(path.join(projectDir, "src", "App.tsx"), `export const App = () => null;\n`);
+    writeFile(
+      path.join(projectDir, "src", "App.tsx"),
+      `import { motion } from "framer-motion";
+export const App = () => <motion.div animate={{ x: 120 }}>moving</motion.div>;
+`,
+    );
     initGitRepo(projectDir, { commit: true });
 
     const diagnostics = checkReducedMotion(projectDir);

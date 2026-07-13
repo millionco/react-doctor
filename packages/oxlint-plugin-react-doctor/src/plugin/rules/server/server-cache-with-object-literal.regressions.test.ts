@@ -47,6 +47,17 @@ export const loadUser = async () => getUser(Object.freeze(Object.seal({ id: 1 })
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a fresh cache key when the integrity receiver has a TypeScript wrapper", () => {
+    const result = runRule(
+      serverCacheWithObjectLiteral,
+      `import { cache } from "react";
+const getUser = cache(async (params) => db.user.find(params));
+export const loadUser = async () => getUser((Object as any).freeze({ id: 1 }));`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for a stable module-scoped frozen cache key", () => {
     const result = runRule(
       serverCacheWithObjectLiteral,

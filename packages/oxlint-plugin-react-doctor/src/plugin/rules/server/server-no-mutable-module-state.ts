@@ -12,7 +12,7 @@ import {
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getObjectIntegrityMethodName } from "../../utils/unwrap-object-integrity-expression.js";
-import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
+import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 
 const MUTABLE_CONTAINER_CONSTRUCTORS = new Set(["Map", "Set", "WeakMap", "WeakSet"]);
 const WRITABLE_INTEGRITY_METHOD_NAMES = new Set(["seal", "preventExtensions"]);
@@ -89,8 +89,10 @@ const getMutableConstInitializer = (
     initializer = stripParenExpression(wrappedInitializer);
   }
 
-  if (hasIntegrityWrapper) {
-    if (!isNodeOfType(initializer, "ObjectExpression")) return null;
+  // seal/preventExtensions only lock an object's property table — Map/Set
+  // internal slots and existing array indices stay writable, so a sealed
+  // non-object container falls through to the plain-container classification.
+  if (hasIntegrityWrapper && isNodeOfType(initializer, "ObjectExpression")) {
     const writablePropertyNames = new Set<string>();
     const nestedPropertyKinds = new Map<string, string>();
     for (const property of initializer.properties) {
@@ -259,20 +261,42 @@ const isKnownPropertyObjectMutation = (
     return writablePropertyNames.size > 0;
   }
   return propertyObject.properties.some((property) => {
+    if (isNodeOfType(property, "SpreadElement")) return writablePropertyNames.size > 0;
     const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
     return propertyName !== null && writablePropertyNames.has(propertyName);
   });
+};
+
+// A write executes during module initialization when every enclosing function
+// up to `boundaryNode` (the module root when null) is immediately invoked —
+// an IIFE body runs once at import, exactly like a top-level statement. Any
+// non-invoked function ancestor defers the write to a later call, which on a
+// server module means potentially once per request.
+const runsAfterModuleInitialization = (
+  node: EsTreeNode,
+  boundaryNode: EsTreeNode | null = null,
+): boolean => {
+  let ancestor = node.parent;
+  while (ancestor && ancestor !== boundaryNode) {
+    if (isFunctionLike(ancestor) && !isImmediatelyInvokedFunction(ancestor)) return true;
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
 };
 
 // A bare reference passed as a call argument mutates the container when the
 // call is `Object.assign(X, …)`-shaped, or when the callee is a same-file
 // function whose matching parameter is mutated in its body (one hop only —
 // deeper escapes stay silent so read-only lookup helpers are never flagged).
+// The mutation only counts when it runs per request: the call site itself is
+// per-request, or the parameter escapes into a deferred function inside the
+// callee (a closure returned from a module-init factory call still leaks).
 const isMutatedThroughCallArgument = (
   referenceIdentifier: EsTreeNode,
   scopes: ScopeAnalysis,
   mayFollowCalleeHop: boolean,
-  initializer: MutableConstInitializer | null = null,
+  initializer: MutableConstInitializer | null,
+  callSiteRunsPerRequest: boolean,
 ): boolean => {
   const callExpression = referenceIdentifier.parent;
   if (!callExpression || !isNodeOfType(callExpression, "CallExpression")) return false;
@@ -287,6 +311,7 @@ const isMutatedThroughCallArgument = (
     const methodName = getMemberPropertyName(callee);
     const calleeReceiver = stripParenExpression(callee.object);
     return Boolean(
+      callSiteRunsPerRequest &&
       isNodeOfType(calleeReceiver, "Identifier") &&
       calleeReceiver.name === "Object" &&
       scopes.isGlobalReference(calleeReceiver) &&
@@ -311,11 +336,22 @@ const isMutatedThroughCallArgument = (
   if (!parameter || !isNodeOfType(parameter, "Identifier")) return false;
   const parameterSymbol = scopes.symbolFor(parameter);
   if (!parameterSymbol) return false;
-  return parameterSymbol.references.some(
-    (parameterReference) =>
-      isAllowedDirectMutation(parameterReference.identifier, initializer) ||
-      isMutatedThroughCallArgument(parameterReference.identifier, scopes, false, initializer),
-  );
+  return parameterSymbol.references.some((parameterReference) => {
+    const parameterRunsPerRequest =
+      callSiteRunsPerRequest ||
+      runsAfterModuleInitialization(parameterReference.identifier, calleeFunction);
+    return (
+      (parameterRunsPerRequest &&
+        isAllowedDirectMutation(parameterReference.identifier, initializer)) ||
+      isMutatedThroughCallArgument(
+        parameterReference.identifier,
+        scopes,
+        false,
+        initializer,
+        parameterRunsPerRequest,
+      )
+    );
+  });
 };
 
 const isAllowedDirectMutation = (
@@ -364,27 +400,35 @@ const collectAliasGroup = (
   return aliasGroup;
 };
 
-// True when the binding's contents are written from inside a function — i.e.
-// potentially per request; writes at module scope run once during module
-// initialization and never count. A write is a member assignment (`X.y = …`,
-// `X.a[i] = …` at any depth), `delete X.y`, a mutating method call
-// (`X.push(...)`, `X.users.push(...)`, `X["set"](...)`), `Object.assign(X, …)`,
-// or an escape into a same-file callee that mutates the parameter. Resolution
-// is scope-aware, so a shadowed local or parameter of the same name never
-// counts. A const container that is never mutated is an immutable lookup
-// table — sharing it across requests is correct, so it must NOT be flagged.
+// True when the binding's contents are written after module initialization —
+// i.e. potentially per request; writes that run once at import (top-level
+// statements and module-scope IIFEs) never count. A write is a member
+// assignment (`X.y = …`, `X.a[i] = …` at any depth), `delete X.y`, a mutating
+// method call (`X.push(...)`, `X.users.push(...)`, `X["set"](...)`),
+// `Object.assign(X, …)`, or an escape into a same-file callee that mutates
+// the parameter. Resolution is scope-aware, so a shadowed local or parameter
+// of the same name never counts. A const container that is never mutated is
+// an immutable lookup table — sharing it across requests is correct, so it
+// must NOT be flagged.
 const isContainerContentsMutated = (
   containerSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
   initializer: MutableConstInitializer,
 ): boolean =>
   collectAliasGroup(containerSymbol, scopes).some((groupSymbol) =>
-    groupSymbol.references.some(
-      (reference) =>
-        isInsideFunctionScope(reference.identifier) &&
-        (isAllowedDirectMutation(reference.identifier, initializer) ||
-          isMutatedThroughCallArgument(reference.identifier, scopes, true, initializer)),
-    ),
+    groupSymbol.references.some((reference) => {
+      const referenceRunsPerRequest = runsAfterModuleInitialization(reference.identifier);
+      return (
+        (referenceRunsPerRequest && isAllowedDirectMutation(reference.identifier, initializer)) ||
+        isMutatedThroughCallArgument(
+          reference.identifier,
+          scopes,
+          true,
+          initializer,
+          referenceRunsPerRequest,
+        )
+      );
+    }),
   );
 
 // HACK: in `"use server"` files, mutable module-level state (let/var, OR

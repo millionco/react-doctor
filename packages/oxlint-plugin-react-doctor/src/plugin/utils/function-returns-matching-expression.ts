@@ -1,9 +1,11 @@
-import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { collectFunctionReturnStatements } from "./collect-function-return-statements.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+
+const REASSIGNABLE_BINDING_KINDS: ReadonlySet<string> = new Set(["let", "var"]);
 
 const collectReturnedExpressions = (functionNode: EsTreeNode): EsTreeNode[] => {
   if (!isFunctionLike(functionNode) || !functionNode.body) return [];
@@ -11,6 +13,32 @@ const collectReturnedExpressions = (functionNode: EsTreeNode): EsTreeNode[] => {
   return collectFunctionReturnStatements(functionNode).flatMap((returnStatement) =>
     returnStatement.argument ? [returnStatement.argument] : [],
   );
+};
+
+const getAssignedExpressionForWrite = (writeIdentifier: EsTreeNode): EsTreeNode | null => {
+  let assignmentTarget = writeIdentifier;
+  let parent = assignmentTarget.parent;
+  while (parent && stripParenExpression(parent) === writeIdentifier) {
+    assignmentTarget = parent;
+    parent = assignmentTarget.parent;
+  }
+  return parent &&
+    isNodeOfType(parent, "AssignmentExpression") &&
+    parent.operator === "=" &&
+    parent.left === assignmentTarget
+    ? parent.right
+    : null;
+};
+
+const collectAssignedExpressions = (symbol: SymbolDescriptor): EsTreeNode[] => {
+  const assignedExpressions = symbol.initializer ? [symbol.initializer] : [];
+  if (!REASSIGNABLE_BINDING_KINDS.has(symbol.kind)) return assignedExpressions;
+  for (const reference of symbol.references) {
+    if (reference.flag === "read") continue;
+    const assignedExpression = getAssignedExpressionForWrite(reference.identifier);
+    if (assignedExpression) assignedExpressions.push(assignedExpression);
+  }
+  return assignedExpressions;
 };
 
 export const functionReturnsMatchingExpression = (
@@ -35,10 +63,13 @@ export const functionReturnsMatchingExpression = (
 
     if (isNodeOfType(unwrappedExpression, "Identifier")) {
       const symbol = scopes.symbolFor(unwrappedExpression);
-      if (!symbol || symbol.kind !== "const" || !symbol.initializer) return false;
-      const initializer = stripParenExpression(symbol.initializer);
-      if (isFunctionLike(initializer)) return false;
-      return expressionMatches(initializer);
+      if (!symbol || (symbol.kind !== "const" && !REASSIGNABLE_BINDING_KINDS.has(symbol.kind))) {
+        return false;
+      }
+      return collectAssignedExpressions(symbol).some((assignedExpression) => {
+        const assignedValue = stripParenExpression(assignedExpression);
+        return !isFunctionLike(assignedValue) && expressionMatches(assignedValue);
+      });
     }
 
     if (isNodeOfType(unwrappedExpression, "CallExpression")) {

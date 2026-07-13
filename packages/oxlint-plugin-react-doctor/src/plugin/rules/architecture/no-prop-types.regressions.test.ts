@@ -27,6 +27,34 @@ describe("architecture/no-prop-types component provenance", () => {
     );
   });
 
+  it("reports components that build JSX into a let binding before returning it", () => {
+    expectDiagnosticCount(
+      `export function Panel(props: { value: string }) {
+         let content;
+         if (props.value) {
+           content = <div>{props.value}</div>;
+         } else {
+           content = <span />;
+         }
+         return content;
+       }
+       Panel.propTypes = { value: () => true };`,
+      1,
+    );
+  });
+
+  it("ignores utilities whose let-bound JSX is never returned", () => {
+    expectDiagnosticCount(
+      `export function BuildLabel(register: (node: unknown) => void) {
+         let preview = <div>preview</div>;
+         register(preview);
+         return "label";
+       }
+       BuildLabel.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
   it("reports immutable aliases of local function components", () => {
     expectDiagnosticCount(
       `const Panel = (props: { value: string }) => <div>{props.value}</div>;

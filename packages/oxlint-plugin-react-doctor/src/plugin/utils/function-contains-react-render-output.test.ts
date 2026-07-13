@@ -55,6 +55,30 @@ describe("functionContainsReactRenderOutput", () => {
     expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(false);
   });
 
+  it("detects JSX assigned to a returned let binding", () => {
+    const { functionNode, scopes } = parseFunctionFixture(
+      `function Card({ show }: { show: boolean }) {
+        let content = null;
+        if (show) content = <div className="card" />;
+        return content;
+      }`,
+      "Card",
+    );
+    expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(true);
+  });
+
+  it("ignores JSX assigned to a local that is never returned", () => {
+    const { functionNode, scopes } = parseFunctionFixture(
+      `function BuildLabel(register: (node: unknown) => void) {
+        let preview = <div>preview</div>;
+        register(preview);
+        return "label";
+      }`,
+      "BuildLabel",
+    );
+    expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(false);
+  });
+
   it("does not cross assigned nested-function boundaries", () => {
     const { functionNode, scopes } = parseFunctionFixture(
       `function Card() {

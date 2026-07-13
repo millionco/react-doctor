@@ -46,12 +46,30 @@ describe("functionReturnsMatchingExpression", () => {
     ).toBe(true);
   });
 
+  it("follows let and var bindings through initializer and assignment values", () => {
+    expect(
+      mainFunctionReturnsJsx(`function Main() { let output = <main />; return output; }`),
+    ).toBe(true);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main(condition) { let output = null; if (condition) output = <main />; return output; }`,
+      ),
+    ).toBe(true);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main(condition) { var output; if (condition) { output = <main />; } else { output = null; } return output; }`,
+      ),
+    ).toBe(true);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main(condition) { let output = null; if (condition) output = "text"; return output; }`,
+      ),
+    ).toBe(false);
+  });
+
   it("keeps deferred, mutable, parameterized, imported, and recursive values opaque", () => {
     expect(
       mainFunctionReturnsJsx(`function Main() { const render = () => <main />; return render; }`),
-    ).toBe(false);
-    expect(
-      mainFunctionReturnsJsx(`function Main() { let output = <main />; return output; }`),
     ).toBe(false);
     expect(
       mainFunctionReturnsJsx(`function Main() { let render = () => <main />; return render(); }`),

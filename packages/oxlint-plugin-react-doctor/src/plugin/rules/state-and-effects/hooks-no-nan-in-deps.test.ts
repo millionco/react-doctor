@@ -248,6 +248,107 @@ const Comp = () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when a spread precedes the matched index in an array-destructure initializer", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+const others = [1, 2];
+const [firstValue, secondValue] = [...others, Number.NaN];
+const Comp = () => {
+  useEffect(() => {}, [secondValue]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an array-destructured NaN when a spread follows the matched index", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+const others = [1, 2];
+const [firstValue] = [Number.NaN, ...others];
+const Comp = () => {
+  useEffect(() => {}, [firstValue]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags the array-destructured binding at a non-zero NaN initializer index", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+const [, secondValue] = [0, Number.NaN];
+const Comp = () => {
+  useEffect(() => {}, [secondValue]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an array-destructured binding whose initializer index holds a finite value", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+const [firstValue] = [0, Number.NaN];
+const Comp = () => {
+  useEffect(() => {}, [firstValue]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent (and does not crash) on a self-referential const alias", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+const selfValue = selfValue;
+const Comp = () => {
+  useEffect(() => {}, [selfValue]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a computed string-key destructure of global Number.NaN", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+const { ["NaN"]: computedValue } = Number;
+const Comp = () => {
+  useEffect(() => {}, [computedValue]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a NaN-keyed destructure off a non-global receiver", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useEffect } from "react";
+const localNumber = { NaN: 2 };
+const { NaN: aliasValue } = localNumber;
+const Comp = () => {
+  useEffect(() => {}, [aliasValue]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags Number.NaN aliases through transparent TypeScript wrappers", () => {
     const result = runRule(
       hooksNoNanInDeps,

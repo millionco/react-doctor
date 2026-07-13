@@ -40,7 +40,15 @@ export const isGlobalNanValue = (node: EsTreeNode, scopes: ScopeAnalysis): boole
         const bindingIndex = declaration.id.elements.findIndex(
           (element) => element === symbol.bindingIdentifier,
         );
-        const arrayValue = bindingIndex >= 0 ? declarationInitializer.elements[bindingIndex] : null;
+        if (bindingIndex < 0) return false;
+        const hasSpreadBeforeBinding = declarationInitializer.elements
+          .slice(0, bindingIndex)
+          .some(
+            (initializerElement) =>
+              initializerElement !== null && isNodeOfType(initializerElement, "SpreadElement"),
+          );
+        if (hasSpreadBeforeBinding) return false;
+        const arrayValue = declarationInitializer.elements[bindingIndex];
         return Boolean(
           arrayValue && !isNodeOfType(arrayValue, "SpreadElement") && visit(arrayValue),
         );

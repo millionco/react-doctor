@@ -28,6 +28,14 @@ const doDiagnosticSpansOverlap = (first: Diagnostic, second: Diagnostic): boolea
   return first.line <= secondEndLine && second.line <= firstEndLine;
 };
 
+const keepHighestSeverity = (
+  survivingDiagnostic: Diagnostic,
+  collapsedDiagnostic: Diagnostic,
+): Diagnostic =>
+  collapsedDiagnostic.severity === "error" && survivingDiagnostic.severity !== "error"
+    ? { ...survivingDiagnostic, severity: "error" }
+    : survivingDiagnostic;
+
 export const dedupeRelatedDiagnostics = (diagnostics: ReadonlyArray<Diagnostic>): Diagnostic[] => {
   const reactDoctorHookSites = new Set(
     diagnostics.filter(isReactDoctorRulesOfHooksDiagnostic).map(buildDiagnosticSiteKey),
@@ -53,8 +61,11 @@ export const dedupeRelatedDiagnostics = (diagnostics: ReadonlyArray<Diagnostic>)
         const existingPriority = existingDiagnostic
           ? DERIVED_STATE_RULE_PRIORITY.get(existingDiagnostic.rule)
           : undefined;
-        if (existingPriority !== undefined && priority < existingPriority) {
-          uniqueDiagnostics[overlappingDiagnosticIndex] = diagnostic;
+        if (existingDiagnostic && existingPriority !== undefined) {
+          uniqueDiagnostics[overlappingDiagnosticIndex] =
+            priority < existingPriority
+              ? keepHighestSeverity(diagnostic, existingDiagnostic)
+              : keepHighestSeverity(existingDiagnostic, diagnostic);
         }
         continue;
       }

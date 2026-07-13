@@ -247,6 +247,7 @@ describe("mergeAndFilterDiagnostics — conditional Hook deduplication", () => {
     });
     const fallbackDiagnostic = buildDiagnostic({
       rule: "no-derived-state",
+      severity: "warning",
       offset: 100,
       length: 12,
     });
@@ -256,6 +257,31 @@ describe("mergeAndFilterDiagnostics — conditional Hook deduplication", () => {
         [fallbackDiagnostic, preferredDiagnostic],
         projectDir,
         { rules: { "react-doctor/no-adjust-state-on-prop-change": "error" } },
+        createNodeReadFileLinesSync(projectDir),
+      ),
+    ).toEqual([{ ...preferredDiagnostic, severity: "error" }]);
+  });
+
+  it("carries a user-escalated error onto the preferred finding it collapses into", () => {
+    const projectDir = setupCase("derived-state-dedupe-escalated-fallback", "const value = 1;\n");
+    const preferredDiagnostic = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      severity: "warning",
+      offset: 100,
+      length: 12,
+    });
+    const escalatedFallbackDiagnostic = buildDiagnostic({
+      rule: "no-derived-state",
+      severity: "warning",
+      offset: 100,
+      length: 12,
+    });
+
+    expect(
+      mergeAndFilterDiagnostics(
+        [escalatedFallbackDiagnostic, preferredDiagnostic],
+        projectDir,
+        { rules: { "react-doctor/no-derived-state": "error" } },
         createNodeReadFileLinesSync(projectDir),
       ),
     ).toEqual([{ ...preferredDiagnostic, severity: "error" }]);

@@ -67,6 +67,16 @@ describe("dedupeDiagnostics", () => {
     expect(dedupeDiagnostics([stateRule, mirrorRule])).toEqual([stateRule, mirrorRule]);
   });
 
+  it("preserves overlapping related derived-state rules (cross-rule collapse happens post-pipeline)", () => {
+    const generic = buildDiagnostic({ rule: "no-derived-state", offset: 100, length: 12 });
+    const propChange = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      offset: 100,
+      length: 12,
+    });
+    expect(dedupeDiagnostics([generic, propChange])).toEqual([generic, propChange]);
+  });
+
   it("keeps the React Doctor rules-of-hooks diagnostic when the compiler reports the same site", () => {
     const reactDoctorDiagnostic = buildNativeHookDiagnostic();
     const compilerDiagnostic = buildCompilerHookDiagnostic();
@@ -125,6 +135,16 @@ describe("dedupeDiagnostics", () => {
     ]);
   });
 
+  it("preserves compiler Hook findings on a different line at the same column", () => {
+    const reactDoctorDiagnostic = buildNativeHookDiagnostic({ line: 10 });
+    const compilerDiagnostic = buildCompilerHookDiagnostic({ line: 20 });
+
+    expect(dedupeRelatedDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
+      reactDoctorDiagnostic,
+      compilerDiagnostic,
+    ]);
+  });
+
   it("keeps the most specific derived-state owner at one write", () => {
     const generic = buildDiagnostic({ rule: "no-derived-state", offset: 100, length: 12 });
     const effect = buildDiagnostic({
@@ -144,6 +164,41 @@ describe("dedupeDiagnostics", () => {
     const generic = buildDiagnostic({ rule: "no-derived-state", offset: 100, length: 12 });
     const mount = buildDiagnostic({ rule: "no-initialize-state", offset: 100, length: 12 });
     expect(dedupeRelatedDiagnostics([generic, mount])).toEqual([mount]);
+  });
+
+  it("carries an escalated error severity onto the surviving derived-state winner", () => {
+    const escalatedFallback = buildDiagnostic({
+      rule: "no-derived-state",
+      severity: "error",
+      offset: 100,
+      length: 12,
+    });
+    const preferredWarning = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      severity: "warning",
+      offset: 100,
+      length: 12,
+    });
+    const expected = [{ ...preferredWarning, severity: "error" }];
+    expect(dedupeRelatedDiagnostics([escalatedFallback, preferredWarning])).toEqual(expected);
+    expect(dedupeRelatedDiagnostics([preferredWarning, escalatedFallback])).toEqual(expected);
+  });
+
+  it("keeps the winner's severity when the collapsed sibling is not escalated", () => {
+    const fallbackWarning = buildDiagnostic({
+      rule: "no-derived-state",
+      severity: "warning",
+      offset: 100,
+      length: 12,
+    });
+    const preferredError = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      severity: "error",
+      offset: 100,
+      length: 12,
+    });
+    expect(dedupeRelatedDiagnostics([fallbackWarning, preferredError])).toEqual([preferredError]);
+    expect(dedupeRelatedDiagnostics([preferredError, fallbackWarning])).toEqual([preferredError]);
   });
 
   it("preserves separate writes inside one overlapping effect diagnostic", () => {

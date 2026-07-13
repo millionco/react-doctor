@@ -960,6 +960,70 @@ describe("runInspect — Reporter sees post-filter diagnostics", () => {
   });
 });
 
+describe("runInspect — related-diagnostic dedupe on the production lint path", () => {
+  const nativeHooksDiagnostic: Diagnostic = {
+    filePath: "/repo/src/App.tsx",
+    plugin: "react-doctor",
+    rule: "rules-of-hooks",
+    severity: "error",
+    message: "React Hook is called conditionally",
+    help: "",
+    line: 3,
+    column: 5,
+    category: "Correctness",
+  };
+  const compilerHooksDiagnostic: Diagnostic = {
+    ...nativeHooksDiagnostic,
+    plugin: "react-hooks-js",
+    rule: "hooks",
+    message: "Hooks must always be called in a consistent order",
+  };
+  const collectOutputAndCapturedDiagnostics = Effect.gen(function* () {
+    const output = yield* runInspect(baseInput);
+    const ref = yield* ReporterCapture;
+    const captured = yield* Ref.get(ref);
+    return { output, captured };
+  });
+
+  it("drops the compiler duplicate at a surviving native site and emits the deduped set", async () => {
+    const result = await Effect.runPromise(
+      collectOutputAndCapturedDiagnostics.pipe(
+        Effect.provide(layersOf({ diagnostics: [compilerHooksDiagnostic, nativeHooksDiagnostic] })),
+      ),
+    );
+
+    expect(result.output.diagnostics).toEqual([nativeHooksDiagnostic]);
+    expect(result.captured).toEqual(result.output.diagnostics);
+  });
+
+  it("preserves the compiler finding when config suppresses the native rule", async () => {
+    const layers = Layer.mergeAll(
+      Project.layerOf(sampleProject),
+      Config.layerOf({
+        config: { ignore: { rules: ["react-doctor/rules-of-hooks"] } },
+        resolvedDirectory: "/repo",
+        configSourceDirectory: null,
+      }),
+      Files.layerInMemory(new Map()),
+      Linter.layerOf([compilerHooksDiagnostic, nativeHooksDiagnostic]),
+      LintPartialFailures.layerLive,
+      DeadCode.layerOf([]),
+      Git.layerOf({}),
+      Score.layerOf(null),
+      SupplyChain.layerOf([]),
+      Progress.layerNoop,
+      Reporter.layerCapture,
+      Layer.succeed(DeadCodeOverlap, "off"),
+    );
+    const result = await Effect.runPromise(
+      collectOutputAndCapturedDiagnostics.pipe(Effect.provide(layers)),
+    );
+
+    expect(result.output.diagnostics).toEqual([compilerHooksDiagnostic]);
+    expect(result.captured).toEqual(result.output.diagnostics);
+  });
+});
+
 describe("runInspect — supply-chain in diff mode", () => {
   it("runs supply-chain in full scans", async () => {
     const output = await Effect.runPromise(

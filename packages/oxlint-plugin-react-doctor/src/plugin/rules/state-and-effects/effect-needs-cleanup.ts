@@ -42,7 +42,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // treat subscriptions as store-like).
 const OBSERVER_REGISTRATION_METHOD_NAME = "observe";
 const CLEANUP_EFFECT_HOOK_NAMES = new Set([...EFFECT_HOOK_NAMES, "useInsertionEffect"]);
-const LOOP_HANDLER_STABILITY_CACHE = new WeakMap<RuleContext, Map<number, boolean>>();
 const REPLAYABLE_ITERATOR_COLLECTION_CACHE = new WeakMap<RuleContext, Map<number, string | null>>();
 
 interface SubscribeLikeUsage {
@@ -600,31 +599,24 @@ const isStableLoopReceiver = (
   );
 };
 
-const isStableLoopHandler = (
+const resolveStableLoopHandlerSymbolId = (
   expression: EsTreeNode | null | undefined,
   context: RuleContext,
-): boolean => {
-  if (!expression) return false;
+): number | null => {
+  if (!expression) return null;
   const unwrappedExpression = stripParenExpression(expression);
-  if (isFunctionLike(unwrappedExpression)) return true;
-  if (!isNodeOfType(unwrappedExpression, "Identifier")) return false;
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
   const symbol = context.scopes.symbolFor(unwrappedExpression);
-  if (!symbol) return false;
-  let contextCache = LOOP_HANDLER_STABILITY_CACHE.get(context);
-  if (!contextCache) {
-    contextCache = new Map();
-    LOOP_HANDLER_STABILITY_CACHE.set(context, contextCache);
-  }
-  const cachedStability = contextCache.get(symbol.id);
-  if (cachedStability !== undefined) return cachedStability;
-  const isStable = Boolean(
-    (symbol.kind === "const" || symbol.kind === "function" || symbol.kind === "parameter") &&
-    symbol.references.every(
+  if (
+    !symbol ||
+    (symbol.kind !== "const" && symbol.kind !== "function" && symbol.kind !== "parameter") ||
+    !symbol.references.every(
       (reference) => reference.flag === "read" && !isWithinAssignmentTarget(reference.identifier),
-    ),
-  );
-  contextCache.set(symbol.id, isStable);
-  return isStable;
+    )
+  ) {
+    return null;
+  }
+  return symbol.id;
 };
 
 const resolveStaticEventListenerCapture = (
@@ -1638,6 +1630,14 @@ const doesReleaseCallMatchUsage = (
       return false;
     }
     if (usageForOfStatement) {
+      const registrationHandlerSymbolId = resolveStableLoopHandlerSymbolId(
+        usage.node.arguments?.[1],
+        context,
+      );
+      const releaseHandlerSymbolId = resolveStableLoopHandlerSymbolId(
+        callNode.arguments?.[1],
+        context,
+      );
       if (
         usage.registrationVerbName !== "addEventListener" ||
         releaseVerbName !== "removeEventListener"
@@ -1649,8 +1649,8 @@ const doesReleaseCallMatchUsage = (
       if (
         !isStableLoopReceiver(registrationCallee.object, context) ||
         !isStableLoopReceiver(callee.object, context) ||
-        !isStableLoopHandler(usage.node.arguments?.[1], context) ||
-        !isStableLoopHandler(callNode.arguments?.[1], context)
+        registrationHandlerSymbolId === null ||
+        registrationHandlerSymbolId !== releaseHandlerSymbolId
       ) {
         return false;
       }

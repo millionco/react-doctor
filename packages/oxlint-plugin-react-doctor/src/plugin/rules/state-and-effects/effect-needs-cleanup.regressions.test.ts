@@ -1256,6 +1256,57 @@ export const OutsideAction = ({ onOutsideAction }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("rejects distinct handler snapshots from the same mutable member", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ handlers, onOtherAction }) => {
+  useEffect(() => {
+    const setupHandler = handlers.current;
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, setupHandler);
+    }
+    handlers.current = onOtherAction;
+    const cleanupHandler = handlers.current;
+    return () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, cleanupHandler);
+      }
+    };
+  }, [handlers, onOtherAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects distinct immutable aliases even when their initializers look equivalent", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ handlers }) => {
+  useEffect(() => {
+    const setupHandler = handlers.current;
+    const cleanupHandler = handlers.current;
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, setupHandler);
+    }
+    return () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, cleanupHandler);
+      }
+    };
+  }, [handlers]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("rejects a conditionally invoked cleanup-loop helper", () => {
     const result = runRule(
       effectNeedsCleanup,

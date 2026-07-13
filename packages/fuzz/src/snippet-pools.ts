@@ -435,6 +435,8 @@ export const IMPORT_LINE_POOL = [
   `import debounce from "lodash/debounce";`,
   `import { z } from "zod";`,
   `import * as fuzzZod from "zod/v4"; const fuzzZodSchema = fuzzZod.object({ email: fuzzZod.string().email() }).strict();`,
+  `import { z as fuzzZodErrorCustomization } from "zod/v4"; const fuzzZodRequiredSchema = fuzzZodErrorCustomization.string("Required");`,
+  `import { ZodError as FuzzZodError } from "zod/v4"; const fuzzZodFlattenedError = new FuzzZodError([]).flatten();`,
   `import { forwardRef } from "react";\nconst FuzzForwardRefComponent = forwardRef((props) => <button>{props.label}</button>);`,
 ] as const;
 

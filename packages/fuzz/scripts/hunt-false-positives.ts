@@ -15,7 +15,7 @@ import { loadFuzzCorpus } from "../src/load-fuzz-corpus.js";
 //   HUNT_CORPUS_DIR=tmp/corpus-repos bun scripts/hunt-false-positives.ts
 
 const packageRoot = path.resolve(import.meta.dirname, "..");
-const regressionsDirectory = path.join(packageRoot, "corpus");
+const regressionsDirectory = path.join(packageRoot, "corpus", "regressions");
 
 interface SeedHit {
   seed: string;

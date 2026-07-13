@@ -41,9 +41,9 @@ const fuzzTestTimeoutMs = Math.max(
 );
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-// The built-in regression corpus (confirmed historical false positives —
-// see corpus/README.md) is always fuzzed; FUZZ_CORPUS_DIR adds external
-// real-world files on top.
+// The built-in corpus combines confirmed false-positive regressions with
+// intentional liveness targets; FUZZ_CORPUS_DIR adds external real-world
+// files on top.
 const corpusDirectory = process.env.FUZZ_CORPUS_DIR;
 const builtinCorpus: FuzzCorpusEntry[] = isFuzzEnabled
   ? loadFuzzCorpus(path.join(packageRoot, "corpus"))

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import { NON_FULL_ZOD_V4_MODULE_SOURCES } from "./__fixtures__/non-full-zod-v4-module-sources.js";
 import { zodV4PreferTopLevelStringFormats } from "./zod-v4-prefer-top-level-string-formats.js";
 
 describe("zod-v4-prefer-top-level-string-formats — regressions", () => {
@@ -29,22 +30,32 @@ describe("zod-v4-prefer-top-level-string-formats — regressions", () => {
   });
 
   it.each([
-    'import { z } from "zod/v4";',
-    'import * as z from "zod/v4";',
-    'import { z as schema } from "zod/v4";',
-  ])("flags legacy string formats from the official v4 export: %s", (importStatement) => {
-    const namespaceName = importStatement.includes("as schema") ? "schema" : "z";
-    const code = `
-      ${importStatement}
-      const schemaValue = ${namespaceName}.string().email();
-    `;
-    const result = runRule(zodV4PreferTopLevelStringFormats, code, {
-      filename: "/repo/src/lib/schema.ts",
-    });
-    expect(result.diagnostics).toHaveLength(1);
-  });
+    { importStatement: 'import { z } from "zod/v4";', factoryExpression: "z.string" },
+    { importStatement: 'import * as schema from "zod/v4";', factoryExpression: "schema.string" },
+    {
+      importStatement: 'import { z as schema } from "zod/v4";',
+      factoryExpression: "schema.string",
+    },
+    { importStatement: 'import schema from "zod/v4";', factoryExpression: "schema.string" },
+    {
+      importStatement: 'import { string as createString } from "zod/v4";',
+      factoryExpression: "createString",
+    },
+  ])(
+    "flags legacy string formats from the official v4 export: $importStatement",
+    ({ importStatement, factoryExpression }) => {
+      const code = `
+        ${importStatement}
+        const schemaValue = ${factoryExpression}().email();
+      `;
+      const result = runRule(zodV4PreferTopLevelStringFormats, code, {
+        filename: "/repo/src/lib/schema.ts",
+      });
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
 
-  it.each(["zod/v3", "zod/v4-mini", "zod/v4/core", "@acme/zod/v4"])(
+  it.each(NON_FULL_ZOD_V4_MODULE_SOURCES)(
     "does NOT assign the full Zod v4 API to %s",
     (moduleSource) => {
       const code = `

@@ -156,4 +156,188 @@ describe("js-performance/js-length-check-first — regressions", () => {
       return head.every((value, index) => value === b[index]);
     }`);
   });
+
+  it("stays silent for key and value projections of the same frozen plain object", () => {
+    expectPass(`interface KeyBindings {
+      next: string;
+      previous: string;
+    }
+    const DEFAULT_KEY_BINDINGS = Object.freeze<KeyBindings>({
+      next: "j",
+      previous: "k",
+    });
+    const isKeyBindings = (bindings) =>
+      Object.values(DEFAULT_KEY_BINDINGS).every((_, index) => {
+        const key = Object.keys(DEFAULT_KEY_BINDINGS)[index];
+        return typeof bindings[key] === "string";
+      });`);
+  });
+
+  it("stays silent for multi-hop const aliases of the same frozen source", () => {
+    expectPass(`const DEFAULTS = Object.freeze({ next: "j", previous: "k" });
+    const valuesSource = DEFAULTS;
+    const keysSource = valuesSource;
+    const isComplete = (bindings) =>
+      Object.values(valuesSource).every((_, index) =>
+        typeof bindings[Object.keys(keysSource)[index]] === "string"
+      );`);
+  });
+
+  it("stays silent when the frozen source is exported and passed to unknown callers", () => {
+    expectPass(`export const DEFAULTS = Object.freeze({ next: "j", previous: "k" });
+    registerDefaults(DEFAULTS);
+    const isComplete = (bindings) =>
+      Object.values(DEFAULTS).every((_, index) =>
+        typeof bindings[Object.keys(DEFAULTS)[index]] === "string"
+      );`);
+  });
+
+  it("flags projections of an imported source whose object shape is unknown", () => {
+    expectFail(`import { DEFAULTS } from "./defaults";
+    const isComplete = (bindings) =>
+      Object.values(DEFAULTS).every((_, index) =>
+        typeof bindings[Object.keys(DEFAULTS)[index]] === "string"
+      );`);
+  });
+
+  it("stays silent for statically computed Object projection methods", () => {
+    expectPass(`const DEFAULTS = Object.freeze({ next: "j", previous: "k" });
+    const isComplete = (bindings) =>
+      (Object["values"] as typeof Object.values)(DEFAULTS).every((_, index) =>
+        typeof bindings[Object[\`keys\`](DEFAULTS)[index]] === "string"
+      );`);
+  });
+
+  it("stays silent when keys are iterated and values are indexed", () => {
+    expectPass(`const DEFAULTS = Object.freeze({ next: "j", previous: "k" });
+    const isComplete = (bindings) =>
+      Object.keys(DEFAULTS).every((key, index) =>
+        bindings[key] === Object.values(DEFAULTS)[index]
+      );`);
+  });
+
+  it("flags a non-frozen const plain object", () => {
+    expectFail(`const DEFAULTS = { next: "j", previous: "k" } as const;
+    const isComplete = (bindings) =>
+      Object.values(DEFAULTS).every((_, index) =>
+        typeof bindings[Object.keys(DEFAULTS)[index]] === "string"
+      );`);
+  });
+
+  it("flags key and value projections from different frozen objects", () => {
+    expectFail(`const LEFT = Object.freeze({ next: "j" });
+    const RIGHT = Object.freeze({ next: "j", previous: "k" });
+    const isComplete = (bindings) =>
+      Object.values(LEFT).every((_, index) =>
+        typeof bindings[Object.keys(RIGHT)[index]] === "string"
+      );`);
+  });
+
+  it("flags a mutable plain object written between its projections", () => {
+    expectFail(`const defaults = { next: "j", previous: "k" };
+    const isComplete = (bindings) =>
+      Object.values(defaults).every((_, index) => {
+        if (index === 0) defaults.extra = "x";
+        return typeof bindings[Object.keys(defaults)[index]] === "string";
+      });`);
+  });
+
+  it("flags a mutable plain object that escapes to an unknown call", () => {
+    expectFail(`const defaults = { next: "j", previous: "k" };
+    registerDefaults(defaults);
+    const isComplete = (bindings) =>
+      Object.values(defaults).every((_, index) =>
+        typeof bindings[Object.keys(defaults)[index]] === "string"
+      );`);
+  });
+
+  it("flags object projections whose value getter can change cardinality", () => {
+    expectFail(`const defaults = {
+      get next() { delete this.previous; return "j"; },
+      previous: "k",
+    };
+    const isComplete = (bindings) =>
+      Object.values(defaults).every((_, index) =>
+        typeof bindings[Object.keys(defaults)[index]] === "string"
+      );`);
+  });
+
+  it("flags frozen accessor objects outside the primitive-data boundary", () => {
+    expectFail(`const defaults = Object.freeze({
+      get next() { return "j"; },
+      previous: "k",
+    });
+    const isComplete = (bindings) =>
+      Object.values(defaults).every((_, index) =>
+        typeof bindings[Object.keys(defaults)[index]] === "string"
+      );`);
+  });
+
+  it("stays silent after an ineffective property write to a frozen source", () => {
+    expectPass(`const defaults = Object.freeze({ next: "j", previous: "k" });
+    defaults.extra = "x";
+    const isComplete = (bindings) =>
+      Object.values(defaults).every((_, index) =>
+        typeof bindings[Object.keys(defaults)[index]] === "string"
+      );`);
+  });
+
+  it("flags projections of a proxy with runtime-defined own keys", () => {
+    expectFail(`const defaults = new Proxy({ next: "j" }, {
+      ownKeys: () => Math.random() > 0.5 ? ["next"] : ["next", "previous"],
+    });
+    const isComplete = (bindings) =>
+      Object.values(defaults).every((_, index) =>
+        typeof bindings[Object.keys(defaults)[index]] === "string"
+      );`);
+  });
+
+  it("flags a frozen proxy because its source is not a plain object literal", () => {
+    expectFail(`const defaults = Object.freeze(new Proxy({ next: "j" }, {}));
+    const isComplete = (bindings) =>
+      Object.values(defaults).every((_, index) =>
+        typeof bindings[Object.keys(defaults)[index]] === "string"
+      );`);
+  });
+
+  it("flags repeated effectful source evaluations", () => {
+    expectFail(`const isComplete = (bindings) =>
+      Object.values(getDefaults()).every((_, index) =>
+        typeof bindings[Object.keys(getDefaults())[index]] === "string"
+      );`);
+  });
+
+  it("flags similarly named methods on a shadowed Object binding", () => {
+    expectFail(`const Object = {
+      values: (source) => source.left,
+      keys: (source) => source.right,
+      freeze: (source) => source,
+    };
+    const defaults = Object.freeze({ left: ["j"], right: ["next", "previous"] });
+    const isComplete = (bindings) =>
+      Object.values(defaults).every((_, index) =>
+        typeof bindings[Object.keys(defaults)[index]] === "string"
+      );`);
+  });
+
+  it("flags a reassignable alias even when it starts from a frozen object", () => {
+    expectFail(`const DEFAULTS = Object.freeze({ next: "j" });
+    let source = DEFAULTS;
+    source = getOtherDefaults();
+    const isComplete = (bindings) =>
+      Object.values(source).every((_, index) =>
+        typeof bindings[Object.keys(DEFAULTS)[index]] === "string"
+      );`);
+  });
+
+  it("flags complementary projections through distinct frozen roots", () => {
+    expectFail(`const LEFT = Object.freeze({ next: "j" });
+    const RIGHT = Object.freeze({ previous: "k" });
+    const valuesSource = LEFT;
+    const keysSource = RIGHT;
+    const isComplete = (bindings) =>
+      Object.values(valuesSource).every((_, index) =>
+        typeof bindings[Object.keys(keysSource)[index]] === "string"
+      );`);
+  });
 });

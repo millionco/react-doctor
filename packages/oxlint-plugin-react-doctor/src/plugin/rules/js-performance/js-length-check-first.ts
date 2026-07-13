@@ -1,17 +1,132 @@
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { collectEarlierAndGuardOperands } from "../../utils/collect-earlier-and-guard-operands.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
-import type { RuleContext } from "../../utils/rule-context.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+
+interface ObjectProjection {
+  methodName: string;
+  source: EsTreeNode;
+}
+
+interface DirectConstSymbol extends SymbolDescriptor {
+  readonly initializer: EsTreeNode;
+}
+
+const OBJECT_CARDINALITY_PROJECTION_METHOD_NAMES: ReadonlySet<string> = new Set(["keys", "values"]);
+
+const getGlobalObjectProjection = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): ObjectProjection | null => {
+  const callExpression = stripParenExpression(expression);
+  if (!isNodeOfType(callExpression, "CallExpression")) return null;
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return null;
+  const receiver = stripParenExpression(callee.object);
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    receiver.name !== "Object" ||
+    !context.scopes.isGlobalReference(receiver)
+  ) {
+    return null;
+  }
+  const methodName = getStaticPropertyName(callee);
+  if (!methodName || !OBJECT_CARDINALITY_PROJECTION_METHOD_NAMES.has(methodName)) return null;
+  const callArguments = callExpression.arguments ?? [];
+  if (callArguments.length !== 1 || isNodeOfType(callArguments[0], "SpreadElement")) return null;
+  return { methodName, source: callArguments[0] };
+};
+
+const isPlainDataObjectLiteral = (expression: EsTreeNode): boolean => {
+  const objectExpression = stripParenExpression(expression);
+  if (!isNodeOfType(objectExpression, "ObjectExpression")) return false;
+  return (objectExpression.properties ?? []).every((property) => {
+    if (
+      !isNodeOfType(property, "Property") ||
+      property.kind !== "init" ||
+      property.method === true
+    ) {
+      return false;
+    }
+    const propertyValue = stripParenExpression(property.value);
+    return (
+      isNodeOfType(propertyValue, "Literal") ||
+      (isNodeOfType(propertyValue, "TemplateLiteral") && propertyValue.expressions.length === 0)
+    );
+  });
+};
+
+const getGlobalObjectFreezeArgument = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const callExpression = stripParenExpression(expression);
+  if (!isNodeOfType(callExpression, "CallExpression")) return null;
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "freeze") {
+    return null;
+  }
+  const receiver = stripParenExpression(callee.object);
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    receiver.name !== "Object" ||
+    !context.scopes.isGlobalReference(receiver)
+  ) {
+    return null;
+  }
+  const callArguments = callExpression.arguments ?? [];
+  if (callArguments.length !== 1 || isNodeOfType(callArguments[0], "SpreadElement")) return null;
+  return callArguments[0];
+};
+
+const isDirectConstSymbol = (symbol: SymbolDescriptor): symbol is DirectConstSymbol =>
+  symbol.kind === "const" &&
+  isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+  symbol.declarationNode.id === symbol.bindingIdentifier &&
+  Boolean(symbol.initializer);
+
+const resolveStablePlainObjectRootId = (
+  expression: EsTreeNode,
+  context: RuleContext,
+  visitedSymbolIds: Set<number> = new Set(),
+): number | null => {
+  const source = stripParenExpression(expression);
+  if (!isNodeOfType(source, "Identifier")) return null;
+  const symbol = context.scopes.symbolFor(source);
+  if (!symbol || !isDirectConstSymbol(symbol) || visitedSymbolIds.has(symbol.id)) return null;
+  visitedSymbolIds.add(symbol.id);
+  const initializer = stripParenExpression(symbol.initializer);
+  const frozenValue = getGlobalObjectFreezeArgument(initializer, context);
+  if (frozenValue) return isPlainDataObjectLiteral(frozenValue) ? symbol.id : null;
+  return resolveStablePlainObjectRootId(initializer, context, visitedSymbolIds);
+};
+
+const areEqualCardinalityObjectProjections = (
+  receiverArray: EsTreeNode,
+  indexedArray: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const receiverProjection = getGlobalObjectProjection(receiverArray, context);
+  const indexedProjection = getGlobalObjectProjection(indexedArray, context);
+  if (!receiverProjection || !indexedProjection) return false;
+  if (receiverProjection.methodName === indexedProjection.methodName) return false;
+  const receiverRootId = resolveStablePlainObjectRootId(receiverProjection.source, context);
+  const indexedRootId = resolveStablePlainObjectRootId(indexedProjection.source, context);
+  return receiverRootId !== null && receiverRootId === indexedRootId;
+};
 
 const findIndexedArrayObject = (
   callbackBody: EsTreeNode,
@@ -392,6 +507,9 @@ export const jsLengthCheckFirst = defineRule({
       // derivation like `.map()`): lengths are equal by construction, a
       // length precheck would be dead code.
       if (areExpressionsStructurallyEqual(resolvedReceiverSource, resolvedIndexedSource)) return;
+      if (areEqualCardinalityObjectProjections(receiverArrayObject, indexedArrayObject, context)) {
+        return;
+      }
 
       const comparedArrayPairs: [EsTreeNode, EsTreeNode][] = [
         [receiverArrayObject, indexedArrayObject],

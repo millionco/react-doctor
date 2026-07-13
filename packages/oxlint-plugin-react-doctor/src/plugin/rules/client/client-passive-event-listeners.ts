@@ -5,6 +5,7 @@ import { getDirectConstInitializer } from "../../utils/get-direct-const-initiali
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { createMethodMutationAnalysis } from "../../utils/has-proven-method-mutation.js";
+import { getPropertyKeyName } from "../../utils/get-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import {
@@ -17,6 +18,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { resolveMemberHandlerFunction } from "../../utils/resolve-member-handler-function.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
@@ -84,86 +86,6 @@ const assignedHandlerCallsPreventDefault = (
     }
   });
   return didFindPreventDefault;
-};
-
-const asHandlerFunction = (value: EsTreeNode | null | undefined): EsTreeNode | undefined => {
-  if (!value) return undefined;
-  if (isNodeOfType(value, "FunctionExpression") || isNodeOfType(value, "ArrowFunctionExpression")) {
-    return value;
-  }
-  return undefined;
-};
-
-const memberKeyName = (keyNode: EsTreeNode | null | undefined): string | undefined => {
-  if (isNodeOfType(keyNode, "Identifier") || isNodeOfType(keyNode, "PrivateIdentifier")) {
-    return keyNode.name;
-  }
-  return undefined;
-};
-
-const resolveFromClassBody = (
-  classBody: EsTreeNodeOfType<"ClassBody">,
-  propertyName: string,
-): EsTreeNode | undefined => {
-  for (const element of classBody.body ?? []) {
-    if (!isNodeOfType(element, "MethodDefinition") && !isNodeOfType(element, "PropertyDefinition"))
-      continue;
-    if (memberKeyName(element.key) !== propertyName) continue;
-    const resolved = asHandlerFunction(element.value);
-    if (resolved) return resolved;
-  }
-  return undefined;
-};
-
-const resolveFromObjectExpression = (
-  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
-  propertyName: string,
-): EsTreeNode | undefined => {
-  for (const objectProperty of objectExpression.properties ?? []) {
-    if (!isNodeOfType(objectProperty, "Property")) continue;
-    if (memberKeyName(objectProperty.key) !== propertyName) continue;
-    const resolved = asHandlerFunction(objectProperty.value);
-    if (resolved) return resolved;
-  }
-  return undefined;
-};
-
-// Resolve a member-expression handler (`this.handleMove`, `this.#handleMove`,
-// `obj.onMove`) to the function it points at: a class method/field or
-// object-literal method for `this.x`, or an object method/field for a
-// locally-declared `obj`. Returns undefined when the target can't be traced
-// in this file.
-const resolveMemberHandlerFunction = (
-  handler: EsTreeNodeOfType<"MemberExpression">,
-): EsTreeNode | undefined => {
-  const propertyName = memberKeyName(handler.property);
-  if (propertyName === undefined) return undefined;
-  const objectNode = handler.object;
-
-  if (isNodeOfType(objectNode, "ThisExpression")) {
-    let ancestor: EsTreeNode | null | undefined = handler.parent;
-    while (ancestor) {
-      if (isNodeOfType(ancestor, "ClassBody")) {
-        return resolveFromClassBody(ancestor, propertyName);
-      }
-      if (isNodeOfType(ancestor, "ObjectExpression")) {
-        const resolved = resolveFromObjectExpression(ancestor, propertyName);
-        if (resolved) return resolved;
-      }
-      ancestor = ancestor.parent ?? null;
-    }
-    return undefined;
-  }
-
-  if (isNodeOfType(objectNode, "Identifier")) {
-    const binding = findVariableInitializer(objectNode, objectNode.name);
-    const initializer = binding?.initializer;
-    if (initializer && isNodeOfType(initializer, "ObjectExpression")) {
-      return resolveFromObjectExpression(initializer, propertyName);
-    }
-  }
-
-  return undefined;
 };
 
 // Handlers are usually passed by reference inside an effect (`const onTouchMove
@@ -442,7 +364,8 @@ const handlerMayExposeEvent = (handler: EsTreeNode | undefined, context: RuleCon
         if (isNodeOfType(memberObject, "ObjectExpression") && propertyName) {
           const property = memberObject.properties.find(
             (candidate) =>
-              isNodeOfType(candidate, "Property") && memberKeyName(candidate.key) === propertyName,
+              isNodeOfType(candidate, "Property") &&
+              getPropertyKeyName(candidate.key) === propertyName,
           );
           return Boolean(
             isNodeOfType(property, "Property") && expressionContainsParameterAlias(property.value),
@@ -513,11 +436,12 @@ const handlerMayExposeEvent = (handler: EsTreeNode | undefined, context: RuleCon
             continue;
           }
           if (!isNodeOfType(patternProperty, "Property")) continue;
-          const propertyName = memberKeyName(patternProperty.key);
+          const propertyName = getPropertyKeyName(patternProperty.key);
           if (!propertyName) continue;
           const sourceProperty = source.properties.find(
             (property) =>
-              isNodeOfType(property, "Property") && memberKeyName(property.key) === propertyName,
+              isNodeOfType(property, "Property") &&
+              getPropertyKeyName(property.key) === propertyName,
           );
           if (isNodeOfType(sourceProperty, "Property")) {
             addAliasesFromPattern(patternProperty.value, sourceProperty.value);

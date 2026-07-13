@@ -225,6 +225,28 @@ describe("a11y/no-noninteractive-element-interactions regressions", () => {
       );
       expect(result.diagnostics).toHaveLength(1);
     });
+
+    it("stays silent on a class method propagation shield", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `class Modal extends React.Component {
+          handleBoxClick(event) { event.stopPropagation(); }
+          render() { return <li onClick={this.handleBoxClick}>{this.props.children}</li>; }
+        }`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a class method that performs an action after blocking propagation", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `class Modal extends React.Component {
+          handleBoxClick(event) { event.stopPropagation(); this.props.openModal(); }
+          render() { return <li onClick={this.handleBoxClick}>{this.props.children}</li>; }
+        }`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
   });
 
   // Verify-run FP cluster: keyboard-only handlers on containers are

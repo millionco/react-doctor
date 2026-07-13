@@ -65,6 +65,81 @@ describe("a11y/no-static-element-interactions regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still distinguishes sibling callbacks destructured from the same object", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Popconfirm = (props) => {
+        const { onPopupClick, onCancel, showCancel } = props;
+        return (
+          <div onClick={onPopupClick}>
+            {showCancel && <Button onClick={onCancel}>Cancel</Button>}
+          </div>
+        );
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a wrapper around a similarly named userland navigation component", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Card = ({ openCard, showNavigation }) => (
+        <div onClick={() => openCard()}>
+          {showNavigation && (
+            <NavigationCard aria-label="Open" onClick={() => openCard()} />
+          )}
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a wrapper whose equivalent descendant has no accessible name", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Card = ({ openCard }) => (
+        <div onClick={() => openCard()}>
+          <Button aria-label="" onPress={() => openCard()}>{null}</Button>
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an equivalent descendant named by nested visible text", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Card = ({ openCard }) => (
+        <div onClick={() => openCard()}>
+          <Button onPress={() => openCard()}><span>Open</span></Button>
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a class method propagation shield", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `class Modal extends React.Component {
+        handleBoxClick(event) { event.stopPropagation(); }
+        render() { return <div onClick={this.handleBoxClick}>{this.props.children}</div>; }
+      }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a class method that performs an action after blocking propagation", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `class Modal extends React.Component {
+        handleBoxClick(event) { event.stopPropagation(); this.props.openModal(); }
+        render() { return <div onClick={this.handleBoxClick}>{this.props.children}</div>; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a conditional role where both branches are valid roles", () => {
     const result = runRule(
       noStaticElementInteractions,

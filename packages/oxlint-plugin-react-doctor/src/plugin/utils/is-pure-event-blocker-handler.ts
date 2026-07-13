@@ -1,6 +1,7 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { resolveMemberHandlerFunction } from "./resolve-member-handler-function.js";
 
 // `<div onClick={(e) => e.stopPropagation()}>` is the canonical "block
 // bubbling" idiom — the div isn't a user-interaction target, it just
@@ -53,5 +54,7 @@ export const isPureEventBlockerHandler = (attribute: EsTreeNodeOfType<"JSXAttrib
   ) {
     return isPureEventBlockerBody(expression.body as EsTreeNode);
   }
-  return false;
+  if (!isNodeOfType(expression, "MemberExpression")) return false;
+  const resolvedHandler = resolveMemberHandlerFunction(expression);
+  return isPureEventBlockerBody(resolvedHandler?.body);
 };

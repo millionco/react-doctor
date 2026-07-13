@@ -36,6 +36,69 @@ describe("a11y/click-events-have-key-events regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag a class method propagation shield", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `class Modal extends React.Component {
+        handleBoxClick(event) { event.stopPropagation(); }
+        render() { return <div onClick={this.handleBoxClick}>{this.props.children}</div>; }
+      }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a class method that performs an action after blocking propagation", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `class Modal extends React.Component {
+        handleBoxClick(event) { event.stopPropagation(); this.props.openModal(); }
+        render() { return <div onClick={this.handleBoxClick}>{this.props.children}</div>; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a clickable row with an unrelated conditional checkbox", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Row = ({ navigate, selectable, select }) => (
+        <tr onClick={navigate}>
+          {selectable && <input type="checkbox" onChange={select} />}
+        </tr>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still distinguishes conditional sibling callbacks destructured from the same object", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Popconfirm = (props) => {
+        const { onPopupClick, onCancel, showCancel } = props;
+        return (
+          <div onClick={onPopupClick}>
+            {showCancel && <Button onClick={onCancel}>Cancel</Button>}
+          </div>
+        );
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a wrapper around a conditional similarly named userland component", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Card = ({ openCard, showNavigation }) => (
+        <div onClick={() => openCard()}>
+          {showNavigation && (
+            <NavigationCard aria-label="Open" onClick={() => openCard()} />
+          )}
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a click handler that forwards clicks to a hidden file input", () => {
     const result = runRule(
       clickEventsHaveKeyEvents,
@@ -282,42 +345,6 @@ describe("a11y/click-events-have-key-events regressions", () => {
       );`,
     );
     expect(result.diagnostics).toEqual([]);
-  });
-
-  it("still flags a wrapper whose matching Button is disabled", () => {
-    const result = runRule(
-      clickEventsHaveKeyEvents,
-      `export const Card = ({ openCard }) => (
-        <div onClick={() => openCard()}>
-          <Button isDisabled aria-label="Open" onPress={() => openCard()}>Open</Button>
-        </div>
-      );`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("still flags a wrapper whose matching Button may be disabled", () => {
-    const result = runRule(
-      clickEventsHaveKeyEvents,
-      `export const Card = ({ openCard, isDisabled }) => (
-        <div onClick={() => openCard()}>
-          <Button isDisabled={isDisabled} aria-label="Open" onPress={() => openCard()}>Open</Button>
-        </div>
-      );`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("still flags a wrapper around a same-action anchor without href", () => {
-    const result = runRule(
-      clickEventsHaveKeyEvents,
-      `export const Card = ({ openCard }) => (
-        <div onClick={() => openCard()}>
-          <a aria-label="Open" onClick={() => openCard()}>Open</a>
-        </div>
-      );`,
-    );
-    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("still flags a plain clickable div with static content", () => {

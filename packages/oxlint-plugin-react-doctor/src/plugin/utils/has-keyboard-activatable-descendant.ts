@@ -18,6 +18,7 @@ const NATIVE_KEYBOARD_ACTIVATABLE_TAGS: ReadonlySet<string> = new Set([
   "textarea",
 ]);
 const KEYBOARD_ACTIVATABLE_COMPONENT_NAME_PATTERN = /button|link|nav|anchor/i;
+const EQUIVALENT_ACTION_COMPONENT_NAME_PATTERN = /(?:button|link|anchor)$/i;
 const DESCENDANT_ACTION_PROP_NAMES = ["onClick", "onPress"] as const;
 
 const isStaticallyNullish = (expression: EsTreeNode): boolean => {
@@ -50,7 +51,13 @@ const resolveSingleHandlerAction = (
   }
   if (isNodeOfType(strippedExpression, "Identifier")) {
     const symbol = scopes.symbolFor(strippedExpression);
-    if (symbol?.kind === "const" && symbol.initializer && !visitedSymbolIds.has(symbol.id)) {
+    if (
+      symbol?.kind === "const" &&
+      symbol.initializer &&
+      isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+      isNodeOfType(symbol.declarationNode.id, "Identifier") &&
+      !visitedSymbolIds.has(symbol.id)
+    ) {
       visitedSymbolIds.add(symbol.id);
       return resolveSingleHandlerAction(symbol.initializer, scopes, visitedSymbolIds);
     }
@@ -95,18 +102,55 @@ const hasPotentiallyTruthyAttribute = (
   return !isNodeOfType(expression, "Literal") || expression.value !== false;
 };
 
+const hasPotentiallyNonEmptyAttribute = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  attributeName: string,
+): boolean => {
+  const attribute = hasJsxPropIgnoreCase(openingElement.attributes, attributeName);
+  if (!attribute?.value) return false;
+  if (isNodeOfType(attribute.value, "Literal")) {
+    return typeof attribute.value.value === "string" && attribute.value.value.trim().length > 0;
+  }
+  if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return true;
+  const expression = stripParenExpression(attribute.value.expression as EsTreeNode);
+  if (isNodeOfType(expression, "Literal")) {
+    return typeof expression.value === "string" && expression.value.trim().length > 0;
+  }
+  return !isStaticallyNullish(expression);
+};
+
+const childMayProvideAccessibleName = (child: EsTreeNode): boolean => {
+  if (isNodeOfType(child, "JSXText")) return child.value.trim().length > 0;
+  if (isNodeOfType(child, "JSXElement")) return hasAccessibleNameEvidence(child);
+  if (isNodeOfType(child, "JSXFragment")) {
+    return child.children.some((nestedChild) =>
+      childMayProvideAccessibleName(nestedChild as EsTreeNode),
+    );
+  }
+  if (!isNodeOfType(child, "JSXExpressionContainer")) return false;
+  const expression = stripParenExpression(child.expression as EsTreeNode);
+  if (isNodeOfType(expression, "Literal")) {
+    if (typeof expression.value === "string") return expression.value.trim().length > 0;
+    return typeof expression.value === "number";
+  }
+  if (isStaticallyNullish(expression)) return false;
+  if (isNodeOfType(expression, "JSXElement")) return hasAccessibleNameEvidence(expression);
+  if (isNodeOfType(expression, "JSXFragment")) {
+    return expression.children.some((nestedChild) =>
+      childMayProvideAccessibleName(nestedChild as EsTreeNode),
+    );
+  }
+  return true;
+};
+
 const hasAccessibleNameEvidence = (element: EsTreeNodeOfType<"JSXElement">): boolean => {
   if (
-    hasJsxPropIgnoreCase(element.openingElement.attributes, "aria-label") ||
-    hasJsxPropIgnoreCase(element.openingElement.attributes, "aria-labelledby")
+    hasPotentiallyNonEmptyAttribute(element.openingElement, "aria-label") ||
+    hasPotentiallyNonEmptyAttribute(element.openingElement, "aria-labelledby")
   ) {
     return true;
   }
-  return element.children.some((child) => {
-    const childNode = child as EsTreeNode;
-    if (isNodeOfType(childNode, "JSXText")) return childNode.value.trim().length > 0;
-    return isNodeOfType(childNode, "JSXExpressionContainer");
-  });
+  return element.children.some((child) => childMayProvideAccessibleName(child as EsTreeNode));
 };
 
 const isKeyboardActivatableElement = (
@@ -118,12 +162,16 @@ const isKeyboardActivatableElement = (
   const elementName = flattenJsxName(openingElement.name as EsTreeNode);
   if (!elementName) return false;
   const isNativeElement = HTML_TAGS.has(elementName);
+  const componentNamePattern = requiresAccessibleName
+    ? EQUIVALENT_ACTION_COMPONENT_NAME_PATTERN
+    : KEYBOARD_ACTIVATABLE_COMPONENT_NAME_PATTERN;
   if (
     (isNativeElement && !NATIVE_KEYBOARD_ACTIVATABLE_TAGS.has(elementName)) ||
-    (!isNativeElement && !KEYBOARD_ACTIVATABLE_COMPONENT_NAME_PATTERN.test(elementName))
+    (!isNativeElement && !componentNamePattern.test(elementName))
   ) {
     return false;
   }
+  if (!requiresAccessibleName) return true;
   if (elementName === "a" && !hasJsxPropIgnoreCase(openingElement.attributes, "href")) {
     return false;
   }
@@ -134,7 +182,7 @@ const isKeyboardActivatableElement = (
   ) {
     return false;
   }
-  return !requiresAccessibleName || hasAccessibleNameEvidence(element);
+  return hasAccessibleNameEvidence(element);
 };
 
 const findKeyboardActivatableDescendant = (
@@ -162,6 +210,7 @@ const findKeyboardActivatableDescendant = (
     );
   }
   if (isNodeOfType(node, "JSXExpressionContainer")) {
+    if (!expectedAction) return false;
     return findKeyboardActivatableDescendant(
       node.expression as EsTreeNode,
       expectedAction,
@@ -170,12 +219,14 @@ const findKeyboardActivatableDescendant = (
     );
   }
   if (isNodeOfType(node, "LogicalExpression")) {
+    if (!expectedAction) return false;
     return (
       findKeyboardActivatableDescendant(node.left, expectedAction, scopes, settings) ||
       findKeyboardActivatableDescendant(node.right, expectedAction, scopes, settings)
     );
   }
   if (isNodeOfType(node, "ConditionalExpression")) {
+    if (!expectedAction) return false;
     return (
       findKeyboardActivatableDescendant(
         node.consequent as EsTreeNode,

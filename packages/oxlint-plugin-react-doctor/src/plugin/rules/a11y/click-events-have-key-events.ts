@@ -363,6 +363,12 @@ export const clickEventsHaveKeyEvents = defineRule({
         if (hasKeyboardActivatableDescendant(node.parent, null, context.scopes, context.settings)) {
           return;
         }
+        if (
+          onClick &&
+          hasKeyboardActivatableDescendant(node.parent, onClick, context.scopes, context.settings)
+        ) {
+          return;
+        }
 
         if (isHiddenFromScreenReader(node, context.settings)) return;
         // Presentational role (presentation / none) → not perceivable by AT.

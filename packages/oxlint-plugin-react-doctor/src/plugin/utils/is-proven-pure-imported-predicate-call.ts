@@ -122,7 +122,6 @@ export const isProvenPureImportedPredicateCall = (
   let didFindUnsafeUse = false;
   walkAst(importedFunction.body, (node) => {
     if (didFindUnsafeUse) return false;
-    if (node !== importedFunction.body && isFunctionLike(node)) return false;
     if (isNodeOfType(node, "VariableDeclarator") && node.init) {
       addAliasNamesFromPattern(node.id, node.init, aliasNames);
       return;

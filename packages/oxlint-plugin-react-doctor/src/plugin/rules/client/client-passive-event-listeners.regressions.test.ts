@@ -359,6 +359,27 @@ function attach(el: HTMLElement) {
     expect(result.diagnostics).toHaveLength(3);
   });
 
+  it("flags an un-reassigned let receiver with a proven DOM initializer", () => {
+    const result = runRule(
+      clientPassiveEventListeners,
+      `let el = document.createElement("div");
+       el.addEventListener("wheel", handleWheel);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a reassigned let receiver with a proven DOM initializer", () => {
+    const result = runRule(
+      clientPassiveEventListeners,
+      `let el = document.createElement("div");
+       el = getCustomTarget();
+       el.addEventListener("wheel", handleWheel);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags global EventTarget constructions and constructor aliases", () => {
     const result = runRule(
       clientPassiveEventListeners,
@@ -908,6 +929,65 @@ function attach(el: HTMLElement) {
       { filename },
     );
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an imported predicate cancels inside a synchronous callback", () => {
+    const filename = writeImportedPredicate(
+      `export const isTouchEvent = (event: Event): boolean => {
+         [1].forEach(() => event.preventDefault());
+         return true;
+       };`,
+    );
+    const result = runRule(
+      clientPassiveEventListeners,
+      `import { isTouchEvent } from "./events";
+       const target = new EventTarget();
+       target.addEventListener("touchmove", (event) => {
+         if (isTouchEvent(event)) track();
+       });`,
+      { filename },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an imported predicate cancels inside an IIFE", () => {
+    const filename = writeImportedPredicate(
+      `export const isTouchEvent = (event: Event): boolean => {
+         (() => {
+           event.preventDefault();
+         })();
+         return true;
+       };`,
+    );
+    const result = runRule(
+      clientPassiveEventListeners,
+      `import { isTouchEvent } from "./events";
+       const target = new EventTarget();
+       target.addEventListener("touchmove", (event) => {
+         if (isTouchEvent(event)) track();
+       });`,
+      { filename },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports when an imported predicate only runs event-free nested callbacks", () => {
+    const filename = writeImportedPredicate(
+      `export const isTouchEvent = (event: Event): boolean => {
+         ["touchstart", "touchmove"].forEach((eventName) => registerSeenEvent(eventName));
+         return "touches" in event;
+       };`,
+    );
+    const result = runRule(
+      clientPassiveEventListeners,
+      `import { isTouchEvent } from "./events";
+       const target = new EventTarget();
+       target.addEventListener("touchmove", (event) => {
+         if (isTouchEvent(event)) track();
+       });`,
+      { filename },
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays silent when an imported callable consumes the event", () => {

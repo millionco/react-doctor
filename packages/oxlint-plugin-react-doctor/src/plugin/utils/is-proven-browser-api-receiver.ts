@@ -2,6 +2,7 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
 import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
+import { getDirectUnreassignedInitializer } from "./get-direct-unreassigned-initializer.js";
 import { getStaticKeyName } from "./get-static-key-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { getSymbolTypeAnnotation } from "./get-symbol-type-annotation.js";
@@ -170,7 +171,7 @@ export const getProvenDomEventTargetPrototypeOwnerNames = (
     const typeAnnotation = getSymbolTypeAnnotation(symbol);
     const typeName = typeAnnotation ? getUnshadowedDomTargetTypeName(typeAnnotation, scopes) : null;
     if (typeName) return getDomPrototypeOwnerNamesForType(typeName);
-    const initializer = getDirectConstInitializer(symbol);
+    const initializer = getDirectUnreassignedInitializer(symbol);
     if (!initializer) return ["EventTarget"];
     const nextVisitedSymbolIds = new Set(visitedSymbolIds);
     nextVisitedSymbolIds.add(symbol.id);
@@ -395,7 +396,7 @@ export const isProvenBrowserApiReceiver = (
     if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
     const typeAnnotation = getSymbolTypeAnnotation(symbol);
     if (typeAnnotation && isUnshadowedTargetType(typeAnnotation, scopes, receiverKind)) return true;
-    const initializer = getDirectConstInitializer(symbol);
+    const initializer = getDirectUnreassignedInitializer(symbol);
     if (!initializer) return false;
     visitedSymbolIds.add(symbol.id);
     return isProvenBrowserApiReceiver(initializer, receiverKind, scopes, visitedSymbolIds);

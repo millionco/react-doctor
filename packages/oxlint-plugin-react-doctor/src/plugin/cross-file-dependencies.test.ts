@@ -209,6 +209,7 @@ describe("no-mutating-reducer-state collector", () => {
 
 describe("effect value helper collectors", () => {
   const affectedRuleIds = [
+    "client-passive-event-listeners",
     "no-adjust-state-on-prop-change",
     "no-derived-state",
     "no-derived-state-effect",

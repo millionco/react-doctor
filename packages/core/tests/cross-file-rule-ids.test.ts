@@ -135,6 +135,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
 
   it("contains the verified set and nothing the analysis can't justify", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
+      "client-passive-event-listeners",
       "nextjs-missing-metadata",
       "nextjs-no-use-search-params-without-suspense",
       "no-adjust-state-on-prop-change",

@@ -481,7 +481,7 @@ export const noCascadingSetState = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
       if (isInitOnlyEffect(node)) return;
-      const callback = getEffectCallback(node);
+      const callback = getEffectCallback(node, context.scopes);
       if (!callback) return;
       if (isDevOnlyGuardedEffect(callback)) return;
 

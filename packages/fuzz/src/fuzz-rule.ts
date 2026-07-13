@@ -20,6 +20,12 @@ import { crossoverFuzzPrograms, mutateFuzzProgram } from "./mutate-fuzz-program.
 import { createSeededRandom } from "./seeded-random.js";
 import { FUZZ_FILENAME_POOL } from "./snippet-pools.js";
 
+const EFFECT_CALLBACK_ALIAS_RULE_IDS = new Set([
+  "no-cascading-set-state",
+  "no-effect-chain",
+  "no-fetch-in-effect",
+]);
+
 export type FuzzFindingKind = "crash" | "slow" | "invariant-violation" | "verdict-drop";
 
 export interface FuzzFinding {
@@ -260,7 +266,7 @@ export const fuzzRuleWithStats = (
 
     for (const variant of [
       ...buildEquivalentFuzzVariants(code, sections),
-      ...buildAstEquivalentFuzzVariants(code, filename),
+      ...buildAstEquivalentFuzzVariants(code, filename, EFFECT_CALLBACK_ALIAS_RULE_IDS.has(ruleId)),
     ]) {
       if (hasParseErrors(variant.code, filename)) continue;
       const variantOutcome = runRuleOnCode(rule, variant.code, filename);

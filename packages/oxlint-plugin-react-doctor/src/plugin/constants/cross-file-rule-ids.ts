@@ -34,6 +34,7 @@
 // also forces every rule here into the bounded/unbounded classification in
 // `cross-file-dependencies.ts`.
 export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
+  "client-passive-event-listeners",
   "no-barrel-import",
   "nextjs-missing-metadata",
   "nextjs-no-use-search-params-without-suspense",

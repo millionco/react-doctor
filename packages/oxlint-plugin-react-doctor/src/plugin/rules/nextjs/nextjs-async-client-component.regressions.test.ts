@@ -64,6 +64,16 @@ const Profile = (Object.freeze as typeof Object.freeze)(async () => <div />);`,
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an async client component when the integrity receiver has a TypeScript wrapper", () => {
+    const result = runRule(
+      nextjsAsyncClientComponent,
+      `"use client";
+const Profile = (Object as any).freeze(async () => <div />);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for a wrapped synchronous client component", () => {
     const result = runRule(
       nextjsAsyncClientComponent,

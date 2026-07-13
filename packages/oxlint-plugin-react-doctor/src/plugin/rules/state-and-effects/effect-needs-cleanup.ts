@@ -1860,7 +1860,7 @@ const findRefOwnedHandlerStorage = (
   const functionCfg = context.cfg.cfgFor(retainedFunction);
   const usageBlock = functionCfg?.blockOf(usage.node);
   if (usageStart === null || !functionCfg || !usageBlock) return null;
-  const matchingStorage = new Map<string, RefOwnedHandlerStorage>();
+  const matchingStorage: RefOwnedHandlerStorage[] = [];
   walkAst(retainedFunction.body, (child: EsTreeNode) => {
     if (child !== retainedFunction.body && isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "AssignmentExpression") || child.operator !== "=") return;
@@ -1882,7 +1882,7 @@ const findRefOwnedHandlerStorage = (
       const propertyName = getStaticPropertyKeyName(property);
       if (propertyName && resolveExpressionKey(property.value, context) === usage.handlerKey) {
         const handlerKey = `${refCurrentKey}.${propertyName}`;
-        matchingStorage.set(handlerKey, {
+        matchingStorage.push({
           handlerKey,
           refCurrentKey,
           assignmentNode: child,
@@ -1890,8 +1890,7 @@ const findRefOwnedHandlerStorage = (
       }
     }
   });
-  if (matchingStorage.size !== 1) return null;
-  return matchingStorage.values().next().value ?? null;
+  return matchingStorage.length === 1 ? matchingStorage[0] : null;
 };
 
 const doMatchingNodesCoverEveryPathBeforeUsage = (
@@ -1937,9 +1936,11 @@ const retainedFunctionReleasesPreviousRefOwnedUsage = (
   storageNode: EsTreeNode,
   context: RuleContext,
 ): boolean => {
+  if (!isFunctionLike(retainedFunction)) return false;
+  const retainedFunctionBody = retainedFunction.body;
   const cleanupCalls: EsTreeNode[] = [];
-  walkAst(retainedFunction.body, (child: EsTreeNode) => {
-    if (child !== retainedFunction.body && isFunctionLike(child)) return false;
+  walkAst(retainedFunctionBody, (child: EsTreeNode) => {
+    if (child !== retainedFunctionBody && isFunctionLike(child)) return false;
     if (
       isNodeOfType(child, "CallExpression") &&
       resolveRefOwnedCleanupFunction(child.callee, context) === cleanupFunction

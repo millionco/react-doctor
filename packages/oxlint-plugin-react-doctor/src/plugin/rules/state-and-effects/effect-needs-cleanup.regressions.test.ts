@@ -1909,20 +1909,29 @@ export const useResizableColumns = () => {
     {
       name: "conditional pre-release",
       setupPrefix: "if (enabled) stopResize();",
+      setupSuffix: "",
     },
     {
       name: "deferred release",
       setupPrefix: "queueMicrotask(stopResize);",
+      setupSuffix: "",
     },
     {
       name: "nested callback release",
       setupPrefix: "const releaseLater = () => stopResize(); releaseLater;",
+      setupSuffix: "",
     },
     {
       name: "one-branch release",
       setupPrefix: "if (enabled) stopResize(); else console.log('disabled');",
+      setupSuffix: "",
     },
-  ])("keeps a $name setup diagnostic", ({ setupPrefix }) => {
+    {
+      name: "release after storage",
+      setupPrefix: "",
+      setupSuffix: "stopResize();",
+    },
+  ])("keeps a $name setup diagnostic", ({ setupPrefix, setupSuffix }) => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useCallback, useEffect, useRef } from "react";
@@ -1939,6 +1948,37 @@ export const useResizableColumns = ({ enabled }) => {
     ${setupPrefix}
     const handleMouseMove = () => undefined;
     activeSessionRef.current = { handleMouseMove };
+    ${setupSuffix}
+    document.addEventListener("mousemove", handleMouseMove);
+  }, [enabled, stopResize]);
+  return startResize;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps multiple session storage sites conservative", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const useResizableColumns = ({ enabled }) => {
+  const activeSessionRef = useRef(null);
+  const stopResize = useCallback(() => {
+    const session = activeSessionRef.current;
+    if (!session) return;
+    document.removeEventListener("mousemove", session.handleMouseMove);
+    activeSessionRef.current = null;
+  }, []);
+  useEffect(() => stopResize, [stopResize]);
+  const startResize = useCallback(() => {
+    const handleMouseMove = () => undefined;
+    if (enabled) {
+      stopResize();
+      activeSessionRef.current = { handleMouseMove };
+    } else {
+      activeSessionRef.current = { handleMouseMove };
+    }
     document.addEventListener("mousemove", handleMouseMove);
   }, [enabled, stopResize]);
   return startResize;

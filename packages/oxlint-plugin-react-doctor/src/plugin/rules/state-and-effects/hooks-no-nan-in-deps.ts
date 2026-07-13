@@ -1,9 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isGlobalNanValue } from "../../utils/is-global-nan-value.js";
 
 // Hooks whose tail (or trailing) argument is an explicit dependency array.
 // Notably excludes `@preact/signals`'s `useSignalEffect(callback)` — it
@@ -22,21 +22,6 @@ const HOOKS_WITH_DEP_ARRAY = new Set([
 
 const NAN_MESSAGE =
   "`NaN` in a dependency array never compares as changed with `Object.is`, so normalize the value before passing it as a dependency.";
-
-const isNanLiteral = (node: EsTreeNode): boolean => {
-  if (isNodeOfType(node, "Identifier") && node.name === "NaN") return true;
-  if (
-    isNodeOfType(node, "MemberExpression") &&
-    !node.computed &&
-    isNodeOfType(node.object, "Identifier") &&
-    node.object.name === "Number" &&
-    isNodeOfType(node.property, "Identifier") &&
-    node.property.name === "NaN"
-  ) {
-    return true;
-  }
-  return false;
-};
 
 // Mirrors the runtime check in `preact/debug/src/debug.js`:
 //   if (isNaN(arg)) {
@@ -72,7 +57,7 @@ export const hooksNoNanInDeps = defineRule({
       if (!depsArgument || !isNodeOfType(depsArgument, "ArrayExpression")) return;
       for (const element of depsArgument.elements) {
         if (!element) continue;
-        if (isNanLiteral(element)) {
+        if (isGlobalNanValue(element, context.scopes)) {
           context.report({ node: element, message: NAN_MESSAGE });
         }
       }

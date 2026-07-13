@@ -109,6 +109,18 @@ function List() {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags fresh inline props when the integrity receiver has a TypeScript wrapper", () => {
+    const result = runRule(
+      noInlinePropOnMemoComponent,
+      `const Row = memo(Inner);
+function List() {
+  return <Row config={(Object as any).freeze({ mode: "compact" })} />;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on a module-scoped frozen object", () => {
     const result = runRule(
       noInlinePropOnMemoComponent,

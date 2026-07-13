@@ -19,11 +19,16 @@ import type { ChangedFileLineRanges, DiffInfo } from "./types/index.js";
 export const getDiffInfo = (
   directory: string,
   explicitBaseBranch?: string,
+  includeUntracked?: boolean,
 ): Promise<DiffInfo | null> =>
   Effect.runPromise(
     Effect.gen(function* () {
       const git = yield* Git;
-      const selection = yield* git.diffSelection({ directory, explicitBaseBranch });
+      const selection = yield* git.diffSelection({
+        directory,
+        explicitBaseBranch,
+        includeUntracked,
+      });
       if (selection === null) return null;
       return {
         currentBranch: selection.currentBranch,
@@ -51,6 +56,7 @@ export const getChangedLineRanges = (input: {
   baseRef?: string;
   cached?: boolean;
   files: ReadonlyArray<string>;
+  includeUntracked?: boolean;
 }): Promise<ChangedFileLineRanges[] | null> =>
   Effect.runPromise(
     Effect.gen(function* () {

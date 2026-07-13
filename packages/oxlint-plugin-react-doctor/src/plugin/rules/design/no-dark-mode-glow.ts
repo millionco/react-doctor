@@ -14,33 +14,74 @@ import { hasColorChroma } from "./utils/has-color-chroma.js";
 import { isPureBlackColor } from "./utils/is-pure-black-color.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const splitShadowLayers = (shadowValue: string): string[] => shadowValue.split(/,(?![^(]*\))/);
+const splitShadowLayers = (shadowValue: string): string[] => {
+  const layers: string[] = [];
+  let layerStartIndex = 0;
+  let parenthesisDepth = 0;
 
-const extractColorFromShadowLayer = (layer: string): ParsedRgb | null => {
-  const rgbMatch = layer.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-  if (rgbMatch) {
-    return {
-      red: parseInt(rgbMatch[1], 10),
-      green: parseInt(rgbMatch[2], 10),
-      blue: parseInt(rgbMatch[3], 10),
-    };
+  for (let characterIndex = 0; characterIndex < shadowValue.length; characterIndex += 1) {
+    const character = shadowValue[characterIndex];
+    if (character === "(") parenthesisDepth += 1;
+    if (character === ")" && parenthesisDepth > 0) parenthesisDepth -= 1;
+    if (character !== "," || parenthesisDepth !== 0) continue;
+
+    layers.push(shadowValue.slice(layerStartIndex, characterIndex));
+    layerStartIndex = characterIndex + 1;
   }
 
-  const hexMatch = layer.match(/#([0-9a-f]{3,6})\b/i);
-  if (hexMatch) return parseColorToRgb(`#${hexMatch[1]}`);
-
-  return null;
+  layers.push(shadowValue.slice(layerStartIndex));
+  return layers;
 };
 
-const RGB_FUNCTION_PATTERN = /rgba?\([^)]*\)/g;
-const HEX_COLOR_PATTERN = /#[0-9a-f]{3,8}\b/gi;
+const RGB_COLOR_PATTERN = /rgba?\([^)]*\)/i;
+const HEX_COLOR_PATTERN = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{4}|[0-9a-f]{3})\b/i;
+const ZERO_ALPHA_PATTERN = /^[+-]?(?:0+(?:\.0*)?|\.0+)%?$/;
+
+const isAtTopLevel = (value: string, index: number): boolean => {
+  let parenthesisDepth = 0;
+  for (let characterIndex = 0; characterIndex < index; characterIndex += 1) {
+    const character = value[characterIndex];
+    if (character === "(") parenthesisDepth += 1;
+    if (character === ")" && parenthesisDepth > 0) parenthesisDepth -= 1;
+  }
+  return parenthesisDepth === 0;
+};
+
+const isShadowLayerFullyTransparent = (layer: string): boolean => {
+  const hexMatch = layer.match(HEX_COLOR_PATTERN);
+  if (hexMatch?.index !== undefined && isAtTopLevel(layer, hexMatch.index)) {
+    const hexDigits = hexMatch[0].slice(1);
+    if (hexDigits.length === 4) return hexDigits.endsWith("0");
+    if (hexDigits.length === 8) return hexDigits.endsWith("00");
+  }
+
+  const rgbMatch = layer.match(RGB_COLOR_PATTERN);
+  if (rgbMatch?.index === undefined || !isAtTopLevel(layer, rgbMatch.index)) return false;
+
+  const colorArguments = rgbMatch[0].slice(rgbMatch[0].indexOf("(") + 1, -1);
+  const slashIndex = colorArguments.lastIndexOf("/");
+  if (slashIndex !== -1) {
+    return ZERO_ALPHA_PATTERN.test(colorArguments.slice(slashIndex + 1).trim());
+  }
+
+  const legacyArguments = colorArguments.split(",");
+  return legacyArguments.length === 4 && ZERO_ALPHA_PATTERN.test(legacyArguments[3].trim());
+};
+
+const extractColorFromShadowLayer = (layer: string): ParsedRgb | null => {
+  const colorMatch = layer.match(RGB_COLOR_PATTERN) ?? layer.match(HEX_COLOR_PATTERN);
+  return colorMatch ? parseColorToRgb(colorMatch[0]) : null;
+};
+
+const RGB_FUNCTION_PATTERN = /rgba?\([^)]*\)/gi;
+const ALL_HEX_COLORS_PATTERN = /#[0-9a-f]{3,8}\b/gi;
 const NUMERIC_TOKEN_PATTERN = /(\d+(?:\.\d+)?)(px)?/g;
 
 // The blur radius is the third numeric token (`offset-x offset-y blur`).
 const SHADOW_BLUR_TOKEN_INDEX = 2;
 
 const parseShadowLayerBlur = (layer: string): number => {
-  const withoutColors = layer.replace(RGB_FUNCTION_PATTERN, "").replace(HEX_COLOR_PATTERN, "");
+  const withoutColors = layer.replace(RGB_FUNCTION_PATTERN, "").replace(ALL_HEX_COLORS_PATTERN, "");
   let tokenIndex = 0;
   for (const match of withoutColors.matchAll(NUMERIC_TOKEN_PATTERN)) {
     if (tokenIndex === SHADOW_BLUR_TOKEN_INDEX) return parseFloat(match[1]);
@@ -51,6 +92,8 @@ const parseShadowLayerBlur = (layer: string): number => {
 
 const hasColoredGlowShadow = (shadowValue: string): boolean => {
   for (const layer of splitShadowLayers(shadowValue)) {
+    if (isShadowLayerFullyTransparent(layer)) continue;
+
     const color = extractColorFromShadowLayer(layer);
     if (
       color &&

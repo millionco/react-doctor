@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { validateModeFlags } from "../src/cli/utils/validate-mode-flags.js";
+import {
+  validateIncludeUntrackedScope,
+  validateModeFlags,
+} from "../src/cli/utils/validate-mode-flags.js";
 
 describe("validateModeFlags", () => {
   it("allows JSON mode with --blocking", () => {
@@ -52,5 +55,33 @@ describe("validateModeFlags", () => {
     expect(() => validateModeFlags({ staged: true, scope: "files" })).not.toThrow();
     expect(() => validateModeFlags({ staged: true, scope: "lines" })).not.toThrow();
     expect(() => validateModeFlags({ staged: true })).not.toThrow();
+  });
+
+  it("rejects --include-untracked with --staged (the index has no untracked files)", () => {
+    expect(() =>
+      validateModeFlags({ includeUntracked: true, staged: true, scope: "files" }),
+    ).toThrow("Cannot combine --include-untracked with --staged");
+  });
+});
+
+describe("validateIncludeUntrackedScope", () => {
+  it("is a no-op when --include-untracked is off (any scope)", () => {
+    expect(() => validateIncludeUntrackedScope(false, undefined)).not.toThrow();
+    expect(() => validateIncludeUntrackedScope(false, "full")).not.toThrow();
+  });
+
+  it("rejects --include-untracked without a working-tree scope in effect", () => {
+    expect(() => validateIncludeUntrackedScope(true, undefined)).toThrow(
+      "--include-untracked requires the files, changed, or lines scope",
+    );
+    expect(() => validateIncludeUntrackedScope(true, "full")).toThrow(
+      "--include-untracked requires the files, changed, or lines scope",
+    );
+  });
+
+  it("allows --include-untracked with a resolved working-tree scope (from flag or config)", () => {
+    expect(() => validateIncludeUntrackedScope(true, "files")).not.toThrow();
+    expect(() => validateIncludeUntrackedScope(true, "changed")).not.toThrow();
+    expect(() => validateIncludeUntrackedScope(true, "lines")).not.toThrow();
   });
 });

@@ -10,6 +10,8 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  `useEffect(() => { const handleWheel = () => handle(); window.addEventListener("wheel", handleWheel); return () => window.removeEventListener("wheel", handleWheel); }, []);`,
+  `useEffect(() => { const handleWheel = (event) => handle(event); window.addEventListener("wheel", handleWheel); return () => window.removeEventListener("wheel", handleWheel); }, []);`,
   `useEffect(() => { window.addEventListener("resize", handle); return () => window.removeEventListener("resize", handle); }, []);`,
   `useEffect(() => { window.addEventListener("scroll", handle, { passive: true, capture: true }); return () => window.removeEventListener("scroll", handle, { capture: true }); }, []);`,
   `useEffect(() => { document.addEventListener("keydown", handle); return () => document.removeEventListener("keydown", handle); }, []);`,
@@ -75,6 +77,7 @@ export const STATE_SNIPPET_POOL = [
 // Handlers — async submits with loading flags, keyboard commit paths,
 // numeric input parsing, window.open, clipboard, toggles.
 export const HANDLER_SNIPPET_POOL = [
+  `const handleSyncRequest = () => { const request = new XMLHttpRequest(); request.open("GET", String(url), false); request.send(); };`,
   `const handleSubmit = async () => { setLoading(true); try { await fetch(url, { method: "POST", body: JSON.stringify(values) }); setState(true); } catch (submitError) { setError(submitError); } finally { setLoading(false); } };`,
   `const handleSubmit = async () => { setLoading(true); const result = await api.post(url, values); setState(result); setLoading(false); };`,
   `const handleSave = async () => { if (loading) return; setLoading(true); await api.put(url, values); setLoading(false); };`,
@@ -179,9 +182,77 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `const StyledInput = styled.input<{ $error: boolean }>\`border: 1px solid \${(styledProps) => (styledProps.$error ? "red" : "gray")}; border: 2px dashed blue;\`;`,
   `const SECRET_KEY = "sk-live-abc123def456ghi789jkl012mno345";`,
   `const ARROW_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);`,
+  `export const STATIC_STYLED_ELEMENT = <div style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />;`,
   `const defaults = { title: "untitled", pageSize: 20 };`,
   `reaction(() => store.value, (next) => persist(next));`,
   `let sharedSnapshot = "idle"; const snapshotListeners = new Set(); function subscribeSnapshot(listener) { snapshotListeners.add(listener); return () => snapshotListeners.delete(listener); }`,
+  `const FuzzPolyfillScript = () => <script src="https://polyfill.io/v3/polyfill.min.js" />;`,
+] as const;
+
+export const SERVER_MODULE_PROGRAM_POOL = [
+  `"use server";
+const state = Object.seal({ count: 0 });
+export const increment = async () => {
+  state.count++;
+};`,
+  `"use server";
+const state = Object.preventExtensions({ users: [] });
+export const addUser = async (user: unknown) => {
+  state.users.push(user);
+};`,
+  `"use server";
+const state = Object.seal({ cache: new Map<string, unknown>() });
+export const remember = async (key: string, value: unknown) => {
+  state.cache.set(key, value);
+};`,
+  `"use server";
+const state = Object.seal({ count: 0 });
+const incrementState = (target: { count: number }) => {
+  target.count++;
+};
+export const increment = async () => {
+  incrementState(state);
+};`,
+  `"use server";
+const state = Object.seal({ count: 0 });
+export const update = async (patch: { count?: number }) => {
+  Object.assign(state, patch);
+};`,
+  `"use server";
+const state = Object.preventExtensions({ count: 0 });
+export const removeCount = async () => {
+  delete state.count;
+};`,
+  `"use server";
+const state = Object.freeze({ count: 0 });
+export const increment = async () => {
+  state.count++;
+};`,
+  `"use server";
+const state = Object.seal({ get count() { return 0; } });
+export const increment = async () => {
+  state.count++;
+};`,
+  `"use server";
+const state = Object.preventExtensions({ count: 0 });
+state.count = 1;
+export const read = async () => state.count;`,
+  `"use server";
+const state = Object.seal({ service: getService() });
+export const update = async () => {
+  state.service.set("status", "active");
+};`,
+  `"use server";
+const state = Object.seal({ service: { set(value: string) { persist(value); } } });
+export const update = async () => {
+  state.service.set("active");
+};`,
+  `"use server";
+const Object = { seal: <Value,>(value: Value) => value };
+const state = Object.seal({ count: 0 });
+export const increment = async () => {
+  state.count++;
+};`,
 ] as const;
 
 // Attributes that specifically trip a11y validity rules — misspelled aria
@@ -230,6 +301,7 @@ export const JSX_ATTRIBUTE_POOL = [
   `onMouseEnter={() => setIsOpen(true)}`,
   `style={{ color: "red" }}`,
   `style={{ width: state }}`,
+  `style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }}`,
   `key={index}`,
   `key={item.id}`,
   `key={Math.random()}`,
@@ -288,6 +360,8 @@ export const JSX_LEAF_POOL = [
   `<div role="button" onClick={handleClick}>{state}</div>`,
   `<div style={{ paddingLeft: 8, paddingRight: 8, width: 100, height: 100 }}>{state}</div>`,
   `<div style={{ marginTop: 4, marginBottom: 4 }}>{state}</div>`,
+  `<div style={{ backgroundColor: "#000", boxShadow: "0 0 60px rgb(255 0 0 / 0%)" }}>{state}</div>`,
+  `<div style={{ backgroundColor: "#000", boxShadow: "0 0 60px rgb(255 0 0 / 10%)" }}>{state}</div>`,
   `<input type="checkbox" checked={isChecked} />`,
   `<video autoPlay />`,
   `<marquee>{state}</marquee>`,
@@ -346,7 +420,7 @@ export const IMPORT_LINE_POOL = [
   `import { useForm } from "react-hook-form";`,
   `import debounce from "lodash/debounce";`,
   `import { z } from "zod";`,
-  `import { forwardRef } from "react";`,
+  `import { forwardRef } from "react";\nconst FuzzForwardRefComponent = forwardRef((props) => <button>{props.label}</button>);`,
 ] as const;
 
 // Filenames rotate per iteration because a large rule population is
@@ -372,6 +446,7 @@ export const FUZZ_FILENAME_POOL = [
   "src/fuzz-widget.server.tsx",
   "next.config.js",
   "src/utils/fuzz-helper.ts",
+  "packages/docs/archive/v1/static/docs.js",
 ] as const;
 
 // Identifiers rules key on by NAME (guard aliases, visibility gates,

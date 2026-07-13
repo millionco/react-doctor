@@ -1,12 +1,14 @@
 import { INLINE_STYLE_PROPERTY_THRESHOLD } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { executesDuringRender } from "../../utils/executes-during-render.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // Only properties whose values are compile-time constants can move to a CSS
 // class — values computed from props/state (floating-ui coordinates, editor
@@ -27,6 +29,35 @@ const isStaticStyleProperty = (property: EsTreeNode): boolean => {
   return isStaticStyleValue(property.value);
 };
 
+// Walks past static fields instead of stopping: a static field of a class
+// expression nested inside an instance field still re-evaluates per instance.
+const isInsideInstanceField = (node: EsTreeNode): boolean => {
+  let descendantNode = node;
+  let ancestorNode = node.parent;
+  while (ancestorNode) {
+    if (
+      (isNodeOfType(ancestorNode, "PropertyDefinition") ||
+        isNodeOfType(ancestorNode, "AccessorProperty")) &&
+      ancestorNode.static !== true &&
+      ancestorNode.value === descendantNode
+    ) {
+      return true;
+    }
+    descendantNode = ancestorNode;
+    ancestorNode = ancestorNode.parent;
+  }
+  return false;
+};
+
+const isOneShotModuleInitialization = (node: EsTreeNode, context: RuleContext): boolean => {
+  let functionNode = findEnclosingFunction(node);
+  while (functionNode) {
+    if (!executesDuringRender(functionNode, context.scopes)) return false;
+    functionNode = findEnclosingFunction(functionNode);
+  }
+  return !isInsideInstanceField(node);
+};
+
 export const noInlineExhaustiveStyle = defineRule({
   id: "no-inline-exhaustive-style",
   title: "Large inline style object rebuilds every render",
@@ -41,6 +72,7 @@ export const noInlineExhaustiveStyle = defineRule({
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         const expression = getInlineStyleExpression(node);
         if (!expression) return;
+        if (isOneShotModuleInitialization(expression, context)) return;
 
         const propertyCount = expression.properties?.filter(isStaticStyleProperty).length ?? 0;
 

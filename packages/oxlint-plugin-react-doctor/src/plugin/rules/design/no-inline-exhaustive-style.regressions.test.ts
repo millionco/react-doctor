@@ -2,7 +2,219 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noInlineExhaustiveStyle } from "./no-inline-exhaustive-style.js";
 
+const exhaustiveStyleElement = `
+  <div
+    style={{
+      display: "flex",
+      width: "100%",
+      height: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "column",
+      backgroundColor: "white",
+      fontSize: 64,
+    }}
+  />
+`;
+
 describe("design/no-inline-exhaustive-style regressions", () => {
+  it("stays silent for module-initialized JSX", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `export const stableElement = (${exhaustiveStyleElement});`,
+      { filename: "/proj/src/stable-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for one-shot module initializers", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `export const stableElement = (() => ${exhaustiveStyleElement})();`,
+      { filename: "/proj/src/stable-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent in synchronous callbacks within a one-shot module initializer", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `export const stableElements = (() => [1].map(() => ${exhaustiveStyleElement}))();`,
+      { filename: "/proj/src/stable-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for module-scope Array.from initializers, direct and const-aliased", () => {
+    const direct = runRule(
+      noInlineExhaustiveStyle,
+      `export const stableElements = Array.from({ length: 3 }, () => ${exhaustiveStyleElement});`,
+      { filename: "/proj/src/stable-element.tsx" },
+    );
+    const aliased = runRule(
+      noInlineExhaustiveStyle,
+      `
+        const buildRange = Array.from;
+        export const stableElements = buildRange({ length: 3 }, () => ${exhaustiveStyleElement});
+      `,
+      { filename: "/proj/src/stable-element.tsx" },
+    );
+
+    for (const result of [direct, aliased]) {
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
+  it("distinguishes module-stable static fields from per-instance fields", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        class ElementHolder {
+          static stableElement = ${exhaustiveStyleElement};
+          [${exhaustiveStyleElement}] = "computed-once";
+          instanceElement = ${exhaustiveStyleElement};
+        }
+
+        export const Panel = () => new ElementHolder().instanceElement;
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("distinguishes module-stable static accessor fields from per-instance accessor fields", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        class ElementHolder {
+          static accessor stableElement = ${exhaustiveStyleElement};
+          accessor instanceElement = ${exhaustiveStyleElement};
+        }
+
+        export const Panel = () => new ElementHolder().instanceElement;
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports static fields of class expressions initialized per instance", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        class Outer {
+          inner = class Inner {
+            static styledElement = ${exhaustiveStyleElement};
+          };
+        }
+
+        export const Panel = () => new Outer().inner;
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports styles rebuilt directly and in synchronous render callbacks", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        export const Panel = ({ items }) => (
+          <section>
+            ${exhaustiveStyleElement}
+            {items.map(() => ${exhaustiveStyleElement})}
+          </section>
+        );
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("still reports inside a module-scope custom hook body", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `export const useStyledElement = () => ${exhaustiveStyleElement};`,
+      { filename: "/proj/src/use-styled-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports inside a deferred module-scope callback", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `setTimeout(() => ${exhaustiveStyleElement}, 0);`,
+      { filename: "/proj/src/deferred-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports inside a memo-wrapped module-scope component", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        import { memo } from "react";
+
+        export const Panel = memo(() => ${exhaustiveStyleElement});
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports inside a plain named module function", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        function buildStyledElement() {
+          return ${exhaustiveStyleElement};
+        }
+
+        export const element = buildStyledElement();
+      `,
+      { filename: "/proj/src/styled-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a useMemo factory inside a component", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        import { useMemo } from "react";
+
+        export const Panel = () => useMemo(() => ${exhaustiveStyleElement}, []);
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   // OG components style everything inline because Satori (next/og,
   // @vercel/og) supports no other styling channel and rasterizes the JSX
   // to a static image — so the "rebuilds every render" cost never applies.

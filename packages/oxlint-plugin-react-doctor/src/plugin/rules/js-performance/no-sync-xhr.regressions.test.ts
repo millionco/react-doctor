@@ -24,4 +24,31 @@ describe("js-performance/no-sync-xhr — regressions", () => {
     );
     expect(diagnostics).toHaveLength(1);
   });
+
+  it("still flags a synchronous XHR on an un-reassigned let receiver", () => {
+    const { diagnostics } = runRule(
+      noSyncXhr,
+      `let request = new XMLHttpRequest();\nrequest.open("GET", "/api", false);\nrequest.send(null);`,
+      { filename: "/repo/src/lib/fetch-sync.ts" },
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a synchronous XHR on an un-reassigned var receiver", () => {
+    const { diagnostics } = runRule(
+      noSyncXhr,
+      `var request = new XMLHttpRequest();\nrequest.open("GET", "/api", false);\nrequest.send(null);`,
+      { filename: "/repo/src/lib/fetch-sync.ts" },
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a reassigned let receiver", () => {
+    const { diagnostics } = runRule(
+      noSyncXhr,
+      `let request = new XMLHttpRequest();\nrequest = createTransport();\nrequest.open("GET", "/api", false);\nrequest.send(null);`,
+      { filename: "/repo/src/lib/fetch-sync.ts" },
+    );
+    expect(diagnostics).toEqual([]);
+  });
 });

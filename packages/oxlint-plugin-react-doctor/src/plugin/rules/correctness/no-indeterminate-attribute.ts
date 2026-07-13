@@ -1,9 +1,13 @@
-import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { getSymbolTypeAnnotation } from "../../utils/get-symbol-type-annotation.js";
+import { hasEnclosingTypeParameterNamed } from "../../utils/has-enclosing-type-parameter-named.js";
+import { hasVisibleBindingNamed } from "../../utils/has-visible-binding-named.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall, type ReactApiCallOptions } from "../../utils/is-react-api-call.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -15,42 +19,6 @@ const MESSAGE =
 const REACT_USE_REF_OPTIONS: ReactApiCallOptions = {
   allowGlobalReactNamespace: false,
   allowUnboundBareCalls: false,
-};
-
-const hasVisibleBindingNamed = (
-  node: EsTreeNode,
-  bindingName: string,
-  scopes: ScopeAnalysis,
-): boolean => {
-  let scope = scopes.scopeFor(node);
-  while (true) {
-    if (scope.symbolsByName.has(bindingName)) return true;
-    if (!scope.parent) return false;
-    scope = scope.parent;
-  }
-};
-
-const hasEnclosingTypeParameterNamed = (node: EsTreeNode, typeParameterName: string): boolean => {
-  let ancestor = node.parent;
-  while (ancestor) {
-    if ("typeParameters" in ancestor) {
-      const typeParameters = ancestor.typeParameters;
-      if (
-        typeParameters &&
-        isNodeOfType(typeParameters, "TSTypeParameterDeclaration") &&
-        typeParameters.params.some(
-          (typeParameter) =>
-            isNodeOfType(typeParameter, "TSTypeParameter") &&
-            isNodeOfType(typeParameter.name, "Identifier") &&
-            typeParameter.name.name === typeParameterName,
-        )
-      ) {
-        return true;
-      }
-    }
-    ancestor = ancestor.parent;
-  }
-  return false;
 };
 
 const isHtmlInputElementType = (typeNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -76,24 +44,6 @@ const isHtmlInputElementType = (typeNode: EsTreeNode, scopes: ScopeAnalysis): bo
     hasHtmlInputElementMember = true;
   }
   return hasHtmlInputElementMember;
-};
-
-const getBindingTypeAnnotation = (symbol: SymbolDescriptor): EsTreeNode | null => {
-  if (!isNodeOfType(symbol.bindingIdentifier, "Identifier")) return null;
-  const annotation = symbol.bindingIdentifier.typeAnnotation;
-  if (!annotation || !isNodeOfType(annotation, "TSTypeAnnotation")) return null;
-  return annotation.typeAnnotation;
-};
-
-const getDirectConstInitializer = (symbol: SymbolDescriptor): EsTreeNode | null => {
-  if (
-    symbol.kind !== "const" ||
-    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
-    symbol.declarationNode.id !== symbol.bindingIdentifier
-  ) {
-    return null;
-  }
-  return symbol.initializer;
 };
 
 const hasTypedHtmlInputRefOrigin = (rawExpression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -130,7 +80,7 @@ const isProvenHtmlInputElement = (rawExpression: EsTreeNode, scopes: ScopeAnalys
 
     const symbol = scopes.symbolFor(expression);
     if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
-    const typeAnnotation = getBindingTypeAnnotation(symbol);
+    const typeAnnotation = getSymbolTypeAnnotation(symbol);
     if (typeAnnotation && isHtmlInputElementType(typeAnnotation, scopes)) return true;
     const initializer = getDirectConstInitializer(symbol);
     if (!initializer) return false;

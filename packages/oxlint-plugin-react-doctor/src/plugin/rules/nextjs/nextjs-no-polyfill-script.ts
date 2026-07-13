@@ -6,6 +6,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
+const ABSOLUTE_URL_SCHEME_PATTERN = /^[a-z][a-z\d+.-]*:/i;
+
 export const nextjsNoPolyfillScript = defineRule({
   id: "nextjs-no-polyfill-script",
   title: "Redundant polyfill script",
@@ -26,7 +28,17 @@ export const nextjsNoPolyfillScript = defineRule({
         ? srcAttribute.value.value
         : null;
 
-      if (typeof srcValue === "string" && POLYFILL_SCRIPT_PATTERN.test(srcValue)) {
+      const requestUrl = typeof srcValue === "string" ? srcValue.split("#", 1)[0] : null;
+      const requestScheme = requestUrl
+        ?.trimStart()
+        .match(ABSOLUTE_URL_SCHEME_PATTERN)?.[0]
+        .toLowerCase();
+
+      if (
+        requestUrl &&
+        (!requestScheme || requestScheme === "http:" || requestScheme === "https:") &&
+        POLYFILL_SCRIPT_PATTERN.test(requestUrl)
+      ) {
         context.report({
           node,
           message:

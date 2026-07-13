@@ -96,6 +96,65 @@ describe("isReactApiCall", () => {
       expectedCount: 1,
     },
     {
+      name: "static computed React members",
+      code: 'import * as ReactClient from "react"; ReactClient["useEffect"](() => {});',
+      expectedCount: 1,
+    },
+    {
+      name: "dynamic computed React members",
+      code: 'import * as ReactClient from "react"; const method = "useEffect"; ReactClient[method](() => {});',
+      expectedCount: 0,
+    },
+    {
+      name: "named default React imports",
+      code: 'import { default as ReactClient } from "react"; ReactClient.useEffect(() => {});',
+      expectedCount: 1,
+    },
+    {
+      name: "named default imports from another package",
+      code: 'import { default as ReactClient } from "other"; ReactClient.useEffect(() => {});',
+      expectedCount: 0,
+    },
+    {
+      name: "destructured React namespace APIs with alias resolution",
+      code: `import * as ReactClient from "react";
+        const { useEffect } = ReactClient;
+        const { useLayoutEffect: runLayoutEffect } = ReactClient;
+        useEffect(() => {});
+        runLayoutEffect(() => {});`,
+      options: { resolveNamedAliases: true },
+      expectedCount: 2,
+    },
+    {
+      name: "destructured React namespace APIs by default",
+      code: 'import * as ReactClient from "react"; const { useEffect } = ReactClient; useEffect(() => {});',
+      expectedCount: 0,
+    },
+    {
+      name: "mutable destructured React namespace APIs",
+      code: 'import * as ReactClient from "react"; let { useEffect } = ReactClient; useEffect(() => {});',
+      options: { resolveNamedAliases: true },
+      expectedCount: 0,
+    },
+    {
+      name: "destructured APIs from another package",
+      code: 'import * as OtherClient from "other"; const { useEffect } = OtherClient; useEffect(() => {});',
+      options: { resolveNamedAliases: true },
+      expectedCount: 0,
+    },
+    {
+      name: "destructured global React APIs when allowed",
+      code: "const { useEffect } = React; useEffect(() => {});",
+      options: { allowGlobalReactNamespace: true, resolveNamedAliases: true },
+      expectedCount: 1,
+    },
+    {
+      name: "destructured global React APIs by default",
+      code: "const { useEffect } = React; useEffect(() => {});",
+      options: { resolveNamedAliases: true },
+      expectedCount: 0,
+    },
+    {
       name: "same-named imports from another package",
       code: 'import { useEffect } from "other"; useEffect(() => {});',
       expectedCount: 0,

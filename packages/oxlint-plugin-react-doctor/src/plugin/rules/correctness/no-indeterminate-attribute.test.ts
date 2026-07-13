@@ -81,6 +81,28 @@ describe("no-indeterminate-attribute", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports destructured HTMLInputElement parameters", () => {
+    const result = runRuleForCode(`
+      const updateCheckbox = ({ node }: { node: HTMLInputElement }) => {
+        node.setAttribute("indeterminate", "true");
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not report destructured parameters of other element types", () => {
+    const result = runRuleForCode(`
+      const updateContainer = ({ node }: { node: HTMLDivElement }) => {
+        node.setAttribute("indeterminate", "true");
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("reports native checkbox JSX attribute forms", () => {
     const result = runRuleForCode(`
       const CheckboxExamples = ({ mixed }) => (

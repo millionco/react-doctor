@@ -20,6 +20,43 @@ export const NODE_ARGUMENT_COUNT = 2;
 export const REACT_DOCTOR_CONFIG_PROJECT_NAME = "react-doctor";
 
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";
+export const STAGED_SNAPSHOT_ADDITIONAL_CONFIG_FILENAMES = [
+  ".babelrc",
+  ".babelrc.json",
+  ".eslintignore",
+  ".eslintrc.json",
+  ".oxlintignore",
+  "app.config.cjs",
+  "app.config.js",
+  "app.config.json",
+  "app.config.mjs",
+  "app.config.ts",
+  "app.json",
+  "babel.config.cjs",
+  "babel.config.js",
+  "babel.config.json",
+  "babel.config.mjs",
+  "eslint.config.cjs",
+  "eslint.config.cts",
+  "eslint.config.js",
+  "eslint.config.mjs",
+  "eslint.config.mts",
+  "eslint.config.ts",
+  "next.config.cjs",
+  "next.config.js",
+  "next.config.mjs",
+  "next.config.ts",
+  "oxlint.config.json",
+  "react-doctor.config.json",
+  "vite.config.cjs",
+  "vite.config.cts",
+  "vite.config.js",
+  "vite.config.mjs",
+  "vite.config.mts",
+  "vite.config.ts",
+  "vitest.config.js",
+  "vitest.config.ts",
+] as const;
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
 // Bump on any breaking change to `CachedScanPayload`'s shape so a stale on-disk
 // cache (missing a newly-required field) is discarded wholesale by
@@ -176,6 +213,7 @@ export const METRIC = {
   cliInvoked: "cli.invoked",
   cliError: "cli.error",
   cliEnvironmentError: "cli.env_error",
+  stagedSnapshotDivergence: "staged.snapshot_divergence",
   projectDetected: "project.detected",
   projectPathSelected: "project.path_selected",
   projectConfigSelected: "project.config_selected",

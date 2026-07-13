@@ -362,4 +362,56 @@ describe("architecture/no-prop-types component provenance", () => {
       0,
     );
   });
+
+  it("tracks relevant property replacement through sibling aliases and const keys", () => {
+    expectDiagnosticCount(
+      `import ReactDefault from "react";
+       import styledDefault from "styled-components";
+       const ReactAlias = ReactDefault;
+       const ReactMutator = ReactAlias;
+       const componentKey = "Component";
+       ReactMutator[componentKey] = class {};
+       class Schema extends ReactAlias.Component { static propTypes = { value: () => true }; }
+       const memoKey = "memo";
+       ReactMutator[memoKey] = (value: unknown) => value;
+       const Protocol = ReactAlias.memo(() => <div />);
+       Protocol.propTypes = { value: () => true };
+       const styledAlias = styledDefault;
+       const styledMutator = styledAlias;
+       const tagKey = "div";
+       styledMutator[tagKey] = (parts: TemplateStringsArray) => ({ parts });
+       const RecordShape = styledAlias.div\`color: red;\`;
+       RecordShape.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
+  it("preserves components captured before sibling alias property replacement", () => {
+    expectDiagnosticCount(
+      `import ReactDefault from "react";
+       const ReactAlias = ReactDefault;
+       const ReactMutator = ReactAlias;
+       class Panel extends ReactAlias.Component { static propTypes = { value: () => true }; }
+       ReactMutator.Component = class {};`,
+      1,
+    );
+    expectDiagnosticCount(
+      `import ReactDefault from "react";
+       const ReactAlias = ReactDefault;
+       const ReactMutator = ReactAlias;
+       const Dialog = ReactAlias.memo(() => <div />);
+       ReactMutator.memo = (value: unknown) => value;
+       Dialog.propTypes = { value: () => true };`,
+      1,
+    );
+    expectDiagnosticCount(
+      `import styledDefault from "styled-components";
+       const styledAlias = styledDefault;
+       const styledMutator = styledAlias;
+       const Sheet = styledAlias.div\`color: red;\`;
+       styledMutator.div = (parts: TemplateStringsArray) => ({ parts });
+       Sheet.propTypes = { value: () => true };`,
+      1,
+    );
+  });
 });

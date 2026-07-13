@@ -213,6 +213,16 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `);
   });
 
+  it("flags `.indexOf()` through an imported non-numeric element domain", () => {
+    expectFail(`
+      import type { ComparisonOperator } from "./types";
+      function getAllowedOperators(): ComparisonOperator[] { return []; }
+      function f(properties: unknown[], operator: ComparisonOperator) {
+        return properties.filter(() => getAllowedOperators().indexOf(operator) !== -1);
+      }
+    `);
+  });
+
   it.each(["Number(candidate)", "parseFloat(candidate)", "candidate / total"])(
     "does not flag an untyped `.indexOf()` query that can evaluate to NaN: %s",
     (query) => {
@@ -290,6 +300,17 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
       type GenericValues<Value> = readonly [Value, Value];
       function f(candidates: Array<1 | 2>, allowedValues: GenericValues<1 | 2>) {
         return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("flags `.indexOf()` through a keyof-constrained generic", () => {
+    expectFail(`
+      function f<Value, Key extends keyof Value>(values: Value[], keys: Key[]) {
+        return values.filter((value) => {
+          for (const key in value) if (keys.indexOf(key as Key) !== -1) return true;
+          return false;
+        });
       }
     `);
   });

@@ -834,6 +834,11 @@ const findTypeParameter = (
   return null;
 };
 
+const POSSIBLY_NUMERIC_TYPE_REFERENCE_NAMES: ReadonlySet<string> = new Set([
+  "NonNullable",
+  "PropertyKey",
+]);
+
 const buildTypeAliasArguments = (
   typeAlias: EsTreeNodeOfType<"TSTypeAliasDeclaration">,
   typeReference: EsTreeNodeOfType<"TSTypeReference">,
@@ -879,6 +884,9 @@ const typeCanHaveSameValueZeroDifference = (
   if (isNodeOfType(typeNode, "TSTypeLiteral")) {
     return (typeNode.members?.length ?? 0) === 0;
   }
+  if (isNodeOfType(typeNode, "TSTypeOperator") && typeNode.operator === "keyof") {
+    return false;
+  }
   if (isNodeOfType(typeNode, "TSUnionType") || isNodeOfType(typeNode, "TSIntersectionType")) {
     return typeNode.types.some((memberType) =>
       typeCanHaveSameValueZeroDifference(memberType, reference, activeAliases, typeArguments),
@@ -900,12 +908,10 @@ const typeCanHaveSameValueZeroDifference = (
       typeArguments,
     );
   }
-  if (
-    !isNodeOfType(typeNode, "TSTypeReference") ||
-    !isNodeOfType(typeNode.typeName, "Identifier")
-  ) {
+  if (!isNodeOfType(typeNode, "TSTypeReference")) {
     return true;
   }
+  if (!isNodeOfType(typeNode.typeName, "Identifier")) return false;
   const substitutedType = typeArguments.get(typeNode.typeName.name);
   if (substitutedType) {
     const remainingArguments = new Map(typeArguments);
@@ -930,7 +936,13 @@ const typeCanHaveSameValueZeroDifference = (
     );
   }
   const typeAlias = findSameFileTypeAlias(reference, typeNode.typeName.name);
-  if (!typeAlias || activeAliases.has(typeAlias)) return true;
+  if (!typeAlias) {
+    return (
+      POSSIBLY_NUMERIC_TYPE_REFERENCE_NAMES.has(typeNode.typeName.name) ||
+      /(?:number|numeric)/i.test(typeNode.typeName.name)
+    );
+  }
+  if (activeAliases.has(typeAlias)) return true;
   activeAliases.add(typeAlias);
   const canDiffer = typeCanHaveSameValueZeroDifference(
     typeAlias.typeAnnotation,

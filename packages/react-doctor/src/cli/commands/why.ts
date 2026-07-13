@@ -3,6 +3,7 @@ import { inspectAction } from "./inspect.js";
 interface WhyOptions {
   cwd?: string;
   project?: string;
+  json?: boolean;
 }
 
 /**
@@ -12,8 +13,10 @@ interface WhyOptions {
  * and clean error handling. (Replaces the former `--explain` / `--why` flags.)
  */
 export const whyAction = async (location: string, options: WhyOptions): Promise<void> => {
+  const hasJsonFlag = process.argv.includes("--json");
   await inspectAction(options.cwd ?? process.cwd(), {
     explain: location,
     project: options.project,
+    json: hasJsonFlag || options.json,
   });
 };

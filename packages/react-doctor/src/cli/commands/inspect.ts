@@ -325,6 +325,13 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
 
     const explainArgument = flags.explain;
     if (explainArgument !== undefined) {
+      if (isJsonMode) {
+        writeJsonErrorReport(
+          new Error("The `why` command is not supported in JSON mode. Remove --json to use it."),
+        );
+        process.exitCode = 1;
+        return;
+      }
       await runExplain(explainArgument, {
         resolvedDirectory,
         userConfig,

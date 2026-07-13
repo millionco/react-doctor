@@ -122,4 +122,31 @@ describe.skipIf(!hasBuiltCli)("--json-out flag", () => {
     expect(report.schemaVersion).toBe(3);
     expect(report.diagnostics).toEqual([]);
   }, 60_000);
+
+  it("produces JSON error report when why command used with --json", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "json-why-error", {
+      files: {
+        "src/App.tsx": `export const App = () => null;\n`,
+      },
+    });
+
+    const { stdout, stderr, exitCode } = await runCli(
+      ["why", "src/App.tsx:1", "--json"],
+      projectDirectory,
+    );
+
+    if (exitCode !== 1) {
+      console.error("STDOUT:", stdout);
+      console.error("STDERR:", stderr);
+      console.error("EXIT CODE:", exitCode);
+    }
+
+    expect(exitCode).toBe(1);
+    const report = JSON.parse(stdout);
+    expect(report.ok).toBe(false);
+    expect(report.schemaVersion).toBe(3);
+    expect(report.error).toBeDefined();
+    expect(report.error.message).toContain("why");
+    expect(report.error.message).toContain("not supported in JSON mode");
+  }, 60_000);
 });

@@ -244,7 +244,7 @@ program
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
-  .action((location, options) => whyAction(location, options));
+  .action((location, _options, command) => whyAction(location, command.optsWithGlobals()));
 
 program
   .command("install")

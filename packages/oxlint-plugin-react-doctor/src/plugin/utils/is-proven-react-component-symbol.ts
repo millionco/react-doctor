@@ -5,9 +5,8 @@ import { functionContainsReactRenderOutput } from "./function-contains-react-ren
 import { functionContainsProvenReactHookCall } from "./function-contains-proven-react-hook-call.js";
 import { functionReturnsPropsChildren } from "./function-returns-props-children.js";
 import { functionReturnsOnlyNull } from "./function-returns-only-null.js";
-import { getStaticPropertyName } from "./get-static-property-name.js";
+import { hasStableCallTarget } from "./has-stable-call-target.js";
 import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
-import { hasStaticPropertyWriteBefore } from "./has-static-property-write-before.js";
 import { isComponentDeclaration } from "./is-component-declaration.js";
 import { isInlineFunctionExpression } from "./is-inline-function-expression.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -24,19 +23,6 @@ const functionHasComponentEvidence = (functionNode: EsTreeNode, scopes: ScopeAna
   functionReturnsPropsChildren(functionNode, scopes) ||
   (functionContainsProvenReactHookCall(functionNode, scopes) &&
     functionReturnsOnlyNull(functionNode));
-
-const hasStableReactApiMember = (callExpression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  if (!isNodeOfType(callExpression, "CallExpression")) return false;
-  const callee = stripParenExpression(callExpression.callee);
-  if (!isNodeOfType(callee, "MemberExpression")) return true;
-  const propertyName = getStaticPropertyName(callee);
-  const receiver = stripParenExpression(callee.object);
-  return Boolean(
-    propertyName &&
-    isNodeOfType(receiver, "Identifier") &&
-    !hasStaticPropertyWriteBefore(receiver, propertyName, callee, scopes),
-  );
-};
 
 const isProvenReactComponentExpression = (
   expression: EsTreeNode,
@@ -76,7 +62,7 @@ const isProvenReactComponentExpression = (
     isReactApiCall(candidate, REACT_COMPONENT_HOC_NAMES, scopes, {
       resolveNamedAliases: true,
     }) &&
-    hasStableReactApiMember(candidate, scopes)
+    hasStableCallTarget(candidate, scopes)
   ) {
     const wrappedComponent = candidate.arguments[0];
     return Boolean(
@@ -87,7 +73,7 @@ const isProvenReactComponentExpression = (
   }
   if (
     !isReactApiCall(candidate, "useMemo", scopes, { resolveNamedAliases: true }) ||
-    !hasStableReactApiMember(candidate, scopes)
+    !hasStableCallTarget(candidate, scopes)
   ) {
     return false;
   }

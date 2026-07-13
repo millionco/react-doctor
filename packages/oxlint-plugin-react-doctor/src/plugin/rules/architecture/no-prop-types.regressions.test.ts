@@ -439,6 +439,54 @@ describe("architecture/no-prop-types component provenance", () => {
     );
   });
 
+  it("ignores children evidence replaced before the returned value is read", () => {
+    expectDiagnosticCount(
+      `const ReassignedChild = ({ children }: { children: unknown }) => {
+         children = { value: true };
+         return children;
+       };
+       ReassignedChild.propTypes = { children: () => true };
+       const ReassignedProps = (props: { children: unknown }) => {
+         props = { children: { value: true } };
+         return props.children;
+       };
+       ReassignedProps.propTypes = { children: () => true };
+       const MutatedProps = (props: { children: unknown }) => {
+         props.children = { value: true };
+         return props.children;
+       };
+       MutatedProps.propTypes = { children: () => true };`,
+      0,
+    );
+  });
+
+  it("keeps stable children evidence when unrelated props change", () => {
+    expectDiagnosticCount(
+      `const Panel = (props: { children: React.ReactNode; title: string }) => {
+         props.title = "updated";
+         return props.children;
+       };
+       Panel.propTypes = { children: () => true };`,
+      1,
+    );
+  });
+
+  it("ignores callback JSX from non-render-preserving returned APIs", () => {
+    expectDiagnosticCount(
+      `const SomeSchema = (items: string[]) => items.some((item) => <span>{item}</span>);
+       SomeSchema.propTypes = { value: () => true };
+       const FindSchema = (items: string[]) => items.find((item) => <span>{item}</span>);
+       FindSchema.propTypes = { value: () => true };
+       const EachSchema = (items: string[]) => items.forEach((item) => <span>{item}</span>);
+       EachSchema.propTypes = { value: () => true };
+       const AsyncSchema = () => Promise.resolve("value").then((item) => <span>{item}</span>);
+       AsyncSchema.propTypes = { value: () => true };
+       const Panel = (items: string[]) => items.map((item) => <span>{item}</span>);
+       Panel.propTypes = { value: () => true };`,
+      1,
+    );
+  });
+
   it("ignores uncalled and deferred nested factory mutations", () => {
     expectDiagnosticCount(
       `import ReactDefault from "react";

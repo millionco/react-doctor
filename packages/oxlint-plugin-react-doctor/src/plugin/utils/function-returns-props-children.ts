@@ -3,6 +3,8 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
+import { hasStaticPropertyWriteBefore } from "./has-static-property-write-before.js";
+import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -40,7 +42,11 @@ export const functionReturnsPropsChildren = (
     const candidate = stripParenExpression(expression);
     if (isNodeOfType(candidate, "Identifier")) {
       const symbol = scopes.symbolFor(candidate);
-      return Boolean(symbol && childrenBindingSymbolIds.has(symbol.id));
+      return Boolean(
+        symbol &&
+        childrenBindingSymbolIds.has(symbol.id) &&
+        !hasSymbolWriteBefore(symbol, candidate),
+      );
     }
     if (!isNodeOfType(candidate, "MemberExpression")) return false;
     if (getStaticPropertyName(candidate) !== "children") return false;
@@ -48,6 +54,10 @@ export const functionReturnsPropsChildren = (
     if (!isNodeOfType(receiver, "Identifier")) return false;
     const receiverSymbol = scopes.symbolFor(receiver);
     if (!receiverSymbol || !propsParameterSymbol) return false;
-    return receiverSymbol.id === propsParameterSymbol.id;
+    return (
+      receiverSymbol.id === propsParameterSymbol.id &&
+      !hasSymbolWriteBefore(receiverSymbol, candidate) &&
+      !hasStaticPropertyWriteBefore(receiver, "children", candidate, scopes)
+    );
   });
 };

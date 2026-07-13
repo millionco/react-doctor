@@ -1,7 +1,12 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
+import { getStaticPropertyName } from "./get-static-property-name.js";
+import { hasStableCallTarget } from "./has-stable-call-target.js";
+import { hasStaticPropertyWriteBefore } from "./has-static-property-write-before.js";
+import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall, type ReactApiCallOptions } from "./is-react-api-call.js";
+import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 
@@ -18,22 +23,82 @@ const REACT_CREATE_ELEMENT_OPTIONS: ReactApiCallOptions = {
   allowUnboundBareCalls: false,
 };
 
-// A function expression passed directly as a call argument
-// (`items.map(item => <li/>)`, `useMemo(() => <div/>, deps)`) feeds the
-// enclosing component's render output, so JSX inside it still counts as
-// render evidence. Function expressions in any other position (assigned
-// handlers, JSX attribute values) and declarations/classes stay boundaries.
-const isCallArgumentFunctionExpression = (node: EsTreeNode): boolean => {
+const isArrayTypeAnnotation = (node: EsTreeNode): boolean => {
+  if (isNodeOfType(node, "TSArrayType") || isNodeOfType(node, "TSTupleType")) return true;
+  if (!isNodeOfType(node, "TSTypeReference")) return false;
+  return (
+    isNodeOfType(node.typeName, "Identifier") &&
+    (node.typeName.name === "Array" || node.typeName.name === "ReadonlyArray")
+  );
+};
+
+const hasArrayTypeAnnotation = (identifier: EsTreeNode): boolean => {
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  const typeAnnotation = identifier.typeAnnotation;
+  return Boolean(
+    typeAnnotation &&
+    isNodeOfType(typeAnnotation, "TSTypeAnnotation") &&
+    isArrayTypeAnnotation(typeAnnotation.typeAnnotation),
+  );
+};
+
+const isProvenArrayExpression = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  referenceNode: EsTreeNode,
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "ArrayExpression")) return true;
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = scopes.symbolFor(candidate);
+  if (!symbol || visitedSymbolIds.has(symbol.id) || hasSymbolWriteBefore(symbol, referenceNode)) {
+    return false;
+  }
+  if (hasArrayTypeAnnotation(symbol.bindingIdentifier)) return true;
+  if (!symbol.initializer) return false;
+  visitedSymbolIds.add(symbol.id);
+  return isProvenArrayExpression(symbol.initializer, scopes, referenceNode, visitedSymbolIds);
+};
+
+const isProvenArrayMapCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = stripParenExpression(node.callee);
+  if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "map") {
+    return false;
+  }
+  const receiver = stripParenExpression(callee.object);
+  if (!isProvenArrayExpression(receiver, scopes, node)) return false;
+  return !(
+    isNodeOfType(receiver, "Identifier") &&
+    hasStaticPropertyWriteBefore(receiver, "map", node, scopes)
+  );
+};
+
+const isRenderPreservingCallArgumentFunction = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   if (node.type !== "ArrowFunctionExpression" && node.type !== "FunctionExpression") {
     return false;
   }
   const parent = node.parent;
   if (!isNodeOfType(parent, "CallExpression")) return false;
-  return parent.arguments.some((argumentNode) => argumentNode === node);
+  if (
+    isReactApiCall(parent, "useMemo", scopes, { resolveNamedAliases: true }) &&
+    hasStableCallTarget(parent, scopes)
+  ) {
+    return parent.arguments[0] === node;
+  }
+  return (
+    parent.arguments.some((argumentNode) => argumentNode === node) &&
+    isProvenArrayMapCall(parent, scopes)
+  );
 };
 
-const isNestedRenderEvidenceBoundary = (node: EsTreeNode): boolean =>
-  NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES.has(node.type) && !isCallArgumentFunctionExpression(node);
+const isNestedRenderEvidenceBoundary = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES.has(node.type) &&
+  !isRenderPreservingCallArgumentFunction(node, scopes);
 
 const isRenderOutputExpression = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
   node.type === "JSXElement" ||
@@ -44,7 +109,7 @@ const containsRenderOutput = (rootNode: EsTreeNode, scopes: ScopeAnalysis): bool
   let hasRenderOutput = false;
   walkAst(rootNode, (node: EsTreeNode): boolean | void => {
     if (hasRenderOutput) return false;
-    if (node !== rootNode && isNestedRenderEvidenceBoundary(node)) return false;
+    if (node !== rootNode && isNestedRenderEvidenceBoundary(node, scopes)) return false;
     if (isRenderOutputExpression(node, scopes)) {
       hasRenderOutput = true;
       return false;

@@ -6,6 +6,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { functionContainsReactRenderOutput } from "./function-contains-react-render-output.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { parseFixture } from "../../test-utils/parse-fixture.js";
+import { attachSourceLocations } from "../../test-utils/attach-source-locations.js";
 import { walkAst } from "./walk-ast.js";
 
 interface FunctionFixture {
@@ -24,6 +25,7 @@ const parseFunctionFixture = (code: string, functionName: string): FunctionFixtu
   const { program, errors } = parseFixture(code);
   expect(errors).toEqual([]);
   attachParentReferences(program);
+  attachSourceLocations(program, code);
   let functionNode: EsTreeNode | null = null;
   walkAst(program, (child) => {
     if (functionNode) return false;
@@ -72,6 +74,44 @@ describe("functionContainsReactRenderOutput", () => {
       "Card",
     );
     expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(true);
+  });
+
+  it("includes callback render output only for proven array map calls", () => {
+    const provenCases = [
+      `function Card(items: string[]) { return items.map((item) => <div>{item}</div>); }`,
+      `function Card() { return ["one", "two"].map((item) => <div>{item}</div>); }`,
+      `function Card() { const items: ReadonlyArray<string> = ["one"]; return items.map((item) => <div>{item}</div>); }`,
+    ];
+    for (const code of provenCases) {
+      const { functionNode, scopes } = parseFunctionFixture(code, "Card");
+      expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(true);
+    }
+  });
+
+  it("ignores callback JSX when the returned API does not preserve its result", () => {
+    const nonRenderingCases = [
+      `function Schema(items: string[]) { return items.some((item) => <div>{item}</div>); }`,
+      `function Schema(items: string[]) { return items.find((item) => <div>{item}</div>); }`,
+      `function Schema(items: string[]) { return items.forEach((item) => <div>{item}</div>); }`,
+      `function Schema() { return Promise.resolve("value").then((item) => <div>{item}</div>); }`,
+      `function Schema(items) { return items.map((item) => <div>{item}</div>); }`,
+      `function Schema(items: { map(callback: (item: string) => React.ReactNode): unknown }) { return items.map((item) => <div>{item}</div>); }`,
+    ];
+    for (const code of nonRenderingCases) {
+      const { functionNode, scopes } = parseFunctionFixture(code, "Schema");
+      expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(false);
+    }
+  });
+
+  it("ignores array map callback JSX after the method is replaced", () => {
+    const { functionNode, scopes } = parseFunctionFixture(
+      `function Schema(items: string[]) {
+        items.map = (callback) => ({ callback });
+        return items.map((item) => <div>{item}</div>);
+      }`,
+      "Schema",
+    );
+    expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(false);
   });
 
   it("ignores JSX inside a discarded callback result", () => {

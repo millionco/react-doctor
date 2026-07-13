@@ -319,6 +319,80 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    ["inline arrow", "useEffect(async () => { await loadSourceValue(); setSource(1); }, []);"],
+    [
+      "named arrow",
+      "const loadSource = async () => { await loadSourceValue(); setSource(1); }; useEffect(loadSource, []);",
+    ],
+    [
+      "function declaration",
+      "async function loadSource() { await loadSourceValue(); setSource(1); } useEffect(loadSource, []);",
+    ],
+    [
+      "function expression",
+      "const loadSource = async function () { await loadSourceValue(); setSource(1); }; useEffect(loadSource, []);",
+    ],
+    [
+      "exact alias",
+      "const loadSource = async () => { await loadSourceValue(); setSource(1); }; const effectCallback = loadSource; useEffect(effectCallback, []);",
+    ],
+    [
+      "layout effect",
+      "const loadSource = async () => { await loadSourceValue(); setSource(1); }; useLayoutEffect(loadSource, []);",
+    ],
+  ])("ignores state writes in an async %s effect callback", (_callbackShape, upstreamEffect) => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        ${upstreamEffect}
+        useEffect(() => { setTarget(source + 1); }, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores an async effect callback whose state writes straddle await", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        async function loadSource() {
+          setSource(1);
+          await loadSourceValue();
+          setSource(2);
+        }
+        useEffect(loadSource, []);
+        useEffect(() => { setTarget(source + 1); }, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags the synchronous near-neighbor through an exact callback alias", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        const loadSource = () => { setSource(1); };
+        const effectCallback = loadSource;
+        useEffect(effectCallback, []);
+        useEffect(() => { setTarget(source + 1); }, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags state writes inside an invoked synchronous function", () => {
     const result = runRule(
       noEffectChain,

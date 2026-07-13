@@ -51,6 +51,98 @@ describe("dedupeDiagnostics", () => {
     expect(dedupeDiagnostics([stateRule, mirrorRule])).toEqual([stateRule, mirrorRule]);
   });
 
+  it("keeps the React Doctor rules-of-hooks diagnostic when the compiler reports the same site", () => {
+    const reactDoctorDiagnostic = buildDiagnostic({
+      rule: "rules-of-hooks",
+      message: "React Hook is called conditionally",
+    });
+    const compilerDiagnostic = buildDiagnostic({
+      plugin: "react-hooks-js",
+      rule: "hooks",
+      message: "Hooks must always be called in a consistent order",
+    });
+
+    expect(dedupeDiagnostics([compilerDiagnostic, reactDoctorDiagnostic])).toEqual([
+      reactDoctorDiagnostic,
+    ]);
+    expect(dedupeDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
+      reactDoctorDiagnostic,
+    ]);
+  });
+
+  it("preserves compiler Hook findings at a nearby distinct site", () => {
+    const reactDoctorDiagnostic = buildDiagnostic({
+      rule: "rules-of-hooks",
+      message: "React Hook is called conditionally",
+      column: 5,
+    });
+    const compilerDiagnostic = buildDiagnostic({
+      plugin: "react-hooks-js",
+      rule: "hooks",
+      message: "Hooks must always be called in a consistent order",
+      column: 20,
+    });
+
+    expect(dedupeDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
+      reactDoctorDiagnostic,
+      compilerDiagnostic,
+    ]);
+  });
+
+  it("preserves standalone compiler Hook findings", () => {
+    const compilerDiagnostic = buildDiagnostic({
+      plugin: "react-hooks-js",
+      rule: "hooks",
+      message: "Hooks must always be called in a consistent order",
+    });
+
+    expect(dedupeDiagnostics([compilerDiagnostic])).toEqual([compilerDiagnostic]);
+  });
+
+  it("preserves native Hook findings when the compiler is disabled", () => {
+    const reactDoctorDiagnostic = buildDiagnostic({
+      rule: "rules-of-hooks",
+      message: "React Hook is called conditionally",
+    });
+
+    expect(dedupeDiagnostics([reactDoctorDiagnostic])).toEqual([reactDoctorDiagnostic]);
+  });
+
+  it("preserves unrelated compiler diagnostics at the same site", () => {
+    const reactDoctorDiagnostic = buildDiagnostic({
+      rule: "rules-of-hooks",
+      message: "React Hook is called conditionally",
+    });
+    const compilerDiagnostic = buildDiagnostic({
+      plugin: "react-hooks-js",
+      rule: "set-state-in-effect",
+      message: "Calling setState synchronously within an effect can trigger cascading renders",
+    });
+
+    expect(dedupeDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
+      reactDoctorDiagnostic,
+      compilerDiagnostic,
+    ]);
+  });
+
+  it("preserves compiler Hook findings in a different file at the same position", () => {
+    const reactDoctorDiagnostic = buildDiagnostic({
+      rule: "rules-of-hooks",
+      message: "React Hook is called conditionally",
+    });
+    const compilerDiagnostic = buildDiagnostic({
+      filePath: "src/Other.tsx",
+      plugin: "react-hooks-js",
+      rule: "hooks",
+      message: "Hooks must always be called in a consistent order",
+    });
+
+    expect(dedupeDiagnostics([reactDoctorDiagnostic, compilerDiagnostic])).toEqual([
+      reactDoctorDiagnostic,
+      compilerDiagnostic,
+    ]);
+  });
+
   it("keeps the most specific derived-state owner at one write", () => {
     const generic = buildDiagnostic({ rule: "no-derived-state", offset: 100, length: 12 });
     const effect = buildDiagnostic({

@@ -3,6 +3,15 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { serverSequentialIndependentAwait } from "./server-sequential-independent-await.js";
 
 describe("server-sequential-independent-await — regressions", () => {
+  it("flags an independent visible helper even when its name starts with initialize", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `const initializeProfile = async (value) => { await Promise.resolve(); return value * 2; }; const loadPreferences = async (value) => { await Promise.resolve(); return value * 3; }; export async function load() { const profile = await initializeProfile(2); const preferences = await loadPreferences(3); return { profile, preferences }; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("stays silent when the first await is an auth/permission gate", () => {
     const result = runRule(
       serverSequentialIndependentAwait,

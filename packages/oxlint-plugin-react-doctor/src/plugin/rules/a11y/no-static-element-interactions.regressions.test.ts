@@ -230,6 +230,25 @@ describe("a11y/no-static-element-interactions regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("keeps direct and conditional-spread keyboard delegation equivalent", () => {
+    const directResult = runRule(
+      noStaticElementInteractions,
+      `export const Carousel = ({ useArrowKeys, handleOnKeyDown }) => (
+        <div onKeyDown={useArrowKeys ? handleOnKeyDown : undefined} />
+      );`,
+    );
+    const spreadResult = runRule(
+      noStaticElementInteractions,
+      `export const Carousel = ({ useArrowKeys, handleOnKeyDown }) => (
+        <div {...(useArrowKeys ? { onKeyDown: handleOnKeyDown } : {})} />
+      );`,
+    );
+    expect(directResult.parseErrors).toEqual([]);
+    expect(spreadResult.parseErrors).toEqual([]);
+    expect(directResult.diagnostics).toEqual(spreadResult.diagnostics);
+    expect(directResult.diagnostics).toEqual([]);
+  });
+
   it("still flags a focusable div with only a keyboard handler", () => {
     const result = runRule(
       noStaticElementInteractions,

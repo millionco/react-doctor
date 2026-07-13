@@ -42,6 +42,18 @@ const emptyScanResult: ScanResult = {
   simplifiableFunctions: [],
   simplifiableExpressions: [],
   duplicateConstants: [],
+  crossFileDuplicateExports: [],
+  duplicateBlocks: [],
+  duplicateBlockClusters: [],
+  shadowedDirectoryPairs: [],
+  reExportCycles: [],
+  featureFlags: [],
+  complexFunctions: [],
+  privateTypeLeaks: [],
+  unnecessaryAssertions: [],
+  lazyImportsAtTopLevel: [],
+  commonjsInEsm: [],
+  typeScriptEscapeHatches: [],
   analysisErrors: [],
   totalFiles: 0,
   totalExports: 0,
@@ -135,6 +147,27 @@ describe("resolveAnalyzeExitCode", () => {
     assert.equal(exitCode, EXIT_CODE_ISSUES_FOUND);
   });
 
+  it("should fail on code-quality issues when --fail-on-issues is set", () => {
+    const exitCode = resolveAnalyzeExitCode(
+      {
+        ...emptyScanResult,
+        typeScriptEscapeHatches: [
+          {
+            path: "src/app.ts",
+            kind: "ts-ignore",
+            line: 1,
+            column: 1,
+            confidence: "high",
+            reason: "ts-ignore hides type errors",
+            suggestion: "Remove the directive or explain the expected error.",
+          },
+        ],
+      },
+      { failOnIssues: true, failOnCycles: false },
+    );
+    assert.equal(exitCode, EXIT_CODE_ISSUES_FOUND);
+  });
+
   it("should not fail on cycles when only --fail-on-issues is set", () => {
     const exitCode = resolveAnalyzeExitCode(
       { ...emptyScanResult, circularDependencies: [{ files: ["a.ts", "b.ts"] }] },
@@ -160,6 +193,24 @@ describe("hasUnusedIssues / hasCircularIssues", () => {
     };
     assert.equal(hasUnusedIssues(result), false);
     assert.equal(hasCircularIssues(result), true);
+  });
+
+  it("should treat code-quality findings as unused issues", () => {
+    const result: ScanResult = {
+      ...emptyScanResult,
+      typeScriptEscapeHatches: [
+        {
+          path: "src/app.ts",
+          kind: "ts-ignore",
+          line: 1,
+          column: 1,
+          confidence: "high",
+          reason: "ts-ignore hides type errors",
+          suggestion: "Remove the directive or explain the expected error.",
+        },
+      ],
+    };
+    assert.equal(hasUnusedIssues(result), true);
   });
 });
 

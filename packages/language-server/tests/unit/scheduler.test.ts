@@ -20,7 +20,6 @@ const makeOutcome = (request: ScanRequest): ScanOutcome => ({
   byFile: new Map(),
   coversProject: request.files.length === 0,
   requestedPaths: request.files,
-  project: null,
   didLintFail: false,
   lintFailureReason: null,
   error: null,

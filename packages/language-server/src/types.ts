@@ -161,7 +161,6 @@ export interface ScanOutcome {
   readonly coversProject: boolean;
   /** Absolute files explicitly requested (cleared when absent from `byFile`). */
   readonly requestedPaths: ReadonlyArray<string>;
-  readonly project: ProjectInfo | null;
   readonly didLintFail: boolean;
   readonly lintFailureReason: string | null;
   /**

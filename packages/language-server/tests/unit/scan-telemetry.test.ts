@@ -33,7 +33,6 @@ const outcome = (
   byFile: new Map(Object.entries(byFile)),
   coversProject: true,
   requestedPaths: [],
-  project: null,
   didLintFail: false,
   lintFailureReason: null,
   error: null,

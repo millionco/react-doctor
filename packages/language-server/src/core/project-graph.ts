@@ -1,4 +1,3 @@
-import path from "node:path";
 import {
   clearAutoSuppressionCaches,
   clearConfigCache,
@@ -9,6 +8,7 @@ import {
   discoverReactSubprojects,
   messageFromUnknown,
 } from "@react-doctor/core";
+import { normalizeFsPath } from "../text/uri.js";
 import { SILENT_LOGGER, type Logger, type ProjectGraph, type WorkspaceProject } from "../types.js";
 
 export interface ProjectGraphOptions {
@@ -16,12 +16,6 @@ export interface ProjectGraphOptions {
   readonly roots: ReadonlyArray<string>;
   readonly logger?: Logger;
 }
-
-/** Normalizes a path to absolute, forward-slash, no trailing slash. */
-const normalizeDirectory = (directory: string): string => {
-  const resolved = path.resolve(directory).replace(/\\/g, "/");
-  return resolved.length > 1 && resolved.endsWith("/") ? resolved.slice(0, -1) : resolved;
-};
 
 const isInsideDirectory = (filePath: string, directory: string): boolean =>
   filePath === directory || filePath.startsWith(`${directory}/`);
@@ -34,7 +28,7 @@ const isInsideDirectory = (filePath: string, directory: string): boolean =>
  * the next scan.
  */
 export const createProjectGraph = (options: ProjectGraphOptions): ProjectGraph => {
-  const roots = options.roots.map(normalizeDirectory);
+  const roots = options.roots.map(normalizeFsPath);
   const logger = options.logger ?? SILENT_LOGGER;
   let projects: WorkspaceProject[] | null = null;
 
@@ -43,7 +37,7 @@ export const createProjectGraph = (options: ProjectGraphOptions): ProjectGraph =
     for (const root of roots) {
       try {
         for (const workspacePackage of discoverReactSubprojects(root)) {
-          const directory = normalizeDirectory(workspacePackage.directory);
+          const directory = normalizeFsPath(workspacePackage.directory);
           if (!seen.has(directory)) {
             seen.set(directory, { directory, name: workspacePackage.name });
           }
@@ -66,7 +60,7 @@ export const createProjectGraph = (options: ProjectGraphOptions): ProjectGraph =
   return {
     listProjects: () => ensure(),
     resolveOwningProject: (absoluteFilePath) => {
-      const normalizedFile = normalizeDirectory(absoluteFilePath);
+      const normalizedFile = normalizeFsPath(absoluteFilePath);
       for (const project of ensure()) {
         if (isInsideDirectory(normalizedFile, project.directory)) return project.directory;
       }

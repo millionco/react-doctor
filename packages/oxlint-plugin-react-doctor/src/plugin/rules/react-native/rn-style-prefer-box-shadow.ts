@@ -2,6 +2,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isLegacyArchReactNativeFile } from "../../utils/is-legacy-arch-react-native-file.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
+import { collectStylePropertyKeyNames } from "./utils/collect-style-property-key-names.js";
+import { resolveStyleSheetCreateCallExpression } from "./utils/resolve-stylesheet-create-call-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -15,26 +17,7 @@ const ANDROID_SHADOW_KEY = "elevation";
 
 const LEGACY_SHADOW_KEYS = new Set([...IOS_SHADOW_KEYS, ANDROID_SHADOW_KEY]);
 
-const collectPropertyKeyNames = (
-  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
-): Set<string> => {
-  const keyNames = new Set<string>();
-  for (const property of objectExpression.properties ?? []) {
-    if (!isNodeOfType(property, "Property")) continue;
-    if (isNodeOfType(property.key, "Identifier")) keyNames.add(property.key.name);
-  }
-  return keyNames;
-};
-
 const STYLE_FACTORY_CALLEE_PATTERN = /(?:^|\.)(?:make|create)(?:Use)?Styles$/;
-
-const isStyleSheetCreateCall = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "CallExpression") &&
-  isNodeOfType(node.callee, "MemberExpression") &&
-  isNodeOfType(node.callee.object, "Identifier") &&
-  node.callee.object.name === "StyleSheet" &&
-  isNodeOfType(node.callee.property, "Identifier") &&
-  node.callee.property.name === "create";
 
 const styleFactoryCallbackObject = (node: EsTreeNode): EsTreeNode | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
@@ -63,8 +46,9 @@ const resolveStylesDeclarationObject = (
   const binding = findVariableInitializer(node, stylesName);
   const initializer = binding?.initializer;
   if (!initializer || !isNodeOfType(initializer, "CallExpression")) return null;
-  if (isStyleSheetCreateCall(initializer)) {
-    const stylesArgument = initializer.arguments?.[0];
+  const styleSheetCall = resolveStyleSheetCreateCallExpression(initializer);
+  if (styleSheetCall) {
+    const stylesArgument = styleSheetCall.arguments?.[0];
     return stylesArgument && isNodeOfType(stylesArgument, "ObjectExpression")
       ? stylesArgument
       : null;
@@ -92,7 +76,7 @@ const resolveStyleSheetMemberKeys = (node: EsTreeNode): Set<string> | null => {
     if (!isNodeOfType(styleDefinition.key, "Identifier")) continue;
     if (styleDefinition.key.name !== node.property.name) continue;
     if (!isNodeOfType(styleDefinition.value, "ObjectExpression")) return null;
-    return collectPropertyKeyNames(styleDefinition.value);
+    return collectStylePropertyKeyNames(styleDefinition.value);
   }
   return null;
 };
@@ -109,7 +93,7 @@ const reportLegacyShadowProperty = (
   context: RuleContext,
   siblingKeyNames: ReadonlySet<string>,
 ): boolean => {
-  const ownKeyNames = collectPropertyKeyNames(objectExpression);
+  const ownKeyNames = collectStylePropertyKeyNames(objectExpression);
   const combinedKeyNames = new Set([...ownKeyNames, ...siblingKeyNames]);
 
   // When elevation AND an iOS shadow* key are both present (in this object
@@ -172,7 +156,7 @@ export const rnStylePreferBoxShadow = defineRule({
           const siblingKeyNames = new Set<string>();
           for (const element of elements) {
             if (isNodeOfType(element, "ObjectExpression")) {
-              for (const keyName of collectPropertyKeyNames(element)) {
+              for (const keyName of collectStylePropertyKeyNames(element)) {
                 siblingKeyNames.add(keyName);
               }
               continue;
@@ -190,12 +174,9 @@ export const rnStylePreferBoxShadow = defineRule({
         }
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isNodeOfType(node.callee, "MemberExpression")) return;
-        if (!isNodeOfType(node.callee.object, "Identifier")) return;
-        if (node.callee.object.name !== "StyleSheet") return;
-        if (!isNodeOfType(node.callee.property, "Identifier")) return;
-        if (node.callee.property.name !== "create") return;
-        const arg = node.arguments?.[0];
+        const styleSheetCall = resolveStyleSheetCreateCallExpression(node);
+        if (!styleSheetCall) return;
+        const arg = styleSheetCall.arguments?.[0];
         if (!isNodeOfType(arg, "ObjectExpression")) return;
         for (const property of arg.properties ?? []) {
           if (!isNodeOfType(property, "Property")) continue;

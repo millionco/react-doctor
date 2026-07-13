@@ -1,5 +1,78 @@
 import type { ScanResult } from "deslop-js";
 
+interface IssueCountField {
+  readonly fieldName: keyof Pick<
+    ScanResult,
+    | "unusedFiles"
+    | "unusedExports"
+    | "unusedDependencies"
+    | "unusedTypes"
+    | "misclassifiedDependencies"
+    | "unusedEnumMembers"
+    | "unusedClassMembers"
+    | "redundantAliases"
+    | "duplicateExports"
+    | "duplicateImports"
+    | "redundantTypePatterns"
+    | "identityWrappers"
+    | "duplicateTypeDefinitions"
+    | "duplicateInlineTypes"
+    | "simplifiableFunctions"
+    | "simplifiableExpressions"
+    | "duplicateConstants"
+    | "crossFileDuplicateExports"
+    | "duplicateBlocks"
+    | "duplicateBlockClusters"
+    | "shadowedDirectoryPairs"
+    | "reExportCycles"
+    | "featureFlags"
+    | "complexFunctions"
+    | "privateTypeLeaks"
+    | "unnecessaryAssertions"
+    | "lazyImportsAtTopLevel"
+    | "commonjsInEsm"
+    | "typeScriptEscapeHatches"
+  >;
+}
+
+const UNUSED_ISSUE_COUNT_FIELDS: readonly IssueCountField[] = [
+  { fieldName: "unusedFiles" },
+  { fieldName: "unusedExports" },
+  { fieldName: "unusedDependencies" },
+  { fieldName: "unusedTypes" },
+  { fieldName: "misclassifiedDependencies" },
+  { fieldName: "unusedEnumMembers" },
+  { fieldName: "unusedClassMembers" },
+  { fieldName: "redundantAliases" },
+  { fieldName: "duplicateExports" },
+  { fieldName: "duplicateImports" },
+  { fieldName: "redundantTypePatterns" },
+  { fieldName: "identityWrappers" },
+  { fieldName: "duplicateTypeDefinitions" },
+  { fieldName: "duplicateInlineTypes" },
+  { fieldName: "simplifiableFunctions" },
+  { fieldName: "simplifiableExpressions" },
+  { fieldName: "duplicateConstants" },
+  { fieldName: "crossFileDuplicateExports" },
+  { fieldName: "duplicateBlocks" },
+  { fieldName: "duplicateBlockClusters" },
+  { fieldName: "shadowedDirectoryPairs" },
+  { fieldName: "reExportCycles" },
+  { fieldName: "featureFlags" },
+  { fieldName: "complexFunctions" },
+  { fieldName: "privateTypeLeaks" },
+  { fieldName: "unnecessaryAssertions" },
+  { fieldName: "lazyImportsAtTopLevel" },
+  { fieldName: "commonjsInEsm" },
+  { fieldName: "typeScriptEscapeHatches" },
+];
+
+const countUnusedIssues = (result: ScanResult): number =>
+  UNUSED_ISSUE_COUNT_FIELDS.reduce(
+    (total, { fieldName }) => total + result[fieldName].length,
+    0,
+  );
+
 const formatIssueCount = (count: number, singularLabel: string, pluralLabel: string): string => {
   const label = count === 1 ? singularLabel : pluralLabel;
   return `${count} unused ${label}`;
@@ -241,51 +314,17 @@ export const formatHumanReadableResult = (result: ScanResult): string => {
     lines.push("");
   }
 
-  const totalIssues =
-    result.unusedFiles.length +
-    result.unusedExports.length +
-    result.unusedDependencies.length +
-    result.circularDependencies.length +
-    result.unusedTypes.length +
-    result.unusedEnumMembers.length +
-    result.unusedClassMembers.length +
-    result.misclassifiedDependencies.length +
-    result.redundantAliases.length +
-    result.duplicateExports.length +
-    result.duplicateImports.length +
-    result.redundantTypePatterns.length +
-    result.identityWrappers.length +
-    result.duplicateTypeDefinitions.length +
-    result.duplicateInlineTypes.length +
-    result.simplifiableFunctions.length +
-    result.simplifiableExpressions.length +
-    result.duplicateConstants.length;
+  const totalIssues = countUnusedIssues(result) + result.circularDependencies.length;
 
   if (totalIssues === 0) {
-    lines.push("No unused files, exports, dependencies, or circular imports found.");
+    lines.push("No unused files, exports, dependencies, code-quality findings, or circular imports found.");
   }
 
   return lines.join("\n").trimEnd() + "\n";
 };
 
 export const hasUnusedIssues = (result: ScanResult): boolean =>
-  result.unusedFiles.length > 0 ||
-  result.unusedExports.length > 0 ||
-  result.unusedDependencies.length > 0 ||
-  result.unusedTypes.length > 0 ||
-  result.unusedEnumMembers.length > 0 ||
-  result.unusedClassMembers.length > 0 ||
-  result.misclassifiedDependencies.length > 0 ||
-  result.redundantAliases.length > 0 ||
-  result.duplicateExports.length > 0 ||
-  result.duplicateImports.length > 0 ||
-  result.redundantTypePatterns.length > 0 ||
-  result.identityWrappers.length > 0 ||
-  result.duplicateTypeDefinitions.length > 0 ||
-  result.duplicateInlineTypes.length > 0 ||
-  result.simplifiableFunctions.length > 0 ||
-  result.simplifiableExpressions.length > 0 ||
-  result.duplicateConstants.length > 0;
+  countUnusedIssues(result) > 0;
 
 export const hasCircularIssues = (result: ScanResult): boolean =>
   result.circularDependencies.length > 0;

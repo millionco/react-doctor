@@ -3,8 +3,11 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { collectStylePropertyKeyNames } from "./utils/collect-style-property-key-names.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
-import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
+import { resolveStyleSheetCreateCallExpression } from "./utils/resolve-stylesheet-create-call-expression.js";
+import { SCROLLVIEW_NAMES } from "./utils/scrollview-names.js";
+import { VIRTUALIZED_LIST_NAMES } from "./utils/virtualized-list-names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -16,8 +19,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // devices, even though the same code looks right on larger ones. The
 // documented fix is `flexGrow: 1`, which keeps the "fill remaining
 // space" semantics without the basis: 0 collapse.
-
-const VIRTUALIZED_LIST_NAMES = new Set(["FlashList", "LegendList"]);
 
 const getStaticMemberKeyName = (
   expression: EsTreeNodeOfType<"MemberExpression">,
@@ -34,26 +35,6 @@ const getStaticMemberKeyName = (
     return expression.property.value;
   }
   return null;
-};
-
-const isStyleSheetCreateCallExpression = (
-  expression: EsTreeNode | null | undefined,
-): expression is EsTreeNodeOfType<"CallExpression"> => {
-  if (!expression) return false;
-  const callExpression = stripParenExpression(expression);
-  if (!isNodeOfType(callExpression, "CallExpression")) return false;
-  const callee = callExpression.callee;
-  // `StyleSheet.create(...)` — the only shape we recognize. Bare
-  // `create({})` from a named import is too ambiguous on its own
-  // (collides with too many user helpers); not followed today.
-  return (
-    isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.object, "Identifier") &&
-    callee.object.name === "StyleSheet" &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === "create"
-  );
 };
 
 const resolveContentContainerStyleObject = (
@@ -77,10 +58,8 @@ const resolveContentContainerStyleObject = (
     if (!styleObjectIdentifierName) return null;
     const binding = findVariableInitializer(expression, styleObjectIdentifierName);
     if (!binding || !binding.initializer) return null;
-    if (!isStyleSheetCreateCallExpression(binding.initializer)) return null;
-    const styleSheetCall = stripParenExpression(
-      binding.initializer,
-    ) as EsTreeNodeOfType<"CallExpression">;
+    const styleSheetCall = resolveStyleSheetCreateCallExpression(binding.initializer);
+    if (!styleSheetCall) return null;
     const argument = styleSheetCall.arguments?.[0];
     if (!isNodeOfType(argument, "ObjectExpression")) return null;
     for (const property of argument.properties ?? []) {
@@ -99,21 +78,6 @@ const resolveContentContainerStyleObject = (
     }
   }
   return null;
-};
-
-const collectStyleKeyNames = (
-  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
-): Set<string> => {
-  const names = new Set<string>();
-  for (const property of objectExpression.properties ?? []) {
-    if (!isNodeOfType(property, "Property")) continue;
-    if (property.computed) continue;
-    if (isNodeOfType(property.key, "Identifier")) names.add(property.key.name);
-    else if (isNodeOfType(property.key, "Literal") && typeof property.key.value === "string") {
-      names.add(property.key.value);
-    }
-  }
-  return names;
 };
 
 const findFlexShorthandProperty = (
@@ -154,7 +118,7 @@ export const rnScrollviewFlexInContentContainer = defineRule({
         const objectExpression = resolveContentContainerStyleObject(attribute);
         if (!objectExpression) continue;
 
-        const keyNames = collectStyleKeyNames(objectExpression);
+        const keyNames = collectStylePropertyKeyNames(objectExpression);
         // Explicit `flexGrow` / `flexBasis` alongside `flex: 1` signals
         // the author already understands the trade-off and is overriding
         // one of the shorthand's slots. Stay quiet — flagging here would

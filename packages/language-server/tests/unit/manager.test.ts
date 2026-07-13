@@ -35,7 +35,6 @@ const outcome = (overrides: Partial<ScanOutcome>): ScanOutcome => ({
   byFile: new Map(),
   coversProject: false,
   requestedPaths: [FS_PATH],
-  project: null,
   didLintFail: false,
   lintFailureReason: null,
   error: null,

@@ -37,7 +37,7 @@ export class Score extends Context.Service<
           calculateScore([...input.diagnostics], {
             isCi: input.isCi,
             metadata: input.metadata,
-          }).catch((): ScoreResult | null => null),
+          }),
         );
       }),
     }),

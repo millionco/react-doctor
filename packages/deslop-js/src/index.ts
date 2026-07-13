@@ -203,9 +203,9 @@ export type {
  *   high-signal and the detectors carry their own confidence tiers.
  *
  * - `duplicateBlocks: undefined` — token-based copy-paste detection (suffix
- *   array + LCP) is opt-in. It re-parses every source
- *   file to emit a token stream and adds significant runtime to the scan.
- *   Pass `duplicateBlocks: { enabled: true }` to turn it on.
+ *   array + LCP) runs when `reportCodeQuality` is on. It re-parses every
+ *   source file to emit a token stream and adds significant runtime to the
+ *   scan. Pass `duplicateBlocks: { enabled: false }` to turn it off.
  */
 const fillSemanticConfig = (
   semanticOverrides: Partial<DeslopConfig["semantic"]> | undefined,

@@ -477,18 +477,20 @@ export class Git extends Context.Service<
           Effect.map((result) => (result.status === 0 ? splitNullSeparated(result.stdout) : null)),
         );
 
-      // Unions opted-in untracked files into a working-tree selection. A `null`
-      // listing (git failed) propagates so the caller degrades rather than
-      // silently dropping the new files; off, it's a no-op passthrough.
+      // Unions opted-in untracked files into a working-tree selection. Untracked
+      // inclusion is best-effort: a failed listing keeps the tracked diff rather
+      // than discarding it; off, it's a no-op passthrough.
       const mergeUntracked = (
         directory: string,
         trackedFilePaths: ReadonlyArray<string>,
         includeUntracked: boolean,
-      ): Effect.Effect<ReadonlyArray<string> | null, ReactDoctorError> =>
+      ): Effect.Effect<ReadonlyArray<string>, ReactDoctorError> =>
         includeUntracked
           ? listUntrackedFilePaths(directory).pipe(
               Effect.map((untracked) =>
-                untracked === null ? null : [...new Set([...trackedFilePaths, ...untracked])],
+                untracked === null
+                  ? trackedFilePaths
+                  : [...new Set([...trackedFilePaths, ...untracked])],
               ),
             )
           : Effect.succeed(trackedFilePaths);
@@ -770,7 +772,7 @@ export class Git extends Context.Service<
                 splitNullSeparated(uncommitted.stdout),
                 includeUntracked,
               );
-              if (files === null || files.length === 0) return null;
+              if (files.length === 0) return null;
               return {
                 currentBranch: resolvedCurrentBranch,
                 baseBranch,
@@ -798,7 +800,6 @@ export class Git extends Context.Service<
               splitNullSeparated(diff.stdout),
               includeUntracked,
             );
-            if (changedFiles === null) return null;
             return {
               currentBranch: resolvedCurrentBranch,
               baseBranch,
@@ -894,8 +895,10 @@ export class Git extends Context.Service<
             if (result.status !== 0) return null;
             const changedLineRanges = parseChangedLineRanges(result.stdout);
             if (cached || !includeUntracked) return changedLineRanges;
+            // Best-effort, like `mergeUntracked`: a failed untracked listing keeps
+            // the tracked ranges rather than nulling the whole lines selection.
             const untrackedFilePaths = yield* listUntrackedFilePaths(directory, files);
-            if (untrackedFilePaths === null) return null;
+            if (untrackedFilePaths === null) return changedLineRanges;
             return [
               ...changedLineRanges,
               ...untrackedFilePaths.map(

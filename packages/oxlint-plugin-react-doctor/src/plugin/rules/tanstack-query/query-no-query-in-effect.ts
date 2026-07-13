@@ -9,7 +9,6 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
-import { isNodeUnconditionallyExecutedWithinFunction } from "../../utils/is-node-unconditionally-executed-within-function.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
@@ -74,6 +73,7 @@ const functionInvokesTarget = (
   targetFunction: EsTreeNode,
   context: RuleContext,
   visitedFunctions: Set<EsTreeNode>,
+  canCrossSuspension = false,
 ): boolean => {
   if (visitedFunctions.has(callerFunction)) return false;
   visitedFunctions.add(callerFunction);
@@ -83,8 +83,8 @@ const functionInvokesTarget = (
     if (!isNodeOfType(node, "CallExpression")) return;
     if (
       !isNodeReachableWithinFunction(node, context) ||
-      !isNodeUnconditionallyExecutedWithinFunction(node) ||
-      hasSuspensionBefore(callerFunction, node, context)
+      !context.cfg.isUnconditionalFromEntry(node) ||
+      (!canCrossSuspension && hasSuspensionBefore(callerFunction, node, context))
     ) {
       return;
     }
@@ -92,7 +92,13 @@ const functionInvokesTarget = (
     if (
       calledFunction === targetFunction ||
       (calledFunction &&
-        functionInvokesTarget(calledFunction, targetFunction, context, visitedFunctions))
+        functionInvokesTarget(
+          calledFunction,
+          targetFunction,
+          context,
+          visitedFunctions,
+          canCrossSuspension,
+        ))
     ) {
       invokesTarget = true;
       return false;
@@ -118,7 +124,7 @@ const isFunctionInvokedBefore = (
       callStart === null ||
       callStart >= boundaryStart ||
       !isNodeReachableWithinFunction(node, context) ||
-      !isNodeUnconditionallyExecutedWithinFunction(node) ||
+      !context.cfg.isUnconditionalFromEntry(node) ||
       hasSuspensionBefore(boundaryFunction, node, context)
     ) {
       return;
@@ -135,10 +141,45 @@ const isFunctionInvokedBefore = (
   return isInvokedBefore;
 };
 
+const isFunctionInvokedAfter = (
+  invokedFunction: EsTreeNode,
+  boundary: EsTreeNode,
+  callerFunction: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const boundaryStart = getRangeStart(boundary);
+  if (boundaryStart === null) return false;
+  let isInvokedAfter = false;
+  walkAst(callerFunction, (node) => {
+    if (node !== callerFunction && isFunctionLike(node)) return false;
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callStart = getRangeStart(node);
+    if (
+      callStart === null ||
+      callStart <= boundaryStart ||
+      !isNodeReachableWithinFunction(node, context) ||
+      !context.cfg.isUnconditionalFromEntry(node)
+    ) {
+      return;
+    }
+    const calledFunction = resolveCalledFunction(node.callee, context);
+    if (
+      calledFunction === invokedFunction ||
+      (calledFunction &&
+        functionInvokesTarget(calledFunction, invokedFunction, context, new Set(), true))
+    ) {
+      isInvokedAfter = true;
+      return false;
+    }
+  });
+  return isInvokedAfter;
+};
+
 const isWriteExecutedBefore = (
   writeNode: EsTreeNode,
   boundary: EsTreeNode,
   context: RuleContext,
+  deferredExecutionFunction: EsTreeNode | null,
 ): boolean => {
   const writeStart = getRangeStart(writeNode);
   const boundaryStart = getRangeStart(boundary);
@@ -146,16 +187,41 @@ const isWriteExecutedBefore = (
     writeStart === null ||
     boundaryStart === null ||
     !isNodeReachableWithinFunction(writeNode, context) ||
-    !isNodeUnconditionallyExecutedWithinFunction(writeNode)
+    !context.cfg.isUnconditionalFromEntry(writeNode)
   ) {
     return false;
   }
   const writeFunction = findEnclosingFunction(writeNode);
   const boundaryFunction = findEnclosingFunction(boundary);
+  const renderFunction = deferredExecutionFunction
+    ? findEnclosingFunction(deferredExecutionFunction)
+    : null;
   if (writeFunction === boundaryFunction) return writeStart < boundaryStart;
   if (!writeFunction) return writeStart < boundaryStart;
   if (boundaryFunction && isFunctionAncestor(writeFunction, boundaryFunction)) {
+    const isRenderAncestor = Boolean(
+      renderFunction &&
+      (writeFunction === renderFunction || isFunctionAncestor(writeFunction, renderFunction)),
+    );
+    if (isRenderAncestor) return true;
+    if (deferredExecutionFunction && boundaryFunction !== deferredExecutionFunction) {
+      if (
+        hasSuspensionBefore(boundaryFunction, boundary, context) &&
+        isFunctionInvokedBefore(boundaryFunction, writeNode, context)
+      ) {
+        return true;
+      }
+      return isFunctionInvokedAfter(boundaryFunction, writeNode, writeFunction, context);
+    }
     return writeStart < boundaryStart;
+  }
+  if (
+    renderFunction &&
+    isFunctionAncestor(renderFunction, writeFunction) &&
+    !hasSuspensionBefore(writeFunction, writeNode, context) &&
+    functionInvokesTarget(renderFunction, writeFunction, context, new Set())
+  ) {
+    return true;
   }
   return (
     !hasSuspensionBefore(writeFunction, writeNode, context) &&
@@ -265,6 +331,7 @@ const hasRefetchMemberWriteBefore = (
   expression: EsTreeNode,
   boundary: EsTreeNode,
   context: RuleContext,
+  deferredExecutionFunction: EsTreeNode | null,
 ): boolean => {
   const unwrappedExpression = stripParenExpression(expression);
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return false;
@@ -278,7 +345,7 @@ const hasRefetchMemberWriteBefore = (
   walkAst(program, (node) => {
     const mutationTarget = getRefetchMutationTarget(node, context);
     if (!mutationTarget) return;
-    if (!isWriteExecutedBefore(node, boundary, context)) return;
+    if (!isWriteExecutedBefore(node, boundary, context, deferredExecutionFunction)) return;
     const object = stripParenExpression(mutationTarget);
     if (!isNodeOfType(object, "Identifier")) return;
     const writtenSymbol = resolveConstIdentifierAlias(object, context.scopes);
@@ -293,6 +360,7 @@ const hasRefetchMemberWriteBefore = (
 const isTanstackRefetchExpression = (
   expression: EsTreeNode,
   context: RuleContext,
+  deferredExecutionFunction: EsTreeNode | null,
   visitedSymbolIds: Set<number> = new Set(),
 ): boolean => {
   const unwrappedExpression = stripParenExpression(expression);
@@ -300,7 +368,12 @@ const isTanstackRefetchExpression = (
     return (
       isStaticRefetchMember(unwrappedExpression) &&
       isTanstackQueryResult(unwrappedExpression.object, context) &&
-      !hasRefetchMemberWriteBefore(unwrappedExpression.object, unwrappedExpression, context)
+      !hasRefetchMemberWriteBefore(
+        unwrappedExpression.object,
+        unwrappedExpression,
+        context,
+        deferredExecutionFunction,
+      )
     );
   }
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return false;
@@ -324,21 +397,22 @@ const isTanstackRefetchExpression = (
     return Boolean(
       initializer &&
       isTanstackQueryResult(initializer, context) &&
-      !hasRefetchMemberWriteBefore(initializer, symbol.declarationNode, context),
+      !hasRefetchMemberWriteBefore(initializer, symbol.declarationNode, context, null),
     );
   }
   return Boolean(
     symbol.declarationNode.id === symbol.bindingIdentifier &&
     symbol.initializer &&
-    isTanstackRefetchExpression(symbol.initializer, context, visitedSymbolIds),
+    isTanstackRefetchExpression(symbol.initializer, context, null, visitedSymbolIds),
   );
 };
 
 const isTanstackRefetchCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
+  effectCallback: EsTreeNode,
 ): boolean => {
-  return isTanstackRefetchExpression(callExpression.callee, context);
+  return isTanstackRefetchExpression(callExpression.callee, context, effectCallback);
 };
 
 export const queryNoQueryInEffect = defineRule({
@@ -367,7 +441,7 @@ export const queryNoQueryInEffect = defineRule({
           return false;
         if (!isNodeOfType(child, "CallExpression")) return;
 
-        if (isTanstackRefetchCall(child, context)) {
+        if (isTanstackRefetchCall(child, context, callback)) {
           context.report({
             node: child,
             message:

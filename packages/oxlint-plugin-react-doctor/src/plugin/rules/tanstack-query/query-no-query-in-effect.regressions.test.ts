@@ -240,6 +240,165 @@ function Search({ customRefetch }) {
     expect(diagnostics).toHaveLength(0);
   });
 
+  it("stays silent when render overwrites a live refetch member after effect registration", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => { query.refetch(); }, [query]);
+  query.refetch = customRefetch;
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when render synchronously invokes an overwrite helper after registration", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; };
+  useEffect(() => { query.refetch(); }, [query]);
+  overwriteRefetch();
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags refetch when render only conditionally invokes the overwrite helper", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch, shouldOverwrite }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; };
+  useEffect(() => { query.refetch(); }, [query]);
+  if (shouldOverwrite) overwriteRefetch();
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when a render helper overwrites only after awaiting", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = async () => { await pause(); query.refetch = customRefetch; };
+  useEffect(() => { query.refetch(); }, [query]);
+  overwriteRefetch();
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when a render helper overwrites before awaiting", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = async () => { query.refetch = customRefetch; await pause(); };
+  useEffect(() => { query.refetch(); }, [query]);
+  overwriteRefetch();
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags refetch when a render loop may never overwrite the member", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch, items }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => { query.refetch(); }, [query]);
+  for (const item of items) query.refetch = customRefetch;
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags a captured refetch when render overwrites its former receiver afterward", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const reload = query.refetch;
+  useEffect(() => { reload(); }, [reload]);
+  query.refetch = customRefetch;
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when the render overwrite only occurs in catch", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  try { renderSearch(); } catch { query.refetch = customRefetch; }
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when a render try path can bypass the overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch, shouldOverwrite }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => { query.refetch(); }, [query]);
+  try { if (shouldOverwrite) query.refetch = customRefetch; } finally { renderSearch(); }
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when a render finally block always overwrites before the effect", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => { query.refetch(); }, [query]);
+  try { renderSearch(); } catch {} finally { query.refetch = customRefetch; }
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when an explicit throw makes the catch overwrite unavoidable", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => { query.refetch(); }, [query]);
+  try { throw new Error("replace"); } catch { query.refetch = customRefetch; }
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("flags a direct refetch when an earlier deferred handler contains an overwrite", () => {
     const { diagnostics } = runRule(
       queryNoQueryInEffect,
@@ -280,6 +439,127 @@ function Search({ customRefetch }) {
 }`,
     );
     expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags a nested effect read before its callback overwrites refetch", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => {
+    const reload = () => { query.refetch(); };
+    reload();
+    query.refetch = customRefetch;
+  }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a nested effect read after its callback overwrites refetch", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => {
+    const reload = () => { query.refetch(); };
+    query.refetch = customRefetch;
+    reload();
+  }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags a hoisted nested effect read invoked before its callback overwrites refetch", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => {
+    reload();
+    query.refetch = customRefetch;
+    function reload() { query.refetch(); }
+  }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when an awaited nested read resumes after the effect overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => {
+    reload();
+    query.refetch = customRefetch;
+    async function reload() { await pause(); query.refetch(); }
+  }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags a nested read that executes synchronously before the effect overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => {
+    reload();
+    query.refetch = customRefetch;
+    async function reload() { query.refetch(); await pause(); }
+  }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when an async wrapper reaches a nested read after an effect overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => {
+    const reload = () => { query.refetch(); };
+    const reloadLater = async () => { await pause(); reload(); };
+    query.refetch = customRefetch;
+    reloadLater();
+  }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags a nested read when an async wrapper only conditionally reaches it", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch, shouldReload }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => {
+    const reload = () => { query.refetch(); };
+    const reloadLater = async () => { await pause(); if (shouldReload) reload(); };
+    query.refetch = customRefetch;
+    reloadLater();
+  }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
   });
 
   it("stays silent when an invoked wrapper synchronously calls the overwrite helper", () => {

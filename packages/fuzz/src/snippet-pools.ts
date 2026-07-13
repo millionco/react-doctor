@@ -164,6 +164,7 @@ export const LIBRARY_SNIPPET_POOL = [
   `const subscribeStore = useCallback((onStoreChange) => { store.on("change", onStoreChange); return () => store.off("change", onStoreChange); }, [store]); const snapshot = useSyncExternalStore(subscribeStore, getSnapshot);`,
   `const { data: queryData, isPending } = useQuery({ queryKey: ["items", value], queryFn: () => fetch(url).then((response) => response.json()) });`,
   `const queryResult = useQuery({ queryKey: ["items", value], queryFn: () => fetch(url).then((response) => response.json()) }); useEffect(() => { queryResult["refetch"](); }, [queryResult]);`,
+  `const overwrittenQuery = useQuery({ queryKey: ["overwritten", value] }); useEffect(() => { overwrittenQuery.refetch(); }, [overwrittenQuery]); try { handle(value); } catch { handle(value); } finally { overwrittenQuery.refetch = handle; }`,
   `const searchIndex = { refetch: () => handle(value) }; useEffect(() => { searchIndex.refetch(); }, [searchIndex]);`,
   `const mutation = useMutation({ mutationFn: (payload) => api.post(url, payload) });`,
   `const { mutate, mutateAsync } = useMutation({ mutationFn: (payload) => api.post(url, payload) });`,

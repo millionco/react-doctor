@@ -1292,16 +1292,11 @@ const isKnownUnsafeIndexOfQuery = (
     ) {
       return true;
     }
-    const declaredType = getIdentifierDeclaredType(strippedQuery);
-    const binding = findVariableInitializer(strippedQuery, strippedQuery.name);
-    if (
-      binding?.initializer &&
-      isKnownSafeIndexOfQuery(binding.initializer) &&
-      !typeCanHaveSameValueZeroDifference(declaredType, strippedQuery, new Set())
-    ) {
-      return false;
-    }
-    return typeCanHaveSameValueZeroDifference(declaredType, strippedQuery, new Set());
+    return typeCanHaveSameValueZeroDifference(
+      getIdentifierDeclaredType(strippedQuery),
+      strippedQuery,
+      new Set(),
+    );
   }
   if (isNodeOfType(strippedQuery, "MemberExpression")) {
     return (
@@ -1546,9 +1541,7 @@ export const jsSetMapLookups = defineRule({
       if (isScreamingSnakeCaseConstantReceiver(receiver)) return;
       if (isSmallFixedListMember(receiver)) return;
       if (isSubstringSearchLiteral(query)) return;
-      if (isIndexedArrayElementWithStringArgument(receiver, query)) {
-        return;
-      }
+      if (isIndexedArrayElementWithStringArgument(receiver, query)) return;
       const resolvedInitializer = getResolvedInitializer(receiver);
       if (resolvedInitializer) {
         if (isLikelyStringReceiver(resolvedInitializer.initializer)) return;

@@ -176,6 +176,7 @@ export const LIBRARY_SNIPPET_POOL = [
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
   `const GLOBAL_CACHE = new Map<string, unknown>();`,
+  `class FuzzProtocolRegistry { static contextTypes = new Set(["json", "text"]); static childContextTypes = new Map(); getChildContext() { return { protocol: "json" }; } } const FuzzSchemaRegistry = {}; FuzzSchemaRegistry.contextTypes = new Set(["json", "text"]);`,
   `const FuzzPropTypesPanel = ({ value }) => <div>{value}</div>; FuzzPropTypesPanel.propTypes = { value: () => true };`,
   `function FuzzNestedWritePanel() { return <div />; } function unusedFuzzNestedWrite() { FuzzNestedWritePanel = () => null; } FuzzNestedWritePanel.propTypes = { value: () => true };`,
   `function FuzzReturnedLabel() { let output = "label"; function unusedFuzzOutputWrite() { output = <div />; } return output; } FuzzReturnedLabel.propTypes = { value: () => true };`,
@@ -427,6 +428,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 export const IMPORT_LINE_POOL = [
   `import React from "react";`,
   `import * as React from "react";`,
+  `import ReactLegacyContext from "react";\nclass FuzzLegacyContextProvider extends ReactLegacyContext.Component { static contextTypes = {}; render() { return null; } }`,
   `import { useState, useEffect, useMemo, useCallback, useRef, useContext, useReducer, useTransition, useDeferredValue, useId, useLayoutEffect, useSyncExternalStore } from "react";`,
   `import { useState as useLocalState } from "react";`,
   `import { createPortal } from "react-dom";`,

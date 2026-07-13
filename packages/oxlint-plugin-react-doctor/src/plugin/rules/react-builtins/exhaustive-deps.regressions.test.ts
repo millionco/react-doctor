@@ -999,6 +999,21 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not report state read only by its sole writer effect's equality guard", () => {
+    const code = `
+      function Candidate({ source }) {
+        const [snapshot, setSnapshot] = useState(source);
+        useEffect(() => {
+          if (!Object.is(snapshot, source)) setSnapshot(source);
+        }, [source]);
+        return snapshot;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   describe("bounded identity source resolution", () => {
     it("accepts the exact derived callback dependency", () => {
       const code = `

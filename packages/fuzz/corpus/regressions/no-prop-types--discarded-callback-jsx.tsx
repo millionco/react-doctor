@@ -3,7 +3,7 @@
 // source: adversarial review of component receiver provenance
 
 export const Schema = (items: string[]) => {
-  items.map((item) => <div>{item}</div>);
+  items.map((item) => <div key={item}>{item}</div>);
   return { count: items.length };
 };
 

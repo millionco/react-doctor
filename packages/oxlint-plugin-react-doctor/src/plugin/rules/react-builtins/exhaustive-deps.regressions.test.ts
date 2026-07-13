@@ -1014,6 +1014,200 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    `if (snapshot !== source) setSnapshot(source);`,
+    `if (!Object.is(snapshot, source)) setSnapshot(source);`,
+    `if (Object.is(snapshot, source)) return; setSnapshot(source);`,
+    `const nextSnapshot = source; const aliasedSnapshot = nextSnapshot; if (snapshot !== source) setSnapshot(aliasedSnapshot);`,
+    `const nextSnapshot = source; if (snapshot !== nextSnapshot) setSnapshot(source);`,
+  ])("accepts a sole-writer state equality guard: %s", (effectBody) => {
+    const code = `
+      function Candidate({ source }) {
+        const [snapshot, setSnapshot] = useState(source);
+        useEffect(() => { ${effectBody} }, [source]);
+        return snapshot;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts a local source derivation used by both the guard and setter", () => {
+    const code = `
+      function Candidate({ enabled, source }) {
+        const [snapshot, setSnapshot] = useState(false);
+        useEffect(() => {
+          const nextSnapshot = enabled && computeSnapshot(source);
+          if (snapshot !== nextSnapshot) setSnapshot(nextSnapshot);
+        }, [enabled, source]);
+        return snapshot;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `void source; if (!Object.is(snapshot, 0)) setSnapshot(0);`,
+    `void source; if (!Object.is(snapshot, NaN)) setSnapshot(NaN);`,
+  ])("uses Object.is semantics for exact primitive writes: %s", (effectBody) => {
+    const code = `
+      function Candidate({ source }) {
+        const [snapshot, setSnapshot] = useState(source);
+        useEffect(() => { ${effectBody} }, [source]);
+        return snapshot;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a complete sole-writer state dependency valid", () => {
+    const code = `
+      function Candidate({ source }) {
+        const [snapshot, setSnapshot] = useState(source);
+        useEffect(() => {
+          if (!Object.is(snapshot, source)) setSnapshot(source);
+        }, [snapshot, source]);
+        return snapshot;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts the same guard in a layout effect through a named hook alias", () => {
+    const code = `
+      import { useLayoutEffect, useState as useLocalState } from "react";
+      function Candidate({ source }) {
+        const [snapshot, setSnapshot] = useLocalState(source);
+        useLayoutEffect(() => {
+          if ((snapshot!) !== source) (setSnapshot)(source);
+        }, [source]);
+        return snapshot;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code, { filename: "fixture.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts the same guard through the React namespace", () => {
+    const code = `
+      import * as React from "react";
+      function Candidate({ source }) {
+        const [snapshot, setSnapshot] = React.useState(source);
+        React.useEffect(() => {
+          if (!Object.is(snapshot, source)) setSnapshot(source);
+        }, [source]);
+        return snapshot;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `useEffect(() => { if (!Object.is(snapshot, source)) setSnapshot(source); }, [source]); return <button onClick={() => setSnapshot("external")}>{snapshot}</button>;`,
+    `useEffect(() => { if (!Object.is(snapshot, source)) setSnapshot(source); }, [source]); useEffect(() => { setSnapshot("external"); }, []); return snapshot;`,
+    `useEffect(() => { if (!Object.is(snapshot, source)) setSnapshot(source); }, [source]); const update = setSnapshot; return <button onClick={() => update("external")}>{snapshot}</button>;`,
+    `useEffect(() => { const update = () => setSnapshot(source); if (!Object.is(snapshot, source)) update(); }, [source]); return snapshot;`,
+    `useEffect(() => { if (!Object.is(snapshot, source)) { setSnapshot(source); setSnapshot(source); } }, [source]); return snapshot;`,
+    `useEffect(() => { if (!Object.is(snapshot, source)) setSnapshot(source); consume(snapshot); }, [source]); return snapshot;`,
+    `useEffect(() => { if (!Object.is(snapshot, source)) consume(source); setSnapshot(source); }, [source]); return snapshot;`,
+    `const Object = { is: () => false }; useEffect(() => { if (!Object.is(snapshot, source)) setSnapshot(source); }, [source]); return snapshot;`,
+    `const equal = () => false; useEffect(() => { if (!equal(snapshot, source)) setSnapshot(source); }, [source]); return snapshot;`,
+    `const notEqual = () => true; useEffect(() => { if (notEqual(snapshot, source)) setSnapshot(source); }, [source]); return snapshot;`,
+    `const compare = { equal: () => false }; useEffect(() => { if (!compare.equal(snapshot, source)) setSnapshot(source); }, [source]); return snapshot;`,
+    `useInsertionEffect(() => { if (!Object.is(snapshot, source)) setSnapshot(source); }, [source]); return snapshot;`,
+    `useEffect(() => { if (snapshot.value !== source.value) setSnapshot(source); }, [source]); return snapshot.value;`,
+  ])("reports when sole-writer ownership or guard role is not proven: %s", (componentBody) => {
+    const code = `
+      function Candidate({ source }) {
+        const [snapshot, setSnapshot] = useState(source);
+        ${componentBody}
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("does not apply the exemption to a userland useState tuple", () => {
+    const code = `
+      const useState = (value) => [value, consume];
+      function Candidate({ source }) {
+        const [snapshot, setSnapshot] = useState(source);
+        useEffect(() => {
+          if (!Object.is(snapshot, source)) setSnapshot(source);
+        }, [source]);
+        return snapshot;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    {
+      effectBody: `if (snapshot === source) setSnapshot(Math.random());`,
+      dependencies: `[source]`,
+    },
+    {
+      effectBody: `if (snapshot !== source) setSnapshot(other);`,
+      dependencies: `[source, other]`,
+    },
+    {
+      effectBody: `if (Object.is(snapshot, source)) setSnapshot(other);`,
+      dependencies: `[source, other]`,
+    },
+    {
+      effectBody: `if (normalize(snapshot) !== source) setSnapshot(source);`,
+      dependencies: `[source]`,
+    },
+    {
+      effectBody: `if (snapshot !== source) setSnapshot(source);`,
+      dependencies: `[]`,
+    },
+    {
+      effectBody: `if (snapshot != source) setSnapshot(source);`,
+      dependencies: `[source]`,
+    },
+    {
+      effectBody: `if (snapshot !== 0) setSnapshot(-0);`,
+      dependencies: `[source]`,
+    },
+    {
+      effectBody: `void source; if (!Object.is(snapshot, 0)) setSnapshot(-0);`,
+      dependencies: `[source]`,
+    },
+    {
+      effectBody: `if (snapshot !== NaN) setSnapshot(NaN);`,
+      dependencies: `[source]`,
+    },
+  ])(
+    "reports snapshot when the guard/write/source proof fails: $effectBody $dependencies",
+    ({ effectBody, dependencies }) => {
+      const code = `
+        function Candidate({ other, source }) {
+          const [snapshot, setSnapshot] = useState(source);
+          useEffect(() => { ${effectBody} }, ${dependencies});
+          return snapshot;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("snapshot");
+    },
+  );
+
   describe("bounded identity source resolution", () => {
     it("accepts the exact derived callback dependency", () => {
       const code = `

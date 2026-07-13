@@ -42,6 +42,7 @@ import {
   buildUnstableDepMessage,
 } from "./exhaustive-deps-messages.js";
 import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
+import { isSoleWriterEffectGuardCapture } from "./exhaustive-deps-sole-writer-guard.js";
 import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
 import {
   getFunctionValueNode,
@@ -79,6 +80,8 @@ const EFFECT_HOOKS_ALLOWING_EXTRA_REACTIVE_DEPS: ReadonlySet<string> = new Set([
   "useLayoutEffect",
   "useInsertionEffect",
 ]);
+
+const SOLE_WRITER_GUARD_HOOKS: ReadonlySet<string> = new Set(["useEffect", "useLayoutEffect"]);
 
 const buildAdditionalHooksRegex = (additional: string): RegExp | null => {
   if (!additional) return null;
@@ -344,6 +347,7 @@ const collectCaptureDepKeys = (
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
   declaredExactBindingKeys?: ReadonlySet<string>,
+  allowSoleWriterEffectGuards = false,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -357,6 +361,10 @@ const collectCaptureDepKeys = (
     const symbol = reference.resolvedSymbol;
     if (!symbol) continue;
     if (isRecursiveInitializerCapture(symbol, callback)) continue;
+    if (allowSoleWriterEffectGuards && isSoleWriterEffectGuardCapture(symbol, callback, scopes)) {
+      stableCapturedNames.add(symbol.name);
+      continue;
+    }
     if (symbolHasStableValue(symbol, scopes)) {
       stableCapturedNames.add(symbol.name);
       continue;
@@ -1425,6 +1433,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           callbackToAnalyze ?? callbackArgument,
           context.scopes,
           declaredExactBindingKeys,
+          SOLE_WRITER_GUARD_HOOKS.has(hookName),
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

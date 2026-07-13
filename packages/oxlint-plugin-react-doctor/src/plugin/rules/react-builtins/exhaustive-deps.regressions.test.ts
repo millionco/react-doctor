@@ -1018,6 +1018,12 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     `if (snapshot !== source) setSnapshot(source);`,
     `if (!Object.is(snapshot, source)) setSnapshot(source);`,
     `if (Object.is(snapshot, source)) return; setSnapshot(source);`,
+    `if (snapshot === source) return; setSnapshot(source);`,
+    `if (snapshot === source) consume(source); else setSnapshot(source);`,
+    `if (Object.is(snapshot, source)) consume(source); else setSnapshot(source);`,
+    `if (!!(snapshot !== source)) setSnapshot(source);`,
+    `if (ready && snapshot !== source) setSnapshot(source);`,
+    `if (!ready || snapshot === source) return; setSnapshot(source);`,
     `const nextSnapshot = source; const aliasedSnapshot = nextSnapshot; if (snapshot !== source) setSnapshot(aliasedSnapshot);`,
     `const nextSnapshot = source; if (snapshot !== nextSnapshot) setSnapshot(source);`,
   ])("accepts a sole-writer state equality guard: %s", (effectBody) => {
@@ -1160,6 +1166,30 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       dependencies: `[source]`,
     },
     {
+      effectBody: `if (snapshot === source) setSnapshot(source);`,
+      dependencies: `[source]`,
+    },
+    {
+      effectBody: `if (Object.is(snapshot, source)) setSnapshot(source);`,
+      dependencies: `[source]`,
+    },
+    {
+      effectBody: `if (!(snapshot !== source)) setSnapshot(source);`,
+      dependencies: `[source]`,
+    },
+    {
+      effectBody: `if (ready || snapshot !== source) setSnapshot(source);`,
+      dependencies: `[ready, source]`,
+    },
+    {
+      effectBody: `if (ready && snapshot === source) return; setSnapshot(source);`,
+      dependencies: `[ready, source]`,
+    },
+    {
+      effectBody: `if (snapshot !== source) consume(source); else setSnapshot(source);`,
+      dependencies: `[source]`,
+    },
+    {
       effectBody: `if (snapshot !== source) setSnapshot(other);`,
       dependencies: `[source, other]`,
     },
@@ -1195,7 +1225,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     "reports snapshot when the guard/write/source proof fails: $effectBody $dependencies",
     ({ effectBody, dependencies }) => {
       const code = `
-        function Candidate({ other, source }) {
+        function Candidate({ other, ready, source }) {
           const [snapshot, setSnapshot] = useState(source);
           useEffect(() => { ${effectBody} }, ${dependencies});
           return snapshot;

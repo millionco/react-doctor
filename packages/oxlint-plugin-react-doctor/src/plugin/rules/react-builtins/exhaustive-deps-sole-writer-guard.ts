@@ -7,13 +7,22 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
-import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import {
+  stripParenExpression,
+  TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
+} from "../../utils/strip-paren-expression.js";
 
 const EQUALITY_BINARY_OPERATORS: ReadonlySet<string> = new Set(["===", "!=="]);
 
 interface DirectSetterWrite {
   callExpression: EsTreeNode;
   writtenValue: EsTreeNode;
+}
+
+interface EqualityComparison {
+  comparison: EsTreeNode;
+  counterpart: EsTreeNode;
+  areValuesEqualWhenTruthy: boolean;
 }
 
 const getUseStateSetterSymbol = (
@@ -96,21 +105,33 @@ const isGlobalNaNReference = (expression: EsTreeNode, scopes: ScopeAnalysis): bo
   );
 };
 
-const getEqualityCounterpart = (
+const getEqualityComparison = (
   stateReference: EsTreeNode,
   candidate: EsTreeNode,
   scopes: ScopeAnalysis,
-): EsTreeNode | null => {
+): EqualityComparison | null => {
   const unwrappedStateReference = stripParenExpression(stateReference);
   if (
     isNodeOfType(candidate, "BinaryExpression") &&
     EQUALITY_BINARY_OPERATORS.has(candidate.operator)
   ) {
     if (stripParenExpression(candidate.left) === unwrappedStateReference) {
-      return isGlobalNaNReference(candidate.right, scopes) ? null : candidate.right;
+      return isGlobalNaNReference(candidate.right, scopes)
+        ? null
+        : {
+            comparison: candidate,
+            counterpart: candidate.right,
+            areValuesEqualWhenTruthy: candidate.operator === "===",
+          };
     }
     if (stripParenExpression(candidate.right) === unwrappedStateReference) {
-      return isGlobalNaNReference(candidate.left, scopes) ? null : candidate.left;
+      return isGlobalNaNReference(candidate.left, scopes)
+        ? null
+        : {
+            comparison: candidate,
+            counterpart: candidate.left,
+            areValuesEqualWhenTruthy: candidate.operator === "===",
+          };
     }
     return null;
   }
@@ -129,24 +150,61 @@ const getEqualityCounterpart = (
   ) {
     return null;
   }
-  if (stripParenExpression(firstArgument) === unwrappedStateReference) return secondArgument;
-  if (stripParenExpression(secondArgument) === unwrappedStateReference) return firstArgument;
+  if (stripParenExpression(firstArgument) === unwrappedStateReference) {
+    return {
+      comparison: candidate,
+      counterpart: secondArgument,
+      areValuesEqualWhenTruthy: true,
+    };
+  }
+  if (stripParenExpression(secondArgument) === unwrappedStateReference) {
+    return {
+      comparison: candidate,
+      counterpart: firstArgument,
+      areValuesEqualWhenTruthy: true,
+    };
+  }
   return null;
 };
 
-const findEqualityCounterpart = (
+const findEqualityComparison = (
   stateReference: EsTreeNode,
   test: EsTreeNode,
   scopes: ScopeAnalysis,
-): EsTreeNode | null => {
+): EqualityComparison | null => {
   let current: EsTreeNode | null | undefined = stateReference.parent;
   while (current && isAstDescendant(current, test)) {
-    const counterpart = getEqualityCounterpart(stateReference, current, scopes);
-    if (counterpart) return counterpart;
+    const comparison = getEqualityComparison(stateReference, current, scopes);
+    if (comparison) return comparison;
     if (current === test) break;
     current = current.parent;
   }
   return null;
+};
+
+const doesTestOutcomeRequireComparisonOutcome = (
+  comparison: EsTreeNode,
+  test: EsTreeNode,
+  testOutcome: boolean,
+  comparisonOutcome: boolean,
+): boolean => {
+  let requiredChildOutcome = testOutcome;
+  let current = comparison;
+  while (current !== test) {
+    const parent = current.parent;
+    if (!parent || !isAstDescendant(parent, test)) return false;
+    if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") {
+      requiredChildOutcome = !requiredChildOutcome;
+    } else if (isNodeOfType(parent, "LogicalExpression")) {
+      if (parent.operator === "&&" && !requiredChildOutcome) return false;
+      if (parent.operator === "||" && requiredChildOutcome) return false;
+      if (parent.operator !== "&&" && parent.operator !== "||") return false;
+    } else if (!TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type)) {
+      return false;
+    }
+    current = parent;
+  }
+  return requiredChildOutcome === comparisonOutcome;
 };
 
 const resolveImmutableAliasExpression = (
@@ -232,7 +290,25 @@ const findDominatingGuardCounterpart = (
         Boolean(current.alternate && isAstDescendant(setterCall, current.alternate)) ||
         doesGuardDominateLaterSetter(current, setterCall))
     ) {
-      return findEqualityCounterpart(stateReference, current.test, scopes);
+      const setterRunsWhenTestTruthy = isAstDescendant(setterCall, current.consequent);
+      const setterRunsWhenTestFalsey =
+        Boolean(current.alternate && isAstDescendant(setterCall, current.alternate)) ||
+        doesGuardDominateLaterSetter(current, setterCall);
+      if (setterRunsWhenTestTruthy === setterRunsWhenTestFalsey) return null;
+      const equalityComparison = findEqualityComparison(stateReference, current.test, scopes);
+      if (!equalityComparison) return null;
+      const comparisonOutcomeForDifferentValues = !equalityComparison.areValuesEqualWhenTruthy;
+      if (
+        !doesTestOutcomeRequireComparisonOutcome(
+          equalityComparison.comparison,
+          current.test,
+          setterRunsWhenTestTruthy,
+          comparisonOutcomeForDifferentValues,
+        )
+      ) {
+        return null;
+      }
+      return equalityComparison.counterpart;
     }
     current = current.parent;
   }

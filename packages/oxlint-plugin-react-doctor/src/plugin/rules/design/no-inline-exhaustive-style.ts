@@ -29,12 +29,19 @@ const isStaticStyleProperty = (property: EsTreeNode): boolean => {
   return isStaticStyleValue(property.value);
 };
 
+// Walks past static fields instead of stopping: a static field of a class
+// expression nested inside an instance field still re-evaluates per instance.
 const isInsideInstanceField = (node: EsTreeNode): boolean => {
   let descendantNode = node;
   let ancestorNode = node.parent;
   while (ancestorNode) {
-    if (isNodeOfType(ancestorNode, "PropertyDefinition")) {
-      return ancestorNode.static !== true && ancestorNode.value === descendantNode;
+    if (
+      (isNodeOfType(ancestorNode, "PropertyDefinition") ||
+        isNodeOfType(ancestorNode, "AccessorProperty")) &&
+      ancestorNode.static !== true &&
+      ancestorNode.value === descendantNode
+    ) {
+      return true;
     }
     descendantNode = ancestorNode;
     ancestorNode = ancestorNode.parent;

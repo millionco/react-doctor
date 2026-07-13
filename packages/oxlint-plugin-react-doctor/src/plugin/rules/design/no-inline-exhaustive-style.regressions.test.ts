@@ -51,6 +51,27 @@ describe("design/no-inline-exhaustive-style regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent for module-scope Array.from initializers, direct and const-aliased", () => {
+    const direct = runRule(
+      noInlineExhaustiveStyle,
+      `export const stableElements = Array.from({ length: 3 }, () => ${exhaustiveStyleElement});`,
+      { filename: "/proj/src/stable-element.tsx" },
+    );
+    const aliased = runRule(
+      noInlineExhaustiveStyle,
+      `
+        const buildRange = Array.from;
+        export const stableElements = buildRange({ length: 3 }, () => ${exhaustiveStyleElement});
+      `,
+      { filename: "/proj/src/stable-element.tsx" },
+    );
+
+    for (const result of [direct, aliased]) {
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
   it("distinguishes module-stable static fields from per-instance fields", () => {
     const result = runRule(
       noInlineExhaustiveStyle,
@@ -62,6 +83,43 @@ describe("design/no-inline-exhaustive-style regressions", () => {
         }
 
         export const Panel = () => new ElementHolder().instanceElement;
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("distinguishes module-stable static accessor fields from per-instance accessor fields", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        class ElementHolder {
+          static accessor stableElement = ${exhaustiveStyleElement};
+          accessor instanceElement = ${exhaustiveStyleElement};
+        }
+
+        export const Panel = () => new ElementHolder().instanceElement;
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports static fields of class expressions initialized per instance", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        class Outer {
+          inner = class Inner {
+            static styledElement = ${exhaustiveStyleElement};
+          };
+        }
+
+        export const Panel = () => new Outer().inner;
       `,
       { filename: "/proj/src/panel.tsx" },
     );
@@ -86,6 +144,75 @@ describe("design/no-inline-exhaustive-style regressions", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("still reports inside a module-scope custom hook body", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `export const useStyledElement = () => ${exhaustiveStyleElement};`,
+      { filename: "/proj/src/use-styled-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports inside a deferred module-scope callback", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `setTimeout(() => ${exhaustiveStyleElement}, 0);`,
+      { filename: "/proj/src/deferred-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports inside a memo-wrapped module-scope component", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        import { memo } from "react";
+
+        export const Panel = memo(() => ${exhaustiveStyleElement});
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports inside a plain named module function", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        function buildStyledElement() {
+          return ${exhaustiveStyleElement};
+        }
+
+        export const element = buildStyledElement();
+      `,
+      { filename: "/proj/src/styled-element.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a useMemo factory inside a component", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        import { useMemo } from "react";
+
+        export const Panel = () => useMemo(() => ${exhaustiveStyleElement}, []);
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   // OG components style everything inline because Satori (next/og,

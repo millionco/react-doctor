@@ -88,6 +88,7 @@ export const isProvenReactComponentSymbol = (
         )
       : [symbol];
   for (const candidateSymbol of candidateSymbols) {
+    if (candidateSymbol.references.some((reference) => reference.flag !== "read")) continue;
     if (isComponentDeclaration(candidateSymbol.declarationNode)) {
       if (functionContainsReactRenderOutput(candidateSymbol.declarationNode, scopes)) return true;
       continue;

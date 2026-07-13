@@ -124,6 +124,25 @@ describe("architecture/no-prop-types component provenance", () => {
     );
   });
 
+  it("keeps reassigned function and class component bindings quiet", () => {
+    expectDiagnosticCount(
+      `import ReactDefault from "react";
+       let Panel = (props: { value: string }) => <div>{props.value}</div>;
+       Panel = { propTypes: {} };
+       Panel.propTypes = { value: () => true };
+       function Dialog() { return <div />; }
+       Dialog = Object.assign(() => null, { propTypes: {} });
+       Dialog.propTypes = { value: () => true };
+       class Sheet extends ReactDefault.Component {}
+       Sheet = class {};
+       Sheet.propTypes = { value: () => true };
+       let Modal = class extends ReactDefault.Component {};
+       Modal = class {};
+       Modal.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
   it("reports components wrapped by proven React memo and forwardRef bindings", () => {
     expectDiagnosticCount(
       `import ReactDefault, { forwardRef as withRef, memo as withMemo } from "react";

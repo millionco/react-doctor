@@ -3,11 +3,13 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { collectFunctionReturnStatements } from "./collect-function-return-statements.js";
 import { functionContainsReactRenderOutput } from "./function-contains-react-render-output.js";
 import { functionContainsProvenReactHookCall } from "./function-contains-proven-react-hook-call.js";
+import { functionReturnsPropsChildren } from "./function-returns-props-children.js";
 import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
 import { isComponentDeclaration } from "./is-component-declaration.js";
 import { isInlineFunctionExpression } from "./is-inline-function-expression.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isProvenReactClassComponent } from "./is-proven-react-class-component.js";
+import { isProvenStyledComponentExpression } from "./is-proven-styled-component-expression.js";
 import { isReactApiCall } from "./is-react-api-call.js";
 import { isUppercaseName } from "./is-uppercase-name.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -16,7 +18,8 @@ const REACT_COMPONENT_HOC_NAMES: ReadonlySet<string> = new Set(["memo", "forward
 
 const functionHasComponentEvidence = (functionNode: EsTreeNode, scopes: ScopeAnalysis): boolean =>
   functionContainsReactRenderOutput(functionNode, scopes) ||
-  functionContainsProvenReactHookCall(functionNode, scopes);
+  functionContainsProvenReactHookCall(functionNode, scopes) ||
+  functionReturnsPropsChildren(functionNode, scopes);
 
 const isProvenReactComponentExpression = (
   expression: EsTreeNode,
@@ -30,6 +33,7 @@ const isProvenReactComponentExpression = (
   if (isNodeOfType(candidate, "ClassExpression")) {
     return isProvenReactClassComponent(candidate, scopes);
   }
+  if (isProvenStyledComponentExpression(candidate, scopes)) return true;
   if (isNodeOfType(candidate, "Identifier")) {
     const symbol = scopes.symbolFor(candidate);
     if (!symbol || visitedSymbolIds.has(symbol.id) || hasSymbolWriteBefore(symbol, candidate)) {

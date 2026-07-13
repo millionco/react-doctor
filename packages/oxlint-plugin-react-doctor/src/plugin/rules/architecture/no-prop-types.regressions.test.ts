@@ -268,6 +268,34 @@ describe("architecture/no-prop-types component provenance", () => {
     );
   });
 
+  it("reports binding-proven styled-components and props-children components", () => {
+    expectDiagnosticCount(
+      `import styledDefault from "styled-components";
+       const styledAlias = styledDefault;
+       const Panel = styledAlias.div.attrs(({ theme, ...rest }) => ({ theme, ...rest }))\`color: red;\`;
+       Panel.propTypes = { value: () => true };
+       const Tab = ({ children, title }) => title && children;
+       Tab.propTypes = { children: () => true };
+       const Sheet = (props: { children: React.ReactNode }) => props.children;
+       Sheet.propTypes = { children: () => true };`,
+      3,
+    );
+  });
+
+  it("keeps same-named userland styled factories and children helpers quiet", () => {
+    expectDiagnosticCount(
+      `const styled = { div: { attrs: () => (parts: TemplateStringsArray) => ({ parts }) } };
+       const Schema = styled.div.attrs(() => ({}))\`value\`;
+       Schema.propTypes = { value: () => true };
+       const ChildrenMap = ({ children }: { children: unknown }) => ({ children });
+       ChildrenMap.propTypes = { children: () => true };
+       import { css } from "styled-components";
+       const Protocol = css.div\`value\`;
+       Protocol.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
   it("keeps shadowed useMemo and non-component memoized values quiet", () => {
     expectDiagnosticCount(
       `const useMemo = (callback: () => unknown) => callback();

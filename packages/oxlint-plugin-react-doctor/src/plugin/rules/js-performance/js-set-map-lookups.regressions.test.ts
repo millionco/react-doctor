@@ -87,16 +87,26 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it.each(["0", "-0", "undefined"])(
-    "flags `.includes()` with a semantics-preserving %s fromIndex",
-    (fromIndex) => {
-      expectFail(
-        `function f(users, roles){ const out=[]; for(const user of users){ if(roles.includes(user.role, ${fromIndex})) out.push(user); } return out; }`,
-      );
-    },
-  );
+  it.each([
+    "0",
+    "-0",
+    "0.5",
+    "-0.5",
+    '"0.5"',
+    '"not a number"',
+    "undefined",
+    "null",
+    "false",
+    '""',
+    "NaN",
+    "Number.NaN",
+  ])("flags `.includes()` with a semantics-preserving %s fromIndex", (fromIndex) => {
+    expectFail(
+      `function f(users, roles: string[]){ const out=[]; for(const user of users){ if(roles.includes(user.role, ${fromIndex})) out.push(user); } return out; }`,
+    );
+  });
 
-  it.each(["1", "-1", "start"])(
+  it.each(["1", "-1", "1.1", '"1.1"', "true", "start"])(
     "does not flag `.includes()` with a semantics-changing %s fromIndex",
     (fromIndex) => {
       expectPass(
@@ -117,15 +127,43 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
+  it.each(["0", "null", "NaN"])(
+    "does not treat a userland two-argument `includes` call with %s as native Array membership",
+    (secondArgument) => {
+      expectPass(
+        `function f(rows, RangeApi){ for (const row of rows){ if(RangeApi.includes(row.range, ${secondArgument})) return row; } }`,
+      );
+    },
+  );
+
+  it("flags a zero-fromIndex lookup on an array-literal binding", () => {
+    expectFail(
+      `function f(rows){ const roles = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"]; for (const row of rows){ if(roles.includes(row.role, 0)) return row; } }`,
+    );
+  });
+
   it("does not treat a shadowed undefined fromIndex as zero", () => {
     expectPass(
       `function f(users, roles, undefined){ const out=[]; for(const user of users){ if(roles.includes(user.role, undefined)) out.push(user); } return out; }`,
     );
   });
 
+  it.each([
+    "function f(users, roles, NaN){ for (const user of users){ if(roles.includes(user.role, NaN)) return user; } }",
+    "function f(users, roles, Number){ for (const user of users){ if(roles.includes(user.role, Number.NaN)) return user; } }",
+  ])("does not treat shadowed NaN values as a zero fromIndex", (code) => {
+    expectPass(code);
+  });
+
   it("flags `.indexOf()` with a native iteration index", () => {
     expectFail(
       `function f(tokens, selectedIndices: number[]){ return tokens.filter((token, index) => selectedIndices.indexOf(index) !== -1); }`,
+    );
+  });
+
+  it("flags `.indexOf(undefined)` because strict equality and SameValueZero agree", () => {
+    expectFail(
+      `function f(rows, allowedValues: Array<number | undefined>){ for (const row of rows){ if(allowedValues.indexOf(undefined) !== -1) return row; } }`,
     );
   });
 
@@ -148,6 +186,96 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
       }
     `);
   });
+
+  it.each(["number", "number | string"])(
+    "does not flag `.indexOf()` on a generic array constrained to %s",
+    (constraint) => {
+      expectPass(`
+        function f<T extends ${constraint}>(candidates: readonly T[], allowedValues: readonly T[]) {
+          return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+        }
+      `);
+    },
+  );
+
+  it("flags `.indexOf()` on a finite-literal-constrained generic array", () => {
+    expectFail(`
+      function f<T extends 1 | 2>(candidates: readonly T[], allowedValues: readonly T[]) {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it.each([
+    "type Numeric = number; function f<T extends Numeric>(candidates: T[], allowedValues: T[])",
+    "function f<Domain extends number, T extends Domain>(candidates: T[], allowedValues: T[])",
+  ])("does not flag `.indexOf()` through nested numeric constraints", (declaration) => {
+    expectPass(`
+      ${declaration} {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it.each([
+    "type Finite = 1 | 2; function f(candidates: Finite[], allowedValues: Finite[])",
+    "function f(candidates: Array<1 | 2>, allowedValues: readonly [1, 2])",
+  ])("flags `.indexOf()` through finite literal aliases and tuples", (declaration) => {
+    expectFail(`
+      ${declaration} {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it.each([
+    "allowedValues: [number, number]",
+    "allowedValues: readonly [number, number]",
+    "allowedValues: [first?: number]",
+    "allowedValues: [string, ...number[]]",
+    "allowedValues: NumericValues",
+    "allowedValues: readonly Numeric[]",
+    "allowedValues: GenericValues<number>",
+  ])("does not flag `.indexOf()` for numeric tuple or alias domain: %s", (parameter) => {
+    expectPass(`
+      type Numeric = number;
+      type NumericValues = [Numeric, Numeric];
+      type GenericValues<Value> = readonly [Value, Value];
+      function f(candidates: number[], ${parameter}) {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("flags `.indexOf()` through a finite generic tuple alias", () => {
+    expectFail(`
+      type GenericValues<Value> = readonly [Value, Value];
+      function f(candidates: Array<1 | 2>, allowedValues: GenericValues<1 | 2>) {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("does not flag `.indexOf()` on a destructured numeric tuple alias", () => {
+    expectPass(`
+      type NumericPair = readonly [number, number];
+      interface Props { allowedValues: NumericPair; candidates: number[] }
+      function f({ allowedValues, candidates }: Props) {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it.each(["readonly [string, string]", "[first?: string]", "readonly undefined[]"])(
+    "flags `.indexOf()` for a SameValueZero-safe %s domain",
+    (allowedValuesType) => {
+      expectFail(`
+        function f(candidates, allowedValues: ${allowedValuesType}) {
+          return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+        }
+      `);
+    },
+  );
 
   it("does not flag `.indexOf()` assigned as an index position in a loop", () => {
     expectPass(

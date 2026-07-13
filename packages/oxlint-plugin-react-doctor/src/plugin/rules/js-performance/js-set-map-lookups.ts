@@ -4,6 +4,7 @@ import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -543,21 +544,48 @@ const isNegativeOneLiteral = (expression: EsTreeNode | null | undefined): boolea
 const isZeroLiteral = (expression: EsTreeNode | null | undefined): boolean =>
   Boolean(expression) && isNodeOfType(expression, "Literal") && expression.value === 0;
 
+const isToIntegerOrInfinityZero = (value: number): boolean =>
+  Number.isNaN(value) || Math.trunc(value) === 0;
+
 const isZeroFromIndex = (expression: EsTreeNode | null | undefined): boolean => {
-  if (isZeroLiteral(expression)) return true;
+  if (!expression) return false;
+  const strippedExpression = stripParenExpression(expression);
+  if (isNodeOfType(strippedExpression, "Literal")) {
+    if (typeof strippedExpression.value === "number") {
+      return isToIntegerOrInfinityZero(strippedExpression.value);
+    }
+    if (typeof strippedExpression.value === "string") {
+      const numericValue = Number(strippedExpression.value);
+      return isToIntegerOrInfinityZero(numericValue);
+    }
+    return strippedExpression.value === null || strippedExpression.value === false;
+  }
   if (
-    expression &&
-    isNodeOfType(expression, "UnaryExpression") &&
-    expression.operator === "-" &&
-    isZeroLiteral(expression.argument)
+    isNodeOfType(strippedExpression, "UnaryExpression") &&
+    (strippedExpression.operator === "-" || strippedExpression.operator === "+") &&
+    isNodeOfType(strippedExpression.argument, "Literal") &&
+    typeof strippedExpression.argument.value === "number"
   ) {
-    return true;
+    const numericValue =
+      strippedExpression.operator === "-"
+        ? -strippedExpression.argument.value
+        : strippedExpression.argument.value;
+    return isToIntegerOrInfinityZero(numericValue);
+  }
+  if (isNodeOfType(strippedExpression, "Identifier")) {
+    return (
+      (strippedExpression.name === "undefined" || strippedExpression.name === "NaN") &&
+      findVariableInitializer(strippedExpression, strippedExpression.name) === null
+    );
   }
   return (
-    Boolean(expression) &&
-    isNodeOfType(expression, "Identifier") &&
-    expression.name === "undefined" &&
-    findVariableInitializer(expression, expression.name) === null
+    isNodeOfType(strippedExpression, "MemberExpression") &&
+    !strippedExpression.computed &&
+    isNodeOfType(strippedExpression.object, "Identifier") &&
+    strippedExpression.object.name === "Number" &&
+    isNodeOfType(strippedExpression.property, "Identifier") &&
+    strippedExpression.property.name === "NaN" &&
+    findVariableInitializer(strippedExpression.object, strippedExpression.object.name) === null
   );
 };
 
@@ -664,70 +692,40 @@ const isKnownSafeIndexOfQuery = (query: EsTreeNode | null | undefined): boolean 
   if (isNodeOfType(strippedQuery, "Literal")) {
     return typeof strippedQuery.value !== "number" || Number.isFinite(strippedQuery.value);
   }
-  return isNodeOfType(strippedQuery, "Identifier") && isNativeIterationIndex(strippedQuery);
-};
-
-const isUnsafeEqualityType = (typeNode: EsTreeNode | null): boolean => {
-  if (!typeNode) return false;
-  if (
-    isNodeOfType(typeNode, "TSNumberKeyword") ||
-    isNodeOfType(typeNode, "TSUndefinedKeyword") ||
-    isNodeOfType(typeNode, "TSAnyKeyword") ||
-    isNodeOfType(typeNode, "TSUnknownKeyword")
-  ) {
-    return true;
-  }
-  if (isNodeOfType(typeNode, "TSUnionType")) {
-    return typeNode.types.some(isUnsafeEqualityType);
-  }
-  return false;
-};
-
-const isPotentiallyNumericType = (typeNode: EsTreeNode | null): boolean => {
-  if (!typeNode) return false;
-  if (
-    isNodeOfType(typeNode, "TSNumberKeyword") ||
-    isNodeOfType(typeNode, "TSAnyKeyword") ||
-    isNodeOfType(typeNode, "TSUnknownKeyword")
-  ) {
-    return true;
-  }
-  return isNodeOfType(typeNode, "TSUnionType") && typeNode.types.some(isPotentiallyNumericType);
-};
-
-const isKnownUnsafeIndexOfQuery = (query: EsTreeNode | null | undefined): boolean => {
-  if (!query) return true;
-  const strippedQuery = stripParenExpression(query);
-  if (isNodeOfType(strippedQuery, "Identifier")) {
-    if (
-      (strippedQuery.name === "NaN" || strippedQuery.name === "undefined") &&
-      findVariableInitializer(strippedQuery, strippedQuery.name) === null
-    ) {
-      return true;
-    }
-    const declaredType = getIdentifierDeclaredType(strippedQuery);
-    const binding = findVariableInitializer(strippedQuery, strippedQuery.name);
-    if (
-      binding?.initializer &&
-      isKnownSafeIndexOfQuery(binding.initializer) &&
-      !isPotentiallyNumericType(declaredType)
-    ) {
-      return false;
-    }
-    return isUnsafeEqualityType(declaredType);
-  }
+  if (!isNodeOfType(strippedQuery, "Identifier")) return false;
+  if (isNativeIterationIndex(strippedQuery)) return true;
   return (
-    isNodeOfType(strippedQuery, "MemberExpression") &&
-    !strippedQuery.computed &&
-    isNodeOfType(strippedQuery.object, "Identifier") &&
-    strippedQuery.object.name === "Number" &&
-    isNodeOfType(strippedQuery.property, "Identifier") &&
-    strippedQuery.property.name === "NaN" &&
-    findVariableInitializer(strippedQuery.object, strippedQuery.object.name) === null
+    strippedQuery.name === "undefined" &&
+    findVariableInitializer(strippedQuery, strippedQuery.name) === null
   );
 };
 
-const isUnconstrainedTypeParameter = (reference: EsTreeNode, typeName: string): boolean => {
+const findSameFileTypeAlias = (
+  reference: EsTreeNode,
+  typeName: string,
+): EsTreeNodeOfType<"TSTypeAliasDeclaration"> | null => {
+  const program = findProgramRoot(reference);
+  if (!program) return null;
+  for (const statement of program.body) {
+    const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
+      ? statement.declaration
+      : statement;
+    if (
+      declaration &&
+      isNodeOfType(declaration, "TSTypeAliasDeclaration") &&
+      isNodeOfType(declaration.id, "Identifier") &&
+      declaration.id.name === typeName
+    ) {
+      return declaration;
+    }
+  }
+  return null;
+};
+
+const findTypeParameter = (
+  reference: EsTreeNode,
+  typeName: string,
+): EsTreeNodeOfType<"TSTypeParameter"> | null => {
   let ancestor: EsTreeNode | null | undefined = reference.parent;
   while (ancestor) {
     if (isInlineFunctionExpression(ancestor) || isNodeOfType(ancestor, "FunctionDeclaration")) {
@@ -738,12 +736,327 @@ const isUnconstrainedTypeParameter = (reference: EsTreeNode, typeName: string): 
           typeParameter.name.name === typeName,
       );
       if (matchingTypeParameter && isNodeOfType(matchingTypeParameter, "TSTypeParameter")) {
-        return !matchingTypeParameter.constraint;
+        return matchingTypeParameter;
       }
     }
     ancestor = ancestor.parent;
   }
-  return false;
+  return null;
+};
+
+const buildTypeAliasArguments = (
+  typeAlias: EsTreeNodeOfType<"TSTypeAliasDeclaration">,
+  typeReference: EsTreeNodeOfType<"TSTypeReference">,
+  inheritedArguments: ReadonlyMap<string, EsTreeNode>,
+): Map<string, EsTreeNode> => {
+  const typeArguments = new Map(inheritedArguments);
+  for (const [index, typeParameter] of (typeAlias.typeParameters?.params ?? []).entries()) {
+    if (!isNodeOfType(typeParameter, "TSTypeParameter")) continue;
+    if (!isNodeOfType(typeParameter.name, "Identifier")) continue;
+    const argument = typeReference.typeArguments?.params?.[index] ?? typeParameter.default;
+    if (argument) typeArguments.set(typeParameter.name.name, argument);
+  }
+  return typeArguments;
+};
+
+const typeCanHaveSameValueZeroDifference = (
+  typeNode: EsTreeNode | null,
+  reference: EsTreeNode,
+  activeAliases: Set<EsTreeNode>,
+  typeArguments: ReadonlyMap<string, EsTreeNode> = new Map(),
+): boolean => {
+  if (!typeNode) return false;
+  if (
+    isNodeOfType(typeNode, "TSNumberKeyword") ||
+    isNodeOfType(typeNode, "TSAnyKeyword") ||
+    isNodeOfType(typeNode, "TSUnknownKeyword")
+  ) {
+    return true;
+  }
+  if (isNodeOfType(typeNode, "TSUnionType") || isNodeOfType(typeNode, "TSIntersectionType")) {
+    return typeNode.types.some((memberType) =>
+      typeCanHaveSameValueZeroDifference(memberType, reference, activeAliases, typeArguments),
+    );
+  }
+  if (isNodeOfType(typeNode, "TSOptionalType") || isNodeOfType(typeNode, "TSRestType")) {
+    return typeCanHaveSameValueZeroDifference(
+      typeNode.typeAnnotation,
+      reference,
+      activeAliases,
+      typeArguments,
+    );
+  }
+  if (isNodeOfType(typeNode, "TSNamedTupleMember")) {
+    return typeCanHaveSameValueZeroDifference(
+      typeNode.elementType,
+      reference,
+      activeAliases,
+      typeArguments,
+    );
+  }
+  if (
+    !isNodeOfType(typeNode, "TSTypeReference") ||
+    !isNodeOfType(typeNode.typeName, "Identifier")
+  ) {
+    return false;
+  }
+  const substitutedType = typeArguments.get(typeNode.typeName.name);
+  if (substitutedType) {
+    const remainingArguments = new Map(typeArguments);
+    remainingArguments.delete(typeNode.typeName.name);
+    return typeCanHaveSameValueZeroDifference(
+      substitutedType,
+      reference,
+      activeAliases,
+      remainingArguments,
+    );
+  }
+  const typeParameter = findTypeParameter(reference, typeNode.typeName.name);
+  if (typeParameter) {
+    return (
+      !typeParameter.constraint ||
+      typeCanHaveSameValueZeroDifference(
+        typeParameter.constraint,
+        reference,
+        activeAliases,
+        typeArguments,
+      )
+    );
+  }
+  const typeAlias = findSameFileTypeAlias(reference, typeNode.typeName.name);
+  if (!typeAlias || activeAliases.has(typeAlias)) return false;
+  activeAliases.add(typeAlias);
+  const canDiffer = typeCanHaveSameValueZeroDifference(
+    typeAlias.typeAnnotation,
+    reference,
+    activeAliases,
+    buildTypeAliasArguments(typeAlias, typeNode, typeArguments),
+  );
+  activeAliases.delete(typeAlias);
+  return canDiffer;
+};
+
+const arrayTypeCanHaveSameValueZeroDifference = (
+  typeNode: EsTreeNode | null,
+  reference: EsTreeNode,
+  activeAliases: Set<EsTreeNode>,
+  typeArguments: ReadonlyMap<string, EsTreeNode> = new Map(),
+): boolean => {
+  if (!typeNode) return false;
+  if (isNodeOfType(typeNode, "TSArrayType")) {
+    return typeCanHaveSameValueZeroDifference(
+      typeNode.elementType,
+      reference,
+      activeAliases,
+      typeArguments,
+    );
+  }
+  if (isNodeOfType(typeNode, "TSTupleType")) {
+    return typeNode.elementTypes.some((elementType) => {
+      if (isNodeOfType(elementType, "TSRestType")) {
+        return arrayTypeCanHaveSameValueZeroDifference(
+          elementType.typeAnnotation,
+          reference,
+          activeAliases,
+          typeArguments,
+        );
+      }
+      if (isNodeOfType(elementType, "TSNamedTupleMember")) {
+        return typeCanHaveSameValueZeroDifference(
+          elementType.elementType,
+          reference,
+          activeAliases,
+          typeArguments,
+        );
+      }
+      return typeCanHaveSameValueZeroDifference(
+        elementType,
+        reference,
+        activeAliases,
+        typeArguments,
+      );
+    });
+  }
+  if (isNodeOfType(typeNode, "TSTypeOperator")) {
+    return arrayTypeCanHaveSameValueZeroDifference(
+      typeNode.typeAnnotation ?? null,
+      reference,
+      activeAliases,
+      typeArguments,
+    );
+  }
+  if (isNodeOfType(typeNode, "TSUnionType") || isNodeOfType(typeNode, "TSIntersectionType")) {
+    return typeNode.types.some((memberType) =>
+      arrayTypeCanHaveSameValueZeroDifference(memberType, reference, activeAliases, typeArguments),
+    );
+  }
+  if (
+    !isNodeOfType(typeNode, "TSTypeReference") ||
+    !isNodeOfType(typeNode.typeName, "Identifier")
+  ) {
+    return false;
+  }
+  const substitutedType = typeArguments.get(typeNode.typeName.name);
+  if (substitutedType) {
+    const remainingArguments = new Map(typeArguments);
+    remainingArguments.delete(typeNode.typeName.name);
+    return arrayTypeCanHaveSameValueZeroDifference(
+      substitutedType,
+      reference,
+      activeAliases,
+      remainingArguments,
+    );
+  }
+  if (typeNode.typeName.name === "Array" || typeNode.typeName.name === "ReadonlyArray") {
+    return typeCanHaveSameValueZeroDifference(
+      typeNode.typeArguments?.params?.[0] ?? null,
+      reference,
+      activeAliases,
+      typeArguments,
+    );
+  }
+  const typeAlias = findSameFileTypeAlias(reference, typeNode.typeName.name);
+  if (!typeAlias || activeAliases.has(typeAlias)) return false;
+  activeAliases.add(typeAlias);
+  const canDiffer = arrayTypeCanHaveSameValueZeroDifference(
+    typeAlias.typeAnnotation,
+    reference,
+    activeAliases,
+    buildTypeAliasArguments(typeAlias, typeNode, typeArguments),
+  );
+  activeAliases.delete(typeAlias);
+  return canDiffer;
+};
+
+const isKnownArrayType = (
+  typeNode: EsTreeNode | null,
+  reference: EsTreeNode,
+  activeAliases: Set<EsTreeNode>,
+  typeArguments: ReadonlyMap<string, EsTreeNode> = new Map(),
+): boolean => {
+  if (!typeNode) return false;
+  if (isNodeOfType(typeNode, "TSArrayType") || isNodeOfType(typeNode, "TSTupleType")) return true;
+  if (isNodeOfType(typeNode, "TSTypeOperator")) {
+    return isKnownArrayType(
+      typeNode.typeAnnotation ?? null,
+      reference,
+      activeAliases,
+      typeArguments,
+    );
+  }
+  if (isNodeOfType(typeNode, "TSUnionType")) {
+    const nonNullishTypes = typeNode.types.filter(
+      (memberType) =>
+        !isNodeOfType(memberType, "TSNullKeyword") &&
+        !isNodeOfType(memberType, "TSUndefinedKeyword"),
+    );
+    return (
+      nonNullishTypes.length > 0 &&
+      nonNullishTypes.every((memberType) =>
+        isKnownArrayType(memberType, reference, activeAliases, typeArguments),
+      )
+    );
+  }
+  if (isNodeOfType(typeNode, "TSIntersectionType")) {
+    return typeNode.types.some((memberType) =>
+      isKnownArrayType(memberType, reference, activeAliases, typeArguments),
+    );
+  }
+  if (
+    !isNodeOfType(typeNode, "TSTypeReference") ||
+    !isNodeOfType(typeNode.typeName, "Identifier")
+  ) {
+    return false;
+  }
+  const substitutedType = typeArguments.get(typeNode.typeName.name);
+  if (substitutedType) {
+    const remainingArguments = new Map(typeArguments);
+    remainingArguments.delete(typeNode.typeName.name);
+    return isKnownArrayType(substitutedType, reference, activeAliases, remainingArguments);
+  }
+  if (typeNode.typeName.name === "Array" || typeNode.typeName.name === "ReadonlyArray") return true;
+  const typeParameter = findTypeParameter(reference, typeNode.typeName.name);
+  if (typeParameter?.constraint) {
+    return isKnownArrayType(typeParameter.constraint, reference, activeAliases, typeArguments);
+  }
+  const typeAlias = findSameFileTypeAlias(reference, typeNode.typeName.name);
+  if (!typeAlias || activeAliases.has(typeAlias)) return false;
+  activeAliases.add(typeAlias);
+  const isArray = isKnownArrayType(
+    typeAlias.typeAnnotation,
+    reference,
+    activeAliases,
+    buildTypeAliasArguments(typeAlias, typeNode, typeArguments),
+  );
+  activeAliases.delete(typeAlias);
+  return isArray;
+};
+
+const isKnownNativeArrayReceiver = (receiver: EsTreeNode): boolean => {
+  if (isNodeOfType(receiver, "ArrayExpression")) return true;
+  if (
+    isNodeOfType(receiver, "Identifier") &&
+    isKnownArrayType(getIdentifierDeclaredType(receiver), receiver, new Set())
+  ) {
+    return true;
+  }
+  const initializer = getResolvedInitializer(receiver)?.initializer;
+  if (!initializer) return false;
+  const strippedInitializer = stripParenExpression(initializer);
+  if (isNodeOfType(strippedInitializer, "ArrayExpression")) return true;
+  if (
+    isNodeOfType(strippedInitializer, "NewExpression") &&
+    isNodeOfType(strippedInitializer.callee, "Identifier") &&
+    strippedInitializer.callee.name === "Array" &&
+    findVariableInitializer(strippedInitializer.callee, strippedInitializer.callee.name) === null
+  ) {
+    return true;
+  }
+  return (
+    isNodeOfType(strippedInitializer, "CallExpression") &&
+    isNodeOfType(strippedInitializer.callee, "MemberExpression") &&
+    isNodeOfType(strippedInitializer.callee.object, "Identifier") &&
+    strippedInitializer.callee.object.name === "Array" &&
+    isNodeOfType(strippedInitializer.callee.property, "Identifier") &&
+    (strippedInitializer.callee.property.name === "from" ||
+      strippedInitializer.callee.property.name === "of") &&
+    findVariableInitializer(
+      strippedInitializer.callee.object,
+      strippedInitializer.callee.object.name,
+    ) === null
+  );
+};
+
+const isKnownUnsafeIndexOfQuery = (query: EsTreeNode | null | undefined): boolean => {
+  if (!query) return true;
+  const strippedQuery = stripParenExpression(query);
+  if (isNodeOfType(strippedQuery, "Identifier")) {
+    if (
+      strippedQuery.name === "NaN" &&
+      findVariableInitializer(strippedQuery, strippedQuery.name) === null
+    ) {
+      return true;
+    }
+    const declaredType = getIdentifierDeclaredType(strippedQuery);
+    const binding = findVariableInitializer(strippedQuery, strippedQuery.name);
+    if (
+      binding?.initializer &&
+      isKnownSafeIndexOfQuery(binding.initializer) &&
+      !typeCanHaveSameValueZeroDifference(declaredType, strippedQuery, new Set())
+    ) {
+      return false;
+    }
+    return typeCanHaveSameValueZeroDifference(declaredType, strippedQuery, new Set());
+  }
+  return (
+    isNodeOfType(strippedQuery, "MemberExpression") &&
+    !strippedQuery.computed &&
+    isNodeOfType(strippedQuery.object, "Identifier") &&
+    strippedQuery.object.name === "Number" &&
+    isNodeOfType(strippedQuery.property, "Identifier") &&
+    strippedQuery.property.name === "NaN" &&
+    findVariableInitializer(strippedQuery.object, strippedQuery.object.name) === null
+  );
 };
 
 const getDestructuredArrayElementType = (
@@ -789,9 +1102,10 @@ const getDestructuredArrayElementType = (
         isNodeOfType(member.key, "Identifier") &&
         member.key.name === property.key.name
       ) {
-        const elementType = getArrayElementType(getTypeAnnotation(member));
+        const declaredType = getTypeAnnotation(member);
+        const elementType = getArrayElementType(declaredType);
+        if (!elementType) return declaredType;
         if (
-          !elementType ||
           !isNodeOfType(elementType, "TSTypeReference") ||
           !isNodeOfType(elementType.typeName, "Identifier")
         ) {
@@ -814,15 +1128,12 @@ const getDestructuredArrayElementType = (
 
 const isKnownUnsafeIndexOfReceiver = (receiver: EsTreeNode): boolean => {
   if (!isNodeOfType(receiver, "Identifier")) return false;
-  const elementType =
-    getArrayElementType(getIdentifierDeclaredType(receiver)) ??
-    getDestructuredArrayElementType(receiver);
-  if (!elementType) return false;
-  if (isUnsafeEqualityType(elementType)) return true;
+  const declaredType = getIdentifierDeclaredType(receiver);
+  if (arrayTypeCanHaveSameValueZeroDifference(declaredType, receiver, new Set())) return true;
+  const destructuredType = getDestructuredArrayElementType(receiver);
   return (
-    isNodeOfType(elementType, "TSTypeReference") &&
-    isNodeOfType(elementType.typeName, "Identifier") &&
-    isUnconstrainedTypeParameter(receiver, elementType.typeName.name)
+    arrayTypeCanHaveSameValueZeroDifference(destructuredType, receiver, new Set()) ||
+    typeCanHaveSameValueZeroDifference(destructuredType, receiver, new Set())
   );
 };
 
@@ -1034,6 +1345,13 @@ export const jsSetMapLookups = defineRule({
       const rawReceiver = node.callee.object;
       if (!rawReceiver) return;
       const receiver = stripParenExpression(rawReceiver);
+      if (
+        methodName === "includes" &&
+        node.arguments.length === 2 &&
+        !isKnownNativeArrayReceiver(receiver)
+      ) {
+        return;
+      }
       const query = node.arguments[0] as EsTreeNode | undefined;
       if (
         methodName === "indexOf" &&

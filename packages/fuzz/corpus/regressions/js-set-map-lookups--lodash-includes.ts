@@ -16,3 +16,8 @@ export const collectNestedIds = (
     if (!lodash.includes(nestedIds, tile.id)) nestedIds.push(tile.id);
   });
 };
+
+export const collectZeroValues = (
+  lodash: LodashCollection,
+  rows: readonly number[][],
+): number[][] => rows.filter((values) => lodash.includes(values, 0));

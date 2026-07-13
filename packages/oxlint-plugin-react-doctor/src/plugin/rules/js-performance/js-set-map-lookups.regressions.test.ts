@@ -87,6 +87,18 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
+  it("flags untyped `.indexOf()` membership in a loop", () => {
+    expectFail(
+      `function f(users, roles){ const out=[]; for(const u of users){ if(roles.indexOf(u.role) !== -1) out.push(u); } return out; }`,
+    );
+  });
+
+  it("does not crash on a self-referential for-of head", () => {
+    expectFail(
+      `function f(allowed) { for (const item of item) { if (allowed.indexOf(item) !== -1) return true; } }`,
+    );
+  });
+
   it.each([
     "0",
     "-0",
@@ -94,7 +106,9 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     "-0.5",
     '"0.5"',
     '"not a number"',
+    "+0",
     "undefined",
+    "void 0",
     "null",
     "false",
     '""',
@@ -121,9 +135,9 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("does not flag Lodash `includes` inside a Lodash iteration callback", () => {
+  it("does not flag Lodash `includes` inside an iteration callback", () => {
     expectPass(
-      `function f(_, tiles, nestedBoardIds){ _.forEach(tiles, (tile) => { if (!_.includes(nestedBoardIds, tile.id)) nestedBoardIds.push(tile.id); }); }`,
+      `function f(_, tiles, nestedBoardIds){ tiles.forEach((tile) => { if (!_.includes(nestedBoardIds, tile.id)) nestedBoardIds.push(tile.id); }); }`,
     );
   });
 
@@ -141,6 +155,15 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
       `function f(rows){ const roles = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"]; for (const row of rows){ if(roles.includes(row.role, 0)) return row; } }`,
     );
   });
+
+  it.each(['new Array("a", "b", "c")', "Array.from(source)", "Array.of(...source)"])(
+    "flags a zero-fromIndex lookup on a receiver initialized with %s",
+    (initializer) => {
+      expectFail(
+        `function f(users, source){ const roles = ${initializer}; for (const user of users){ if (roles.includes(user.role, 0)) return user; } }`,
+      );
+    },
+  );
 
   it("does not treat a shadowed undefined fromIndex as zero", () => {
     expectPass(
@@ -278,6 +301,23 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     },
   );
 
+  it.each([
+    "function f<T extends T>(candidates: T[], allowedValues: T[])",
+    "function f<A extends B, B extends A>(candidates: A[], allowedValues: A[])",
+  ])("does not crash or flag `.indexOf()` on circular generic constraints: %s", (declaration) => {
+    expectPass(`
+      ${declaration} {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("does not crash on a circular generic constraint behind a two-argument `.includes()`", () => {
+    expectPass(
+      `function f<T extends T>(users, roles: T){ for (const user of users){ if (roles.includes(user.role, 0)) return user; } }`,
+    );
+  });
+
   it("flags `.indexOf()` on a finite-literal-constrained generic array", () => {
     expectFail(`
       function f<T extends 1 | 2>(candidates: readonly T[], allowedValues: readonly T[]) {
@@ -351,6 +391,34 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     expectFail(`
       type TextValues = readonly string[];
       function f(candidates: string[], allowedValues: TextValues) {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("does not crash or flag `.indexOf()` through circular type aliases", () => {
+    expectPass(`
+      type A = B;
+      type B = A;
+      function f(candidates: A[], allowedValues: A[]) {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("does not flag `.indexOf()` on a numeric-intersection element domain", () => {
+    expectPass(`
+      type BrandedNumber = number & { brand: unknown };
+      function f(candidates: BrandedNumber[], allowedValues: BrandedNumber[]) {
+        return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("flags `.indexOf()` on a string-intersection element domain", () => {
+    expectFail(`
+      type BrandedText = string & { brand: unknown };
+      function f(candidates: BrandedText[], allowedValues: BrandedText[]) {
         return candidates.filter((candidate) => allowedValues.indexOf(candidate) !== -1);
       }
     `);

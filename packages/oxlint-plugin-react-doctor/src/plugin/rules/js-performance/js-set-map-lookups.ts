@@ -565,6 +565,12 @@ const isZeroFromIndex = (expression: EsTreeNode | null | undefined): boolean => 
   }
   if (
     isNodeOfType(strippedExpression, "UnaryExpression") &&
+    strippedExpression.operator === "void"
+  ) {
+    return true;
+  }
+  if (
+    isNodeOfType(strippedExpression, "UnaryExpression") &&
     (strippedExpression.operator === "-" || strippedExpression.operator === "+") &&
     isNodeOfType(strippedExpression.argument, "Literal") &&
     typeof strippedExpression.argument.value === "number"
@@ -707,9 +713,11 @@ const getDestructuredDeclaredType = (
 
 const getIdentifierDeclaredType = (
   identifier: EsTreeNodeOfType<"Identifier">,
+  visitedBindingIdentifiers: Set<EsTreeNode> = new Set(),
 ): EsTreeNode | null => {
   const binding = findVariableInitializer(identifier, identifier.name);
-  if (!binding) return null;
+  if (!binding || visitedBindingIdentifiers.has(binding.bindingIdentifier)) return null;
+  visitedBindingIdentifiers.add(binding.bindingIdentifier);
   const directType = getTypeAnnotation(binding.bindingIdentifier);
   if (directType) return directType;
   const destructuredType = getDestructuredDeclaredType(identifier);
@@ -724,7 +732,9 @@ const getIdentifierDeclaredType = (
     forOfStatement.left === declaration &&
     isNodeOfType(forOfStatement.right, "Identifier")
   ) {
-    return getArrayElementType(getIdentifierDeclaredType(forOfStatement.right));
+    return getArrayElementType(
+      getIdentifierDeclaredType(forOfStatement.right, visitedBindingIdentifiers),
+    );
   }
   return null;
 };
@@ -959,7 +969,7 @@ const buildTypeAliasArguments = (
 const typeCanHaveSameValueZeroDifference = (
   typeNode: EsTreeNode | null,
   reference: EsTreeNode,
-  activeAliases: Set<EsTreeNode>,
+  activeTypeNodes: Set<EsTreeNode>,
   typeArguments: ReadonlyMap<string, EsTreeNode> = new Map(),
 ): boolean => {
   if (!typeNode) return false;
@@ -991,14 +1001,14 @@ const typeCanHaveSameValueZeroDifference = (
   }
   if (isNodeOfType(typeNode, "TSUnionType") || isNodeOfType(typeNode, "TSIntersectionType")) {
     return typeNode.types.some((memberType) =>
-      typeCanHaveSameValueZeroDifference(memberType, reference, activeAliases, typeArguments),
+      typeCanHaveSameValueZeroDifference(memberType, reference, activeTypeNodes, typeArguments),
     );
   }
   if (isNodeOfType(typeNode, "TSOptionalType") || isNodeOfType(typeNode, "TSRestType")) {
     return typeCanHaveSameValueZeroDifference(
       typeNode.typeAnnotation,
       reference,
-      activeAliases,
+      activeTypeNodes,
       typeArguments,
     );
   }
@@ -1006,7 +1016,7 @@ const typeCanHaveSameValueZeroDifference = (
     return typeCanHaveSameValueZeroDifference(
       typeNode.elementType,
       reference,
-      activeAliases,
+      activeTypeNodes,
       typeArguments,
     );
   }
@@ -1021,21 +1031,22 @@ const typeCanHaveSameValueZeroDifference = (
     return typeCanHaveSameValueZeroDifference(
       substitutedType,
       reference,
-      activeAliases,
+      activeTypeNodes,
       remainingArguments,
     );
   }
   const typeParameter = findTypeParameter(reference, typeNode.typeName.name);
   if (typeParameter) {
-    return (
-      !typeParameter.constraint ||
-      typeCanHaveSameValueZeroDifference(
-        typeParameter.constraint,
-        reference,
-        activeAliases,
-        typeArguments,
-      )
+    if (!typeParameter.constraint || activeTypeNodes.has(typeParameter)) return true;
+    activeTypeNodes.add(typeParameter);
+    const constraintCanDiffer = typeCanHaveSameValueZeroDifference(
+      typeParameter.constraint,
+      reference,
+      activeTypeNodes,
+      typeArguments,
     );
+    activeTypeNodes.delete(typeParameter);
+    return constraintCanDiffer;
   }
   const typeAlias = findSameFileTypeAlias(reference, typeNode.typeName.name);
   if (!typeAlias) {
@@ -1044,22 +1055,22 @@ const typeCanHaveSameValueZeroDifference = (
       /(?:number|numeric)/i.test(typeNode.typeName.name)
     );
   }
-  if (activeAliases.has(typeAlias)) return true;
-  activeAliases.add(typeAlias);
+  if (activeTypeNodes.has(typeAlias)) return true;
+  activeTypeNodes.add(typeAlias);
   const canDiffer = typeCanHaveSameValueZeroDifference(
     typeAlias.typeAnnotation,
     reference,
-    activeAliases,
+    activeTypeNodes,
     buildTypeAliasArguments(typeAlias, typeNode, typeArguments),
   );
-  activeAliases.delete(typeAlias);
+  activeTypeNodes.delete(typeAlias);
   return canDiffer;
 };
 
 const arrayTypeCanHaveSameValueZeroDifference = (
   typeNode: EsTreeNode | null,
   reference: EsTreeNode,
-  activeAliases: Set<EsTreeNode>,
+  activeTypeNodes: Set<EsTreeNode>,
   typeArguments: ReadonlyMap<string, EsTreeNode> = new Map(),
 ): boolean => {
   if (!typeNode) return false;
@@ -1067,7 +1078,7 @@ const arrayTypeCanHaveSameValueZeroDifference = (
     return typeCanHaveSameValueZeroDifference(
       typeNode.elementType,
       reference,
-      activeAliases,
+      activeTypeNodes,
       typeArguments,
     );
   }
@@ -1077,7 +1088,7 @@ const arrayTypeCanHaveSameValueZeroDifference = (
         return arrayTypeCanHaveSameValueZeroDifference(
           elementType.typeAnnotation,
           reference,
-          activeAliases,
+          activeTypeNodes,
           typeArguments,
         );
       }
@@ -1085,14 +1096,14 @@ const arrayTypeCanHaveSameValueZeroDifference = (
         return typeCanHaveSameValueZeroDifference(
           elementType.elementType,
           reference,
-          activeAliases,
+          activeTypeNodes,
           typeArguments,
         );
       }
       return typeCanHaveSameValueZeroDifference(
         elementType,
         reference,
-        activeAliases,
+        activeTypeNodes,
         typeArguments,
       );
     });
@@ -1101,13 +1112,18 @@ const arrayTypeCanHaveSameValueZeroDifference = (
     return arrayTypeCanHaveSameValueZeroDifference(
       typeNode.typeAnnotation ?? null,
       reference,
-      activeAliases,
+      activeTypeNodes,
       typeArguments,
     );
   }
   if (isNodeOfType(typeNode, "TSUnionType") || isNodeOfType(typeNode, "TSIntersectionType")) {
     return typeNode.types.some((memberType) =>
-      arrayTypeCanHaveSameValueZeroDifference(memberType, reference, activeAliases, typeArguments),
+      arrayTypeCanHaveSameValueZeroDifference(
+        memberType,
+        reference,
+        activeTypeNodes,
+        typeArguments,
+      ),
     );
   }
   if (
@@ -1123,7 +1139,7 @@ const arrayTypeCanHaveSameValueZeroDifference = (
     return arrayTypeCanHaveSameValueZeroDifference(
       substitutedType,
       reference,
-      activeAliases,
+      activeTypeNodes,
       remainingArguments,
     );
   }
@@ -1131,27 +1147,27 @@ const arrayTypeCanHaveSameValueZeroDifference = (
     return typeCanHaveSameValueZeroDifference(
       typeNode.typeArguments?.params?.[0] ?? null,
       reference,
-      activeAliases,
+      activeTypeNodes,
       typeArguments,
     );
   }
   const typeAlias = findSameFileTypeAlias(reference, typeNode.typeName.name);
-  if (!typeAlias || activeAliases.has(typeAlias)) return false;
-  activeAliases.add(typeAlias);
+  if (!typeAlias || activeTypeNodes.has(typeAlias)) return false;
+  activeTypeNodes.add(typeAlias);
   const canDiffer = arrayTypeCanHaveSameValueZeroDifference(
     typeAlias.typeAnnotation,
     reference,
-    activeAliases,
+    activeTypeNodes,
     buildTypeAliasArguments(typeAlias, typeNode, typeArguments),
   );
-  activeAliases.delete(typeAlias);
+  activeTypeNodes.delete(typeAlias);
   return canDiffer;
 };
 
 const isKnownArrayType = (
   typeNode: EsTreeNode | null,
   reference: EsTreeNode,
-  activeAliases: Set<EsTreeNode>,
+  activeTypeNodes: Set<EsTreeNode>,
   typeArguments: ReadonlyMap<string, EsTreeNode> = new Map(),
 ): boolean => {
   if (!typeNode) return false;
@@ -1160,7 +1176,7 @@ const isKnownArrayType = (
     return isKnownArrayType(
       typeNode.typeAnnotation ?? null,
       reference,
-      activeAliases,
+      activeTypeNodes,
       typeArguments,
     );
   }
@@ -1173,13 +1189,13 @@ const isKnownArrayType = (
     return (
       nonNullishTypes.length > 0 &&
       nonNullishTypes.every((memberType) =>
-        isKnownArrayType(memberType, reference, activeAliases, typeArguments),
+        isKnownArrayType(memberType, reference, activeTypeNodes, typeArguments),
       )
     );
   }
   if (isNodeOfType(typeNode, "TSIntersectionType")) {
     return typeNode.types.some((memberType) =>
-      isKnownArrayType(memberType, reference, activeAliases, typeArguments),
+      isKnownArrayType(memberType, reference, activeTypeNodes, typeArguments),
     );
   }
   if (
@@ -1192,23 +1208,32 @@ const isKnownArrayType = (
   if (substitutedType) {
     const remainingArguments = new Map(typeArguments);
     remainingArguments.delete(typeNode.typeName.name);
-    return isKnownArrayType(substitutedType, reference, activeAliases, remainingArguments);
+    return isKnownArrayType(substitutedType, reference, activeTypeNodes, remainingArguments);
   }
   if (typeNode.typeName.name === "Array" || typeNode.typeName.name === "ReadonlyArray") return true;
   const typeParameter = findTypeParameter(reference, typeNode.typeName.name);
   if (typeParameter?.constraint) {
-    return isKnownArrayType(typeParameter.constraint, reference, activeAliases, typeArguments);
+    if (activeTypeNodes.has(typeParameter)) return false;
+    activeTypeNodes.add(typeParameter);
+    const isConstraintArray = isKnownArrayType(
+      typeParameter.constraint,
+      reference,
+      activeTypeNodes,
+      typeArguments,
+    );
+    activeTypeNodes.delete(typeParameter);
+    return isConstraintArray;
   }
   const typeAlias = findSameFileTypeAlias(reference, typeNode.typeName.name);
-  if (!typeAlias || activeAliases.has(typeAlias)) return false;
-  activeAliases.add(typeAlias);
+  if (!typeAlias || activeTypeNodes.has(typeAlias)) return false;
+  activeTypeNodes.add(typeAlias);
   const isArray = isKnownArrayType(
     typeAlias.typeAnnotation,
     reference,
-    activeAliases,
+    activeTypeNodes,
     buildTypeAliasArguments(typeAlias, typeNode, typeArguments),
   );
-  activeAliases.delete(typeAlias);
+  activeTypeNodes.delete(typeAlias);
   return isArray;
 };
 

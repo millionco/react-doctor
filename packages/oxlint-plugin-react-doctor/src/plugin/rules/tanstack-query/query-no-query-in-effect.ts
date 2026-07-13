@@ -12,6 +12,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { resolveTanstackQueryHookNameFromInitializer } from "./utils/resolve-tanstack-query-hook-name.js";
@@ -21,6 +22,89 @@ const isTanstackQueryResult = (expression: EsTreeNode, context: RuleContext): bo
 
 const isStaticRefetchMember = (memberExpression: EsTreeNodeOfType<"MemberExpression">): boolean =>
   getStaticPropertyKeyName(memberExpression, { allowComputedString: true }) === "refetch";
+
+const resolveCalledFunction = (callee: EsTreeNode, context: RuleContext): EsTreeNode | null => {
+  const unwrappedCallee = stripParenExpression(callee);
+  if (isFunctionLike(unwrappedCallee)) return unwrappedCallee;
+  if (!isNodeOfType(unwrappedCallee, "Identifier")) return null;
+  const symbol = resolveConstIdentifierAlias(unwrappedCallee, context.scopes);
+  if (!symbol) return null;
+  const candidate = symbol.kind === "function" ? symbol.declarationNode : symbol.initializer;
+  return candidate && isFunctionLike(candidate) ? candidate : null;
+};
+
+const hasSuspensionBefore = (functionNode: EsTreeNode, boundary: EsTreeNode): boolean => {
+  if (!isFunctionLike(functionNode)) return true;
+  if (functionNode.generator) return true;
+  const boundaryStart = getRangeStart(boundary);
+  if (boundaryStart === null) return true;
+  let hasSuspension = false;
+  walkAst(functionNode, (node) => {
+    if (node !== functionNode && isFunctionLike(node)) return false;
+    if (!isNodeOfType(node, "AwaitExpression")) return;
+    const suspensionStart = getRangeStart(node);
+    if (suspensionStart !== null && suspensionStart < boundaryStart) {
+      hasSuspension = true;
+      return false;
+    }
+  });
+  return hasSuspension;
+};
+
+const isFunctionAncestor = (ancestor: EsTreeNode, functionNode: EsTreeNode): boolean => {
+  let enclosingFunction = findEnclosingFunction(functionNode);
+  while (enclosingFunction) {
+    if (enclosingFunction === ancestor) return true;
+    enclosingFunction = findEnclosingFunction(enclosingFunction);
+  }
+  return false;
+};
+
+const isFunctionInvokedBefore = (
+  invokedFunction: EsTreeNode,
+  boundary: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const boundaryFunction = findEnclosingFunction(boundary);
+  const boundaryStart = getRangeStart(boundary);
+  if (!boundaryFunction || boundaryStart === null) return false;
+  let isInvokedBefore = false;
+  walkAst(boundaryFunction, (node) => {
+    if (node !== boundaryFunction && isFunctionLike(node)) return false;
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callStart = getRangeStart(node);
+    if (
+      callStart !== null &&
+      callStart < boundaryStart &&
+      resolveCalledFunction(node.callee, context) === invokedFunction
+    ) {
+      isInvokedBefore = true;
+      return false;
+    }
+  });
+  return isInvokedBefore;
+};
+
+const isWriteExecutedBefore = (
+  writeNode: EsTreeNode,
+  boundary: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const writeStart = getRangeStart(writeNode);
+  const boundaryStart = getRangeStart(boundary);
+  if (writeStart === null || boundaryStart === null) return false;
+  const writeFunction = findEnclosingFunction(writeNode);
+  const boundaryFunction = findEnclosingFunction(boundary);
+  if (writeFunction === boundaryFunction) return writeStart < boundaryStart;
+  if (!writeFunction) return writeStart < boundaryStart;
+  if (boundaryFunction && isFunctionAncestor(writeFunction, boundaryFunction)) {
+    return writeStart < boundaryStart;
+  }
+  return (
+    !hasSuspensionBefore(writeFunction, writeNode) &&
+    isFunctionInvokedBefore(writeFunction, boundary, context)
+  );
+};
 
 const hasRefetchMemberWriteBefore = (
   expression: EsTreeNode,
@@ -38,8 +122,7 @@ const hasRefetchMemberWriteBefore = (
   let hasWrite = false;
   walkAst(program, (node) => {
     if (!isNodeOfType(node, "MemberExpression") || !isStaticRefetchMember(node)) return;
-    const writeStart = getRangeStart(node);
-    if (writeStart === null || writeStart >= boundaryStart) return;
+    if (!isWriteExecutedBefore(node, boundary, context)) return;
     const parent = node.parent;
     const isWrite =
       (isNodeOfType(parent, "AssignmentExpression") && parent.left === node) ||

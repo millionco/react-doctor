@@ -240,6 +240,107 @@ function Search({ customRefetch }) {
     expect(diagnostics).toHaveLength(0);
   });
 
+  it("flags a direct refetch when an earlier deferred handler contains an overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const onClick = () => { query.refetch = customRefetch; };
+  useEffect(() => { query.refetch(); }, [query]);
+  return <button onClick={onClick}>Reload</button>;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags a direct refetch when an earlier uncalled helper contains an overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; };
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when an effect invokes the overwrite helper before refetch", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; };
+  useEffect(() => { overwriteRefetch(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags refetch when an effect invokes the overwrite helper afterward", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; };
+  useEffect(() => { query.refetch(); overwriteRefetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when an invoked async helper overwrites only after awaiting", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = async () => { await pause(); query.refetch = customRefetch; };
+  useEffect(() => { overwriteRefetch(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when an invoked async helper overwrites before awaiting", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = async () => { query.refetch = customRefetch; await pause(); };
+  const exactOverwrite = overwriteRefetch;
+  useEffect(() => { exactOverwrite(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags an earlier direct refetch when cleanup contains an overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => {
+    query.refetch();
+    return () => { query.refetch = customRefetch; };
+  }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("stays silent after an exact query alias overwrites refetch", () => {
     const { diagnostics } = runRule(
       queryNoQueryInEffect,

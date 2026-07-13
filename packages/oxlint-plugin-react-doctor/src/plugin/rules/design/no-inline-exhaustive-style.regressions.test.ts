@@ -66,6 +66,24 @@ describe("design/no-inline-exhaustive-style regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("distinguishes module-stable static fields from per-instance fields", () => {
+    const result = runRule(
+      noInlineExhaustiveStyle,
+      `
+        class ElementHolder {
+          static stableElement = ${exhaustiveStyleElement};
+          instanceElement = ${exhaustiveStyleElement};
+        }
+
+        export const Panel = () => new ElementHolder().instanceElement;
+      `,
+      { filename: "/proj/src/panel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports styles rebuilt directly and in synchronous render callbacks", () => {
     const result = runRule(
       noInlineExhaustiveStyle,

@@ -29,13 +29,24 @@ const isStaticStyleProperty = (property: EsTreeNode): boolean => {
   return isStaticStyleValue(property.value);
 };
 
+const isInsideInstanceField = (node: EsTreeNode): boolean => {
+  let ancestorNode = node.parent;
+  while (ancestorNode) {
+    if (isNodeOfType(ancestorNode, "PropertyDefinition")) {
+      return ancestorNode.static !== true;
+    }
+    ancestorNode = ancestorNode.parent;
+  }
+  return false;
+};
+
 const isOneShotModuleInitialization = (node: EsTreeNode, context: RuleContext): boolean => {
   let functionNode = findEnclosingFunction(node);
   while (functionNode) {
     if (!executesDuringRender(functionNode, context.scopes)) return false;
     functionNode = findEnclosingFunction(functionNode);
   }
-  return true;
+  return !isInsideInstanceField(node);
 };
 
 export const noInlineExhaustiveStyle = defineRule({

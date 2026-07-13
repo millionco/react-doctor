@@ -27,6 +27,12 @@ describe("js-performance/async-parallel — regressions", () => {
     );
   });
 
+  it("flags repeated commutative mutations when call arguments alias", () => {
+    expectFail(
+      `const double = async (cell) => { await Promise.resolve(); cell.value *= 2; }; async function update(cell) { await double(cell); await double(cell); await double(cell); }`,
+    );
+  });
+
   it.each(["query", "execute", "wait"])("flags independent pure local %s calls", (helperName) => {
     expectFail(
       `const ${helperName} = async (item) => { await Promise.resolve(); return item * 2; }; async function load() { const first = await ${helperName}(1); const second = await ${helperName}(2); const third = await ${helperName}(3); return [first, second, third]; }`,

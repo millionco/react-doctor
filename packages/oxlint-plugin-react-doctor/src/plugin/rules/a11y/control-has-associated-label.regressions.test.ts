@@ -333,23 +333,28 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("reports controls named only by their title attribute (doc: title is not an accepted label)", () => {
+  it("accepts native controls named by their own title attribute", () => {
     const result = runRule(
       controlHasAssociatedLabel,
       `
         const Demo = ({ t, color }) => (
           <div>
             <input type="color" title={t("sketch.color")} />
+            <input type="text" title="Search" />
+            <input type="checkbox" title="Select row" />
+            <select title="Sort order" />
+            <textarea title="Comment" />
             <button type="button" title={color.label} onClick={() => {}} />
+            <div role="button" tabIndex={0} title="Edit" />
           </div>
         );
       `,
     );
 
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("reports an icon-only delete button carrying only a title (PortOS corpus shape)", () => {
+  it("accepts an icon-only delete button carrying a static title", () => {
     const result = runRule(
       controlHasAssociatedLabel,
       `
@@ -369,10 +374,10 @@ describe("a11y/control-has-associated-label regressions", () => {
       `,
     );
 
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("reports an icon-only toggle button with a conditional title and conditional icons (Lumina-Note corpus shape)", () => {
+  it("accepts an icon-only toggle button with a dynamic title", () => {
     const result = runRule(
       controlHasAssociatedLabel,
       `
@@ -390,10 +395,10 @@ describe("a11y/control-has-associated-label regressions", () => {
       `,
     );
 
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("reports a conditionally rendered title-only delete button (MediaCollections corpus shape)", () => {
+  it("accepts a conditionally rendered title-only delete button", () => {
     const result = runRule(
       controlHasAssociatedLabel,
       `
@@ -420,10 +425,10 @@ describe("a11y/control-has-associated-label regressions", () => {
       `,
     );
 
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("reports a title-only close button behind a logical guard (SplitEditor corpus shape)", () => {
+  it("accepts a title-only close button behind a logical guard", () => {
     const result = runRule(
       controlHasAssociatedLabel,
       `
@@ -445,13 +450,133 @@ describe("a11y/control-has-associated-label regressions", () => {
       `,
     );
 
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("still reports a button whose only title lives on a child span", () => {
     const result = runRule(
       controlHasAssociatedLabel,
       `const Demo = () => <button><span title="This is not a real label" /></button>;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports native buttons whose title is statically omitted or empty", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = () => (
+          <div>
+            <button title=""><svg aria-hidden /></button>
+            <button title={"   "}><svg aria-hidden /></button>
+            <button title={null}><svg aria-hidden /></button>
+            <button title={false}><svg aria-hidden /></button>
+            <button title={true}><svg aria-hidden /></button>
+            <button title={undefined}><svg aria-hidden /></button>
+            <button title={void 0}><svg aria-hidden /></button>
+            <button title={() => "Edit"}><svg aria-hidden /></button>
+            <button title={Symbol("Edit")}><svg aria-hidden /></button>
+            <button title={[]}><svg aria-hidden /></button>
+            <button title={[""]}><svg aria-hidden /></button>
+            <button title={[null]}><svg aria-hidden /></button>
+            <button title><svg aria-hidden /></button>
+            <button><svg aria-hidden /></button>
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(14);
+  });
+
+  it("accepts native title names through DOM string coercion and unresolved expressions", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const STATIC_TITLE = "Ask AI";
+        const Demo = ({ translatedTitle, isEditing }) => (
+          <div>
+            <button title={STATIC_TITLE}><svg aria-hidden /></button>
+            <button title={translatedTitle}><svg aria-hidden /></button>
+            <button title={isEditing ? "Save" : "Edit"}><svg aria-hidden /></button>
+            <button title={\`Ask AI\`}><svg aria-hidden /></button>
+            <button title={0}><svg aria-hidden /></button>
+            <button title={0n}><svg aria-hidden /></button>
+            <button title={{}}><svg aria-hidden /></button>
+            <button title={[0]}><svg aria-hidden /></button>
+            <button title={[null, null]}><svg aria-hidden /></button>
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("uses the last duplicate title attribute, matching React", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = () => (
+          <div>
+            <button title="Edit" title=""><svg aria-hidden /></button>
+            <button title="" title="Edit"><svg aria-hidden /></button>
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports title expressions with a statically unnamed branch", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = ({ isEditing }) => (
+          <div>
+            <button title={isEditing ? "Save" : ""}><svg aria-hidden /></button>
+            <button title={isEditing ? null : "Edit"}><svg aria-hidden /></button>
+            <button title={isEditing && "Edit"}><svg aria-hidden /></button>
+            <button title={!isEditing}><svg aria-hidden /></button>
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(4);
+  });
+
+  it("keeps a shadowed undefined title conservative", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `const Demo = ({ undefined }) => <button title={undefined}><svg aria-hidden /></button>;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a title fallback on a native element with an interactive role", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `const Demo = ({ onActivate }) => <div role="button" tabIndex={0} title="Edit" onClick={onActivate} />;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not assume that title names an opaque configured control component", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `const Demo = () => <IconButton title="Edit" />;`,
+      {
+        settings: {
+          "react-doctor": {
+            controlHasAssociatedLabel: { controlComponents: ["IconButton"] },
+          },
+        },
+      },
     );
 
     expect(result.diagnostics).toHaveLength(1);
@@ -718,7 +843,7 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
-  it("still accepts icon buttons that carry an aria-label, but reports title-only ones", () => {
+  it("accepts icon buttons carrying either an aria-label or a native title", () => {
     const result = runRule(
       controlHasAssociatedLabel,
       `
@@ -733,7 +858,7 @@ describe("a11y/control-has-associated-label regressions", () => {
       `,
     );
 
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("still treats unknown self-closing components as potential label text", () => {

@@ -14,6 +14,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { getClassNameLiteral } from "../react-ui/utils/get-class-name-literal.js";
 
 const MESSAGE =
@@ -239,6 +240,7 @@ const LABEL_COMPONENT_NAME = "Label";
 // MUI-style polymorphic escape hatch: `<Button component="label">`
 // renders an html <label>, implicitly labelling the control inside.
 const POLYMORPHIC_COMPONENT_PROP = "component";
+const TITLE_ATTRIBUTE = "title";
 // A wrapper like `<Field label="Hotkey"><input/></Field>` injects the
 // association (htmlFor/id pair or a wrapping <label>) for its child
 // control — the visible name exists, it just lives on the wrapper.
@@ -321,6 +323,136 @@ const hasNonEmptyPropValue = (attribute: EsTreeNodeOfType<"JSXAttribute"> | unde
       if (staticValue !== null) return staticValue.trim().length > 0;
     }
     return true;
+  }
+  return true;
+};
+
+const getLastJsxPropIgnoreCase = (
+  attributes: ReadonlyArray<EsTreeNode>,
+  targetProp: string,
+): EsTreeNodeOfType<"JSXAttribute"> | undefined => {
+  const targetPropLower = targetProp.toLowerCase();
+  for (let attributeIndex = attributes.length - 1; attributeIndex >= 0; attributeIndex -= 1) {
+    const attribute = attributes[attributeIndex];
+    if (!attribute || !isNodeOfType(attribute, "JSXAttribute")) continue;
+    const attributeName = getJsxAttributeName(attribute.name);
+    if (attributeName?.toLowerCase() === targetPropLower) return attribute;
+  }
+  return undefined;
+};
+
+const getStaticNativeTitleArrayValue = (
+  expression: EsTreeNodeOfType<"ArrayExpression">,
+  scopes: ScopeAnalysis,
+): string | null => {
+  const elementValues: string[] = [];
+  for (const rawElement of expression.elements) {
+    if (rawElement === null) {
+      elementValues.push("");
+      continue;
+    }
+    if (isNodeOfType(rawElement, "SpreadElement")) return null;
+    const element = stripParenExpression(rawElement);
+    if (isNodeOfType(element, "Literal")) {
+      elementValues.push(element.value === null ? "" : String(element.value));
+      continue;
+    }
+    if (isNodeOfType(element, "TemplateLiteral")) {
+      const staticValue = getStaticTemplateLiteralValue(element);
+      if (staticValue === null) return null;
+      elementValues.push(staticValue);
+      continue;
+    }
+    if (
+      (isNodeOfType(element, "Identifier") &&
+        element.name === "undefined" &&
+        scopes.isGlobalReference(element)) ||
+      (isNodeOfType(element, "UnaryExpression") && element.operator === "void")
+    ) {
+      elementValues.push("");
+      continue;
+    }
+    if (isNodeOfType(element, "ArrayExpression")) {
+      const nestedValue = getStaticNativeTitleArrayValue(element, scopes);
+      if (nestedValue === null) return null;
+      elementValues.push(nestedValue);
+      continue;
+    }
+    return null;
+  }
+  return elementValues.join(",");
+};
+
+const isGlobalSymbolExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (isNodeOfType(expression, "Identifier")) {
+    return expression.name === "Symbol" && scopes.isGlobalReference(expression);
+  }
+  if (!isNodeOfType(expression, "MemberExpression")) return false;
+  const object = stripParenExpression(expression.object);
+  return (
+    isNodeOfType(object, "Identifier") &&
+    object.name === "Symbol" &&
+    scopes.isGlobalReference(object)
+  );
+};
+
+const hasNonEmptyNativeTitleExpression = (
+  rawExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const expression = stripParenExpression(rawExpression);
+  if (isNodeOfType(expression, "Literal")) {
+    if (typeof expression.value === "string") return expression.value.trim().length > 0;
+    return expression.value !== null && typeof expression.value !== "boolean";
+  }
+  if (isNodeOfType(expression, "TemplateLiteral")) {
+    const staticValue = getStaticTemplateLiteralValue(expression);
+    return staticValue === null || staticValue.trim().length > 0;
+  }
+  if (isNodeOfType(expression, "Identifier")) {
+    return expression.name !== "undefined" || !scopes.isGlobalReference(expression);
+  }
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void") {
+    return false;
+  }
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") return false;
+  if (isNodeOfType(expression, "ArrowFunctionExpression")) return false;
+  if (isNodeOfType(expression, "FunctionExpression")) return false;
+  if (isNodeOfType(expression, "ArrayExpression")) {
+    const staticValue = getStaticNativeTitleArrayValue(expression, scopes);
+    return staticValue === null || staticValue.trim().length > 0;
+  }
+  if (isGlobalSymbolExpression(expression, scopes)) return false;
+  if (
+    isNodeOfType(expression, "CallExpression") &&
+    isGlobalSymbolExpression(expression.callee, scopes)
+  ) {
+    return false;
+  }
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    return (
+      hasNonEmptyNativeTitleExpression(expression.consequent, scopes) &&
+      hasNonEmptyNativeTitleExpression(expression.alternate, scopes)
+    );
+  }
+  if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "&&") {
+    const leftExpression = stripParenExpression(expression.left);
+    if (!isNodeOfType(leftExpression, "Literal") || !leftExpression.value) return false;
+    return hasNonEmptyNativeTitleExpression(expression.right, scopes);
+  }
+  return true;
+};
+
+const hasNonEmptyNativeTitle = (
+  attribute: EsTreeNodeOfType<"JSXAttribute"> | undefined,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!attribute?.value) return false;
+  if (isNodeOfType(attribute.value, "Literal")) {
+    return typeof attribute.value.value === "string" && attribute.value.value.trim().length > 0;
+  }
+  if (isNodeOfType(attribute.value, "JSXExpressionContainer")) {
+    return hasNonEmptyNativeTitleExpression(attribute.value.expression, scopes);
   }
   return true;
 };
@@ -792,11 +924,16 @@ export const controlHasAssociatedLabel = defineRule({
           }
         }
 
-        // `title` is deliberately NOT accepted as a label (matching
-        // upstream jsx-a11y/oxc and the rule doc): a title-only name is
-        // invisible to sighted keyboard users and unreliable on touch
-        // screen readers, so icon-only buttons named solely by `title`
-        // must still be reported.
+        if (
+          isDomElement &&
+          hasNonEmptyNativeTitle(
+            getLastJsxPropIgnoreCase(opening.attributes, TITLE_ATTRIBUTE),
+            context.scopes,
+          )
+        ) {
+          return;
+        }
+
         if (
           supportsPlaceholderNameFallback(tagName, opening) &&
           hasNonEmptyPropValue(hasJsxPropIgnoreCase(opening.attributes, "placeholder"))

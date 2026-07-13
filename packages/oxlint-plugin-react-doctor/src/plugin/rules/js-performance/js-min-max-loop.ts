@@ -85,8 +85,7 @@ const getStaticFiniteNumericValue = (expression: EsTreeNode): number | null => {
   }
   const argumentValue = getStaticFiniteNumericValue(strippedExpression.argument);
   if (argumentValue === null) return null;
-  const numericValue = strippedExpression.operator === "-" ? -argumentValue : +argumentValue;
-  return Number.isFinite(numericValue) ? numericValue : null;
+  return strippedExpression.operator === "-" ? -argumentValue : argumentValue;
 };
 
 const isSafeFreshNumericArray = (arrayExpression: EsTreeNodeOfType<"ArrayExpression">): boolean => {
@@ -275,12 +274,11 @@ const isUnsafeBuiltinMutationApiCall = (
   if (!propertyName) return false;
   const canObjectExpressionSetProperty = (properties: EsTreeNode): boolean => {
     if (!isNodeOfType(properties, "ObjectExpression")) return true;
-    return properties.properties.some(
-      (property) =>
-        isNodeOfType(property, "SpreadElement") ||
-        getStaticPropertyKeyName(property, { allowComputedString: true }) === propertyName ||
-        getStaticPropertyKeyName(property, { allowComputedString: true }) === null,
-    );
+    return properties.properties.some((property) => {
+      if (isNodeOfType(property, "SpreadElement")) return true;
+      const keyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+      return keyName === propertyName || keyName === null;
+    });
   };
   if (resolvesToGlobalMethod(callExpression.callee, "Object", OBJECT_ASSIGN_METHOD_NAMES, scopes)) {
     return callExpression.arguments
@@ -376,7 +374,6 @@ export const jsMinMaxLoop = defineRule({
       if (!isNodeOfType(object, "CallExpression") || !isMemberProperty(object.callee, "sort"))
         return;
 
-      if (!isNodeOfType(object.callee, "MemberExpression")) return;
       const sortReceiver = stripParenExpression(object.callee.object);
       if (!isNodeOfType(sortReceiver, "ArrayExpression") || !isSafeFreshNumericArray(sortReceiver))
         return;

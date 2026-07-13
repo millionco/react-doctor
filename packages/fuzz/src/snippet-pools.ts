@@ -55,6 +55,7 @@ export const EFFECT_SNIPPET_POOL = [
   `const [guardedSnapshot, setGuardedSnapshot] = useState(value); useEffect(() => { if (!Object.is(guardedSnapshot, value)) setGuardedSnapshot(value); }, [value]);`,
   `const equalSnapshots = () => false; const [namedGuardSnapshot, setNamedGuardSnapshot] = useState(value); useEffect(() => { if (!equalSnapshots(namedGuardSnapshot, value)) setNamedGuardSnapshot(value); }, [value]);`,
   `const [mismatchedSnapshot, setMismatchedSnapshot] = useState(value); useEffect(() => { if (mismatchedSnapshot !== value) setMismatchedSnapshot(state); }, [state, value]);`,
+  `const directoryStore = useDirectoryStore(); const directorySnapshot = directoryStore(); const nextDirectory = directorySnapshot.path.directory; useEffect(() => { if (props.draftId) return; const next = nextDirectory; if (!next || next === props.directory) return; navigate(encodeDirectory(next), { replace: true }); }, [props.draftId, props.directory, nextDirectory, navigate]);`,
 ] as const;
 
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),

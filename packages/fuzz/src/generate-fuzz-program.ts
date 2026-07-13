@@ -159,6 +159,15 @@ const SCENARIO_POOL: ReadonlyArray<SnippetBuilder> = [
       `useEffect(() => { setFuzzChainSource(1); }, []);`,
       `useEffect(() => { setFuzzChainTarget(fuzzChainSource + 1); }, [fuzzChainSource]);`,
     ].join("\n  "),
+  () =>
+    [
+      `const FuzzEventRelay = (eventProps) => {`,
+      `  useEffect(() => {`,
+      `    if (eventProps.didSubmit) toast("Submitted");`,
+      `  }, [eventProps.didSubmit]);`,
+      `  return null;`,
+      `};`,
+    ].join("\n  "),
 ];
 
 const buildComponent: SnippetBuilder = (random) => {

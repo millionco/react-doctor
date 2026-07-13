@@ -15,6 +15,10 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 
 interface GuardExpression {
   expression: EsTreeNode;
@@ -79,6 +83,47 @@ const hasEventLikeRemainingStatements = (statements: EsTreeNode[]): boolean =>
     (statement) => !isNodeOfType(statement, "ReturnStatement") && hasEventLikeNode(statement),
   );
 
+const collectLeadingEarlyReturnGuards = (statements: EsTreeNode[]): GuardExpression[] => {
+  const guardExpressions: GuardExpression[] = [];
+  for (const statement of statements) {
+    if (isNodeOfType(statement, "VariableDeclaration")) continue;
+    if (
+      !isNodeOfType(statement, "IfStatement") ||
+      statement.alternate ||
+      !isReturnOnlyStatement(statement.consequent)
+    ) {
+      break;
+    }
+    collectGuardExpressions(statement.test, guardExpressions);
+  }
+  return guardExpressions;
+};
+
+const collectImmutableExpressionOrigins = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode[] => {
+  const origins: EsTreeNode[] = [];
+  const visitedSymbolIds = new Set<number>();
+  let currentExpression: EsTreeNode | null = stripParenExpression(expression);
+  while (currentExpression) {
+    origins.push(currentExpression);
+    if (!isNodeOfType(currentExpression, "Identifier")) break;
+    const bindingSymbol = scopes.symbolFor(currentExpression);
+    if (
+      !bindingSymbol ||
+      bindingSymbol.kind !== "const" ||
+      visitedSymbolIds.has(bindingSymbol.id) ||
+      !bindingSymbol.initializer
+    ) {
+      break;
+    }
+    visitedSymbolIds.add(bindingSymbol.id);
+    currentExpression = stripParenExpression(bindingSymbol.initializer);
+  }
+  return origins;
+};
+
 const doesGuardMatchDependency = (
   guardExpression: GuardExpression,
   dependencyExpression: EsTreeNode | null | undefined,
@@ -101,6 +146,113 @@ const hasDependencyMatch = (
   dependencyExpressions.some((dependencyExpression) =>
     doesGuardMatchDependency(guardExpression, dependencyExpression),
   );
+
+const hasAliasedDependencyMatch = (
+  guardExpression: GuardExpression,
+  dependencyExpressions: Array<EsTreeNode | null | undefined>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const guardOrigins = collectImmutableExpressionOrigins(guardExpression.expression, scopes);
+  return dependencyExpressions.some((dependencyExpression) => {
+    if (!dependencyExpression) return false;
+    const dependencyOrigins = collectImmutableExpressionOrigins(dependencyExpression, scopes);
+    return guardOrigins.some((guardOrigin) =>
+      dependencyOrigins.some((dependencyOrigin) =>
+        areExpressionsStructurallyEqual(guardOrigin, dependencyOrigin),
+      ),
+    );
+  });
+};
+
+const isStaticallyTrue = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  collectImmutableExpressionOrigins(expression, scopes).some(
+    (origin) => isNodeOfType(origin, "Literal") && origin.value === true,
+  );
+
+const isReactRouterReplacementNavigation = (
+  node: EsTreeNode,
+  rootIdentifierNames: Set<string>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let didFindNavigation = false;
+  let didFindOtherTriggeredSideEffect = false;
+  walkAst(node, (child) => {
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const isTriggeredSideEffect =
+      findTriggeredSideEffectCalleeName(child) !== null || hasDocumentClassListMutation(child);
+    if (!isTriggeredSideEffect) return;
+    const destinationExpression = child.arguments?.[0];
+    const doesDestinationReferenceReconciliationValue = Boolean(
+      destinationExpression &&
+      collectImmutableExpressionOrigins(destinationExpression, scopes).some((origin) =>
+        doesNodeReferenceAnyRoot(origin, rootIdentifierNames),
+      ),
+    );
+    if (!isNodeOfType(child.callee, "Identifier") || !doesDestinationReferenceReconciliationValue) {
+      didFindOtherTriggeredSideEffect = true;
+      return;
+    }
+    const navigationSymbol = scopes.symbolFor(child.callee);
+    const navigationInitializer = navigationSymbol?.initializer
+      ? stripParenExpression(navigationSymbol.initializer)
+      : null;
+    if (
+      navigationSymbol?.kind !== "const" ||
+      !isNodeOfType(navigationInitializer, "CallExpression") ||
+      !isNodeOfType(navigationInitializer.callee, "Identifier")
+    ) {
+      didFindOtherTriggeredSideEffect = true;
+      return;
+    }
+    if (scopes.symbolFor(navigationInitializer.callee)?.kind !== "import") {
+      didFindOtherTriggeredSideEffect = true;
+      return;
+    }
+    const importedHookName =
+      getImportedNameFromModule(
+        navigationInitializer.callee,
+        navigationInitializer.callee.name,
+        "react-router-dom",
+      ) ??
+      getImportedNameFromModule(
+        navigationInitializer.callee,
+        navigationInitializer.callee.name,
+        "react-router",
+      );
+    if (importedHookName !== "useNavigate") {
+      didFindOtherTriggeredSideEffect = true;
+      return;
+    }
+    const navigationOptionsArgument = child.arguments?.[1];
+    const navigationOptions = navigationOptionsArgument
+      ? stripParenExpression(navigationOptionsArgument)
+      : null;
+    if (!isNodeOfType(navigationOptions, "ObjectExpression")) {
+      didFindOtherTriggeredSideEffect = true;
+      return;
+    }
+    let isReplacementGuaranteed = false;
+    for (const property of navigationOptions.properties) {
+      if (isNodeOfType(property, "SpreadElement")) {
+        isReplacementGuaranteed = false;
+        continue;
+      }
+      const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+      if (propertyName === null) {
+        isReplacementGuaranteed = false;
+        continue;
+      }
+      if (propertyName !== "replace") continue;
+      isReplacementGuaranteed = isStaticallyTrue(property.value, scopes);
+    }
+    if (isReplacementGuaranteed) {
+      didFindNavigation = true;
+      return;
+    }
+    didFindOtherTriggeredSideEffect = true;
+  });
+  return didFindNavigation && !didFindOtherTriggeredSideEffect;
+};
 
 // `if (mode === 'trialregistration') return;` followed by the side effect
 // excludes ONE prop value and runs the effect for every other value —
@@ -205,9 +357,13 @@ export const noEffectEventHandler = defineRule({
         const soleStatement = statements[0];
         if (!isNodeOfType(soleStatement, "IfStatement")) return;
 
-        const guardExpressions: GuardExpression[] = [];
-        collectGuardExpressions(soleStatement.test, guardExpressions);
-        const matchingPropGuardExpressions = guardExpressions.filter(
+        const initialGuardExpressions: GuardExpression[] = [];
+        collectGuardExpressions(soleStatement.test, initialGuardExpressions);
+        const guardExpressions = collectLeadingEarlyReturnGuards(statements);
+        if (guardExpressions.length === 0) {
+          guardExpressions.push(...initialGuardExpressions);
+        }
+        const matchingPropGuardExpressions = initialGuardExpressions.filter(
           (guardExpression) =>
             hasDependencyMatch(guardExpression, dependencyExpressions) &&
             propStackTracker.isPropName(guardExpression.rootIdentifierName, node),
@@ -234,7 +390,7 @@ export const noEffectEventHandler = defineRule({
           return;
         }
 
-        const hasUnmatchedGuardExpression = guardExpressions.some(
+        const hasUnmatchedGuardExpression = initialGuardExpressions.some(
           (guardExpression) =>
             !matchingPropGuardExpressions.some(
               (matchingGuardExpression) =>
@@ -251,6 +407,69 @@ export const noEffectEventHandler = defineRule({
             ? doesEventLikeCallReferenceAnyRoot(soleStatement.consequent, matchingPropRootNames)
             : doesAnyEventLikeCallReferenceAnyRoot(statements.slice(1), matchingPropRootNames);
           if (!doesEventLikeRegionReferenceMatchedProp) return;
+        }
+
+        if (isEarlyReturnGuardedEventLikeBody) {
+          const reconciliationGuardRootNames = new Set(
+            guardExpressions
+              .filter(
+                (guardExpression) =>
+                  !propStackTracker.isPropName(guardExpression.rootIdentifierName, node) &&
+                  hasAliasedDependencyMatch(
+                    guardExpression,
+                    dependencyExpressions,
+                    context.scopes,
+                  ) &&
+                  guardExpressions.some((comparisonGuardExpression) => {
+                    if (
+                      comparisonGuardExpression.rootIdentifierName !==
+                      guardExpression.rootIdentifierName
+                    ) {
+                      return false;
+                    }
+                    const comparisonExpression = comparisonGuardExpression.expression.parent;
+                    if (
+                      !isNodeOfType(comparisonExpression, "BinaryExpression") ||
+                      (comparisonExpression.operator !== "===" &&
+                        comparisonExpression.operator !== "==")
+                    ) {
+                      return false;
+                    }
+                    const comparedExpression =
+                      comparisonExpression.left === comparisonGuardExpression.expression
+                        ? comparisonExpression.right
+                        : comparisonExpression.left;
+                    const comparedRootIdentifierName = getRootIdentifierName(comparedExpression);
+                    return Boolean(
+                      comparedRootIdentifierName &&
+                      propStackTracker.isPropName(comparedRootIdentifierName, node),
+                    );
+                  }),
+              )
+              .map((guardExpression) => guardExpression.rootIdentifierName),
+          );
+          if (reconciliationGuardRootNames.size > 0) {
+            const matchingPropRootNames = new Set(
+              matchingPropGuardExpressions.map(
+                (guardExpression) => guardExpression.rootIdentifierName,
+              ),
+            );
+            const eventLikeStatements = statements.slice(1);
+            const triggeredStatements = eventLikeStatements.filter(hasEventLikeNode);
+            if (
+              triggeredStatements.length > 0 &&
+              triggeredStatements.every((statement) =>
+                isReactRouterReplacementNavigation(
+                  statement,
+                  reconciliationGuardRootNames,
+                  context.scopes,
+                ),
+              ) &&
+              !doesAnyEventLikeCallReferenceAnyRoot(eventLikeStatements, matchingPropRootNames)
+            ) {
+              return;
+            }
+          }
         }
 
         context.report({

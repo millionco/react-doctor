@@ -13,6 +13,7 @@ import {
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
+import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { symbolHasReactUseEffectEventOrigin } from "../../utils/symbol-has-react-use-effect-event-origin.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -637,62 +638,6 @@ const isInsideClassComponent = (node: EsTreeNode): boolean => {
   return false;
 };
 
-// True if any AST ancestor between `descendant` (exclusive) and
-// `ancestor` (exclusive) is a conditional / short-circuit expression
-// whose right-hand side encloses `descendant`.
-const hasShortCircuitAncestor = (descendant: EsTreeNode, ancestor: EsTreeNode): boolean => {
-  let current: EsTreeNode | null | undefined = descendant.parent;
-  while (current && current !== ancestor) {
-    if (
-      isNodeOfType(current, "ConditionalExpression") &&
-      (isWithinRange(descendant, current.consequent) ||
-        isWithinRange(descendant, current.alternate))
-    ) {
-      return true;
-    }
-    if (
-      isNodeOfType(current, "LogicalExpression") &&
-      (current.operator === "&&" || current.operator === "||" || current.operator === "??") &&
-      isWithinRange(descendant, current.right)
-    ) {
-      return true;
-    }
-    // Destructuring default (`const { id = useId() } = props`) only
-    // evaluates its right side when the property is undefined — a
-    // conditional hook call in disguise.
-    if (isNodeOfType(current, "AssignmentPattern") && isWithinRange(descendant, current.right)) {
-      return true;
-    }
-    current = current.parent ?? null;
-  }
-  return false;
-};
-
-interface NodeWithRange {
-  start?: number;
-  end?: number;
-}
-
-// HACK: walking the AST back from a parent into its own children to
-// find which side an expression sits on is awkward. Compare the start
-// / end ranges instead — a node is "within" a sibling's range iff its
-// span fits inside.
-const isWithinRange = (descendant: EsTreeNode, sibling: EsTreeNode): boolean => {
-  const descendantSpan = descendant as NodeWithRange;
-  const siblingSpan = sibling as NodeWithRange;
-  if (
-    typeof descendantSpan.start !== "number" ||
-    typeof siblingSpan.start !== "number" ||
-    typeof siblingSpan.end !== "number"
-  ) {
-    return false;
-  }
-  return (
-    descendantSpan.start >= siblingSpan.start &&
-    (descendantSpan.end ?? siblingSpan.end) <= siblingSpan.end
-  );
-};
-
 const isInsideTry = (descendant: EsTreeNode, ancestor: EsTreeNode): boolean => {
   let current: EsTreeNode | null | undefined = descendant.parent;
   while (current && current !== ancestor) {
@@ -966,7 +911,7 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
-        if (hasShortCircuitAncestor(node, enclosing.node)) {
+        if (isNodeConditionallyExecuted(node, enclosing.node)) {
           context.report({ node: node.callee, message: buildConditionalMessage(hookName) });
           return;
         }

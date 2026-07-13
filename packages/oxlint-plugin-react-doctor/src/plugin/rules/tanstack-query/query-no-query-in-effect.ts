@@ -9,6 +9,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
@@ -68,6 +69,22 @@ const isFunctionAncestor = (ancestor: EsTreeNode, functionNode: EsTreeNode): boo
   return false;
 };
 
+const isUnconditionallyExecuted = (
+  node: EsTreeNode,
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): boolean =>
+  context.cfg.isUnconditionalFromEntry(node) &&
+  !isNodeConditionallyExecuted(node, functionNode) &&
+  !(
+    isNodeOfType(node, "MemberExpression") &&
+    isNodeOfType(node.parent, "AssignmentExpression") &&
+    node.parent.left === node &&
+    (node.parent.operator === "&&=" ||
+      node.parent.operator === "||=" ||
+      node.parent.operator === "??=")
+  );
+
 const functionInvokesTarget = (
   callerFunction: EsTreeNode,
   targetFunction: EsTreeNode,
@@ -83,7 +100,7 @@ const functionInvokesTarget = (
     if (!isNodeOfType(node, "CallExpression")) return;
     if (
       !isNodeReachableWithinFunction(node, context) ||
-      !context.cfg.isUnconditionalFromEntry(node) ||
+      !isUnconditionallyExecuted(node, callerFunction, context) ||
       (!canCrossSuspension && hasSuspensionBefore(callerFunction, node, context))
     ) {
       return;
@@ -124,7 +141,7 @@ const isFunctionInvokedBefore = (
       callStart === null ||
       callStart >= boundaryStart ||
       !isNodeReachableWithinFunction(node, context) ||
-      !context.cfg.isUnconditionalFromEntry(node) ||
+      !isUnconditionallyExecuted(node, boundaryFunction, context) ||
       hasSuspensionBefore(boundaryFunction, node, context)
     ) {
       return;
@@ -158,7 +175,7 @@ const isFunctionInvokedAfter = (
       callStart === null ||
       callStart <= boundaryStart ||
       !isNodeReachableWithinFunction(node, context) ||
-      !context.cfg.isUnconditionalFromEntry(node)
+      !isUnconditionallyExecuted(node, callerFunction, context)
     ) {
       return;
     }
@@ -183,15 +200,17 @@ const isWriteExecutedBefore = (
 ): boolean => {
   const writeStart = getRangeStart(writeNode);
   const boundaryStart = getRangeStart(boundary);
+  const writeFunction = findEnclosingFunction(writeNode);
+  const writeExecutionBoundary = writeFunction ?? findProgramRoot(writeNode);
   if (
     writeStart === null ||
     boundaryStart === null ||
+    !writeExecutionBoundary ||
     !isNodeReachableWithinFunction(writeNode, context) ||
-    !context.cfg.isUnconditionalFromEntry(writeNode)
+    !isUnconditionallyExecuted(writeNode, writeExecutionBoundary, context)
   ) {
     return false;
   }
-  const writeFunction = findEnclosingFunction(writeNode);
   const boundaryFunction = findEnclosingFunction(boundary);
   const renderFunction = deferredExecutionFunction
     ? findEnclosingFunction(deferredExecutionFunction)

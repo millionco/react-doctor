@@ -166,6 +166,7 @@ export const LIBRARY_SNIPPET_POOL = [
   `const queryResult = useQuery({ queryKey: ["items", value], queryFn: () => fetch(url).then((response) => response.json()) }); useEffect(() => { queryResult["refetch"](); }, [queryResult]);`,
   `const wrappedQueryResult = (ReactQuery as typeof ReactQuery)[\`useQuery\`]({ queryKey: ["wrapped", value] }); useEffect(() => { wrappedQueryResult.refetch(); }, [wrappedQueryResult]);`,
   `const overwrittenQuery = useQuery({ queryKey: ["overwritten", value] }); useEffect(() => { overwrittenQuery.refetch(); }, [overwrittenQuery]); try { handle(value); } catch { handle(value); } finally { overwrittenQuery.refetch = handle; }`,
+  `const conditionallyOverwrittenQuery = useQuery({ queryKey: ["conditional", value] }); const overwriteQueryRefetch = () => { conditionallyOverwrittenQuery.refetch = handle; }; useEffect(() => { conditionallyOverwrittenQuery.refetch(); }, [conditionallyOverwrittenQuery]); value && overwriteQueryRefetch();`,
   `const searchIndex = { refetch: () => handle(value) }; useEffect(() => { searchIndex.refetch(); }, [searchIndex]);`,
   `const mutation = useMutation({ mutationFn: (payload) => api.post(url, payload) });`,
   `const { mutate, mutateAsync } = useMutation({ mutationFn: (payload) => api.post(url, payload) });`,

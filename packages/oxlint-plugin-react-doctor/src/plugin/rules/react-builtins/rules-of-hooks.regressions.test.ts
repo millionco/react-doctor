@@ -344,6 +344,28 @@ describe("react-builtins/rules-of-hooks — regressions: local non-hook use* cal
     `);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not treat a hook call on a logical left side as conditional", () => {
+    const result = runTsx(`
+      import { useFlag } from "./flags";
+      const MyComponent = () => {
+        const isReady = useFlag("ready") && hasData();
+        return isReady;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["&&", "||", "??"])("still flags a hook call on the right side of %s", (operator) => {
+    const result = runTsx(`
+        import { useFlag } from "./flags";
+        const MyComponent = ({ enabled }) => {
+          const value = enabled ${operator} useFlag("ready");
+          return value;
+        };
+      `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });
 
 describe("react-builtins/rules-of-hooks — regressions: same-named non-React useEffectEvent", () => {

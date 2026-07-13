@@ -354,6 +354,83 @@ function Search({ customRefetch, shouldOverwrite }) {
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 
+  it.each([
+    ["ternary branch", "shouldOverwrite ? (query.refetch = customRefetch) : undefined"],
+    ["logical AND right side", "shouldOverwrite && (query.refetch = customRefetch)"],
+    ["logical OR right side", "shouldOverwrite || (query.refetch = customRefetch)"],
+    ["nullish right side", "value ?? (query.refetch = customRefetch)"],
+    ["logical AND assignment", "query.refetch &&= customRefetch"],
+    ["logical OR assignment", "query.refetch ||= customRefetch"],
+    ["nullish assignment", "query.refetch ??= customRefetch"],
+    [
+      "nested Object.assign right side",
+      "shouldOverwrite && Object.assign(query, { refetch: customRefetch })",
+    ],
+    [
+      "nested Object.defineProperty right side",
+      'shouldOverwrite && Object.defineProperty(query, "refetch", { value: customRefetch })',
+    ],
+  ])("flags refetch when render overwrites only in a %s", (_name, overwriteExpression) => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch, shouldOverwrite, value }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => { query.refetch(); }, [query]);
+  ${overwriteExpression};
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["ternary branch", "shouldOverwrite ? overwriteRefetch() : undefined"],
+    ["logical AND right side", "shouldOverwrite && overwriteRefetch()"],
+    ["logical OR right side", "shouldOverwrite || overwriteRefetch()"],
+    ["nullish right side", "value ?? overwriteRefetch()"],
+  ])("flags refetch when render invokes its overwrite helper through a %s", (_name, call) => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch, shouldOverwrite, value }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; };
+  useEffect(() => { query.refetch(); }, [query]);
+  ${call};
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["ternary test", "(query.refetch = customRefetch) ? renderSearch() : renderEmpty()"],
+    ["logical left side", "(query.refetch = customRefetch) && renderSearch()"],
+    ["helper on a logical left side", "overwriteRefetch() && renderSearch()"],
+    [
+      "Object.assign on a logical left side",
+      "Object.assign(query, { refetch: customRefetch }) && renderSearch()",
+    ],
+    [
+      "Object.defineProperty on a logical left side",
+      'Object.defineProperty(query, "refetch", { value: customRefetch }) && renderSearch()',
+    ],
+  ])("stays silent when render guarantees an overwrite in a %s", (_name, overwriteExpression) => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; return true; };
+  useEffect(() => { query.refetch(); }, [query]);
+  ${overwriteExpression};
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("flags refetch when a render helper overwrites only after awaiting", () => {
     const { diagnostics } = runRule(
       queryNoQueryInEffect,

@@ -1496,6 +1496,173 @@ export const Subscriber = ({ socket, listener }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it.each([
+    {
+      name: "a locally shadowed document",
+      declaration: "const document = customDocument;",
+      receiver: "document",
+    },
+    {
+      name: "globalThis.document",
+      declaration: "",
+      receiver: "globalThis.document",
+    },
+  ])("keeps $name conservative", ({ declaration, receiver }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ customDocument, onOutsideAction }) => {
+  ${declaration}
+  useEffect(() => {
+    for (const event of outsideActionEvents) ${receiver}.addEventListener(event, onOutsideAction);
+    return () => {
+      for (const event of outsideActionEvents) ${receiver}.removeEventListener(event, onOutsideAction);
+    };
+  }, [customDocument, onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains the unmatched capture tuple when one of two registrations is cleaned up", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction, false);
+      document.addEventListener(event, onOutsideAction, true);
+    }
+    return () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction, false);
+      }
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains the unmatched handler when one of two listeners is cleaned up", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ firstHandler, secondHandler }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, firstHandler);
+      document.addEventListener(event, secondHandler);
+    }
+    return () => {
+      for (const event of outsideActionEvents) document.removeEventListener(event, firstHandler);
+    };
+  }, [firstHandler, secondHandler]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("pairs listener options that differ only outside capture semantics", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction, { capture: true, passive: true, once: true });
+    }
+    return () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction, { capture: true, passive: false });
+      }
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts transparent TypeScript wrappers around the direct DOM tuple", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      (document as Document)!.addEventListener((event as string)!, onOutsideAction!);
+    }
+    return () => {
+      for (const event of outsideActionEvents) {
+        (document as Document)!.removeEventListener((event as string)!, onOutsideAction!);
+      }
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects matching for-await loops because cleanup is deferred", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(async () => {
+    for await (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    return async () => {
+      for await (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction);
+      }
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not crash or falsely match a recursive cleanup helper cycle", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin"] as const;
+export const OutsideAction = ({ onOutsideAction, shouldRecurse }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) document.addEventListener(event, onOutsideAction);
+    const removeOutsideActionListeners = () => {
+      if (shouldRecurse) removeOutsideActionListeners();
+    };
+    const cleanupAlias = removeOutsideActionListeners;
+    return () => cleanupAlias();
+  }, [onOutsideAction, shouldRecurse]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });
 
 describe("effect-needs-cleanup adversarial edge cases (observers / connections / retained functions)", () => {

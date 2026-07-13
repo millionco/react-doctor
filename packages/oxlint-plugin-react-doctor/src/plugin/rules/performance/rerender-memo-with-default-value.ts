@@ -4,7 +4,12 @@ import {
   memoStatusForJsxOpeningName,
   type MemoStatus,
 } from "../../utils/build-same-file-memo-registry.js";
+import {
+  buildSameFileMemoComparatorRegistry,
+  type MemoComparatorDescriptor,
+} from "../../utils/build-same-file-memo-comparator-registry.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
+import { comparatorProvesEmptyPropDoesNotBreakMemo } from "../../utils/comparator-proves-empty-prop-equality.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
@@ -144,6 +149,9 @@ const collectIdentitySensitiveUses = (
   candidateNames: ReadonlySet<string>,
   shadowedNames: ReadonlySet<string>,
   memoRegistry: Map<string, MemoStatus>,
+  memoComparatorRegistry: ReadonlyMap<string, MemoComparatorDescriptor>,
+  defaultedBindings: ReadonlyMap<string, DefaultedEmptyBinding>,
+  context: RuleContext,
   into: Map<string, IdentitySensitiveUse>,
 ): void => {
   let innerShadowedNames = shadowedNames;
@@ -181,11 +189,40 @@ const collectIdentitySensitiveUses = (
     const openingName = node.name as EsTreeNode;
     const memoStatus = memoStatusForJsxOpeningName(memoRegistry, openingName);
     if (!isIntrinsicJsxElementName(openingName) && memoStatus !== "not-memoised") {
+      const comparatorDescriptor = isNodeOfType(openingName, "JSXIdentifier")
+        ? memoComparatorRegistry.get(openingName.name)
+        : undefined;
+      const comparator =
+        comparatorDescriptor &&
+        context.scopes.symbolFor(openingName)?.bindingIdentifier ===
+          comparatorDescriptor.bindingIdentifier
+          ? comparatorDescriptor.comparator
+          : undefined;
       for (const attribute of node.attributes ?? []) {
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;
         if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) continue;
         const attributeExpression = attribute.value.expression;
         if (!attributeExpression || attributeExpression.type === "JSXEmptyExpression") continue;
+        const strippedAttributeExpression = stripParenExpression(attributeExpression);
+        if (
+          comparator &&
+          isNodeOfType(attribute.name, "JSXIdentifier") &&
+          isNodeOfType(strippedAttributeExpression, "Identifier") &&
+          !innerShadowedNames.has(strippedAttributeExpression.name)
+        ) {
+          const binding = defaultedBindings.get(strippedAttributeExpression.name);
+          if (
+            binding &&
+            comparatorProvesEmptyPropDoesNotBreakMemo(
+              comparator,
+              attribute.name.name,
+              binding.literalKind,
+              context.scopes,
+            )
+          ) {
+            continue;
+          }
+        }
         markCandidateIdentifier(
           attributeExpression,
           candidateNames,
@@ -209,12 +246,24 @@ const collectIdentitySensitiveUses = (
             candidateNames,
             innerShadowedNames,
             memoRegistry,
+            memoComparatorRegistry,
+            defaultedBindings,
+            context,
             into,
           );
         }
       }
     } else if (isAstNode(child)) {
-      collectIdentitySensitiveUses(child, candidateNames, innerShadowedNames, memoRegistry, into);
+      collectIdentitySensitiveUses(
+        child,
+        candidateNames,
+        innerShadowedNames,
+        memoRegistry,
+        memoComparatorRegistry,
+        defaultedBindings,
+        context,
+        into,
+      );
     }
   }
 };
@@ -244,6 +293,7 @@ export const rerenderMemoWithDefaultValue = defineRule({
     "Move it to the top of the file: `const EMPTY_ITEMS: Item[] = []`, then use that as the default value",
   create: (context: RuleContext) => {
     let memoRegistry: Map<string, MemoStatus> = new Map();
+    let memoComparatorRegistry: Map<string, MemoComparatorDescriptor> = new Map();
 
     const checkComponentFunction = (functionNode: EsTreeNode): void => {
       if (
@@ -262,6 +312,9 @@ export const rerenderMemoWithDefaultValue = defineRule({
         new Set(defaultedBindings.keys()),
         new Set(),
         memoRegistry,
+        memoComparatorRegistry,
+        defaultedBindings,
+        context,
         identitySensitiveUses,
       );
 
@@ -278,6 +331,7 @@ export const rerenderMemoWithDefaultValue = defineRule({
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         memoRegistry = buildSameFileMemoRegistry(node as EsTreeNode);
+        memoComparatorRegistry = buildSameFileMemoComparatorRegistry(node as EsTreeNode);
       },
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;

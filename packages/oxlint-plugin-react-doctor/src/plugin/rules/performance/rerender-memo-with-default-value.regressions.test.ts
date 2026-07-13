@@ -54,6 +54,321 @@ const Panel = ({ items = [] }) => <MemoList items={items} />;`,
     expect(result.diagnostics.length).toBe(1);
   });
 
+  it("stays silent when an exact memo comparator value-compares the empty default", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+function sameSuggestions(previous, next) {
+  return previous.length === next.length && previous.every((suggestion, index) => suggestion === next[index]);
+}
+const FollowUpSuggestions = memo(
+  ({ suggestions }) => <div>{suggestions.length}</div>,
+  (previous, next) =>
+    previous.hidden === next.hidden &&
+    previous.onSelect === next.onSelect &&
+    sameSuggestions(previous.suggestions, next.suggestions),
+);
+const ignoreSuggestion = () => undefined;
+function StableAssistantMessage({ suggestions = [], hidden = false, onSelect = ignoreSuggestion }) {
+  return <FollowUpSuggestions suggestions={suggestions} hidden={hidden} onSelect={onSelect} />;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags when the custom comparator distinguishes fresh empty arrays", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, (previous, next) => previous.items === next.items);
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("flags when an opaque imported comparator controls equality", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+import { compareItems } from "./compare-items";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, compareItems);
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("stays silent when an inline comparator ignores the empty default prop", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import React from "react";
+const MemoList = React.memo(({ items, version }) => <div>{items.length + version}</div>, (previous, next) => previous.version === next.version);
+const Panel = ({ items = [], version }) => <MemoList items={items} version={version} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when another prop forces the comparator to rerender", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items, version }) => <div>{items.length + version}</div>, (previous, next) => previous.version !== next.version);
+const Panel = ({ items = [], version }) => <MemoList items={items} version={version} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when fresh empty references make the comparator bail out", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, (previous, next) => previous.items !== next.items);
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a comparator proves two empty object defaults equivalent", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo as reactMemo } from "react";
+const MemoPanel = reactMemo(
+  ({ options }) => <div>{Object.keys(options).length}</div>,
+  (previous, next) =>
+    Object.keys(previous.options).length === Object.keys(next.options).length &&
+    Object.keys(previous.options).every((key) => previous.options[key] === next.options[key]),
+);
+const Panel = ({ options = {} }) => <MemoPanel options={options} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags similarly named userland memo functions", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `const memo = (component, comparator) => component;
+const MemoList = memo(({ items }) => <div>{items.length}</div>, () => true);
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("stays silent when other props are equal under the comparator contract", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(
+  ({ items, version }) => <div>{items.length + version}</div>,
+  (previous, next) => previous.version === next.version && previous.items.length === next.items.length,
+);
+const Panel = ({ items = [], version }) => <MemoList items={items} version={version} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a comparator that compares two distinct non-target props", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, (previous, next) => previous.left === next.right);
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("stays silent when an empty-array index comparison proves equality", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, (previous, next) => previous.items[0] === next.items[0]);
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when empty-array every and some outcomes prove equality", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(
+  ({ items }) => <div>{items.length}</div>,
+  (previous, next) => previous.items.every(Boolean) && !next.items.some(Boolean),
+);
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a local helper with mutation before its result", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+function compareItems(previous, next) {
+  previous.push("changed");
+  return previous.length === next.length;
+}
+const MemoList = memo(({ items }) => <div>{items.length}</div>, (previous, next) => compareItems(previous.items, next.items));
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("flags side-effecting and throwing comparator bodies", () => {
+    const sideEffectResult = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, () => (recordComparison(), true));
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    const throwingResult = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, () => { throw new Error("no"); });
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(sideEffectResult.parseErrors).toEqual([]);
+    expect(throwingResult.parseErrors).toEqual([]);
+    expect(sideEffectResult.diagnostics.length).toBe(1);
+    expect(throwingResult.diagnostics.length).toBe(1);
+  });
+
+  it("flags async comparators even when their returned boolean looks safe", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, async (previous, next) => previous.items.length === next.items.length);
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("flags comparators that return a Promise", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, () => Promise.resolve(true));
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("flags reassigned comparator declarations", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+function compare(previous, next) { return previous.items.length === next.items.length; }
+compare = () => false;
+const MemoList = memo(({ items }) => <div>{items.length}</div>, compare);
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("flags a JSX component parameter shadowing the proven memo binding", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, () => true);
+const Panel = ({ items = [], MemoList }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("flags a local JSX binding shadowing the proven memo binding", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, () => true);
+function Panel({ items = [] }) {
+  const MemoList = ({ items: localItems }) => <div>{localItems.length}</div>;
+  return <MemoList items={items} />;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("stays silent when empty-object keyed reads prove equality", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoPanel = memo(({ options }) => <div>{String(options.mode)}</div>, (previous, next) => previous.options["mode"] === next.options["mode"]);
+const Panel = ({ options = {} }) => <MemoPanel options={options} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when empty-object direct reads prove equality", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoPanel = memo(({ options }) => <div>{String(options.mode)}</div>, (previous, next) => previous.options.mode === next.options.mode);
+const Panel = ({ options = {} }) => <MemoPanel options={options} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags empty-array callback methods without a proven callable", () => {
+    const missingCallbackResult = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, (previous, next) => previous.items.every() === next.items.every());
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    const opaqueCallbackResult = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoList = memo(({ items }) => <div>{items.length}</div>, (previous, next) => previous.items.every(importedCallback) === next.items.every(importedCallback));
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(missingCallbackResult.parseErrors).toEqual([]);
+    expect(opaqueCallbackResult.parseErrors).toEqual([]);
+    expect(missingCallbackResult.diagnostics.length).toBe(1);
+    expect(opaqueCallbackResult.diagnostics.length).toBe(1);
+  });
+
+  it("flags inherited empty-object property comparisons", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { memo } from "react";
+const MemoPanel = memo(({ options }) => <div>{String(options)}</div>, (previous, next) => previous.options.toString === next.options.toString);
+const Panel = ({ options = {} }) => <MemoPanel options={options} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("stays silent for a proven namespace-imported React memo comparator", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import * as R from "react";
+const compare = (previous, next) => previous.items.length === next.items.length;
+const comparatorAlias = compare;
+const MemoList = R.memo(({ items }) => <div>{items.length}</div>, comparatorAlias);
+const Panel = ({ items = [] }) => <MemoList items={items} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when the defaulted object is only destructured locally", () => {
     const result = runRule(
       rerenderMemoWithDefaultValue,

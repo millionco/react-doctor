@@ -109,6 +109,24 @@ describe("react-markdown-unsanitized-raw-html", () => {
       `,
     },
     {
+      name: "member-expression children with sibling plugin props",
+      source: `
+        import type { Components } from "react-markdown";
+        import Markdown from "react-markdown";
+        import raw from "rehype-raw";
+        import gfm from "remark-gfm";
+        export const Preview = (props: { children?: string; components?: Components }) => (
+          <Markdown
+            rehypePlugins={[raw]}
+            remarkPlugins={[gfm]}
+            components={props.components}
+          >
+            {props.children}
+          </Markdown>
+        );
+      `,
+    },
+    {
       name: "userland sanitizer and DOMPurify lookalikes",
       source: `
         import Markdown from "react-markdown";

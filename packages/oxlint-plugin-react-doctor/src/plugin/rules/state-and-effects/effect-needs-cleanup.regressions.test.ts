@@ -905,6 +905,161 @@ export const OutsideAction = () => {
 
   it.each([
     {
+      name: "different collections",
+      declarations: "let event;",
+      setupTarget: "event",
+      cleanupTarget: "event",
+      eventExpression: "event",
+      setupCollection: "setupEvents",
+      cleanupCollection: "cleanupEvents",
+    },
+    {
+      name: "the same collection conservatively",
+      declarations: "let event;",
+      setupTarget: "event",
+      cleanupTarget: "event",
+      eventExpression: "event",
+      setupCollection: "setupEvents",
+      cleanupCollection: "setupEvents",
+    },
+    {
+      name: "destructured assignment targets",
+      declarations: "let event; let metadata;",
+      setupTarget: "[event, metadata]",
+      cleanupTarget: "[event, metadata]",
+      eventExpression: "event",
+      setupCollection: "setupEntries",
+      cleanupCollection: "cleanupEntries",
+    },
+    {
+      name: "member assignment targets",
+      declarations: 'const iterator = { event: "" };',
+      setupTarget: "iterator.event",
+      cleanupTarget: "iterator.event",
+      eventExpression: "iterator.event",
+      setupCollection: "setupEvents",
+      cleanupCollection: "cleanupEvents",
+    },
+    {
+      name: "computed member assignment targets",
+      declarations: 'const iterator = { event: "" }; const eventKey = "event";',
+      setupTarget: "iterator[eventKey]",
+      cleanupTarget: "iterator[eventKey]",
+      eventExpression: "iterator[eventKey]",
+      setupCollection: "setupEvents",
+      cleanupCollection: "cleanupEvents",
+    },
+  ])(
+    "keeps assignment-form loops with $name diagnostic",
+    ({
+      declarations,
+      setupTarget,
+      cleanupTarget,
+      eventExpression,
+      setupCollection,
+      cleanupCollection,
+    }) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `import { useEffect } from "react";
+const setupEvents = ["mousedown", "focusin"] as const;
+const cleanupEvents = ["keydown"] as const;
+const setupEntries = [["mousedown", 1], ["focusin", 2]] as const;
+const cleanupEntries = [["keydown", 3]] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    ${declarations}
+    for (${setupTarget} of ${setupCollection}) {
+      document.addEventListener(${eventExpression}, onOutsideAction);
+    }
+    return () => {
+      for (${cleanupTarget} of ${cleanupCollection}) {
+        document.removeEventListener(${eventExpression}, onOutsideAction);
+      }
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("rejects assignment-form iterator identity laundered through a shared binding", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const setupEvents = ["mousedown", "focusin"] as const;
+const cleanupEvents = ["keydown"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    let iteratorEvent;
+    let event;
+    for (iteratorEvent of setupEvents) {
+      event = iteratorEvent;
+      document.addEventListener(event, onOutsideAction);
+    }
+    return () => {
+      for (iteratorEvent of cleanupEvents) {
+        event = iteratorEvent;
+        document.removeEventListener(event, onOutsideAction);
+      }
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects an assignment-form iterator used through a nested declaration loop", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const setupEvents = ["mousedown", "focusin"] as const;
+const cleanupEvents = ["keydown"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    let event;
+    for (event of setupEvents) {
+      for (const attempt of [0]) document.addEventListener(event, onOutsideAction);
+    }
+    return () => {
+      for (event of cleanupEvents) {
+        for (const attempt of [0]) document.removeEventListener(event, onOutsideAction);
+      }
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a stable event unrelated to an assignment-form loop target", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const items = [1, 2] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    let item;
+    const event = "keydown";
+    for (item of items) document.addEventListener(event, onOutsideAction);
+    return () => document.removeEventListener(event, onOutsideAction);
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
       name: "setup iterator reassignment",
       setup:
         'for (let event of outsideActionEvents) { event = "keydown"; document.addEventListener(event, onOutsideAction); }',

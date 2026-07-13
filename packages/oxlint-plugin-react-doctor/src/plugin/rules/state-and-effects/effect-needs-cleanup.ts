@@ -442,6 +442,52 @@ const findForOfStatementForIteratorExpression = (
     : null;
 };
 
+const isAssignmentFormForOfIteratorReference = (
+  expression: EsTreeNode | null | undefined,
+  context: RuleContext,
+): boolean => {
+  if (!expression) return false;
+  const unwrappedExpression = stripParenExpression(expression);
+  const referencedSymbolIds = new Set<number>();
+  walkAst(unwrappedExpression, (expressionChild: EsTreeNode) => {
+    if (!isNodeOfType(expressionChild, "Identifier")) return;
+    const symbol = context.scopes.symbolFor(expressionChild);
+    if (symbol) referencedSymbolIds.add(symbol.id);
+  });
+  if (referencedSymbolIds.size === 0) return false;
+  let currentNode = unwrappedExpression.parent;
+  while (currentNode && !isFunctionLike(currentNode)) {
+    if (isNodeOfType(currentNode, "ForOfStatement")) {
+      const loopTarget = stripParenExpression(currentNode.left);
+      if (!isNodeOfType(loopTarget, "VariableDeclaration")) {
+        let doesLoopAssignReferencedSymbol = false;
+        walkAst(loopTarget, (targetChild: EsTreeNode) => {
+          if (!isNodeOfType(targetChild, "Identifier")) return;
+          const targetSymbol = context.scopes.symbolFor(targetChild);
+          if (targetSymbol && referencedSymbolIds.has(targetSymbol.id)) {
+            doesLoopAssignReferencedSymbol = true;
+            return false;
+          }
+        });
+        if (doesLoopAssignReferencedSymbol) return true;
+        walkAst(currentNode.body, (bodyChild: EsTreeNode) => {
+          if (!isNodeOfType(bodyChild, "Identifier") || !isWithinAssignmentTarget(bodyChild)) {
+            return;
+          }
+          const bodySymbol = context.scopes.symbolFor(bodyChild);
+          if (bodySymbol && referencedSymbolIds.has(bodySymbol.id)) {
+            doesLoopAssignReferencedSymbol = true;
+            return false;
+          }
+        });
+        if (doesLoopAssignReferencedSymbol) return true;
+      }
+    }
+    currentNode = currentNode.parent;
+  }
+  return false;
+};
+
 const isPrivatePlainConstIdentifier = (identifier: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(identifier, "Identifier")) return false;
   const symbol = context.scopes.symbolFor(identifier);
@@ -1604,14 +1650,22 @@ const doesReleaseCallMatchUsage = (
   if (!pairedVerbNames || !matchesPairedReleaseVerb(releaseVerbName, pairedVerbNames)) return false;
 
   const releaseEventKey = resolveExpressionKey(callNode.arguments?.[0], context);
+  const usageEventArgument = isNodeOfType(usage.node, "CallExpression")
+    ? usage.node.arguments?.[0]
+    : null;
+  const releaseEventArgument = callNode.arguments?.[0];
+  const hasAssignmentFormLoopIterator =
+    isAssignmentFormForOfIteratorReference(usageEventArgument, context) ||
+    isAssignmentFormForOfIteratorReference(releaseEventArgument, context);
+  if (hasAssignmentFormLoopIterator) return false;
   if (usage.eventKey !== null && releaseEventKey !== null && usage.eventKey !== releaseEventKey) {
     if (!isNodeOfType(usage.node, "CallExpression")) return false;
     const usageForOfStatement = findForOfStatementForIteratorExpression(
-      usage.node.arguments?.[0],
+      usageEventArgument,
       context,
     );
     const releaseForOfStatement = findForOfStatementForIteratorExpression(
-      callNode.arguments?.[0],
+      releaseEventArgument,
       context,
     );
     if ((usageForOfStatement === null) !== (releaseForOfStatement === null)) return false;

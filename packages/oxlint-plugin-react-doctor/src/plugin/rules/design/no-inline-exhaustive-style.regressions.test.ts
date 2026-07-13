@@ -21,22 +21,7 @@ describe("design/no-inline-exhaustive-style regressions", () => {
   it("stays silent for module-initialized JSX", () => {
     const result = runRule(
       noInlineExhaustiveStyle,
-      `
-        export const stableElement = (
-          <div
-            style={{
-              display: "flex",
-              width: "100%",
-              height: "100%",
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "column",
-              backgroundColor: "white",
-              fontSize: 64,
-            }}
-          />
-        );
-      `,
+      `export const stableElement = (${exhaustiveStyleElement});`,
       { filename: "/proj/src/stable-element.tsx" },
     );
 

@@ -199,6 +199,38 @@ describe("no-impure-state-updater", () => {
 
   it.each([
     [
+      "a promise callback",
+      `import { useState, useCallback } from "react";
+       const Component = () => {
+         const [invites, setInvites] = useState([]);
+         const loadInvites = useCallback(() => {
+           fetchInvites(api).then((d) => setInvites(d)).catch(() => setInvites([]));
+         }, []);
+         return <div>{invites.length}</div>;
+       };`,
+    ],
+    [
+      "an event handler",
+      `import { useState } from "react";
+       const Component = () => {
+         const [sort, setSort] = useState("name");
+         return <select value={sort} onChange={(e) => setSort(e.target.value)} />;
+       };`,
+    ],
+    [
+      "a callback with multiple setters (not an updater)",
+      `import { useState } from "react";
+       const Component = () => {
+         const [value1, setValue1] = useState(0);
+         const [value2, setValue2] = useState(0);
+         const handler = (newValue) => {
+           setValue1(newValue);
+           setValue2(newValue * 2);
+         };
+         return <button onClick={() => handler(10)}>{value1} {value2}</button>;
+       };`,
+    ],
+    [
       "a pure arithmetic updater",
       `import { useState } from "react";
        const Counter = () => {

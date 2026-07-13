@@ -269,6 +269,8 @@ export const resolveToFunction = (
   | EsTreeNodeOfType<"FunctionExpression">
   | EsTreeNodeOfType<"FunctionDeclaration">
   | null => {
+  if (ref.resolved?.defs.some((def) => def.type === "Parameter")) return null;
+  
   const definitionNode = ref.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
   if (!definitionNode) return null;
   if (isFunctionLike(definitionNode)) return definitionNode;

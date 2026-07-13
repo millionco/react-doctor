@@ -16,6 +16,54 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { symbolHasStableHookOrigin } from "../react-builtins/exhaustive-deps-symbol-stability.js";
+
+const STABLE_REACT_HOOK_VALUE_NAMES: ReadonlySet<string> = new Set([
+  "useActionState",
+  "useEffectEvent",
+  "useReducer",
+  "useRef",
+  "useState",
+  "useTransition",
+]);
+
+const isStableReactHookDependency = (dependency: EsTreeNode, context: RuleContext): boolean => {
+  const unwrappedDependency = stripParenExpression(dependency);
+  if (!isNodeOfType(unwrappedDependency, "Identifier")) return false;
+
+  const visitedSymbolIds = new Set<number>();
+  let dependencySymbol = context.scopes.symbolFor(unwrappedDependency);
+  while (dependencySymbol) {
+    if (visitedSymbolIds.has(dependencySymbol.id)) return false;
+    visitedSymbolIds.add(dependencySymbol.id);
+
+    if (symbolHasStableHookOrigin(dependencySymbol, context.scopes)) {
+      let declarator: EsTreeNode | null | undefined = dependencySymbol.declarationNode;
+      while (declarator && !isNodeOfType(declarator, "VariableDeclarator")) {
+        declarator = declarator.parent;
+      }
+      if (!declarator?.init) return false;
+      const hookCall = stripParenExpression(declarator.init);
+      return isReactApiCall(hookCall, STABLE_REACT_HOOK_VALUE_NAMES, context.scopes, {
+        allowGlobalReactNamespace: true,
+      });
+    }
+
+    if (
+      dependencySymbol.kind !== "const" ||
+      dependencySymbol.references.some((reference) => reference.flag !== "read") ||
+      !isNodeOfType(dependencySymbol.declarationNode, "VariableDeclarator") ||
+      dependencySymbol.declarationNode.id !== dependencySymbol.bindingIdentifier ||
+      !dependencySymbol.initializer
+    ) {
+      return false;
+    }
+    const aliasInitializer = stripParenExpression(dependencySymbol.initializer);
+    if (!isNodeOfType(aliasInitializer, "Identifier")) return false;
+    dependencySymbol = context.scopes.symbolFor(aliasInitializer);
+  }
+  return false;
+};
 
 // HACK: From "Separating Events from Effects" — when a function-typed
 // prop (or local callback) is read from an effect ONLY inside a sub-
@@ -61,9 +109,11 @@ const isPotentiallyChangingReactUseCallback = (
   const dependencyList = unwrappedInitializer.arguments?.[1];
   if (!dependencyList) return true;
   const unwrappedDependencyList = stripParenExpression(dependencyList);
-  return (
-    !isNodeOfType(unwrappedDependencyList, "ArrayExpression") ||
-    (unwrappedDependencyList.elements?.length ?? 0) > 0
+  if (!isNodeOfType(unwrappedDependencyList, "ArrayExpression")) return true;
+
+  return (unwrappedDependencyList.elements ?? []).some(
+    (dependency: EsTreeNode | null) =>
+      dependency === null || !isStableReactHookDependency(dependency, context),
   );
 };
 

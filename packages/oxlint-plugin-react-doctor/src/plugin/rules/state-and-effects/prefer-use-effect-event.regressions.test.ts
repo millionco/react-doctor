@@ -52,6 +52,88 @@ describe("prefer-use-effect-event — callback stability regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("stays silent when a React useCallback depends only on a state setter", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect, useState } from "react";
+
+      const Composer = ({ open }) => {
+        const [, setComposeOpen] = useState(false);
+        const openComposer = useCallback(() => setComposeOpen(true), [setComposeOpen]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => openComposer(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [openComposer, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("resolves multi-hop aliases of stable React hook values", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect, useReducer } from "react";
+
+      const Composer = ({ open }) => {
+        const [, dispatch] = useReducer(reducer, initialState);
+        const dispatchAlias = dispatch;
+        const stableDispatch = dispatchAlias;
+        const openComposer = useCallback(
+          () => stableDispatch({ type: "open" }),
+          [stableDispatch],
+        );
+        useEffect(() => {
+          const timeoutId = setTimeout(() => openComposer(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [openComposer, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports when a React useCallback depends on changing state", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect, useState } from "react";
+
+      const Composer = ({ open }) => {
+        const [composeOpen] = useState(false);
+        const openComposer = useCallback(() => work(composeOpen), [composeOpen]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => openComposer(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [openComposer, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a similarly named userland useState return", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useCallback, useEffect } from "react";
+
+      const Composer = ({ open }) => {
+        const useState = () => [false, makeChangingCallback()];
+        const [, setComposeOpen] = useState();
+        const openComposer = useCallback(() => setComposeOpen(true), [setComposeOpen]);
+        useEffect(() => {
+          const timeoutId = setTimeout(() => openComposer(), 100);
+          return () => clearTimeout(timeoutId);
+        }, [openComposer, open]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports a React useCallback with a dynamic dependency list", () => {
     const result = runPreferUseEffectEvent(`
       import { useCallback, useEffect } from "react";

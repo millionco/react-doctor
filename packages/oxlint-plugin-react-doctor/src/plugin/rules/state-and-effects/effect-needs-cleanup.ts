@@ -36,6 +36,7 @@ import {
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // `observer.observe(el)` is the registration moment for ResizeObserver /
@@ -263,28 +264,6 @@ const findSubscribeLikeUsages = (
     }
   });
   return usages.filter((usage) => isNodeReachableWithinFunction(usage.node, context));
-};
-
-const isNodeReachableWithinFunction = (node: EsTreeNode, context: RuleContext): boolean => {
-  const owner = context.cfg.enclosingFunction(node);
-  if (!owner) return true;
-  const functionCfg = context.cfg.cfgFor(owner);
-  if (!functionCfg) return true;
-  const targetBlock = functionCfg.blockOf(node);
-  if (!targetBlock) return true;
-  const visitedBlocks = new Set([functionCfg.entry]);
-  const pendingBlocks = [functionCfg.entry];
-  while (pendingBlocks.length > 0) {
-    const currentBlock = pendingBlocks.pop();
-    if (!currentBlock) break;
-    if (currentBlock === targetBlock) return true;
-    for (const edge of currentBlock.successors) {
-      if (visitedBlocks.has(edge.to)) continue;
-      visitedBlocks.add(edge.to);
-      pendingBlocks.push(edge.to);
-    }
-  }
-  return false;
 };
 
 const doMatchingNodesCoverEveryPathAfterUsage = (

@@ -8,8 +8,11 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import { isNodeUnconditionallyExecutedWithinFunction } from "../../utils/is-node-unconditionally-executed-within-function.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -33,7 +36,11 @@ const resolveCalledFunction = (callee: EsTreeNode, context: RuleContext): EsTree
   return candidate && isFunctionLike(candidate) ? candidate : null;
 };
 
-const hasSuspensionBefore = (functionNode: EsTreeNode, boundary: EsTreeNode): boolean => {
+const hasSuspensionBefore = (
+  functionNode: EsTreeNode,
+  boundary: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   if (!isFunctionLike(functionNode)) return true;
   if (functionNode.generator) return true;
   const boundaryStart = getRangeStart(boundary);
@@ -41,7 +48,9 @@ const hasSuspensionBefore = (functionNode: EsTreeNode, boundary: EsTreeNode): bo
   let hasSuspension = false;
   walkAst(functionNode, (node) => {
     if (node !== functionNode && isFunctionLike(node)) return false;
-    if (!isNodeOfType(node, "AwaitExpression")) return;
+    if (!isNodeOfType(node, "AwaitExpression") || !isNodeReachableWithinFunction(node, context)) {
+      return;
+    }
     const suspensionStart = getRangeStart(node);
     if (suspensionStart !== null && suspensionStart < boundaryStart) {
       hasSuspension = true;
@@ -60,6 +69,38 @@ const isFunctionAncestor = (ancestor: EsTreeNode, functionNode: EsTreeNode): boo
   return false;
 };
 
+const functionInvokesTarget = (
+  callerFunction: EsTreeNode,
+  targetFunction: EsTreeNode,
+  context: RuleContext,
+  visitedFunctions: Set<EsTreeNode>,
+): boolean => {
+  if (visitedFunctions.has(callerFunction)) return false;
+  visitedFunctions.add(callerFunction);
+  let invokesTarget = false;
+  walkAst(callerFunction, (node) => {
+    if (node !== callerFunction && isFunctionLike(node)) return false;
+    if (!isNodeOfType(node, "CallExpression")) return;
+    if (
+      !isNodeReachableWithinFunction(node, context) ||
+      !isNodeUnconditionallyExecutedWithinFunction(node) ||
+      hasSuspensionBefore(callerFunction, node, context)
+    ) {
+      return;
+    }
+    const calledFunction = resolveCalledFunction(node.callee, context);
+    if (
+      calledFunction === targetFunction ||
+      (calledFunction &&
+        functionInvokesTarget(calledFunction, targetFunction, context, visitedFunctions))
+    ) {
+      invokesTarget = true;
+      return false;
+    }
+  });
+  return invokesTarget;
+};
+
 const isFunctionInvokedBefore = (
   invokedFunction: EsTreeNode,
   boundary: EsTreeNode,
@@ -74,9 +115,18 @@ const isFunctionInvokedBefore = (
     if (!isNodeOfType(node, "CallExpression")) return;
     const callStart = getRangeStart(node);
     if (
-      callStart !== null &&
-      callStart < boundaryStart &&
-      resolveCalledFunction(node.callee, context) === invokedFunction
+      callStart === null ||
+      callStart >= boundaryStart ||
+      !isNodeReachableWithinFunction(node, context) ||
+      !isNodeUnconditionallyExecutedWithinFunction(node) ||
+      hasSuspensionBefore(boundaryFunction, node, context)
+    ) {
+      return;
+    }
+    const calledFunction = resolveCalledFunction(node.callee, context);
+    if (
+      calledFunction === invokedFunction ||
+      (calledFunction && functionInvokesTarget(calledFunction, invokedFunction, context, new Set()))
     ) {
       isInvokedBefore = true;
       return false;
@@ -92,7 +142,14 @@ const isWriteExecutedBefore = (
 ): boolean => {
   const writeStart = getRangeStart(writeNode);
   const boundaryStart = getRangeStart(boundary);
-  if (writeStart === null || boundaryStart === null) return false;
+  if (
+    writeStart === null ||
+    boundaryStart === null ||
+    !isNodeReachableWithinFunction(writeNode, context) ||
+    !isNodeUnconditionallyExecutedWithinFunction(writeNode)
+  ) {
+    return false;
+  }
   const writeFunction = findEnclosingFunction(writeNode);
   const boundaryFunction = findEnclosingFunction(boundary);
   if (writeFunction === boundaryFunction) return writeStart < boundaryStart;
@@ -101,9 +158,107 @@ const isWriteExecutedBefore = (
     return writeStart < boundaryStart;
   }
   return (
-    !hasSuspensionBefore(writeFunction, writeNode) &&
+    !hasSuspensionBefore(writeFunction, writeNode, context) &&
     isFunctionInvokedBefore(writeFunction, boundary, context)
   );
+};
+
+const getStaticStringValue = (node: EsTreeNode): string | null => {
+  const unwrappedNode = stripParenExpression(node);
+  if (isNodeOfType(unwrappedNode, "Literal") && typeof unwrappedNode.value === "string") {
+    return unwrappedNode.value;
+  }
+  if (isNodeOfType(unwrappedNode, "TemplateLiteral") && unwrappedNode.expressions.length === 0) {
+    return getStaticTemplateLiteralValue(unwrappedNode);
+  }
+  return null;
+};
+
+const isSameRefetchMember = (
+  target: EsTreeNode,
+  candidate: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const unwrappedTarget = stripParenExpression(target);
+  const unwrappedCandidate = stripParenExpression(candidate);
+  if (
+    !isNodeOfType(unwrappedTarget, "Identifier") ||
+    !isNodeOfType(unwrappedCandidate, "MemberExpression") ||
+    !isStaticRefetchMember(unwrappedCandidate)
+  ) {
+    return false;
+  }
+  const candidateTarget = stripParenExpression(unwrappedCandidate.object);
+  if (!isNodeOfType(candidateTarget, "Identifier")) return false;
+  const targetSymbol = resolveConstIdentifierAlias(unwrappedTarget, context.scopes);
+  const candidateSymbol = resolveConstIdentifierAlias(candidateTarget, context.scopes);
+  return Boolean(targetSymbol && candidateSymbol?.id === targetSymbol.id);
+};
+
+const getRefetchMutationTarget = (node: EsTreeNode, context: RuleContext): EsTreeNode | null => {
+  if (isNodeOfType(node, "MemberExpression") && isStaticRefetchMember(node)) {
+    const parent = node.parent;
+    if (
+      isNodeOfType(parent, "AssignmentExpression") &&
+      parent.left === node &&
+      isSameRefetchMember(node.object, parent.right, context)
+    ) {
+      return null;
+    }
+    const isWrite =
+      (isNodeOfType(parent, "AssignmentExpression") && parent.left === node) ||
+      (isNodeOfType(parent, "UpdateExpression") && parent.argument === node) ||
+      (isNodeOfType(parent, "UnaryExpression") && parent.operator === "delete");
+    return isWrite ? node.object : null;
+  }
+  if (!isNodeOfType(node, "CallExpression")) return null;
+  const callee = stripParenExpression(node.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return null;
+  const receiver = stripParenExpression(callee.object);
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    receiver.name !== "Object" ||
+    context.scopes.symbolFor(receiver)
+  ) {
+    return null;
+  }
+  const methodName = getStaticPropertyKeyName(callee, { allowComputedString: true });
+  const target = node.arguments[0];
+  if (!target || isNodeOfType(target, "SpreadElement")) return null;
+  if (methodName === "defineProperty") {
+    const propertyKey = node.arguments[1];
+    if (!propertyKey || getStaticStringValue(propertyKey) !== "refetch") return null;
+    const descriptor = node.arguments[2];
+    if (isNodeOfType(descriptor, "ObjectExpression")) {
+      const valueProperty = descriptor.properties.find(
+        (property) =>
+          isNodeOfType(property, "Property") &&
+          getStaticPropertyKeyName(property, { allowComputedString: true }) === "value",
+      );
+      if (
+        isNodeOfType(valueProperty, "Property") &&
+        isSameRefetchMember(target, valueProperty.value, context)
+      ) {
+        return null;
+      }
+    }
+    return target;
+  }
+  if (methodName !== "assign") return null;
+  let finalRefetchValue: EsTreeNode | null = null;
+  for (const source of node.arguments.slice(1)) {
+    if (!isNodeOfType(source, "ObjectExpression")) continue;
+    for (const property of source.properties) {
+      if (
+        isNodeOfType(property, "Property") &&
+        getStaticPropertyKeyName(property, { allowComputedString: true }) === "refetch"
+      ) {
+        finalRefetchValue = property.value;
+      }
+    }
+  }
+  if (!finalRefetchValue || isSameRefetchMember(target, finalRefetchValue, context)) return null;
+  return target;
 };
 
 const hasRefetchMemberWriteBefore = (
@@ -121,15 +276,10 @@ const hasRefetchMemberWriteBefore = (
   if (boundaryStart === null) return true;
   let hasWrite = false;
   walkAst(program, (node) => {
-    if (!isNodeOfType(node, "MemberExpression") || !isStaticRefetchMember(node)) return;
+    const mutationTarget = getRefetchMutationTarget(node, context);
+    if (!mutationTarget) return;
     if (!isWriteExecutedBefore(node, boundary, context)) return;
-    const parent = node.parent;
-    const isWrite =
-      (isNodeOfType(parent, "AssignmentExpression") && parent.left === node) ||
-      (isNodeOfType(parent, "UpdateExpression") && parent.argument === node) ||
-      (isNodeOfType(parent, "UnaryExpression") && parent.operator === "delete");
-    if (!isWrite) return;
-    const object = stripParenExpression(node.object);
+    const object = stripParenExpression(mutationTarget);
     if (!isNodeOfType(object, "Identifier")) return;
     const writtenSymbol = resolveConstIdentifierAlias(object, context.scopes);
     if (writtenSymbol?.id === resultSymbol.id) {

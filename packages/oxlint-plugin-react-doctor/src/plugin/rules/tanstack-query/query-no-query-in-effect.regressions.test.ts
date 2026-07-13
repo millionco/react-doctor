@@ -282,6 +282,53 @@ function Search({ customRefetch }) {
     expect(diagnostics).toHaveLength(0);
   });
 
+  it("stays silent when an invoked wrapper synchronously calls the overwrite helper", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; };
+  const wrapper = () => { overwriteRefetch(); };
+  useEffect(() => { wrapper(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent through aliased two-hop overwrite helpers", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; };
+  const exactOverwrite = overwriteRefetch;
+  const wrapper = () => { exactOverwrite(); };
+  const exactWrapper = wrapper;
+  useEffect(() => { exactWrapper(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags refetch when a two-hop overwrite wrapper is invoked afterward", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; };
+  const wrapper = () => { overwriteRefetch(); };
+  useEffect(() => { query.refetch(); wrapper(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("flags refetch when an effect invokes the overwrite helper afterward", () => {
     const { diagnostics } = runRule(
       queryNoQueryInEffect,
@@ -304,6 +351,188 @@ function Search({ customRefetch }) {
   const query = useQuery({ queryKey: ["items"] });
   const overwriteRefetch = async () => { await pause(); query.refetch = customRefetch; };
   useEffect(() => { overwriteRefetch(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when an invoked helper contains a statically unreachable overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { if (false) query.refetch = customRefetch; };
+  useEffect(() => { overwriteRefetch(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when an invoked helper only conditionally overwrites", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch, shouldOverwrite }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { if (shouldOverwrite) query.refetch = customRefetch; };
+  useEffect(() => { overwriteRefetch(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when a wrapper only conditionally invokes the overwrite helper", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch, shouldOverwrite }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; };
+  const wrapper = () => { if (shouldOverwrite) overwriteRefetch(); };
+  useEffect(() => { wrapper(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when an invoked helper returns before its overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { return; query.refetch = customRefetch; };
+  useEffect(() => { overwriteRefetch(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when an invoked helper throws before its overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { throw new Error("stop"); query.refetch = customRefetch; };
+  useEffect(() => { overwriteRefetch(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when a reachable overwrite precedes an early return", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const overwriteRefetch = () => { query.refetch = customRefetch; return; };
+  useEffect(() => { overwriteRefetch(); query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent after Object.assign overwrites refetch", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  Object.assign(query, { refetch: customRefetch });
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent after Object.defineProperty overwrites refetch", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  Object.defineProperty(query, \`refetch\`, { value: customRefetch });
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags refetch before a later Object.assign overwrite", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => { query.refetch(); Object.assign(query, { refetch: customRefetch }); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch after a no-op self assignment", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search() {
+  const query = useQuery({ queryKey: ["items"] });
+  query.refetch = query.refetch;
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when Object.assign restores the original method last", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  Object.assign(query, { refetch: customRefetch }, { refetch: query.refetch });
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when defineProperty preserves the original method", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search() {
+  const query = useQuery({ queryKey: ["items"] });
+  Object.defineProperty(query, "refetch", { value: query.refetch });
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags refetch when a local Object shadows the global mutation API", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch, Object }) {
+  const query = useQuery({ queryKey: ["items"] });
+  Object.assign(query, { refetch: customRefetch });
+  useEffect(() => { query.refetch(); }, [query]);
   return null;
 }`,
     );

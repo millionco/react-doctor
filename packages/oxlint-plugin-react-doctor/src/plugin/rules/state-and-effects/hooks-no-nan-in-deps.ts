@@ -57,7 +57,7 @@ export const hooksNoNanInDeps = defineRule({
       if (!depsArgument || !isNodeOfType(depsArgument, "ArrayExpression")) return;
       for (const element of depsArgument.elements) {
         if (!element) continue;
-        if (!isNodeOfType(element, "SpreadElement") && isGlobalNanValue(element, context.scopes)) {
+        if (isGlobalNanValue(element, context.scopes)) {
           context.report({ node: element, message: NAN_MESSAGE });
         }
       }

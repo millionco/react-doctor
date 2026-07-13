@@ -11,7 +11,7 @@ export const hasStableCallTarget = (callExpression: EsTreeNode, scopes: ScopeAna
   const callee = stripParenExpression(callExpression.callee);
   if (isNodeOfType(callee, "Identifier")) {
     const symbol = scopes.symbolFor(callee);
-    return Boolean(symbol && !hasSymbolWriteBefore(symbol, callee));
+    return Boolean(symbol && !hasSymbolWriteBefore(symbol, callee, scopes));
   }
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const propertyName = getStaticPropertyName(callee);

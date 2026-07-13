@@ -117,7 +117,7 @@ const findDirectCall = (identifier: EsTreeNode): EsTreeNode | null => {
     : null;
 };
 
-const isFunctionSynchronouslyInvokedBefore = (
+export const isFunctionSynchronouslyInvokedBefore = (
   functionNode: EsTreeNode,
   referenceNode: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -126,7 +126,6 @@ const isFunctionSynchronouslyInvokedBefore = (
   if (
     visitedFunctionNodes.has(functionNode) ||
     !isFunctionLike(functionNode) ||
-    functionNode.async ||
     functionNode.generator
   ) {
     return false;
@@ -150,7 +149,7 @@ const isFunctionSynchronouslyInvokedBefore = (
   return invocationCalls.some((call) => {
     if (call.range[0] >= referenceNode.range[0]) return false;
     const callBoundary = findExecutionBoundary(call);
-    if (!callBoundary || !isOnUnconditionalPath(call, callBoundary)) return false;
+    if (!callBoundary) return false;
     if (callBoundary === referenceBoundary) return true;
     if (!isFunctionLike(callBoundary)) return false;
     return isFunctionSynchronouslyInvokedBefore(

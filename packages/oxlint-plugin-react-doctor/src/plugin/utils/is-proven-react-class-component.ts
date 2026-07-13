@@ -39,7 +39,11 @@ const isReactComponentClassValue = (
   }
   if (!isNodeOfType(expression, "Identifier")) return false;
   const symbol = scopes.symbolFor(expression);
-  if (!symbol || visitedSymbolIds.has(symbol.id) || hasSymbolWriteBefore(symbol, expression)) {
+  if (
+    !symbol ||
+    visitedSymbolIds.has(symbol.id) ||
+    hasSymbolWriteBefore(symbol, expression, scopes)
+  ) {
     return false;
   }
   visitedSymbolIds.add(symbol.id);

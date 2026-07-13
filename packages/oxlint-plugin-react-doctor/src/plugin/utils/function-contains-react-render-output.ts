@@ -55,7 +55,7 @@ const isProvenArrayProducerCall = (node: EsTreeNode, scopes: ScopeAnalysis): boo
   const callee = stripParenExpression(node.callee);
   if (!isNodeOfType(callee, "Identifier")) return false;
   const symbol = scopes.symbolFor(callee);
-  if (!symbol || hasSymbolWriteBefore(symbol, callee)) return false;
+  if (!symbol || hasSymbolWriteBefore(symbol, callee, scopes)) return false;
   if (
     !isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier") &&
     !isNodeOfType(symbol.declarationNode, "ImportSpecifier")
@@ -87,7 +87,11 @@ const isProvenArrayExpression = (
   if (isProvenArrayProducerCall(candidate, scopes)) return true;
   if (!isNodeOfType(candidate, "Identifier")) return false;
   const symbol = scopes.symbolFor(candidate);
-  if (!symbol || visitedSymbolIds.has(symbol.id) || hasSymbolWriteBefore(symbol, referenceNode)) {
+  if (
+    !symbol ||
+    visitedSymbolIds.has(symbol.id) ||
+    hasSymbolWriteBefore(symbol, referenceNode, scopes)
+  ) {
     return false;
   }
   if (hasArrayTypeAnnotation(symbol.bindingIdentifier)) return true;

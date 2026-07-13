@@ -161,6 +161,7 @@ export const LIBRARY_SNIPPET_POOL = [
 export const MODULE_SCOPE_SNIPPET_POOL = [
   `const GLOBAL_CACHE = new Map<string, unknown>();`,
   `const FuzzPropTypesPanel = ({ value }) => <div>{value}</div>; FuzzPropTypesPanel.propTypes = { value: () => true };`,
+  `function FuzzNestedWritePanel() { return <div />; } function unusedFuzzNestedWrite() { FuzzNestedWritePanel = () => null; } FuzzNestedWritePanel.propTypes = { value: () => true };`,
   `const FuzzRenamedChildrenPanel = ({ children: content = null }) => content; FuzzRenamedChildrenPanel.propTypes = { children: () => true };`,
   `const FuzzNestedChildrenSchema = ({ children: { value } }) => value; FuzzNestedChildrenSchema.propTypes = { value: () => true };`,
   `const FuzzReassignedChildrenSchema = ({ children }) => { children = { value: true }; return children; }; FuzzReassignedChildrenSchema.propTypes = { value: () => true };`,

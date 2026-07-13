@@ -39,7 +39,11 @@ const isProvenReactComponentExpression = (
   if (isProvenStyledComponentExpression(candidate, scopes)) return true;
   if (isNodeOfType(candidate, "Identifier")) {
     const symbol = scopes.symbolFor(candidate);
-    if (!symbol || visitedSymbolIds.has(symbol.id) || hasSymbolWriteBefore(symbol, candidate)) {
+    if (
+      !symbol ||
+      visitedSymbolIds.has(symbol.id) ||
+      hasSymbolWriteBefore(symbol, candidate, scopes)
+    ) {
       return false;
     }
     visitedSymbolIds.add(symbol.id);
@@ -106,7 +110,7 @@ export const isProvenReactComponentSymbol = (
         )
       : [symbol];
   for (const candidateSymbol of candidateSymbols) {
-    if (hasSymbolWriteBefore(candidateSymbol, componentReference)) continue;
+    if (hasSymbolWriteBefore(candidateSymbol, componentReference, scopes)) continue;
     if (isComponentDeclaration(candidateSymbol.declarationNode)) {
       if (functionHasComponentEvidence(candidateSymbol.declarationNode, scopes)) return true;
       continue;

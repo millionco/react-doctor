@@ -45,7 +45,7 @@ export const functionReturnsPropsChildren = (
       return Boolean(
         symbol &&
         childrenBindingSymbolIds.has(symbol.id) &&
-        !hasSymbolWriteBefore(symbol, candidate),
+        !hasSymbolWriteBefore(symbol, candidate, scopes),
       );
     }
     if (!isNodeOfType(candidate, "MemberExpression")) return false;
@@ -56,7 +56,7 @@ export const functionReturnsPropsChildren = (
     if (!receiverSymbol || !propsParameterSymbol) return false;
     return (
       receiverSymbol.id === propsParameterSymbol.id &&
-      !hasSymbolWriteBefore(receiverSymbol, candidate) &&
+      !hasSymbolWriteBefore(receiverSymbol, candidate, scopes) &&
       !hasStaticPropertyWriteBefore(receiver, "children", candidate, scopes)
     );
   });

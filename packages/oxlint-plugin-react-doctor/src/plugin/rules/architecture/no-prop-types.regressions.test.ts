@@ -140,6 +140,41 @@ describe("architecture/no-prop-types component provenance", () => {
     );
   });
 
+  it("reports components whose nested binding writes cannot run before propTypes", () => {
+    expectDiagnosticCount(
+      `function Panel() { return <div />; }
+       function neverCalled() { Panel = () => null; }
+       Panel.propTypes = { value: () => true };
+       let Dialog = () => <div />;
+       const mutateDialog = () => { Dialog = () => null; };
+       Dialog.propTypes = { value: () => true };
+       mutateDialog();
+       let Sheet = () => <div />;
+       const mutateSheet = () => { Sheet = () => null; };
+       setTimeout(mutateSheet, 0);
+       Sheet.propTypes = { value: () => true };`,
+      3,
+    );
+  });
+
+  it("keeps components quiet when nested binding writes run before propTypes", () => {
+    expectDiagnosticCount(
+      `function Panel() { return <div />; }
+       function mutatePanel() { Panel = () => null; }
+       if (shouldMutate) mutatePanel();
+       Panel.propTypes = { value: () => true };
+       let Dialog = () => <div />;
+       const mutateDialog = async () => { Dialog = () => null; };
+       const mutateDialogAlias = mutateDialog;
+       void mutateDialogAlias();
+       Dialog.propTypes = { value: () => true };
+       let Sheet = () => <div />;
+       (() => { Sheet = () => null; })();
+       Sheet.propTypes = { value: () => true };`,
+      0,
+    );
+  });
+
   it("preserves component values captured before a later reassignment", () => {
     expectDiagnosticCount(
       `function Panel() { return <div />; }

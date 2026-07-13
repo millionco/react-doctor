@@ -138,6 +138,7 @@ export const stylePropObject = defineRule({
   recommendation:
     "Pass `style` as an object so React can apply CSS properties instead of ignoring a string style value.",
   category: "Correctness",
+  tags: ["react-jsx-only"],
   create: (context) => {
     const { allow } = resolveSettings(context.settings);
     const allowSet = new Set(allow);

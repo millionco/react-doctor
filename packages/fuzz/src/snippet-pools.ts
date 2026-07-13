@@ -39,6 +39,7 @@ export const EFFECT_SNIPPET_POOL = [
   `useEffect(() => store.subscribe(handle), []);`,
   `useLayoutEffect(() => { const rect = containerRef.current?.getBoundingClientRect(); if (rect) setState(rect.width); }, []);`,
   `useEffect(() => { const objectUrl = URL.createObjectURL(blob); setState(objectUrl); return () => URL.revokeObjectURL(objectUrl); }, [blob]);`,
+  `const outsideActionEvents = ["mousedown", "focusin", "touchstart"] as const; useEffect(() => { for (const event of outsideActionEvents) document.addEventListener(event, handle); return () => { for (const event of outsideActionEvents) document.removeEventListener(event, handle); }; }, [handle]);`,
   `const onTick = useEffectEvent(() => handle(value)); useEffect(() => { onTick(); }, [onTick]);`,
   `const [phase, setPhase] = useState(""); const [total, setTotal] = useState(0); const [ready, setReady] = useState(false); useEffect(() => { setPhase("sync"); setTotal(items.length); setReady(true); }, [items]);`,
   `const [snapshot, setSnapshot] = useState(sharedSnapshot); useEffect(() => subscribeSnapshot(setSnapshot), []);`,

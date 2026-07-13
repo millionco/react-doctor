@@ -413,13 +413,41 @@ const removeSynchronouslyReleasedUsages = (
   });
 };
 
+const findForOfStatementForIteratorExpression = (
+  expression: EsTreeNode | null | undefined,
+  context: RuleContext,
+): EsTreeNodeOfType<"ForOfStatement"> | null => {
+  if (!expression) return null;
+  const unwrappedExpression = stripParenExpression(expression);
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
+  const symbol = context.scopes.symbolFor(unwrappedExpression);
+  const bindingDeclarator = symbol?.bindingIdentifier.parent;
+  const bindingDeclaration = bindingDeclarator?.parent;
+  const forOfStatement = bindingDeclaration?.parent;
+  return symbol &&
+    isNodeOfType(bindingDeclarator, "VariableDeclarator") &&
+    bindingDeclarator.id === symbol.bindingIdentifier &&
+    isNodeOfType(bindingDeclaration, "VariableDeclaration") &&
+    bindingDeclaration.declarations.length === 1 &&
+    isNodeOfType(forOfStatement, "ForOfStatement") &&
+    forOfStatement.left === bindingDeclaration &&
+    forOfStatement.await !== true
+    ? forOfStatement
+    : null;
+};
+
 const resolveIteratorCollectionKey = (
   expression: EsTreeNode | null | undefined,
   context: RuleContext,
 ): string | null => {
-  if (!expression || !isNodeOfType(expression, "Identifier")) return null;
-  const symbol = context.scopes.symbolFor(expression);
-  if (!symbol || symbol.kind !== "parameter") return null;
+  if (!expression) return null;
+  const unwrappedExpression = stripParenExpression(expression);
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
+  const forOfStatement = findForOfStatementForIteratorExpression(unwrappedExpression, context);
+  if (forOfStatement) return resolveExpressionKey(forOfStatement.right, context);
+  const symbol = context.scopes.symbolFor(unwrappedExpression);
+  if (!symbol) return null;
+  if (symbol.kind !== "parameter") return null;
   let callbackNode: EsTreeNode | null | undefined = symbol.bindingIdentifier.parent;
   while (callbackNode && !isFunctionLike(callbackNode)) callbackNode = callbackNode.parent;
   if (!callbackNode || !isFunctionLike(callbackNode)) return null;
@@ -798,8 +826,28 @@ const doesCleanupFunctionReleaseUsage = (
       return false;
     }
     if (doesReleaseCallMatchUsage(cleanupChild, usage, context)) {
-      didCleanupFunctionMatch = true;
-      return false;
+      const cleanupCall = isNodeOfType(cleanupChild, "ChainExpression")
+        ? cleanupChild.expression
+        : cleanupChild;
+      const cleanupEventArgument = isNodeOfType(cleanupCall, "CallExpression")
+        ? cleanupCall.arguments?.[0]
+        : null;
+      const cleanupForOfStatement = findForOfStatementForIteratorExpression(
+        cleanupEventArgument,
+        context,
+      );
+      if (
+        !cleanupForOfStatement ||
+        doMatchingNodesCoverEveryPathFromFunctionEntry(
+          cleanupFunction,
+          [cleanupForOfStatement],
+          context,
+        )
+      ) {
+        didCleanupFunctionMatch = true;
+        return false;
+      }
+      return;
     }
     const helperCall = isNodeOfType(cleanupChild, "ChainExpression")
       ? cleanupChild.expression

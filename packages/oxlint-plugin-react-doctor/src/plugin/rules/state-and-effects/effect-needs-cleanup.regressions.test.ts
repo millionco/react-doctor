@@ -702,6 +702,129 @@ export const DevServer = ({ app }) => {
   });
 });
 
+describe("effect-needs-cleanup — for-of listener pairs", () => {
+  it("accepts matching listener setup and cleanup loops over the same event collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin", "touchstart"] as const;
+export const OutsideAction = ({ isOpen, onOutsideAction, onKeyDown }) => {
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      for (const event of outsideActionEvents) {
+        document.removeEventListener(event, onOutsideAction);
+      }
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isOpen, onKeyDown, onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts transparent wrappers and a stable alias of the same event collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin", "touchstart"] as const;
+export const OutsideAction = ({ onOutsideAction }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event as keyof DocumentEventMap, onOutsideAction);
+    }
+    const cleanupEvents = outsideActionEvents;
+    return () => {
+      for (const event of cleanupEvents) {
+        document.removeEventListener((event), onOutsideAction);
+      }
+    };
+  }, [onOutsideAction]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "different iterable",
+      cleanup:
+        "for (const event of keyboardEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "different target",
+      cleanup:
+        "for (const event of outsideActionEvents) window.removeEventListener(event, onOutsideAction);",
+    },
+    {
+      name: "different handler",
+      cleanup:
+        "for (const event of outsideActionEvents) document.removeEventListener(event, onOtherAction);",
+    },
+    {
+      name: "different event",
+      cleanup:
+        'for (const event of outsideActionEvents) document.removeEventListener("keydown", onOutsideAction);',
+    },
+    {
+      name: "conditional cleanup",
+      cleanup:
+        "if (shouldCleanup) for (const event of outsideActionEvents) document.removeEventListener(event, onOutsideAction);",
+    },
+  ])("rejects a $name loop cleanup", ({ cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const outsideActionEvents = ["mousedown", "focusin", "touchstart"] as const;
+const keyboardEvents = ["keydown"] as const;
+export const OutsideAction = ({ onOutsideAction, onOtherAction, shouldCleanup }) => {
+  useEffect(() => {
+    for (const event of outsideActionEvents) {
+      document.addEventListener(event, onOutsideAction);
+    }
+    return () => {
+      ${cleanup}
+    };
+  }, [onOtherAction, onOutsideAction, shouldCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a destructured cleanup loop until element identity can be proven", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const listenerEntries = [["mousedown", onMouseDown], ["focusin", onFocusIn]] as const;
+export const OutsideAction = () => {
+  useEffect(() => {
+    for (const [event, handler] of listenerEntries) {
+      document.addEventListener(event, handler);
+    }
+    return () => {
+      for (const [event, handler] of listenerEntries) {
+        document.removeEventListener(event, handler);
+      }
+    };
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).not.toHaveLength(0);
+  });
+});
+
 describe("effect-needs-cleanup adversarial edge cases (observers / connections / retained functions)", () => {
   it("flags an observer registered through a nested helper with no cleanup", () => {
     const result = runRule(

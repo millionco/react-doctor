@@ -645,6 +645,22 @@ const getTypeAnnotation = (node: EsTreeNode | null | undefined): EsTreeNode | nu
   return annotation.typeAnnotation;
 };
 
+const getDeclaredPropertyType = (
+  members: ReadonlyArray<EsTreeNode>,
+  propertyName: string,
+): EsTreeNode | null => {
+  for (const member of members) {
+    if (
+      isNodeOfType(member, "TSPropertySignature") &&
+      isNodeOfType(member.key, "Identifier") &&
+      member.key.name === propertyName
+    ) {
+      return getTypeAnnotation(member);
+    }
+  }
+  return null;
+};
+
 const getArrayElementType = (typeNode: EsTreeNode | null): EsTreeNode | null => {
   if (!typeNode) return null;
   if (isNodeOfType(typeNode, "TSArrayType")) return typeNode.elementType;
@@ -677,8 +693,11 @@ const getDestructuredDeclaredType = (
     return null;
   }
   const propsType = getTypeAnnotation(objectPattern);
+  if (!propsType) return null;
+  if (isNodeOfType(propsType, "TSTypeLiteral")) {
+    return getDeclaredPropertyType(propsType.members ?? [], property.key.name);
+  }
   if (
-    !propsType ||
     !isNodeOfType(propsType, "TSTypeReference") ||
     !isNodeOfType(propsType.typeName, "Identifier")
   ) {
@@ -691,21 +710,19 @@ const getDestructuredDeclaredType = (
       ? statement.declaration
       : statement;
     if (
-      !declaration ||
-      !isNodeOfType(declaration, "TSInterfaceDeclaration") ||
-      !isNodeOfType(declaration.id, "Identifier") ||
-      declaration.id.name !== propsType.typeName.name
+      isNodeOfType(declaration, "TSInterfaceDeclaration") &&
+      isNodeOfType(declaration.id, "Identifier") &&
+      declaration.id.name === propsType.typeName.name
     ) {
-      continue;
+      return getDeclaredPropertyType(declaration.body.body, property.key.name);
     }
-    for (const member of declaration.body.body) {
-      if (
-        isNodeOfType(member, "TSPropertySignature") &&
-        isNodeOfType(member.key, "Identifier") &&
-        member.key.name === property.key.name
-      ) {
-        return getTypeAnnotation(member);
-      }
+    if (
+      isNodeOfType(declaration, "TSTypeAliasDeclaration") &&
+      isNodeOfType(declaration.id, "Identifier") &&
+      declaration.id.name === propsType.typeName.name &&
+      isNodeOfType(declaration.typeAnnotation, "TSTypeLiteral")
+    ) {
+      return getDeclaredPropertyType(declaration.typeAnnotation.members ?? [], property.key.name);
     }
   }
   return null;
@@ -720,6 +737,14 @@ const getIdentifierDeclaredType = (
   visitedBindingIdentifiers.add(binding.bindingIdentifier);
   const directType = getTypeAnnotation(binding.bindingIdentifier);
   if (directType) return directType;
+  const initializer = binding.initializer;
+  if (
+    isNodeOfType(initializer, "TSAsExpression") ||
+    isNodeOfType(initializer, "TSTypeAssertion") ||
+    isNodeOfType(initializer, "TSSatisfiesExpression")
+  ) {
+    return initializer.typeAnnotation;
+  }
   const destructuredType = getDestructuredDeclaredType(identifier);
   if (destructuredType) return destructuredType;
   const declarator = binding.bindingIdentifier.parent;
@@ -743,11 +768,22 @@ const isNativeIterationIndex = (identifier: EsTreeNodeOfType<"Identifier">): boo
   const binding = findVariableInitializer(identifier, identifier.name);
   if (!binding) return false;
   const callback = binding.bindingIdentifier.parent;
-  if (!isInlineFunctionExpression(callback) || callback.params?.[1] !== binding.bindingIdentifier) {
+  if (!isInlineFunctionExpression(callback)) return false;
+  const callbackCall = callback.parent;
+  if (
+    !isNodeOfType(callbackCall, "CallExpression") ||
+    !isIterationCallbackCall(callbackCall) ||
+    !isNodeOfType(callbackCall.callee, "MemberExpression") ||
+    !isNodeOfType(callbackCall.callee.property, "Identifier")
+  ) {
     return false;
   }
-  const callbackCall = callback.parent;
-  return isNodeOfType(callbackCall, "CallExpression") && isIterationCallbackCall(callbackCall);
+  const indexParameterPosition =
+    callbackCall.callee.property.name === "reduce" ||
+    callbackCall.callee.property.name === "reduceRight"
+      ? 2
+      : 1;
+  return callback.params?.[indexParameterPosition] === binding.bindingIdentifier;
 };
 
 const hasSameIdentifierBinding = (
@@ -906,6 +942,10 @@ const isKnownUserlandMembershipReceiver = (receiver: EsTreeNode, methodName: str
   ) {
     return false;
   }
+  const typeAlias = findSameFileTypeAlias(receiver, declaredType.typeName.name);
+  if (typeAlias && isNodeOfType(typeAlias.typeAnnotation, "TSTypeLiteral")) {
+    return hasDeclaredMembershipMethod(typeAlias.typeAnnotation.members ?? [], methodName);
+  }
   const program = findProgramRoot(receiver);
   if (!program) return false;
   for (const statement of program.body) {
@@ -930,7 +970,11 @@ const findTypeParameter = (
 ): EsTreeNodeOfType<"TSTypeParameter"> | null => {
   let ancestor: EsTreeNode | null | undefined = reference.parent;
   while (ancestor) {
-    if (isInlineFunctionExpression(ancestor) || isNodeOfType(ancestor, "FunctionDeclaration")) {
+    if (
+      isFunctionLike(ancestor) ||
+      isNodeOfType(ancestor, "ClassDeclaration") ||
+      isNodeOfType(ancestor, "ClassExpression")
+    ) {
       const matchingTypeParameter = ancestor.typeParameters?.params?.find(
         (typeParameter) =>
           isNodeOfType(typeParameter, "TSTypeParameter") &&

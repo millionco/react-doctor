@@ -2,14 +2,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { jsSetMapLookups } from "./js-set-map-lookups.js";
 
-const expectFail = (code: string): void => {
-  const result = runRule(jsSetMapLookups, code);
+const expectFail = (code: string, filename = "fixture.tsx"): void => {
+  const result = runRule(jsSetMapLookups, code, { filename });
   expect(result.parseErrors).toEqual([]);
   expect(result.diagnostics.length).toBeGreaterThan(0);
 };
 
-const expectPass = (code: string): void => {
-  const result = runRule(jsSetMapLookups, code);
+const expectPass = (code: string, filename = "fixture.tsx"): void => {
+  const result = runRule(jsSetMapLookups, code, { filename });
   expect(result.parseErrors).toEqual([]);
   expect(result.diagnostics).toHaveLength(0);
 };
@@ -639,5 +639,159 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
         return elements.filter((element) => types.includes(element.type));
       }`,
     );
+  });
+
+  it("does not treat a reduce value parameter as a numeric iteration index", () => {
+    expectPass(
+      `function f(values: number[], allowed: number[]){ return values.reduce((result, value) => allowed.indexOf(value) !== -1 ? result + 1 : result, 0); }`,
+    );
+  });
+
+  it("flags a numeric indexOf query using a reduce iteration index", () => {
+    expectFail(
+      `function f(values, selectedIndices: number[]){ return values.reduce((result, value, index) => selectedIndices.indexOf(index) !== -1 ? result + value : result, 0); }`,
+    );
+  });
+
+  it("does not flag indexOf on a class-level numeric generic domain", () => {
+    expectPass(`
+      class Collection<T extends number> {
+        find(candidates: T[], allowed: T[]) {
+          return candidates.filter((candidate) => allowed.indexOf(candidate) !== -1);
+        }
+      }
+    `);
+  });
+
+  it("flags indexOf on a class-level string generic domain", () => {
+    expectFail(`
+      class Collection<T extends string> {
+        find(candidates: T[], allowed: T[]) {
+          return candidates.filter((candidate) => allowed.indexOf(candidate) !== -1);
+        }
+      }
+    `);
+  });
+
+  it("does not flag a numeric query extracted from a readonly array", () => {
+    expectPass(`
+      function f(candidates: readonly number[], allowed: number[]) {
+        for (const candidate of candidates) {
+          if (allowed.indexOf(candidate) !== -1) return candidate;
+        }
+      }
+    `);
+  });
+
+  it("does not flag an untyped query against a numeric array cast", () => {
+    expectPass(`
+      function f(candidates, values) {
+        const allowed = values as number[];
+        return candidates.filter((candidate) => allowed.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("flags a string query against a string array cast", () => {
+    expectFail(`
+      function f(candidates: string[], values) {
+        const allowed = values as string[];
+        return candidates.filter((candidate) => allowed.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("does not flag an untyped query against a numeric array type assertion", () => {
+    expectPass(
+      `function f(candidates, values) {
+        const allowed = <number[]>values;
+        return candidates.filter((candidate) => allowed.indexOf(candidate) !== -1);
+      }`,
+      "fixture.ts",
+    );
+  });
+
+  it("flags a string query against a string array type assertion", () => {
+    expectFail(
+      `function f(candidates: string[], values) {
+        const allowed = <string[]>values;
+        return candidates.filter((candidate) => allowed.indexOf(candidate) !== -1);
+      }`,
+      "fixture.ts",
+    );
+  });
+
+  it("does not flag an untyped query against a numeric satisfies constraint", () => {
+    expectPass(`
+      function f(candidates, values) {
+        const allowed = values satisfies number[];
+        return candidates.filter((candidate) => allowed.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("flags a string query against a string satisfies constraint", () => {
+    expectFail(`
+      function f(candidates: string[], values) {
+        const allowed = values satisfies string[];
+        return candidates.filter((candidate) => allowed.indexOf(candidate) !== -1);
+      }
+    `);
+  });
+
+  it("does not flag a same-file type-alias userland membership receiver", () => {
+    expectPass(`
+      type Matcher = { includes(value: string): boolean };
+      function f(candidates: string[], matcher: Matcher) {
+        return candidates.filter((candidate) => matcher.includes(candidate));
+      }
+    `);
+  });
+
+  it("flags a same-file type alias of a native array receiver", () => {
+    expectFail(`
+      type Values = string[];
+      function f(candidates: string[], values: Values) {
+        return candidates.filter((candidate) => values.includes(candidate));
+      }
+    `);
+  });
+
+  it("does not flag a destructured userland receiver declared through type aliases", () => {
+    expectPass(`
+      type Matcher = { includes(value: string): boolean };
+      type Props = { matcher: Matcher };
+      function f(candidates: string[], { matcher }: Props) {
+        return candidates.filter((candidate) => matcher.includes(candidate));
+      }
+    `);
+  });
+
+  it("flags a destructured native array receiver declared through a type alias", () => {
+    expectFail(`
+      type Props = { values: string[] };
+      function f(candidates: string[], { values }: Props) {
+        return candidates.filter((candidate) => values.includes(candidate));
+      }
+    `);
+  });
+
+  it("does not flag a destructured userland receiver declared through an inline type", () => {
+    expectPass(`
+      function f(
+        candidates: string[],
+        { matcher }: { matcher: { includes(value: string): boolean } },
+      ) {
+        return candidates.filter((candidate) => matcher.includes(candidate));
+      }
+    `);
+  });
+
+  it("flags a destructured native array receiver declared through an inline type", () => {
+    expectFail(`
+      function f(candidates: string[], { values }: { values: string[] }) {
+        return candidates.filter((candidate) => values.includes(candidate));
+      }
+    `);
   });
 });

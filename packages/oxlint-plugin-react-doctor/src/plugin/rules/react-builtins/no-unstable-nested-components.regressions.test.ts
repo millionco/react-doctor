@@ -6,6 +6,93 @@ const run = (code: string) =>
   runRule(noUnstableNestedComponents, code, { filename: "fixture.tsx" });
 
 describe("react-builtins/no-unstable-nested-components — regressions", () => {
+  it("stays silent on an authentic Solid nested component with local signal state", () => {
+    const result = run(`
+      import { createSignal, Show } from "solid-js";
+      const DialogConnectProvider = () => {
+        const ProviderOption = (props) => {
+          const [attempts, setAttempts] = createSignal(0);
+          return <button onClick={() => setAttempts(attempts() + 1)}>{props.name}: {attempts()}</button>;
+        };
+        return <Show when={true}><ProviderOption name="OpenCode" /></Show>;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when solid-js/web establishes renderer ownership", () => {
+    const result = run(`
+      import { render } from "solid-js/web";
+      const App = () => {
+        const Child = () => <div>Solid</div>;
+        return <Child />;
+      };
+      render(() => <App />, document.body);
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a Solid runtime subpath import", () => {
+    const result = run(`
+      import { createStore } from "solid-js/store";
+      const App = () => {
+        const Child = () => <div>Solid</div>;
+        return <Child />;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a later classList attribute proves Solid JSX ownership", () => {
+    const result = run(`
+      const App = () => {
+        const Child = () => <div>Solid</div>;
+        return <main><Child /><div classList={{ active: true }} /></main>;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports the same nested component in an explicitly React-owned file", () => {
+    const result = run(`
+      import { useState } from "react";
+      const App = () => {
+        const Child = () => {
+          const [count] = useState(0);
+          return <div>{count}</div>;
+        };
+        return <Child />;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a nested component when JSX ownership is ambiguous", () => {
+    const result = run(`
+      const App = () => {
+        const Child = () => <div>Ambiguous</div>;
+        return <Child />;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps module-scope Solid and React components quiet", () => {
+    const solidResult = run(`
+      import { createSignal } from "solid-js";
+      const Child = () => <div>Solid</div>;
+      const App = () => <Child />;
+    `);
+    const reactResult = run(`
+      import { useState } from "react";
+      const Child = () => <div>React</div>;
+      const App = () => <Child />;
+    `);
+    expect(solidResult.diagnostics).toEqual([]);
+    expect(reactResult.diagnostics).toEqual([]);
+  });
+
   it("flags a nested PascalCase component rendered as JSX", () => {
     const result = run(`
       const Parent = () => {

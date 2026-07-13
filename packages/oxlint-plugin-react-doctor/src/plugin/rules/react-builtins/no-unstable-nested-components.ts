@@ -424,6 +424,7 @@ export const noUnstableNestedComponents = defineRule({
   recommendation:
     "Move nested components to module scope so React does not remount them and lose state on every render.",
   category: "Performance",
+  tags: ["react-jsx-only"],
   create: (context) => {
     const settings = resolveSettings(context.settings);
     const renderPropRegex = compileGlob(settings.propNamePattern);

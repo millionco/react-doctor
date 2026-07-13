@@ -1,6 +1,5 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { hasStaticPropertyWriteBefore } from "./has-static-property-write-before.js";
 import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";

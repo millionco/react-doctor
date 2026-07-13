@@ -379,19 +379,19 @@ describe("no-effect-chain — regressions", () => {
   it.each([
     [
       "inline arrow",
-      "useEffect(async () => { const response = await fetch('/api/value'); setTarget(await response.json()); }, [source]);",
+      "useEffect(async () => { setTarget(await loadTargetValue(source)); }, [source]);",
     ],
     [
       "named declaration",
-      "async function synchronizeTarget() { const response = await fetch('/api/value'); setTarget(await response.json()); } useEffect(synchronizeTarget, [source]);",
+      "async function synchronizeTarget() { setTarget(await loadTargetValue(source)); } useEffect(synchronizeTarget, [source]);",
     ],
     [
       "exact alias",
-      "const synchronizeTarget = async () => { const response = await fetch('/api/value'); setTarget(await response.json()); }; const effectCallback = synchronizeTarget; useEffect(effectCallback, [source]);",
+      "const synchronizeTarget = async () => { setTarget(await loadTargetValue(source)); }; const effectCallback = synchronizeTarget; useEffect(effectCallback, [source]);",
     ],
     [
       "layout effect",
-      "const synchronizeTarget = async () => { const response = await fetch('/api/value'); setTarget(await response.json()); }; useLayoutEffect(synchronizeTarget, [source]);",
+      "const synchronizeTarget = async () => { setTarget(await loadTargetValue(source)); }; useLayoutEffect(synchronizeTarget, [source]);",
     ],
   ])(
     "ignores an async %s effect callback as the downstream chain link",

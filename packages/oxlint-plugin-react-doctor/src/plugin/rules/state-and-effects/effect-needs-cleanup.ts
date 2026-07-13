@@ -59,6 +59,7 @@ interface SubscribeLikeUsage {
 interface RefOwnedHandlerStorage {
   handlerKey: string;
   refCurrentKey: string;
+  refKey: string;
   assignmentNode: EsTreeNode;
 }
 
@@ -1870,14 +1871,18 @@ const findRefOwnedHandlerStorage = (
       assignmentStart === null ||
       assignmentStart >= usageStart ||
       functionCfg.blockOf(child) !== usageBlock ||
+      !isNodeOfType(refCurrentExpression, "MemberExpression") ||
       !resolveReactRefSymbol(refCurrentExpression, context.scopes)
     ) {
       return;
     }
     const refCurrentKey = resolveExpressionKey(refCurrentExpression, context);
+    const refKey = resolveExpressionKey(refCurrentExpression.object, context);
     const storedSession = stripParenExpression(child.right);
-    if (!refCurrentKey || !isNodeOfType(storedSession, "ObjectExpression")) return;
-    for (const property of storedSession.properties ?? []) {
+    if (!refCurrentKey || !refKey || !isNodeOfType(storedSession, "ObjectExpression")) return;
+    const storedSessionProperties = storedSession.properties ?? [];
+    if (storedSessionProperties.some((property) => !isNodeOfType(property, "Property"))) return;
+    for (const property of storedSessionProperties) {
       if (!isNodeOfType(property, "Property")) continue;
       const propertyName = getStaticPropertyKeyName(property);
       if (propertyName && resolveExpressionKey(property.value, context) === usage.handlerKey) {
@@ -1885,6 +1890,7 @@ const findRefOwnedHandlerStorage = (
         matchingStorage.push({
           handlerKey,
           refCurrentKey,
+          refKey,
           assignmentNode: child,
         });
       }
@@ -2008,6 +2014,59 @@ const isDirectRefOwnedRelease = (
   );
 };
 
+const isRefPresenceGuardedEarlyReturn = (
+  returnStatement: EsTreeNode,
+  refCurrentKey: string,
+  context: RuleContext,
+): boolean => {
+  const returnBranch = returnStatement.parent;
+  const guardStatement = isNodeOfType(returnBranch, "BlockStatement")
+    ? returnBranch.parent
+    : returnBranch;
+  const guardedConsequent = isNodeOfType(returnBranch, "BlockStatement")
+    ? returnBranch
+    : returnStatement;
+  if (
+    !isNodeOfType(guardStatement, "IfStatement") ||
+    guardStatement.consequent !== guardedConsequent ||
+    guardStatement.alternate !== null
+  ) {
+    return false;
+  }
+  const guardTest = stripParenExpression(guardStatement.test);
+  return (
+    isNodeOfType(guardTest, "UnaryExpression") &&
+    guardTest.operator === "!" &&
+    resolveExpressionKey(guardTest.argument, context) === refCurrentKey
+  );
+};
+
+const hasUnprovenReturnBeforeRefOwnedRelease = (
+  cleanupFunction: EsTreeNode,
+  releaseNode: EsTreeNode,
+  refCurrentKey: string,
+  context: RuleContext,
+): boolean => {
+  if (!isFunctionLike(cleanupFunction)) return true;
+  const releaseStart = getRangeStart(releaseNode);
+  if (releaseStart === null) return true;
+  let hasUnprovenEarlyReturn = false;
+  walkAst(cleanupFunction.body, (child: EsTreeNode) => {
+    if (hasUnprovenEarlyReturn) return false;
+    if (child !== cleanupFunction.body && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "ReturnStatement")) return;
+    const returnStart = getRangeStart(child);
+    if (
+      (returnStart === null || returnStart < releaseStart) &&
+      !isRefPresenceGuardedEarlyReturn(child, refCurrentKey, context)
+    ) {
+      hasUnprovenEarlyReturn = true;
+      return false;
+    }
+  });
+  return hasUnprovenEarlyReturn;
+};
+
 const cleanupFunctionReleasesRefOwnedUsage = (
   cleanupFunction: EsTreeNode,
   componentFunction: EsTreeNode,
@@ -2035,9 +2094,9 @@ const cleanupFunctionReleasesRefOwnedUsage = (
   ) {
     return false;
   }
-  let didFindRelease = false;
+  let releaseNode: EsTreeNode | null = null;
   walkAst(cleanupFunction.body, (child: EsTreeNode) => {
-    if (didFindRelease) return false;
+    if (releaseNode) return false;
     if (child !== cleanupFunction.body && isFunctionLike(child)) return false;
     if (
       isDirectRefOwnedRelease(
@@ -2049,23 +2108,60 @@ const cleanupFunctionReleasesRefOwnedUsage = (
         context,
       )
     ) {
-      didFindRelease = true;
+      releaseNode = child;
       return false;
     }
   });
-  if (!didFindRelease) return false;
+  if (!releaseNode) return false;
+  if (
+    hasUnprovenReturnBeforeRefOwnedRelease(
+      cleanupFunction,
+      releaseNode,
+      storage.refCurrentKey,
+      context,
+    )
+  ) {
+    return false;
+  }
   let hasUnsafeRefWrite = false;
   walkAst(componentFunction.body, (child: EsTreeNode) => {
     if (hasUnsafeRefWrite) return false;
+    if (isNodeOfType(child, "UnaryExpression") && child.operator === "delete") {
+      const deleteTarget = stripParenExpression(child.argument);
+      if (
+        resolveExpressionKey(deleteTarget, context) === storage.handlerKey ||
+        (isNodeOfType(deleteTarget, "MemberExpression") &&
+          resolveExpressionKey(deleteTarget.object, context) === storage.refCurrentKey)
+      ) {
+        hasUnsafeRefWrite = true;
+        return false;
+      }
+      return;
+    }
+    if (isNodeOfType(child, "CallExpression")) {
+      const doesCallReceiveOwnedRef = (child.arguments ?? []).some((argumentNode) => {
+        const argumentKey = resolveExpressionKey(argumentNode, context);
+        return (
+          argumentKey !== null &&
+          (argumentKey === storage.refKey || argumentKey === storage.refCurrentKey)
+        );
+      });
+      if (doesCallReceiveOwnedRef) {
+        hasUnsafeRefWrite = true;
+        return false;
+      }
+      return;
+    }
+    if (!isNodeOfType(child, "AssignmentExpression")) return;
+    const assignmentTarget = stripParenExpression(child.left);
     if (
-      isNodeOfType(child, "UnaryExpression") &&
-      child.operator === "delete" &&
-      resolveExpressionKey(child.argument, context) === storage.handlerKey
+      isNodeOfType(assignmentTarget, "MemberExpression") &&
+      assignmentTarget.computed &&
+      resolveExpressionKey(assignmentTarget.object, context) === storage.refCurrentKey
     ) {
       hasUnsafeRefWrite = true;
       return false;
     }
-    if (!isNodeOfType(child, "AssignmentExpression")) return;
     const assignedKey = resolveExpressionKey(child.left, context);
     if (assignedKey === storage.handlerKey) {
       hasUnsafeRefWrite = true;
@@ -2081,13 +2177,16 @@ const cleanupFunctionReleasesRefOwnedUsage = (
       return;
     }
     const assignedSession = isNodeOfType(assignedValue, "ObjectExpression") ? assignedValue : null;
-    const storesMatchingHandler = (assignedSession?.properties ?? []).some(
-      (property) =>
-        isNodeOfType(property, "Property") &&
-        `${storage.refCurrentKey}.${getStaticPropertyKeyName(property) ?? ""}` ===
-          storage.handlerKey &&
-        resolveExpressionKey(property.value, context) === usage.handlerKey,
-    );
+    const assignedSessionProperties = assignedSession?.properties ?? [];
+    const storesMatchingHandler =
+      assignedSessionProperties.every((property) => isNodeOfType(property, "Property")) &&
+      assignedSessionProperties.some(
+        (property) =>
+          isNodeOfType(property, "Property") &&
+          `${storage.refCurrentKey}.${getStaticPropertyKeyName(property) ?? ""}` ===
+            storage.handlerKey &&
+          resolveExpressionKey(property.value, context) === usage.handlerKey,
+      );
     if (findEnclosingFunction(child) !== retainedFunction || !storesMatchingHandler) {
       hasUnsafeRefWrite = true;
       return false;

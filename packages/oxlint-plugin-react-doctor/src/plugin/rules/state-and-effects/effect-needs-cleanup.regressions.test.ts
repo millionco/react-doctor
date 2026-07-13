@@ -2591,6 +2591,443 @@ export const Debounced = ({ value }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not flag a replaced ref timer released by a guarded unmount helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const cancelPendingOpen = () => {
+    if (!pendingOpenRef.current) return;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    pendingOpenRef.current = null;
+  };
+  useEffect(() => {
+    return () => {
+      cancelPendingOpen();
+    };
+  }, []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      pendingOpenRef.current = null;
+      timerRef.current = null;
+      commitPendingOpen(pendingOpen);
+    }, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag the reported tooltip timer released by a separate unmount effect", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow, pendingOpen, remainingDelay }) => {
+  const tooltipShowDelayTimerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const cancelPendingOpen = () => {
+    if (tooltipShowDelayTimerRef.current) {
+      clearTimeout(tooltipShowDelayTimerRef.current);
+      tooltipShowDelayTimerRef.current = null;
+    }
+    pendingOpenRef.current = null;
+  };
+  useEffect(() => {
+    return () => {
+      cancelPendingOpen();
+    };
+  }, []);
+  useEffect(() => {
+    if (tooltipShowDelayTimerRef.current) {
+      clearTimeout(tooltipShowDelayTimerRef.current);
+    }
+    tooltipShowDelayTimerRef.current = setTimeout(() => {
+      commitPendingOpen(pendingOpen);
+    }, remainingDelay);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a discriminated pending timer replaced across effects", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const cancelPendingOpen = () => {
+    if (!pendingOpenRef.current) return;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    pendingOpenRef.current = null;
+  };
+  const commitPendingOpen = (pendingOpen) => {
+    if (pendingOpenRef.current !== pendingOpen) return;
+    pendingOpenRef.current = null;
+    timerRef.current = null;
+  };
+  const schedulePendingOpen = (pendingOpen, delay) => {
+    cancelPendingOpen();
+    pendingOpenRef.current = pendingOpen;
+    timerRef.current = setTimeout(() => commitPendingOpen(pendingOpen), delay);
+  };
+  useEffect(() => () => cancelPendingOpen(), []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (pendingOpen?.kind !== "interaction") return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => commitPendingOpen(pendingOpen), delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a companion ref cleared without total timer release", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow, shouldClear }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const resetPendingOpen = () => {
+    if (shouldClear) clearTimeout(timerRef.current);
+    pendingOpenRef.current = null;
+  };
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => resetPendingOpen(), delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a companion-guarded timer when another allocation lacks the witness", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const resetPendingOpen = () => {
+    timerRef.current = null;
+    pendingOpenRef.current = null;
+  };
+  const scheduleUnknown = () => {
+    timerRef.current = setTimeout(resetPendingOpen, delayShow);
+  };
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(resetPendingOpen, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a companion-guarded timer when another allocation overwrites the witness", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const resetPendingOpen = () => {
+    timerRef.current = null;
+    pendingOpenRef.current = null;
+  };
+  const schedulePendingOpen = (pendingOpen) => {
+    pendingOpenRef.current = pendingOpen;
+    timerRef.current = setTimeout(resetPendingOpen, delayShow);
+  };
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(resetPendingOpen, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a companion-guarded timer allocated after clearing its witness", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    pendingOpenRef.current = null;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(commitPendingOpen, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a companion-guarded timer whose unmount helper is conditional", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow, shouldCleanup }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const cancelPendingOpen = () => {
+    clearTimeout(timerRef.current);
+    pendingOpenRef.current = null;
+  };
+  useEffect(() => () => {
+    if (shouldCleanup) cancelPendingOpen();
+  }, []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(commitPendingOpen, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a companion-guarded timer whose helper clears a different ref", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const timerRef = useRef(null);
+  const otherTimerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const cancelPendingOpen = () => {
+    clearTimeout(otherTimerRef.current);
+    pendingOpenRef.current = null;
+  };
+  useEffect(() => () => cancelPendingOpen(), []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(commitPendingOpen, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a companion-guarded timer whose ref is reassigned", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow, otherTimerRef }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const cancelPendingOpen = () => {
+    clearTimeout(timerRef.current);
+    pendingOpenRef.current = null;
+  };
+  timerRef.current = otherTimerRef.current;
+  useEffect(() => () => cancelPendingOpen(), []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(commitPendingOpen, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags delay-change replacement cleanup without stable unmount cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(commitPendingOpen, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags cleanup that clears a timer only after nulling its ref", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const cancelPendingOpen = () => {
+    timerRef.current = null;
+    clearTimeout(timerRef.current);
+    pendingOpenRef.current = null;
+  };
+  useEffect(() => () => cancelPendingOpen(), []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(commitPendingOpen, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a second timer not covered by the companion witness", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const timerRef = useRef(null);
+  const otherTimerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const cancelPendingOpen = () => {
+    clearTimeout(timerRef.current);
+    pendingOpenRef.current = null;
+  };
+  useEffect(() => () => cancelPendingOpen(), []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(commitPendingOpen, delayShow);
+    otherTimerRef.current = setTimeout(commitAnalytics, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags clearInterval used for a companion-guarded timeout", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  const cancelPendingOpen = () => {
+    clearInterval(timerRef.current);
+    pendingOpenRef.current = null;
+  };
+  useEffect(() => () => cancelPendingOpen(), []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    clearInterval(timerRef.current);
+    timerRef.current = setTimeout(commitPendingOpen, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags cleanup through a reassigned companion helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow }) => {
+  const timerRef = useRef(null);
+  const pendingOpenRef = useRef(null);
+  let cancelPendingOpen = () => {
+    clearTimeout(timerRef.current);
+    pendingOpenRef.current = null;
+  };
+  cancelPendingOpen = () => {};
+  useEffect(() => () => cancelPendingOpen(), []);
+  useEffect(() => {
+    const pendingOpen = pendingOpenRef.current;
+    if (!pendingOpen) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(commitPendingOpen, delayShow);
+  }, [delayShow]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a ref timer when replacement cleanup does not dominate allocation", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Tooltip = ({ delayShow, shouldClearPrevious }) => {
+  const timerRef = useRef(null);
+  useEffect(() => {
+    if (shouldClearPrevious && timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(commitPendingOpen, delayShow);
+  }, [delayShow, shouldClearPrevious]);
+  useEffect(() => {
+    return () => clearTimeout(timerRef.current);
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts a timer released before replacement and by a stable unmount effect", () => {
     const result = runRule(
       effectNeedsCleanup,

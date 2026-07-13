@@ -146,12 +146,15 @@ const resolveExpressionKey = (
 };
 
 const findAssignedResourceKey = (resourceNode: EsTreeNode, context: RuleContext): string | null => {
-  let currentNode = resourceNode;
-  let parentNode = currentNode.parent;
-  while (isNodeOfType(parentNode, "ChainExpression")) {
-    currentNode = parentNode;
-    parentNode = currentNode.parent;
+  const indirectBindingIdentifier = findStableIndirectResourceBindingIdentifier(
+    resourceNode,
+    context,
+  );
+  if (indirectBindingIdentifier) {
+    return resolveExpressionKey(indirectBindingIdentifier, context);
   }
+  const currentNode = findTransparentExpressionRoot(resourceNode);
+  const parentNode = currentNode.parent;
   if (isNodeOfType(parentNode, "VariableDeclarator") && parentNode.init === currentNode) {
     return resolveExpressionKey(parentNode.id, context);
   }
@@ -159,6 +162,58 @@ const findAssignedResourceKey = (resourceNode: EsTreeNode, context: RuleContext)
     return resolveExpressionKey(parentNode.left, context);
   }
   return null;
+};
+
+const findStableIndirectResourceBindingIdentifier = (
+  resourceNode: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  let currentNode = findTransparentExpressionRoot(resourceNode);
+  let didTraverseValuePreservingExpression = false;
+  while (currentNode.parent) {
+    const parentNode = currentNode.parent;
+    if (
+      isNodeOfType(parentNode, "ConditionalExpression") &&
+      (parentNode.consequent === currentNode || parentNode.alternate === currentNode)
+    ) {
+      currentNode = findTransparentExpressionRoot(parentNode);
+      didTraverseValuePreservingExpression = true;
+      continue;
+    }
+    if (
+      isNodeOfType(parentNode, "SequenceExpression") &&
+      parentNode.expressions[parentNode.expressions.length - 1] === currentNode
+    ) {
+      currentNode = findTransparentExpressionRoot(parentNode);
+      didTraverseValuePreservingExpression = true;
+      continue;
+    }
+    break;
+  }
+  if (!didTraverseValuePreservingExpression) return null;
+  const variableDeclarator = currentNode.parent;
+  const variableDeclaration = variableDeclarator?.parent;
+  if (
+    !isNodeOfType(variableDeclarator, "VariableDeclarator") ||
+    variableDeclarator.init !== currentNode ||
+    !isNodeOfType(variableDeclarator.id, "Identifier") ||
+    !isNodeOfType(variableDeclaration, "VariableDeclaration") ||
+    variableDeclaration.kind !== "const"
+  ) {
+    return null;
+  }
+  const symbol = context.scopes.symbolFor(variableDeclarator.id);
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    symbol.declarationNode !== variableDeclarator ||
+    symbol.references.some(
+      (reference) => reference.flag !== "read" || isWithinAssignmentTarget(reference.identifier),
+    )
+  ) {
+    return null;
+  }
+  return variableDeclarator.id;
 };
 
 const getCallRegistrationDetails = (
@@ -1300,6 +1355,69 @@ const hasSplitLifecycleCleanup = (
   hasRerunReleaseBeforeUsage(callback, usage, context) &&
   hasStableUnmountCleanupForUsage(callback, usage, context);
 
+const findDirectHandleGuardForRelease = (
+  releaseNode: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): EsTreeNode | null => {
+  if (usage.handleKey === null) return null;
+  const releaseRoot = findTransparentExpressionRoot(releaseNode);
+  const releaseStatement = releaseRoot.parent;
+  if (!isNodeOfType(releaseStatement, "ExpressionStatement")) return null;
+  const statementParent = releaseStatement.parent;
+  const guardStatement = isNodeOfType(statementParent, "IfStatement")
+    ? statementParent
+    : isNodeOfType(statementParent, "BlockStatement") &&
+        statementParent.body[0] === releaseStatement &&
+        isNodeOfType(statementParent.parent, "IfStatement") &&
+        statementParent.parent.consequent === statementParent
+      ? statementParent.parent
+      : null;
+  return guardStatement &&
+    guardStatement.alternate === null &&
+    resolveExpressionKey(guardStatement.test, context) === usage.handleKey
+    ? guardStatement
+    : null;
+};
+
+const doesPathCompleteCleanupFunctionReleaseUsage = (
+  cleanupFunction: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  resourceBindingIdentifier: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isFunctionLike(cleanupFunction) || cleanupFunction.async || cleanupFunction.generator) {
+    return false;
+  }
+  const matchingReleaseAnchors: EsTreeNode[] = [];
+  walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
+    if (cleanupChild !== cleanupFunction.body && isFunctionLike(cleanupChild)) return false;
+    if (!doesReleaseCallMatchUsage(cleanupChild, usage, context)) return;
+    if (usage.kind === "timer") {
+      const cleanupCall = isNodeOfType(cleanupChild, "ChainExpression")
+        ? cleanupChild.expression
+        : cleanupChild;
+      if (!isNodeOfType(cleanupCall, "CallExpression") || !cleanupCall.arguments?.[0]) return;
+      const cleanupHandle = stripParenExpression(cleanupCall.arguments[0]);
+      if (
+        !isNodeOfType(cleanupHandle, "Identifier") ||
+        context.scopes.symbolFor(cleanupHandle)?.id !==
+          context.scopes.symbolFor(resourceBindingIdentifier)?.id
+      ) {
+        return;
+      }
+    }
+    matchingReleaseAnchors.push(
+      findDirectHandleGuardForRelease(cleanupChild, usage, context) ?? cleanupChild,
+    );
+  });
+  return doMatchingNodesCoverEveryPathFromFunctionEntry(
+    cleanupFunction,
+    matchingReleaseAnchors,
+    context,
+  );
+};
+
 const effectHasCleanupForUsage = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -1325,6 +1443,19 @@ const effectHasCleanupForUsage = (
       callback.body === usage.node && isCleanupReturningSubscribeLikeCallExpression(callback.body)
     );
   }
+  const indirectResourceBindingIdentifier = findStableIndirectResourceBindingIdentifier(
+    usage.node,
+    context,
+  );
+  const cleanupFunctionReleasesUsage = (cleanupFunction: EsTreeNode): boolean =>
+    indirectResourceBindingIdentifier
+      ? doesPathCompleteCleanupFunctionReleaseUsage(
+          cleanupFunction,
+          usage,
+          indirectResourceBindingIdentifier,
+          context,
+        )
+      : doesCleanupFunctionReleaseUsage(cleanupFunction, usage, context);
   const matchingCleanupReturns: EsTreeNode[] = [];
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "ReturnStatement")) return;
@@ -1372,7 +1503,7 @@ const effectHasCleanupForUsage = (
       return;
     }
     if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
-    if (doesCleanupFunctionReleaseUsage(cleanupFunction, usage, context)) {
+    if (cleanupFunctionReleasesUsage(cleanupFunction)) {
       matchingCleanupReturns.push(child);
     }
   });

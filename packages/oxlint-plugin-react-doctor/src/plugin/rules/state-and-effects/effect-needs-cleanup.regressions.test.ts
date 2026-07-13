@@ -4066,3 +4066,159 @@ export const LanguageProvider = ({ i18next }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("effect-needs-cleanup conditional resource handles", () => {
+  it.each([
+    {
+      name: "consequent timer with a guarded cleanup",
+      assignment: "const timerId = playing ? setInterval(advance, 1000) : undefined;",
+      cleanup: "if (timerId) clearInterval(timerId);",
+    },
+    {
+      name: "alternate timer with an unconditional cleanup",
+      assignment: "const timerId = playing ? undefined : setInterval(advance, 1000);",
+      cleanup: "clearInterval(timerId);",
+    },
+    {
+      name: "timers in both conditional arms",
+      assignment:
+        "const timerId = playing ? setInterval(advance, 1000) : setInterval(rewind, 1000);",
+      cleanup: "clearInterval(timerId);",
+    },
+    {
+      name: "a timer behind transparent TypeScript wrappers",
+      assignment:
+        "const timerId = (playing ? (setInterval(advance, 1000) as ReturnType<typeof setInterval>) : undefined) satisfies ReturnType<typeof setInterval> | undefined;",
+      cleanup: "if (timerId) clearInterval(timerId);",
+    },
+    {
+      name: "a timer in the final sequence position",
+      assignment:
+        "const timerId = playing ? (recordStart(), setInterval(advance, 1000)) : undefined;",
+      cleanup: "if (timerId) clearInterval(timerId);",
+    },
+  ])("accepts $name", ({ assignment, cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Player = ({ playing }) => {
+  useEffect(() => {
+    ${assignment}
+    return () => {
+      ${cleanup}
+    };
+  }, [playing]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "no returned cleanup",
+      assignment: "const timerId = playing ? setInterval(advance, 1000) : undefined;",
+      beforeReturn: "void timerId;",
+      cleanup: "",
+    },
+    {
+      name: "an unrelated cleanup guard",
+      assignment: "const timerId = playing ? setInterval(advance, 1000) : undefined;",
+      beforeReturn: "",
+      cleanup: "if (shouldCleanup) clearInterval(timerId);",
+    },
+    {
+      name: "an early exit inside the matching handle guard",
+      assignment: "const timerId = playing ? setInterval(advance, 1000) : undefined;",
+      beforeReturn: "",
+      cleanup: "if (timerId) { if (shouldCleanup) return; clearInterval(timerId); }",
+    },
+    {
+      name: "a mismatched timer handle",
+      assignment:
+        "const timerId = playing ? setInterval(advance, 1000) : undefined; const otherTimerId = setInterval(rewind, 1000);",
+      beforeReturn: "",
+      cleanup: "clearInterval(otherTimerId);",
+    },
+    {
+      name: "a mismatched timer release API",
+      assignment: "const timerId = playing ? setInterval(advance, 1000) : undefined;",
+      beforeReturn: "",
+      cleanup: "clearTimeout(timerId);",
+    },
+    {
+      name: "cleanup through a handle alias",
+      assignment:
+        "const timerId = playing ? setInterval(advance, 1000) : undefined; const cleanupTimerId = timerId;",
+      beforeReturn: "",
+      cleanup: "clearInterval(cleanupTimerId);",
+    },
+    {
+      name: "cleanup through an opaque handle transform",
+      assignment: "const timerId = playing ? setInterval(advance, 1000) : undefined;",
+      beforeReturn: "",
+      cleanup: "clearInterval(getTimerId(timerId));",
+    },
+    {
+      name: "a resource wrapped in an opaque call",
+      assignment: "const timerId = playing ? identity(setInterval(advance, 1000)) : undefined;",
+      beforeReturn: "",
+      cleanup: "clearInterval(timerId);",
+    },
+    {
+      name: "a resource wrapped in a construction",
+      assignment: "const timerId = playing ? new TimerBox(setInterval(advance, 1000)) : undefined;",
+      beforeReturn: "",
+      cleanup: "clearInterval(timerId);",
+    },
+    {
+      name: "an arithmetically transformed resource",
+      assignment: "const timerId = playing ? setInterval(advance, 1000) + 1 : undefined;",
+      beforeReturn: "",
+      cleanup: "clearInterval(timerId);",
+    },
+    {
+      name: "a resource in a non-final sequence position",
+      assignment: "const timerId = playing ? (setInterval(advance, 1000), undefined) : undefined;",
+      beforeReturn: "",
+      cleanup: "clearInterval(timerId);",
+    },
+    {
+      name: "a mutable conditional binding",
+      assignment:
+        "let timerId = playing ? setInterval(advance, 1000) : undefined; timerId = replacementTimerId;",
+      beforeReturn: "",
+      cleanup: "clearInterval(timerId);",
+    },
+    {
+      name: "a conditional assignment into a mutable binding",
+      assignment: "let timerId; timerId = playing ? setInterval(advance, 1000) : undefined;",
+      beforeReturn: "",
+      cleanup: "clearInterval(timerId);",
+    },
+  ])("rejects $name", ({ assignment, beforeReturn, cleanup }) => {
+    const returnedCleanup = cleanup
+      ? `return () => {
+      ${cleanup}
+    };`
+      : "return undefined;";
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Player = ({ playing, shouldCleanup, replacementTimerId }) => {
+  useEffect(() => {
+    ${assignment}
+    ${beforeReturn}
+    ${returnedCleanup}
+  }, [playing, replacementTimerId, shouldCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(
+      result.diagnostics.some((diagnostic) => diagnostic.message.includes("setInterval")),
+    ).toBe(true);
+  });
+});

@@ -24,6 +24,8 @@ export const EFFECT_SNIPPET_POOL = [
   `useEffect(() => { let rafId; const loop = () => { handle(); rafId = requestAnimationFrame(loop); }; rafId = requestAnimationFrame(loop); return () => cancelAnimationFrame(rafId); }, []);`,
   `useEffect(() => { const loop = () => { handle(); requestAnimationFrame(loop); }; requestAnimationFrame(loop); }, []);`,
   `useEffect(() => { const id = setInterval(() => setState((prev) => prev + 1), 1000); return () => clearInterval(id); }, []);`,
+  `useEffect(() => { const id = enabled ? setInterval(() => handle(), 1000) : undefined; return () => { if (id) clearInterval(id); }; }, [enabled]);`,
+  `useEffect(() => { const id = enabled ? setInterval(() => handle(), 1000) : undefined; void id; }, [enabled]);`,
   `useEffect(() => { const id = window.setTimeout(() => setState(0), 500); return () => window.clearTimeout(id); }, [value]);`,
   `useEffect(() => { let cancelled = false; const load = async () => { const result = await fetch(url); if (!cancelled) setState(await result.json()); }; load(); return () => { cancelled = true; }; }, [url]);`,
   `useEffect(() => { (async () => { const result = await fetch(url); setState(await result.json()); })(); }, [url]);`,

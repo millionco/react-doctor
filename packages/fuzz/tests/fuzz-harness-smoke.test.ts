@@ -5,6 +5,7 @@ import { fuzzRule } from "../src/fuzz-rule.js";
 import { generateStructuredFuzzProgram } from "../src/generate-fuzz-program.js";
 import { loadFuzzCorpus } from "../src/load-fuzz-corpus.js";
 import { createSeededRandom } from "../src/seeded-random.js";
+import { buildAstEquivalentFuzzVariants } from "../src/ast-equivalent-fuzz-variants.js";
 import { buildVerdictPreservingVariants } from "../src/verdict-preserving-variants.js";
 import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
@@ -120,5 +121,32 @@ describe("fuzz harness oracles", () => {
       checkInvariants: true,
     });
     expect(findings.some((finding) => finding.kind === "invariant-violation")).toBe(true);
+  });
+
+  it("extracts inline effect callbacks to exact const bindings", () => {
+    const variants = buildAstEquivalentFuzzVariants(
+      `const Widget = ({ url }) => {
+  useEffect(() => fetch(url), [url]);
+  React.useLayoutEffect(function measure() { readLayout(); }, []);
+  useInsertionEffect((() => track()) as () => void, []);
+  return null;
+};`,
+      "fixture.tsx",
+      true,
+    );
+    const aliasVariant = variants.find(
+      (variant) => variant.label === "inline effect callbacks extracted to const bindings",
+    );
+    expect(aliasVariant?.code).toContain(
+      "const __reactDoctorFuzzEffectCallback0 = () => fetch(url);",
+    );
+    expect(aliasVariant?.code).toContain("useEffect(__reactDoctorFuzzEffectCallback0, [url]);");
+    expect(aliasVariant?.code).toContain(
+      "React.useLayoutEffect(__reactDoctorFuzzEffectCallback1, []);",
+    );
+    expect(aliasVariant?.code).toContain(
+      "useInsertionEffect(__reactDoctorFuzzEffectCallback2, []);",
+    );
+    expect(runRule(NOOP_RULE, aliasVariant?.code ?? "").parseErrors).toEqual([]);
   });
 });

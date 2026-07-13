@@ -116,4 +116,375 @@ describe("no-effect-chain — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("flags a state chain through exact effect callback bindings", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [first, setFirst] = useState(0);
+        const [second, setSecond] = useState(0);
+        const writeFirst = () => { setFirst(1); };
+        const writeSecond = () => { setSecond(first + 1); };
+        const downstreamEffect = writeSecond;
+        useEffect(writeFirst, []);
+        useEffect(downstreamEffect, [first]);
+        return second;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a state chain through function declaration callbacks", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [first, setFirst] = useState(0);
+        const [second, setSecond] = useState(0);
+        function writeFirst() { setFirst(1); }
+        function writeSecond() { setSecond(first + 1); }
+        useEffect(writeFirst, []);
+        useEffect(writeSecond, [first]);
+        return second;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for a function declaration that synchronizes external storage", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [value, setValue] = useState('');
+        function loadValue() { setValue(compute()); }
+        function persistValue() { localStorage.setItem('value', value); }
+        useEffect(loadValue, []);
+        useEffect(persistValue, [value]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a function declaration that calls a storage-hook setter", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [storedValue, setStoredValue] = useLocalStorage('value', 0);
+        function loadSource() { setSource(compute()); }
+        function persistSource() { setStoredValue(source); }
+        useEffect(loadSource, []);
+        useEffect(persistSource, [source]);
+        return storedValue;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a declared callback only defers its state write", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        function loadSource() { setTimeout(() => setSource(1), 0); }
+        function updateTarget() { setTarget(source + 1); }
+        useEffect(loadSource, []);
+        useEffect(updateTarget, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a state chain through an exact alias to a declared callback", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        function loadSource() { setSource(1); }
+        function updateTarget() { setTarget(source + 1); }
+        const aliasedUpdate = updateTarget;
+        useEffect(loadSource, []);
+        useEffect(aliasedUpdate, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays conservative when a declared callback is reassigned", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        function loadSource() { setSource(1); }
+        function updateTarget() { setTarget(source + 1); }
+        updateTarget = () => consume(source);
+        useEffect(loadSource, []);
+        useEffect(updateTarget, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores unused nested external-sync helpers", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        function loadSource() { setSource(1); }
+        function updateTarget() {
+          function unusedPersistence() { localStorage.setItem('target', String(target)); }
+          setTarget(source + 1);
+        }
+        useEffect(loadSource, []);
+        useEffect(updateTarget, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a declared callback invokes a nested external-sync helper", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        function loadSource() { setSource(1); }
+        function synchronizeStorage() {
+          function persistSource() { localStorage.setItem('source', String(source)); }
+          persistSource();
+        }
+        useEffect(loadSource, []);
+        useEffect(synchronizeStorage, [source]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a chain whose declared callback invokes a nested state writer", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        function loadSource() {
+          function writeSource() { setSource(1); }
+          writeSource();
+        }
+        function updateTarget() { setTarget(source + 1); }
+        useEffect(loadSource, []);
+        useEffect(updateTarget, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores state writes deferred inside an invoked async function", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        function loadSource() {
+          void (async () => {
+            await loadSourceValue();
+            setSource(1);
+          })();
+        }
+        function updateTarget() { setTarget(source + 1); }
+        useEffect(loadSource, []);
+        useEffect(updateTarget, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags state writes inside an invoked synchronous function", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        function loadSource() { (() => setSource(1))(); }
+        function updateTarget() { setTarget(source + 1); }
+        useEffect(loadSource, []);
+        useEffect(updateTarget, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for a declared opaque context setter", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget({ setAutoPlaying }) {
+        const [playing, setPlaying] = useState(false);
+        function stopPlaying() { setPlaying(false); }
+        function synchronizeContext() { return setAutoPlaying(playing); }
+        useEffect(stopPlaying, []);
+        useEffect(synchronizeContext, [playing, setAutoPlaying]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a state chain when the upstream effect explicitly returns a local setter call", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const [target, setTarget] = useState(0);
+        useEffect(() => { return setSource(1); }, []);
+        useEffect(() => { setTarget(source + 1); }, [source]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when the downstream effect synchronizes an opaque context setter", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget({ disabled, setAutoPlaying }) {
+        const [playing, setPlaying] = useState(false);
+        useEffect(() => { if (disabled) setPlaying(false); }, [disabled]);
+        useEffect(() => setAutoPlaying(playing), [playing, setAutoPlaying]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a block-bodied opaque context setter", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget({ disabled, setAutoPlaying }) {
+        const [playing, setPlaying] = useState(false);
+        useEffect(() => { if (disabled) setPlaying(false); }, [disabled]);
+        useEffect(() => { setAutoPlaying(playing); }, [playing, setAutoPlaying]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a block-bodied setter proven to come from local state", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget({ disabled }) {
+        const [playing, setPlaying] = useState(false);
+        const [autoPlaying, setAutoPlaying] = useState(false);
+        useEffect(() => { if (disabled) setPlaying(false); }, [disabled]);
+        useEffect(() => { setAutoPlaying(playing); }, [playing]);
+        return autoPlaying;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a chain when the upstream effect also calls an opaque prop setter", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget({ setLoading }) {
+        const [first, setFirst] = useState(0);
+        const [second, setSecond] = useState(0);
+        useEffect(() => { setFirst(1); setLoading(false); }, []);
+        useEffect(() => { setSecond(first + 1); }, [first]);
+        return second;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when the downstream effect returns a helper-owned subscription", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [ready, setReady] = useState(false);
+        useEffect(() => { setReady(true); }, []);
+        useEffect(() => { doWork(ready); return createSubscription(ready); }, [ready]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the upstream effect returns a helper-owned subscription", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [ready, setReady] = useState(false);
+        const [status, setStatus] = useState('');
+        useEffect(() => { setReady(true); return createSubscription(); }, []);
+        useEffect(() => { setStatus(ready ? 'on' : 'off'); }, [ready]);
+        return status;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["setAlias", "applyFirst"])(
+    "flags a chain through a local state-writing wrapper named %s",
+    (wrapperName) => {
+      const result = runRule(
+        noEffectChain,
+        `function Widget() {
+          const [ready, setReady] = useState(false);
+          const [first, setFirst] = useState(0);
+          const ${wrapperName} = () => { setFirst(1); };
+          useEffect(() => { setReady(true); }, []);
+          useEffect(() => { ${wrapperName}(); }, [ready]);
+          return first;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("flags a state chain whose downstream effect calls a concise helper", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Widget() {
+        const [source, setSource] = useState(0);
+        const syncDownstream = (value) => consume(value);
+        useEffect(() => { setSource(1); }, []);
+        useEffect(() => syncDownstream(source), [source]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

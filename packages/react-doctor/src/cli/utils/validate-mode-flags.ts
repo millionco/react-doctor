@@ -1,3 +1,4 @@
+import type { ScopeValue } from "@react-doctor/core";
 import { CliInputError } from "./cli-input-error.js";
 import type { InspectFlags } from "./inspect-flags.js";
 
@@ -8,6 +9,21 @@ const usedDiffAlias = (flags: InspectFlags): boolean =>
 
 const usedScope = (flags: InspectFlags): boolean =>
   typeof flags.scope === "string" && flags.scope.length > 0;
+
+// `--include-untracked` folds untracked files into a working-tree scope, so it
+// needs `files` / `changed` / `lines` in effect. This is checked against the
+// RESOLVED scope (so a `config.scope` / `config.diff` value counts, not just
+// the CLI flags), which is why it lives apart from `validateModeFlags`. `full`
+// already walks the filesystem and sees untracked files; no scope is a no-op.
+export const validateIncludeUntrackedScope = (
+  includeUntracked: boolean,
+  scope: ScopeValue | undefined,
+): void => {
+  if (!includeUntracked || (scope !== undefined && scope !== "full")) return;
+  throw new CliInputError(
+    "--include-untracked requires the files, changed, or lines scope (via --scope, --diff, or config).",
+  );
+};
 
 export const validateModeFlags = (flags: InspectFlags): void => {
   if (usedScope(flags) && usedDiffAlias(flags)) {
@@ -21,6 +37,14 @@ export const validateModeFlags = (flags: InspectFlags): void => {
   if (flags.staged && (flags.scope === "full" || flags.scope === "changed")) {
     throw new CliInputError(
       `Cannot combine --staged with --scope ${flags.scope}; use --scope files or --scope lines, or drop --scope.`,
+    );
+  }
+  // The scope requirement is enforced separately (against the resolved scope)
+  // by `validateIncludeUntrackedScope`; staged mode is flag-only, so reject it
+  // here — the git index never holds untracked files.
+  if (flags.includeUntracked && flags.staged) {
+    throw new CliInputError(
+      "Cannot combine --include-untracked with --staged; the git index never holds untracked files.",
     );
   }
   if (flags.score && flags.json) {

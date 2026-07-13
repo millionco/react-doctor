@@ -1,7 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getCalleeName } from "../../utils/get-callee-name.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const MESSAGE =
@@ -20,7 +20,14 @@ export const forwardRefUsesRef = defineRule({
   category: "Architecture",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (getCalleeName(node) !== "forwardRef") return;
+      if (
+        !isReactApiCall(node, "forwardRef", context.scopes, {
+          allowGlobalReactNamespace: true,
+          resolveNamedAliases: true,
+        })
+      ) {
+        return;
+      }
       const firstArgument = node.arguments[0];
       if (!firstArgument) return;
       let inner: EsTreeNode | null = null;

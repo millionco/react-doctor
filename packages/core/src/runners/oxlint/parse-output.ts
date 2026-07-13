@@ -11,6 +11,7 @@ import type {
 import { ERROR_PREVIEW_LENGTH_CHARS, OCCURRENCE_MATCHED_CATEGORIES } from "../../constants.js";
 import { findJsxOpenerSpan } from "../../find-jsx-opener-span.js";
 import { isLintableSourceFile } from "../../utils/is-lintable-source-file.js";
+import { isRecord } from "../../utils/is-record.js";
 import { isMinifiedSource } from "../../utils/is-minified-source.js";
 import { lineOfUtf8Offset } from "../../utils/line-of-utf8-offset.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
@@ -251,11 +252,35 @@ const buildRelatedLocations = (
   return related;
 };
 
-const isOxlintOutput = (value: unknown): value is OxlintOutput => {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value as { diagnostics?: unknown };
-  return Array.isArray(candidate.diagnostics);
-};
+const isOxlintSpan = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.offset === "number" &&
+  typeof value.length === "number" &&
+  typeof value.line === "number" &&
+  typeof value.column === "number";
+
+const isOxlintLabel = (value: unknown): boolean => isRecord(value) && isOxlintSpan(value.span);
+
+const isMappableOxlintDiagnostic = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.code === "string" &&
+  value.code.length > 0 &&
+  typeof value.filename === "string" &&
+  value.filename.length > 0 &&
+  (value.severity === "warning" || value.severity === "error") &&
+  Array.isArray(value.labels) &&
+  value.labels.every(isOxlintLabel);
+
+// oxlint attributes every routine diagnostic — including code-less parse
+// errors and unused-directive warnings — to a file. A diagnostic without a
+// filename is the engine reporting its own failure (e.g. "Error running JS
+// plugin." from a throwing configured plugin), which means the lint results
+// are incomplete and a clean report would be a false clean.
+const isEngineFailureDiagnostic = (value: unknown): boolean =>
+  !isRecord(value) || typeof value.filename !== "string" || value.filename.length === 0;
+
+const isOxlintOutput = (value: unknown): value is OxlintOutput =>
+  isRecord(value) && Array.isArray(value.diagnostics);
 
 /**
  * Parses one oxlint subprocess's stdout into a flat `Diagnostic[]`.
@@ -293,6 +318,15 @@ export const parseOxlintOutput = (
     throw new ReactDoctorError({
       reason: new OxlintOutputUnparseable({
         preview: stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS),
+      }),
+    });
+  }
+
+  const engineFailureDiagnostic = parsed.diagnostics.find(isEngineFailureDiagnostic);
+  if (engineFailureDiagnostic !== undefined) {
+    throw new ReactDoctorError({
+      reason: new OxlintOutputUnparseable({
+        preview: JSON.stringify(engineFailureDiagnostic).slice(0, ERROR_PREVIEW_LENGTH_CHARS),
       }),
     });
   }
@@ -352,7 +386,7 @@ export const parseOxlintOutput = (
   const mappedDiagnostics = parsed.diagnostics
     .filter(
       (diagnostic) =>
-        diagnostic.code &&
+        isMappableOxlintDiagnostic(diagnostic) &&
         isLintableSourceFile(diagnostic.filename) &&
         !isMinifiedDiagnosticFile(diagnostic.filename) &&
         !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory) &&

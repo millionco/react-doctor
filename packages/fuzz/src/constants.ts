@@ -1,5 +1,7 @@
 export const DEFAULT_FUZZ_ITERATIONS = 25;
 export const DEFAULT_FUZZ_SEED = 1;
+export const DEFAULT_FUZZ_TEST_TIMEOUT_MS = 60_000;
+export const FUZZ_ITERATION_TIMEOUT_BUDGET_MS = 30;
 export const SLOW_RULE_THRESHOLD_MS = 2_000;
 // A slow measurement is only a finding if the program stays slow across
 // this many re-runs of the same code (fastest time wins). Filters out
@@ -11,6 +13,7 @@ export const MAX_NOISE_MUTATIONS = 3;
 // One iteration in ~8 produces a pathological-shape program (deep JSX,
 // long chains) instead of a realistic one, probing recursive walkers.
 export const PATHOLOGICAL_PROGRAM_PROBABILITY = 0.12;
+export const SERVER_MODULE_PROGRAM_PROBABILITY = 0.12;
 export const DEEP_JSX_NESTING_DEPTH = 250;
 export const LONG_CHAIN_LINK_COUNT = 300;
 export const WIDE_SIBLING_COUNT = 400;

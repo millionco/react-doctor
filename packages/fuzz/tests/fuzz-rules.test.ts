@@ -7,11 +7,17 @@ import { fuzzRuleWithStats } from "../src/fuzz-rule.js";
 import type { FuzzFinding } from "../src/fuzz-rule.js";
 import { loadFuzzCorpus } from "../src/load-fuzz-corpus.js";
 import type { FuzzCorpusEntry } from "../src/load-fuzz-corpus.js";
-import { DEFAULT_FUZZ_ITERATIONS, DEFAULT_FUZZ_SEED } from "../src/constants.js";
+import {
+  DEFAULT_FUZZ_ITERATIONS,
+  DEFAULT_FUZZ_SEED,
+  DEFAULT_FUZZ_TEST_TIMEOUT_MS,
+  FUZZ_ITERATION_TIMEOUT_BUDGET_MS,
+} from "../src/constants.js";
 
 const isFuzzEnabled = process.env.REACT_DOCTOR_FUZZ === "1";
 const isStrict = process.env.FUZZ_STRICT === "1";
 const shouldCheckInvariants = isStrict || process.env.FUZZ_INVARIANTS === "1";
+const shouldPrintStats = process.env.FUZZ_PRINT_STATS === "1";
 const ruleFilter = process.env.FUZZ_RULE;
 
 // A malformed env value silently degrading to zero iterations would make
@@ -29,6 +35,10 @@ const readPositiveIntegerEnv = (name: string, defaultValue: number): number => {
 };
 const iterations = readPositiveIntegerEnv("FUZZ_ITERATIONS", DEFAULT_FUZZ_ITERATIONS);
 const seed = readPositiveIntegerEnv("FUZZ_SEED", DEFAULT_FUZZ_SEED);
+const fuzzTestTimeoutMs = Math.max(
+  DEFAULT_FUZZ_TEST_TIMEOUT_MS,
+  iterations * FUZZ_ITERATION_TIMEOUT_BUDGET_MS,
+);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // The built-in regression corpus (confirmed historical false positives —
@@ -110,32 +120,42 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
   }
 
   for (const entry of selectedRules) {
-    it(`survives fuzzing: ${entry.id}`, () => {
-      const { findings, stats } = fuzzRuleWithStats(entry.id, entry.rule, {
-        iterations,
-        seed,
-        checkInvariants: shouldCheckInvariants,
-        corpus,
-      });
-      // A rule with crash/slow findings was definitely exercised past its
-      // early bails, so it isn't "silent" even without a diagnostic.
-      const wasExercised = stats.firedProgramCount > 0 || findings.length > 0;
-      (wasExercised ? firedRuleIds : silentRuleIds).add(entry.id);
-      const blockingFindings = isStrict
-        ? findings
-        : findings.filter(
-            (finding) => finding.kind !== "invariant-violation" && finding.kind !== "verdict-drop",
+    it(
+      `survives fuzzing: ${entry.id}`,
+      () => {
+        const { findings, stats } = fuzzRuleWithStats(entry.id, entry.rule, {
+          iterations,
+          seed,
+          checkInvariants: shouldCheckInvariants,
+          corpus,
+        });
+        if (shouldPrintStats) {
+          console.info(
+            `fuzz stats: ${entry.id} executed=${stats.executedProgramCount} fired=${stats.firedProgramCount} skipped-parse=${stats.skippedParseErrorCount}`,
           );
-      const advisoryFindings = findings.filter((finding) => !blockingFindings.includes(finding));
-      for (const finding of advisoryFindings) {
-        console.warn(formatFinding(finding, writeReproducer(finding)));
-      }
-      if (blockingFindings.length > 0) {
-        const summary = blockingFindings
-          .map((finding) => formatFinding(finding, writeReproducer(finding)))
-          .join("\n\n");
-        expect.fail(`${blockingFindings.length} fuzz finding(s):\n\n${summary}`);
-      }
-    });
+        }
+        // A rule with crash/slow findings was definitely exercised past its
+        // early bails, so it isn't "silent" even without a diagnostic.
+        const wasExercised = stats.firedProgramCount > 0 || findings.length > 0;
+        (wasExercised ? firedRuleIds : silentRuleIds).add(entry.id);
+        const blockingFindings = isStrict
+          ? findings
+          : findings.filter(
+              (finding) =>
+                finding.kind !== "invariant-violation" && finding.kind !== "verdict-drop",
+            );
+        const advisoryFindings = findings.filter((finding) => !blockingFindings.includes(finding));
+        for (const finding of advisoryFindings) {
+          console.warn(formatFinding(finding, writeReproducer(finding)));
+        }
+        if (blockingFindings.length > 0) {
+          const summary = blockingFindings
+            .map((finding) => formatFinding(finding, writeReproducer(finding)))
+            .join("\n\n");
+          expect.fail(`${blockingFindings.length} fuzz finding(s):\n\n${summary}`);
+        }
+      },
+      fuzzTestTimeoutMs,
+    );
   }
 });

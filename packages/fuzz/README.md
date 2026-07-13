@@ -56,6 +56,7 @@ FUZZ_INVARIANTS=1 pnpm fuzz                # warn on invariant violations
 FUZZ_STRICT=1 pnpm fuzz                    # fail on invariant violations too
 FUZZ_CORPUS_DIR=~/corpus-repos pnpm fuzz   # also fuzz real files + crossover
 FUZZ_PRINT_SILENT=1 pnpm fuzz              # list rules that never fired
+FUZZ_PRINT_STATS=1 pnpm fuzz               # print executed, fired, and parse-skip counts
 ```
 
 `scripts/measure-coverage.ts` and `scripts/measure-corpus-coverage.ts` (run

@@ -519,7 +519,7 @@ export const noFetchInEffect = defineRule({
       ) {
         return;
       }
-      const callback = getEffectCallback(node);
+      const callback = getEffectCallback(node, context.scopes);
       if (!callback) return;
 
       const analysisFunctions = collectEffectAnalysisFunctions(callback, context);

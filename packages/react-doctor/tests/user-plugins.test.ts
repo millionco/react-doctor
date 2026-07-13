@@ -1,9 +1,10 @@
+import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { runOxlint } from "@react-doctor/core";
+import { inspect } from "../src/inspect.js";
 import { buildTestProject, setupReactProject } from "./regressions/_helpers.js";
-import * as fs from "node:fs";
 
 const tempRoot = fs.mkdtempSync(path.join(tmpdir(), "rd-user-plugins-"));
 
@@ -109,6 +110,47 @@ describe("user plugins (config.plugins)", () => {
     const userHits = diagnostics.filter((diagnostic) => diagnostic.rule === "no-forbidden-word");
     expect(userHits.length).toBeGreaterThan(0);
     expect(userHits[0].severity).toBe("warning");
+  });
+
+  it("marks lint incomplete when a configured rule throws", async () => {
+    const projectDir = setupReactProject(tempRoot, "throwing-plugin", {
+      files: {
+        "src/App.tsx": `export const App = () => <img src="x" />;\n`,
+        "lint/throwing-plugin.cjs": `
+module.exports = {
+  meta: { name: "team" },
+  rules: {
+    "runtime-rule": {
+      create: () => ({
+        Program() {
+          throw new Error("plugin runtime failure");
+        },
+      }),
+    },
+  },
+};
+`,
+      },
+    });
+    fs.writeFileSync(
+      path.join(projectDir, "doctor.config.json"),
+      JSON.stringify({
+        plugins: ["./lint/throwing-plugin.cjs"],
+        rules: { "team/runtime-rule": "error" },
+      }),
+    );
+
+    const result = await inspect(projectDir, {
+      lint: true,
+      deadCode: false,
+      noScore: true,
+      silent: true,
+    });
+
+    expect(result.skippedChecks).toContain("lint");
+    expect(result.skippedCheckReasons?.lint).toContain("Error running JS plugin");
+    expect(result.analyzedFiles).toEqual([]);
+    expect(result.diagnostics.some((diagnostic) => diagnostic.rule === "alt-text")).toBe(false);
   });
 
   it("skips a plugin that can't be resolved and continues the scan", async () => {

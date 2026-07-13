@@ -2,6 +2,8 @@ import { REACT_RUNTIME_MODULE_SOURCES } from "../constants/react.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getImportedName } from "./get-imported-name.js";
+import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
+import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -46,8 +48,54 @@ export const isReactNamespaceImport = (identifier: EsTreeNode, scopes: ScopeAnal
   if (!symbol || !isImportedFromReact(symbol)) return false;
   return (
     isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier") ||
-    isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier")
+    isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier") ||
+    getImportedName(symbol.declarationNode) === "default"
   );
+};
+
+const isReactNamespaceReceiver = (
+  receiver: EsTreeNode,
+  scopes: ScopeAnalysis,
+  options: ReactApiCallOptions,
+): boolean => {
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  if (isReactNamespaceImport(receiver, scopes)) return true;
+  return Boolean(
+    options.allowGlobalReactNamespace &&
+    receiver.name === "React" &&
+    scopes.isGlobalReference(receiver),
+  );
+};
+
+const isDestructuredReactApiBinding = (
+  identifier: EsTreeNode,
+  apiNames: string | ReadonlySet<string>,
+  scopes: ScopeAnalysis,
+  options: ReactApiCallOptions,
+): boolean => {
+  const symbol = scopes.symbolFor(identifier);
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    !symbol.initializer ||
+    !isNodeOfType(symbol.declarationNode, "VariableDeclarator")
+  ) {
+    return false;
+  }
+  const pattern = symbol.declarationNode.id;
+  if (!isNodeOfType(pattern, "ObjectPattern")) return false;
+  for (const property of pattern.properties) {
+    if (!isNodeOfType(property, "Property") || property.value !== symbol.bindingIdentifier) {
+      continue;
+    }
+    const propertyName = getStaticPropertyKeyName(property);
+    return Boolean(
+      propertyName &&
+      includesApiName(apiNames, propertyName) &&
+      isReactNamespaceReceiver(stripParenExpression(symbol.initializer), scopes, options),
+    );
+  }
+  return false;
 };
 
 export const isReactApiCall = (
@@ -62,6 +110,12 @@ export const isReactApiCall = (
     if (isNamedReactApiImport(callee, apiNames, scopes, Boolean(options.resolveNamedAliases))) {
       return true;
     }
+    if (
+      options.resolveNamedAliases &&
+      isDestructuredReactApiBinding(callee, apiNames, scopes, options)
+    ) {
+      return true;
+    }
     return Boolean(
       options.allowUnboundBareCalls &&
       includesApiName(apiNames, callee.name) &&
@@ -70,18 +124,9 @@ export const isReactApiCall = (
   }
   if (
     !isNodeOfType(callee, "MemberExpression") ||
-    callee.computed ||
-    !isNodeOfType(callee.property, "Identifier") ||
-    !includesApiName(apiNames, callee.property.name)
+    !includesApiName(apiNames, getStaticPropertyName(callee) ?? "")
   ) {
     return false;
   }
-  const receiver = stripParenExpression(callee.object);
-  if (!isNodeOfType(receiver, "Identifier")) return false;
-  if (isReactNamespaceImport(receiver, scopes)) return true;
-  return Boolean(
-    options.allowGlobalReactNamespace &&
-    receiver.name === "React" &&
-    scopes.isGlobalReference(receiver),
-  );
+  return isReactNamespaceReceiver(stripParenExpression(callee.object), scopes, options);
 };

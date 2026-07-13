@@ -1,4 +1,7 @@
-import { PATHOLOGICAL_PROGRAM_PROBABILITY } from "./constants.js";
+import {
+  PATHOLOGICAL_PROGRAM_PROBABILITY,
+  SERVER_MODULE_PROGRAM_PROBABILITY,
+} from "./constants.js";
 import { generatePathologicalProgram } from "./generate-pathological-program.js";
 import type { SeededRandom } from "./seeded-random.js";
 import {
@@ -12,6 +15,7 @@ import {
   JSX_LEAF_POOL,
   LIBRARY_SNIPPET_POOL,
   MODULE_SCOPE_SNIPPET_POOL,
+  SERVER_MODULE_PROGRAM_POOL,
   STATE_SNIPPET_POOL,
   TRIGGER_IDENTIFIER_POOL,
 } from "./snippet-pools.js";
@@ -148,6 +152,13 @@ const SCENARIO_POOL: ReadonlyArray<SnippetBuilder> = [
       .join("\n    ")
       .replace(/^/, `const load = async () => {\n    `)
       .concat(`\n  };`),
+  () =>
+    [
+      `const [fuzzChainSource, setFuzzChainSource] = useState(0);`,
+      `const [fuzzChainTarget, setFuzzChainTarget] = useState(0);`,
+      `useEffect(() => { setFuzzChainSource(1); }, []);`,
+      `useEffect(() => { setFuzzChainTarget(fuzzChainSource + 1); }, [fuzzChainSource]);`,
+    ].join("\n  "),
 ];
 
 const buildComponent: SnippetBuilder = (random) => {
@@ -246,6 +257,10 @@ const buildModuleNoise: SnippetBuilder = (random) =>
     : random.pick(MODULE_SCOPE_SNIPPET_POOL);
 
 export const generateStructuredFuzzProgram = (random: SeededRandom): GeneratedFuzzProgram => {
+  if (random.chance(SERVER_MODULE_PROGRAM_PROBABILITY)) {
+    const code = `${random.pick(SERVER_MODULE_PROGRAM_POOL)}\n`;
+    return { code, sections: [code] };
+  }
   if (random.chance(PATHOLOGICAL_PROGRAM_PROBABILITY)) {
     const code = generatePathologicalProgram(random);
     return { code, sections: [code] };

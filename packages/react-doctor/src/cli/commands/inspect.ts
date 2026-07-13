@@ -267,23 +267,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
   try {
     validateModeFlags(flags);
 
-    if (flags.staged) {
-      setJsonReportMode("staged");
-      const divergentConfigFiles = findStagedSnapshotDivergences(requestedDirectory);
-      if (divergentConfigFiles === null) {
-        throw new CliInputError(
-          "Could not verify that staged configuration matches the worktree. Run the command from a Git worktree with Git available.",
-        );
-      }
-      if (divergentConfigFiles.length > 0) {
-        recordCount(METRIC.stagedSnapshotDivergence, 1, {
-          divergentInputCount: divergentConfigFiles.length,
-        });
-        throw new CliInputError(
-          `Cannot scan staged files while configuration differs between the index and worktree: ${divergentConfigFiles.join(", ")}. Stage or restore those files, then rerun react-doctor --staged.`,
-        );
-      }
-    }
+    if (flags.staged) setJsonReportMode("staged");
 
     await maybeMigrateLegacyConfig(requestedDirectory, {
       isQuiet,
@@ -304,6 +288,26 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         `Redirected to ${highlighter.info(toRelativePath(resolvedDirectory, requestedDirectory))} via react-doctor config "rootDir".`,
       );
       logger.break();
+    }
+
+    // Checked against the resolved directory (after any `rootDir` redirect) —
+    // the staged scan materializes from there, so a divergence check on the
+    // requested directory would let a redirected repo's mixed snapshot through.
+    if (flags.staged) {
+      const divergentConfigFiles = findStagedSnapshotDivergences(resolvedDirectory);
+      if (divergentConfigFiles === null) {
+        throw new CliInputError(
+          "Could not verify that staged configuration matches the worktree. Run the command from a Git worktree with Git available.",
+        );
+      }
+      if (divergentConfigFiles.length > 0) {
+        recordCount(METRIC.stagedSnapshotDivergence, 1, {
+          divergentInputCount: divergentConfigFiles.length,
+        });
+        throw new CliInputError(
+          `Cannot scan staged files while configuration differs between the index and worktree: ${divergentConfigFiles.join(", ")}. Stage or restore those files, then rerun react-doctor --staged.`,
+        );
+      }
     }
 
     const explainArgument = flags.explain;

@@ -1,12 +1,8 @@
 import * as path from "node:path";
-import {
-  CONFIG_FINGERPRINT_FILENAMES,
-  STAGED_FILES_PROJECT_CONFIG_FILENAMES,
-} from "@react-doctor/core";
+import { STAGED_FILES_PROJECT_CONFIG_FILENAMES } from "@react-doctor/core";
 import { STAGED_SNAPSHOT_ADDITIONAL_CONFIG_FILENAMES } from "./constants.js";
 
 const SNAPSHOT_CONFIG_FILENAMES = new Set<string>([
-  ...CONFIG_FINGERPRINT_FILENAMES,
   ...STAGED_FILES_PROJECT_CONFIG_FILENAMES,
   ...STAGED_SNAPSHOT_ADDITIONAL_CONFIG_FILENAMES,
 ]);

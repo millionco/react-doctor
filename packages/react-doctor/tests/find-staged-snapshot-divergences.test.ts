@@ -107,7 +107,31 @@ describe("findStagedSnapshotDivergences", () => {
     ]);
   });
 
-  it("accepts an index-only rename whose worktree matches the index", () => {
-    expect(parseStagedSnapshotDivergences("R  archive.txt\0doctor.config.json\0")).toEqual([]);
+  it("accepts an index-only rename whose destination is configuration", () => {
+    expect(parseStagedSnapshotDivergences("R  doctor.config.json\0archive.txt\0")).toEqual([]);
+  });
+
+  it("accepts an index-only rename with a directory-prefixed configuration source", () => {
+    expect(parseStagedSnapshotDivergences("R  archive.txt\0a/b/doctor.config.json\0")).toEqual([]);
+  });
+
+  it("ignores unstaged lockfile and .gitignore edits that cannot shape a staged scan", () => {
+    const directory = createRepository();
+    fs.writeFileSync(path.join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    fs.writeFileSync(path.join(directory, ".gitignore"), "dist\n");
+    execFileSync("git", ["add", "pnpm-lock.yaml", ".gitignore"], { cwd: directory });
+    execFileSync("git", ["commit", "-q", "-m", "add lockfile"], { cwd: directory });
+    fs.writeFileSync(path.join(directory, "src/app.tsx"), "export const App = () => <div />;\n");
+    execFileSync("git", ["add", "src/app.tsx"], { cwd: directory });
+    fs.writeFileSync(path.join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\nextra: 1\n");
+    fs.writeFileSync(path.join(directory, ".gitignore"), "dist\nbuild\n");
+
+    expect(findStagedSnapshotDivergences(directory)).toEqual([]);
+  });
+
+  it("reports an unstaged modification to the legacy react-doctor configuration", () => {
+    expect(parseStagedSnapshotDivergences(" M react-doctor.config.json\0")).toEqual([
+      "react-doctor.config.json",
+    ]);
   });
 });

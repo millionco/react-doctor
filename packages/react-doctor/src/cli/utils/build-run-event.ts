@@ -253,10 +253,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   const wouldBlock =
     !input.scoreOnly && !input.gateExempt && shouldBlockCi(gateDiagnostics, blockingLevel);
   const isClean = result.diagnostics.length === 0 && complete;
-  let outcome = "ok";
-  if (!complete) outcome = "error";
-  else if (wouldBlock) outcome = "blocked";
-  else if (isClean) outcome = "clean";
+  const outcome = !complete ? "error" : wouldBlock ? "blocked" : isClean ? "clean" : "ok";
 
   const firings = summarizeRuleFirings(result.diagnostics);
   const countByRule = new Map<string, number>();

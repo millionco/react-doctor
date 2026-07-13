@@ -11,6 +11,7 @@ import type {
 import { ERROR_PREVIEW_LENGTH_CHARS, OCCURRENCE_MATCHED_CATEGORIES } from "../../constants.js";
 import { findJsxOpenerSpan } from "../../find-jsx-opener-span.js";
 import { isLintableSourceFile } from "../../utils/is-lintable-source-file.js";
+import { isRecord } from "../../utils/is-record.js";
 import { isMinifiedSource } from "../../utils/is-minified-source.js";
 import { lineOfUtf8Offset } from "../../utils/line-of-utf8-offset.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
@@ -252,39 +253,26 @@ const buildRelatedLocations = (
 };
 
 const isOxlintSpan = (value: unknown): boolean =>
-  typeof value === "object" &&
-  value !== null &&
-  "offset" in value &&
+  isRecord(value) &&
   typeof value.offset === "number" &&
-  "length" in value &&
   typeof value.length === "number" &&
-  "line" in value &&
   typeof value.line === "number" &&
-  "column" in value &&
   typeof value.column === "number";
 
-const isOxlintLabel = (value: unknown): boolean =>
-  typeof value === "object" && value !== null && "span" in value && isOxlintSpan(value.span);
+const isOxlintLabel = (value: unknown): boolean => isRecord(value) && isOxlintSpan(value.span);
 
 const isMappableOxlintDiagnostic = (value: unknown): boolean =>
-  typeof value === "object" &&
-  value !== null &&
-  "code" in value &&
+  isRecord(value) &&
   typeof value.code === "string" &&
   value.code.length > 0 &&
-  "filename" in value &&
   typeof value.filename === "string" &&
   value.filename.length > 0 &&
-  "severity" in value &&
   (value.severity === "warning" || value.severity === "error") &&
-  "labels" in value &&
   Array.isArray(value.labels) &&
   value.labels.every(isOxlintLabel);
 
 const isOxlintOutput = (value: unknown): value is OxlintOutput =>
-  typeof value === "object" &&
-  value !== null &&
-  "diagnostics" in value &&
+  isRecord(value) &&
   Array.isArray(value.diagnostics) &&
   value.diagnostics.every(isMappableOxlintDiagnostic);
 

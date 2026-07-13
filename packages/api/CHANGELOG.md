@@ -1,5 +1,12 @@
 # @react-doctor/api
 
+## 0.7.7
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @react-doctor/core@0.7.7
+
 ## 0.7.6
 
 ### Patch Changes

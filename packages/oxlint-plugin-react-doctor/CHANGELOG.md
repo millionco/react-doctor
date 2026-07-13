@@ -1,5 +1,73 @@
 # oxlint-plugin-react-doctor
 
+## 0.7.7
+
+### Patch Changes
+
+- [#1212](https://github.com/millionco/react-doctor/pull/1212) [`c1916d5`](https://github.com/millionco/react-doctor/commit/c1916d577d90df5a6587e8a98f28bb1b12168554) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Require exhaustive `for...of` removal loops before they satisfy retained-handler cleanup in `effect-needs-cleanup` — a `break`-truncated loop no longer hides a partial listener leak.
+
+- [#1167](https://github.com/millionco/react-doctor/pull/1167) [`8528def`](https://github.com/millionco/react-doctor/commit/8528deff881314adaf72bb17da1f1dabdcf58b5c) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve intrinsic host-element diagnostics for exact local constant-string JSX aliases.
+
+- [#1205](https://github.com/millionco/react-doctor/pull/1205) [`a01249a`](https://github.com/millionco/react-doctor/commit/a01249aa37f9ac4b693c1d8d162b58463b10d250) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize retained listener callbacks whose exact listeners are released by a guaranteed component-unmount cleanup.
+
+- [#1162](https://github.com/millionco/react-doctor/pull/1162) [`dfd47a7`](https://github.com/millionco/react-doctor/commit/dfd47a75a29f36df2b6799d57ef9695a7174b3f6) Thanks [@aidenybai](https://github.com/aidenybai)! - Harden dangerous HTML provenance across mutable trusted bindings and trusted helper aliases.
+
+- [#1178](https://github.com/millionco/react-doctor/pull/1178) [`0150fc9`](https://github.com/millionco/react-doctor/commit/0150fc901cd5d85c5631e975510d51e48372bdde) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve allocation and async-function facts through Object integrity wrappers.
+
+- [#1170](https://github.com/millionco/react-doctor/pull/1170) [`4fb3694`](https://github.com/millionco/react-doctor/commit/4fb3694e186db0287cc0d49f72a44a38ad63a26e) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve component and memo diagnostics through synchronous local render return indirection.
+
+- [#1202](https://github.com/millionco/react-doctor/pull/1202) [`da3a6e0`](https://github.com/millionco/react-doctor/commit/da3a6e019141ee9c598a661c07171591f7db5f55) Thanks [@aidenybai](https://github.com/aidenybai)! - Prevent prefer-use-effect-event from reporting React useCallback values with stable empty dependency arrays or stable React hook values while preserving changing callback diagnostics, including for useCallback and stable hooks destructured from the React namespace.
+
+- [#1174](https://github.com/millionco/react-doctor/pull/1174) [`a8cd24e`](https://github.com/millionco/react-doctor/commit/a8cd24e2fedbd6c9697266b09e92e9b685d07abf) Thanks [@aidenybai](https://github.com/aidenybai)! - Allow unversioned localStorage payloads whose reads validate parsed fields and safely fall back.
+
+- [#1172](https://github.com/millionco/react-doctor/pull/1172) [`778f1a2`](https://github.com/millionco/react-doctor/commit/778f1a2cc4a2be3863e79236db143677ae4192e1) Thanks [@aidenybai](https://github.com/aidenybai)! - Resolve React Fragment imports and immutable aliases without matching unrelated local components.
+
+- [#1198](https://github.com/millionco/react-doctor/pull/1198) [`5699529`](https://github.com/millionco/react-doctor/commit/5699529155f3735a2d75c56715d3edeb88e791f8) Thanks [@aidenybai](https://github.com/aidenybai)! - Retire `no-cascading-set-state` because React batches synchronous state updates from one effect into the same follow-up commit, so counting setter calls does not establish repeated redraws.
+
+- [#1199](https://github.com/millionco/react-doctor/pull/1199) [`55cebeb`](https://github.com/millionco/react-doctor/commit/55cebebfd98eeb4cfb9f30f1b2bd137521d620dc) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize matching `for...of` listener registration and cleanup loops in `effect-needs-cleanup` while preserving diagnostics for asymmetric loop pairs.
+
+- [#1192](https://github.com/millionco/react-doctor/pull/1192) [`37c53d6`](https://github.com/millionco/react-doctor/commit/37c53d6ebf607a9b3942314cdc13700a876cefcc) Thanks [@aidenybai](https://github.com/aidenybai)! - Resolve React forwardRef imports before applying callback arity guidance.
+
+- [#1180](https://github.com/millionco/react-doctor/pull/1180) [`8ee2977`](https://github.com/millionco/react-doctor/commit/8ee2977e174f0b1dd46554eea785cba853ff2207) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect writes to existing properties of sealed server module state.
+
+- [#1176](https://github.com/millionco/react-doctor/pull/1176) [`c5a06bd`](https://github.com/millionco/react-doctor/commit/c5a06bd8c0d5ade974549326b9131fa9b6ae8e6e) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid false positives in no-locale-format-in-render when deterministic timezone options use a const alias.
+
+- [#1175](https://github.com/millionco/react-doctor/pull/1175) [`1f14fa1`](https://github.com/millionco/react-doctor/commit/1f14fa1bf33530e46e900780d606d246c71da8b0) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid false positives in `no-ref-current-in-render` and `no-impure-state-updater` by recognizing lazy ref initialization and proving external API provenance.
+
+- [#1181](https://github.com/millionco/react-doctor/pull/1181) [`0d11bd5`](https://github.com/millionco/react-doctor/commit/0d11bd54717cc61fff2341eb0a3b1d25d4f645ad) Thanks [@aidenybai](https://github.com/aidenybai)! - Resolve global NaN dependencies through exact immutable bindings.
+
+- [#1195](https://github.com/millionco/react-doctor/pull/1195) [`d674163`](https://github.com/millionco/react-doctor/commit/d6741631233fe3622ff165740f1c260635abfa18) Thanks [@aidenybai](https://github.com/aidenybai)! - Require component provenance before reporting no-prop-types assignments.
+
+- [#1203](https://github.com/millionco/react-doctor/pull/1203) [`5fdc445`](https://github.com/millionco/react-doctor/commit/5fdc445783c626605b293283a2dd709c00575d83) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid accessibility false positives when an accessible descendant performs the same action or a referenced member handler only blocks event propagation.
+
+- [#1166](https://github.com/millionco/react-doctor/pull/1166) [`64950ba`](https://github.com/millionco/react-doctor/commit/64950ba2879e7ccd11ee1a6599d1474992c22558) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep js-set-map-lookups active when a caller-controlled array has a small destructuring fallback.
+
+- [#1193](https://github.com/millionco/react-doctor/pull/1193) [`4753290`](https://github.com/millionco/react-doctor/commit/4753290a1ce3d1aadbe8fec11a7296fd575e9350) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting statically transparent RGB and hex shadow layers in `no-dark-mode-glow`.
+
+- [#1177](https://github.com/millionco/react-doctor/pull/1177) [`c6f996e`](https://github.com/millionco/react-doctor/commit/c6f996ec0183f34bff7fd99593028c15d91f0634) Thanks [@aidenybai](https://github.com/aidenybai)! - Track TanStack Query results through exact const alias chains before checking rest destructuring.
+
+- [#1191](https://github.com/millionco/react-doctor/pull/1191) [`1d7b6e2`](https://github.com/millionco/react-doctor/commit/1d7b6e2887c8478df738d21e1422daac51ffb334) Thanks [@aidenybai](https://github.com/aidenybai)! - Restrict min/max sort recommendations to disposable finite numeric array literals.
+
+- [#1169](https://github.com/millionco/react-doctor/pull/1169) [`8c9a6c4`](https://github.com/millionco/react-doctor/commit/8c9a6c49ab09beabaf8fc47f406ffb9f29a95b34) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve component and callback diagnostics through single-binding rest-tuple parameters.
+
+- [#1182](https://github.com/millionco/react-doctor/pull/1182) [`79105a3`](https://github.com/millionco/react-doctor/commit/79105a3b97238d2db1b4011cf7774c8c8b592253) Thanks [@aidenybai](https://github.com/aidenybai)! - Resolve exact local function bindings passed as effect callbacks while excluding async callbacks from synchronous chain analysis.
+
+- [#1179](https://github.com/millionco/react-doctor/pull/1179) [`81e6647`](https://github.com/millionco/react-doctor/commit/81e6647f3c4c0dbc90881b199753a9d341cf7963) Thanks [@aidenybai](https://github.com/aidenybai)! - Follow exact hook-result aliases when classifying deferred reads.
+
+- [#1164](https://github.com/millionco/react-doctor/pull/1164) [`fbd85e3`](https://github.com/millionco/react-doctor/commit/fbd85e388c12e6d8ea2c2fcf2e9d8405379dd245) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve direct-statement diagnostics through discarded unary and sequence wrappers.
+
+- [#1197](https://github.com/millionco/react-doctor/pull/1197) [`b550b32`](https://github.com/millionco/react-doctor/commit/b550b327ece611503d0565c3d1a9cf0f8e3c7246) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting module-initialized JSX style objects as render-time allocations.
+
+- [#1201](https://github.com/millionco/react-doctor/pull/1201) [`55dcb93`](https://github.com/millionco/react-doctor/commit/55dcb937fbfa6fb58309d5779b4c9b97afd8731c) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize the official `zod/v4` export in Zod migration rules.
+
+- [#1206](https://github.com/millionco/react-doctor/pull/1206) [`a6c24a8`](https://github.com/millionco/react-doctor/commit/a6c24a867e8b17b65fa8a278945fd351643fe05b) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve exact derived hook dependency identities while retaining missing-source diagnostics.
+
+- [#1194](https://github.com/millionco/react-doctor/pull/1194) [`47beb25`](https://github.com/millionco/react-doctor/commit/47beb255f228eef2386e0ecd61a0b122d366ac09) Thanks [@aidenybai](https://github.com/aidenybai)! - Match polyfill script diagnostics against network request identity, ignoring fragments and non-network URL schemes.
+
+- [#1188](https://github.com/millionco/react-doctor/pull/1188) [`acf14c4`](https://github.com/millionco/react-doctor/commit/acf14c4fc9774f53a82a7394cd50e09f02a9e7d6) Thanks [@aidenybai](https://github.com/aidenybai)! - Require proven browser API receiver provenance in synchronous XHR and passive event-listener diagnostics.
+
+- [#1189](https://github.com/millionco/react-doctor/pull/1189) [`b36e439`](https://github.com/millionco/react-doctor/commit/b36e439c26a81b20ede762fdc2f32d50968c7ff3) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep js-hoist-regexp quiet for stateful global and sticky regular expressions.
+
 ## 0.7.6
 
 ### Patch Changes

@@ -23,6 +23,22 @@ interface EnableJsonModeInput {
   outputFile?: string;
 }
 
+let stdoutWriter: ((data: string) => void) | null = null;
+
+export const _testing = {
+  setStdoutWriter: (writer: ((data: string) => void) | null) => {
+    stdoutWriter = writer;
+  },
+};
+
+const writeToStdoutSync = (data: string): void => {
+  if (stdoutWriter) {
+    stdoutWriter(data);
+  } else {
+    fs.writeSync(1, data);
+  }
+};
+
 /**
  * JSON mode writes the report payload to stdout; any incidental log
  * line printed by an Effect program would corrupt the JSON. Effect's
@@ -81,7 +97,7 @@ export const writeJsonReport = (report: JsonReport): void => {
     fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
     fs.writeFileSync(resolvedPath, `${serialized}\n`);
   } else {
-    process.stdout.write(`${serialized}\n`);
+    writeToStdoutSync(`${serialized}\n`);
   }
 };
 
@@ -99,6 +115,6 @@ export const writeJsonErrorReport = (error: unknown, sentryEventId?: string | nu
       }),
     );
   } catch {
-    process.stdout.write(INTERNAL_ERROR_JSON_FALLBACK);
+    writeToStdoutSync(INTERNAL_ERROR_JSON_FALLBACK);
   }
 };

@@ -13,6 +13,7 @@ import {
   setJsonReportMode,
   writeJsonErrorReport,
   writeJsonReport,
+  _testing,
 } from "../src/cli/utils/json-mode.js";
 
 const buildOkReport = (overrides: Partial<JsonReport> = {}): JsonReport => ({
@@ -49,13 +50,15 @@ interface CapturedStdout {
 
 const captureStdout = (): CapturedStdout => {
   const lines: string[] = [];
-  const spy = vi.spyOn(process.stdout, "write").mockImplementation(((
-    chunk: string | Uint8Array,
-  ) => {
-    lines.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
-    return true;
-  }) as never);
-  return { lines, restore: () => spy.mockRestore() };
+  _testing.setStdoutWriter((data: string) => {
+    lines.push(data);
+  });
+  return {
+    lines,
+    restore: () => {
+      _testing.setStdoutWriter(null);
+    },
+  };
 };
 
 describe("json-mode lifecycle", () => {
@@ -196,5 +199,30 @@ describe("json-mode lifecycle", () => {
     const fileContent = fs.readFileSync(outputFile, "utf8");
     expect(() => JSON.parse(fileContent)).not.toThrow();
     fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("writeJsonReport uses synchronous write to stdout (regression test for #1242)", () => {
+    enableJsonMode({ compact: false, directory: "/tmp/foo" });
+    captured.lines.length = 0;
+    writeJsonReport(buildOkReport());
+    const written = captured.lines.join("");
+    expect(written).toContain('"ok": true');
+  });
+
+  it("writeJsonErrorReport uses synchronous write to stdout for fallback error (regression test for #1242)", () => {
+    enableJsonMode({ compact: true, directory: "/tmp/foo" });
+    captured.lines.length = 0;
+    const exploding = new Proxy({} as unknown as Error, {
+      get: (_, property) => {
+        if (property === "name" || property === "message" || property === "stack") {
+          throw new Error("inner explosion");
+        }
+        return undefined;
+      },
+    });
+    writeJsonErrorReport(exploding);
+    const written = captured.lines.join("");
+    expect(written).toContain('"ok":false');
+    expect(written).toContain('"error"');
   });
 });

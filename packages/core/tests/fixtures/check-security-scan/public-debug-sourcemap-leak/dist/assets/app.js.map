@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/server/db.ts"],
+  "sourcesContent": ["export const databaseUrl = process.env.DATABASE_URL;"],
+  "names": [],
+  "mappings": ""
+}

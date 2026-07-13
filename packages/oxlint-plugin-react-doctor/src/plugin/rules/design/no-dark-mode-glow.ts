@@ -70,13 +70,8 @@ const isShadowLayerFullyTransparent = (layer: string): boolean => {
 };
 
 const extractColorFromShadowLayer = (layer: string): ParsedRgb | null => {
-  const rgbMatch = layer.match(RGB_COLOR_PATTERN);
-  if (rgbMatch) return parseColorToRgb(rgbMatch[0]);
-
-  const hexMatch = layer.match(HEX_COLOR_PATTERN);
-  if (hexMatch) return parseColorToRgb(hexMatch[0]);
-
-  return null;
+  const colorMatch = layer.match(RGB_COLOR_PATTERN) ?? layer.match(HEX_COLOR_PATTERN);
+  return colorMatch ? parseColorToRgb(colorMatch[0]) : null;
 };
 
 const RGB_FUNCTION_PATTERN = /rgba?\([^)]*\)/gi;

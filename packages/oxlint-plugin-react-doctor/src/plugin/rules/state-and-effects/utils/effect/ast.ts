@@ -269,7 +269,10 @@ export const resolveToFunction = (
   | EsTreeNodeOfType<"FunctionExpression">
   | EsTreeNodeOfType<"FunctionDeclaration">
   | null => {
-  const definitionNode = ref.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
+  const def = ref.resolved?.defs[0];
+  if (!def) return null;
+  if (def.type === "Parameter") return null;
+  const definitionNode = def.node as unknown as EsTreeNode | undefined;
   if (!definitionNode) return null;
   if (isFunctionLike(definitionNode)) return definitionNode;
   if (isNodeOfType(definitionNode, "VariableDeclarator")) {

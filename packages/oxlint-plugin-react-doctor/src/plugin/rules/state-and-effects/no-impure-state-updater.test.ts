@@ -199,6 +199,44 @@ describe("no-impure-state-updater", () => {
 
   it.each([
     [
+      "a function parameter passed as data",
+      `import { useState } from "react";
+       interface Row { readonly id: string }
+       const Component = () => {
+         const [a, setA] = useState<Row | null>(null);
+         const [b, setB] = useState(false);
+         const withParam = (row: Row): void => {
+           setA(row);
+           setB(true);
+         };
+         return <button onClick={() => withParam({ id: "x" })}>click</button>;
+       };`,
+    ],
+    [
+      "multiple function parameters passed to different setters",
+      `import { useState } from "react";
+       const Component = () => {
+         const [name, setName] = useState("");
+         const [age, setAge] = useState(0);
+         const update = (newName: string, newAge: number): void => {
+           setName(newName);
+           setAge(newAge);
+         };
+         return <button onClick={() => update("Alice", 30)}>click</button>;
+       };`,
+    ],
+    [
+      "a function parameter used in a setter alongside a literal",
+      `import { useState } from "react";
+       const Component = () => {
+         const [items, setItems] = useState<string[]>([]);
+         const addItem = (item: string): void => {
+           setItems([...items, item]);
+         };
+         return <button onClick={() => addItem("new")}>click</button>;
+       };`,
+    ],
+    [
       "a pure arithmetic updater",
       `import { useState } from "react";
        const Counter = () => {

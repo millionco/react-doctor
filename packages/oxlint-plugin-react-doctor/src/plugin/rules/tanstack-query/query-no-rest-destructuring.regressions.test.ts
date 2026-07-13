@@ -141,4 +141,12 @@ const { data, ...rest } = useItemsQuery({ queryKey: ["items"] });`,
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("stays silent on an unimported global useQuery", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `const { data, ...rest } = useQuery({ queryKey: ["items"] });`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
 });

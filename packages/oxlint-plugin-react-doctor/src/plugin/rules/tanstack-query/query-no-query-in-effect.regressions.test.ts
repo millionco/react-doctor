@@ -211,4 +211,103 @@ function Search() {
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("stays silent after a destructured refetch binding is reassigned", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  let { refetch } = useQuery({ queryKey: ["items"] });
+  refetch = customRefetch;
+  useEffect(() => { refetch(); }, [refetch]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent after a query result refetch property is overwritten", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  query.refetch = customRefetch;
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent after an exact query alias overwrites refetch", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  const exactQuery = query;
+  exactQuery["refetch"] = customRefetch;
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags an exact alias of a proven query refetch method", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search() {
+  const query = useQuery({ queryKey: ["items"] });
+  const reload = query.refetch;
+  useEffect(() => { reload(); }, [reload]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags multi-hop aliases of a destructured query refetch method", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search() {
+  const { refetch } = useQuery({ queryKey: ["items"] });
+  const reload = refetch;
+  const executeReload = reload;
+  useEffect(() => { executeReload(); }, [executeReload]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent after a query method alias is reassigned", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ customRefetch }) {
+  const query = useQuery({ queryKey: ["items"] });
+  let reload = query.refetch;
+  reload = customRefetch;
+  useEffect(() => { reload(); }, [reload]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on an unimported global useQuery", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `function Search() {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
 });

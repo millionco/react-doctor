@@ -43,10 +43,7 @@ export const resolveTanstackQueryHookName = (
   const callee = callExpression.callee;
   if (isNodeOfType(callee, "Identifier")) {
     const resolvedSymbol = resolveConstIdentifierAlias(callee, scopes);
-    if (!resolvedSymbol) {
-      if (!scopes.isGlobalReference(callee)) return null;
-      return TANSTACK_QUERY_HOOKS.has(callee.name) ? callee.name : null;
-    }
+    if (!resolvedSymbol) return null;
     if (resolvedSymbol.kind === "const" && resolvedSymbol.initializer) {
       const initializer = stripParenExpression(resolvedSymbol.initializer);
       return isNodeOfType(initializer, "MemberExpression")

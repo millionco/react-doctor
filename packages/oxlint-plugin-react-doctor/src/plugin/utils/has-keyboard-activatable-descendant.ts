@@ -191,6 +191,8 @@ const findKeyboardActivatableDescendant = (
   scopes: ScopeAnalysis,
   settings: Readonly<Record<string, unknown>> | undefined,
 ): boolean => {
+  const walk = (descendant: EsTreeNode): boolean =>
+    findKeyboardActivatableDescendant(descendant, expectedAction, scopes, settings);
   if (isNodeOfType(node, "JSXElement")) {
     if (isKeyboardActivatableElement(node, settings, expectedAction !== null)) {
       if (!expectedAction) return true;
@@ -200,47 +202,16 @@ const findKeyboardActivatableDescendant = (
         if (action && areExpressionsStructurallyEqual(expectedAction, action)) return true;
       }
     }
-    return node.children.some((child) =>
-      findKeyboardActivatableDescendant(child as EsTreeNode, expectedAction, scopes, settings),
-    );
+    return node.children.some((child) => walk(child as EsTreeNode));
   }
   if (isNodeOfType(node, "JSXFragment")) {
-    return node.children.some((child) =>
-      findKeyboardActivatableDescendant(child as EsTreeNode, expectedAction, scopes, settings),
-    );
+    return node.children.some((child) => walk(child as EsTreeNode));
   }
-  if (isNodeOfType(node, "JSXExpressionContainer")) {
-    if (!expectedAction) return false;
-    return findKeyboardActivatableDescendant(
-      node.expression as EsTreeNode,
-      expectedAction,
-      scopes,
-      settings,
-    );
-  }
-  if (isNodeOfType(node, "LogicalExpression")) {
-    if (!expectedAction) return false;
-    return (
-      findKeyboardActivatableDescendant(node.left, expectedAction, scopes, settings) ||
-      findKeyboardActivatableDescendant(node.right, expectedAction, scopes, settings)
-    );
-  }
+  if (!expectedAction) return false;
+  if (isNodeOfType(node, "JSXExpressionContainer")) return walk(node.expression as EsTreeNode);
+  if (isNodeOfType(node, "LogicalExpression")) return walk(node.left) || walk(node.right);
   if (isNodeOfType(node, "ConditionalExpression")) {
-    if (!expectedAction) return false;
-    return (
-      findKeyboardActivatableDescendant(
-        node.consequent as EsTreeNode,
-        expectedAction,
-        scopes,
-        settings,
-      ) ||
-      findKeyboardActivatableDescendant(
-        node.alternate as EsTreeNode,
-        expectedAction,
-        scopes,
-        settings,
-      )
-    );
+    return walk(node.consequent as EsTreeNode) || walk(node.alternate as EsTreeNode);
   }
   return false;
 };

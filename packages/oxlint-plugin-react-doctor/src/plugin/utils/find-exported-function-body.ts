@@ -1,26 +1,12 @@
 import type { EsTreeNode } from "./es-tree-node.js";
-import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { findExportedValue } from "./find-exported-value.js";
+import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { stripParenExpression } from "./strip-paren-expression.js";
 
 export interface ReExportTarget {
   importedName: string;
   source: string;
 }
-
-const isFunctionLike = (
-  node: EsTreeNode | null | undefined,
-): node is
-  | EsTreeNodeOfType<"FunctionDeclaration">
-  | EsTreeNodeOfType<"FunctionExpression">
-  | EsTreeNodeOfType<"ArrowFunctionExpression"> => {
-  if (!node) return false;
-  return (
-    isNodeOfType(node, "FunctionDeclaration") ||
-    isNodeOfType(node, "FunctionExpression") ||
-    isNodeOfType(node, "ArrowFunctionExpression")
-  );
-};
 
 // Given a parsed Program AST and an exported name, returns the
 // function/arrow node bound to that export, or null if the export
@@ -45,107 +31,8 @@ export const findExportedFunctionBody = (
   programRoot: EsTreeNode,
   exportedName: string,
 ): EsTreeNode | null => {
-  if (!isNodeOfType(programRoot, "Program")) return null;
-
-  const localBindings = new Map<string, EsTreeNode>();
-  const namedExports = new Map<string, string>();
-  let defaultExport: EsTreeNode | null = null;
-  // `export default someIdentifier` — resolved after all local bindings
-  // are gathered (the identifier may be declared later in the file).
-  let defaultExportIdentifierName: string | null = null;
-
-  const recordVariableDeclaration = (declaration: EsTreeNodeOfType<"VariableDeclaration">) => {
-    for (const declarator of declaration.declarations ?? []) {
-      if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
-      if (!isNodeOfType(declarator.id, "Identifier")) continue;
-      const initializer = declarator.init ? stripParenExpression(declarator.init) : null;
-      if (initializer && isFunctionLike(initializer)) {
-        localBindings.set(declarator.id.name, initializer);
-      }
-    }
-  };
-
-  for (const statement of programRoot.body ?? []) {
-    if (isNodeOfType(statement, "VariableDeclaration")) {
-      recordVariableDeclaration(statement);
-      continue;
-    }
-    if (isNodeOfType(statement, "FunctionDeclaration") && statement.id) {
-      localBindings.set(statement.id.name, statement);
-      continue;
-    }
-
-    if (isNodeOfType(statement, "ExportNamedDeclaration")) {
-      if (statement.exportKind === "type") continue;
-      const declaration = statement.declaration;
-      if (declaration && isNodeOfType(declaration, "VariableDeclaration")) {
-        recordVariableDeclaration(declaration);
-        for (const declarator of declaration.declarations ?? []) {
-          if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
-          if (!isNodeOfType(declarator.id, "Identifier")) continue;
-          namedExports.set(declarator.id.name, declarator.id.name);
-        }
-      } else if (
-        declaration &&
-        isNodeOfType(declaration, "FunctionDeclaration") &&
-        declaration.id
-      ) {
-        localBindings.set(declaration.id.name, declaration);
-        namedExports.set(declaration.id.name, declaration.id.name);
-      }
-      for (const specifier of statement.specifiers ?? []) {
-        if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
-        if (specifier.exportKind === "type") continue;
-        const local = specifier.local;
-        const exported = specifier.exported;
-        if (!isNodeOfType(local, "Identifier")) continue;
-        const exportedNameSpec = isNodeOfType(exported, "Identifier")
-          ? exported.name
-          : isNodeOfType(exported, "Literal") && typeof exported.value === "string"
-            ? exported.value
-            : null;
-        if (!exportedNameSpec) continue;
-        namedExports.set(exportedNameSpec, local.name);
-      }
-      continue;
-    }
-
-    if (isNodeOfType(statement, "ExportDefaultDeclaration")) {
-      const declaration = statement.declaration;
-      if (!declaration) continue;
-      if (isNodeOfType(declaration, "FunctionDeclaration") && declaration.id) {
-        localBindings.set(declaration.id.name, declaration);
-        defaultExport = declaration;
-        continue;
-      }
-      if (isFunctionLike(declaration)) {
-        defaultExport = declaration;
-        continue;
-      }
-      if (isNodeOfType(declaration, "Identifier")) {
-        // Resolved lazily below — we need to wait until all local
-        // bindings are gathered.
-        defaultExportIdentifierName = declaration.name;
-        continue;
-      }
-    }
-  }
-
-  if (exportedName === "default") {
-    if (defaultExport) return defaultExport;
-    if (defaultExportIdentifierName) {
-      const binding = localBindings.get(defaultExportIdentifierName);
-      if (binding) return binding;
-    }
-    // `export { reducer as default }` — the specifier loop above
-    // recorded `namedExports.set("default", "reducer")`. Fall
-    // through to the general lookup so the rename-as-default shape
-    // resolves correctly.
-  }
-
-  const localName = namedExports.get(exportedName);
-  if (!localName) return null;
-  return localBindings.get(localName) ?? null;
+  const exportedValue = findExportedValue(programRoot, exportedName);
+  return isFunctionLike(exportedValue) ? exportedValue : null;
 };
 
 // Convenience: returns the source-side identifier name for an

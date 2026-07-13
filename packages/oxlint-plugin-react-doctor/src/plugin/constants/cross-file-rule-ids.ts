@@ -35,6 +35,7 @@
 // `cross-file-dependencies.ts`.
 export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "client-passive-event-listeners",
+  "exhaustive-deps",
   "no-barrel-import",
   "nextjs-missing-metadata",
   "nextjs-no-use-search-params-without-suspense",
@@ -48,11 +49,13 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-derived-state",
   "no-derived-state-effect",
   "no-event-handler",
+  "no-effect-with-fresh-deps",
   "no-initialize-state",
   "no-mutating-reducer-state",
   "no-unguarded-browser-global-in-render-or-hook-init",
   "prefer-dynamic-import",
   "rendering-hydration-mismatch-time",
+  "rerender-memo-with-default-value",
   "rn-no-legacy-shadow-styles",
   "rn-no-raw-text",
   "rn-prefer-expo-image",

@@ -48,6 +48,9 @@ export const buildUnknownCallbackMessage = (hookName: string): string =>
 export const buildUnstableDepMessage = (hookName: string, depName: string): string =>
   `\`${depName}\` is rebuilt every render, so \`${hookName}\` runs every time.`;
 
+export const buildForwardedUnstableDepMessage = (depName: string): string =>
+  `\`${depName}\` is rebuilt every render and reaches a Hook dependency inside this custom Hook.`;
+
 export const buildSetStateWithoutDepsMessage = (hookName: string, setterName: string): string =>
   `\`${hookName}\` calls \`${setterName}\` with no dependency array, so it can loop forever & freeze the component.`;
 

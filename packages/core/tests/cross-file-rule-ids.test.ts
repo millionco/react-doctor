@@ -136,6 +136,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
   it("contains the verified set and nothing the analysis can't justify", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
       "client-passive-event-listeners",
+      "exhaustive-deps",
       "nextjs-missing-metadata",
       "nextjs-no-use-search-params-without-suspense",
       "no-adjust-state-on-prop-change",
@@ -143,6 +144,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-derived-state",
       "no-derived-state-effect",
       "no-dynamic-import-path",
+      "no-effect-with-fresh-deps",
       "no-event-handler",
       "no-full-lodash-import",
       "no-hydration-branch-on-browser-global",
@@ -154,6 +156,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-unguarded-browser-global-in-render-or-hook-init",
       "prefer-dynamic-import",
       "rendering-hydration-mismatch-time",
+      "rerender-memo-with-default-value",
       "rn-no-legacy-shadow-styles",
       "rn-no-raw-text",
       "rn-prefer-expo-image",

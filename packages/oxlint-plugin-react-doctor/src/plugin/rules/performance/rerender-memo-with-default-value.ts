@@ -6,6 +6,7 @@ import {
 } from "../../utils/build-same-file-memo-registry.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findForwardedFreshHookDependencies } from "../../utils/find-forwarded-fresh-hook-dependencies.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -278,6 +279,16 @@ export const rerenderMemoWithDefaultValue = defineRule({
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         memoRegistry = buildSameFileMemoRegistry(node as EsTreeNode);
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        for (const finding of findForwardedFreshHookDependencies(node, context)) {
+          if (finding.origin !== "default") continue;
+          if (finding.kind !== "array" && finding.kind !== "object") continue;
+          context.report({
+            node: finding.reportNode,
+            message: `This custom Hook default creates a new ${finding.kind} every render and forwards it to a Hook dependency.`,
+          });
+        }
       },
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;

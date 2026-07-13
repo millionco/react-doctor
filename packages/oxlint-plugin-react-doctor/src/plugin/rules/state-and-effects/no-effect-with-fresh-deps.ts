@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { findForwardedFreshHookDependencies } from "../../utils/find-forwarded-fresh-hook-dependencies.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -133,6 +134,13 @@ export const noEffectWithFreshDeps = defineRule({
     "Move the value inside the hook body and depend on its simple inputs instead, or wrap it in useMemo / useCallback so it stays the same between renders.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+      for (const finding of findForwardedFreshHookDependencies(node, context)) {
+        context.report({
+          node: finding.reportNode,
+          message: `A dependency inside this custom Hook changes every render because \`${finding.bindingName}\` is a new ${finding.kind} built fresh each time.`,
+        });
+      }
+
       if (!isHookCall(node, HOOKS_WITH_DEPS)) return;
       const args = node.arguments ?? [];
       if (args.length < 2) return;

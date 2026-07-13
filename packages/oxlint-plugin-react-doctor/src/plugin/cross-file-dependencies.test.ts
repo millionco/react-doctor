@@ -278,6 +278,52 @@ export const App = ({ items }) => {
   });
 });
 
+describe("forwarded Hook dependency collectors", () => {
+  const affectedRuleIds = [
+    "exhaustive-deps",
+    "no-effect-with-fresh-deps",
+    "rerender-memo-with-default-value",
+  ];
+
+  it("records direct and nested imported Hook modules for every affected rule", () => {
+    writeFixtureFile(
+      "src/use-inner.ts",
+      `import { useEffect } from "react";\nexport const useInner = (dependencies) => useEffect(() => {}, dependencies);\n`,
+    );
+    writeFixtureFile(
+      "src/use-outer.ts",
+      `import { useInner } from "./use-inner";\nexport const useOuter = (dependencies) => useInner(dependencies);\n`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { useOuter } from "./use-outer";\nexport const App = () => { useOuter([]); return null; };\n`,
+    );
+
+    const trace = collectFor(appPath, affectedRuleIds);
+    expect(trace?.contentPaths.has(fixturePath("src/use-outer.ts"))).toBe(true);
+    expect(trace?.contentPaths.has(fixturePath("src/use-inner.ts"))).toBe(true);
+  });
+
+  it("records conditional imported Hook aliases used by a reached module", () => {
+    writeFixtureFile(
+      "src/use-isomorphic-layout-effect.ts",
+      `import { useEffect, useLayoutEffect } from "react";\nexport const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;\n`,
+    );
+    writeFixtureFile(
+      "src/use-document-events.ts",
+      `import { useIsomorphicLayoutEffect } from "./use-isomorphic-layout-effect";\nexport const useDocumentEvents = (dependencies) => useIsomorphicLayoutEffect(() => {}, dependencies);\n`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { useDocumentEvents } from "./use-document-events";\nexport const App = () => { useDocumentEvents([]); return null; };\n`,
+    );
+
+    const trace = collectFor(appPath, affectedRuleIds);
+    expect(trace?.contentPaths.has(fixturePath("src/use-document-events.ts"))).toBe(true);
+    expect(trace?.contentPaths.has(fixturePath("src/use-isomorphic-layout-effect.ts"))).toBe(true);
+  });
+});
+
 describe("nextjs collectors", () => {
   it("records ancestor layout probes for a page file only", () => {
     writeFixtureFile("app/layout.tsx", "export default ({ children }) => children;\n");

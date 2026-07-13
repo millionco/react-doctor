@@ -5,6 +5,7 @@ import {
   PAGE_FILE_PATTERN,
   PAGE_OR_LAYOUT_FILE_PATTERN,
 } from "./constants/nextjs.js";
+import { CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH } from "./constants/thresholds.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
@@ -16,7 +17,10 @@ import { isLegacyArchReactNativeFile } from "./utils/is-legacy-arch-react-native
 import { normalizeFilename } from "./utils/normalize-filename.js";
 import { resolveLang } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
-import { resolveCrossFileFunctionExport } from "./utils/resolve-cross-file-function-export.js";
+import {
+  resolveCrossFileFunctionExport,
+  resolveCrossFileValueExportWithFilePath,
+} from "./utils/resolve-cross-file-function-export.js";
 import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
@@ -169,6 +173,72 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
 }) => {
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
+  }
+};
+
+const flattenProgramImportEntries = (program: EsTreeNode): ImportEntryName[] => {
+  const entries: ImportEntryName[] = [];
+  for (const statement of (program as { body?: ReadonlyArray<EsTreeNode> }).body ?? []) {
+    if (statement.type !== "ImportDeclaration") continue;
+    const source = (statement as { source?: { value?: unknown } }).source?.value;
+    if (typeof source !== "string") continue;
+    for (const specifier of (statement as { specifiers?: ReadonlyArray<EsTreeNode> }).specifiers ??
+      []) {
+      if (specifier.type === "ImportDefaultSpecifier") {
+        entries.push({ source, exportedName: "default" });
+      } else if (specifier.type === "ImportSpecifier") {
+        const imported = (specifier as { imported?: { name?: unknown; value?: unknown } }).imported;
+        let exportedName: string | null = null;
+        if (typeof imported?.name === "string") {
+          exportedName = imported.name;
+        } else if (typeof imported?.value === "string") {
+          exportedName = imported.value;
+        }
+        if (exportedName) entries.push({ source, exportedName });
+      }
+    }
+  }
+  return entries;
+};
+
+const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+}) => {
+  const greatestTraversedDepthByFilePath = new Map<string, number>();
+
+  const collectProgramDependencies = (
+    filePath: string,
+    program: EsTreeNode,
+    remainingDepth: number,
+  ): void => {
+    const previousDepth = greatestTraversedDepthByFilePath.get(filePath) ?? -1;
+    if (previousDepth >= remainingDepth) return;
+    greatestTraversedDepthByFilePath.set(filePath, remainingDepth);
+
+    for (const entry of flattenProgramImportEntries(program)) {
+      const resolved = resolveCrossFileValueExportWithFilePath(
+        filePath,
+        entry.source,
+        entry.exportedName,
+      );
+      if (!resolved || remainingDepth === 0) continue;
+      collectProgramDependencies(resolved.filePath, resolved.programNode, remainingDepth - 1);
+    }
+  };
+
+  for (const entry of flattenImportEntries(staticImports)) {
+    const resolved = resolveCrossFileValueExportWithFilePath(
+      absoluteFilePath,
+      entry.source,
+      entry.exportedName,
+    );
+    if (!resolved) continue;
+    collectProgramDependencies(
+      resolved.filePath,
+      resolved.programNode,
+      CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
+    );
   }
 };
 
@@ -340,6 +410,7 @@ const collectLegacyArchDependencies: CrossFileDependencyCollector = ({ absoluteF
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
+    ["exhaustive-deps", collectForwardedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
@@ -353,11 +424,13 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-derived-state", collectEffectValueHelperDependencies],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],
+    ["no-effect-with-fresh-deps", collectForwardedHookDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
     ["no-unguarded-browser-global-in-render-or-hook-init", collectNearestManifestDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],
     ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
+    ["rerender-memo-with-default-value", collectForwardedHookDependencies],
     ["rn-no-legacy-shadow-styles", collectLegacyArchDependencies],
     ["rn-no-raw-text", collectRnNoRawTextDependencies],
     ["rn-prefer-expo-image", collectNearestManifestDependencies],

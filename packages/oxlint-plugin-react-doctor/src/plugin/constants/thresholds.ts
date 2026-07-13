@@ -45,6 +45,7 @@ export const MIN_OVERPRECISE_SVG_TOKEN_OCCURRENCES = 2;
 // giving up.
 export const CROSS_FILE_PARSE_MAX_BYTES = 2_000_000;
 export const CROSS_FILE_BARREL_FOLLOW_DEPTH = 4;
+export const CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH = 4;
 
 // Bounds for upward directory walks used by cross-file resolvers:
 // `CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS` caps how many parent

@@ -118,4 +118,27 @@ function read(exactResult) {
     );
     expect(diagnostics).toHaveLength(0);
   });
+
+  it("stays silent when a local hook shadows a TanStack import", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import { useQuery } from "@tanstack/react-query";
+function read(useQuery) {
+  const { data, ...rest } = useQuery();
+  return rest;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags exact namespace and hook aliases", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import * as ReactQuery from "@tanstack/react-query";
+const QueryNamespace = ReactQuery;
+const useItemsQuery = QueryNamespace["useQuery"];
+const { data, ...rest } = useItemsQuery({ queryKey: ["items"] });`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
 });

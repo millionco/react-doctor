@@ -36,9 +36,12 @@ const isTanstackRefetchCall = (
   }
   return (
     isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === "refetch" &&
+    ((isNodeOfType(callee.property, "Identifier") &&
+      !callee.computed &&
+      callee.property.name === "refetch") ||
+      (isNodeOfType(callee.property, "Literal") &&
+        callee.computed &&
+        callee.property.value === "refetch")) &&
     isTanstackQueryResult(callee.object, context)
   );
 };

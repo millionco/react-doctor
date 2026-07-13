@@ -163,6 +163,8 @@ export const LIBRARY_SNIPPET_POOL = [
   `const zodSchema = z.object({ value: z.string() }).strict();`,
   `const subscribeStore = useCallback((onStoreChange) => { store.on("change", onStoreChange); return () => store.off("change", onStoreChange); }, [store]); const snapshot = useSyncExternalStore(subscribeStore, getSnapshot);`,
   `const { data: queryData, isPending } = useQuery({ queryKey: ["items", value], queryFn: () => fetch(url).then((response) => response.json()) });`,
+  `const queryResult = useQuery({ queryKey: ["items", value], queryFn: () => fetch(url).then((response) => response.json()) }); useEffect(() => { queryResult["refetch"](); }, [queryResult]);`,
+  `const searchIndex = { refetch: () => handle(value) }; useEffect(() => { searchIndex.refetch(); }, [searchIndex]);`,
   `const mutation = useMutation({ mutationFn: (payload) => api.post(url, payload) });`,
   `const { mutate, mutateAsync } = useMutation({ mutationFn: (payload) => api.post(url, payload) });`,
   `useEffect(() => { mutateAsync({ event: "view" }); }, []);`,

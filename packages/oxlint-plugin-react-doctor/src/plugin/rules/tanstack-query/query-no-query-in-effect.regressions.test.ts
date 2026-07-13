@@ -6,7 +6,7 @@ describe("tanstack-query/query-no-query-in-effect — regressions", () => {
   it("stays silent when refetch() runs inside an event handler registered in the effect", () => {
     const { diagnostics } = runRule(
       queryNoQueryInEffect,
-      `function Dashboard() { const { data, refetch } = useQuery({ queryKey: ['x'], queryFn: load, refetchOnWindowFocus: false }); useEffect(() => { const onFocus = () => refetch(); window.addEventListener('focus', onFocus); return () => window.removeEventListener('focus', onFocus); }, [refetch]); return null; }`,
+      `import { useQuery } from "@tanstack/react-query"; function Dashboard() { const { data, refetch } = useQuery({ queryKey: ['x'], queryFn: load, refetchOnWindowFocus: false }); useEffect(() => { const onFocus = () => refetch(); window.addEventListener('focus', onFocus); return () => window.removeEventListener('focus', onFocus); }, [refetch]); return null; }`,
     );
     expect(diagnostics).toHaveLength(0);
   });
@@ -38,7 +38,7 @@ describe("tanstack-query/query-no-query-in-effect — regressions", () => {
   it("stays silent when refetch() runs inside a setInterval callback", () => {
     const { diagnostics } = runRule(
       queryNoQueryInEffect,
-      `function Dashboard() { useEffect(() => { const id = setInterval(() => refetch(), 30000); return () => clearInterval(id); }, [refetch]); return null; }`,
+      `import { useQuery } from "@tanstack/react-query"; function Dashboard() { const { refetch } = useQuery({ queryKey: ["item"] }); useEffect(() => { const id = setInterval(() => refetch(), 30000); return () => clearInterval(id); }, [refetch]); return null; }`,
     );
     expect(diagnostics).toHaveLength(0);
   });
@@ -72,6 +72,140 @@ import { useQuery } from "@tanstack/react-query";
 function Search() {
   const query = useQuery({ queryKey: ["items"], queryFn: loadItems });
   useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags renamed hook imports and destructured refetch renames", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery as useItemsQuery } from "@tanstack/react-query";
+function Search() {
+  const { refetch: reloadItems } = useItemsQuery({ queryKey: ["items"] });
+  useEffect(() => { reloadItems(); }, [reloadItems]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags namespace hooks and static-computed refetch members", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import * as ReactQuery from "@tanstack/react-query";
+function Search() {
+  const query = ReactQuery["useQuery"]({ queryKey: ["items"] });
+  useEffect(() => { query["refetch"](); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags exact hook, namespace, and query-result const aliases", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import * as ReactQuery from "@tanstack/react-query";
+const QueryNamespace = ReactQuery;
+const useItemsQuery = QueryNamespace.useQuery;
+function Search() {
+  const originalQuery = useItemsQuery({ queryKey: ["items"] });
+  const exactQuery = originalQuery;
+  const finalQuery = exactQuery;
+  useEffect(() => { finalQuery.refetch(); }, [finalQuery]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags query results through TypeScript wrappers and parentheses", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search() {
+  const query = ((useQuery({ queryKey: ["items"] })) as ReturnType<typeof useQuery>);
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a reassignable query-result receiver", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ fallback }) {
+  let query = useQuery({ queryKey: ["items"] });
+  query = fallback;
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when a local hook shadows a TanStack import", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ useQuery }) {
+  const query = useQuery();
+  useEffect(() => { query.refetch(); }, [query]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on imported and local unrelated refetch functions", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { refetch as importedRefetch } from "./search-index";
+const localRefetch = () => {};
+function Search() {
+  useEffect(() => { importedRefetch(); localRefetch(); }, []);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on imported unrelated refetch receivers", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { searchIndex } from "./search-index";
+function Search() {
+  useEffect(() => { searchIndex.refetch(); }, []);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on dynamic computed members", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search({ methodName }) {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => { query[methodName](); }, [query, methodName]);
+  return null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags a proven refetch in a local function invoked by the effect", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `import { useQuery } from "@tanstack/react-query";
+function Search() {
+  const query = useQuery({ queryKey: ["items"] });
+  useEffect(() => { const reload = () => query.refetch(); reload(); }, [query]);
   return null;
 }`,
     );

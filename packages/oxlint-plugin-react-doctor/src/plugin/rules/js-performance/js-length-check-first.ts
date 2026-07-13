@@ -1,9 +1,9 @@
-import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { collectEarlierAndGuardOperands } from "../../utils/collect-earlier-and-guard-operands.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -19,10 +19,6 @@ import type { RuleContext } from "../../utils/rule-context.js";
 interface ObjectProjection {
   methodName: string;
   source: EsTreeNode;
-}
-
-interface DirectConstSymbol extends SymbolDescriptor {
-  readonly initializer: EsTreeNode;
 }
 
 const OBJECT_CARDINALITY_PROJECTION_METHOD_NAMES: ReadonlySet<string> = new Set(["keys", "values"]);
@@ -92,12 +88,6 @@ const getGlobalObjectFreezeArgument = (
   return callArguments[0];
 };
 
-const isDirectConstSymbol = (symbol: SymbolDescriptor): symbol is DirectConstSymbol =>
-  symbol.kind === "const" &&
-  isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
-  symbol.declarationNode.id === symbol.bindingIdentifier &&
-  Boolean(symbol.initializer);
-
 const resolveStablePlainObjectRootId = (
   expression: EsTreeNode,
   context: RuleContext,
@@ -106,9 +96,11 @@ const resolveStablePlainObjectRootId = (
   const source = stripParenExpression(expression);
   if (!isNodeOfType(source, "Identifier")) return null;
   const symbol = context.scopes.symbolFor(source);
-  if (!symbol || !isDirectConstSymbol(symbol) || visitedSymbolIds.has(symbol.id)) return null;
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
+  const directConstInitializer = getDirectConstInitializer(symbol);
+  if (!directConstInitializer) return null;
   visitedSymbolIds.add(symbol.id);
-  const initializer = stripParenExpression(symbol.initializer);
+  const initializer = stripParenExpression(directConstInitializer);
   const frozenValue = getGlobalObjectFreezeArgument(initializer, context);
   if (frozenValue) return isPlainDataObjectLiteral(frozenValue) ? symbol.id : null;
   return resolveStablePlainObjectRootId(initializer, context, visitedSymbolIds);
@@ -507,7 +499,10 @@ export const jsLengthCheckFirst = defineRule({
       // derivation like `.map()`): lengths are equal by construction, a
       // length precheck would be dead code.
       if (areExpressionsStructurallyEqual(resolvedReceiverSource, resolvedIndexedSource)) return;
-      if (areEqualCardinalityObjectProjections(receiverArrayObject, indexedArrayObject, context)) {
+      if (
+        areEqualCardinalityObjectProjections(receiverArrayObject, indexedArrayObject, context) ||
+        areEqualCardinalityObjectProjections(resolvedReceiverSource, resolvedIndexedSource, context)
+      ) {
         return;
       }
 

@@ -216,6 +216,23 @@ describe("js-performance/js-length-check-first — regressions", () => {
       );`);
   });
 
+  it("stays silent through length-preserving wrappers around complementary projections", () => {
+    expectPass(`const DEFAULTS = Object.freeze({ next: "j", previous: "k" });
+    const isComplete = (bindings) =>
+      [...Object.values(DEFAULTS)].map((value) => value).every((_, index) =>
+        typeof bindings[Object.keys(DEFAULTS).toSorted()[index]] === "string"
+      );`);
+  });
+
+  it("flags length-preserving wrappers around projections from different frozen objects", () => {
+    expectFail(`const LEFT = Object.freeze({ next: "j" });
+    const RIGHT = Object.freeze({ next: "j", previous: "k" });
+    const isComplete = (bindings) =>
+      [...Object.values(LEFT)].map((value) => value).every((_, index) =>
+        typeof bindings[Object.keys(RIGHT).toSorted()[index]] === "string"
+      );`);
+  });
+
   it("flags a non-frozen const plain object", () => {
     expectFail(`const DEFAULTS = { next: "j", previous: "k" } as const;
     const isComplete = (bindings) =>

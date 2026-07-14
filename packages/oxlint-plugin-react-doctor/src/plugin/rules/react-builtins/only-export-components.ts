@@ -1,9 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { exportAllAddsRuntimeValues } from "../../utils/export-all-adds-runtime-values.js";
 import { isFrameworkRouteOrSpecialFilename } from "../../utils/is-framework-route-or-special-filename.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
+import { functionHasReactElementReturnType } from "../../utils/function-has-react-element-return-type.js";
+import { getFastRefreshFileStatus } from "../../utils/get-fast-refresh-file-status.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -12,12 +16,13 @@ import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { ControlFlowAnalysis } from "../../semantic/control-flow-graph.js";
 import {
-  ENTRY_POINT_BASENAMES,
   NON_FAST_REFRESH_PATH_SEGMENTS,
+  EXPO_ALLOWED_EXPORT_NAMES,
+  NEXT_ALLOWED_EXPORT_NAMES,
   NOT_REACT_COMPONENT_EXPRESSION_TYPES,
-  ROUTE_FACTORY_CALLEE_NAMES,
-  ROUTE_MODULE_ALLOWED_EXPORT_NAMES,
-  UTILITY_FILE_BASENAMES,
+  REACT_ROUTER_ALLOWED_EXPORT_NAMES,
+  REACT_ROUTER_FACTORY_CALLEE_NAMES,
+  TANSTACK_ROUTE_FACTORY_CALLEE_NAMES,
 } from "./only-export-components-tables.js";
 
 const NAMED_EXPORT_MESSAGE =
@@ -39,6 +44,9 @@ interface OnlyExportComponentsSettings {
 }
 
 const DEFAULT_REACT_HOCS: ReadonlyArray<string> = ["memo", "forwardRef", "lazy"];
+const EMPTY_NAME_SET: ReadonlySet<string> = new Set();
+const TEST_SUPPORT_FILE_PATTERN =
+  /(?:^|\/)(?:test|spec)(?:[-_.]?(?:utils?|helpers?|setup|fixtures?))?\.(?:jsx?|tsx?)$/i;
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
@@ -95,17 +103,17 @@ const isReactCreateContext = (initializer: EsTreeNode | null | undefined): boole
   return false;
 };
 
-const isRouteFactoryName = (name: string): boolean => ROUTE_FACTORY_CALLEE_NAMES.has(name);
-
-const isRouteFactoryCall = (expression: EsTreeNode): boolean => {
+const isRouteFactoryCall = (expression: EsTreeNode, bindings: RouteFactoryBindings): boolean => {
   let currentCall: EsTreeNode = expression;
   while (isNodeOfType(currentCall, "CallExpression")) {
     const callee = currentCall.callee as EsTreeNode;
-    if (isNodeOfType(callee, "Identifier") && isRouteFactoryName(callee.name)) return true;
+    if (isNodeOfType(callee, "Identifier") && bindings.localNames.has(callee.name)) return true;
     if (
       isNodeOfType(callee, "MemberExpression") &&
+      isNodeOfType(callee.object, "Identifier") &&
+      bindings.namespaceNames.has(callee.object.name) &&
       isNodeOfType(callee.property, "Identifier") &&
-      isRouteFactoryName(callee.property.name)
+      bindings.memberNames.has(callee.property.name)
     ) {
       return true;
     }
@@ -137,11 +145,22 @@ interface AnalyzerState {
   customHocs: ReadonlySet<string>;
   allowExportNames: ReadonlySet<string>;
   allowConstantExport: boolean;
+  allowedRouteExportNames: ReadonlySet<string>;
+  routeFactoryBindings: RouteFactoryBindings;
+  componentFactorySymbolIds: ReadonlySet<number>;
+  defaultExportComponentNames: ReadonlySet<string>;
+  importSymbolIds: ReadonlySet<number>;
   // Module-scope component binding names — used to spot a component
   // reference smuggled inside a namespace-object export.
   localComponentNames: ReadonlySet<string>;
   scopes: ScopeAnalysis;
   controlFlow: ControlFlowAnalysis;
+}
+
+interface RouteFactoryBindings {
+  localNames: ReadonlySet<string>;
+  memberNames: ReadonlySet<string>;
+  namespaceNames: ReadonlySet<string>;
 }
 
 const isReactHocName = (name: string, state: AnalyzerState): boolean => state.customHocs.has(name);
@@ -186,7 +205,10 @@ const canBeReactFunctionComponent = (
     isNodeOfType(expression, "ArrowFunctionExpression") ||
     isNodeOfType(expression, "FunctionExpression")
   ) {
-    return true;
+    return (
+      functionContainsReactRenderOutput(expression, state.scopes, state.controlFlow) ||
+      functionHasReactElementReturnType(expression)
+    );
   }
   if (isNodeOfType(expression, "CallExpression")) {
     return isHocCallee(expression.callee as EsTreeNode, state);
@@ -207,6 +229,98 @@ const isReactComponentInitializer = (expression: EsTreeNode, state: AnalyzerStat
     return true;
   }
   return false;
+};
+
+const isNextDynamicCall = (
+  expression: EsTreeNode,
+  nextDynamicImportSymbolIds: ReadonlySet<number>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const stripped = skipTsExpression(expression);
+  if (!isNodeOfType(stripped, "CallExpression")) return false;
+  const callee = skipTsExpression(stripped.callee as EsTreeNode);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const symbol = scopes.symbolFor(callee);
+  return symbol !== null && nextDynamicImportSymbolIds.has(symbol.id);
+};
+
+const functionReturnsNextDynamicComponent = (
+  expression: EsTreeNode,
+  nextDynamicImportSymbolIds: ReadonlySet<number>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const stripped = skipTsExpression(expression);
+  if (
+    !isNodeOfType(stripped, "ArrowFunctionExpression") &&
+    !isNodeOfType(stripped, "FunctionExpression") &&
+    !isNodeOfType(stripped, "FunctionDeclaration")
+  ) {
+    return false;
+  }
+  const body = stripped.body as EsTreeNode;
+  if (!isNodeOfType(body, "BlockStatement")) {
+    return isNextDynamicCall(body, nextDynamicImportSymbolIds, scopes);
+  }
+  if (body.body.length !== 1) return false;
+  const statement = body.body[0];
+  return (
+    Boolean(statement) &&
+    isNodeOfType(statement, "ReturnStatement") &&
+    Boolean(statement.argument) &&
+    isNextDynamicCall(statement.argument as EsTreeNode, nextDynamicImportSymbolIds, scopes)
+  );
+};
+
+const isComponentFactoryCall = (expression: EsTreeNode, state: AnalyzerState): boolean => {
+  const stripped = skipTsExpression(expression);
+  if (!isNodeOfType(stripped, "CallExpression")) return false;
+  const callee = skipTsExpression(stripped.callee as EsTreeNode);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const symbol = state.scopes.symbolFor(callee);
+  return symbol !== null && state.componentFactorySymbolIds.has(symbol.id);
+};
+
+const isProvenComponentValue = (expression: EsTreeNode, state: AnalyzerState): boolean => {
+  const stripped = skipTsExpression(expression);
+  if (isNodeOfType(stripped, "Identifier")) {
+    if (state.localComponentNames.has(stripped.name)) return true;
+    return (
+      isReactComponentName(stripped.name) && state.scopes.symbolFor(stripped)?.kind === "import"
+    );
+  }
+  if (
+    isNodeOfType(stripped, "MemberExpression") &&
+    !stripped.computed &&
+    isNodeOfType(stripped.object, "Identifier") &&
+    isNodeOfType(stripped.property, "Identifier") &&
+    isReactComponentName(stripped.property.name)
+  ) {
+    const objectSymbol = state.scopes.symbolFor(stripped.object);
+    return objectSymbol !== null && state.importSymbolIds.has(objectSymbol.id);
+  }
+  if (
+    isNodeOfType(stripped, "ArrowFunctionExpression") ||
+    isNodeOfType(stripped, "FunctionExpression")
+  ) {
+    return functionContainsReactRenderOutput(stripped, state.scopes, state.controlFlow);
+  }
+  if (!isNodeOfType(stripped, "CallExpression")) return false;
+  if (!isHocCallee(stripped.callee as EsTreeNode, state)) return false;
+  return stripped.arguments.some((argument) =>
+    isProvenComponentValue(argument as EsTreeNode, state),
+  );
+};
+
+const isDirectRefreshWrapperCall = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  state: AnalyzerState,
+): boolean => {
+  const callee = skipTsExpression(call.callee as EsTreeNode);
+  if (isHocCallee(callee, state)) return call.arguments.length > 0;
+  if (!isNodeOfType(callee, "Identifier") && !isNodeOfType(callee, "MemberExpression")) {
+    return false;
+  }
+  return call.arguments.some((argument) => isProvenComponentValue(argument as EsTreeNode, state));
 };
 
 // The real Fast-Refresh breaker react-refresh checks for: a module whose
@@ -259,14 +373,27 @@ const classifyExport = (
   initializer: EsTreeNode | null | undefined,
   state: AnalyzerState,
 ): ExportType => {
+  if (
+    isNodeOfType(reportNode, "Identifier") &&
+    state.defaultExportComponentNames.has(reportNode.name)
+  ) {
+    return { kind: "react-component" };
+  }
   // HoC-wrapped: `export const Foo = memo(...)` — treat as component.
   if (initializer) {
     const expression = skipTsExpression(initializer);
+    if (
+      isNodeOfType(expression, "CallExpression") &&
+      isReactComponentName(name) &&
+      isComponentFactoryCall(expression, state)
+    ) {
+      return { kind: "react-component" };
+    }
     // File-based-router route objects (`export const Route =
     // createFileRoute("/profile")({ component: ProfilePage })`) — the
     // router's bundler plugin owns HMR for these modules, so the route
     // export and any local components it references are conventional.
-    if (isRouteFactoryCall(expression)) {
+    if (isRouteFactoryCall(expression, state.routeFactoryBindings)) {
       return { kind: "react-component" };
     }
     if (
@@ -293,7 +420,7 @@ const classifyExport = (
   // Expo Router bundler plugins special-case these during Fast Refresh,
   // so co-exporting them with the route component is the documented
   // shape, not a hazard.
-  if (ROUTE_MODULE_ALLOWED_EXPORT_NAMES.has(name)) return { kind: "allowed" };
+  if (state.allowedRouteExportNames.has(name)) return { kind: "allowed" };
   // Custom hook exports — `useFoo`, `useBar`. Modern Vite Fast
   // Refresh (>= 4.x via @vitejs/plugin-react-swc + react-refresh)
   // already handles `use[A-Z]*` exports alongside components: the
@@ -333,7 +460,18 @@ const classifyExport = (
     ) {
       return { kind: "namespace-object", reportNode };
     }
+    if (isNodeOfType(stripped, "MemberExpression")) {
+      return isProvenComponentValue(stripped, state)
+        ? { kind: "react-component" }
+        : { kind: "non-component", reportNode };
+    }
     if (NOT_REACT_COMPONENT_EXPRESSION_TYPES.has(stripped.type)) {
+      return { kind: "non-component", reportNode };
+    }
+    if (
+      isNodeOfType(stripped, "ArrowFunctionExpression") ||
+      isNodeOfType(stripped, "FunctionExpression")
+    ) {
       return { kind: "non-component", reportNode };
     }
   }
@@ -342,65 +480,11 @@ const classifyExport = (
     : { kind: "non-component", reportNode };
 };
 
-const isEntryPointFile = (filename: string): boolean => {
-  // Match the last path segment regardless of separator (`/` on POSIX,
-  // `\\` on Windows — `path.basename`-style logic without depending on
-  // node:path in the rule body).
-  const lastSlash = Math.max(filename.lastIndexOf("/"), filename.lastIndexOf("\\"));
-  const basename = lastSlash === -1 ? filename : filename.slice(lastSlash + 1);
-  return ENTRY_POINT_BASENAMES.has(basename);
-};
-
-// Files that conventionally hold icon / asset / glyph exports —
-// `icons.tsx`, `Icons.tsx`, `*Icon.tsx`, `*Logo.tsx`, `sprite.tsx`,
-// `svgs.tsx`, `flags.tsx`, etc. These tend to mix component-style
-// exports (`const HomeIcon = () => <svg.../>`) with constants by
-// design; Fast Refresh isn't useful for icons (no component state
-// worth preserving). Pattern is anchored to the basename so a file
-// named `MyCardicons.tsx` doesn't accidentally match `icon`.
-const ASSET_FILE_BASENAME_PATTERN =
-  /^([A-Za-z][\w-]*[-._])?(icons?|svgs?|svg[-_]?sprites?|sprites?|emojis?|flags?|logos?|lockups?|illustrations?|glyphs?|stickers?|emotes?|avatars?|backgrounds?|patterns?|assets?|gradients?|countryVectors?|paymentVectors?|brandVectors?|brandLogos?)\.(t|j)sx?$/;
-
-// Suffix patterns for files conventionally holding MIXED exports
-// (component + constants/types/registry data). The list is
-// deliberately scoped to utility / registry / framework-specific
-// conventions — NOT general component suffixes like `Modal` /
-// `Dialog` / `Card` (those routinely ARE the single-component file
-// only-export-components correctly wants to protect).
-const UTILITY_BASENAME_SUFFIX_PATTERN =
-  /^[A-Za-z][\w-]*(Utils|Util|Helpers|Helper|Shared|Constants|Constant|Types|Type|Mappings|Mapping|Lookups|Lookup|Registry|Renderers|Renderer|NodeTypes|EdgeTypes|CellTypes|ColumnDefs|ColumnTypes|ColumnRenderers|Schemas|Schema|Definitions|Definition|Config|Configuration|Defaults|Default|Tokens|Palette|Context|Provider|Providers|Logic|Scene|Page|Layout)\.(t|j)sx?$/;
-
-// Custom hook files: `useCreateRouter.tsx`, `useTranslation.tsx`,
-// `useSafeId.tsx`. Hook files conventionally co-export helper types
-// + constants + sometimes a small helper component alongside the hook.
-// Fast Refresh doesn't preserve hook state across edits anyway.
-const HOOK_FILE_BASENAME_PATTERN = /^use[A-Z][\w-]*\.(t|j)sx?$/;
-
-// Plugin-style node-definition files for editor / notebook / flowchart
-// ecosystems (tldraw `*ShapeUtil`, xyflow `*Node` plugin registrations,
-// Lexical `*Node` declarations). These conventionally export the node
-// component + types + handlers from one file. We anchor on the
-// distinctive `*Util` / `*Node` plugin-registration shapes; bare
-// `Component.tsx` / `Block.tsx` are too generic and would over-match
-// ordinary single-component files.
-const NODE_DEFINITION_BASENAME_PATTERN =
-  /^[A-Z][\w-]*(NodeUtil|ShapeUtil|EdgeUtil|BindingUtil|InlineNode|BlockNode|NotebookNode)\.(t|j)sx?$/;
-
-const isAssetOrUtilityFile = (filename: string): boolean => {
-  const lastSlash = Math.max(filename.lastIndexOf("/"), filename.lastIndexOf("\\"));
-  const basename = lastSlash === -1 ? filename : filename.slice(lastSlash + 1);
-  if (ASSET_FILE_BASENAME_PATTERN.test(basename)) return true;
-  if (UTILITY_FILE_BASENAMES.has(basename)) return true;
-  if (UTILITY_BASENAME_SUFFIX_PATTERN.test(basename)) return true;
-  if (HOOK_FILE_BASENAME_PATTERN.test(basename)) return true;
-  if (NODE_DEFINITION_BASENAME_PATTERN.test(basename)) return true;
-  return false;
-};
-
 const isFileNameAllowed = (filename: string | undefined, checkJS: boolean): boolean => {
   // No filename means we're in a unit-test runner — keep the rule active
   // so the test suite still exercises the analyzer.
   if (!filename) return true;
+  if (TEST_SUPPORT_FILE_PATTERN.test(filename)) return false;
   // Test / Storybook / Cypress files don't participate in Fast Refresh,
   // so a mixed-export shape there can't break it.
   if (
@@ -416,26 +500,6 @@ const isFileNameAllowed = (filename: string | undefined, checkJS: boolean): bool
   for (const segment of NON_FAST_REFRESH_PATH_SEGMENTS) {
     if (filename.includes(segment)) return false;
   }
-  // Application entry points (`main.tsx`, `index.tsx`, `bootstrap.tsx`,
-  // etc.) call `createRoot(...).render(...)` once and don't participate
-  // in HMR — they get full reloaded when changed. Local-component and
-  // mixed-export warnings are unactionable here.
-  if (isEntryPointFile(filename)) return false;
-  // Framework route / special files (Next.js App + Pages Router and
-  // metadata image routes, Expo Router layouts, TanStack Router root /
-  // lazy routes, Remix / React Router root + entry modules). Their
-  // bundler plugins own HMR for these modules, and by framework contract
-  // they co-export route segment config / `metadata` / `alt` / `size` /
-  // loaders / actions alongside the default component — the documented
-  // shape, not a Fast Refresh hazard.
-  if (isFrameworkRouteOrSpecialFilename(filename)) return false;
-  // Icon / asset / utility collection files (`icons.tsx`, `*Icon.tsx`,
-  // `*Logo.tsx`, `sprite.tsx`, `assets.tsx`, `utils.tsx`, `tokens.tsx`,
-  // `theme.tsx`, `constants.tsx`, etc.) hold non-state-bearing exports
-  // by design. Fast Refresh isn't useful for preserving icon / token
-  // instances across edits — the file gets full reloaded and no
-  // component state is lost (the file doesn't define one).
-  if (isAssetOrUtilityFile(filename)) return false;
   // Only `.tsx` / `.jsx` (and `.js` when `checkJS` is on) modules run
   // through Fast Refresh. Pure `.ts` files — barrels, utility modules,
   // server code — can't break it no matter what they export, so the
@@ -460,16 +524,166 @@ export const onlyExportComponents = defineRule({
   create: (context): RuleVisitors => {
     const settings = resolveSettings(context.settings);
     const filename = normalizeFilename(context.filename ?? "");
+    const fastRefreshStatus = getFastRefreshFileStatus(context);
+    if (!fastRefreshStatus.isActive) return {};
+    if (isFrameworkRouteOrSpecialFilename(filename, fastRefreshStatus.runtime)) return {};
     if (!isFileNameAllowed(filename, settings.checkJS)) return {};
+    const allowedRouteExportNames =
+      fastRefreshStatus.runtime === "next"
+        ? NEXT_ALLOWED_EXPORT_NAMES
+        : fastRefreshStatus.runtime === "expo"
+          ? EXPO_ALLOWED_EXPORT_NAMES
+          : fastRefreshStatus.runtime === "react-router" || fastRefreshStatus.runtime === "remix"
+            ? REACT_ROUTER_ALLOWED_EXPORT_NAMES
+            : EMPTY_NAME_SET;
+    const routeFactoryMemberNames =
+      fastRefreshStatus.runtime === "tanstack"
+        ? TANSTACK_ROUTE_FACTORY_CALLEE_NAMES
+        : fastRefreshStatus.runtime === "react-router" || fastRefreshStatus.runtime === "remix"
+          ? REACT_ROUTER_FACTORY_CALLEE_NAMES
+          : EMPTY_NAME_SET;
+    const routeFactoryLocalNames = new Set<string>();
+    const routeFactoryNamespaceNames = new Set<string>();
+    const nextDynamicImportSymbolIds = new Set<number>();
+    const importSymbolIds = new Set<number>();
+    const routeFactoryBindings: RouteFactoryBindings = {
+      localNames: routeFactoryLocalNames,
+      memberNames: routeFactoryMemberNames,
+      namespaceNames: routeFactoryNamespaceNames,
+    };
     const exportNodes: EsTreeNode[] = [];
     const componentCandidates: EsTreeNode[] = [];
+    const createRootNames = new Set<string>();
+    const hydrateRootNames = new Set<string>();
+    const legacyRenderNames = new Set<string>();
+    const reactDomNamespaceNames = new Set<string>();
+    const rootNames = new Set<string>();
+    let hasRootMount = false;
+    const isCreateRootCall = (node: EsTreeNode): boolean => {
+      if (!isNodeOfType(node, "CallExpression")) return false;
+      if (isNodeOfType(node.callee, "Identifier")) {
+        return createRootNames.has(node.callee.name);
+      }
+      return (
+        isNodeOfType(node.callee, "MemberExpression") &&
+        isNodeOfType(node.callee.object, "Identifier") &&
+        reactDomNamespaceNames.has(node.callee.object.name) &&
+        isNodeOfType(node.callee.property, "Identifier") &&
+        node.callee.property.name === "createRoot"
+      );
+    };
+    const visitImportDeclaration = (node: EsTreeNode): void => {
+      if (!isNodeOfType(node, "ImportDeclaration")) return;
+      const source = node.source.value;
+      for (const specifier of node.specifiers) {
+        const symbol = context.scopes.symbolFor(specifier.local);
+        if (symbol) importSymbolIds.add(symbol.id);
+      }
+      const isRouteFactorySource =
+        typeof source === "string" &&
+        ((fastRefreshStatus.runtime === "tanstack" &&
+          (source.startsWith("@tanstack/react-router") ||
+            source.startsWith("@tanstack/react-start"))) ||
+          ((fastRefreshStatus.runtime === "react-router" ||
+            fastRefreshStatus.runtime === "remix") &&
+            (source === "react-router" ||
+              source === "react-router-dom" ||
+              source === "@remix-run/react")));
+      if (isRouteFactorySource) {
+        for (const specifier of node.specifiers) {
+          if (isNodeOfType(specifier, "ImportNamespaceSpecifier")) {
+            routeFactoryNamespaceNames.add(specifier.local.name);
+            continue;
+          }
+          const importedName = getImportedName(specifier);
+          if (importedName && routeFactoryMemberNames.has(importedName)) {
+            routeFactoryLocalNames.add(specifier.local.name);
+          }
+        }
+      }
+      if (source === "next/dynamic") {
+        for (const specifier of node.specifiers) {
+          if (!isNodeOfType(specifier, "ImportDefaultSpecifier")) continue;
+          const symbol = context.scopes.symbolFor(specifier.local);
+          if (symbol) nextDynamicImportSymbolIds.add(symbol.id);
+        }
+      }
+      if (source !== "react-dom" && source !== "react-dom/client") return;
+      for (const specifier of node.specifiers) {
+        if (
+          isNodeOfType(specifier, "ImportDefaultSpecifier") ||
+          isNodeOfType(specifier, "ImportNamespaceSpecifier")
+        ) {
+          reactDomNamespaceNames.add(specifier.local.name);
+          continue;
+        }
+        const importedName = getImportedName(specifier);
+        if (importedName === "createRoot") createRootNames.add(specifier.local.name);
+        if (importedName === "hydrateRoot") hydrateRootNames.add(specifier.local.name);
+        if (source === "react-dom" && (importedName === "render" || importedName === "hydrate")) {
+          legacyRenderNames.add(specifier.local.name);
+        }
+      }
+    };
+    const visitCallExpression = (node: EsTreeNode): void => {
+      if (!isNodeOfType(node, "CallExpression")) return;
+      if (isInsideFunctionScope(node)) return;
+      if (isNodeOfType(node.callee, "Identifier")) {
+        if (hydrateRootNames.has(node.callee.name) || legacyRenderNames.has(node.callee.name)) {
+          hasRootMount = true;
+        }
+        return;
+      }
+      if (
+        !isNodeOfType(node.callee, "MemberExpression") ||
+        !isNodeOfType(node.callee.property, "Identifier")
+      ) {
+        return;
+      }
+      const methodName = node.callee.property.name;
+      if (
+        isNodeOfType(node.callee.object, "Identifier") &&
+        reactDomNamespaceNames.has(node.callee.object.name) &&
+        (methodName === "render" || methodName === "hydrate" || methodName === "hydrateRoot")
+      ) {
+        hasRootMount = true;
+        return;
+      }
+      if (methodName !== "render") return;
+      if (isCreateRootCall(node.callee.object)) {
+        hasRootMount = true;
+        return;
+      }
+      if (
+        isNodeOfType(node.callee.object, "Identifier") &&
+        rootNames.has(node.callee.object.name)
+      ) {
+        hasRootMount = true;
+      }
+    };
     const pushExportNode = (node: EsTreeNode): void => {
       exportNodes.push(node);
     };
     const pushComponentCandidate = (node: EsTreeNode): void => {
       componentCandidates.push(node);
+      if (
+        isNodeOfType(node, "VariableDeclarator") &&
+        isNodeOfType(node.id, "Identifier") &&
+        node.init &&
+        isCreateRootCall(node.init) &&
+        !isInsideFunctionScope(node)
+      ) {
+        rootNames.add(node.id.name);
+      }
     };
     return {
+      ImportDeclaration: visitImportDeclaration,
+      CallExpression: visitCallExpression,
+      AssignmentExpression(node) {
+        if (isNodeOfType(node.left, "Identifier") && rootNames.has(node.left.name)) {
+          rootNames.delete(node.left.name);
+        }
+      },
       ExportAllDeclaration: pushExportNode,
       ExportDefaultDeclaration: pushExportNode,
       ExportNamedDeclaration: pushExportNode,
@@ -477,14 +691,76 @@ export const onlyExportComponents = defineRule({
       VariableDeclarator: pushComponentCandidate,
       ClassDeclaration: pushComponentCandidate,
       "Program:exit"() {
+        if (hasRootMount) return;
         // Module-scope component bindings (exported or not) — a component
         // declared inside another function is never a Fast Refresh
         // boundary, so only top-level names participate.
         const localComponentNames = new Set<string>();
+        const componentFactorySymbolIds = new Set<number>();
+        const defaultExportComponentNames = new Set<string>();
+        for (const child of exportNodes) {
+          if (isNodeOfType(child, "ExportDefaultDeclaration")) {
+            const declaration = skipTsExpression(child.declaration as EsTreeNode);
+            if (isNodeOfType(declaration, "Identifier") && isReactComponentName(declaration.name)) {
+              defaultExportComponentNames.add(declaration.name);
+            }
+            continue;
+          }
+          if (!isNodeOfType(child, "ExportNamedDeclaration") || Boolean(child.source)) {
+            continue;
+          }
+          for (const specifier of child.specifiers) {
+            if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
+            const exported = specifier.exported;
+            const local = specifier.local;
+            const exportedName = isNodeOfType(exported, "Identifier") ? exported.name : null;
+            if (
+              exportedName === "default" &&
+              isNodeOfType(local, "Identifier") &&
+              isReactComponentName(local.name)
+            ) {
+              defaultExportComponentNames.add(local.name);
+            }
+          }
+        }
+        for (const child of componentCandidates) {
+          if (isInsideFunctionScope(child)) continue;
+          if (isNodeOfType(child, "FunctionDeclaration") && child.id) {
+            if (
+              functionReturnsNextDynamicComponent(child, nextDynamicImportSymbolIds, context.scopes)
+            ) {
+              const symbol = context.scopes.symbolFor(child.id);
+              if (symbol?.references.every((reference) => reference.flag === "read")) {
+                componentFactorySymbolIds.add(symbol.id);
+              }
+            }
+            continue;
+          }
+          if (
+            isNodeOfType(child, "VariableDeclarator") &&
+            isNodeOfType(child.id, "Identifier") &&
+            child.init &&
+            functionReturnsNextDynamicComponent(
+              child.init as EsTreeNode,
+              nextDynamicImportSymbolIds,
+              context.scopes,
+            )
+          ) {
+            const symbol = context.scopes.symbolFor(child.id);
+            if (symbol?.references.every((reference) => reference.flag === "read")) {
+              componentFactorySymbolIds.add(symbol.id);
+            }
+          }
+        }
         const state: AnalyzerState = {
           customHocs: new Set([...DEFAULT_REACT_HOCS, ...settings.customHOCs]),
           allowExportNames: new Set(settings.allowExportNames),
           allowConstantExport: settings.allowConstantExport,
+          allowedRouteExportNames,
+          routeFactoryBindings,
+          componentFactorySymbolIds,
+          defaultExportComponentNames,
+          importSymbolIds,
           localComponentNames,
           scopes: context.scopes,
           controlFlow: context.cfg,
@@ -500,7 +776,8 @@ export const onlyExportComponents = defineRule({
             if (
               isReactComponentName(child.id.name) &&
               !isInsideFunctionScope(child) &&
-              functionContainsReactRenderOutput(child, context.scopes, context.cfg)
+              (functionContainsReactRenderOutput(child, context.scopes, context.cfg) ||
+                functionHasReactElementReturnType(child))
             ) {
               localComponentNames.add(child.id.name);
             }
@@ -538,6 +815,7 @@ export const onlyExportComponents = defineRule({
         }
 
         const exports: ExportType[] = [];
+        const exportAllNodes: EsTreeNode[] = [];
         let hasReactExport = false;
         let hasAnyExports = false;
         const isExportedNodeIds = new WeakSet<object>();
@@ -548,7 +826,10 @@ export const onlyExportComponents = defineRule({
             // `export type * from '…'` is TS-type-only; skip.
             if ((child as { exportKind?: string }).exportKind === "type") continue;
             hasAnyExports = true;
-            context.report({ node: child, message: EXPORT_ALL_MESSAGE });
+            const source = child.source.value;
+            if (typeof source !== "string" || exportAllAddsRuntimeValues(filename, source)) {
+              exportAllNodes.push(child);
+            }
             continue;
           }
           if (isNodeOfType(child, "ExportDefaultDeclaration")) {
@@ -559,13 +840,22 @@ export const onlyExportComponents = defineRule({
               isNodeOfType(stripped, "FunctionDeclaration") ||
               isNodeOfType(stripped, "FunctionExpression")
             ) {
+              const hasRenderOutput =
+                functionContainsReactRenderOutput(stripped, context.scopes, context.cfg) ||
+                functionHasReactElementReturnType(stripped);
               if ((stripped as EsTreeNodeOfType<"FunctionDeclaration">).id) {
                 const idNode = (stripped as EsTreeNodeOfType<"FunctionDeclaration">).id!;
                 isExportedNodeIds.add(stripped);
-                exports.push(classifyExport(idNode.name, idNode, true, null, state));
-              } else {
+                exports.push(
+                  hasRenderOutput
+                    ? classifyExport(idNode.name, idNode, true, null, state)
+                    : { kind: "non-component", reportNode: idNode },
+                );
+              } else if (hasRenderOutput) {
                 context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
                 hasReactExport = true; // anonymous default counts as a react export attempt
+              } else {
+                exports.push({ kind: "non-component", reportNode: stripped });
               }
               continue;
             }
@@ -590,33 +880,23 @@ export const onlyExportComponents = defineRule({
               exports.push(classifyExport(stripped.name, stripped, false, null, state));
               continue;
             }
+            if (isNodeOfType(stripped, "MemberExpression")) {
+              if (isProvenComponentValue(stripped, state)) hasReactExport = true;
+              else exports.push({ kind: "non-component", reportNode: stripped });
+              continue;
+            }
             if (isNodeOfType(stripped, "CallExpression")) {
-              if (isRouteFactoryCall(stripped)) {
+              if (isRouteFactoryCall(stripped, state.routeFactoryBindings)) {
                 hasReactExport = true;
                 continue;
               }
-              // is_hoc_call_expression: callee must be HoC AND first
-              // arg must be a named/identifier-like value (else
-              // anonymous).
-              const isHoc = isHocCallee(stripped.callee as EsTreeNode, state);
-              const firstArg = stripped.arguments[0] as EsTreeNode | undefined;
-              const firstArgIsValid =
-                Boolean(firstArg) &&
-                ((): boolean => {
-                  if (!firstArg) return false;
-                  const expression = skipTsExpression(firstArg);
-                  if (isNodeOfType(expression, "Identifier")) return true;
-                  if (isNodeOfType(expression, "FunctionExpression") && expression.id) return true;
-                  if (
-                    isNodeOfType(expression, "CallExpression") &&
-                    isHocCallee(expression.callee as EsTreeNode, state)
-                  )
-                    return true;
-                  return false;
-                })();
-              if (isHoc && firstArgIsValid) {
+              if (isReactCreateContext(stripped)) {
+                exports.push({ kind: "react-context", reportNode: stripped });
+                continue;
+              }
+              if (isDirectRefreshWrapperCall(stripped, state)) {
                 hasReactExport = true;
-              } else if (!isHoc && isConfigOnlyFactoryCall(stripped)) {
+              } else if (isConfigOnlyFactoryCall(stripped)) {
                 // `export default defineFrontComponent({ … })` — an unknown
                 // factory fed only config objects/literals is a library
                 // definition (SDK registrations, plugin manifests), not an
@@ -630,19 +910,24 @@ export const onlyExportComponents = defineRule({
               continue;
             }
             if (isNodeOfType(stripped, "ObjectExpression")) {
-              context.report({
-                node: stripped,
-                message: objectExpressionBundlesComponents(stripped, state)
-                  ? NAMESPACE_OBJECT_MESSAGE
-                  : ANONYMOUS_MESSAGE,
-              });
+              exports.push(
+                objectExpressionBundlesComponents(stripped, state)
+                  ? { kind: "namespace-object", reportNode: stripped }
+                  : { kind: "non-component", reportNode: stripped },
+              );
               continue;
             }
-            if (
-              isNodeOfType(stripped, "ArrowFunctionExpression") ||
-              isNodeOfType(stripped, "Literal")
-            ) {
-              context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
+            if (isNodeOfType(stripped, "ArrowFunctionExpression")) {
+              if (functionContainsReactRenderOutput(stripped, context.scopes, context.cfg)) {
+                context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
+                hasReactExport = true;
+              } else {
+                exports.push({ kind: "non-component", reportNode: stripped });
+              }
+              continue;
+            }
+            if (isNodeOfType(stripped, "Literal") || isNodeOfType(stripped, "NewExpression")) {
+              exports.push({ kind: "non-component", reportNode: stripped });
               continue;
             }
             // Other shapes — flag anonymous.
@@ -658,7 +943,11 @@ export const onlyExportComponents = defineRule({
               if (isNodeOfType(declaration, "FunctionDeclaration") && declaration.id) {
                 isExportedNodeIds.add(declaration);
                 exports.push(
-                  classifyExport(declaration.id.name, declaration.id, true, null, state),
+                  functionContainsReactRenderOutput(declaration, context.scopes, context.cfg) ||
+                    functionHasReactElementReturnType(declaration) ||
+                    defaultExportComponentNames.has(declaration.id.name)
+                    ? classifyExport(declaration.id.name, declaration.id, true, null, state)
+                    : { kind: "non-component", reportNode: declaration.id },
                 );
               } else if (isNodeOfType(declaration, "ClassDeclaration") && declaration.id) {
                 isExportedNodeIds.add(declaration);
@@ -709,6 +998,7 @@ export const onlyExportComponents = defineRule({
             const isReExportFromSource = Boolean((child as { source?: unknown }).source);
             for (const specifier of child.specifiers ?? []) {
               if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
+              if (specifier.exportKind === "type") continue;
               const exported = (specifier as { exported?: EsTreeNode }).exported;
               const local = (specifier as { local?: EsTreeNode }).local;
               let exportedName: string | null = null;
@@ -721,7 +1011,9 @@ export const onlyExportComponents = defineRule({
               const localName = local && isNodeOfType(local, "Identifier") ? local.name : null;
               const reportNode = specifier as EsTreeNode;
               let entry: ExportType;
-              if (exportedName === "default" && localName) {
+              if (localName && defaultExportComponentNames.has(localName)) {
+                entry = { kind: "react-component" };
+              } else if (exportedName === "default" && localName) {
                 entry = classifyExport(localName, reportNode, false, null, state);
               } else if (exportedName) {
                 entry = classifyExport(exportedName, reportNode, false, null, state);
@@ -762,6 +1054,9 @@ export const onlyExportComponents = defineRule({
           }
         }
         if (hasAnyExports && hasReactExport) {
+          for (const exportAllNode of exportAllNodes) {
+            context.report({ node: exportAllNode, message: EXPORT_ALL_MESSAGE });
+          }
           for (const entry of exports) {
             if (entry.kind === "non-component") {
               context.report({ node: entry.reportNode, message: NAMED_EXPORT_MESSAGE });

@@ -12,6 +12,7 @@ export const NOT_REACT_COMPONENT_EXPRESSION_TYPES: ReadonlySet<string> = new Set
   "ConditionalExpression",
   "Literal",
   "LogicalExpression",
+  "NewExpression",
   "ObjectExpression",
   "TemplateLiteral",
   "ThisExpression",
@@ -37,144 +38,7 @@ export const NON_FAST_REFRESH_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/.storybook/",
   "/stories/",
   "/__stories__/",
-  "/playground/",
-  "/playgrounds/",
-  "/examples/",
-  "/example/",
-  "/demo/",
-  "/demos/",
-  "/sandbox/",
-  "/sandboxes/",
 ];
-
-// File basenames that conventionally are application entry points —
-// they call `createRoot(...).render(...)` / `hydrateRoot(...)` /
-// `ReactDOM.render(...)` once and never participate in Fast Refresh
-// (the dev server reloads the whole page when these change). Mixed
-// exports and local components in these files are fine.
-//
-// This set holds only the *generic* (framework-agnostic) entry-point
-// names. Framework-specific route / special files (Next.js, Expo Router,
-// TanStack Router, Remix / React Router) are detected by the dedicated
-// `is-<framework>-*-filename` helpers in `../../utils/`, which
-// `only-export-components` consults alongside this set.
-export const ENTRY_POINT_BASENAMES: ReadonlySet<string> = new Set([
-  "main.tsx",
-  "main.jsx",
-  "main.js",
-  "index.tsx",
-  "index.jsx",
-  "entry.tsx",
-  "entry.jsx",
-  "bootstrap.tsx",
-  "bootstrap.jsx",
-  "client.tsx",
-  "client.jsx",
-  "server.tsx",
-  "server.jsx",
-  // Root App component — by convention the single-render root of a CRA
-  // / Vite / Expo app, mounted directly from main/index. Co-exports of
-  // helper components and constants are conventional here.
-  "app.tsx",
-  "app.jsx",
-  "App.tsx",
-  "App.jsx",
-]);
-
-// Utility / helper / shared-config / column-renderer / node-registry
-// files. These conventionally hold a mix of component-style and
-// constant exports — `utils.tsx` for a slice that contains both a
-// render helper component and string-formatting constants, `shared.tsx`
-// for cross-component types and helpers, `nodeTypes.tsx` for an
-// xyflow / tldraw / lexical node registry that maps strings to node
-// renderer components, `*ColumnRenderers.tsx` for table column-renderer
-// collections, `*useCreate*.tsx` hooks that co-export helper constants.
-// These NEVER get edited live (the dev would Cmd+R anyway), so Fast
-// Refresh preservation isn't an actual gain — the file structure is by
-// design. Pattern requires the EXACT basename match (no fuzzy match)
-// so unrelated files (`MyUtils.tsx`, `userUtils.tsx`) only match when
-// the basename IS that.
-export const UTILITY_FILE_BASENAMES: ReadonlySet<string> = new Set([
-  // Generic utility/helper bags
-  "utils.tsx",
-  "utils.jsx",
-  "util.tsx",
-  "util.jsx",
-  "helpers.tsx",
-  "helpers.jsx",
-  "helper.tsx",
-  "helper.jsx",
-  "shared.tsx",
-  "shared.jsx",
-  "common.tsx",
-  "common.jsx",
-  "lib.tsx",
-  "lib.jsx",
-  // Node-type / cell-type / column-renderer registries
-  "nodeTypes.tsx",
-  "nodeTypes.jsx",
-  "node-types.tsx",
-  "node-types.jsx",
-  "edgeTypes.tsx",
-  "edgeTypes.jsx",
-  "edge-types.tsx",
-  "edge-types.jsx",
-  "cellTypes.tsx",
-  "cellTypes.jsx",
-  "columnTypes.tsx",
-  "columnTypes.jsx",
-  "columnDefs.tsx",
-  "columnDefs.jsx",
-  "columnRenderers.tsx",
-  "columnRenderers.jsx",
-  "columns.tsx",
-  "columns.jsx",
-  // Mappings / dictionaries / lookups
-  "mappings.tsx",
-  "mappings.jsx",
-  "mapping.tsx",
-  "mapping.jsx",
-  "lookups.tsx",
-  "lookups.jsx",
-  "lookup.tsx",
-  "lookup.jsx",
-  "registry.tsx",
-  "registry.jsx",
-  // Toast / notification helper file (typically combines provider + helper functions)
-  "toast.tsx",
-  "toast.jsx",
-  "toaster.tsx",
-  "toaster.jsx",
-  // Theme / token / palette utility files
-  "theme.tsx",
-  "theme.jsx",
-  "tokens.tsx",
-  "tokens.jsx",
-  "palette.tsx",
-  "palette.jsx",
-  "colors.tsx",
-  "colors.jsx",
-  "colours.tsx",
-  "colours.jsx",
-  // Constants / enums / type helpers (.tsx variant for component types)
-  "constants.tsx",
-  "constants.jsx",
-  "enums.tsx",
-  "enums.jsx",
-  "types.tsx",
-  "types.jsx",
-  "schemas.tsx",
-  "schemas.jsx",
-  "schema.tsx",
-  "schema.jsx",
-  // Definition / config files
-  "definitions.tsx",
-  "definitions.jsx",
-  "config.tsx",
-  "config.jsx",
-  "defaults.tsx",
-  "defaults.jsx",
-]);
 
 // Route-object factory callees from file-based routers. A call like
 // `createFileRoute("/profile")({ component: ProfilePage })` produces
@@ -184,7 +48,7 @@ export const UTILITY_FILE_BASENAMES: ReadonlySet<string> = new Set([
 // Covers TanStack Router / TanStack Start (`createFileRoute`,
 // `createLazyFileRoute`, `createRootRoute`, …) and `createBrowserRouter`
 // / `createHashRouter` / `createMemoryRouter` style data routers.
-export const ROUTE_FACTORY_CALLEE_NAMES: ReadonlySet<string> = new Set([
+export const TANSTACK_ROUTE_FACTORY_CALLEE_NAMES: ReadonlySet<string> = new Set([
   ...TANSTACK_ROUTE_CREATION_FUNCTIONS,
   "createLazyFileRoute",
   "createLazyRoute",
@@ -192,6 +56,9 @@ export const ROUTE_FACTORY_CALLEE_NAMES: ReadonlySet<string> = new Set([
   "createServerFileRoute",
   "createServerRootRoute",
   "createServerRoute",
+]);
+
+export const REACT_ROUTER_FACTORY_CALLEE_NAMES: ReadonlySet<string> = new Set([
   "createBrowserRouter",
   "createHashRouter",
   "createMemoryRouter",
@@ -203,7 +70,7 @@ export const ROUTE_FACTORY_CALLEE_NAMES: ReadonlySet<string> = new Set([
 // modules and Next.js Pages Router pages co-export these alongside the
 // route component by framework contract; the bundler plugins for those
 // frameworks special-case them during Fast Refresh.
-export const ROUTE_MODULE_ALLOWED_EXPORT_NAMES: ReadonlySet<string> = new Set([
+export const REACT_ROUTER_ALLOWED_EXPORT_NAMES: ReadonlySet<string> = new Set([
   // Remix / React Router route module exports
   "loader",
   "clientLoader",
@@ -216,7 +83,9 @@ export const ROUTE_MODULE_ALLOWED_EXPORT_NAMES: ReadonlySet<string> = new Set([
   "shouldRevalidate",
   "middleware",
   "unstable_middleware",
-  // Next.js Pages Router data exports
+]);
+
+export const NEXT_ALLOWED_EXPORT_NAMES: ReadonlySet<string> = new Set([
   "getServerSideProps",
   "getStaticProps",
   "getStaticPaths",
@@ -238,6 +107,6 @@ export const ROUTE_MODULE_ALLOWED_EXPORT_NAMES: ReadonlySet<string> = new Set([
   "preferredRegion",
   "maxDuration",
   "experimental_ppr",
-  // Expo Router route settings export
-  "unstable_settings",
 ]);
+
+export const EXPO_ALLOWED_EXPORT_NAMES: ReadonlySet<string> = new Set(["unstable_settings"]);

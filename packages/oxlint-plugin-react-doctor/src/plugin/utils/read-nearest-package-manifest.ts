@@ -16,11 +16,18 @@ import {
 // classifier reads are declared; unread fields stay unknown.
 export interface PackageManifest {
   bin?: unknown;
+  name?: unknown;
+  main?: unknown;
+  module?: unknown;
+  exports?: unknown;
+  workspaces?: unknown;
   private?: unknown;
   dependencies?: Record<string, unknown>;
   devDependencies?: Record<string, unknown>;
   peerDependencies?: Record<string, unknown>;
   optionalDependencies?: Record<string, unknown>;
+  scripts?: Record<string, unknown>;
+  source?: unknown;
   // Metro's resolution key — libraries that ship an RN-only entry
   // point declare this field at the manifest root (string path) so
   // Metro picks it over `main` / `module`. Treated as a strong
@@ -99,6 +106,10 @@ export const findNearestPackageDirectory = (filename: string): string | null => 
 export const readNearestPackageManifest = (filename: string): PackageManifest | null => {
   const packageDirectory = findNearestPackageDirectory(filename);
   if (!packageDirectory) return null;
+  return readPackageManifest(packageDirectory);
+};
+
+export const readPackageManifest = (packageDirectory: string): PackageManifest | null => {
   const packageJsonPath = path.join(packageDirectory, "package.json");
 
   // Recorded BEFORE the memo lookup — every consumer's verdict is a pure

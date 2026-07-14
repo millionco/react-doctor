@@ -52,6 +52,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-effect-with-fresh-deps",
   "no-initialize-state",
   "no-mutating-reducer-state",
+  "only-export-components",
   "no-unguarded-browser-global-in-render-or-hook-init",
   "prefer-dynamic-import",
   "rendering-hydration-mismatch-time",

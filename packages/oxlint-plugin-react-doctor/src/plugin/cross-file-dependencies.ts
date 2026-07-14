@@ -444,7 +444,9 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
  * `CROSS_FILE_DEPENDENCY_COLLECTORS` (the core guard test enforces the
  * partition), forcing a conscious classification.
  */
-export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set();
+export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
+  "only-export-components",
+]);
 
 /**
  * Runs the collectors for `ruleIds` over one file and returns every

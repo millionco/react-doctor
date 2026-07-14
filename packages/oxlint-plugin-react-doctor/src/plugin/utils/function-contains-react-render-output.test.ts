@@ -217,6 +217,36 @@ describe("functionContainsReactRenderOutput", () => {
     });
   }
 
+  it.each([
+    [
+      "renamed named react-dom imports",
+      `import { createPortal as mountPortal } from "react-dom";
+       function Card() { const content = <div />; return mountPortal(content, document.body); }`,
+      true,
+    ],
+    [
+      "namespace react-dom imports",
+      `import * as ReactDOM from "react-dom";
+       function Card() { const content = <div />; return ReactDOM.createPortal(content, document.body); }`,
+      true,
+    ],
+    [
+      "same-named userland imports",
+      `import { createPortal } from "portal-utils";
+       function Card() { const content = <div />; return createPortal(content, document.body); }`,
+      false,
+    ],
+    [
+      "shadowed react-dom imports",
+      `import { createPortal } from "react-dom";
+       function Card(createPortal) { const content = <div />; return createPortal(content, document.body); }`,
+      false,
+    ],
+  ] as const)("handles %s as render output", (_name, code, expected) => {
+    const { functionNode, scopes } = parseFunctionFixture(code, "Card");
+    expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(expected);
+  });
+
   it("memoizes per (functionNode, scopes): a repeat query with the same inputs skips the re-walk", () => {
     const { functionNode, scopes, program } = parseFunctionFixture(
       `function Card() { return <div>hi</div>; }`,

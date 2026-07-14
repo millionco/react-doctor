@@ -47,6 +47,7 @@ const CROSS_FILE_PRIMITIVE_FILES = [
   "utils/find-ancestor-metadata-layout.ts",
   "utils/is-barrel-index-module.ts",
   "utils/read-nearest-package-manifest.ts",
+  "utils/get-fast-refresh-file-status.ts",
 ].map((relativePath) => path.resolve(PLUGIN_SOURCE_DIRECTORY, relativePath));
 const primitiveFileSet = new Set(CROSS_FILE_PRIMITIVE_FILES);
 
@@ -154,6 +155,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-match-media-in-state-initializer",
       "no-mutating-reducer-state",
       "no-unguarded-browser-global-in-render-or-hook-init",
+      "only-export-components",
       "prefer-dynamic-import",
       "rendering-hydration-mismatch-time",
       "rerender-memo-with-default-value",

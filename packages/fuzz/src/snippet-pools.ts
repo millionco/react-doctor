@@ -200,6 +200,7 @@ export const LIBRARY_SNIPPET_POOL = [
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
   `import { motion as FuzzMotion } from "framer-motion"; export const FuzzMotionPanel = () => <FuzzMotion.div animate={{ x: 120 }}>moving</FuzzMotion.div>;`,
+  `import { createRoot as mountFuzzRoot } from "react-dom/client"; export const FuzzRootApp = () => <div />; export const fuzzRootConfig = getConfig(); const fuzzApplicationRoot = mountFuzzRoot(document.body); fuzzApplicationRoot.render(<FuzzRootApp />);`,
   `const GLOBAL_CACHE = new Map<string, unknown>();`,
   `class FuzzProtocolRegistry { static contextTypes = new Set(["json", "text"]); static childContextTypes = new Map(); getChildContext() { return { protocol: "json" }; } } const FuzzSchemaRegistry = {}; FuzzSchemaRegistry.contextTypes = new Set(["json", "text"]);`,
   `const fuzzLeftItems = ["a", "b"]; const fuzzRightItems = ["a", "b"]; const fuzzItemsMatch = fuzzLeftItems.every((item, index) => item === fuzzRightItems[index]);`,
@@ -455,6 +456,8 @@ export const EDGE_CASE_STATEMENT_POOL = [
   `label: for (let index = 0; index < 3; index += 1) { continue label; }`,
   `const tagged = html\`<div onclick="\${value}"></div>\`;`,
   `export default class extends React.Component { render() { return null; } }`,
+  `export function FuzzPortalComponent(): JSX.Element | null { const portalContent = <div />; return createPortal(portalContent, document.body); }`,
+  `export function FuzzNullComponent(): null { return null; } export default FuzzNullComponent;`,
   `class EventShield extends React.Component { handleClick(event) { event.stopPropagation(); } render() { return <div onClick={this.handleClick} />; } }`,
   `const globalCount = (globalThis as any).__count = ((globalThis as any).__count ?? 0) + 1;`,
   `const emDash = \`\${value} — \${state}\`;`,

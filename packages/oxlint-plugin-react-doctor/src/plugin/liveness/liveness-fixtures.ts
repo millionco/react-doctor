@@ -930,7 +930,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     filePath: "src/server/db/users.ts",
   },
   "only-export-components": {
-    code: "export const foo = () => {}; export const Bar = () => {};",
+    code: "export const foo = () => 'label'; export const Bar = () => <div />;",
     forceJsx: true,
   },
   "package-metadata-secret": {

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
   CROSS_FILE_DEPENDENCY_COLLECTORS,
+  UNBOUNDED_CROSS_FILE_RULE_IDS,
   collectCrossFileDependencyProbes,
 } from "./cross-file-dependencies.js";
 import { CROSS_FILE_RULE_IDS } from "./constants/cross-file-rule-ids.js";
@@ -389,9 +390,9 @@ describe("react-native collectors", () => {
 });
 
 describe("collector registry", () => {
-  it("ships a collector for every cross-file rule (none unbounded today)", () => {
-    expect([...CROSS_FILE_DEPENDENCY_COLLECTORS.keys()].sort()).toEqual(
-      [...CROSS_FILE_RULE_IDS].sort(),
-    );
+  it("classifies every cross-file rule as bounded or unbounded", () => {
+    expect(
+      [...CROSS_FILE_DEPENDENCY_COLLECTORS.keys(), ...UNBOUNDED_CROSS_FILE_RULE_IDS].sort(),
+    ).toEqual([...CROSS_FILE_RULE_IDS].sort());
   });
 });

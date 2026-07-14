@@ -1,5 +1,10 @@
 import type { EsTreeNode } from "./es-tree-node.js";
-import { getImportBindingForName } from "./find-import-source-for-name.js";
+import {
+  getImportBindingForName,
+  getImportedNameFromModule,
+  isDefaultImportFromModule,
+  isNamespaceImportFromModule,
+} from "./find-import-source-for-name.js";
 import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { hasStableCallTarget } from "./has-stable-call-target.js";
@@ -143,7 +148,35 @@ const isNestedRenderEvidenceBoundary = (node: EsTreeNode, scopes: ScopeAnalysis)
 const isRenderOutputExpression = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
   node.type === "JSXElement" ||
   node.type === "JSXFragment" ||
-  isReactApiCall(node, "createElement", scopes, REACT_CREATE_ELEMENT_OPTIONS);
+  isReactApiCall(node, "createElement", scopes, REACT_CREATE_ELEMENT_OPTIONS) ||
+  isReactDomCreatePortalCall(node, scopes);
+
+const isReactDomCreatePortalCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = stripParenExpression(node.callee);
+  if (isNodeOfType(callee, "Identifier")) {
+    const symbol = scopes.symbolFor(callee);
+    return (
+      symbol?.kind === "import" &&
+      getImportedNameFromModule(callee, callee.name, "react-dom") === "createPortal"
+    );
+  }
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.computed ||
+    !isNodeOfType(callee.object, "Identifier") ||
+    !isNodeOfType(callee.property, "Identifier") ||
+    callee.property.name !== "createPortal"
+  ) {
+    return false;
+  }
+  const symbol = scopes.symbolFor(callee.object);
+  if (!symbol || symbol.kind !== "import") return false;
+  return (
+    isDefaultImportFromModule(callee.object, callee.object.name, "react-dom") ||
+    isNamespaceImportFromModule(callee.object, callee.object.name, "react-dom")
+  );
+};
 
 const containsRenderOutput = (rootNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let hasRenderOutput = false;

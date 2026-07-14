@@ -96,14 +96,17 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     reason: "Intentional: default max raised from 2 → 10 to suppress idiomatic-React FPs.",
   },
   "only-export-components": {
-    // Two intentional divergences:
+    // Three intentional divergences:
     // (1) fail[3, 4, 10, 14] — OXC defaults `allowConstantExport: false`,
     //     which flags any primitive-constant export alongside a
     //     component. We default `allowConstantExport: true` because
     //     exported constants are stable references that don't break Fast
     //     Refresh — matches the recommended config in
     //     `eslint-plugin-react-refresh`.
-    // (2) fail[12, 13, 21] — non-exported internal components are no
+    // (2) fail[6] — a pure `export *` barrel is not instrumented as a
+    //     Fast Refresh boundary by Vite's official React plugin. It only
+    //     reports when the same module also declares a local component.
+    // (3) fail[12, 13, 21] — non-exported internal components are no
     //     longer reported. The react-refresh boundary constraint is
     //     about exports only (a module that exports a component must
     //     export only components); a module whose exports carry no
@@ -113,9 +116,13 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     //     The real breaker — a namespace-object export bundling
     //     components — is reported instead (not covered by OXC fixtures;
     //     see only-export-components.regressions.test.ts).
-    failSkips: [3, 4, 10, 14, 12, 13, 21],
+    // (4) Function exports require JSX/createElement return evidence.
+    //     OXC treats every PascalCase function as a component, which
+    //     misclassifies acronym-named formatters in utility modules.
+    passSkips: [14, 15, 16, 17, 18, 42, 51, 52, 53, 54, 56, 57, 61, 62],
+    failSkips: [0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 19, 21, 22, 23],
     reason:
-      "Intentional: default allowConstantExport=true; exports-only Fast-Refresh model (local components unreported, namespace-object exports flagged).",
+      "Intentional: require render-output proof for inspectable functions; recognize Babel Fast Refresh wrapper transforms; default allowConstantExport=true; pure export-star barrels are not refresh boundaries; exports-only Fast-Refresh model (local components unreported, namespace-object exports flagged).",
   },
   "jsx-pascal-case": {
     // OXC defaults `allowLeadingUnderscore: false`. We default to

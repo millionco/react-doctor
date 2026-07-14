@@ -3,45 +3,41 @@ import { isFrameworkRouteOrSpecialFilename } from "./is-framework-route-or-speci
 
 describe("isFrameworkRouteOrSpecialFilename", () => {
   it.each([
-    // Next.js App + Pages Router special files and metadata image routes.
-    "app/page.tsx",
-    "app/dashboard/layout.jsx",
-    "app/global-error.tsx",
-    "app/api/route.ts",
-    "pages/_app.tsx",
-    "pages/_document.tsx",
-    "pages/_error.jsx",
-    "app/opengraph-image.tsx",
-    "app/blog/twitter-image2.tsx",
-    "app/apple-icon1.tsx",
-    // Expo Router.
-    "app/_layout.tsx",
-    "src/app/(tabs)/_layout.jsx",
-    "app/+not-found.tsx",
-    "app/+native-intent.ts",
-    // TanStack Router / Start.
-    "src/routes/__root.tsx",
-    "src/routes/posts/$postId.lazy.tsx",
-    // Remix / React Router.
-    "app/root.tsx",
-    "app/entry.client.tsx",
-    "app/entry.server.jsx",
-  ])("recognizes framework route/special file %s", (filename) => {
-    expect(isFrameworkRouteOrSpecialFilename(filename)).toBe(true);
+    ["next", "app/page.tsx"],
+    ["next", "app/dashboard/layout.jsx"],
+    ["next", "app/global-error.tsx"],
+    ["next", "app/api/route.ts"],
+    ["next", "pages/_app.tsx"],
+    ["next", "pages/_document.tsx"],
+    ["next", "pages/_error.jsx"],
+    ["next", "pages/docs/_meta.tsx"],
+    ["next", "app/opengraph-image.tsx"],
+    ["next", "app/blog/twitter-image2.tsx"],
+    ["next", "app/apple-icon1.tsx"],
+    ["expo", "app/_layout.tsx"],
+    ["expo", "src/app/(tabs)/_layout.jsx"],
+    ["expo", "app/+not-found.tsx"],
+    ["expo", "app/+native-intent.ts"],
+    ["tanstack", "src/routes/__root.tsx"],
+    ["tanstack", "src/routes/posts/$postId.lazy.tsx"],
+    ["remix", "app/root.tsx"],
+    ["react-router", "app/entry.client.tsx"],
+    ["react-router", "app/entry.server.jsx"],
+  ] as const)("recognizes %s framework route/special file %s", (runtime, filename) => {
+    expect(isFrameworkRouteOrSpecialFilename(filename, runtime)).toBe(true);
   });
 
   it.each([
-    // Ordinary component / route files with no distinctive basename keep
-    // going through the rule's AST / export-name detection.
-    "components/Page.tsx",
-    "src/layout-helpers.tsx",
-    "app/index.tsx",
-    "app/routes/about.tsx",
-    "src/components/Root.tsx",
-    "app/entry.tsx",
-    "src/lazy.tsx",
-    undefined,
-  ])("does not recognize ordinary file %s", (filename) => {
-    expect(isFrameworkRouteOrSpecialFilename(filename)).toBe(false);
+    ["generic", "app/page.tsx"],
+    ["generic", "app/_layout.tsx"],
+    ["next", "app/root.tsx"],
+    ["expo", "app/page.tsx"],
+    ["tanstack", "app/+not-found.tsx"],
+    ["react-router", "pages/_document.tsx"],
+    ["generic", "pages/docs/_meta.tsx"],
+    ["generic", "components/Page.tsx"],
+    ["generic", undefined],
+  ] as const)("does not apply %s semantics to %s", (runtime, filename) => {
+    expect(isFrameworkRouteOrSpecialFilename(filename, runtime)).toBe(false);
   });
 });

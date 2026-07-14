@@ -18,6 +18,10 @@ export const api = axios.create({
 })
 `;
 
+const settingsForFramework = (
+  framework: "expo" | "nextjs" | "remix" | "tanstack-start" | "vite",
+) => ({ "react-doctor": { framework } });
+
 describe("react-builtins/only-export-components — regressions", () => {
   it("does not crash when the filename is unavailable (#539)", () => {
     expect(() => runRule(onlyExportComponents, AXIOS_FILE, { filename: undefined })).not.toThrow();
@@ -45,6 +49,7 @@ describe("react-builtins/only-export-components — regressions", () => {
     `;
     const result = runRule(onlyExportComponents, expoLayoutFile, {
       filename: "src/app/_layout.tsx",
+      settings: settingsForFramework("expo"),
     });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -67,6 +72,7 @@ describe("react-builtins/only-export-components — regressions", () => {
     `;
     const result = runRule(onlyExportComponents, tanstackRouteFile, {
       filename: "src/routes/profile.tsx",
+      settings: settingsForFramework("tanstack-start"),
     });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -93,10 +99,40 @@ describe("react-builtins/only-export-components — regressions", () => {
       [rootRouteFile, "src/routes/__root.tsx"],
       [lazyRouteFile, "src/routes/about.lazy.tsx"],
     ]) {
-      const result = runRule(onlyExportComponents, file, { filename });
+      const result = runRule(onlyExportComponents, file, {
+        filename,
+        settings: settingsForFramework("tanstack-start"),
+      });
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(0);
     }
+  });
+
+  it("requires route-factory import provenance", () => {
+    const userlandFactory = runRule(
+      onlyExportComponents,
+      `const createFileRoute = makeUserlandFactory();
+       export const Route = createFileRoute("/profile")({ component: Profile });
+       export const Profile = () => <div />;`,
+      {
+        filename: "src/routes/profile.tsx",
+        settings: settingsForFramework("tanstack-start"),
+      },
+    );
+    const namespaceFactory = runRule(
+      onlyExportComponents,
+      `import * as Router from "@tanstack/react-router";
+       export const Route = Router.createFileRoute("/profile")({ component: Profile });
+       const Profile = () => <div />;`,
+      {
+        filename: "src/routes/profile.tsx",
+        settings: settingsForFramework("tanstack-start"),
+      },
+    );
+    expect(userlandFactory.parseErrors).toEqual([]);
+    expect(userlandFactory.diagnostics.length).toBeGreaterThan(0);
+    expect(namespaceFactory.parseErrors).toEqual([]);
+    expect(namespaceFactory.diagnostics).toHaveLength(0);
   });
 
   // React Router / Remix route modules co-export `loader` / `meta` /
@@ -111,6 +147,7 @@ describe("react-builtins/only-export-components — regressions", () => {
     `;
     const result = runRule(onlyExportComponents, remixRouteFile, {
       filename: "src/routes/profile.tsx",
+      settings: settingsForFramework("remix"),
     });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -125,6 +162,7 @@ describe("react-builtins/only-export-components — regressions", () => {
     `;
     const result = runRule(onlyExportComponents, nextPageFile, {
       filename: "pages/profile.tsx",
+      settings: settingsForFramework("nextjs"),
     });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -138,6 +176,7 @@ describe("react-builtins/only-export-components — regressions", () => {
     `;
     const result = runRule(onlyExportComponents, dataRouterFile, {
       filename: "src/router-setup.tsx",
+      settings: settingsForFramework("remix"),
     });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -153,6 +192,7 @@ describe("react-builtins/only-export-components — regressions", () => {
   it.each([
     [
       "Next.js opengraph-image metadata (#776)",
+      "nextjs",
       "src/app/opengraph-image.tsx",
       `import { ImageResponse } from "next/og";
        export const alt = "Open Source Showcase";
@@ -165,6 +205,7 @@ describe("react-builtins/only-export-components — regressions", () => {
     ],
     [
       "Next.js twitter-image metadata (#776)",
+      "nextjs",
       "app/about/twitter-image.tsx",
       `export const size = { width: 1200, height: 630 };
        export default function Image() {
@@ -173,6 +214,7 @@ describe("react-builtins/only-export-components — regressions", () => {
     ],
     [
       "Next.js Pages Router _document.tsx",
+      "nextjs",
       "pages/_document.tsx",
       `export const config = { amp: true };
        export default function Document() {
@@ -181,6 +223,7 @@ describe("react-builtins/only-export-components — regressions", () => {
     ],
     [
       "Expo Router +not-found special file",
+      "expo",
       "app/+not-found.tsx",
       `export const screenOptions = { headerShown: false };
        export default function NotFoundScreen() {
@@ -189,6 +232,7 @@ describe("react-builtins/only-export-components — regressions", () => {
     ],
     [
       "TanStack Router __root.tsx (no factory call required)",
+      "tanstack-start",
       "src/routes/__root.tsx",
       `export const queryClient = new QueryClient();
        export default function RootComponent() {
@@ -197,6 +241,7 @@ describe("react-builtins/only-export-components — regressions", () => {
     ],
     [
       "TanStack Router *.lazy.tsx route file",
+      "tanstack-start",
       "src/routes/about.lazy.tsx",
       `export const routeConfig = { staleTime: 1000 };
        export default function AboutPage() {
@@ -205,14 +250,18 @@ describe("react-builtins/only-export-components — regressions", () => {
     ],
     [
       "Remix / React Router root.tsx module",
+      "remix",
       "app/root.tsx",
       `export const headerLinks = [{ rel: "stylesheet", href: "/app.css" }];
        export default function App() {
          return <Outlet />;
        }`,
     ],
-  ])("skips framework route/special files — %s", (_label, filename, code) => {
-    const result = runRule(onlyExportComponents, code, { filename });
+  ] as const)("skips framework route/special files — %s", (_label, framework, filename, code) => {
+    const result = runRule(onlyExportComponents, code, {
+      filename,
+      settings: settingsForFramework(framework),
+    });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -274,6 +323,119 @@ describe("react-builtins/only-export-components — regressions", () => {
     const result = runRule(onlyExportComponents, configFile, {
       filename: "src/tabs-config.tsx",
     });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ['export default { mode: "compact" };', "plain object"],
+    ["export default new ProgressBar();", "constructed instance"],
+    ["export default createContext(undefined);", "context"],
+  ])("does not flag a component-free default %s", (code) => {
+    const result = runRule(onlyExportComponents, code, { filename: "src/config.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ['export default { mode: "compact" };', "non-component"],
+    ["export default new ProgressBar();", "non-component"],
+    ["export default createContext(undefined);", "context"],
+  ])("reports a default %s when the module also exports a component", (defaultExport) => {
+    const result = runRule(
+      onlyExportComponents,
+      `${defaultExport}\nexport const Panel = () => <section />;`,
+      { filename: "src/panel.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a PascalCase component member from an imported module", () => {
+    const result = runRule(
+      onlyExportComponents,
+      'import { LobeHub } from "@lobehub/icons"; export default LobeHub.Color;',
+      { filename: "src/logo.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not infer a component from a PascalCase member on a local object", () => {
+    const result = runRule(
+      onlyExportComponents,
+      'const LobeHub = { Color: "purple" }; export default LobeHub.Color;',
+      { filename: "src/color.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not infer components from PascalCase formatter functions", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        export function RGBToHex(value) { return value.replace("rgb", "#"); }
+        export const RGBToRGBA = (value) => value.replace("rgb", "rgba");
+        export const parseColor = (value) => value.trim();
+      `,
+      { filename: "src/color-utils.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still reports a non-component function beside a rendering component", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        export function ColorPreview() { return <output />; }
+        export function RGBToHex(value) { return value.replace("rgb", "#"); }
+      `,
+      { filename: "src/color-preview.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not infer a component from a constructed PascalCase constant", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        export const WEEKDAYS = new Set(["Monday"]);
+        export const getWeekday = (index) => [...WEEKDAYS][index];
+      `,
+      { filename: "src/date-utils.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores inline type-only export specifiers", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        interface SkeletonItem { id: string }
+        const isSkeletonItem = (value) => Boolean(value);
+        export { isSkeletonItem, type SkeletonItem };
+        export const buildFilter = () => ({ type: "filter" });
+      `,
+      { filename: "src/filter-logic.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a context Provider object as a component boundary", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        export const FloatingLayerContext = createContext(undefined);
+        export const FloatingLayerProvider = FloatingLayerContext.Provider;
+        export const useFloatingLayer = () => useContext(FloatingLayerContext);
+      `,
+      { filename: "src/use-floating-layer.tsx" },
+    );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -627,14 +789,13 @@ describe("react-builtins/only-export-components — regressions", () => {
       expect(result.diagnostics[0]?.message).toContain("unnamed");
     });
 
-    it("still flags an anonymous component wrapped in a known HOC", () => {
+    it("accepts an anonymous component wrapped in a known HOC", () => {
       const anonymousMemoFile = `export default memo(() => <div />);`;
       const result = runRule(onlyExportComponents, anonymousMemoFile, {
         filename: "src/anonymous.tsx",
       });
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(1);
-      expect(result.diagnostics[0]?.message).toContain("unnamed");
+      expect(result.diagnostics).toHaveLength(0);
     });
 
     it("still flags an unknown curried HOC wrapping a component identifier", () => {
@@ -645,6 +806,126 @@ describe("react-builtins/only-export-components — regressions", () => {
       const result = runRule(onlyExportComponents, curriedFile, {
         filename: "src/main-view.tsx",
       });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  describe("Fast Refresh registered wrapper exports", () => {
+    it.each([
+      `
+        const PageImpl = () => <main />;
+        export default withRouteProps(PageImpl);
+      `,
+      `
+        const PageImpl = () => <main />;
+        export default wrappers.withRouteProps(PageImpl);
+      `,
+      `
+        const PageImpl = () => <main />;
+        export default withRouteProps(connect(mapStateToProps)(PageImpl));
+      `,
+      `
+        import React from "react";
+        export default React.forwardRef((props, ref) => <main ref={ref} />);
+      `,
+    ])("accepts a direct wrapper call around a proven component", (source) => {
+      const result = runRule(onlyExportComponents, source, {
+        filename: "src/wrapped-page.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("still reports a curried unknown wrapper", () => {
+      const result = runRule(
+        onlyExportComponents,
+        `
+          const PageImpl = () => <main />;
+          export default memoize(200)(PageImpl);
+        `,
+        { filename: "src/curried-page.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still reports a direct unknown call with a non-rendering argument", () => {
+      const result = runRule(
+        onlyExportComponents,
+        `
+          const FormatDate = (date) => date.toISOString();
+          export default makeView(FormatDate);
+        `,
+        { filename: "src/format-date.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  describe("next/dynamic wrapper factories", () => {
+    it("accepts PascalCase exports returned by a local next/dynamic wrapper", () => {
+      const result = runRule(
+        onlyExportComponents,
+        `
+          import loadDynamic from "next/dynamic";
+          const lazyExample = (key) => loadDynamic(() => import("./examples").then((module) => module[key]));
+          export const DashboardExample = lazyExample("DashboardExample");
+          export const StaticExample = () => <main />;
+        `,
+        {
+          filename: "src/demos.tsx",
+          settings: settingsForFramework("nextjs"),
+        },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not trust a same-named userland wrapper factory", () => {
+      const result = runRule(
+        onlyExportComponents,
+        `
+          import loadDynamic from "dynamic-loader";
+          const lazyExample = (key) => loadDynamic(() => import("./examples").then((module) => module[key]));
+          export const DashboardExample = lazyExample("DashboardExample");
+          export const StaticExample = () => <main />;
+        `,
+        {
+          filename: "src/demos.tsx",
+          settings: settingsForFramework("nextjs"),
+        },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it.each([
+      `
+        let lazyExample = (key) => loadDynamic(() => import("./examples").then((module) => module[key]));
+        lazyExample = userlandFactory;
+      `,
+      `
+        function lazyExample(key) {
+          return loadDynamic(() => import("./examples").then((module) => module[key]));
+        }
+        lazyExample = userlandFactory;
+      `,
+    ])("does not trust a reassigned next/dynamic wrapper factory", (factoryDeclaration) => {
+      const result = runRule(
+        onlyExportComponents,
+        `
+          import loadDynamic from "next/dynamic";
+          ${factoryDeclaration}
+          export const DashboardExample = lazyExample("DashboardExample");
+          export const StaticExample = () => <main />;
+        `,
+        {
+          filename: "src/demos.tsx",
+          settings: settingsForFramework("nextjs"),
+        },
+      );
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(1);
     });
@@ -663,5 +944,205 @@ describe("react-builtins/only-export-components — regressions", () => {
     });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each(["src/components/card/index.tsx", "src/App.tsx", "src/utils.tsx"])(
+    "checks transformed modules regardless of conventional filename — %s",
+    (filename) => {
+      const result = runRule(
+        onlyExportComponents,
+        `export const Card = () => <div />; export const cardLabel = getLabel();`,
+        { filename },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    [
+      "direct createRoot chain",
+      `import { createRoot } from "react-dom/client";
+       export const App = () => <div />;
+       export const runtimeConfig = getConfig();
+       createRoot(document.getElementById("root")!).render(<App />);`,
+    ],
+    [
+      "aliased assigned root",
+      `import { createRoot as mountRoot } from "react-dom/client";
+       export const App = () => <div />;
+       export const runtimeConfig = getConfig();
+       const applicationRoot = mountRoot(document.getElementById("root")!);
+       applicationRoot.render(<App />);`,
+    ],
+    [
+      "hydrateRoot",
+      `import { hydrateRoot as hydrateApplication } from "react-dom/client";
+       export const App = () => <div />;
+       export const runtimeConfig = getConfig();
+       hydrateApplication(document, <App />);`,
+    ],
+    [
+      "legacy namespace render",
+      `import ReactDOM from "react-dom";
+       export const App = () => <div />;
+       export const runtimeConfig = getConfig();
+       ReactDOM.render(<App />, document.getElementById("root"));`,
+    ],
+  ])("skips a proven root-mount module — %s", (_label, code) => {
+    const result = runRule(onlyExportComponents, code, { filename: "src/index.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    `const createRoot = makeUserlandRoot;
+     export const App = () => <div />;
+     export const runtimeConfig = getConfig();
+     createRoot(document.body).render(<App />);`,
+    `import { createRoot } from "userland-renderer";
+     export const App = () => <div />;
+     export const runtimeConfig = getConfig();
+     createRoot(document.body).render(<App />);`,
+  ])("does not exempt similarly named userland root APIs", (code) => {
+    const result = runRule(onlyExportComponents, code, { filename: "src/index.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a component that returns a react-dom portal", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        import { createPortal } from "react-dom";
+        export function RenderKeybind() {
+          return <kbd />;
+        }
+        export function AppShortcutMenu(): JSX.Element | null {
+          const paletteContent = <div />;
+          return createPortal(paletteContent, document.body);
+        }
+      `,
+      { filename: "src/AppShortcutMenu.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts PascalCase functions with proven React element return types", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        import React from "react";
+        export const AssigneeResolver = ({ children }): React.ReactElement => children();
+        export const AssigneeIconDisplay = ({ value }): JSX.Element =>
+          match(value).otherwise(() => <span />);
+        export const AssigneeDisplay = () => <div />;
+      `,
+      { filename: "src/AssigneeDisplay.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    `import type { JSX } from "solid-js";
+     export const Card = () => <div />;
+     export const FormatValue = (): JSX.Element => getFormattedValue();`,
+    `namespace JSX { export interface Element { value: string } }
+     export const Card = () => <div />;
+     export const FormatValue = (): JSX.Element => getFormattedValue();`,
+    `import ReactNamespace from "userland-react";
+     export const Card = () => <div />;
+     export const FormatValue = (): ReactNamespace.ReactElement => getFormattedValue();`,
+  ])("does not trust userland React element return-type names", (code) => {
+    const result = runRule(onlyExportComponents, code, { filename: "src/Card.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `export function CurrentDeploymentCard(): null {
+       return null;
+     }
+     export default CurrentDeploymentCard;`,
+    `const CurrentDeploymentCard = (): null => null;
+     export { CurrentDeploymentCard };
+     export { CurrentDeploymentCard as default };`,
+  ])("classifies two export names for the same default component consistently", (code) => {
+    const result = runRule(onlyExportComponents, code, {
+      filename: "src/CurrentDeploymentCard.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still reports a helper next to a separately default-exported component", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        export const formatCurrency = (value: number) => String(value);
+        const CurrentDeploymentCard = (): null => null;
+        export default CurrentDeploymentCard;
+      `,
+      { filename: "src/CurrentDeploymentCard.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `import { createRoot } from "react-dom/client";
+     export const Card = () => <div />;
+     export const runtimeConfig = getConfig();
+     export const exportToSvg = () => {
+       const transientRoot = createRoot(document.createElement("div"));
+       transientRoot.render(<Card />);
+     };`,
+    `import { hydrateRoot } from "react-dom/client";
+     export const Card = () => <div />;
+     export const runtimeConfig = getConfig();
+     queueMicrotask(() => hydrateRoot(document, <Card />));`,
+    `import ReactDOM from "react-dom";
+     export const Card = () => <div />;
+     export const runtimeConfig = getConfig();
+     const mountPreview = () => ReactDOM.render(<Card />, document.body);`,
+  ])("does not treat nested transient roots as application entry modules", (code) => {
+    const result = runRule(onlyExportComponents, code, { filename: "src/export-preview.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("does not trust a reassigned root binding", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `import { createRoot } from "react-dom/client";
+       export const Card = () => <div />;
+       export const runtimeConfig = getConfig();
+       let applicationRoot = createRoot(document.body);
+       applicationRoot = getUserlandRoot();
+       applicationRoot.render(<Card />);`,
+      { filename: "src/index.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["vite", "loader"],
+    ["vite", "metadata"],
+    ["nextjs", "loader"],
+    ["remix", "metadata"],
+  ] as const)("does not apply %s route export semantics to %s", (framework, exportName) => {
+    const result = runRule(
+      onlyExportComponents,
+      `export const Card = () => <div />; export const ${exportName} = getConfig();`,
+      {
+        filename: "src/card.tsx",
+        settings: settingsForFramework(framework),
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

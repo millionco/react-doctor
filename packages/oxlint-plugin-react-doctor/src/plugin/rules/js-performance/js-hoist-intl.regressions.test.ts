@@ -39,6 +39,14 @@ function buildFormatter() { return new Intl.NumberFormat(); }`,
 function buildFormatter() { return new Intl.NumberFormat(); }`,
       `import * as Intl from "custom-intl";
 function buildFormatter() { return new Intl.NumberFormat(); }`,
+      `import { formatterNamespace as Intl } from "custom-intl";
+function buildFormatter() { return new Intl.NumberFormat(); }`,
+      `const { Intl } = customRuntime;
+function buildFormatter() { return new Intl.NumberFormat(); }`,
+      `function buildFormatter() {
+  const Intl = { NumberFormat: class {} };
+  return new Intl.NumberFormat();
+}`,
     ]) {
       const result = runRule(jsHoistIntl, code);
       expect(result.parseErrors).toEqual([]);

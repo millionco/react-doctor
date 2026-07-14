@@ -462,6 +462,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
   `const numericMembershipValues: number[] = []; const numericMembershipAllowed: number[] = []; numericMembershipValues.reduce((count, value) => numericMembershipAllowed.indexOf(value) !== -1 ? count + 1 : count, 0);`,
   `class NumericMembershipCollection<Value extends number> { retain(candidates: Value[], allowed: Value[]) { return candidates.filter((candidate) => allowed.indexOf(candidate) !== -1); } }`,
   `const localeOptionsBase = { timeZone: "UTC" }; const localeOptionsAlias = localeOptionsBase; const { timeZone: localeTimeZone } = localeOptionsAlias;`,
+  `class FuzzLocalNumberFormat { constructor(public readonly token: string) {} } const Intl = { NumberFormat: FuzzLocalNumberFormat }; const buildFuzzLocalFormatter = () => new Intl.NumberFormat(String(value));`,
   `const useState = () => [0, () => {}] as const;`,
   `const { useEffect: renamedEffect } = React;`,
   `const { onConfirm, onCancel } = props;`,

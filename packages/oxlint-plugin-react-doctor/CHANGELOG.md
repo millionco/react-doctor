@@ -1,5 +1,13 @@
 # oxlint-plugin-react-doctor
 
+## 0.7.9
+
+### Patch Changes
+
+- [#1264](https://github.com/millionco/react-doctor/pull/1264) [`9256423`](https://github.com/millionco/react-doctor/commit/9256423342c830e41a2ab71d940e1306b91de91e) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve proven Boolean visibility gates when opaque short-circuit conditions are present
+
+- [#1260](https://github.com/millionco/react-doctor/pull/1260) [`4829841`](https://github.com/millionco/react-doctor/commit/4829841a4d4a77e64b7fd22faee4446ba2ff955d) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reset-on-prop-change reports when Boolean render gating keeps state unobservable until reset
+
 ## 0.7.8
 
 ### Patch Changes

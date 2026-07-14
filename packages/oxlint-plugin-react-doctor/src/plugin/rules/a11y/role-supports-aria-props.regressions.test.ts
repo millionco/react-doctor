@@ -7,6 +7,78 @@ import { roleSupportsAriaProps } from "./role-supports-aria-props.js";
 // role="combobox". These cases pin the revert of the ARIA-1.2 combobox
 // heuristic in utils/get-implicit-role.ts (oxc parity).
 describe("a11y/role-supports-aria-props regressions", () => {
+  it("stays silent on range ARIA props supported by a native number input", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const NumberInput = ({ minimum, maximum, value }) => (
+        <input
+          type="number"
+          min={minimum}
+          max={maximum}
+          value={value}
+          aria-valuemin={minimum}
+          aria-valuemax={maximum}
+          aria-valuenow={value}
+        />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a native input type cannot be resolved statically", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const Input = ({ inputType, minimum, maximum, value }) => (
+        <input
+          type={inputType}
+          aria-valuemin={minimum}
+          aria-valuemax={maximum}
+          aria-valuenow={value}
+        />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags range ARIA props on a native text input", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const TextInput = ({ minimum, maximum, value }) => (
+        <input
+          type="text"
+          aria-valuemin={minimum}
+          aria-valuemax={maximum}
+          aria-valuenow={value}
+        />
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("stays silent on range ARIA props supported by slider and explicit spinbutton roles", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const RangeInputs = ({ minimum, maximum, value }) => (
+        <>
+          <input
+            type="range"
+            aria-valuemin={minimum}
+            aria-valuemax={maximum}
+            aria-valuenow={value}
+          />
+          <input
+            type="text"
+            role="spinbutton"
+            aria-valuemin={minimum}
+            aria-valuemax={maximum}
+            aria-valuenow={value}
+          />
+        </>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags aria-expanded on a plain text input (implicit textbox, oxc parity)", () => {
     const result = runRule(
       roleSupportsAriaProps,

@@ -339,6 +339,42 @@ const buildObservationParameterSymbolIds = (
   return observationParameterSymbolIds;
 };
 
+const isObservationSafePattern = (
+  pattern: EsTreeNode | null | undefined,
+  context: ObservationAnalysisContext,
+): boolean => {
+  if (!pattern || isNodeOfType(pattern, "Identifier")) return true;
+  if (isNodeOfType(pattern, "RestElement")) {
+    return isObservationSafePattern(pattern.argument, context);
+  }
+  if (isNodeOfType(pattern, "AssignmentPattern")) {
+    return (
+      isObservationSafePattern(pattern.left as EsTreeNode, context) &&
+      isObservationSafeExpression(pattern.right as EsTreeNode, context)
+    );
+  }
+  if (isNodeOfType(pattern, "ArrayPattern")) {
+    return pattern.elements.every((element) =>
+      isObservationSafePattern(element as EsTreeNode | null, context),
+    );
+  }
+  if (isNodeOfType(pattern, "ObjectPattern")) {
+    return pattern.properties.every((property) => {
+      if (isNodeOfType(property, "RestElement")) {
+        return isObservationSafePattern(property.argument, context);
+      }
+      if (!isNodeOfType(property, "Property") || property.kind !== "init" || property.method) {
+        return false;
+      }
+      return (
+        (!property.computed || isObservationSafeExpression(property.key as EsTreeNode, context)) &&
+        isObservationSafePattern(property.value as EsTreeNode, context)
+      );
+    });
+  }
+  return false;
+};
+
 const isObservationSafeStatement = (
   statement: EsTreeNode,
   context: ObservationAnalysisContext,
@@ -355,8 +391,10 @@ const isObservationSafeStatement = (
     return isObservationSafeExpression(statement.argument as EsTreeNode | null, context);
   }
   if (isNodeOfType(statement, "VariableDeclaration")) {
-    return statement.declarations.every((declaration) =>
-      isObservationSafeExpression(declaration.init as EsTreeNode | null, context),
+    return statement.declarations.every(
+      (declaration) =>
+        isObservationSafePattern(declaration.id as EsTreeNode, context) &&
+        isObservationSafeExpression(declaration.init as EsTreeNode | null, context),
     );
   }
   if (isNodeOfType(statement, "IfStatement")) {
@@ -371,8 +409,11 @@ const isObservationSafeStatement = (
     return (
       isObservationSafeExpression(statement.discriminant as EsTreeNode, context) &&
       statement.cases.every((switchCase) =>
-        switchCase.consequent.every((innerStatement) =>
-          isObservationSafeStatement(innerStatement as EsTreeNode, context),
+        Boolean(
+          isObservationSafeExpression(switchCase.test as EsTreeNode | null, context) &&
+          switchCase.consequent.every((innerStatement) =>
+            isObservationSafeStatement(innerStatement as EsTreeNode, context),
+          ),
         ),
       )
     );
@@ -406,8 +447,11 @@ const isObservationSafeFunction = (
     evidence: callerContext.evidence,
   };
   return (
-    isObservationSafeExpression(target.functionNode.body as EsTreeNode, context) ||
-    isObservationSafeStatement(target.functionNode.body as EsTreeNode, context)
+    target.functionNode.params.every((parameter) =>
+      isObservationSafePattern(parameter as EsTreeNode, context),
+    ) &&
+    (isObservationSafeExpression(target.functionNode.body as EsTreeNode, context) ||
+      isObservationSafeStatement(target.functionNode.body as EsTreeNode, context))
   );
 };
 

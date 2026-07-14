@@ -289,4 +289,55 @@ export const Panel = ({ method }: PanelProps) => (
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("reports a state update in a switch case test", () => {
+    const result = runConsumer(`
+import posthog from "posthog-js";
+import { useState } from "react";
+export const Panel = () => {
+  const [, setIsOpen] = useState(false);
+  return <section onClick={() => {
+    switch ("skill") {
+      case (setIsOpen(true), "skill"):
+        posthog.capture("skill_viewed");
+    }
+  }}>Skills</section>;
+};
+`);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a state update in a helper parameter default", () => {
+    const result = runConsumer(`
+import posthog from "posthog-js";
+import { useState } from "react";
+export const Panel = () => {
+  const [, setIsOpen] = useState(false);
+  const record = (event = (setIsOpen(true), "skill_viewed")) => posthog.capture(event);
+  return <section onClick={() => record()}>Skills</section>;
+};
+`);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports state updates in destructuring defaults and computed keys", () => {
+    const result = runConsumer(`
+import posthog from "posthog-js";
+import { useState } from "react";
+export const Panel = () => {
+  const [, setIsOpen] = useState(false);
+  return <section onClick={() => {
+    const { value = setIsOpen(true), [String(setIsOpen(true))]: selected } = {};
+    posthog.capture("skill_viewed", { value, selected });
+  }}>Skills</section>;
+};
+`);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

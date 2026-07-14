@@ -376,6 +376,36 @@ describe("no-impure-state-updater", () => {
          return <button onClick={() => apply({ path: "x" })}>{path}</button>;
        };`,
     ],
+    [
+      "a promise continuation with destructured parameters",
+      `import { useState } from "react";
+       const Component = () => {
+         const [a, setA] = useState(0);
+         const [b, setB] = useState(0);
+         const sync = () => {
+           Promise.all([fetchA(), fetchB()])
+             .then(([a, b]) => {
+               setA(a);
+               setB(b);
+             });
+         };
+         return <button onClick={sync}>{a + b}</button>;
+       };
+       declare function fetchA(): Promise<number>;
+       declare function fetchB(): Promise<number>;`,
+    ],
+    [
+      "a callback with adjacent side effect outside updater",
+      `import { useState } from "react";
+       const Component = () => {
+         const [items, setItems] = useState([]);
+         const persist = (next) => {
+           setItems(next);
+           localStorage.setItem("items", JSON.stringify(next));
+         };
+         return <button onClick={() => persist(["new"])}>{items.length}</button>;
+       };`,
+    ],
   ])("stays silent for %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);

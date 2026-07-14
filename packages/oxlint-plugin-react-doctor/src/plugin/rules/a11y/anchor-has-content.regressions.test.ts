@@ -3,6 +3,24 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { anchorHasContent } from "./anchor-has-content.js";
 
 describe("a11y/anchor-has-content regressions", () => {
+  it("exempts href-less React Datepicker navigation placeholders", () => {
+    const result = runRule(
+      anchorHasContent,
+      `const YearNavigation = ({ incrementYears, decrementYears }) => (
+        <>
+          <div className="react-datepicker__year-option" onClick={incrementYears}>
+            <a className="react-datepicker__navigation react-datepicker__navigation--years react-datepicker__navigation--years-upcoming" />
+          </div>
+          <div className="react-datepicker__year-option" onClick={decrementYears}>
+            <a className="react-datepicker__navigation react-datepicker__navigation--years react-datepicker__navigation--years-previous" />
+          </div>
+        </>
+      );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("exempts an `<a>` named via `aria-labelledby`", () => {
     const result = runRule(
       anchorHasContent,

@@ -14,6 +14,7 @@ import { getImportedName } from "./get-imported-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { parseSourceFile } from "./parse-source-file.js";
+import { readStaticBoolean } from "./read-static-boolean.js";
 import {
   findNearestPackageDirectory,
   readPackageManifest,
@@ -21,6 +22,7 @@ import {
 } from "./read-nearest-package-manifest.js";
 import type { PackageManifest } from "./read-nearest-package-manifest.js";
 import type { RuleContext } from "./rule-context.js";
+import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
 export interface FastRefreshFileStatus {
@@ -501,12 +503,107 @@ const hasStorybookReactViteConfig = (packageDirectory: string): boolean => {
   return false;
 };
 
+const resolveDirectUnreassignedValue = (
+  value: Parameters<typeof walkAst>[0],
+  scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): Parameters<typeof walkAst>[0] => {
+  const unwrappedValue = stripParenExpression(value);
+  if (!isNodeOfType(unwrappedValue, "Identifier")) return unwrappedValue;
+  const symbol = scopes.symbolFor(unwrappedValue);
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return unwrappedValue;
+  const initializer = getDirectUnreassignedInitializer(symbol);
+  if (!initializer) return unwrappedValue;
+  visitedSymbolIds.add(symbol.id);
+  return resolveDirectUnreassignedValue(initializer, scopes, visitedSymbolIds);
+};
+
+const isStaticPropertyNamed = (
+  node: Parameters<typeof walkAst>[0],
+  propertyName: string,
+): boolean =>
+  isNodeOfType(node, "Property") &&
+  ((!node.computed && isNodeOfType(node.key, "Identifier") && node.key.name === propertyName) ||
+    (isNodeOfType(node.key, "Literal") && node.key.value === propertyName));
+
+const readLastStaticBooleanProperty = (
+  value: Parameters<typeof walkAst>[0],
+  propertyName: string,
+  scopes: ScopeAnalysis,
+): boolean | null => {
+  const resolvedValue = resolveDirectUnreassignedValue(value, scopes);
+  if (!isNodeOfType(resolvedValue, "ObjectExpression")) return null;
+  let propertyValue: boolean | null = null;
+  for (const property of resolvedValue.properties) {
+    if (isNodeOfType(property, "SpreadElement")) {
+      propertyValue = null;
+      continue;
+    }
+    if (!isStaticPropertyNamed(property, propertyName) || !isNodeOfType(property, "Property")) {
+      continue;
+    }
+    const resolvedPropertyValue = resolveDirectUnreassignedValue(property.value, scopes);
+    propertyValue = readStaticBoolean(resolvedPropertyValue);
+  }
+  return propertyValue;
+};
+
+const isLastStaticPropertyInObject = (
+  property: Parameters<typeof walkAst>[0],
+  propertyName: string,
+): boolean => {
+  if (!isNodeOfType(property.parent, "ObjectExpression")) return false;
+  const propertyIndex = property.parent.properties.findIndex(
+    (objectProperty) => objectProperty === property,
+  );
+  return property.parent.properties.slice(propertyIndex + 1).every((laterProperty) => {
+    if (isNodeOfType(laterProperty, "SpreadElement")) return false;
+    return !isStaticPropertyNamed(laterProperty, propertyName);
+  });
+};
+
+const hasStorybookReactWebpackFastRefreshConfig = (packageDirectory: string): boolean => {
+  for (const configFilename of ["main.ts", "main.js", "main.mjs", "main.cjs"]) {
+    const program = parseSourceFile(path.join(packageDirectory, ".storybook", configFilename));
+    if (!program) continue;
+    const scopes = analyzeScopes(program);
+    const exportedBindings = getExportedBindings(program, scopes);
+    let hasFastRefresh = false;
+    walkAst(program, (node) => {
+      if (!isStaticPropertyNamed(node, "reactOptions") || !isNodeOfType(node, "Property")) return;
+      if (!isExportedConfigProperty(node, exportedBindings, scopes)) return;
+      if (!isLastStaticPropertyInObject(node, "reactOptions")) return;
+      if (readLastStaticBooleanProperty(node.value, "fastRefresh", scopes) === true) {
+        hasFastRefresh = true;
+        return false;
+      }
+    });
+    if (hasFastRefresh) return true;
+  }
+  return false;
+};
+
 const hasStorybookReactViteIntegration = (
   packageDirectory: string,
   manifest: PackageManifest,
 ): boolean =>
   hasOwnedDevelopmentCommand(manifest, /(?:^|\s)(?:storybook\s+dev|start-storybook)(?:\s|$)/) &&
   hasStorybookReactViteConfig(packageDirectory);
+
+const hasStorybookReactWebpackFastRefreshIntegration = (
+  packageDirectory: string,
+  manifest: PackageManifest,
+): boolean => {
+  const developmentCommandPattern = /(?:^|\s)(?:storybook\s+dev|start-storybook)(?:\s|$)/;
+  if (!hasOwnedDevelopmentCommand(manifest, developmentCommandPattern)) return false;
+  const storybookReactVersion =
+    getOwnedDependencyVersion(manifest, "@storybook/react", developmentCommandPattern) ??
+    getOwnedDependencyVersion(manifest, "@storybook/react-webpack5", developmentCommandPattern);
+  return (
+    isVersionAtLeast(storybookReactVersion, MINIMUM_FAST_REFRESH_VERSIONS.storybookReact) &&
+    hasStorybookReactWebpackFastRefreshConfig(packageDirectory)
+  );
+};
 
 const hasNxStorybookReactViteIntegration = (packageDirectory: string): boolean => {
   if (!hasStorybookReactViteConfig(packageDirectory)) return false;
@@ -532,7 +629,8 @@ const getLocalFastRefreshStatus = (
   const status =
     getBuiltInStatus(manifest) ??
     (hasStorybookReactViteIntegration(packageDirectory, manifest) ||
-    hasNxStorybookReactViteIntegration(packageDirectory)
+    hasNxStorybookReactViteIntegration(packageDirectory) ||
+    hasStorybookReactWebpackFastRefreshIntegration(packageDirectory, manifest)
       ? { isActive: true, runtime: "generic" }
       : null) ??
     getRegisteredIntegration(packageDirectory, manifest) ??

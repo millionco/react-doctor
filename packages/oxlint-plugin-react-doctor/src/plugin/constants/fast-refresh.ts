@@ -24,4 +24,5 @@ export const MINIMUM_FAST_REFRESH_VERSIONS = {
   reactForGatsbyTwo: { major: 17, minor: 0 },
   reactNative: { major: 0, minor: 61 },
   reactScripts: { major: 4, minor: 0 },
+  storybookReact: { major: 6, minor: 1 },
 } as const;

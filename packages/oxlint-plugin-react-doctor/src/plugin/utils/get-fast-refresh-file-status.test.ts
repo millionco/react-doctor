@@ -188,6 +188,92 @@ describe("probeFastRefreshFileStatus", () => {
     expect(probeFastRefreshFileStatus(sourcePath).isActive).toBe(false);
   });
 
+  it.each([
+    ["inline CommonJS config", "module.exports = { reactOptions: { fastRefresh: true } };"],
+    [
+      "aliased TypeScript config",
+      "const fastRefresh = true; const reactOptions = { fastRefresh }; const config = { reactOptions }; export default config;",
+    ],
+  ])("recognizes explicitly enabled Storybook Webpack Fast Refresh — %s", (_label, config) => {
+    const sourcePath = createFixture({
+      manifest: {
+        scripts: { storybook: "start-storybook -p 6006" },
+        dependencies: { react: "18.0.0" },
+        devDependencies: { "@storybook/react": "6.5.14" },
+      },
+      files: { ".storybook/main.ts": config },
+    });
+
+    expect(probeFastRefreshFileStatus(sourcePath).isActive).toBe(true);
+  });
+
+  it.each([
+    ["disabled", "module.exports = { reactOptions: { fastRefresh: false } };", "6.5.14"],
+    [
+      "overridden by a later property",
+      "module.exports = { reactOptions: { fastRefresh: true, fastRefresh: false } };",
+      "6.5.14",
+    ],
+    [
+      "overridden by a later spread",
+      "const overrides = {}; module.exports = { reactOptions: { fastRefresh: true, ...overrides } };",
+      "6.5.14",
+    ],
+    [
+      "unexported decoy",
+      "const unused = { reactOptions: { fastRefresh: true } }; module.exports = { reactOptions: { fastRefresh: false } };",
+      "6.5.14",
+    ],
+    [
+      "reassigned alias",
+      "let enabled = true; enabled = false; module.exports = { reactOptions: { fastRefresh: enabled } };",
+      "6.5.14",
+    ],
+    ["string value", 'module.exports = { reactOptions: { fastRefresh: "true" } };', "6.5.14"],
+    ["unsupported version", "module.exports = { reactOptions: { fastRefresh: true } };", "6.0.28"],
+  ])("rejects unproven Storybook Webpack Fast Refresh — %s", (_label, config, storybookVersion) => {
+    const sourcePath = createFixture({
+      manifest: {
+        scripts: { storybook: "start-storybook -p 6006" },
+        dependencies: { react: "18.0.0" },
+        devDependencies: { "@storybook/react": storybookVersion },
+      },
+      files: { ".storybook/main.js": config },
+    });
+
+    expect(probeFastRefreshFileStatus(sourcePath).isActive).toBe(false);
+  });
+
+  it("rejects an explicit Storybook Webpack option without an owned development command", () => {
+    const sourcePath = createFixture({
+      manifest: {
+        scripts: { build: "build-storybook" },
+        dependencies: { react: "18.0.0" },
+        devDependencies: { "@storybook/react": "6.5.14" },
+      },
+      files: { ".storybook/main.js": "module.exports = { reactOptions: { fastRefresh: true } };" },
+    });
+
+    expect(probeFastRefreshFileStatus(sourcePath).isActive).toBe(false);
+  });
+
+  it("rejects Storybook Webpack when Fast Refresh is not explicitly enabled", () => {
+    const sourcePath = createFixture({
+      manifest: {
+        scripts: { storybook: "start-storybook -p 6006" },
+        dependencies: { react: "18.0.0" },
+        devDependencies: {
+          "@storybook/react": "6.5.14",
+          "@pmmmwh/react-refresh-webpack-plugin": "0.5.11",
+          "react-refresh": "0.14.0",
+        },
+      },
+      files: { ".storybook/main.js": "module.exports = { stories: ['../src/**/*.stories.tsx'] };" },
+    });
+
+    expect(probeFastRefreshFileStatus(sourcePath).isActive).toBe(false);
+  });
+
   it("recognizes the Rozenite wrapper only when its development config registers it", () => {
     const activeSourcePath = createFixture({
       manifest: {

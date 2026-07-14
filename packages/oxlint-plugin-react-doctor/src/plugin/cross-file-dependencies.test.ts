@@ -438,18 +438,33 @@ export const App = () => {
         `export const unrelated${moduleIndex} = ${moduleIndex};\n`,
       );
     }
+    writeFixtureFile(
+      "src/ref-sink.tsx",
+      `export const RefSink = ({ target }) => <input ref={target} />;\n`,
+    );
     const appPath = writeFixtureFile(
       "src/App.tsx",
-      `${Array.from(
-        { length: 100 },
-        (_, moduleIndex) => `import { unrelated${moduleIndex} } from "./unrelated-${moduleIndex}";`,
-      ).join("\n")}
-export const App = () => <div>{unrelated0}</div>;`,
+      `import { createRef } from "react";
+import { RefSink } from "./ref-sink";
+${Array.from(
+  { length: 100 },
+  (_, moduleIndex) => `import { unrelated${moduleIndex} } from "./unrelated-${moduleIndex}";`,
+).join("\n")}
+export const App = () => {
+  const target = createRef();
+  return <><RefSink target={target} /><div>{unrelated0}</div></>;
+};`,
     );
     const trace = collectFor(appPath, ["no-create-ref-in-function-component"]);
     expect(trace).not.toBeNull();
-    expect(trace?.contentPaths.size).toBe(0);
-    expect(trace?.existencePaths.size).toBe(0);
+    expect(trace?.contentPaths).toEqual(new Set([fixturePath("src/ref-sink.tsx")]));
+    expect(trace?.existencePaths.size).toBeLessThan(20);
+    for (let moduleIndex = 0; moduleIndex < 100; moduleIndex += 1) {
+      expect(trace?.contentPaths.has(fixturePath(`src/unrelated-${moduleIndex}.tsx`))).toBe(false);
+      expect(trace?.existencePaths.has(fixturePath(`src/unrelated-${moduleIndex}.tsx`))).toBe(
+        false,
+      );
+    }
   });
 });
 

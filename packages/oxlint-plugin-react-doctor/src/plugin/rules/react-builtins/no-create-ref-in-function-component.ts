@@ -4,9 +4,9 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
-import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isCreateRefResultWriteOnly } from "./is-create-ref-result-write-only.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -16,16 +16,19 @@ const MESSAGE =
 // `useMemo(() => createRef(), [])` runs its callback during the enclosing
 // component/hook's render, so the memo callback is transparent when
 // resolving where the createRef really lives — the fix is still `useRef`.
-const isUseMemoCallbackArgument = (functionNode: EsTreeNode): boolean => {
+const isUseMemoCallbackArgument = (functionNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const parent = functionNode.parent;
   if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
   if (parent.arguments?.[0] !== functionNode) return false;
-  return isReactFunctionCall(parent, "useMemo");
+  return isReactApiCall(parent, "useMemo", scopes, { resolveNamedAliases: true });
 };
 
-const findEnclosingRenderFunction = (node: EsTreeNode): EsTreeNode | null => {
+const findEnclosingRenderFunction = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
   let enclosingFunction = findEnclosingFunction(node);
-  while (enclosingFunction && isUseMemoCallbackArgument(enclosingFunction)) {
+  while (enclosingFunction && isUseMemoCallbackArgument(enclosingFunction, scopes)) {
     enclosingFunction = findEnclosingFunction(enclosingFunction);
   }
   return enclosingFunction;
@@ -57,7 +60,7 @@ export const noCreateRefInFunctionComponent = defineRule({
         return;
       }
 
-      const enclosingFunction = findEnclosingRenderFunction(node);
+      const enclosingFunction = findEnclosingRenderFunction(node, context.scopes);
       if (!enclosingFunction) return;
       const displayName = componentOrHookDisplayNameForFunction(enclosingFunction);
       if (!displayName) return;

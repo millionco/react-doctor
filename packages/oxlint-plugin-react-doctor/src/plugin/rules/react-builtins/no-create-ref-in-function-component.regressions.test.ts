@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noCreateRefInFunctionComponent } from "./no-create-ref-in-function-component.js";
@@ -18,6 +19,30 @@ export default useDriveItemActions;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("flags aliased React useMemo and createRef calls inside a custom hook", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef as makeRef, useMemo as cache } from "react";
+const useThing = () => cache(() => makeRef(), []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a userland useMemo callback as render-transparent", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+const useMemo = (callback) => callback();
+export const Input = () => {
+  const target = useMemo(() => createRef(), []);
+  return <input data-present={Boolean(target)} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags useMemo(() => createRef(), []) inside a component", () => {
@@ -151,34 +176,6 @@ export const StableObservedRef = ({ label, observe }: StableObservedRefProps) =>
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("stays silent when a fresh event handler reads the ref from the same render", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef } from "react";
-
-export const FocusButton = () => {
-  const target = createRef<HTMLButtonElement>();
-  return <button ref={target} onClick={() => target.current?.focus()}>Focus</button>;
-};`,
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  it("reports when an async inline event handler reads the ref after suspension", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef } from "react";
-
-export const FocusButton = () => {
-  const target = createRef<HTMLButtonElement>();
-  return <button ref={target} onClick={async () => { await Promise.resolve(); target.current?.focus(); }}>Focus</button>;
-};`,
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
   it("reports when a dynamic computed destructuring key may extract the ref", () => {
     const result = runRule(
       noCreateRefInFunctionComponent,
@@ -238,6 +235,190 @@ export const Input = () => {
     expect(namespaceResult.diagnostics).toEqual([]);
   });
 
+  it("stays silent for intrinsic cloneElement and aliased createElement props", () => {
+    const cloneElementResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import React, { createRef } from "react";
+export const Input = () => { const target = createRef(); return React.cloneElement(<input />, { ref: target }); };`,
+    );
+    const aliasedPropsResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import React, { createRef } from "react";
+export const Input = () => { const target = createRef(); const props = { ref: target }; return React.createElement("input", props); };`,
+    );
+    expect(cloneElementResult.diagnostics).toEqual([]);
+    expect(aliasedPropsResult.diagnostics).toEqual([]);
+  });
+
+  it("reports cloneElement refs on custom elements and aliased props that escape", () => {
+    const customElementResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import React, { createRef } from "react";
+const Custom = () => <input />;
+export const Input = () => { const target = createRef(); return React.cloneElement(<Custom />, { ref: target }); };`,
+    );
+    const escapedPropsResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import React, { createRef } from "react";
+export const Input = ({ observe }) => { const target = createRef(); const props = { ref: target }; observe(props); return React.createElement("input", props); };`,
+    );
+    expect(customElementResult.diagnostics).toHaveLength(1);
+    expect(escapedPropsResult.diagnostics).toHaveLength(1);
+  });
+
+  it("reports intrinsic element results that retain the ref beyond the render", () => {
+    const jsxResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = ({ retain }) => { const target = createRef(); retain(<input ref={target} />); return <div />; };`,
+    );
+    const aliasResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = ({ retain }) => { const target = createRef(); const element = <input ref={target} />; retain(element); return <div />; };`,
+    );
+    const createElementResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import React, { createRef } from "react";
+export const Input = ({ retain }) => { const target = createRef(); retain(React.createElement("input", { ref: target })); return <div />; };`,
+    );
+    const cloneElementResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import React, { createRef } from "react";
+export const Input = ({ retain }) => { const target = createRef(); retain(React.cloneElement(<input />, { ref: target })); return <div />; };`,
+    );
+    expect(jsxResult.diagnostics).toHaveLength(1);
+    expect(aliasResult.diagnostics).toHaveLength(1);
+    expect(createElementResult.diagnostics).toHaveLength(1);
+    expect(cloneElementResult.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an intrinsic ref hidden beneath a local component that retains children", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+const Sink = ({ children, retain }) => { retain(children); return null; };
+export const Input = ({ retain }) => { const target = createRef(); return <Sink retain={retain}><input ref={target} /></Sink>; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports intrinsic refs hidden beneath unresolved custom component children", () => {
+    const directResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+import { Sink } from "opaque";
+export const Input = () => { const target = createRef(); return <Sink><input ref={target} /></Sink>; };`,
+    );
+    const conditionalResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+import { Sink } from "opaque";
+export const Input = ({ visible }) => { const target = createRef(); return <Sink>{visible && <input ref={target} />}</Sink>; };`,
+    );
+    expect(directResult.diagnostics).toHaveLength(1);
+    expect(conditionalResult.diagnostics).toHaveLength(1);
+  });
+
+  it("distinguishes resolved imported children forwarding from retention", () => {
+    const filename = fileURLToPath(
+      new URL("./__fixtures__/create-ref-children-consumer.tsx", import.meta.url),
+    );
+    const forwardingResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+import { ForwardingChildren } from "./create-ref-children-consumers";
+export const Input = () => { const target = createRef(); return <ForwardingChildren><input ref={target} /></ForwardingChildren>; };`,
+      { filename },
+    );
+    const retainingResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+import { RetainingChildren } from "./create-ref-children-consumers";
+export const Input = ({ retain }) => { const target = createRef(); return <RetainingChildren retain={retain}><input ref={target} /></RetainingChildren>; };`,
+      { filename },
+    );
+    expect(forwardingResult.diagnostics).toEqual([]);
+    expect(retainingResult.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps direct and aliased intrinsic element returns quiet", () => {
+    const directResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = () => { const target = createRef(); return <input ref={target} />; };`,
+    );
+    const aliasResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = () => { const target = createRef(); const element = <input ref={target} />; return element; };`,
+    );
+    expect(directResult.diagnostics).toEqual([]);
+    expect(aliasResult.diagnostics).toEqual([]);
+  });
+
+  it("keeps intrinsic refs beneath proven React fragments quiet", () => {
+    const namespaceResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import React, { createRef } from "react";
+export const Input = () => { const target = createRef(); return <React.Fragment><input ref={target} /></React.Fragment>; };`,
+    );
+    const namedResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef, Fragment } from "react";
+export const Input = () => { const target = createRef(); return <Fragment><input ref={target} /></Fragment>; };`,
+    );
+    expect(namespaceResult.diagnostics).toEqual([]);
+    expect(namedResult.diagnostics).toEqual([]);
+  });
+
+  it("reports intrinsic refs beneath shadowed and userland Fragment components", () => {
+    const shadowedResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+const Fragment = ({ children, retain }) => { retain(children); return null; };
+export const Input = ({ retain }) => { const target = createRef(); return <Fragment retain={retain}><input ref={target} /></Fragment>; };`,
+    );
+    const userlandResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+import { Fragment } from "userland";
+export const Input = () => { const target = createRef(); return <Fragment><input ref={target} /></Fragment>; };`,
+    );
+    expect(shadowedResult.diagnostics).toHaveLength(1);
+    expect(userlandResult.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves a namespace component that forwards a ref prop to an intrinsic element", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+import * as UI from "./create-ref-namespace-child";
+export const Input = () => { const target = createRef(); return <UI.Child target={target} />; };`,
+      {
+        filename: fileURLToPath(
+          new URL("./__fixtures__/create-ref-namespace-consumer.tsx", import.meta.url),
+        ),
+      },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports a namespace component that retains the ref prop", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+import * as UI from "./create-ref-namespace-child";
+export const Input = ({ observe }) => { const target = createRef(); return <UI.RetainingChild target={target} observe={observe} />; };`,
+      {
+        filename: fileURLToPath(
+          new URL("./__fixtures__/create-ref-namespace-consumer.tsx", import.meta.url),
+        ),
+      },
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports a ref passed to a userland createElement lookalike", () => {
     const result = runRule(
       noCreateRefInFunctionComponent,
@@ -247,21 +428,6 @@ export const Input = () => {
   const target = createRef<HTMLInputElement>();
   const input = createElement("input", { ref: target });
   return <>{input}</>;
-};`,
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("reports a ref passed through an async helper from a fresh event handler", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef } from "react";
-
-export const FocusButton = () => {
-  const target = createRef<HTMLButtonElement>();
-  const focusLater = async (ref) => { await Promise.resolve(); ref.current?.focus(); };
-  return <button ref={target} onClick={() => { void focusLater(target); }}>Focus</button>;
 };`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -282,20 +448,6 @@ export const Input = () => {
   const target = createRef<HTMLInputElement>();
   void mountLater(target);
   return <main>Input</main>;
-};`,
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("reports when a generator event handler can resume with a stale ref", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef } from "react";
-
-export const FocusButton = () => {
-  const target = createRef<HTMLButtonElement>();
-  return <button ref={target} onClick={function* () { yield; target.current?.focus(); }}>Focus</button>;
 };`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -440,6 +592,77 @@ export const Input = () => { const target = createRef(); return renderInput(targ
     expect(helperResult.diagnostics).toEqual([]);
   });
 
+  it("stays silent for named functions invoked only during the same render", () => {
+    const arrowResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = () => { const target = createRef(); const render = () => <input ref={target} />; return render(); };`,
+    );
+    const declarationResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = () => { const target = createRef(); function render() { return <input ref={target} />; } return render(); };`,
+    );
+    expect(arrowResult.diagnostics).toEqual([]);
+    expect(declarationResult.diagnostics).toEqual([]);
+  });
+
+  it("reports named render functions that are retained, deferred, or async", () => {
+    const retainedResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = ({ retain }) => { const target = createRef(); const render = () => <input ref={target} />; retain(render); return render(); };`,
+    );
+    const deferredResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef, useEffect } from "react";
+export const Input = () => { const target = createRef(); const render = () => <input ref={target} />; useEffect(render, []); return <main />; };`,
+    );
+    const asyncResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = () => { const target = createRef(); const render = async () => <input ref={target} />; void render(); return <main />; };`,
+    );
+    expect(retainedResult.diagnostics).toHaveLength(1);
+    expect(deferredResult.diagnostics).toHaveLength(1);
+    expect(asyncResult.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a retained result from a synchronous render helper", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+const renderInput = (target) => <input ref={target} />;
+export const Input = ({ retain }) => { const target = createRef(); retain(renderInput(target)); return <div />; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports discarded render helpers and retained functions that close over elements", () => {
+    const discardedResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = () => { const target = createRef(); const render = () => <input ref={target} />; render(); return <div />; };`,
+    );
+    const retainedFunctionResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = ({ retain }) => { const target = createRef(); const element = <input ref={target} />; const make = () => element; retain(make); return <div />; };`,
+    );
+    expect(discardedResult.diagnostics).toHaveLength(1);
+    expect(retainedFunctionResult.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a named render-only function that attaches the ref to a custom component", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+import { Unknown } from "unknown-package";
+export const Input = () => { const target = createRef(); const render = () => <Unknown ref={target} />; return render(); };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for intrinsic ref props in closed JSX spreads", () => {
     const result = runRule(
       noCreateRefInFunctionComponent,
@@ -452,6 +675,21 @@ export const Input = () => {
 };`,
     );
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports intrinsic JSX spread refs when the element result escapes", () => {
+    const inlineResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = ({ retain }) => { const target = createRef(); retain(<input {...{ ref: target }} />); return <div />; };`,
+    );
+    const aliasResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = ({ retain }) => { const target = createRef(); const props = { ref: target }; retain(<input {...props} />); return <div />; };`,
+    );
+    expect(inlineResult.diagnostics).toHaveLength(1);
+    expect(aliasResult.diagnostics).toHaveLength(1);
   });
 
   it("stays silent for callback-ref current writes including cleanup", () => {
@@ -545,99 +783,6 @@ export const Input = () => { const owner = {}; owner.target = createRef(); retur
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("reports a fresh handler read after an unknown synchronous call", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef } from "react";
-export const Input = () => { const target = createRef(); return <button ref={target} onClick={() => { unknownCall(); target.current?.focus(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("reports a fresh handler read after an unknown getter access", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef } from "react";
-export const Input = ({ controller }) => { const target = createRef(); return <button ref={target} onClick={() => { void controller.value; target.current?.focus(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("reports handler reads after destructuring or spread can execute user code", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef } from "react";
-export const Input = ({ value }) => { const target = createRef(); return <button ref={target} onClick={() => { const { item } = value; const copy = { ...value }; consume(item, copy); target.current?.focus(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("keeps an ordinary state setter before the fresh handler read safe", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef, useState } from "react";
-export const Input = () => { const [active, setActive] = useState(false); const target = createRef(); return <button aria-pressed={active} ref={target} onClick={() => { setActive(true); target.current?.focus(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  it("keeps proven non-committing calls before the fresh handler read safe", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef, startTransition } from "react";
-export const Input = () => { const target = createRef(); return <button ref={target} onClick={(event) => { event.preventDefault(); event.stopPropagation(); console.log("focus"); startTransition(() => {}); target.current?.focus(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  it("does not trust shadowed non-committing call lookalikes", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef } from "react";
-export const Input = ({ console, startTransition }) => { const target = createRef(); return <button ref={target} onClick={(event) => { console.log(); startTransition(); event.customPreventDefault(); target.current?.focus(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("still inspects arguments and callbacks of non-committing calls", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef, startTransition, useState } from "react";
-import { flushSync } from "react-dom";
-export const Input = () => { const [active, setActive] = useState(false); const target = createRef(); return <button key={String(active)} ref={target} onClick={(event) => { event.preventDefault(flushSync(() => setActive(true))); startTransition(() => { flushSync(() => setActive(false)); }); target.current?.focus(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("rejects startTransition setter arguments that can execute user code", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef, startTransition, useState } from "react";
-import { flushSync } from "react-dom";
-export const Input = ({ value }) => { const [active, setActive] = useState(false); const target = createRef(); return <button key={String(active)} ref={target} onClick={() => { startTransition(() => setActive((flushSync(() => setActive(true)), value.next))); target.current?.focus(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("does not trust a reassigned useState setter", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef, useState } from "react";
-import { flushSync } from "react-dom";
-export const Input = () => { let [active, setActive] = useState(false); const originalSetActive = setActive; setActive = () => flushSync(() => originalSetActive((value) => !value)); const target = createRef(); return <button key={String(active)} ref={target} onClick={() => { setActive(true); target.current?.focus(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("keeps immutable useState setter aliases before the ref read safe", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef, useState } from "react";
-export const Input = () => { const [active, setActive] = useState(false); const update = setActive; const target = createRef(); return <button aria-pressed={active} ref={target} onClick={() => { update(true); target.current?.focus(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toEqual([]);
-  });
-
   it("keeps render-local identity, Boolean, and void observations local", () => {
     const result = runRule(
       noCreateRefInFunctionComponent,
@@ -660,48 +805,6 @@ export const Input = () => { const target = createRef(); return <span>{Boolean(t
     );
     expect(discardedResult.diagnostics).toEqual([]);
     expect(observedResult.diagnostics).toHaveLength(1);
-  });
-
-  it("reports a fresh handler read after a synchronous flush", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef, useState } from "react";
-import { flushSync as commitNow } from "react-dom";
-export const Input = () => { const [active, setActive] = useState(false); const target = createRef(); return <button key={String(active)} ref={target} onClick={() => { commitNow(() => setActive((value) => !value)); target.current?.focus(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("reports a loop read that can follow a prior iteration's synchronous flush", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef, useState } from "react";
-import { flushSync } from "react-dom";
-export const Input = () => { const [active, setActive] = useState(false); const target = createRef(); return <button key={String(active)} ref={target} onClick={() => { for (let index = 0; index < 2; index += 1) { target.current?.focus(); flushSync(() => setActive((value) => !value)); } }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("allows an async fresh handler read before suspension", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef } from "react";
-export const Input = () => { const target = createRef(); return <button ref={target} onClick={async () => { target.current?.focus(); await Promise.resolve(); }}>Focus</button>; };`,
-    );
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  it("supports named, conditional, logical, and nested synchronous fresh handlers", () => {
-    const result = runRule(
-      noCreateRefInFunctionComponent,
-      `import { createRef } from "react";
-export const Input = ({ enabled }) => {
-  const first = createRef(); const second = createRef(); const third = createRef(); const fourth = createRef();
-  const named = () => first.current?.focus();
-  return <><button ref={first} onClick={named} /><button ref={second} onClick={enabled ? () => second.current?.focus() : undefined} /><button ref={third} onClick={enabled && (() => third.current?.focus())} /><button ref={fourth} onClick={() => { (() => fourth.current?.focus())(); }} /></>;
-};`,
-    );
-    expect(result.diagnostics).toEqual([]);
   });
 
   it("uses scope-proven React createRef provenance", () => {

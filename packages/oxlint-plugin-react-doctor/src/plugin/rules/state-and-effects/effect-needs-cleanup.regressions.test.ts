@@ -3950,6 +3950,58 @@ export const Feed = ({ url }) => (
   });
 });
 
+describe("effect-needs-cleanup React ref callback reachability", () => {
+  it("flags a deferred subscription leak invoked through a React ref callback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const AnimatedValue = ({ data, delay, subscription }) => {
+  const callbackRef = React.useRef(() => {});
+  callbackRef.current = () => {
+    setTimeout(() => subscription.subscribe(), delay);
+  };
+  React.useEffect(() => callbackRef.current(), [data]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("subscribe");
+  });
+
+  it("accepts a React ref callback whose effect owns the returned disposer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const LiveValue = ({ data, subscription }) => {
+  const callbackRef = React.useRef(() => () => {});
+  callbackRef.current = () => {
+    const unsubscribe = subscription.subscribe();
+    return () => unsubscribe();
+  };
+  React.useEffect(() => callbackRef.current(), [data]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores an uncalled React ref callback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const UnusedValue = ({ subscription }) => {
+  const callbackRef = React.useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
 describe("effect-needs-cleanup useSyncExternalStore subscription cleanup", () => {
   it("accepts the TaskTrove i18next subscription with its matching returned disposer", () => {
     const result = runRule(

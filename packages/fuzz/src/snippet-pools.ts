@@ -458,6 +458,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
   `export default class extends React.Component { render() { return null; } }`,
   `export function FuzzPortalComponent(): JSX.Element | null { const portalContent = <div />; return createPortal(portalContent, document.body); }`,
   `export function FuzzNullComponent(): null { return null; } export default FuzzNullComponent;`,
+  `export const FuzzCard = () => <div />; const FormatCurrency = (value: number) => String(value); export default FormatCurrency;`,
   `class EventShield extends React.Component { handleClick(event) { event.stopPropagation(); } render() { return <div onClick={this.handleClick} />; } }`,
   `const globalCount = (globalThis as any).__count = ((globalThis as any).__count ?? 0) + 1;`,
   `const emDash = \`\${value} — \${state}\`;`,

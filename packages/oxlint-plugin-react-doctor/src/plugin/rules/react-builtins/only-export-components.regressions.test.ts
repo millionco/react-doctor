@@ -1092,6 +1092,40 @@ describe("react-builtins/only-export-components — regressions", () => {
   });
 
   it.each([
+    `const FormatCurrency = (value: number) => String(value);
+     export default FormatCurrency;`,
+    `const FormatCurrency = (value: number) => String(value);
+     export { FormatCurrency as default };`,
+    `function FormatCurrency(value: number) { return String(value); }
+     export default FormatCurrency;`,
+  ])("does not infer a default component from a PascalCase formatter alias", (defaultExport) => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        export const Card = () => <div />;
+        ${defaultExport}
+      `,
+      { filename: "src/Card.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a default alias with a proven React element return type", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        import type { ReactElement } from "react";
+        const Card = (): ReactElement => renderCard();
+        export default Card;
+      `,
+      { filename: "src/Card.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
     `import { createRoot } from "react-dom/client";
      export const Card = () => <div />;
      export const runtimeConfig = getConfig();

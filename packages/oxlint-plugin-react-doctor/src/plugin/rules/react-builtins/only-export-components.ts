@@ -6,6 +6,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { functionHasReactElementReturnType } from "../../utils/function-has-react-element-return-type.js";
+import { functionReturnsOnlyNull } from "../../utils/function-returns-only-null.js";
 import { getFastRefreshFileStatus } from "../../utils/get-fast-refresh-file-status.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
@@ -148,7 +149,6 @@ interface AnalyzerState {
   allowedRouteExportNames: ReadonlySet<string>;
   routeFactoryBindings: RouteFactoryBindings;
   componentFactorySymbolIds: ReadonlySet<number>;
-  defaultExportComponentNames: ReadonlySet<string>;
   importSymbolIds: ReadonlySet<number>;
   // Module-scope component binding names — used to spot a component
   // reference smuggled inside a namespace-object export.
@@ -373,10 +373,7 @@ const classifyExport = (
   initializer: EsTreeNode | null | undefined,
   state: AnalyzerState,
 ): ExportType => {
-  if (
-    isNodeOfType(reportNode, "Identifier") &&
-    state.defaultExportComponentNames.has(reportNode.name)
-  ) {
+  if (isNodeOfType(reportNode, "Identifier") && state.localComponentNames.has(reportNode.name)) {
     return { kind: "react-component" };
   }
   // HoC-wrapped: `export const Foo = memo(...)` — treat as component.
@@ -697,12 +694,12 @@ export const onlyExportComponents = defineRule({
         // boundary, so only top-level names participate.
         const localComponentNames = new Set<string>();
         const componentFactorySymbolIds = new Set<number>();
-        const defaultExportComponentNames = new Set<string>();
+        const defaultExportAliasNames = new Set<string>();
         for (const child of exportNodes) {
           if (isNodeOfType(child, "ExportDefaultDeclaration")) {
             const declaration = skipTsExpression(child.declaration as EsTreeNode);
             if (isNodeOfType(declaration, "Identifier") && isReactComponentName(declaration.name)) {
-              defaultExportComponentNames.add(declaration.name);
+              defaultExportAliasNames.add(declaration.name);
             }
             continue;
           }
@@ -719,7 +716,7 @@ export const onlyExportComponents = defineRule({
               isNodeOfType(local, "Identifier") &&
               isReactComponentName(local.name)
             ) {
-              defaultExportComponentNames.add(local.name);
+              defaultExportAliasNames.add(local.name);
             }
           }
         }
@@ -759,7 +756,6 @@ export const onlyExportComponents = defineRule({
           allowedRouteExportNames,
           routeFactoryBindings,
           componentFactorySymbolIds,
-          defaultExportComponentNames,
           importSymbolIds,
           localComponentNames,
           scopes: context.scopes,
@@ -777,7 +773,8 @@ export const onlyExportComponents = defineRule({
               isReactComponentName(child.id.name) &&
               !isInsideFunctionScope(child) &&
               (functionContainsReactRenderOutput(child, context.scopes, context.cfg) ||
-                functionHasReactElementReturnType(child))
+                functionHasReactElementReturnType(child) ||
+                (defaultExportAliasNames.has(child.id.name) && functionReturnsOnlyNull(child)))
             ) {
               localComponentNames.add(child.id.name);
             }
@@ -793,20 +790,28 @@ export const onlyExportComponents = defineRule({
           }
           if (isNodeOfType(child, "VariableDeclarator") && isNodeOfType(child.id, "Identifier")) {
             const initializer = child.init as EsTreeNode | null | undefined;
+            const expression = initializer ? skipTsExpression(initializer) : null;
+            const isDirectFunction =
+              expression !== null &&
+              (isNodeOfType(expression, "ArrowFunctionExpression") ||
+                isNodeOfType(expression, "FunctionExpression"));
+            const isDefaultNullPlaceholder =
+              defaultExportAliasNames.has(child.id.name) &&
+              expression !== null &&
+              isDirectFunction &&
+              functionReturnsOnlyNull(expression);
             if (
               isReactComponentName(child.id.name) &&
               (canBeReactFunctionComponent(initializer, state) ||
-                (initializer ? isEs6Component(skipTsExpression(initializer)) : false)) &&
+                (expression ? isEs6Component(expression) : false) ||
+                isDefaultNullPlaceholder) &&
               !isInsideFunctionScope(child)
             ) {
-              const expression = initializer ? skipTsExpression(initializer) : null;
-              const isDirectFunction =
-                expression !== null &&
-                (isNodeOfType(expression, "ArrowFunctionExpression") ||
-                  isNodeOfType(expression, "FunctionExpression"));
               if (
                 !isDirectFunction ||
-                functionContainsReactRenderOutput(expression, context.scopes, context.cfg)
+                functionContainsReactRenderOutput(expression, context.scopes, context.cfg) ||
+                functionHasReactElementReturnType(expression) ||
+                isDefaultNullPlaceholder
               ) {
                 localComponentNames.add(child.id.name);
               }
@@ -877,7 +882,11 @@ export const onlyExportComponents = defineRule({
               continue;
             }
             if (isNodeOfType(stripped, "Identifier")) {
-              exports.push(classifyExport(stripped.name, stripped, false, null, state));
+              exports.push(
+                isProvenComponentValue(stripped, state)
+                  ? { kind: "react-component" }
+                  : { kind: "non-component", reportNode: stripped },
+              );
               continue;
             }
             if (isNodeOfType(stripped, "MemberExpression")) {
@@ -945,7 +954,7 @@ export const onlyExportComponents = defineRule({
                 exports.push(
                   functionContainsReactRenderOutput(declaration, context.scopes, context.cfg) ||
                     functionHasReactElementReturnType(declaration) ||
-                    defaultExportComponentNames.has(declaration.id.name)
+                    localComponentNames.has(declaration.id.name)
                     ? classifyExport(declaration.id.name, declaration.id, true, null, state)
                     : { kind: "non-component", reportNode: declaration.id },
                 );
@@ -1011,10 +1020,12 @@ export const onlyExportComponents = defineRule({
               const localName = local && isNodeOfType(local, "Identifier") ? local.name : null;
               const reportNode = specifier as EsTreeNode;
               let entry: ExportType;
-              if (localName && defaultExportComponentNames.has(localName)) {
+              if (localName && localComponentNames.has(localName)) {
                 entry = { kind: "react-component" };
-              } else if (exportedName === "default" && localName) {
-                entry = classifyExport(localName, reportNode, false, null, state);
+              } else if (exportedName === "default" && localName && local) {
+                entry = isProvenComponentValue(local, state)
+                  ? { kind: "react-component" }
+                  : { kind: "non-component", reportNode };
               } else if (exportedName) {
                 entry = classifyExport(exportedName, reportNode, false, null, state);
               } else {

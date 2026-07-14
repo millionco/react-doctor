@@ -530,3 +530,63 @@ describe("no-chain-state-updates — docs-validation FP wave", () => {
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+describe("no-chain-state-updates — dependency-to-setter causality", () => {
+  it("stays silent when state-only reruns cannot pass prop snapshot guards", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useEffect, useRef, useState } from "react";
+
+export const GuardedCalendar = ({ defaultsRevision, timezone }) => {
+  const [selectedRevision, setSelectedRevision] = useState(0);
+  const [dateText, setDateText] = useState("");
+  const [timeText, setTimeText] = useState("");
+  const previousDefaultsRevisionRef = useRef(defaultsRevision);
+  const previousTimezoneRef = useRef(timezone);
+
+  useEffect(() => {
+    const didDefaultsChange = previousDefaultsRevisionRef.current !== defaultsRevision;
+    const didTimezoneChange = previousTimezoneRef.current !== timezone;
+    previousDefaultsRevisionRef.current = defaultsRevision;
+    previousTimezoneRef.current = timezone;
+
+    if (didDefaultsChange) {
+      setDateText(String(defaultsRevision));
+      setTimeText(timezone);
+      return;
+    }
+
+    if (!didTimezoneChange) return;
+    setDateText(String(selectedRevision));
+    setTimeText(timezone);
+  }, [defaultsRevision, selectedRevision, timezone]);
+
+  return <button onClick={() => setSelectedRevision((value) => value + 1)}>{dateText}:{timeText}</button>;
+};`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports when changing state reaches a distinct-state setter", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useEffect, useState } from "react";
+
+export const Search = () => {
+  const [query, setQuery] = useState("");
+  const [highlighted, setHighlighted] = useState(-1);
+
+  useEffect(() => {
+    setHighlighted(-1);
+  }, [query]);
+
+  return <input value={query} onChange={(event) => setQuery(event.target.value)} data-highlighted={highlighted} />;
+};`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

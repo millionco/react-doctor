@@ -3,6 +3,28 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noResetAllStateOnPropChange } from "./no-reset-all-state-on-prop-change.js";
 
 describe("no-reset-all-state-on-prop-change — regressions", () => {
+  it("stays silent for an extracted async loading lifecycle helper", () => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `import { useEffect, useState } from "react";
+      const Spline = ({ load, scene }) => {
+        const [isLoading, setIsLoading] = useState(true);
+        const initialize = async () => {
+          await load(scene);
+          setIsLoading(false);
+        };
+        useEffect(() => {
+          setIsLoading(true);
+          void initialize();
+        }, [scene]);
+        return <canvas hidden={isLoading} />;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // excalidraw ToolPopover: the setter only runs inside an event-subscription
   // callback registered by the effect, so state resets when the emitter
   // fires — not when the `app` prop changes.

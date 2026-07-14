@@ -10,6 +10,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { Reference } from "eslint-scope";
 import { getArgsUpstreamRefs, getCallExpr, getRef, getUpstreamRefs } from "./utils/effect/ast.js";
 import { readsPostMountValueThroughLocals } from "./utils/reads-post-mount-through-locals.js";
+import { createStateTriggerReachability } from "./utils/create-state-trigger-reachability.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
@@ -140,6 +141,11 @@ export const noChainStateUpdates = defineRule({
           .map((ref) => getUseStateDeclarator(ref))
           .filter((declarator): declarator is EsTreeNode => declarator !== null),
       );
+      const isReachableFromStateTrigger = createStateTriggerReachability({
+        analysis,
+        context,
+        effectFunction: effectFn,
+      });
 
       // A state synced from a live DOM read (`document.querySelectorAll`,
       // a layout measurement) cannot be computed in the upstream event
@@ -152,6 +158,7 @@ export const noChainStateUpdates = defineRule({
         if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
         const callExpr = getCallExpr(ref);
         if (!callExpr) continue;
+        if (!isReachableFromStateTrigger(callExpr)) continue;
         if (!readsPostMountValueThroughLocals(callExpr, effectFn, { ignoreBareRefCurrent: true })) {
           continue;
         }
@@ -163,6 +170,7 @@ export const noChainStateUpdates = defineRule({
         if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
         const callExpr = getCallExpr(ref);
         if (!callExpr) continue;
+        if (!isReachableFromStateTrigger(callExpr)) continue;
         // Avoid overlap with no-derived-state
         const isSomeArgsState = getArgsUpstreamRefs(analysis, ref).some((argRef) =>
           isState(analysis, argRef),

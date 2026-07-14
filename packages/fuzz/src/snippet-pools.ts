@@ -75,6 +75,7 @@ export const EFFECT_SNIPPET_POOL = [
   `const [loopSnapshot, setLoopSnapshot] = useState(null); useEffect(() => { setLoopSnapshot({ value }); });`,
   `const [fuzzPlatform, setFuzzPlatform] = useState(""); useEffect(() => { setFuzzPlatform(navigator.userAgent.includes("Mobile") ? "mobile" : "desktop"); });`,
   `const [fuzzChildCount, setFuzzChildCount] = useState(0); useEffect(() => { setFuzzChildCount(Children.toArray(children).length); });`,
+  `const [guardSelection, setGuardSelection] = useState(0); const [guardLabel, setGuardLabel] = useState(""); const previousGuardValueRef = useRef(value); useEffect(() => { const didGuardValueChange = previousGuardValueRef.current !== value; previousGuardValueRef.current = value; if (!didGuardValueChange) return; setGuardLabel("reset"); }, [guardSelection, value]); const guardedChainButton = <button onClick={() => setGuardSelection((previousSelection) => previousSelection + 1)}>{guardLabel}</button>;`,
 ] as const;
 
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),

@@ -27,6 +27,13 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag an object built from globalThis.crypto.randomUUID()", () => {
+    const result = run(
+      `function Row() { const id = { value: globalThis.crypto.randomUUID() }; return <li>{id.value}</li>; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag an array built from nanoid() (impure id generator)", () => {
     const result = run(
       `import { nanoid } from "nanoid"; function Row() { const ids = [nanoid(), nanoid()]; return <div>{ids.join()}</div>; }`,

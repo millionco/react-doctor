@@ -74,6 +74,8 @@ export const STATE_SNIPPET_POOL = [
   `const [selected, setSelected] = useState<string[]>([]);`,
   `const [loading, setLoading] = useState(false); const [error, setError] = useState(null); const [data, setData] = useState(null);`,
   `const [internalValue, setInternalValue] = useState(value); useEffect(() => { setInternalValue(value); }, [value]);`,
+  `const [previousValue, setPreviousValue] = useState(Boolean(value)); useEffect(() => { setPreviousValue(Boolean(value)); }, [value]);`,
+  `const [resetDraft, setResetDraft] = useState(""); useEffect(() => { setResetDraft(""); }, [value]);`,
   `const [reducerState, dispatch] = useReducer(reducer, { count: 0 });`,
   `const containerRef = useRef(null);`,
   `const handleRef = useRef(handle); handleRef.current = handle;`,

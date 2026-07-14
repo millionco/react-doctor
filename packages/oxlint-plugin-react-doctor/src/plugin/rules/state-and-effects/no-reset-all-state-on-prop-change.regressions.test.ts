@@ -44,6 +44,219 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
     expect(result.diagnostics[0]?.message).toContain("clears all state");
   });
 
+  describe("live prop normalizations", () => {
+    it("stays silent when a transition tracker records the current Boolean-normalized prop", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import React, { useEffect, useRef, useState } from "react";
+        function FocusLock({ disabled, restoreFocus }, ref) {
+          const target = useRef(null);
+          const [previouslyDisabled, setPreviouslyDisabled] = useState(!!disabled);
+          useEffect(() => {
+            if (previouslyDisabled !== !!disabled) {
+              setPreviouslyDisabled(!!disabled);
+              if (restoreFocus && disabled) target.current?.focus();
+            }
+          }, [previouslyDisabled, disabled, restoreFocus]);
+          return <button ref={target} type="button">Target</button>;
+        }
+        export default React.forwardRef(FocusLock);`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
+      ["double negation", "!!disabled", "!!disabled"],
+      ["equivalent Boolean forms", "Boolean(disabled)", "!!disabled"],
+      [
+        "TypeScript wrappers",
+        "(Boolean(disabled) as boolean)",
+        "((Boolean(disabled) satisfies boolean)!)",
+      ],
+      ["whole-props member", "Boolean(props.disabled)", "!!props.disabled"],
+    ])("stays silent through %s", (_label, initializer, nextValue) => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const Tracker = (props: { disabled?: boolean }) => {
+          const { disabled } = props;
+          const [previouslyDisabled, setPreviouslyDisabled] = useState(${initializer});
+          useEffect(() => {
+            setPreviouslyDisabled(${nextValue});
+          }, [disabled]);
+          return previouslyDisabled;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent through an exact immutable normalization alias", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const Tracker = ({ disabled }: { disabled?: boolean }) => {
+          const normalizedDisabled = Boolean(disabled);
+          const [previouslyDisabled, setPreviouslyDisabled] = useState(Boolean(disabled));
+          useEffect(() => {
+            setPreviouslyDisabled(normalizedDisabled as boolean);
+          }, [normalizedDisabled]);
+          return previouslyDisabled;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent through multi-hop immutable normalization aliases", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const Tracker = ({ disabled }: { disabled?: boolean }) => {
+          const directNormalization = Boolean(disabled);
+          const normalizedDisabled = directNormalization;
+          const [previouslyDisabled, setPreviouslyDisabled] = useState(Boolean(disabled));
+          useEffect(() => {
+            setPreviouslyDisabled(normalizedDisabled);
+          }, [normalizedDisabled]);
+          return previouslyDisabled;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("preserves the existing live-binding exemption for an opaque prop-derived const", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const Tracker = ({ disabled }: { disabled?: boolean }) => {
+          const normalizedDisabled = normalizeDisabled(disabled);
+          const [previouslyDisabled, setPreviouslyDisabled] = useState(normalizedDisabled);
+          useEffect(() => {
+            setPreviouslyDisabled(normalizedDisabled);
+          }, [normalizedDisabled]);
+          return previouslyDisabled;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("preserves the existing live-binding exemption for a custom hook result", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const DropdownOnToggleEffect = ({ onDropdownOpen }) => {
+          const isDropdownOpen = useAtomComponentStateValue(isDropdownOpenComponentState);
+          const [currentIsDropdownOpen, setCurrentIsDropdownOpen] = useState(isDropdownOpen);
+          useEffect(() => {
+            if (isDropdownOpen && !currentIsDropdownOpen) {
+              setCurrentIsDropdownOpen(isDropdownOpen);
+              onDropdownOpen?.();
+            }
+          }, [currentIsDropdownOpen, isDropdownOpen, onDropdownOpen]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("does not treat a shadowed useMemo lookalike as a React mount snapshot", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const Tracker = ({ disabled }: { disabled?: boolean }) => {
+          const useMemo = (callback: () => boolean) => callback();
+          const normalizedDisabled = useMemo(() => Boolean(disabled));
+          const [previouslyDisabled, setPreviouslyDisabled] = useState(normalizedDisabled);
+          useEffect(() => {
+            setPreviouslyDisabled(normalizedDisabled);
+          }, [normalizedDisabled]);
+          return previouslyDisabled;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
+      [
+        "mutable alias",
+        `let normalizedDisabled = Boolean(disabled);
+        const [previouslyDisabled, setPreviouslyDisabled] = useState(normalizedDisabled);
+        useEffect(() => {
+          normalizedDisabled = Boolean(disabled);
+          setPreviouslyDisabled(normalizedDisabled);
+        }, [disabled]);`,
+      ],
+      [
+        "constant normalization",
+        `const normalizedDisabled = Boolean(false);
+        const [previouslyDisabled, setPreviouslyDisabled] = useState(normalizedDisabled);
+        useEffect(() => {
+          setPreviouslyDisabled(normalizedDisabled);
+        }, [disabled]);`,
+      ],
+      [
+        "mount snapshot",
+        `const initialDisabledRef = useRef(Boolean(disabled));
+        const [previouslyDisabled, setPreviouslyDisabled] = useState(initialDisabledRef.current);
+        useEffect(() => {
+          setPreviouslyDisabled(initialDisabledRef.current);
+        }, [disabled]);`,
+      ],
+      [
+        "aliased mount snapshot",
+        `const initialDisabledRef = useRef(Boolean(disabled));
+        const initialDisabled = initialDisabledRef.current;
+        const [previouslyDisabled, setPreviouslyDisabled] = useState(initialDisabled);
+        useEffect(() => {
+          setPreviouslyDisabled(initialDisabled);
+        }, [disabled]);`,
+      ],
+      [
+        "memoized mount snapshot",
+        `const initialDisabled = useMemo(() => Boolean(disabled), []);
+        const [previouslyDisabled, setPreviouslyDisabled] = useState(initialDisabled);
+        useEffect(() => {
+          setPreviouslyDisabled(initialDisabled);
+        }, [disabled]);`,
+      ],
+      [
+        "aliased memoized mount snapshot",
+        `const initialDisabled = useMemo(() => Boolean(disabled), []);
+        const aliasedInitialDisabled = initialDisabled;
+        const [previouslyDisabled, setPreviouslyDisabled] = useState(aliasedInitialDisabled);
+        useEffect(() => {
+          setPreviouslyDisabled(aliasedInitialDisabled);
+        }, [disabled]);`,
+      ],
+      [
+        "shadowed Boolean",
+        `const Boolean = (value: unknown) => value;
+        const [previouslyDisabled, setPreviouslyDisabled] = useState(Boolean(disabled));
+        useEffect(() => {
+          setPreviouslyDisabled(Boolean(disabled));
+        }, [disabled]);`,
+      ],
+    ])("retains the diagnostic for a %s", (_label, componentBody) => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useMemo, useRef, useState } from "react";
+        const Tracker = ({ disabled }: { disabled?: boolean }) => {
+          ${componentBody}
+          return previouslyDisabled;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
   describe("delta audit vs 0.7.1", () => {
     it("stays silent on the leading reset of an async resolve effect with cancellation cleanup (freecut inline-source-preview)", () => {
       const result = runRule(

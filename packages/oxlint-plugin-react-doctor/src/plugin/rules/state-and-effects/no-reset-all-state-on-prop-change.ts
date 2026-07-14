@@ -2,8 +2,11 @@ import type { Reference } from "eslint-scope";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { getCallExpr, getDownstreamRefs, getRef, getUpstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
@@ -14,12 +17,20 @@ import {
   getUseStateDecl,
   isCustomHook,
   isProp,
+  isRefCurrent,
   isState,
   isSyncStateSetterCall,
   isUseEffect,
 } from "./utils/effect/react.js";
+import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 // 1:1 port of upstream `src/rules/no-reset-all-state-on-prop-change.js`.
+
+interface LivePropExpressionIdentity {
+  propSymbolId: number;
+  memberPath: string[];
+  booleanNormalization: "identity" | "normalized" | "negated";
+}
 
 const isUndefinedNode = (node: EsTreeNode | null | undefined): boolean => {
   if (node === null || node === undefined) return true;
@@ -36,25 +47,226 @@ const getNodeText = (node: EsTreeNode | null | undefined): string => {
   });
 };
 
-const isLiteralConstantIdentifier = (
+const normalizeAsBoolean = (identity: LivePropExpressionIdentity): LivePropExpressionIdentity => ({
+  ...identity,
+  booleanNormalization:
+    identity.booleanNormalization === "identity" ? "normalized" : identity.booleanNormalization,
+});
+
+const negateBoolean = (identity: LivePropExpressionIdentity): LivePropExpressionIdentity => ({
+  ...identity,
+  booleanNormalization: identity.booleanNormalization === "negated" ? "normalized" : "negated",
+});
+
+const getLivePropExpressionIdentity = (
   analysis: ProgramAnalysis,
+  context: RuleContext,
+  node: EsTreeNode,
+  visitedSymbolIds: Set<number> = new Set(),
+): LivePropExpressionIdentity | null => {
+  const expression = stripParenExpression(node);
+
+  if (isNodeOfType(expression, "Identifier")) {
+    const reference = getRef(analysis, expression);
+    const symbol = context.scopes.symbolFor(expression);
+    if (!reference || !symbol) return null;
+    if (isProp(analysis, reference)) {
+      return {
+        propSymbolId: symbol.id,
+        memberPath: [],
+        booleanNormalization: "identity",
+      };
+    }
+    if (visitedSymbolIds.has(symbol.id) || symbol.kind !== "const") return null;
+    visitedSymbolIds.add(symbol.id);
+    const initializer = getDirectConstInitializer(symbol);
+    if (initializer) {
+      return getLivePropExpressionIdentity(analysis, context, initializer, visitedSymbolIds);
+    }
+    const hasPropSource = getUpstreamRefs(analysis, reference).some((upstreamReference) =>
+      isProp(analysis, upstreamReference),
+    );
+    return hasPropSource
+      ? {
+          propSymbolId: symbol.id,
+          memberPath: [],
+          booleanNormalization: "identity",
+        }
+      : null;
+  }
+
+  if (isNodeOfType(expression, "MemberExpression")) {
+    const propertyName = getStaticMemberPropertyName(expression);
+    if (!propertyName) return null;
+    const objectIdentity = getLivePropExpressionIdentity(
+      analysis,
+      context,
+      expression.object as EsTreeNode,
+      visitedSymbolIds,
+    );
+    if (!objectIdentity) return null;
+    return {
+      ...objectIdentity,
+      memberPath: [...objectIdentity.memberPath, propertyName],
+    };
+  }
+
+  if (
+    isNodeOfType(expression, "CallExpression") &&
+    isNodeOfType(expression.callee, "Identifier") &&
+    expression.callee.name === "Boolean" &&
+    context.scopes.isGlobalReference(expression.callee) &&
+    expression.arguments?.length === 1
+  ) {
+    const argument = expression.arguments[0] as EsTreeNode;
+    const argumentIdentity = getLivePropExpressionIdentity(
+      analysis,
+      context,
+      argument,
+      visitedSymbolIds,
+    );
+    return argumentIdentity ? normalizeAsBoolean(argumentIdentity) : null;
+  }
+
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+    const argumentIdentity = getLivePropExpressionIdentity(
+      analysis,
+      context,
+      expression.argument as EsTreeNode,
+      visitedSymbolIds,
+    );
+    return argumentIdentity ? negateBoolean(argumentIdentity) : null;
+  }
+
+  return null;
+};
+
+const isMountSnapshotInitializer = (context: RuleContext, node: EsTreeNode): boolean => {
+  if (
+    !isReactApiCall(node, "useMemo", context.scopes, {
+      resolveNamedAliases: true,
+    }) ||
+    !isNodeOfType(node, "CallExpression")
+  ) {
+    return false;
+  }
+  const dependencies = node.arguments?.[1];
+  return isNodeOfType(dependencies, "ArrayExpression") && dependencies.elements.length === 0;
+};
+
+const isMountSnapshotBinding = (
+  context: RuleContext,
+  identifier: EsTreeNode,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const symbol = context.scopes.symbolFor(identifier);
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+  visitedSymbolIds.add(symbol.id);
+  const initializer = getDirectConstInitializer(symbol);
+  if (!initializer) return false;
+  if (isMountSnapshotInitializer(context, initializer)) return true;
+  const expression = stripParenExpression(initializer);
+  return (
+    isNodeOfType(expression, "Identifier") &&
+    isMountSnapshotBinding(context, expression, visitedSymbolIds)
+  );
+};
+
+const isConstantBooleanExpression = (
+  context: RuleContext,
+  node: EsTreeNode,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const expression = stripParenExpression(node);
+  if (isNodeOfType(expression, "Literal")) return true;
+  if (isNodeOfType(expression, "Identifier")) {
+    const symbol = context.scopes.symbolFor(expression);
+    if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+    visitedSymbolIds.add(symbol.id);
+    const initializer = getDirectConstInitializer(symbol);
+    return Boolean(
+      initializer && isConstantBooleanExpression(context, initializer, visitedSymbolIds),
+    );
+  }
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+    return isConstantBooleanExpression(
+      context,
+      expression.argument as EsTreeNode,
+      visitedSymbolIds,
+    );
+  }
+  if (
+    isNodeOfType(expression, "CallExpression") &&
+    isNodeOfType(expression.callee, "Identifier") &&
+    expression.callee.name === "Boolean" &&
+    context.scopes.isGlobalReference(expression.callee) &&
+    expression.arguments?.length === 1
+  ) {
+    return isConstantBooleanExpression(
+      context,
+      expression.arguments[0] as EsTreeNode,
+      visitedSymbolIds,
+    );
+  }
+  return false;
+};
+
+const isProvenLiveBinding = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
   identifier: EsTreeNode,
 ): boolean => {
   const reference = getRef(analysis, identifier);
-  const definitions = reference?.resolved?.defs;
-  if (!definitions || definitions.length !== 1) return false;
-  const definition = definitions[0];
-  if (definition.type !== "Variable") return false;
-  const declarator = definition.node as unknown as EsTreeNode;
-  if (!isNodeOfType(declarator, "VariableDeclarator")) return false;
-  const declaration = declarator.parent;
-  if (!isNodeOfType(declaration, "VariableDeclaration") || declaration.kind !== "const") {
+  const symbol = context.scopes.symbolFor(identifier);
+  if (!reference || !symbol || symbol.kind !== "const") return false;
+  const initializer = symbol.initializer;
+  if (!initializer || isMountSnapshotBinding(context, identifier)) return false;
+  const initializerReferences = getDownstreamRefs(analysis, initializer);
+  if (initializerReferences.some((initializerReference) => isRefCurrent(initializerReference))) {
     return false;
   }
-  return isNodeOfType(declarator.init, "Literal");
+  return !isConstantBooleanExpression(context, initializer);
 };
 
-const isSetStateToInitialValue = (analysis: ProgramAnalysis, setterRef: Reference): boolean => {
+const areSameProvenLiveBinding = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  left: EsTreeNode,
+  right: EsTreeNode,
+): boolean => {
+  const leftExpression = stripParenExpression(left);
+  const rightExpression = stripParenExpression(right);
+  if (!isNodeOfType(leftExpression, "Identifier") || !isNodeOfType(rightExpression, "Identifier")) {
+    return false;
+  }
+  const leftSymbol = context.scopes.symbolFor(leftExpression);
+  const rightSymbol = context.scopes.symbolFor(rightExpression);
+  return Boolean(
+    leftSymbol &&
+    leftSymbol === rightSymbol &&
+    isProvenLiveBinding(analysis, context, leftExpression),
+  );
+};
+
+const haveSameLivePropExpressionIdentity = (
+  left: LivePropExpressionIdentity,
+  right: LivePropExpressionIdentity,
+): boolean => {
+  if (
+    left.propSymbolId !== right.propSymbolId ||
+    left.booleanNormalization !== right.booleanNormalization ||
+    left.memberPath.length !== right.memberPath.length
+  ) {
+    return false;
+  }
+  return left.memberPath.every((propertyName, index) => propertyName === right.memberPath[index]);
+};
+
+const isSetStateToInitialValue = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  setterRef: Reference,
+): boolean => {
   const callExpr = getCallExpr(setterRef);
   if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
   const setStateToValue: EsTreeNode | undefined = callExpr.arguments?.[0] as EsTreeNode | undefined;
@@ -68,18 +280,23 @@ const isSetStateToInitialValue = (analysis: ProgramAnalysis, setterRef: Referenc
   if ((setStateToValue && !stateInitialValue) || (!setStateToValue && stateInitialValue)) {
     return false;
   }
-  // `useState(value)` seeded from a LIVE binding: `setX(value)` later
-  // re-syncs to the binding's CURRENT value, not the mount-time initial —
-  // a draft re-sync, not a reset (ant-design-mobile picker, delta audit).
-  // A `const x = <literal>` named constant is NOT live: resetting to it is
-  // resetting to the initial value (upstream parity "shared var" case).
-  if (
-    stateInitialValue &&
-    isNodeOfType(stateInitialValue, "Identifier") &&
-    stateInitialValue.name !== "undefined" &&
-    !isLiteralConstantIdentifier(analysis, stateInitialValue)
-  ) {
-    return false;
+  if (stateInitialValue && setStateToValue) {
+    const initialLivePropIdentity = getLivePropExpressionIdentity(
+      analysis,
+      context,
+      stateInitialValue,
+    );
+    const nextLivePropIdentity = getLivePropExpressionIdentity(analysis, context, setStateToValue);
+    if (
+      initialLivePropIdentity &&
+      nextLivePropIdentity &&
+      haveSameLivePropExpressionIdentity(initialLivePropIdentity, nextLivePropIdentity)
+    ) {
+      return false;
+    }
+    if (areSameProvenLiveBinding(analysis, context, stateInitialValue, setStateToValue)) {
+      return false;
+    }
   }
   return getNodeText(setStateToValue) === getNodeText(stateInitialValue);
 };
@@ -95,6 +312,7 @@ const countUseStates = (analysis: ProgramAnalysis, componentNode: EsTreeNode | n
 
 const findPropUsedToResetAllState = (
   analysis: ProgramAnalysis,
+  context: RuleContext,
   effectFnRefs: Reference[],
   depsRefs: Reference[],
   useEffectNode: EsTreeNode,
@@ -108,7 +326,9 @@ const findPropUsedToResetAllState = (
   );
   if (stateSetterRefs.length === 0) return null;
 
-  const allResetToInitial = stateSetterRefs.every((ref) => isSetStateToInitialValue(analysis, ref));
+  const allResetToInitial = stateSetterRefs.every((ref) =>
+    isSetStateToInitialValue(analysis, context, ref),
+  );
   if (!allResetToInitial) return null;
 
   // The sync reset is the loading phase of a fetch lifecycle when the SAME
@@ -163,6 +383,7 @@ export const noResetAllStateOnPropChange = defineRule({
 
       const propUsedToReset = findPropUsedToResetAllState(
         analysis,
+        context,
         effectFnRefs,
         depsRefs,
         node,

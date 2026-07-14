@@ -1570,13 +1570,15 @@ export const Search = () => {
       const useIsomorphicLayoutEffect =
         typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
 
-      const NavigationTree = ({ activeId, parentMap }) => {
-        const [expanded, setExpanded] = React.useState(() => new Set());
+      const NavigationTree = () => {
+        const [activeId, setActiveId] = React.useState("");
+        const [selectedId, setSelectedId] = React.useState("");
+        const clearLater = () => setTimeout(() => setActiveId(""), 100);
+        const onChange = (event) => setActiveId(event.target.value);
         useIsomorphicLayoutEffect(() => {
-          const parent = parentMap.get(activeId);
-          if (parent) setExpanded((current) => new Set(current).add(parent.id));
-        }, [activeId, parentMap, expanded]);
-        return null;
+          setSelectedId("");
+        }, [activeId]);
+        return <input value={selectedId} onChange={onChange} onBlur={clearLater} />;
       };`,
       { forceJsx: true },
     );
@@ -1589,13 +1591,15 @@ export const Search = () => {
     const result = runRule(
       noChainStateUpdates,
       `import { useLayoutEffect, useState } from "react";
-      const NavigationTree = ({ activeId, parentMap }) => {
-        const [expanded, setExpanded] = useState(() => new Set());
+      const NavigationTree = () => {
+        const [activeId, setActiveId] = useState("");
+        const [selectedId, setSelectedId] = useState("");
+        const clearLater = () => setTimeout(() => setActiveId(""), 100);
+        const onChange = (event) => setActiveId(event.target.value);
         useLayoutEffect(() => {
-          const parent = parentMap.get(activeId);
-          if (parent) setExpanded((current) => new Set(current).add(parent.id));
-        }, [activeId, parentMap, expanded]);
-        return null;
+          setSelectedId("");
+        }, [activeId]);
+        return <input value={selectedId} onChange={onChange} onBlur={clearLater} />;
       };`,
       { forceJsx: true },
     );
@@ -1609,13 +1613,15 @@ export const Search = () => {
       noChainStateUpdates,
       `import { useEffect, useState } from "react";
       const useMaybeEffect = Math.random() > 0.5 ? useEffect : useCustomEffect;
-      const NavigationTree = ({ activeId, parentMap }) => {
-        const [expanded, setExpanded] = useState(() => new Set());
+      const NavigationTree = () => {
+        const [activeId, setActiveId] = useState("");
+        const [selectedId, setSelectedId] = useState("");
+        const clearLater = () => setTimeout(() => setActiveId(""), 100);
+        const onChange = (event) => setActiveId(event.target.value);
         useMaybeEffect(() => {
-          const parent = parentMap.get(activeId);
-          if (parent) setExpanded((current) => new Set(current).add(parent.id));
-        }, [activeId, parentMap, expanded]);
-        return null;
+          setSelectedId("");
+        }, [activeId]);
+        return <input value={selectedId} onChange={onChange} onBlur={clearLater} />;
       };`,
       { forceJsx: true },
     );

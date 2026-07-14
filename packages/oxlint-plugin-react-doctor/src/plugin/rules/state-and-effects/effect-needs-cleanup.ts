@@ -1439,15 +1439,153 @@ const hasGuardedDeferredCleanup = (
   const usageFunction = findEnclosingFunction(usage.node);
   const promiseChainCall = usageFunction ? getPromiseChainCallForCallback(usageFunction) : null;
   if (
+    usage.kind !== "timer" ||
     usage.handleKey === null ||
     !usageFunction ||
+    !isFunctionLike(usageFunction) ||
     usageFunction === callback ||
+    usageFunction.async ||
+    usageFunction.generator ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    !isNodeOfType(usage.node.callee, "Identifier") ||
+    !context.scopes.isGlobalReference(usage.node.callee) ||
     !promiseChainCall ||
     !collectEffectInvokedFunctions(callback).has(usageFunction) ||
     !doMatchingNodesCoverEveryPathAfterUsage(promiseChainCall, cleanupReturns, context)
   ) {
     return false;
   }
+  const usageExpression = findTransparentExpressionRoot(usage.node);
+  const usageAssignment = usageExpression.parent;
+  if (
+    !isNodeOfType(usageAssignment, "AssignmentExpression") ||
+    usageAssignment.operator !== "=" ||
+    usageAssignment.right !== usageExpression ||
+    !isNodeOfType(usageAssignment.left, "Identifier")
+  ) {
+    return false;
+  }
+  const handleSymbol = context.scopes.symbolFor(usageAssignment.left);
+  if (
+    !handleSymbol ||
+    (handleSymbol.kind !== "let" && handleSymbol.kind !== "var") ||
+    !isNodeOfType(handleSymbol.declarationNode, "VariableDeclarator") ||
+    findEnclosingFunction(handleSymbol.declarationNode) !== callback
+  ) {
+    return false;
+  }
+  const cleanupFunctions = cleanupReturns.flatMap((cleanupReturn) => {
+    if (!isNodeOfType(cleanupReturn, "ReturnStatement") || !cleanupReturn.argument) return [];
+    const cleanupFunction = resolveStableValue(cleanupReturn.argument, context);
+    return cleanupFunction && isFunctionLike(cleanupFunction) ? [cleanupFunction] : [];
+  });
+  if (cleanupFunctions.length !== cleanupReturns.length) return false;
+  const globalReleaseCallsByCleanup = new Map<EsTreeNode, EsTreeNode[]>();
+  for (const cleanupFunction of cleanupFunctions) {
+    if (!isFunctionLike(cleanupFunction)) return false;
+    const globalReleaseCalls: EsTreeNode[] = [];
+    walkAst(cleanupFunction.body, (child: EsTreeNode) => {
+      if (child !== cleanupFunction.body && isFunctionLike(child)) return false;
+      if (
+        isNodeOfType(child, "CallExpression") &&
+        isNodeOfType(child.callee, "Identifier") &&
+        context.scopes.isGlobalReference(child.callee) &&
+        doesReleaseCallMatchUsage(child, usage, context)
+      ) {
+        globalReleaseCalls.push(child);
+      }
+    });
+    if (globalReleaseCalls.length === 0) return false;
+    globalReleaseCallsByCleanup.set(cleanupFunction, globalReleaseCalls);
+  }
+  const handleAssignments = handleSymbol.references.filter((reference) =>
+    isWithinAssignmentTarget(reference.identifier),
+  );
+  const hasUsageAssignment = handleAssignments.some(
+    (handleAssignment) =>
+      findTransparentExpressionRoot(handleAssignment.identifier).parent === usageAssignment,
+  );
+  const hasUnsafeHandleAssignment = handleAssignments.some((handleAssignment) => {
+    const assignmentTarget = findTransparentExpressionRoot(handleAssignment.identifier);
+    const assignment = assignmentTarget.parent;
+    if (assignment === usageAssignment) return false;
+    if (
+      !isNodeOfType(assignment, "AssignmentExpression") ||
+      assignment.operator !== "=" ||
+      assignment.left !== assignmentTarget
+    ) {
+      return true;
+    }
+    const assignedValue = stripParenExpression(assignment.right);
+    const isNullishReset =
+      (isNodeOfType(assignedValue, "Literal") && assignedValue.value === null) ||
+      (isNodeOfType(assignedValue, "Identifier") &&
+        assignedValue.name === "undefined" &&
+        context.scopes.isGlobalReference(assignedValue));
+    if (!isNullishReset) return true;
+    const cleanupFunction = findEnclosingFunction(assignment);
+    const globalReleaseCalls = cleanupFunction
+      ? globalReleaseCallsByCleanup.get(cleanupFunction)
+      : undefined;
+    return !(
+      cleanupFunction &&
+      globalReleaseCalls &&
+      doMatchingNodesCoverEveryPathBeforeUsage(
+        assignment,
+        globalReleaseCalls,
+        cleanupFunction,
+        context,
+      )
+    );
+  });
+  if (!hasUsageAssignment || hasUnsafeHandleAssignment) {
+    return false;
+  }
+  let usageAncestor: EsTreeNode | null | undefined = usage.node.parent;
+  while (usageAncestor && usageAncestor !== usageFunction) {
+    if (
+      isNodeOfType(usageAncestor, "ForStatement") ||
+      isNodeOfType(usageAncestor, "ForInStatement") ||
+      isNodeOfType(usageAncestor, "ForOfStatement") ||
+      isNodeOfType(usageAncestor, "WhileStatement") ||
+      isNodeOfType(usageAncestor, "DoWhileStatement")
+    ) {
+      return false;
+    }
+    usageAncestor = usageAncestor.parent;
+  }
+  const usageStart = getRangeStart(usage.node);
+  if (usageStart === null) return false;
+  let hasPotentialInterruption = false;
+  walkAst(usageFunction.body, (child: EsTreeNode) => {
+    if (hasPotentialInterruption) return false;
+    if (child !== usageFunction.body && isFunctionLike(child)) return false;
+    const childStart = getRangeStart(child);
+    if (childStart === null || childStart >= usageStart) return;
+    if (
+      isNodeOfType(child, "CallExpression") ||
+      isNodeOfType(child, "AwaitExpression") ||
+      isNodeOfType(child, "YieldExpression")
+    ) {
+      hasPotentialInterruption = true;
+      return false;
+    }
+  });
+  for (const argument of usage.node.arguments ?? []) {
+    walkAst(argument, (argumentChild: EsTreeNode) => {
+      if (hasPotentialInterruption) return false;
+      if (isFunctionLike(argumentChild)) return false;
+      if (
+        isNodeOfType(argumentChild, "CallExpression") ||
+        isNodeOfType(argumentChild, "AwaitExpression") ||
+        isNodeOfType(argumentChild, "YieldExpression")
+      ) {
+        hasPotentialInterruption = true;
+        return false;
+      }
+    });
+  }
+  if (hasPotentialInterruption) return false;
   return collectDeferredUsageGuardStates(usageFunction, usage.node, context).some(
     (guardState) =>
       !deferredUsageWritesGuardBeforeUsage(usageFunction, usage.node, guardState, context) &&
@@ -2669,7 +2807,7 @@ export const effectNeedsCleanup = defineRule({
         const hookName = getCalleeName(node) ?? "effect";
         context.report({
           node,
-          message: `\`${firstUsage.resourceName}\` creates a ${resourceNoun} in ${hookName} without returning cleanup. Return a cleanup function so it does not leak after unmount.`,
+          message: `\`${firstUsage.resourceName}\` creates a ${resourceNoun} in ${hookName} without guaranteed cleanup. Return a cleanup function that owns every allocation so it does not leak after unmount.`,
         });
       },
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {

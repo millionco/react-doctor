@@ -229,6 +229,7 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `const FuzzMemoList = React.memo(({ items }) => <div>{items.length}</div>, (previousProps, nextProps) => previousProps.items.length === nextProps.items.length); const FuzzDefaultList = ({ items = [] }) => <FuzzMemoList items={items} />;`,
   `const useFuzzCollection = (items: readonly string[]) => { items.forEach((item) => consume(item)); }; const useFuzzCallback = (onVisit: (item: string) => void) => { onVisit(String(value)); };`,
   `const FuzzPropTypesPanel = ({ value }) => <div>{value}</div>; FuzzPropTypesPanel.propTypes = { value: () => true };`,
+  `const FuzzDefaultPropsPanel = ({ value }) => <div>{value}</div>; FuzzDefaultPropsPanel.defaultProps = { value: "fallback" };`,
   `function FuzzNestedWritePanel() { return <div />; } function unusedFuzzNestedWrite() { FuzzNestedWritePanel = () => null; } FuzzNestedWritePanel.propTypes = { value: () => true };`,
   `function FuzzReturnedLabel() { let output = "label"; function unusedFuzzOutputWrite() { output = <div />; } return output; } FuzzReturnedLabel.propTypes = { value: () => true };`,
   `function FuzzExitedWrite(condition: boolean) { let output; if (condition) { output = <div />; return "label"; } return output; } FuzzExitedWrite.propTypes = { value: () => true };`,

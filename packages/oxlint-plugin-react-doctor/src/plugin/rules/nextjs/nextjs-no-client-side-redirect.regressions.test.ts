@@ -318,4 +318,36 @@ export default function Page() {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent after a PKCE callback exchanges the stored verifier", () => {
+    const result = runRule(
+      nextjsNoClientSideRedirect,
+      `"use client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+export default function OAuthCallback() {
+  const router = useRouter();
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const codeVerifier = sessionStorage.getItem("pkce_verifier");
+    if (!codeVerifier) {
+      setError(true);
+      return;
+    }
+    const completeExchange = async () => {
+      const response = await fetch("/api/exchange", { method: "POST", body: codeVerifier });
+      if (response.ok) router.replace("/inbox");
+    };
+    void completeExchange();
+  }, [router]);
+
+  return <p>{error ? "Missing verifier" : "Completing sign-in"}</p>;
+}`,
+      { filename: "app/oauth/callback/page.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

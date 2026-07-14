@@ -990,6 +990,13 @@ const getBooleanPropertyType = (
       : [];
   });
   if (matchingInterfaces.length !== 1) return false;
+  let sameNameInterfaceCount = 0;
+  walkAst(programNode, (candidate) => {
+    if (isNodeOfType(candidate, "TSInterfaceDeclaration") && candidate.id.name === typeName) {
+      sameNameInterfaceCount += 1;
+    }
+  });
+  if (sameNameInterfaceCount !== 1) return false;
   return matchingInterfaces[0].body.body.some(
     (member) =>
       isNodeOfType(member, "TSPropertySignature") &&

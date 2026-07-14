@@ -202,6 +202,20 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
         };`,
       ],
       [
+        "a nested interface can shadow a top-level Boolean interface",
+        `import { useEffect, useState } from "react";
+        interface Props { visible: boolean }
+        const makeMenu = () => {
+          interface Props { visible: string }
+          const Menu = ({ visible }: Props) => {
+            const [draft, setDraft] = useState("");
+            useEffect(() => setDraft(""), [visible]);
+            return visible && <output>{draft}</output>;
+          };
+          return Menu;
+        };`,
+      ],
+      [
         "a custom component can ignore hidden",
         `import { useEffect, useState } from "react";
         const Panel = ({ value }: { hidden: boolean; value: boolean }) => <output>{value}</output>;

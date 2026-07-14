@@ -520,11 +520,11 @@ const isParentPropsContextMerge = (analysis: ProgramAnalysis, expression: EsTree
       return false;
     }
     visitedVariables.add(currentVariable);
-    const definitions = currentVariable.defs
-      .map((definition) => definition.node as unknown as EsTreeNode)
-      .filter((definitionNode) => isNodeOfType(definitionNode, "VariableDeclarator"));
+    const definitions = currentVariable.defs.filter((definition) =>
+      isNodeOfType(definition.node as unknown as EsTreeNode, "VariableDeclarator"),
+    );
     if (definitions.length !== 1) return false;
-    const declarator = definitions[0];
+    const declarator = definitions[0]?.node as unknown as EsTreeNode | undefined;
     if (
       !declarator ||
       !isNodeOfType(declarator, "VariableDeclarator") ||

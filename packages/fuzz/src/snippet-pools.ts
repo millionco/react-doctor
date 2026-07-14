@@ -438,6 +438,7 @@ export const JSX_LEAF_POOL = [
   `<h2></h2>`,
   `<img src={url} onError={(event) => { event.currentTarget.src = "/fallback.png"; }} />`,
   `<div role="button" onClick={handleClick}>{state}</div>`,
+  `<section onClick={() => posthog.capture("skills_coming_soon_viewed", { area: "skills" })}>Coming soon</section>`,
   `<div style={{ paddingLeft: 8, paddingRight: 8, width: 100, height: 100 }}>{state}</div>`,
   `<div style={{ marginTop: 4, marginBottom: 4 }}>{state}</div>`,
   `<div style={{ backgroundColor: "#000", boxShadow: "0 0 60px rgb(255 0 0 / 0%)" }}>{state}</div>`,
@@ -518,6 +519,7 @@ export const IMPORT_LINE_POOL = [
   `import { ZodError as FuzzZodError } from "zod/v4"; const fuzzZodFlattenedError = new FuzzZodError([]).flatten();`,
   `import { forwardRef } from "react";\nconst FuzzForwardRefComponent = forwardRef((props) => <button>{props.label}</button>);`,
   `import FuzzMarkdown from "react-markdown";\nimport fuzzRehypeRaw from "rehype-raw";`,
+  `import posthog from "posthog-js";`,
 ] as const;
 
 // Filenames rotate per iteration because a large rule population is

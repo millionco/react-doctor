@@ -11,6 +11,7 @@ import { isInteractiveElement } from "../../utils/is-interactive-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isPresentationRole } from "../../utils/is-presentation-role.js";
 import { isPureEventBlockerHandler } from "../../utils/is-pure-event-blocker-handler.js";
+import { isProvenObservationOnlyJsxHandler } from "../../utils/is-proven-observation-only-jsx-handler.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { NON_INTERACTIVE_ELEMENTS } from "../../constants/html-tags.js";
 import { INTERACTIVE_ROLES } from "../../constants/aria-roles.js";
@@ -181,6 +182,7 @@ export const noNoninteractiveElementInteractions = defineRule({
           const attributeName = getJsxAttributeName(attribute.name);
           if (!attributeName || !MOUSE_HANDLERS_LOWER.has(attributeName.toLowerCase())) continue;
           if (isPureEventBlockerHandler(attribute)) continue;
+          if (isProvenObservationOnlyJsxHandler(attribute, context)) continue;
           hasActionableMouseHandler = true;
           break;
         }

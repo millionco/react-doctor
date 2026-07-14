@@ -448,6 +448,7 @@ export const JSX_LEAF_POOL = [
   `<video autoPlay />`,
   `<marquee>{state}</marquee>`,
   `<iframe src={url} />`,
+  `<div aria-hidden><iframe src={url} title="" tabIndex={-1} /></div>`,
   `<time>{new Date(value).toLocaleString()}</time>`,
   `<span>{new Intl.DateTimeFormat().format(state)}</span>`,
   `<time>{new Intl.DateTimeFormat("en-US", localeOptionsAlias).format(new Date(value))}</time>`,

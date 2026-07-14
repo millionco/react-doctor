@@ -167,6 +167,16 @@ const hasParcelBrowserEntry = (manifest: PackageManifest): boolean => {
   );
 };
 
+const hasParcelDevelopmentCommand = (manifest: PackageManifest): boolean =>
+  Object.values(manifest.scripts ?? {}).some(
+    (script) =>
+      typeof script === "string" &&
+      /(?:^|[\s;&|'\\"])parcel(?=\s|$)(?!\s+(?:build|help|watch|--help|--version|-h|-V)(?:\s|$))/.test(
+        script,
+      ) &&
+      !/(?:^|\s)--no-hmr(?:\s|$)/.test(script),
+  );
+
 const hasOwnedDevelopmentCommand = (manifest: PackageManifest, commandPattern: RegExp): boolean =>
   Object.values(manifest.scripts ?? {}).some(
     (script) => typeof script === "string" && commandPattern.test(script),
@@ -220,6 +230,7 @@ const getBuiltInStatus = (manifest: PackageManifest): FastRefreshFileStatus | nu
       MINIMUM_FAST_REFRESH_VERSIONS.parcel,
     ) &&
       declaresDependency(manifest, "react") &&
+      hasParcelDevelopmentCommand(manifest) &&
       hasParcelBrowserEntry(manifest))
   ) {
     return { isActive: true, runtime: "generic" };

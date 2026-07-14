@@ -191,6 +191,45 @@ describe("only-export-components Fast Refresh applicability", () => {
     ).toHaveLength(1);
   });
 
+  it("reports for a Parcel serve command with a manifest browser entry", () => {
+    expect(
+      runMixedExportRule(
+        createProject({
+          dependencies: { react: "18.0.0" },
+          devDependencies: { parcel: "2.0.0" },
+          manifestFields: {
+            source: "src/index.html",
+            scripts: { start: "parcel serve" },
+          },
+        }),
+      ).diagnostics,
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    "parcel build src/index.html",
+    "parcel watch src/index.html",
+    "parcel help",
+    "parcel --help",
+    "parcel --version",
+    "parcel -h",
+    "parcel -V",
+    "parcel src/index.html --no-hmr",
+  ])("stays silent for a non-serving Parcel command — %s", (parcelCommand) => {
+    expect(
+      runMixedExportRule(
+        createProject({
+          dependencies: { react: "18.0.0" },
+          devDependencies: { parcel: "2.0.0" },
+          manifestFields: {
+            source: "src/index.html",
+            scripts: { build: parcelCommand },
+          },
+        }),
+      ).diagnostics,
+    ).toHaveLength(0);
+  });
+
   it("reports for development tooling with an owned app command", () => {
     expect(
       runMixedExportRule(

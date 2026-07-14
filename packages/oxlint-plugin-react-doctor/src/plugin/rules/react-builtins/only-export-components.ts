@@ -523,7 +523,7 @@ export const onlyExportComponents = defineRule({
     const filename = normalizeFilename(context.filename ?? "");
     const fastRefreshStatus = getFastRefreshFileStatus(context);
     if (!fastRefreshStatus.isActive) return {};
-    if (isFrameworkRouteOrSpecialFilename(filename, fastRefreshStatus.runtime)) return {};
+    if (isFrameworkRouteOrSpecialFilename(context, fastRefreshStatus.runtime)) return {};
     if (!isFileNameAllowed(filename, settings.checkJS)) return {};
     const allowedRouteExportNames =
       fastRefreshStatus.runtime === "next"

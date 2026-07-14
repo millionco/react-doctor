@@ -24,7 +24,9 @@ describe("isFrameworkRouteOrSpecialFilename", () => {
     ["react-router", "app/entry.client.tsx"],
     ["react-router", "app/entry.server.jsx"],
   ] as const)("recognizes %s framework route/special file %s", (runtime, filename) => {
-    expect(isFrameworkRouteOrSpecialFilename(filename, runtime)).toBe(true);
+    expect(
+      isFrameworkRouteOrSpecialFilename({ filename: `/repo/${filename}`, settings: {} }, runtime),
+    ).toBe(true);
   });
 
   it.each([
@@ -36,8 +38,29 @@ describe("isFrameworkRouteOrSpecialFilename", () => {
     ["react-router", "pages/_document.tsx"],
     ["generic", "pages/docs/_meta.tsx"],
     ["generic", "components/Page.tsx"],
-    ["generic", undefined],
+    ["next", "src/components/layout.tsx"],
+    ["next", "src/components/page.tsx"],
+    ["next", "src/components/opengraph-image.tsx"],
+    ["next", "src/components/_app.tsx"],
   ] as const)("does not apply %s semantics to %s", (runtime, filename) => {
-    expect(isFrameworkRouteOrSpecialFilename(filename, runtime)).toBe(false);
+    expect(
+      isFrameworkRouteOrSpecialFilename({ filename: `/repo/${filename}`, settings: {} }, runtime),
+    ).toBe(false);
+  });
+
+  it("does not treat a project mount point as a framework directory", () => {
+    expect(
+      isFrameworkRouteOrSpecialFilename(
+        {
+          filename: "/app/project/src/components/page.tsx",
+          settings: { "react-doctor": { rootDirectory: "/app/project" } },
+        },
+        "next",
+      ),
+    ).toBe(false);
+  });
+
+  it("returns false without a filename", () => {
+    expect(isFrameworkRouteOrSpecialFilename({ settings: {} }, "generic")).toBe(false);
   });
 });

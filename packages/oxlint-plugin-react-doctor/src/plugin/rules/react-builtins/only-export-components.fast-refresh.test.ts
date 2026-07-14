@@ -179,6 +179,20 @@ describe("only-export-components Fast Refresh applicability", () => {
     expect(runMixedExportRule(createProject({ dependencies })).diagnostics).toHaveLength(1);
   });
 
+  it("reports same-named ordinary components in a Next.js project", () => {
+    const projectDirectory = createProject({ dependencies: { next: "16.0.0", react: "19.0.0" } });
+    expect(
+      runMixedExportRule(projectDirectory, "src/components/layout.tsx").diagnostics,
+    ).toHaveLength(1);
+  });
+
+  it("keeps actual Next.js route modules exempt", () => {
+    const projectDirectory = createProject({ dependencies: { next: "16.0.0", react: "19.0.0" } });
+    expect(
+      runMixedExportRule(projectDirectory, "app/dashboard/layout.tsx").diagnostics,
+    ).toHaveLength(0);
+  });
+
   it("reports for a Parcel browser entry", () => {
     expect(
       runMixedExportRule(

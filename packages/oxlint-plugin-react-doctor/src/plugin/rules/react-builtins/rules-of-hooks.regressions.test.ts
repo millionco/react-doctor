@@ -8,6 +8,110 @@ import { rulesOfHooks } from "./rules-of-hooks.js";
 
 const runTsx = (code: string) => runRule(rulesOfHooks, code, { filename: "fixture.tsx" });
 
+describe("react-builtins/rules-of-hooks — invariant React capability guards", () => {
+  it("stays silent after the authentic named-import capability guard", () => {
+    const result = runTsx(`
+      import { useContext, useEffect, useRef, useState } from "react";
+      const Context = createContext(null);
+      export const Dialog = ({ visible }) => {
+        if (!useState || !useRef || !useEffect) {
+          warn("need react version > 16.8.0");
+          return null;
+        }
+        const [open] = useState(visible);
+        const dialogRef = useRef(null);
+        const context = useContext(Context);
+        useEffect(() => context.track(dialogRef.current), [context]);
+        return open ? <div ref={dialogRef} /> : null;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent after renamed, namespaced, and immutable-alias capability guards", () => {
+    const result = runTsx(`
+      import * as ReactRuntime from "react";
+      import { useEffect as importedEffect, useState } from "react";
+      const stateCapability = ReactRuntime.useState;
+      const effectCapability = importedEffect;
+      export const Panel = () => {
+        if (!(stateCapability as typeof useState) || typeof effectCapability !== "function") {
+          return null;
+        }
+        const [value] = useState(0);
+        ReactRuntime.useEffect(() => consume(value), [value]);
+        return <div>{value}</div>;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    {
+      name: "prop guard",
+      guard: "if (!enabled) return null;",
+      parameter: "{ enabled }",
+    },
+    {
+      name: "mixed React and prop guard",
+      guard: "if (!useState || !enabled) return null;",
+      parameter: "{ enabled }",
+    },
+    {
+      name: "mutable local alias",
+      guard: "let capability = useState; if (!capability) return null;",
+      parameter: "{}",
+    },
+    {
+      name: "userland capability getter",
+      guard: "if (!capabilities.useState) return null;",
+      parameter: "{ capabilities }",
+    },
+  ])("still reports after a $name", ({ guard, parameter }) => {
+    const result = runTsx(`
+      import { useState } from "react";
+      export const Panel = (${parameter}) => {
+        ${guard}
+        const [value] = useState(0);
+        return <div>{value}</div>;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toBe(
+      "`useState` changes Hook order between renders when called conditionally, so React can attach state to the wrong Hook.",
+    );
+  });
+
+  it("still reports a later prop-dependent early return", () => {
+    const result = runTsx(`
+      import { useEffect, useState } from "react";
+      export const Panel = ({ enabled }) => {
+        if (!useState || !useEffect) return null;
+        if (!enabled) return null;
+        const [value] = useState(0);
+        useEffect(() => consume(value), [value]);
+        return <div>{value}</div>;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("still reports a Hook nested under render-varying control flow after the capability guard", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      export const Panel = ({ enabled }) => {
+        if (!useState) return null;
+        if (enabled) {
+          const [value] = useState(0);
+          return <div>{value}</div>;
+        }
+        return null;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
 describe("react-builtins/rules-of-hooks — regressions: HoC callbacks under non-PascalCase bindings", () => {
   it("does not flag hooks in a forwardRef callback bound to an underscore-prefixed name", () => {
     const result = runTsx(`

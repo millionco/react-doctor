@@ -147,6 +147,21 @@ describe("correctness/no-uncontrolled-input — regressions", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("stays conservative when an opaque spread appears before or after the input type", () => {
+    const result = runRule(
+      noUncontrolledInput,
+      `export default function Controls({ inputProps }) {
+        return <>
+          <input {...inputProps} type="submit" value="Action" />
+          <input type="submit" {...inputProps} value="Action" />
+        </>;
+      }`,
+      { filename: "app/controls.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags an input with a missing type", () => {
     const result = runRule(
       noUncontrolledInput,

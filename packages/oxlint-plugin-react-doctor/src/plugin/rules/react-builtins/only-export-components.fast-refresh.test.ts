@@ -298,7 +298,12 @@ describe("only-export-components Fast Refresh applicability", () => {
   it("scopes route export contracts to the registered framework integration", () => {
     const reactRouterProject = createProject({
       dependencies: { react: "19.0.0", "@react-router/dev": "7.0.0" },
-      config: `import { reactRouter as routes } from "@react-router/dev/vite"; export default { plugins: [routes()] };`,
+      devDependencies: { vite: "7.0.0", "@vitejs/plugin-react": "5.0.0" },
+      config: `
+        import react from "@vitejs/plugin-react";
+        import { reactRouter as routes } from "@react-router/dev/vite";
+        export default { plugins: [react(), routes()] };
+      `,
     });
     const genericViteProject = createProject({
       devDependencies: { vite: "7.0.0", "@vitejs/plugin-react": "5.0.0" },

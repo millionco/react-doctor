@@ -106,6 +106,76 @@ describe("probeFastRefreshFileStatus", () => {
     expect(probeFastRefreshFileStatus(sourcePath).isActive).toBe(true);
   });
 
+  it.each([
+    [
+      "generic before framework",
+      `
+        import react from "@vitejs/plugin-react";
+        import { reactRouter } from "@react-router/dev/vite";
+        export default { plugins: [react(), reactRouter()] };
+      `,
+      "react-router",
+    ],
+    [
+      "framework before generic",
+      `
+        import react from "@vitejs/plugin-react";
+        import { reactRouter } from "@react-router/dev/vite";
+        export default { plugins: [reactRouter(), react()] };
+      `,
+      "react-router",
+    ],
+    [
+      "multiple frameworks",
+      `
+        import react from "@vitejs/plugin-react";
+        import { reactRouter } from "@react-router/dev/vite";
+        import { vitePlugin } from "@remix-run/dev";
+        export default { plugins: [react(), reactRouter(), vitePlugin()] };
+      `,
+      "remix",
+    ],
+    [
+      "aliases around an unknown plugin",
+      `
+        import { default as enableReact } from "@vitejs/plugin-react";
+        import { reactRouter as enableRoutes } from "@react-router/dev/vite";
+        const makeUnknownPlugin = () => ({ name: "unknown" });
+        const plugins = [enableReact(), makeUnknownPlugin(), enableRoutes()];
+        export default { plugins };
+      `,
+      "react-router",
+    ],
+    [
+      "unknown plugin with generic React",
+      `
+        import react from "@vitejs/plugin-react";
+        const makeUnknownPlugin = () => ({ name: "unknown" });
+        export default { plugins: [makeUnknownPlugin(), react()] };
+      `,
+      "generic",
+    ],
+  ])(
+    "selects the registered runtime independent of plugin order — %s",
+    (_label, config, runtime) => {
+      const sourcePath = createFixture({
+        manifest: {
+          scripts: { dev: "vite" },
+          dependencies: {
+            react: "19.0.0",
+            "@react-router/dev": "7.0.0",
+            "@remix-run/dev": "2.17.0",
+            "@tanstack/react-start": "1.120.0",
+          },
+          devDependencies: { vite: "7.0.0", "@vitejs/plugin-react": "5.0.0" },
+        },
+        files: { "vite.config.ts": config },
+      });
+
+      expect(probeFastRefreshFileStatus(sourcePath)).toEqual({ isActive: true, runtime });
+    },
+  );
+
   it("resolves an unreassigned function-local plugin array in the exported config factory", () => {
     const sourcePath = createFixture({
       manifest: viteManifest({ dev: "vite --host localhost" }),

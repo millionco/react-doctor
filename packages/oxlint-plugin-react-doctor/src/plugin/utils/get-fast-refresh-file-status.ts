@@ -106,6 +106,13 @@ const INTEGRATION_IMPORTS: ReadonlyMap<string, IntegrationImport> = new Map([
   ],
 ]);
 
+const REGISTERED_INTEGRATION_RUNTIME_PRECEDENCE: ReadonlyArray<IntegrationImport["runtime"]> = [
+  "tanstack",
+  "remix",
+  "react-router",
+  "generic",
+];
+
 const cachedLocalStatusByManifest = new WeakMap<PackageManifest, FastRefreshFileStatus>();
 const cachedWorkspaceIndexByManifest = new WeakMap<PackageManifest, WorkspaceFastRefreshIndex>();
 
@@ -474,13 +481,16 @@ const getRegisteredIntegration = (
       inspectValue(node.value);
       return false;
     });
-    const registeredIntegration = registeredIntegrations[0];
-    if (
-      registeredIntegration &&
-      (!registeredIntegration.requiresViteDevelopmentServer ||
-        hasViteDevelopmentCommand(manifest) ||
-        hasViteBrowserEntry(manifest, packageDirectory))
-    ) {
+    const hasViteDevelopmentRuntime =
+      hasViteDevelopmentCommand(manifest) || hasViteBrowserEntry(manifest, packageDirectory);
+    const registeredIntegration = REGISTERED_INTEGRATION_RUNTIME_PRECEDENCE.flatMap((runtime) =>
+      registeredIntegrations.filter(
+        (integration) =>
+          integration.runtime === runtime &&
+          (!integration.requiresViteDevelopmentServer || hasViteDevelopmentRuntime),
+      ),
+    )[0];
+    if (registeredIntegration) {
       return { isActive: true, runtime: registeredIntegration.runtime };
     }
   }

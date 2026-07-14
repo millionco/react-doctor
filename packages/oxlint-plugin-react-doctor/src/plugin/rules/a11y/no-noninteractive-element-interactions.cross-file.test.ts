@@ -34,11 +34,9 @@ describe("a11y/no-noninteractive-element-interactions — analytics-only callbac
     writeFile(
       "src/analytics/provider.ts",
       `
+import posthog from "posthog-js";
 export const useAnalytics = () => ({
-  track: (event: string, properties: Record<string, string>) => {
-    void event;
-    void properties;
-  },
+  track: posthog.capture,
 });
 `,
     );
@@ -102,7 +100,8 @@ export const SkillsPanel = () => {
   it("follows import aliases and stable local wrapper aliases", () => {
     writeFile(
       "src/analytics/provider.ts",
-      `export const useAnalytics = () => ({ track: (event: string) => void event });`,
+      `import posthog from "posthog-js";
+export const useAnalytics = () => ({ track: posthog.capture });`,
     );
     writeFile(
       "src/analytics/events.ts",
@@ -127,7 +126,8 @@ export const Panel = () => {
   it("follows namespace imports and optional calls", () => {
     writeFile(
       "src/analytics/provider.ts",
-      `export const useAnalytics = () => ({ track: (event: string) => void event });`,
+      `import posthog from "posthog-js";
+export const useAnalytics = () => ({ track: posthog.capture });`,
     );
     writeFile(
       "src/analytics/events.ts",
@@ -339,5 +339,116 @@ export const Panel = () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an analytics-named factory without SDK provenance", () => {
+    writeFile(
+      "src/analytics/provider.ts",
+      `export const useAnalytics = () => ({ track: () => location.assign("/skills") });`,
+    );
+    const result = runConsumer(`
+import { useAnalytics } from "./analytics/provider";
+export const Panel = () => {
+  const analytics = useAnalytics();
+  return <section onClick={() => analytics.track("skill_viewed")}>Skills</section>;
+};
+`);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a callback argument passed to a trusted analytics method", () => {
+    const result = runConsumer(`
+import { AnalyticsBrowser } from "@segment/analytics-next";
+import { useState } from "react";
+const analytics = AnalyticsBrowser.load({ writeKey: "test" });
+export const Panel = () => {
+  const [, setOpen] = useState(false);
+  const afterTrack = () => setOpen(true);
+  return <section onClick={() => analytics.track("skill_viewed", {}, {}, afterTrack)}>Skills</section>;
+};
+`);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports getter-backed analytics payload reads", () => {
+    const result = runConsumer(`
+import posthog from "posthog-js";
+import { useState } from "react";
+export const Panel = () => {
+  const [, setOpen] = useState(false);
+  const payload = { get value() { setOpen(true); return "skills"; } };
+  return <section onClick={() => posthog.capture("skill_viewed", { value: payload.value })}>Skills</section>;
+};
+`);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports destructuring from an object with an effectful getter", () => {
+    const result = runConsumer(`
+import posthog from "posthog-js";
+import { useState } from "react";
+export const Panel = () => {
+  const [, setOpen] = useState(false);
+  const payload = { get value() { setOpen(true); return "skills"; } };
+  return <section onClick={() => {
+    const { value } = payload;
+    posthog.capture("skill_viewed", { value });
+  }}>Skills</section>;
+};
+`);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a supplied argument skips an unsafe default", () => {
+    const result = runConsumer(`
+import posthog from "posthog-js";
+import { useState } from "react";
+export const Panel = () => {
+  const [, setOpen] = useState(false);
+  const record = (event = (setOpen(true), "fallback")) => posthog.capture(event);
+  return <section onClick={() => record("skill_viewed")}>Skills</section>;
+};
+`);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for telemetry-only switch branches with breaks", () => {
+    const result = runConsumer(`
+import posthog from "posthog-js";
+export const Panel = ({ kind }: { kind: string }) => (
+  <section onClick={() => {
+    switch (kind) {
+      case "skills": posthog.capture("skill_viewed"); break;
+      default: posthog.capture("other_viewed"); break;
+    }
+  }}>Skills</section>
+);
+`);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a stable computed analytics method", () => {
+    const result = runConsumer(`
+import posthog from "posthog-js";
+export const Panel = () => {
+  const method = "capture";
+  return <section onClick={() => posthog[method]("skill_viewed")}>Skills</section>;
+};
+`);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 });

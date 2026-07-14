@@ -195,7 +195,7 @@ const collectObservationHandlerDependencies: CrossFileDependencyCollector = ({
     if (previousDepth >= remainingDepth) return;
     greatestTraversedDepthByFilePath.set(filePath, remainingDepth);
 
-    const entries = flattenProgramImportEntries(programNode);
+    const importEntriesByLocalName = new Map<string, ImportEntryName>();
     const namespaceSourcesByLocalName = new Map<string, string>();
     for (const statement of (programNode as { body?: ReadonlyArray<EsTreeNode> }).body ?? []) {
       if (statement.type !== "ImportDeclaration") continue;
@@ -203,14 +203,37 @@ const collectObservationHandlerDependencies: CrossFileDependencyCollector = ({
       if (typeof source !== "string") continue;
       for (const specifier of (statement as { specifiers?: ReadonlyArray<EsTreeNode> })
         .specifiers ?? []) {
-        if (specifier.type !== "ImportNamespaceSpecifier") continue;
         const localName = (specifier as { local?: { name?: unknown } }).local?.name;
-        if (typeof localName === "string") namespaceSourcesByLocalName.set(localName, source);
+        if (typeof localName !== "string") continue;
+        if (specifier.type === "ImportNamespaceSpecifier") {
+          namespaceSourcesByLocalName.set(localName, source);
+        } else if (specifier.type === "ImportDefaultSpecifier") {
+          importEntriesByLocalName.set(localName, { source, exportedName: "default" });
+        } else if (specifier.type === "ImportSpecifier") {
+          const imported = (specifier as { imported?: { name?: unknown; value?: unknown } })
+            .imported;
+          const exportedName =
+            typeof imported?.name === "string"
+              ? imported.name
+              : typeof imported?.value === "string"
+                ? imported.value
+                : null;
+          if (exportedName) importEntriesByLocalName.set(localName, { source, exportedName });
+        }
       }
     }
+    const entriesByIdentity = new Map<string, ImportEntryName>();
     walkAst(programNode, (node) => {
-      if (node.type !== "MemberExpression") return;
-      const member = node as {
+      if (node.type !== "CallExpression") return;
+      const callee = (node as { callee?: EsTreeNode }).callee;
+      if (!callee) return;
+      if (callee.type === "Identifier") {
+        const entry = importEntriesByLocalName.get((callee as { name?: string }).name ?? "");
+        if (entry) entriesByIdentity.set(`${entry.source}\0${entry.exportedName}`, entry);
+        return;
+      }
+      if (callee.type !== "MemberExpression") return;
+      const member = callee as {
         object?: EsTreeNode;
         property?: EsTreeNode;
         computed?: boolean;
@@ -226,10 +249,12 @@ const collectObservationHandlerDependencies: CrossFileDependencyCollector = ({
           : member.computed && member.property.type === "Literal"
             ? ((member.property as { value?: unknown }).value ?? null)
             : null;
-      if (typeof exportedName === "string") entries.push({ source, exportedName });
+      if (typeof exportedName !== "string") return;
+      const entry = { source, exportedName };
+      entriesByIdentity.set(`${source}\0${exportedName}`, entry);
     });
 
-    for (const entry of entries) {
+    for (const entry of entriesByIdentity.values()) {
       const resolved = resolveCrossFileFunctionExportWithFilePath(
         filePath,
         entry.source,

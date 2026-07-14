@@ -9,6 +9,7 @@ import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { resolveCrossFileFunctionExportWithFilePath } from "./resolve-cross-file-function-export.js";
+import { resolveCrossFileValueExportWithFilePath } from "./resolve-cross-file-function-export.js";
 import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
 import type { RuleContext } from "./rule-context.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -83,6 +84,9 @@ const isObservationFactoryName = (name: string | null): boolean =>
   name === "useTelemetry" ||
   name === "useTracking";
 
+const hasObservationName = (name: string): boolean =>
+  /analytics|capture|instrumentation|telemetry|track/i.test(name);
+
 const getStableSymbol = (
   identifier: EsTreeNodeOfType<"Identifier">,
   scopes: ScopeAnalysis,
@@ -103,6 +107,79 @@ const getImportedBinding = (
   return getImportBindingForName(identifier, importedIdentifier.name);
 };
 
+const hasTrustedObservationPackageProvenance = (
+  filename: string,
+  programNode: EsTreeNode,
+  remainingDepth: number,
+  visitedFilePaths: ReadonlySet<string>,
+): boolean => {
+  if (remainingDepth < 0 || visitedFilePaths.has(filename)) return false;
+  const nextVisitedFilePaths = new Set(visitedFilePaths);
+  nextVisitedFilePaths.add(filename);
+  for (const statement of (programNode as { body?: ReadonlyArray<EsTreeNode> }).body ?? []) {
+    if (statement.type !== "ImportDeclaration") continue;
+    const importDeclaration = statement as {
+      source?: { value?: unknown };
+      specifiers?: ReadonlyArray<EsTreeNode>;
+    };
+    const source = importDeclaration.source?.value;
+    if (typeof source !== "string") continue;
+    if (OBSERVATION_PACKAGE_SOURCES.has(source)) return true;
+    if (!source.startsWith(".") || remainingDepth === 0) continue;
+    for (const specifier of importDeclaration.specifiers ?? []) {
+      let exportedName: string | null = null;
+      if (specifier.type === "ImportDefaultSpecifier") {
+        const localName = (specifier as { local?: { name?: unknown } }).local?.name;
+        if (typeof localName === "string" && hasObservationName(localName)) {
+          exportedName = "default";
+        }
+      } else if (specifier.type === "ImportSpecifier") {
+        const imported = (specifier as { imported?: { name?: unknown; value?: unknown } }).imported;
+        const importedName =
+          typeof imported?.name === "string"
+            ? imported.name
+            : typeof imported?.value === "string"
+              ? imported.value
+              : null;
+        if (importedName && hasObservationName(importedName)) exportedName = importedName;
+      }
+      if (!exportedName) continue;
+      const resolved = resolveCrossFileValueExportWithFilePath(filename, source, exportedName);
+      if (
+        resolved &&
+        hasTrustedObservationPackageProvenance(
+          resolved.filePath,
+          resolved.programNode,
+          remainingDepth - 1,
+          nextVisitedFilePaths,
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const isVerifiedObservationFactory = (
+  filename: string,
+  source: string,
+  exportedName: string,
+): boolean => {
+  if (OBSERVATION_PACKAGE_SOURCES.has(source)) return true;
+  if (!isObservationModuleSource(source) || !isObservationFactoryName(exportedName)) return false;
+  const resolved = resolveCrossFileFunctionExportWithFilePath(filename, source, exportedName);
+  return Boolean(
+    resolved &&
+    hasTrustedObservationPackageProvenance(
+      resolved.filePath,
+      resolved.programNode,
+      OBSERVATION_ONLY_HANDLER_MAX_CALL_DEPTH,
+      new Set(),
+    ),
+  );
+};
+
 const isObservationFactoryCall = (
   expression: EsTreeNode,
   context: ObservationAnalysisContext,
@@ -114,8 +191,12 @@ const isObservationFactoryCall = (
     const importBinding = getImportedBinding(callee, context);
     return Boolean(
       importBinding &&
-      isObservationModuleSource(importBinding.source) &&
-      isObservationFactoryName(importBinding.exportedName),
+      importBinding.exportedName &&
+      isVerifiedObservationFactory(
+        context.filename,
+        importBinding.source,
+        importBinding.exportedName,
+      ),
     );
   }
   if (!isNodeOfType(callee, "MemberExpression")) return false;
@@ -124,9 +205,31 @@ const isObservationFactoryCall = (
   const importBinding = getImportedBinding(receiver, context);
   return Boolean(
     importBinding?.isNamespace &&
-    isObservationModuleSource(importBinding.source) &&
-    isObservationFactoryName(getStaticPropertyName(callee)),
+    getStaticPropertyName(callee) &&
+    isVerifiedObservationFactory(
+      context.filename,
+      importBinding.source,
+      getStaticPropertyName(callee) ?? "",
+    ),
   );
+};
+
+const getResolvedStaticPropertyName = (
+  memberExpression: EsTreeNodeOfType<"MemberExpression">,
+  context: ObservationAnalysisContext,
+): string | null => {
+  const directName = getStaticPropertyName(memberExpression);
+  if (directName) return directName;
+  if (!memberExpression.computed) return null;
+  const property = stripParenExpression(memberExpression.property as EsTreeNode);
+  if (!isNodeOfType(property, "Identifier")) return null;
+  const symbol = getStableSymbol(property, context.scopes);
+  const initializer = symbol?.initializer && stripParenExpression(symbol.initializer);
+  return initializer &&
+    isNodeOfType(initializer, "Literal") &&
+    typeof initializer.value === "string"
+    ? initializer.value
+    : null;
 };
 
 const isObservationReceiver = (
@@ -172,7 +275,7 @@ const isObservationFunctionExpression = (
     );
   }
   if (!isNodeOfType(unwrappedExpression, "MemberExpression")) return false;
-  const propertyName = getStaticPropertyName(unwrappedExpression);
+  const propertyName = getResolvedStaticPropertyName(unwrappedExpression, context);
   return Boolean(
     propertyName &&
     OBSERVATION_METHOD_NAMES.has(propertyName) &&
@@ -227,6 +330,52 @@ const resolveFunctionTarget = (
   return resolveImportedFunction(callee, context);
 };
 
+const isProvenPlainDataExpression = (
+  expression: EsTreeNode | null | undefined,
+  context: ObservationAnalysisContext,
+  visitedSymbolIds: ReadonlySet<number> = new Set(),
+): boolean => {
+  if (!expression) return true;
+  const unwrappedExpression = stripParenExpression(expression);
+  if (isNodeOfType(unwrappedExpression, "Literal")) return true;
+  if (isNodeOfType(unwrappedExpression, "Identifier")) {
+    const symbol = getStableSymbol(unwrappedExpression, context.scopes);
+    if (!symbol?.initializer || visitedSymbolIds.has(symbol.id)) return false;
+    const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+    nextVisitedSymbolIds.add(symbol.id);
+    return isProvenPlainDataExpression(symbol.initializer, context, nextVisitedSymbolIds);
+  }
+  if (isNodeOfType(unwrappedExpression, "ArrayExpression")) {
+    return unwrappedExpression.elements.every((element) => {
+      if (!element) return true;
+      if (isNodeOfType(element as EsTreeNode, "SpreadElement")) {
+        return isProvenPlainDataExpression(
+          (element as EsTreeNodeOfType<"SpreadElement">).argument,
+          context,
+          visitedSymbolIds,
+        );
+      }
+      return isProvenPlainDataExpression(element as EsTreeNode, context, visitedSymbolIds);
+    });
+  }
+  if (isNodeOfType(unwrappedExpression, "ObjectExpression")) {
+    return unwrappedExpression.properties.every((property) => {
+      if (isNodeOfType(property, "SpreadElement")) {
+        return isProvenPlainDataExpression(property.argument, context, visitedSymbolIds);
+      }
+      return (
+        isNodeOfType(property, "Property") &&
+        property.kind === "init" &&
+        !property.method &&
+        (!property.computed ||
+          isProvenPlainDataExpression(property.key as EsTreeNode, context, visitedSymbolIds)) &&
+        isProvenPlainDataExpression(property.value as EsTreeNode, context, visitedSymbolIds)
+      );
+    });
+  }
+  return false;
+};
+
 const isObservationSafeExpression = (
   expression: EsTreeNode | null | undefined,
   context: ObservationAnalysisContext,
@@ -245,10 +394,11 @@ const isObservationSafeExpression = (
     return isObservationSafeCall(unwrappedExpression, context);
   }
   if (isNodeOfType(unwrappedExpression, "MemberExpression")) {
+    if (isObservationFunctionExpression(unwrappedExpression, context)) return true;
     return (
-      isObservationSafeExpression(unwrappedExpression.object as EsTreeNode, context) &&
+      isProvenPlainDataExpression(unwrappedExpression.object as EsTreeNode, context) &&
       (!unwrappedExpression.computed ||
-        isObservationSafeExpression(unwrappedExpression.property as EsTreeNode, context))
+        isProvenPlainDataExpression(unwrappedExpression.property as EsTreeNode, context))
     );
   }
   if (
@@ -375,6 +525,39 @@ const isObservationSafePattern = (
   return false;
 };
 
+const isDefinitelyDefinedExpression = (expression: EsTreeNode): boolean => {
+  const unwrappedExpression = stripParenExpression(expression);
+  return (
+    isNodeOfType(unwrappedExpression, "Literal") ||
+    isNodeOfType(unwrappedExpression, "ArrayExpression") ||
+    isNodeOfType(unwrappedExpression, "ObjectExpression") ||
+    isFunctionLike(unwrappedExpression)
+  );
+};
+
+const isObservationSafeParameter = (
+  parameter: EsTreeNode,
+  argument: EsTreeNode | undefined,
+  context: ObservationAnalysisContext,
+): boolean => {
+  if (isNodeOfType(parameter, "AssignmentPattern")) {
+    return (
+      isObservationSafePattern(parameter.left as EsTreeNode, context) &&
+      Boolean(
+        (argument && isDefinitelyDefinedExpression(argument)) ||
+        isObservationSafeExpression(parameter.right as EsTreeNode, context),
+      )
+    );
+  }
+  if (
+    (isNodeOfType(parameter, "ObjectPattern") || isNodeOfType(parameter, "ArrayPattern")) &&
+    (!argument || !isProvenPlainDataExpression(argument, context))
+  ) {
+    return false;
+  }
+  return isObservationSafePattern(parameter, context);
+};
+
 const isObservationSafeStatement = (
   statement: EsTreeNode,
   context: ObservationAnalysisContext,
@@ -394,6 +577,8 @@ const isObservationSafeStatement = (
     return statement.declarations.every(
       (declaration) =>
         isObservationSafePattern(declaration.id as EsTreeNode, context) &&
+        (isNodeOfType(declaration.id as EsTreeNode, "Identifier") ||
+          isProvenPlainDataExpression(declaration.init as EsTreeNode | null, context)) &&
         isObservationSafeExpression(declaration.init as EsTreeNode | null, context),
     );
   }
@@ -419,7 +604,9 @@ const isObservationSafeStatement = (
     );
   }
   return (
-    isNodeOfType(statement, "EmptyStatement") || isNodeOfType(statement, "FunctionDeclaration")
+    isNodeOfType(statement, "EmptyStatement") ||
+    isNodeOfType(statement, "BreakStatement") ||
+    isNodeOfType(statement, "FunctionDeclaration")
   );
 };
 
@@ -447,8 +634,8 @@ const isObservationSafeFunction = (
     evidence: callerContext.evidence,
   };
   return (
-    target.functionNode.params.every((parameter) =>
-      isObservationSafePattern(parameter as EsTreeNode, context),
+    target.functionNode.params.every((parameter, parameterIndex) =>
+      isObservationSafeParameter(parameter as EsTreeNode, argumentsList[parameterIndex], context),
     ) &&
     (isObservationSafeExpression(target.functionNode.body as EsTreeNode, context) ||
       isObservationSafeStatement(target.functionNode.body as EsTreeNode, context))
@@ -473,6 +660,13 @@ const isObservationSafeCall = (
 
   const callee = callExpression.callee as EsTreeNode;
   if (isObservationFunctionExpression(callee, context)) {
+    if (
+      argumentsList.some((argument) =>
+        Boolean(isFunctionLike(argument) || resolveFunctionTarget(argument, context)),
+      )
+    ) {
+      return false;
+    }
     context.evidence.didFindObservationCall = true;
     return true;
   }

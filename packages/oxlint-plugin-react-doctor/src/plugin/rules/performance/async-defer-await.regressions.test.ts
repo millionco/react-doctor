@@ -241,8 +241,6 @@ describe("performance/async-defer-await — regressions", () => {
       "wrapped literal branch",
       `requestId !== latestRequest.current && minimumCount !== (0 as number)`,
     ],
-    ["cancellation branch", `cancelled || enabled`],
-    ["mutable helper branch", `isCurrent() && enabled`],
   ])("still flags a compound guard with an unrelated %s", (_label, guardTest) => {
     const result = runRule(
       asyncDeferAwait,
@@ -252,8 +250,6 @@ describe("performance/async-defer-await — regressions", () => {
       declare const enabled: boolean;
       declare const mode: string;
       declare const minimumCount: number;
-      declare const cancelled: boolean;
-      declare const isCurrent: () => boolean;
       export const run = async () => {
         const requestId = latestRequest.current;
         const rows = await load();
@@ -264,6 +260,28 @@ describe("performance/async-defer-await — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["cancellation flag", `cancelled || enabled`],
+    ["mutable helper", `isCurrent() && enabled`],
+  ])("preserves the existing whole-guard exemption for a %s", (_label, guardTest) => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      declare const enabled: boolean;
+      declare const cancelled: boolean;
+      declare const isCurrent: () => boolean;
+      export const run = async () => {
+        const rows = await load();
+        if (${guardTest}) return [];
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("still flags a compound invariant preflight guard", () => {

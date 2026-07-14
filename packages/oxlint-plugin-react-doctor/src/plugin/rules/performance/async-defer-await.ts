@@ -250,27 +250,30 @@ const isNonLiteralComparisonTest = (test: EsTreeNode | null): boolean => {
   return !isLiteralOperand(unwrappedTest.left) && !isLiteralOperand(unwrappedTest.right);
 };
 
-const isPostAwaitFreshnessGuardTest = (
-  test: EsTreeNode | null,
-  guardStatement: EsTreeNode,
-): boolean => {
+const isLogicalCompositionOfNonLiteralComparisons = (test: EsTreeNode | null): boolean => {
   if (!test) return false;
   const unwrappedTest = stripParenExpression(test);
   if (
-    isNodeOfType(unwrappedTest, "LogicalExpression") &&
-    (unwrappedTest.operator === "&&" || unwrappedTest.operator === "||")
+    !isNodeOfType(unwrappedTest, "LogicalExpression") ||
+    (unwrappedTest.operator !== "&&" && unwrappedTest.operator !== "||")
   ) {
-    return (
-      isPostAwaitFreshnessGuardTest(unwrappedTest.left, guardStatement) &&
-      isPostAwaitFreshnessGuardTest(unwrappedTest.right, guardStatement)
-    );
+    return false;
   }
-  return (
-    isCancellationGuardTest(unwrappedTest) ||
-    guardTestReadsMutableEnvironment(unwrappedTest) ||
-    isNonLiteralComparisonTest(unwrappedTest) ||
-    guardTestReadsReassignedLocal(unwrappedTest, guardStatement)
-  );
+  const pendingTests = [unwrappedTest.left, unwrappedTest.right];
+  while (pendingTests.length > 0) {
+    const candidateTest = pendingTests.pop();
+    if (!candidateTest) continue;
+    const unwrappedCandidateTest = stripParenExpression(candidateTest);
+    if (
+      isNodeOfType(unwrappedCandidateTest, "LogicalExpression") &&
+      (unwrappedCandidateTest.operator === "&&" || unwrappedCandidateTest.operator === "||")
+    ) {
+      pendingTests.push(unwrappedCandidateTest.left, unwrappedCandidateTest.right);
+      continue;
+    }
+    if (!isNonLiteralComparisonTest(unwrappedCandidateTest)) return false;
+  }
+  return true;
 };
 
 // A guard whose consequent performs its own effect calls (`if (smime) {
@@ -428,7 +431,11 @@ export const asyncDeferAwait = defineRule({
           continue;
         }
         if (
-          isPostAwaitFreshnessGuardTest(guardStatement.test, guardStatement) ||
+          isCancellationGuardTest(guardStatement.test) ||
+          guardTestReadsMutableEnvironment(guardStatement.test) ||
+          isNonLiteralComparisonTest(guardStatement.test) ||
+          isLogicalCompositionOfNonLiteralComparisons(guardStatement.test) ||
+          guardTestReadsReassignedLocal(guardStatement.test, guardStatement) ||
           guardConsequentPerformsSideEffects(guardStatement.consequent)
         ) {
           statementIndex = window.guardCandidateIndex - 1;

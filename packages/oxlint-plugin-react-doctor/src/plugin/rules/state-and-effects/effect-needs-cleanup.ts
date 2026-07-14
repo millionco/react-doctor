@@ -1601,10 +1601,9 @@ const hasGuardedDeferredCleanup = (
     return cleanupFunction && isFunctionLike(cleanupFunction) ? [cleanupFunction] : [];
   });
   if (cleanupFunctions.length !== cleanupReturns.length) return false;
-  const globalReleaseCallsByCleanup = new Map<EsTreeNode, EsTreeNode[]>();
+  const globalReleaseAnchorsByCleanup = new Map<EsTreeNode, EsTreeNode[]>();
   for (const cleanupFunction of cleanupFunctions) {
     if (!isFunctionLike(cleanupFunction)) return false;
-    const globalReleaseCalls: EsTreeNode[] = [];
     const globalReleaseAnchors: EsTreeNode[] = [];
     walkAst(cleanupFunction.body, (child: EsTreeNode) => {
       if (child !== cleanupFunction.body && isFunctionLike(child)) return false;
@@ -1614,7 +1613,6 @@ const hasGuardedDeferredCleanup = (
         context.scopes.isGlobalReference(child.callee) &&
         doesReleaseCallMatchUsage(child, usage, context)
       ) {
-        globalReleaseCalls.push(child);
         globalReleaseAnchors.push(
           findDirectHandleGuardForRelease(child, cleanupFunction, usage, context) ?? child,
         );
@@ -1629,7 +1627,7 @@ const hasGuardedDeferredCleanup = (
     ) {
       return false;
     }
-    globalReleaseCallsByCleanup.set(cleanupFunction, globalReleaseCalls);
+    globalReleaseAnchorsByCleanup.set(cleanupFunction, globalReleaseAnchors);
   }
   const handleAssignments = handleSymbol.references.filter((reference) =>
     isWithinAssignmentTarget(reference.identifier),
@@ -1657,15 +1655,15 @@ const hasGuardedDeferredCleanup = (
         context.scopes.isGlobalReference(assignedValue));
     if (!isNullishReset) return true;
     const cleanupFunction = findEnclosingFunction(assignment);
-    const globalReleaseCalls = cleanupFunction
-      ? globalReleaseCallsByCleanup.get(cleanupFunction)
+    const globalReleaseAnchors = cleanupFunction
+      ? globalReleaseAnchorsByCleanup.get(cleanupFunction)
       : undefined;
     return !(
       cleanupFunction &&
-      globalReleaseCalls &&
+      globalReleaseAnchors &&
       doMatchingNodesCoverEveryPathBeforeUsage(
         assignment,
-        globalReleaseCalls,
+        globalReleaseAnchors,
         cleanupFunction,
         context,
       )

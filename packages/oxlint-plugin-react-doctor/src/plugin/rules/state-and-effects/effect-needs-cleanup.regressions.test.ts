@@ -4801,6 +4801,93 @@ export const Component = (${parameters}) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    {
+      name: "truthy release then target reset",
+      declaration: "",
+      cleanup: "if (timeoutId) clearTimeout(timeoutId); timeoutId = null;",
+    },
+    {
+      name: "nullish release then target reset",
+      declaration: "",
+      cleanup: "if (timeoutId !== undefined) clearTimeout(timeoutId); timeoutId = undefined;",
+    },
+    {
+      name: "release and reset inside the owned-handle branch",
+      declaration: "",
+      cleanup: "if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }",
+    },
+    {
+      name: "owned-handle release then unrelated reset",
+      declaration: "let otherTimeoutId;",
+      cleanup: "if (timeoutId) clearTimeout(timeoutId); otherTimeoutId = null;",
+    },
+  ])("accepts guarded cleanup with $name", ({ declaration, cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Component = ({ load }) => {
+  useEffect(() => {
+    let isActive = true;
+    let timeoutId;
+    ${declaration}
+    load().then(() => {
+      if (!isActive) return;
+      timeoutId = setTimeout(task, 1000);
+    });
+    return () => {
+      isActive = false;
+      ${cleanup}
+    };
+  }, [load]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "target reset before guarded release",
+      declaration: "",
+      cleanup: "timeoutId = null; if (timeoutId) clearTimeout(timeoutId);",
+    },
+    {
+      name: "release nested under an unrelated branch",
+      declaration: "",
+      cleanup: "if (shouldRelease) { if (timeoutId) clearTimeout(timeoutId); } timeoutId = null;",
+    },
+    {
+      name: "release guarded by another handle",
+      declaration: "let otherTimeoutId;",
+      cleanup: "if (otherTimeoutId) clearTimeout(timeoutId); timeoutId = null;",
+    },
+  ])("rejects guarded cleanup with $name", ({ declaration, cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Component = ({ load, shouldRelease }) => {
+  useEffect(() => {
+    let isActive = true;
+    let timeoutId;
+    ${declaration}
+    load().then(() => {
+      if (!isActive) return;
+      timeoutId = setTimeout(task, 1000);
+    });
+    return () => {
+      isActive = false;
+      ${cleanup}
+    };
+  }, [load, shouldRelease]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts clearing and resetting the timer handle during cleanup", () => {
     const result = runRule(
       effectNeedsCleanup,

@@ -14,6 +14,7 @@ export const GuardedReminder = ({ syncReminder }: { syncReminder: () => Promise<
     return () => {
       isActive = false;
       if (timeoutId != null) clearTimeout(timeoutId);
+      timeoutId = undefined;
     };
   }, [syncReminder]);
   return null;

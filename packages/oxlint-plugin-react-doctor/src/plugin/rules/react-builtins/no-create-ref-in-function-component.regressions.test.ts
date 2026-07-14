@@ -150,4 +150,33 @@ export const StableObservedRef = ({ label, observe }: StableObservedRefProps) =>
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent when a fresh event handler reads the ref from the same render", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+
+export const FocusButton = () => {
+  const target = createRef<HTMLButtonElement>();
+  return <button ref={target} onClick={() => target.current?.focus()}>Focus</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a ref captured by a retained event handler", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef, useCallback } from "react";
+
+export const FocusButton = () => {
+  const target = createRef<HTMLButtonElement>();
+  const focus = useCallback(() => target.current?.focus(), []);
+  return <button ref={target} onClick={focus}>Focus</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -15,6 +15,12 @@ const expectPass = (code: string): void => {
 };
 
 describe("js-performance/async-parallel — regressions", () => {
+  it("ignores callback parameters that shadow earlier await results", () => {
+    expectFail(
+      `declare const loadFirst: () => Promise<number>; declare const loadSecond: (selector: (first: number) => number) => Promise<number>; declare const loadThird: (selector: (second: number) => number) => Promise<number>; export const loadAll = async (): Promise<number[]> => { const first = await loadFirst(); const second = await loadSecond((first) => first + 1); const third = await loadThird((second) => second + 1); return [first, second, third]; };`,
+    );
+  });
+
   it("flags independent visible helpers even when they are named query", () => {
     expectFail(
       `const query = async (item) => { await Promise.resolve(); return item * 2; }; async function load() { const first = await query(1); const second = await query(2); const third = await query(3); return [first, second, third]; }`,

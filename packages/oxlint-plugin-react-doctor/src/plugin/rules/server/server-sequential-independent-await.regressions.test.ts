@@ -3,6 +3,15 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { serverSequentialIndependentAwait } from "./server-sequential-independent-await.js";
 
 describe("server-sequential-independent-await — regressions", () => {
+  it("ignores callback parameters that shadow the previous await result", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `declare const loadFirst: () => Promise<number>; declare const loadSecond: (selector: (first: number) => number) => Promise<number>; export const loadAll = async (): Promise<number[]> => { const first = await loadFirst(); const second = await loadSecond((first) => first + 1); return [first, second]; };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("flags an independent visible helper even when its name starts with initialize", () => {
     const result = runRule(
       serverSequentialIndependentAwait,

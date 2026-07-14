@@ -12,6 +12,7 @@ import {
   getDownstreamRefs,
   getRef,
   getUpstreamRefs,
+  hasParameterDef,
   isEventualCallTo,
   isSynchronous,
   resolvesToAsyncFunction,
@@ -518,8 +519,11 @@ const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): b
   if (isFunctionLike(node)) return true;
   if (isNodeOfType(node, "MemberExpression")) return true;
   if (isNodeOfType(node, "Identifier")) {
+    // A parameter binding is an unknown callable — `return cleanup` where
+    // `cleanup` is a prop/hook parameter still counts as a cleanup return,
+    // so keep the conservative fallback `resolveToFunction` no longer gives.
     const ref = getRef(analysis, node);
-    if (ref && resolveToFunction(ref)) return true;
+    if (ref && (hasParameterDef(ref) || resolveToFunction(ref))) return true;
   }
   if (isNodeOfType(node, "ConditionalExpression")) {
     return (

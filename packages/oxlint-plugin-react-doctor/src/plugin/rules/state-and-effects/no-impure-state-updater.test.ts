@@ -191,6 +191,20 @@ describe("no-impure-state-updater", () => {
          return width;
        };`,
     ],
+    [
+      "a nested update inside a named updater passed to the setter",
+      `import { useState } from "react";
+       const Form = () => {
+         const [value, setValue] = useState(0);
+         const [error, setError] = useState(null);
+         const nextValue = (previousValue) => {
+           setError(null);
+           return previousValue + 1;
+         };
+         const update = () => setValue(nextValue);
+         return <button onClick={update}>{value}{error}</button>;
+       };`,
+    ],
   ])("reports %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -198,6 +212,48 @@ describe("no-impure-state-updater", () => {
   });
 
   it.each([
+    [
+      "a promise callback forwarding its resolved value (issue #1228)",
+      `import { useState, useCallback } from "react";
+       const Invites = () => {
+         const [invites, setInvites] = useState([]);
+         const loadInvites = useCallback(() => {
+           fetchInvites(api).then((data) => setInvites(data)).catch(() => setInvites([]));
+         }, []);
+         return <div>{invites.length}</div>;
+       };`,
+    ],
+    [
+      "an event handler forwarding its argument (issue #1228)",
+      `import { useState } from "react";
+       const Sorter = () => {
+         const [sort, setSort] = useState("name");
+         return <SelectMenu value={sort} onChange={(nextSort) => setSort(nextSort)} />;
+       };`,
+    ],
+    [
+      "a handler that calls several setters with its own parameter (issue #1228)",
+      `import { useState } from "react";
+       const Pair = () => {
+         const [first, setFirst] = useState(0);
+         const [second, setSecond] = useState(0);
+         const handleChange = (nextValue) => {
+           setFirst(nextValue);
+           setSecond(nextValue * 2);
+         };
+         return <button onClick={() => handleChange(10)}>{first}{second}</button>;
+       };`,
+    ],
+    [
+      "a setter reached through a parameter-bound helper (issue #1228)",
+      `import { useEffect, useState } from "react";
+       const invokeSetter = (setter, nextValue) => setter(nextValue);
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         useEffect(() => invokeSetter(setCount, count), [count]);
+         return count;
+       };`,
+    ],
     [
       "a pure arithmetic updater",
       `import { useState } from "react";

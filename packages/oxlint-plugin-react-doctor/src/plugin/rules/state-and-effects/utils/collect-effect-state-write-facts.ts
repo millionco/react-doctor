@@ -446,11 +446,9 @@ const resolveWrappedCallable = (analysis: ProgramAnalysis, node: EsTreeNode): Es
   if (isNodeOfType(candidate, "Identifier")) {
     const reference = getRef(analysis, candidate);
     if (!reference) return null;
-    if (
-      reference.resolved?.defs.some(
-        (definition) => definition.type === "Parameter" || definition.type === "ImportBinding",
-      )
-    ) {
+    // Parameter bindings bail inside `resolveToFunction`; an imported
+    // binding is module config, not a locally introspectable callable.
+    if (reference.resolved?.defs.some((definition) => definition.type === "ImportBinding")) {
       return null;
     }
     const resolved = resolveToFunction(reference);

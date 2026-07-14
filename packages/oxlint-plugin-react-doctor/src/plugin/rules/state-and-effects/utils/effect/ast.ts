@@ -257,11 +257,19 @@ const unwrapUseCallback = (node: EsTreeNode | null | undefined): EsTreeNode | nu
   return isUseCallbackCallee ? node.arguments?.[0] : node;
 };
 
+// A parameter's def node is the ENCLOSING function (eslint-scope models it
+// that way), but the binding holds a runtime value, not that function — so
+// `resolveToFunction` refuses it and callers wanting the old "unknown
+// callable" fallback opt in with `hasParameterDef(ref) || ...`.
+export const hasParameterDef = (ref: Reference): boolean =>
+  Boolean(ref.resolved?.defs.some((def) => def.type === "Parameter"));
+
 // Resolves a reference to the function-like node its first definition
 // denotes, unwrapping a `const fn = () => {}` declarator and a
 // `const fn = useCallback(() => {}, [])` wrapper. Returns null
-// when the reference doesn't resolve to a function. Shared by
-// `getEffectFn`, `isCleanupReturnArgument`, and `resolvesToAsyncFunction`.
+// when the reference doesn't resolve to a function (including a
+// parameter binding — see `hasParameterDef`). Shared by `getEffectFn`,
+// `isCleanupReturnArgument`, and `resolvesToAsyncFunction`.
 export const resolveToFunction = (
   ref: Reference,
 ):
@@ -269,6 +277,7 @@ export const resolveToFunction = (
   | EsTreeNodeOfType<"FunctionExpression">
   | EsTreeNodeOfType<"FunctionDeclaration">
   | null => {
+  if (hasParameterDef(ref)) return null;
   const definitionNode = ref.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
   if (!definitionNode) return null;
   if (isFunctionLike(definitionNode)) return definitionNode;

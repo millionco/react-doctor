@@ -179,4 +179,72 @@ export const FocusButton = () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("stays silent with a proven closed object spread", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+
+const closedControls = { setFocus: () => {}, loseFocus: () => {} };
+
+export const FocusButton = () => {
+  const control = {
+    ...closedControls,
+    refs: { target: createRef<HTMLButtonElement>() },
+  };
+  return <button ref={control.refs.target}>Focus</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports when the containing object has an unknown spread", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+
+export const FocusButton = ({ controls }) => {
+  const control = {
+    ...controls,
+    refs: { target: createRef<HTMLButtonElement>() },
+  };
+  return <button ref={control.refs.target}>Focus</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an on-prefixed handler passed to an unresolved custom component", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+import { RetainingControl } from "opaque-control";
+
+export const FocusButton = () => {
+  const target = createRef<HTMLButtonElement>();
+  return <RetainingControl onFocusRequest={() => target.current?.focus()} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports refs passed through a userland forwardRef lookalike", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+
+const forwardRef = (render) => render;
+const RefSink = forwardRef((props, ref) => <button {...props} />);
+
+export const FocusButton = () => {
+  const target = createRef<HTMLButtonElement>();
+  return <RefSink ref={target}>Focus</RefSink>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

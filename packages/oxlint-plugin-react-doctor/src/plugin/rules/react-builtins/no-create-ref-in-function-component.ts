@@ -5,11 +5,12 @@ import { functionContainsReactRenderOutput } from "../../utils/function-contains
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { isCreateRefResultWriteOnly } from "./is-create-ref-result-write-only.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const MESSAGE =
-  "`createRef()` in a function component allocates a brand-new ref on every render, so it never holds a value between renders. Use the `useRef()` hook instead.";
+  "`createRef()` is observed beyond the render that created it, so a later render replaces the ref object and detaches the observed one. Hoist a `useRef()` call to the component's unconditional top level instead.";
 
 // `useMemo(() => createRef(), [])` runs its callback during the enclosing
 // component/hook's render, so the memo callback is transparent when
@@ -66,6 +67,7 @@ export const noCreateRefInFunctionComponent = defineRule({
         isReactHookName(displayName) ||
         functionContainsReactRenderOutput(enclosingFunction, context.scopes, context.cfg);
       if (!isComponentOrHook) return;
+      if (isCreateRefResultWriteOnly(node, context.filename, context.scopes)) return;
 
       context.report({ node, message: MESSAGE });
     },

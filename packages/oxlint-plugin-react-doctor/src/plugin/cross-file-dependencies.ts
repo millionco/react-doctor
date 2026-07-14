@@ -5,7 +5,10 @@ import {
   PAGE_FILE_PATTERN,
   PAGE_OR_LAYOUT_FILE_PATTERN,
 } from "./constants/nextjs.js";
-import { CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH } from "./constants/thresholds.js";
+import {
+  CREATE_REF_PROP_FLOW_MAX_DEPTH,
+  CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
+} from "./constants/thresholds.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
@@ -201,46 +204,49 @@ const flattenProgramImportEntries = (program: EsTreeNode): ImportEntryName[] => 
   return entries;
 };
 
-const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
-  absoluteFilePath,
-  staticImports,
-}) => {
-  const greatestTraversedDepthByFilePath = new Map<string, number>();
+const collectForwardedValueDependencies =
+  (maximumDepth: number): CrossFileDependencyCollector =>
+  ({ absoluteFilePath, staticImports }) => {
+    const greatestTraversedDepthByFilePath = new Map<string, number>();
 
-  const collectProgramDependencies = (
-    filePath: string,
-    program: EsTreeNode,
-    remainingDepth: number,
-  ): void => {
-    const previousDepth = greatestTraversedDepthByFilePath.get(filePath) ?? -1;
-    if (previousDepth >= remainingDepth) return;
-    greatestTraversedDepthByFilePath.set(filePath, remainingDepth);
+    const collectProgramDependencies = (
+      filePath: string,
+      program: EsTreeNode,
+      remainingDepth: number,
+    ): void => {
+      const previousDepth = greatestTraversedDepthByFilePath.get(filePath) ?? -1;
+      if (previousDepth >= remainingDepth) return;
+      greatestTraversedDepthByFilePath.set(filePath, remainingDepth);
 
-    for (const entry of flattenProgramImportEntries(program)) {
+      for (const entry of flattenProgramImportEntries(program)) {
+        const resolved = resolveCrossFileValueExportWithFilePath(
+          filePath,
+          entry.source,
+          entry.exportedName,
+        );
+        if (!resolved || remainingDepth === 0) continue;
+        collectProgramDependencies(resolved.filePath, resolved.programNode, remainingDepth - 1);
+      }
+    };
+
+    for (const entry of flattenImportEntries(staticImports)) {
       const resolved = resolveCrossFileValueExportWithFilePath(
-        filePath,
+        absoluteFilePath,
         entry.source,
         entry.exportedName,
       );
-      if (!resolved || remainingDepth === 0) continue;
-      collectProgramDependencies(resolved.filePath, resolved.programNode, remainingDepth - 1);
+      if (!resolved) continue;
+      collectProgramDependencies(resolved.filePath, resolved.programNode, maximumDepth);
     }
   };
 
-  for (const entry of flattenImportEntries(staticImports)) {
-    const resolved = resolveCrossFileValueExportWithFilePath(
-      absoluteFilePath,
-      entry.source,
-      entry.exportedName,
-    );
-    if (!resolved) continue;
-    collectProgramDependencies(
-      resolved.filePath,
-      resolved.programNode,
-      CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
-    );
-  }
-};
+const collectForwardedHookDependencies = collectForwardedValueDependencies(
+  CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
+);
+
+const collectCreateRefDependencies = collectForwardedValueDependencies(
+  CREATE_REF_PROP_FLOW_MAX_DEPTH,
+);
 
 // no-mutating-reducer-state only reads another file when a `useReducer`
 // call's reducer argument resolves to an imported binding, and the call must
@@ -420,6 +426,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-indeterminate-attribute", collectNearestManifestDependencies],
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
+    ["no-create-ref-in-function-component", collectCreateRefDependencies],
     ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],

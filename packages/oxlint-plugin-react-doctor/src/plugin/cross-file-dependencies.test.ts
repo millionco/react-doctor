@@ -389,6 +389,43 @@ describe("react-native collectors", () => {
   });
 });
 
+describe("no-create-ref-in-function-component collector", () => {
+  it("records every module in a bounded ref-forwarding chain on warm and cold collection", () => {
+    writeFixtureFile(
+      "src/use-forward-focus.ts",
+      `export default function useForwardFocus(ref) {
+  useImperativeHandle(ref, () => ({}));
+}`,
+    );
+    writeFixtureFile(
+      "src/button.tsx",
+      `import useForwardFocus from "./use-forward-focus";
+export const Button = React.forwardRef((props, ref) => {
+  useForwardFocus(ref);
+  return <button {...props} />;
+});`,
+    );
+    writeFixtureFile(
+      "src/navigation.tsx",
+      `import { Button } from "./button";
+export const Navigation = ({ target }) => <Button ref={target} />;`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { Navigation } from "./navigation";
+export const App = () => <Navigation target={createRef()} />;`,
+    );
+
+    const firstTrace = collectFor(appPath, ["no-create-ref-in-function-component"]);
+    const repeatTrace = collectFor(appPath, ["no-create-ref-in-function-component"]);
+    for (const trace of [firstTrace, repeatTrace]) {
+      expect(trace?.contentPaths.has(fixturePath("src/navigation.tsx"))).toBe(true);
+      expect(trace?.contentPaths.has(fixturePath("src/button.tsx"))).toBe(true);
+      expect(trace?.contentPaths.has(fixturePath("src/use-forward-focus.ts"))).toBe(true);
+    }
+  });
+});
+
 describe("collector registry", () => {
   it("classifies every cross-file rule as bounded or unbounded", () => {
     expect(

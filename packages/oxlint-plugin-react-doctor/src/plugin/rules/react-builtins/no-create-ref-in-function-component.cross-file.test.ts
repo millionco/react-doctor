@@ -42,19 +42,21 @@ export default function useForwardFocus(mainRef) {
     `import React from "react";
 import useForwardFocus from "./use-forward-focus";
 
-export const InternalButton = React.forwardRef((props, ref) => {
+const InternalButtonImplementation = (props, ref) => {
   const controlRef = useForwardFocus(ref);
   return <button {...props} ref={controlRef} />;
-});`,
+};
+
+export const InternalButton = React.forwardRef(InternalButtonImplementation);`,
   );
   writeFile(
     "navigation.tsx",
     `import { useLayoutEffect } from "react";
 import { InternalButton } from "./internal-button";
 
-export const Navigation = ({ focusControl }) => {
+export function Navigation({ focusControl }) {
   ${navigationBody}
-};`,
+}`,
   );
   return writeFile(
     "pending-adapter.tsx",

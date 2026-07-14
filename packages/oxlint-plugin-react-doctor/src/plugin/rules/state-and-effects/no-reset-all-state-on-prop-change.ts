@@ -1091,7 +1091,11 @@ const areAllResetStateReadsHiddenUntilReset = (
   );
   if (
     dependencySymbols.length === 0 ||
-    dependencySymbols.some((symbol) => !isBooleanExpression(context, symbol.bindingIdentifier))
+    dependencySymbols.some(
+      (symbol) =>
+        !isBooleanExpression(context, symbol.bindingIdentifier) ||
+        symbol.references.some((reference) => reference.flag !== "read"),
+    )
   ) {
     return false;
   }

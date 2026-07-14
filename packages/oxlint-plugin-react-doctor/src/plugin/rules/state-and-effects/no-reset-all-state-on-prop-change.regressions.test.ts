@@ -214,6 +214,26 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
         "repeated opaque calls can produce different values",
         `return (visible || isAllowed()) && !isAllowed() && open && <output onClick={() => setOpen(false)}>{String(open)}</output>;`,
       ],
+      [
+        "the dependency is reassigned before its projected gate",
+        `return (visible = true) && visible && open && <output onClick={() => setOpen(false)}>{String(open)}</output>;`,
+      ],
+      [
+        "a local helper reassigns the dependency before its projected gate",
+        `const reveal = () => {
+          visible = true;
+          return true;
+        };
+        return reveal() && visible && open && <output onClick={() => setOpen(false)}>{String(open)}</output>;`,
+      ],
+      [
+        "a local helper conditionally mutates the dependency",
+        `const toggleVisibility = () => {
+          if (isAllowed()) visible = !visible;
+          return true;
+        };
+        return toggleVisibility() && visible && open && <output onClick={() => setOpen(false)}>{String(open)}</output>;`,
+      ],
     ])("still reports when %s", (_label, renderBody) => {
       const result = runRule(
         noResetAllStateOnPropChange,

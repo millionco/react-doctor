@@ -142,8 +142,12 @@ describe("buildDiagnosticIdentity", () => {
         column: 4,
         plugin: "react-doctor",
         rule: "no-derived-state",
+        severity: "error",
+        message: "message",
       }),
-    ).toBe("/repo/src/App.tsx::12:4::react-doctor/no-derived-state");
+    ).toBe(
+      "/repo/src/App.tsx::12:4::react-doctor/no-derived-state::051b69accd5cad53adeeb95537b4a437a702d7e3a422ca87fad64d774a71c997",
+    );
   });
 
   it("is deterministic across calls with the same input", () => {
@@ -153,6 +157,8 @@ describe("buildDiagnosticIdentity", () => {
       column: 1,
       plugin: "p",
       rule: "r",
+      severity: "warning",
+      message: "message",
     } as const;
     expect(buildDiagnosticIdentity(inputs)).toBe(buildDiagnosticIdentity(inputs));
   });
@@ -164,6 +170,8 @@ describe("buildDiagnosticIdentity", () => {
       column: 1,
       plugin: "p",
       rule: "r",
+      severity: "warning",
+      message: "message",
     } as const;
     const seen = new Set<string>();
     seen.add(buildDiagnosticIdentity(base));
@@ -172,7 +180,9 @@ describe("buildDiagnosticIdentity", () => {
     seen.add(buildDiagnosticIdentity({ ...base, column: 2 }));
     seen.add(buildDiagnosticIdentity({ ...base, plugin: "q" }));
     seen.add(buildDiagnosticIdentity({ ...base, rule: "s" }));
-    expect(seen.size).toBe(6);
+    seen.add(buildDiagnosticIdentity({ ...base, severity: "error" }));
+    seen.add(buildDiagnosticIdentity({ ...base, message: "other" }));
+    expect(seen.size).toBe(8);
   });
 });
 

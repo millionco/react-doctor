@@ -299,6 +299,28 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["score.available"]).toBe(true);
   });
 
+  it("counts retained findings beyond the first occurrence at one rule site", () => {
+    const result = buildResult({
+      diagnostics: [
+        buildDiagnostic({
+          rule: "exhaustive-deps",
+          message: "Cleanup may read a changed ref.",
+          line: 122,
+          column: 15,
+        }),
+        buildDiagnostic({
+          rule: "exhaustive-deps",
+          message: "The setter may loop without dependencies.",
+          line: 122,
+          column: 15,
+        }),
+        buildDiagnostic({ rule: "exhaustive-deps", line: 123, column: 15 }),
+      ],
+    });
+
+    expect(buildRunEventAttributes(baseInput({ result }))["diag.sameSiteOccurrences"]).toBe(1);
+  });
+
   it("flags a blocking run when the action blocking gate would trip", () => {
     process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking] = "error";
     const result = buildResult({ diagnostics: [buildDiagnostic({ severity: "error" })] });

@@ -84,6 +84,8 @@ describe("toLspDiagnostic", () => {
         column: 13,
         plugin: "react-doctor",
         rule: "no-array-index-key",
+        severity: "warning",
+        message: "Avoid using the array index as a key",
       }),
       plugin: "react-doctor",
       rule: "no-array-index-key",

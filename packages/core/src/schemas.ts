@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { FRAMEWORK_TOKENS } from "oxlint-plugin-react-doctor";
 import * as Schema from "effect/Schema";
 
@@ -69,10 +70,8 @@ export class JsonReportDiagnosticV3 extends Schema.Class<JsonReportDiagnosticV3>
 }) {}
 
 /**
- * Deterministic identity string for a diagnostic. Same diagnostic
- * across two scans yields the same identity; lets baselines,
- * suppression files, content-hash caches, and IDE "ignore this"
- * actions all key off one shared shape.
+ * Deterministic identity string for a retained diagnostic occurrence.
+ * Severity and message distinguish content variants at one normalized site.
  */
 export const buildDiagnosticIdentity = (input: {
   readonly filePath: string;
@@ -80,7 +79,14 @@ export const buildDiagnosticIdentity = (input: {
   readonly column: number;
   readonly plugin: string;
   readonly rule: string;
-}): string => `${input.filePath}::${input.line}:${input.column}::${input.plugin}/${input.rule}`;
+  readonly severity: Severity;
+  readonly message: string;
+}): string => {
+  const occurrenceDigest = createHash("sha256")
+    .update(JSON.stringify([input.severity, input.message]))
+    .digest("hex");
+  return `${input.filePath}::${input.line}:${input.column}::${input.plugin}/${input.rule}::${occurrenceDigest}`;
+};
 
 export const JsonReportMode = Schema.Literals(["full", "diff", "staged", "baseline"]);
 export type JsonReportMode = Schema.Schema.Type<typeof JsonReportMode>;

@@ -77,7 +77,9 @@ describe("buildJsonReport", () => {
       complete: true,
     });
     expect(report.diagnostics[0]).toMatchObject({
-      id: "src/App.tsx::12:1::react-doctor/no-array-index-as-key",
+      id: expect.stringMatching(
+        /^src\/App\.tsx::12:1::react-doctor\/no-array-index-as-key::[a-f0-9]{64}$/,
+      ),
       normalizedFilePath: "src/App.tsx",
       filePath: "/repo/src/../src/App.tsx",
       plugin: "react-doctor",
@@ -171,8 +173,12 @@ describe("buildJsonReport", () => {
       "src/App.tsx",
     ]);
     expect(report.diagnostics.map((diagnostic) => diagnostic.id)).toEqual([
-      "packages/first/src/App.tsx::12:1::react-doctor/no-array-index-as-key",
-      "packages/second/src/App.tsx::12:1::react-doctor/no-array-index-as-key",
+      expect.stringMatching(
+        /^packages\/first\/src\/App\.tsx::12:1::react-doctor\/no-array-index-as-key::[a-f0-9]{64}$/,
+      ),
+      expect.stringMatching(
+        /^packages\/second\/src\/App\.tsx::12:1::react-doctor\/no-array-index-as-key::[a-f0-9]{64}$/,
+      ),
     ]);
     expect(new Set(report.diagnostics.map((diagnostic) => diagnostic.id)).size).toBe(2);
     expect(report.summary.affectedFileCount).toBe(2);

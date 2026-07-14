@@ -84,6 +84,8 @@ const toJsonReportDiagnostic = (
       column: diagnostic.column,
       plugin: diagnostic.plugin,
       rule: diagnostic.rule,
+      severity: diagnostic.severity,
+      message: diagnostic.message,
     }),
     normalizedFilePath,
     category: ruleIdentity.category,

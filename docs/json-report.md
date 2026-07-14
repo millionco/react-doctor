@@ -11,8 +11,11 @@ Version 3 is the default. Versions 1 and 2 remain accepted by the exported
 Each diagnostic includes:
 
 - `id`: deterministic
-  `<reportRelativeFilePath>::<line>:<column>::<plugin>/<rule>` identity, unique
-  across workspace projects
+  `<reportRelativeFilePath>::<line>:<column>::<plugin>/<rule>::<occurrenceDigest>`
+  identity. The digest covers severity and message so content variants at one
+  normalized site receive distinct identities. Treat this as an opaque value:
+  it is stable for an unchanged finding, but changes when its user-visible
+  content changes.
 - `normalizedFilePath`: project-relative path with `/` separators
 - canonical `plugin`, `rule`, `category`, `severity`, and sorted `tags`
 - the original `filePath` and source span fields

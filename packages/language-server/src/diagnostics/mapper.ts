@@ -100,6 +100,8 @@ export const toLspDiagnostic = (input: MapDiagnosticInput): LspDiagnostic => {
       column: diagnostic.column,
       plugin: diagnostic.plugin,
       rule: diagnostic.rule,
+      severity: diagnostic.severity,
+      message: diagnostic.message,
     }),
     plugin: diagnostic.plugin,
     rule: diagnostic.rule,

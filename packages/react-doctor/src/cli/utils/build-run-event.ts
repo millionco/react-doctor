@@ -287,6 +287,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
 
   let diagnosticsInTestFiles = 0;
   let diagnosticsInStoryFiles = 0;
+  const diagnosticSiteCounts = new Map<string, number>();
   // Root-cause grouping rollup: how many distinct fix groups, and how many
   // findings they cover. `fixGroupedFindings - fixGroups` is the number of
   // findings that collapse away (one fix, not N tasks) — the signal that says
@@ -295,6 +296,14 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   for (const diagnostic of result.diagnostics) {
     if (diagnostic.fileContext === "test") diagnosticsInTestFiles += 1;
     if (diagnostic.fileContext === "story") diagnosticsInStoryFiles += 1;
+    const diagnosticSite = JSON.stringify([
+      diagnostic.filePath,
+      diagnostic.line,
+      diagnostic.column,
+      diagnostic.plugin,
+      diagnostic.rule,
+    ]);
+    diagnosticSiteCounts.set(diagnosticSite, (diagnosticSiteCounts.get(diagnosticSite) ?? 0) + 1);
     if (diagnostic.fixGroupId) {
       findingsPerFixGroup.set(
         diagnostic.fixGroupId,
@@ -304,6 +313,10 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   }
   let fixGroupedFindings = 0;
   for (const count of findingsPerFixGroup.values()) fixGroupedFindings += count;
+  let sameSiteOccurrences = 0;
+  for (const count of diagnosticSiteCounts.values()) {
+    sameSiteOccurrences += Math.max(0, count - 1);
+  }
 
   // Per-category diagnostic counts, keyed so the `diag` namespace yields
   // `diag.category.<key>` once prefixed.
@@ -351,6 +364,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
       inStoryFiles: diagnosticsInStoryFiles,
       distinctRules: countByRule.size,
       topRule,
+      sameSiteOccurrences,
       fixGroups: findingsPerFixGroup.size,
       fixGroupedFindings,
       ...categoryRollup,

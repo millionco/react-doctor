@@ -66,7 +66,7 @@ describe("toJsonReport (Node API helper)", () => {
       complete: false,
     });
     expect(report.diagnostics[0]).toMatchObject({
-      id: "src/App.tsx::7:1::react/no-danger",
+      id: expect.stringMatching(/^src\/App\.tsx::7:1::react\/no-danger::[a-f0-9]{64}$/),
       normalizedFilePath: "src/App.tsx",
       filePath: "/virtual/src/App.tsx",
       tags: [],

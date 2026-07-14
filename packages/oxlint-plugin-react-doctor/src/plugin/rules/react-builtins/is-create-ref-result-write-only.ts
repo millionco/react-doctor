@@ -602,18 +602,47 @@ const isProvenNonCommittingCall = (
     if (!callback || isNodeOfType(callback, "SpreadElement") || !isFunctionLike(callback)) {
       return false;
     }
-    if (!isNodeOfType(callback.body, "BlockStatement")) {
-      return (
-        isNodeOfType(callback.body, "CallExpression") &&
-        isReactStateSetterCall(callback.body, scopes)
+    const isInertSetterArgument = (argument: EsTreeNode): boolean => {
+      const value = findTransparentExpressionRoot(argument);
+      if (
+        isNodeOfType(value, "Literal") ||
+        isNodeOfType(value, "Identifier") ||
+        isFunctionLike(value)
+      ) {
+        return true;
+      }
+      if (isNodeOfType(value, "ArrayExpression")) {
+        return value.elements.every(
+          (element) =>
+            !element || (!isNodeOfType(element, "SpreadElement") && isInertSetterArgument(element)),
+        );
+      }
+      if (isNodeOfType(value, "ObjectExpression")) {
+        return value.properties.every(
+          (property) =>
+            isNodeOfType(property, "Property") &&
+            property.kind === "init" &&
+            !property.computed &&
+            isInertSetterArgument(property.value),
+        );
+      }
+      return false;
+    };
+    const isInertSetterCall = (node: EsTreeNode): boolean =>
+      isNodeOfType(node, "CallExpression") &&
+      isReactStateSetterCall(node, scopes) &&
+      node.arguments.every(
+        (argument) => !isNodeOfType(argument, "SpreadElement") && isInertSetterArgument(argument),
       );
+    if (!isNodeOfType(callback.body, "BlockStatement")) {
+      return isInertSetterCall(callback.body);
     }
     return callback.body.body.every(
       (statement) =>
         isNodeOfType(statement, "EmptyStatement") ||
         (isNodeOfType(statement, "ExpressionStatement") &&
           isNodeOfType(statement.expression, "CallExpression") &&
-          isReactStateSetterCall(statement.expression, scopes)),
+          isInertSetterCall(statement.expression)),
     );
   }
   const callee = findTransparentExpressionRoot(callExpression.callee);

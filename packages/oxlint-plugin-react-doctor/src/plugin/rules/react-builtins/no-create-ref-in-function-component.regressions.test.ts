@@ -609,6 +609,16 @@ export const Input = () => { const [active, setActive] = useState(false); const 
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("rejects startTransition setter arguments that can execute user code", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef, startTransition, useState } from "react";
+import { flushSync } from "react-dom";
+export const Input = ({ value }) => { const [active, setActive] = useState(false); const target = createRef(); return <button key={String(active)} ref={target} onClick={() => { startTransition(() => setActive((flushSync(() => setActive(true)), value.next))); target.current?.focus(); }}>Focus</button>; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not trust a reassigned useState setter", () => {
     const result = runRule(
       noCreateRefInFunctionComponent,

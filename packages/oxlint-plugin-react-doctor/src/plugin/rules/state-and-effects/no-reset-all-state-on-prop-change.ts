@@ -6,11 +6,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
-import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { hasEnclosingTypeParameterNamed } from "../../utils/has-enclosing-type-parameter-named.js";
-import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isReactDomCreatePortalCall } from "../../utils/function-contains-react-render-output.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -443,67 +440,6 @@ const doConditionsImplyFormula = (
   return facts.didConflict || evaluateBooleanFormula(target, facts.assignments) === true;
 };
 
-const isIntrinsicJsxElement = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean =>
-  isNodeOfType(openingElement.name, "JSXIdentifier") &&
-  openingElement.name.name === openingElement.name.name.toLowerCase();
-
-const getJsxElementHiddenFormula = (
-  analysis: ProgramAnalysis,
-  context: RuleContext,
-  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
-  protectedSymbolIds: ReadonlySet<number>,
-): BooleanFormula | null => {
-  if (!isIntrinsicJsxElement(openingElement)) return null;
-  const hiddenAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "hidden");
-  if (hiddenAttribute) {
-    if (!hiddenAttribute.value) return createConstantFormula(true);
-    if (isNodeOfType(hiddenAttribute.value, "JSXExpressionContainer")) {
-      const hiddenFormula = getBooleanFormula(
-        analysis,
-        context,
-        hiddenAttribute.value.expression,
-        protectedSymbolIds,
-      );
-      if (hiddenFormula) return hiddenFormula;
-    }
-  }
-  return null;
-};
-
-const getJsxAriaHiddenFormula = (
-  analysis: ProgramAnalysis,
-  context: RuleContext,
-  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
-  protectedSymbolIds: ReadonlySet<number>,
-): BooleanFormula | null => {
-  if (!isIntrinsicJsxElement(openingElement)) return null;
-  const ariaHiddenAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "aria-hidden");
-  if (!ariaHiddenAttribute) return null;
-  if (!ariaHiddenAttribute.value) return createConstantFormula(true);
-  if (isNodeOfType(ariaHiddenAttribute.value, "Literal")) {
-    return createConstantFormula(ariaHiddenAttribute.value.value === "true");
-  }
-  if (!isNodeOfType(ariaHiddenAttribute.value, "JSXExpressionContainer")) return null;
-  return getBooleanFormula(
-    analysis,
-    context,
-    ariaHiddenAttribute.value.expression,
-    protectedSymbolIds,
-  );
-};
-
-const isAccessibilityOnlyJsxReference = (node: EsTreeNode): boolean => {
-  let ancestor: EsTreeNode | null | undefined = node.parent;
-  while (ancestor) {
-    if (isNodeOfType(ancestor, "JSXAttribute")) {
-      return Boolean(getJsxAttributeName(ancestor.name)?.toLowerCase().startsWith("aria-"));
-    }
-    if (isNodeOfType(ancestor, "JSXElement") || isFunctionLike(ancestor)) return false;
-    ancestor = ancestor.parent;
-  }
-  return false;
-};
-
 const getFunctionBindingSymbol = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -627,8 +563,6 @@ const collectExposureConditions = (
   protectedSymbolIds: ReadonlySet<number>,
 ): BooleanFormula[] => {
   const conditions: BooleanFormula[] = [];
-  const isAccessibilityOnlyReference = isAccessibilityOnlyJsxReference(node);
-  let didCrossPortalBoundary = false;
   let child: EsTreeNode = node;
   let parent: EsTreeNode | null | undefined = node.parent;
   while (parent) {
@@ -644,34 +578,6 @@ const collectExposureConditions = (
       const testFormula = getBooleanFormula(analysis, context, parent.test, protectedSymbolIds);
       if (testFormula && parent.consequent === child) conditions.push(testFormula);
       if (testFormula && parent.alternate === child) conditions.push(createNotFormula(testFormula));
-    } else if (isNodeOfType(parent, "JSXElement")) {
-      if (!isIntrinsicJsxElement(parent.openingElement)) {
-        didCrossPortalBoundary = true;
-      } else if (!didCrossPortalBoundary) {
-        const visuallyHiddenFormula = getJsxElementHiddenFormula(
-          analysis,
-          context,
-          parent.openingElement,
-          protectedSymbolIds,
-        );
-        if (visuallyHiddenFormula) conditions.push(createNotFormula(visuallyHiddenFormula));
-        if (!visuallyHiddenFormula && isAccessibilityOnlyReference) {
-          const ariaHiddenFormula = getJsxAriaHiddenFormula(
-            analysis,
-            context,
-            parent.openingElement,
-            protectedSymbolIds,
-          );
-          if (ariaHiddenFormula) conditions.push(createNotFormula(ariaHiddenFormula));
-        }
-      }
-    }
-    if (
-      isNodeOfType(parent, "CallExpression") &&
-      parent.arguments[0] === child &&
-      isReactDomCreatePortalCall(parent, context.scopes)
-    ) {
-      didCrossPortalBoundary = true;
     }
     if (parent === componentNode) break;
     if (isFunctionLike(parent) && parent !== componentNode && !isInlineJsxCallback(parent)) {

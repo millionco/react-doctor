@@ -12,7 +12,6 @@ import { hasStaticPropertyWriteBefore } from "./has-static-property-write-before
 import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall, type ReactApiCallOptions } from "./is-react-api-call.js";
-import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
@@ -152,17 +151,14 @@ const isRenderOutputExpression = (node: EsTreeNode, scopes: ScopeAnalysis): bool
   isReactApiCall(node, "createElement", scopes, REACT_CREATE_ELEMENT_OPTIONS) ||
   isReactDomCreatePortalCall(node, scopes);
 
-export const isReactDomCreatePortalCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const isReactDomCreatePortalCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = stripParenExpression(node.callee);
   if (isNodeOfType(callee, "Identifier")) {
-    const symbol = resolveConstIdentifierAlias(callee, scopes);
-    const importIdentifier = symbol?.bindingIdentifier;
+    const symbol = scopes.symbolFor(callee);
     return (
       symbol?.kind === "import" &&
-      isNodeOfType(importIdentifier, "Identifier") &&
-      getImportedNameFromModule(importIdentifier, importIdentifier.name, "react-dom") ===
-        "createPortal"
+      getImportedNameFromModule(callee, callee.name, "react-dom") === "createPortal"
     );
   }
   if (
@@ -174,13 +170,11 @@ export const isReactDomCreatePortalCall = (node: EsTreeNode, scopes: ScopeAnalys
   ) {
     return false;
   }
-  const symbol = resolveConstIdentifierAlias(callee.object, scopes);
+  const symbol = scopes.symbolFor(callee.object);
   if (!symbol || symbol.kind !== "import") return false;
-  const importIdentifier = symbol.bindingIdentifier;
-  if (!isNodeOfType(importIdentifier, "Identifier")) return false;
   return (
-    isDefaultImportFromModule(importIdentifier, importIdentifier.name, "react-dom") ||
-    isNamespaceImportFromModule(importIdentifier, importIdentifier.name, "react-dom")
+    isDefaultImportFromModule(callee.object, callee.object.name, "react-dom") ||
+    isNamespaceImportFromModule(callee.object, callee.object.name, "react-dom")
   );
 };
 

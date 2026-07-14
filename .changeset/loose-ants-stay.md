@@ -2,4 +2,4 @@
 "oxlint-plugin-react-doctor": patch
 ---
 
-Fix hidden-state reset false positives in no-reset-all-state-on-prop-change
+Avoid reset-on-prop-change reports when Boolean render gating keeps state unobservable until reset

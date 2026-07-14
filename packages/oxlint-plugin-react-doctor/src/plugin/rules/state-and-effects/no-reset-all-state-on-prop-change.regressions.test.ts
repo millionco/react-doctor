@@ -44,7 +44,7 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
     expect(result.diagnostics[0]?.message).toContain("clears all state");
   });
 
-  describe("hidden state resets", () => {
+  describe("Boolean render gating", () => {
     it("still reports when an overflow-menu dependency can change between truthy values", () => {
       const result = runRule(
         noResetAllStateOnPropChange,
@@ -127,14 +127,6 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
         "an immutable visibility alias",
         `const visibleGate = visible;
         return visibleGate && <div>{open}</div>;`,
-      ],
-      [
-        "a native hidden attribute",
-        `return <button hidden={!visible} aria-expanded={open}>Menu</button>;`,
-      ],
-      [
-        "an accessibility-only state read",
-        `return <div aria-hidden={!visible} aria-expanded={open} />;`,
       ],
       [
         "an inline handler on a hidden trigger",
@@ -248,6 +240,24 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
           const [open, setOpen] = useState(false);
           useEffect(() => setOpen(false), [visible]);
           return <Panel hidden={!visible} value={open} />;
+        };`,
+      ],
+      [
+        "a native hidden attribute does not prevent stale DOM state",
+        `import { useEffect, useState } from "react";
+        const Menu = ({ visible }: { visible: boolean }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          return <button hidden={!visible} aria-expanded={open}>Menu</button>;
+        };`,
+      ],
+      [
+        "aria-hidden does not prevent stale visual state",
+        `import { useEffect, useState } from "react";
+        const Menu = ({ visible }: { visible: boolean }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          return <div aria-hidden={!visible} aria-expanded={open} />;
         };`,
       ],
       [

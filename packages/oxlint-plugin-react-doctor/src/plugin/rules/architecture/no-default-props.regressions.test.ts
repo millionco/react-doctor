@@ -3,6 +3,33 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noDefaultProps } from "./no-default-props.js";
 
 describe("architecture/no-default-props — regressions", () => {
+  describe("class receivers", () => {
+    it("stays silent for the D-Tale React class component", () => {
+      const result = runRule(
+        noDefaultProps,
+        `import React, { Component } from "react";
+class Wordcloud extends Component {
+  render() {
+    return <output>{this.props.height}</output>;
+  }
+}
+Wordcloud.defaultProps = { height: 400 };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags the equivalent function component", () => {
+      const result = runRule(
+        noDefaultProps,
+        `const Wordcloud = (props) => <output>{props.height}</output>;
+Wordcloud.defaultProps = { height: 400 };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
   // FN hunt (innovaccer design-system): the rule fired zero times across the
   // whole corpus because `defaultEnabled: false` kept it out of the default
   // scan set ON TOP of the `react:19` gate — double-gated into permanent

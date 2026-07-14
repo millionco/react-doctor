@@ -331,6 +331,18 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         scanOptions: resolveCliInspectOptions(flags, userConfig),
         projectFlag: flags.project,
       });
+      if (isJsonMode) {
+        writeJsonReport(
+          buildJsonReport({
+            version: VERSION,
+            directory: resolvedDirectory,
+            mode: "full",
+            diff: null,
+            scans: [],
+            totalElapsedMilliseconds: performance.now() - startTime,
+          }),
+        );
+      }
       return;
     }
 

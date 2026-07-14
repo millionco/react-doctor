@@ -179,6 +179,18 @@ describe("react-builtins/no-unstable-nested-components — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("preserves common library component-slot props", () => {
+    for (const attributeName of ["body", "calendarContainer", "fallback", "tooltip"]) {
+      const result = run(`
+        const Parent = () => {
+          const Nested = () => <div>Hello</div>;
+          return <Widget ${attributeName}={Nested} />;
+        };
+      `);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
   it("flags nested functions flowing through memo wrappers into JSX", () => {
     const result = run(`
       import { memo } from "react";

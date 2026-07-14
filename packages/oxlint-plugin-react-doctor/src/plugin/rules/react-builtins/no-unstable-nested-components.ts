@@ -333,7 +333,14 @@ const TS_VALUE_PASSTHROUGH_TYPES: ReadonlySet<string> = new Set([
 // React.createElement, or a recognized element-type prop. Immutable aliases
 // are followed to those sinks. Direct calls and React.useMemo callbacks create
 // no child fiber, so they are not instantiation evidence.
-const ELEMENT_TYPE_PROP_NAMES: ReadonlySet<string> = new Set(["as", "component"]);
+const ELEMENT_TYPE_PROP_NAMES: ReadonlySet<string> = new Set([
+  "as",
+  "body",
+  "calendarcontainer",
+  "component",
+  "fallback",
+  "tooltip",
+]);
 
 const isElementTypeJsxAttribute = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "JSXAttribute")) return false;

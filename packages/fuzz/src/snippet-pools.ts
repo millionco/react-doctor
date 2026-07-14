@@ -39,6 +39,8 @@ export const EFFECT_SNIPPET_POOL = [
   `useEffect(() => { let isActive = true; let timeoutId; fetch(url).then(() => { if (!isActive) return; timeoutId = setTimeout(handle, 100); }); return () => { isActive = false; timeoutId = null; if (timeoutId) clearTimeout(timeoutId); }; }, [url]);`,
   `useEffect(() => { let isActive = true; let timeoutId; fetch(url).then(() => { if (!isActive) { logInactive(); return; } timeoutId = setTimeout(handle, 100); }); return () => { isActive = false; clearTimeout(timeoutId); }; }, [url]);`,
   `useEffect(() => { let isActive = true; let timeoutId; fetch(url).then(() => { if (!isActive) return; if (shouldPrepare) prepare(); timeoutId = setTimeout(handle, 100); }); return () => { isActive = false; clearTimeout(timeoutId); }; }, [url, shouldPrepare]);`,
+  `useEffect(() => { let isActive = true; let timeoutId; fetch(url).then(() => { if (!isActive) return; timeoutId = setTimeout(handle, 100); }); return () => { isActive = false; if (timeoutId) { if (shouldSkipRelease) return; clearTimeout(timeoutId); } }; }, [url, shouldSkipRelease]);`,
+  `useEffect(() => { let isActive = true; let timeoutId; fetch(url).then(() => { if (!isActive) return; timeoutId = setTimeout(handle, 100); }); return () => { isActive = false; if (timeoutId) { timeoutId = null; clearTimeout(timeoutId); } }; }, [url]);`,
   `useEffect(() => { document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = ""; }; }, []);`,
   `useEffect(() => { if (isOpen) { document.body.classList.add("modal-open"); } return () => document.body.classList.remove("modal-open"); }, [isOpen]);`,
   `useEffect(() => { document.title = String(state); }, [state]);`,

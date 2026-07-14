@@ -24,6 +24,7 @@ import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-n
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { readStaticBoolean } from "../../utils/read-static-boolean.js";
@@ -74,6 +75,12 @@ interface BooleanGuardState {
   guardNode: EsTreeNode;
   key: string;
   value: boolean;
+}
+
+interface GlobalReleaseProof {
+  anchor: EsTreeNode;
+  call: EsTreeNode;
+  handleGuard: EsTreeNodeOfType<"IfStatement"> | null;
 }
 
 const RESOURCE_NOUN_BY_KIND = {
@@ -1185,7 +1192,7 @@ const findDirectHandleGuardForRelease = (
   owner: EsTreeNode,
   usage: SubscribeLikeUsage,
   context: RuleContext,
-): EsTreeNode | null => {
+): EsTreeNodeOfType<"IfStatement"> | null => {
   if (usage.handleKey === null) return null;
   const doesTestRequireLiveHandle = (test: EsTreeNode): boolean => {
     if (resolveExpressionKey(test, context) === usage.handleKey) return true;
@@ -1215,9 +1222,14 @@ const findDirectHandleGuardForRelease = (
   let ancestor = releaseCall.parent;
   while (ancestor && ancestor !== owner) {
     if (isNodeOfType(ancestor, "IfStatement")) {
-      return ancestor.alternate === null && doesTestRequireLiveHandle(ancestor.test)
-        ? ancestor
-        : null;
+      if (
+        ancestor.alternate !== null ||
+        !doesTestRequireLiveHandle(ancestor.test) ||
+        !doMatchingNodesCoverEveryPathAfterUsage(ancestor.consequent, [releaseCall], context)
+      ) {
+        return null;
+      }
+      return ancestor;
     }
     ancestor = ancestor.parent;
   }
@@ -1658,10 +1670,10 @@ const hasGuardedDeferredCleanup = (
     return cleanupFunction && isFunctionLike(cleanupFunction) ? [cleanupFunction] : [];
   });
   if (cleanupFunctions.length !== cleanupReturns.length) return false;
-  const globalReleaseAnchorsByCleanup = new Map<EsTreeNode, EsTreeNode[]>();
+  const globalReleaseProofsByCleanup = new Map<EsTreeNode, GlobalReleaseProof[]>();
   for (const cleanupFunction of cleanupFunctions) {
     if (!isFunctionLike(cleanupFunction)) return false;
-    const globalReleaseAnchors: EsTreeNode[] = [];
+    const globalReleaseProofs: GlobalReleaseProof[] = [];
     walkAst(cleanupFunction.body, (child: EsTreeNode) => {
       if (child !== cleanupFunction.body && isFunctionLike(child)) return false;
       if (
@@ -1670,21 +1682,24 @@ const hasGuardedDeferredCleanup = (
         context.scopes.isGlobalReference(child.callee) &&
         doesReleaseCallMatchUsage(child, usage, context)
       ) {
-        globalReleaseAnchors.push(
-          findDirectHandleGuardForRelease(child, cleanupFunction, usage, context) ?? child,
-        );
+        const handleGuard = findDirectHandleGuardForRelease(child, cleanupFunction, usage, context);
+        globalReleaseProofs.push({
+          anchor: handleGuard ?? child,
+          call: child,
+          handleGuard,
+        });
       }
     });
     if (
       !doMatchingNodesCoverEveryPathFromFunctionEntry(
         cleanupFunction,
-        globalReleaseAnchors,
+        globalReleaseProofs.map((releaseProof) => releaseProof.anchor),
         context,
       )
     ) {
       return false;
     }
-    globalReleaseAnchorsByCleanup.set(cleanupFunction, globalReleaseAnchors);
+    globalReleaseProofsByCleanup.set(cleanupFunction, globalReleaseProofs);
   }
   const handleAssignments = handleSymbol.references.filter((reference) =>
     isWithinAssignmentTarget(reference.identifier),
@@ -1712,15 +1727,20 @@ const hasGuardedDeferredCleanup = (
         context.scopes.isGlobalReference(assignedValue));
     if (!isNullishReset) return true;
     const cleanupFunction = findEnclosingFunction(assignment);
-    const globalReleaseAnchors = cleanupFunction
-      ? globalReleaseAnchorsByCleanup.get(cleanupFunction)
+    const globalReleaseProofs = cleanupFunction
+      ? globalReleaseProofsByCleanup.get(cleanupFunction)
       : undefined;
     return !(
       cleanupFunction &&
-      globalReleaseAnchors &&
+      globalReleaseProofs &&
       doMatchingNodesCoverEveryPathBeforeUsage(
         assignment,
-        globalReleaseAnchors,
+        globalReleaseProofs.map((releaseProof) =>
+          releaseProof.handleGuard &&
+          isAstDescendant(assignment, releaseProof.handleGuard.consequent)
+            ? releaseProof.call
+            : releaseProof.anchor,
+        ),
         cleanupFunction,
         context,
       )

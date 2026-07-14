@@ -5226,6 +5226,75 @@ export const Component = ({ load }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts an early return after a guarded release", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Component = ({ load, shouldStopCleanup }) => {
+  useEffect(() => {
+    let isActive = true;
+    let timeoutId;
+    load().then(() => {
+      if (!isActive) return;
+      timeoutId = setTimeout(task, 1000);
+    });
+    return () => {
+      isActive = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        if (shouldStopCleanup) return;
+      }
+    };
+  }, [load, shouldStopCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "an early return before release",
+      cleanup: "if (timeoutId) { if (shouldSkipRelease) return; clearTimeout(timeoutId); }",
+    },
+    {
+      name: "a target reset before release in the owned-handle branch",
+      cleanup: "if (timeoutId) { timeoutId = null; clearTimeout(timeoutId); }",
+    },
+    {
+      name: "a conditional target reset before release",
+      cleanup:
+        "if (timeoutId) { if (shouldSkipRelease) timeoutId = null; clearTimeout(timeoutId); }",
+    },
+    {
+      name: "a conditionally skipped release inside the owned-handle branch",
+      cleanup: "if (timeoutId) { if (shouldSkipRelease) return; else clearTimeout(timeoutId); }",
+    },
+  ])("rejects an owned-handle guard with $name", ({ cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Component = ({ load, shouldSkipRelease }) => {
+  useEffect(() => {
+    let isActive = true;
+    let timeoutId;
+    load().then(() => {
+      if (!isActive) return;
+      timeoutId = setTimeout(task, 1000);
+    });
+    return () => {
+      isActive = false;
+      ${cleanup}
+    };
+  }, [load, shouldSkipRelease]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it.each([
     {
       name: "target reset before guarded release",

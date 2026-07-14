@@ -10,6 +10,7 @@
 // Two flavors live here:
 //   - Source-file readers — resolve imports / walk ancestor layouts and read
 //     OTHER source files (`no-barrel-import`, the two `nextjs-*` rules,
+//     `no-noninteractive-element-interactions`,
 //     `no-mutating-reducer-state`, and `rn-no-raw-text`, which resolves an
 //     imported component to see whether it forwards its children into a
 //     `<Text>` or a non-text host).
@@ -52,6 +53,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-effect-with-fresh-deps",
   "no-initialize-state",
   "no-mutating-reducer-state",
+  "no-noninteractive-element-interactions",
   "only-export-components",
   "no-unguarded-browser-global-in-render-or-hook-init",
   "prefer-dynamic-import",

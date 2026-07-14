@@ -5,7 +5,10 @@ import {
   PAGE_FILE_PATTERN,
   PAGE_OR_LAYOUT_FILE_PATTERN,
 } from "./constants/nextjs.js";
-import { CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH } from "./constants/thresholds.js";
+import {
+  CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
+  OBSERVATION_ONLY_HANDLER_MAX_CALL_DEPTH,
+} from "./constants/thresholds.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
@@ -19,6 +22,7 @@ import { resolveLang } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
 import {
   resolveCrossFileFunctionExport,
+  resolveCrossFileFunctionExportWithFilePath,
   resolveCrossFileValueExportWithFilePath,
 } from "./utils/resolve-cross-file-function-export.js";
 import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
@@ -174,6 +178,69 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectObservationHandlerDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  program,
+}) => {
+  const greatestTraversedDepthByFilePath = new Map<string, number>();
+
+  const collectProgramDependencies = (
+    filePath: string,
+    programNode: EsTreeNode,
+    remainingDepth: number,
+  ): void => {
+    const previousDepth = greatestTraversedDepthByFilePath.get(filePath) ?? -1;
+    if (previousDepth >= remainingDepth) return;
+    greatestTraversedDepthByFilePath.set(filePath, remainingDepth);
+
+    const entries = flattenProgramImportEntries(programNode);
+    const namespaceSourcesByLocalName = new Map<string, string>();
+    for (const statement of (programNode as { body?: ReadonlyArray<EsTreeNode> }).body ?? []) {
+      if (statement.type !== "ImportDeclaration") continue;
+      const source = (statement as { source?: { value?: unknown } }).source?.value;
+      if (typeof source !== "string") continue;
+      for (const specifier of (statement as { specifiers?: ReadonlyArray<EsTreeNode> })
+        .specifiers ?? []) {
+        if (specifier.type !== "ImportNamespaceSpecifier") continue;
+        const localName = (specifier as { local?: { name?: unknown } }).local?.name;
+        if (typeof localName === "string") namespaceSourcesByLocalName.set(localName, source);
+      }
+    }
+    walkAst(programNode, (node) => {
+      if (node.type !== "MemberExpression") return;
+      const member = node as {
+        object?: EsTreeNode;
+        property?: EsTreeNode;
+        computed?: boolean;
+      };
+      if (member.object?.type !== "Identifier" || !member.property) return;
+      const source = namespaceSourcesByLocalName.get(
+        (member.object as { name?: string }).name ?? "",
+      );
+      if (!source) return;
+      const exportedName =
+        member.property.type === "Identifier"
+          ? ((member.property as { name?: string }).name ?? null)
+          : member.computed && member.property.type === "Literal"
+            ? ((member.property as { value?: unknown }).value ?? null)
+            : null;
+      if (typeof exportedName === "string") entries.push({ source, exportedName });
+    });
+
+    for (const entry of entries) {
+      const resolved = resolveCrossFileFunctionExportWithFilePath(
+        filePath,
+        entry.source,
+        entry.exportedName,
+      );
+      if (!resolved || remainingDepth === 0) continue;
+      collectProgramDependencies(resolved.filePath, resolved.programNode, remainingDepth - 1);
+    }
+  };
+
+  collectProgramDependencies(absoluteFilePath, program, OBSERVATION_ONLY_HANDLER_MAX_CALL_DEPTH);
 };
 
 const flattenProgramImportEntries = (program: EsTreeNode): ImportEntryName[] => {
@@ -420,6 +487,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-indeterminate-attribute", collectNearestManifestDependencies],
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
+    ["no-noninteractive-element-interactions", collectObservationHandlerDependencies],
     ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],

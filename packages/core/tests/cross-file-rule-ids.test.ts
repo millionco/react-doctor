@@ -154,6 +154,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-locale-format-in-render",
       "no-match-media-in-state-initializer",
       "no-mutating-reducer-state",
+      "no-noninteractive-element-interactions",
       "no-unguarded-browser-global-in-render-or-hook-init",
       "only-export-components",
       "prefer-dynamic-import",

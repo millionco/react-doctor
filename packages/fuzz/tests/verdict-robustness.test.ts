@@ -41,6 +41,7 @@ const AUDITED_RULE_IDS = [
   "no-ref-current-in-render",
   "no-render-in-render",
   "no-stale-timer-ref",
+  "no-unstable-nested-components",
   "no-usememo-simple-expression",
   "only-export-components",
   "prefer-use-sync-external-store",

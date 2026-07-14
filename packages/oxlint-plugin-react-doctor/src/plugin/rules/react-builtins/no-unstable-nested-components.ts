@@ -3,10 +3,10 @@ import { defineRule } from "../../utils/define-rule.js";
 import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
@@ -57,7 +57,13 @@ const resolveSettings = (
 
 // Check if a function body / expression contains JSX OR a
 // React.createElement call.
-const expressionContainsJsxOrCreateElement = (root: EsTreeNode): boolean => {
+const isReactCreateElementCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  isReactApiCall(node, "createElement", scopes, {
+    allowGlobalReactNamespace: true,
+    resolveNamedAliases: true,
+  });
+
+const expressionContainsJsxOrCreateElement = (root: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let found = false;
   walkAst(root, (node: EsTreeNode): boolean | void => {
     if (found) return false;
@@ -66,7 +72,7 @@ const expressionContainsJsxOrCreateElement = (root: EsTreeNode): boolean => {
       found = true;
       return false;
     }
-    if (isNodeOfType(node, "CallExpression") && isCreateElementCall(node as EsTreeNode)) {
+    if (isNodeOfType(node, "CallExpression") && isReactCreateElementCall(node, scopes)) {
       found = true;
       return false;
     }
@@ -79,11 +85,11 @@ const functionContainsJsxOrCreateElement = (
   scopes: ScopeAnalysis,
   controlFlow: ControlFlowAnalysis,
 ): boolean =>
-  expressionContainsJsxOrCreateElement(functionNode) ||
+  expressionContainsJsxOrCreateElement(functionNode, scopes) ||
   functionReturnsMatchingExpression(
     functionNode,
     scopes,
-    expressionContainsJsxOrCreateElement,
+    (expression) => expressionContainsJsxOrCreateElement(expression, scopes),
     controlFlow,
   );
 
@@ -95,9 +101,9 @@ const functionContainsJsxOrCreateElement = (
 // by containing JSX / `React.createElement(...)` in any method body.
 // Catches both the canonical class-component shape and the rare hybrid
 // case where a class declares JSX in render without `extends`.
-const isReactClassComponent = (classNode: EsTreeNode): boolean => {
+const isReactClassComponent = (classNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   if (isEs6Component(classNode)) return true;
-  return expressionContainsJsxOrCreateElement(classNode);
+  return expressionContainsJsxOrCreateElement(classNode, scopes);
 };
 
 // Walk up to find the FIRST enclosing function/class component.
@@ -128,7 +134,11 @@ const findEnclosingComponent = (
       }
     }
     if (isNodeOfType(walker, "ClassDeclaration") || isNodeOfType(walker, "ClassExpression")) {
-      if (walker.id && isReactComponentName(walker.id.name) && isReactClassComponent(walker)) {
+      if (
+        walker.id &&
+        isReactComponentName(walker.id.name) &&
+        isReactClassComponent(walker, scopes)
+      ) {
         return { component: walker, name: walker.id.name };
       }
     }
@@ -248,7 +258,10 @@ const isObjectCallbackCandidate = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const hocCallContainsComponent = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
+const hocCallContainsComponent = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
   const firstArgument = call.arguments[0] as EsTreeNode | undefined;
   if (!firstArgument) return false;
   if (
@@ -256,12 +269,12 @@ const hocCallContainsComponent = (call: EsTreeNodeOfType<"CallExpression">): boo
     isNodeOfType(firstArgument, "ArrowFunctionExpression") ||
     isNodeOfType(firstArgument, "ClassExpression")
   ) {
-    return expressionContainsJsxOrCreateElement(firstArgument);
+    return expressionContainsJsxOrCreateElement(firstArgument, scopes);
   }
   if (isNodeOfType(firstArgument, "CallExpression") && isHocCallee(firstArgument)) {
-    return hocCallContainsComponent(firstArgument);
+    return hocCallContainsComponent(firstArgument, scopes);
   }
-  return expressionContainsJsxOrCreateElement(firstArgument);
+  return expressionContainsJsxOrCreateElement(firstArgument, scopes);
 };
 
 // Returns true when this node is the FIRST argument of an HoC call
@@ -308,17 +321,6 @@ const isReturnOfMapCallback = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const isCloneElementCall = (node: EsTreeNode): boolean => {
-  if (!isNodeOfType(node, "CallExpression")) return false;
-  const callee = node.callee;
-  if (isNodeOfType(callee, "Identifier")) return callee.name === "cloneElement";
-  return (
-    isNodeOfType(callee, "MemberExpression") &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === "cloneElement"
-  );
-};
-
 // TS expression wrappers that forward their inner value unchanged.
 const TS_VALUE_PASSTHROUGH_TYPES: ReadonlySet<string> = new Set([
   "TSAsExpression",
@@ -327,17 +329,46 @@ const TS_VALUE_PASSTHROUGH_TYPES: ReadonlySet<string> = new Set([
   "TSTypeAssertion",
 ]);
 
-// A PascalCase identifier READ counts as instantiation evidence only
-// when its value flows into a render-shaped sink: a JSX expression
-// container (`component={Inner}`, `<div>{Inner}</div>`), a
-// createElement / cloneElement argument, a return value, or a
-// component-shaped (PascalCase) binding a consumer can render
-// (`const Enhanced = withAnalytics(Inner)`). Arbitrary call arguments
-// whose result is discarded (`track(Inner)`, `console.log(Inner)`) are
-// side-effect reads, not renders. A DIRECT call (`Inner()`) inlines
-// into the parent's render — no child fiber — so the callee position
-// is not instantiation evidence either.
-const isRenderFlowingReadReference = (identifier: EsTreeNode): boolean => {
+// A PascalCase read is instantiation evidence only when it reaches JSX,
+// React.createElement, or a recognized element-type prop. Immutable aliases
+// are followed to those sinks. Direct calls and React.useMemo callbacks create
+// no child fiber, so they are not instantiation evidence.
+const ELEMENT_TYPE_PROP_NAMES: ReadonlySet<string> = new Set(["as", "component"]);
+
+const isElementTypeJsxAttribute = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "JSXAttribute")) return false;
+  if (!isNodeOfType(node.name, "JSXIdentifier")) return false;
+  const attributeName = node.name.name;
+  return (
+    ELEMENT_TYPE_PROP_NAMES.has(attributeName.toLowerCase()) || attributeName.endsWith("Component")
+  );
+};
+
+const isReactUseMemoCallback = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  valueNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean =>
+  call.arguments[0] === valueNode &&
+  isReactApiCall(call, "useMemo", scopes, {
+    allowGlobalReactNamespace: true,
+    resolveNamedAliases: true,
+  });
+
+const isReactLazyCall = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean =>
+  isReactApiCall(call, "lazy", scopes, {
+    allowGlobalReactNamespace: true,
+    resolveNamedAliases: true,
+  });
+
+const isRenderFlowingReadReference = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbols: ReadonlySet<number> = new Set(),
+): boolean => {
   let valueNode: EsTreeNode = identifier;
   let parent: EsTreeNode | null | undefined = valueNode.parent;
   while (parent) {
@@ -347,32 +378,40 @@ const isRenderFlowingReadReference = (identifier: EsTreeNode): boolean => {
       continue;
     }
     switch (parent.type) {
+      case "JSXOpeningElement":
+        return parent.name === valueNode;
       case "JSXExpressionContainer":
+        return Boolean(parent.parent && isElementTypeJsxAttribute(parent.parent));
       case "ReturnStatement":
-        return true;
+        return false;
       case "ArrowFunctionExpression":
-        return parent.body === valueNode;
+        return false;
       case "CallExpression": {
         if (parent.callee === valueNode) return false;
-        if (isCreateElementCall(parent) || isCloneElementCall(parent)) return true;
+        if (isReactUseMemoCallback(parent, valueNode, scopes)) return false;
+        if (isReactCreateElementCall(parent, scopes)) return true;
         valueNode = parent;
         parent = parent.parent;
         continue;
       }
-      case "VariableDeclarator":
-        return (
-          parent.init === valueNode &&
-          isNodeOfType(parent.id, "Identifier") &&
-          isReactComponentName(parent.id.name)
-        );
-      case "AssignmentExpression": {
-        const assignmentTarget = parent.left as EsTreeNode;
-        return (
-          parent.right === valueNode &&
-          isNodeOfType(assignmentTarget, "Identifier") &&
-          isReactComponentName(assignmentTarget.name)
+      case "VariableDeclarator": {
+        if (parent.init !== valueNode || !isNodeOfType(parent.id, "Identifier")) {
+          return false;
+        }
+        const aliasSymbol = scopes.symbolFor(parent.id);
+        if (!aliasSymbol || aliasSymbol.kind !== "const" || visitedSymbols.has(aliasSymbol.id)) {
+          return false;
+        }
+        const nextVisitedSymbols = new Set(visitedSymbols);
+        nextVisitedSymbols.add(aliasSymbol.id);
+        return aliasSymbol.references.some(
+          (reference) =>
+            reference.flag === "read" &&
+            isRenderFlowingReadReference(reference.identifier, scopes, nextVisitedSymbols),
         );
       }
+      case "AssignmentExpression":
+        return false;
       case "Property": {
         if (parent.value !== valueNode) return false;
         valueNode = parent;
@@ -554,7 +593,7 @@ export const noUnstableNestedComponents = defineRule({
       },
       Identifier(node: EsTreeNodeOfType<"Identifier">) {
         if (!isReactComponentName(node.name)) return;
-        if (!isRenderFlowingReadReference(node as EsTreeNode)) return;
+        if (!isRenderFlowingReadReference(node as EsTreeNode, context.scopes)) return;
         recordInstantiation(node as EsTreeNode, node.name);
       },
       FunctionDeclaration: checkFunctionLike,
@@ -568,17 +607,17 @@ export const noUnstableNestedComponents = defineRule({
         // PascalCase-named class (`class NewRoot extends RootState` in
         // tldraw, `class Tool extends BaseTool`, etc.) as a nested React
         // component candidate.
-        if (!isReactClassComponent(node as EsTreeNode)) return;
+        if (!isReactClassComponent(node as EsTreeNode, context.scopes)) return;
         enqueueCandidate(node as EsTreeNode, null);
       },
       ClassExpression(node: EsTreeNodeOfType<"ClassExpression">) {
         const inferredName = node.id?.name ?? inferFunctionLikeName(node as EsTreeNode);
         if (!inferredName || !isReactComponentName(inferredName)) return;
-        if (!isReactClassComponent(node as EsTreeNode)) return;
+        if (!isReactClassComponent(node as EsTreeNode, context.scopes)) return;
         enqueueCandidate(node as EsTreeNode, null);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (isCreateElementCall(node)) {
+        if (isReactCreateElementCall(node, context.scopes)) {
           const firstArgument = node.arguments[0] as EsTreeNode | undefined;
           if (firstArgument && isNodeOfType(firstArgument, "Identifier")) {
             recordInstantiation(firstArgument, firstArgument.name);
@@ -586,13 +625,29 @@ export const noUnstableNestedComponents = defineRule({
             recordMemberChainInstantiation(firstArgument);
           }
         }
-        if (!isHocCallee(node)) return;
-        if (!hocCallContainsComponent(node)) return;
-        enqueueCandidate(node as EsTreeNode, null);
+        const isReactLazy = isReactLazyCall(node, context.scopes);
+        if (!isReactLazy && !isHocCallee(node)) return;
+        if (!isReactLazy && !hocCallContainsComponent(node, context.scopes)) {
+          return;
+        }
+        const inferredName = inferFunctionLikeName(node as EsTreeNode);
+        const propInfo = isComponentDeclaredInProp(node as EsTreeNode);
+        if (propInfo === null && (!inferredName || !isReactComponentName(inferredName))) return;
+        enqueueCandidate(node as EsTreeNode, propInfo === null ? inferredName : null);
       },
       "Program:exit"() {
         for (const report of queuedReports) {
           if (report.requiredInstantiationName !== null) {
+            const requiredSymbol = report.requiredInstantiationBinding
+              ? context.scopes.symbolFor(report.requiredInstantiationBinding)
+              : null;
+            if (
+              requiredSymbol?.references.some(
+                (reference) => reference.flag === "write" || reference.flag === "read-write",
+              )
+            ) {
+              continue;
+            }
             const isInstantiated =
               report.requiredInstantiationBinding !== null
                 ? instantiatedBindingIdentifiers.has(report.requiredInstantiationBinding)

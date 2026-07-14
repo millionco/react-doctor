@@ -120,6 +120,8 @@ export const HANDLER_SNIPPET_POOL = [
   `const handlePersistToken = () => { localStorage.setItem("auth_token", String(value)); };`,
   `const handleRedirect = () => { window.location.href = String(params.next); };`,
   `const renderStatus = () => { const [open] = useState(false); return <b>{String(open)}</b>; }; const statusNode = <div>{renderStatus()}</div>;`,
+  `const FuzzMemoRenderContent = () => <div>{state}</div>; const fuzzMemoContent = useMemo(FuzzMemoRenderContent, [state]);`,
+  `const FuzzNestedComponent = () => <div>{state}</div>; const fuzzNestedElement = <FuzzNestedComponent />;`,
 ] as const;
 
 // Guards / nullability — find/match/get derefs, optional chains, splits,

@@ -154,4 +154,41 @@ const X = ({ go }) => <div role={role} onClick={go}>{label}</div>;`,
     );
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag the Datastoria conditional editing host", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `const ChatInput = ({ isRunning, handleInput, handleKeyDown }) => (
+        <div
+          role="textbox"
+          aria-multiline="true"
+          contentEditable={!isRunning}
+          suppressContentEditableWarning
+          onInput={handleInput}
+          onKeyDown={handleKeyDown}
+        />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a statically enabled editing host", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `const Editor = ({ handleInput }) => (
+        <div role="textbox" contentEditable="plaintext-only" onInput={handleInput} />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a statically disabled editing host", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `const Editor = ({ handleInput }) => (
+        <div role="textbox" contentEditable={false} onInput={handleInput} />
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

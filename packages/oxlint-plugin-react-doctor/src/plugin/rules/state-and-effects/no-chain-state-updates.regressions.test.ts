@@ -1562,4 +1562,65 @@ export const Search = () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("reports state chains through an isomorphic layout effect alias", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import * as React from "react";
+      const useIsomorphicLayoutEffect =
+        typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
+
+      const NavigationTree = ({ activeId, parentMap }) => {
+        const [expanded, setExpanded] = React.useState(() => new Set());
+        useIsomorphicLayoutEffect(() => {
+          const parent = parentMap.get(activeId);
+          if (parent) setExpanded((current) => new Set(current).add(parent.id));
+        }, [activeId, parentMap, expanded]);
+        return null;
+      };`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports the same state chain in a direct layout effect", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useLayoutEffect, useState } from "react";
+      const NavigationTree = ({ activeId, parentMap }) => {
+        const [expanded, setExpanded] = useState(() => new Set());
+        useLayoutEffect(() => {
+          const parent = parentMap.get(activeId);
+          if (parent) setExpanded((current) => new Set(current).add(parent.id));
+        }, [activeId, parentMap, expanded]);
+        return null;
+      };`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays conservative when an effect alias can select an opaque hook", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useEffect, useState } from "react";
+      const useMaybeEffect = Math.random() > 0.5 ? useEffect : useCustomEffect;
+      const NavigationTree = ({ activeId, parentMap }) => {
+        const [expanded, setExpanded] = useState(() => new Set());
+        useMaybeEffect(() => {
+          const parent = parentMap.get(activeId);
+          if (parent) setExpanded((current) => new Set(current).add(parent.id));
+        }, [activeId, parentMap, expanded]);
+        return null;
+      };`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

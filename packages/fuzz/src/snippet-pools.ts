@@ -98,6 +98,7 @@ export const STATE_SNIPPET_POOL = [
   `const FuzzOpaqueVisibilityPanel = ({ visible, isAllowed }) => { const [canShowPanel, setCanShowPanel] = useState(true); useEffect(() => { setCanShowPanel(true); }, [visible]); return visible && isAllowed() && canShowPanel && <output onClick={() => setCanShowPanel(false)}>Panel</output>; }; const fuzzOpaqueVisibilityPanelNode = <FuzzOpaqueVisibilityPanel visible={condition} isAllowed={() => condition} />;`,
   `const [reducerState, dispatch] = useReducer(reducer, { count: 0 });`,
   `const containerRef = useRef(null);`,
+  `const fuzzWriteOnlyFocusControl = { refs: { toggle: createRef(), close: createRef(), slider: createRef() }, setFocus: () => {}, loseFocus: () => {} }; const fuzzWriteOnlyFocusNode = <button ref={fuzzWriteOnlyFocusControl.refs.toggle}>Open</button>;`,
   `const handleRef = useRef(handle); handleRef.current = handle;`,
   `const [copied, setCopied] = useState(false);`,
   `const [cache] = useState(new Map());`,

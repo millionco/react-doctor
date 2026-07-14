@@ -57,4 +57,97 @@ function Editor() {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent for render-local refs used only as React attachment sinks", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef, type RefObject } from "react";
+
+interface FocusControl {
+  refs: {
+    toggle: RefObject<HTMLButtonElement | null>;
+    close: RefObject<HTMLButtonElement | null>;
+    slider: RefObject<HTMLDivElement | null>;
+  };
+  setFocus(): void;
+  loseFocus(): void;
+}
+
+interface NavigationProps {
+  focusControl: FocusControl;
+}
+
+interface PendingAdapterProps {
+  isPending: boolean;
+}
+
+const Navigation = ({ focusControl }: NavigationProps) => (
+  <button ref={focusControl.refs.close}>Close navigation</button>
+);
+
+export const PendingAdapter = ({ isPending }: PendingAdapterProps) => {
+  if (!isPending) return <main>Ready content</main>;
+
+  const focusControl: FocusControl = {
+    refs: {
+      toggle: createRef<HTMLButtonElement>(),
+      close: createRef<HTMLButtonElement>(),
+      slider: createRef<HTMLDivElement>(),
+    },
+    setFocus: () => {},
+    loseFocus: () => {},
+  };
+
+  return (
+    <>
+      <button ref={focusControl.refs.toggle}>Open navigation</button>
+      <Navigation focusControl={focusControl} />
+      <div>Navigation</div>
+    </>
+  );
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a render-local ref whose identity is observed after attachment", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef, useLayoutEffect, type RefObject } from "react";
+
+interface ObservedRefProps {
+  label: string;
+  observe(ref: RefObject<HTMLButtonElement | null>): void;
+}
+
+export const ObservedRef = ({ label, observe }: ObservedRefProps) => {
+  const target = createRef<HTMLButtonElement>();
+  useLayoutEffect(() => observe(target), [observe, target]);
+  return <button ref={target}>{label}</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for an observed useRef equivalent", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { useLayoutEffect, useRef, type RefObject } from "react";
+
+interface StableObservedRefProps {
+  label: string;
+  observe(ref: RefObject<HTMLButtonElement | null>): void;
+}
+
+export const StableObservedRef = ({ label, observe }: StableObservedRefProps) => {
+  const target = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => observe(target), [observe, target]);
+  return <button ref={target}>{label}</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

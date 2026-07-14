@@ -90,6 +90,53 @@ describe("buildJsonReport", () => {
     expect(report.diagnostics[0]).not.toHaveProperty("location");
   });
 
+  it("assigns distinct occurrence identities to same-site findings from one rule", () => {
+    const cleanupMessage =
+      "Your cleanup may read the wrong node since the ref `sidebarRef.current` can change before it runs.";
+    const loopMessage =
+      "`useEffect` calls `setMobile` with no dependency array, so it can loop forever & freeze the component.";
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [
+        {
+          directory: "/repo",
+          result: result({
+            diagnostics: [
+              {
+                ...errorDiagnostic,
+                filePath: "src/components/sidebar/CSidebar.tsx",
+                rule: "exhaustive-deps",
+                severity: "warning",
+                message: cleanupMessage,
+                line: 122,
+                column: 15,
+              },
+              {
+                ...errorDiagnostic,
+                filePath: "src/components/sidebar/CSidebar.tsx",
+                rule: "exhaustive-deps",
+                severity: "warning",
+                message: loopMessage,
+                line: 122,
+                column: 15,
+              },
+            ],
+          }),
+        },
+      ],
+      totalElapsedMilliseconds: 1200,
+    });
+
+    expect(report.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+      cleanupMessage,
+      loopMessage,
+    ]);
+    expect(new Set(report.diagnostics.map((diagnostic) => diagnostic.id)).size).toBe(2);
+  });
+
   it("scopes diagnostic identities and affected file counts to workspace projects", () => {
     const firstProject = {
       ...projectInfo,

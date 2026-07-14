@@ -98,6 +98,33 @@ describe("toLspDiagnostic", () => {
     });
   });
 
+  it("distinguishes same-site findings from one rule by occurrence", () => {
+    const cleanup = toLspDiagnostic({
+      diagnostic: makeDiagnostic({
+        rule: "exhaustive-deps",
+        message:
+          "Your cleanup may read the wrong node since the ref `sidebarRef.current` can change before it runs.",
+        line: 122,
+        column: 15,
+      }),
+      fsPath: FS_PATH,
+      text: null,
+    });
+    const loop = toLspDiagnostic({
+      diagnostic: makeDiagnostic({
+        rule: "exhaustive-deps",
+        message:
+          "`useEffect` calls `setMobile` with no dependency array, so it can loop forever & freeze the component.",
+        line: 122,
+        column: 15,
+      }),
+      fsPath: FS_PATH,
+      text: null,
+    });
+
+    expect(cleanup.data).not.toEqual(loop.data);
+  });
+
   it("nulls out optional data fields when absent", () => {
     const result = toLspDiagnostic({ diagnostic: makeDiagnostic(), fsPath: FS_PATH, text: null });
     expect(result.data).toMatchObject({ url: null, suppressionHint: null });

@@ -73,3 +73,44 @@ describe("file-level suppress action kind", () => {
     expect(suppressAll?.kind).not.toBe("source");
   });
 });
+
+describe("same-site diagnostic actions", () => {
+  it("targets each occurrence with a distinct explain command", () => {
+    const cleanup = toLspDiagnostic({
+      diagnostic: baseDiagnostic({
+        rule: "exhaustive-deps",
+        message:
+          "Your cleanup may read the wrong node since the ref `sidebarRef.current` can change before it runs.",
+        line: 122,
+        column: 15,
+      }),
+      fsPath: "/repo/src/App.tsx",
+      text: null,
+    });
+    const loop = toLspDiagnostic({
+      diagnostic: baseDiagnostic({
+        rule: "exhaustive-deps",
+        message:
+          "`useEffect` calls `setMobile` with no dependency array, so it can loop forever & freeze the component.",
+        line: 122,
+        column: 15,
+      }),
+      fsPath: "/repo/src/App.tsx",
+      text: null,
+    });
+    const actions = buildCodeActions({
+      uri: "file:///repo/src/App.tsx",
+      fsPath: "/repo/src/App.tsx",
+      documentText: null,
+      relativeFilePath: "src/App.tsx",
+      rangeDiagnostics: [cleanup, loop],
+      fileDiagnostics: [cleanup, loop],
+    });
+    const explainActions = actions.filter(
+      (action) => action.title === "Explain react-doctor/exhaustive-deps",
+    );
+
+    expect(explainActions).toHaveLength(2);
+    expect(explainActions[0].command?.arguments).not.toEqual(explainActions[1].command?.arguments);
+  });
+});

@@ -3951,7 +3951,7 @@ export const Feed = ({ url }) => (
 });
 
 describe("effect-needs-cleanup React ref callback reachability", () => {
-  it("flags a deferred subscription leak invoked through a React ref callback", () => {
+  it("flags the pending timeout in the exact Victory ref callback shape", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import React from "react";
@@ -3966,7 +3966,77 @@ export const AnimatedValue = ({ data, delay, subscription }) => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("subscribe");
+    expect(result.diagnostics[0].message).toContain("setTimeout");
+  });
+
+  it("accepts a timeout when the returned cleanup clears it", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const AnimatedValue = ({ data, delay, task }) => {
+  const callbackRef = React.useRef(() => () => {});
+  callbackRef.current = () => {
+    const timeout = setTimeout(task, delay);
+    return () => clearTimeout(timeout);
+  };
+  React.useEffect(() => callbackRef.current(), [data]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat subscription cleanup as cleanup for the pending timeout", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const AnimatedValue = ({ data, delay, subscription }) => {
+  const callbackRef = React.useRef(() => () => {});
+  callbackRef.current = () => {
+    setTimeout(() => subscription.subscribe(), delay);
+    const unsubscribe = subscription.subscribe();
+    return () => unsubscribe();
+  };
+  React.useEffect(() => callbackRef.current(), [data]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setTimeout");
+  });
+
+  it("matches the existing named-helper verdict for a direct subscription", () => {
+    const refResult = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const AnimatedValue = ({ data, subscription }) => {
+  const callbackRef = React.useRef(() => {});
+  callbackRef.current = () => {
+    subscription.subscribe();
+  };
+  React.useEffect(() => callbackRef.current(), [data]);
+  return null;
+};`,
+    );
+    const namedResult = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const AnimatedValue = ({ data, subscription }) => {
+  const runAnimation = () => {
+    subscription.subscribe();
+  };
+  React.useEffect(() => runAnimation(), [data]);
+  return null;
+};`,
+    );
+    expect(refResult.parseErrors).toEqual([]);
+    expect(namedResult.parseErrors).toEqual([]);
+    expect(refResult.diagnostics).toHaveLength(1);
+    expect(namedResult.diagnostics).toHaveLength(1);
+    expect(refResult.diagnostics[0].message).toContain("subscribe");
+    expect(namedResult.diagnostics[0].message).toContain("subscribe");
   });
 
   it("accepts a React ref callback whose effect owns the returned disposer", () => {
@@ -3994,6 +4064,528 @@ export const LiveValue = ({ data, subscription }) => {
 export const UnusedValue = ({ subscription }) => {
   const callbackRef = React.useRef(() => {});
   callbackRef.current = () => subscription.subscribe();
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("follows const aliases, static computed current, and optional effect calls", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const LiveValue = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  const callbackAlias = callbackRef;
+  callbackAlias["current"] = () => {
+    subscription.subscribe();
+  };
+  useEffect(() => callbackAlias.current?.(), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("subscribe");
+  });
+
+  it("keeps one-shot event-handler invocation outside the direct-effect v1 scope", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useRef } from "react";
+export const ConnectButton = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => {
+    setTimeout(() => subscription.subscribe(), 100);
+  };
+  const onClick = () => callbackRef.current();
+  return <button onClick={onClick}>Connect</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores ordinary current objects and userland useRef functions", () => {
+    const sources = [
+      `import { useEffect } from "react";
+export const OrdinaryObject = ({ subscription }) => {
+  const callbackRef = { current: () => {} };
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+      `import { useEffect } from "react";
+const useRef = (initialValue) => ({ current: initialValue });
+export const ShadowedRef = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+      `import { useEffect } from "react";
+import { useRef } from "./state";
+export const UserlandRef = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    ];
+    for (const source of sources) {
+      const result = runRule(effectNeedsCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("ignores dynamic current access and reassigned aliases", () => {
+    const sources = [
+      `import { useEffect, useRef } from "react";
+export const DynamicProperty = ({ propertyName, subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef[propertyName] = () => subscription.subscribe();
+  useEffect(() => callbackRef[propertyName](), [propertyName]);
+  return null;
+};`,
+      `import { useEffect, useRef } from "react";
+export const ReassignedAlias = ({ otherRef, subscription }) => {
+  const callbackRef = useRef(() => {});
+  let callbackAlias = callbackRef;
+  callbackAlias = otherRef;
+  callbackAlias.current = () => subscription.subscribe();
+  useEffect(() => callbackAlias.current(), []);
+  return null;
+};`,
+    ];
+    for (const source of sources) {
+      const result = runRule(effectNeedsCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("ignores a leaking assignment overwritten before the effect call", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const LatestCallback = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  callbackRef.current = () => {};
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores conditional competing assignments", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const ConditionalCallback = ({ enabled, subscription }) => {
+  const callbackRef = useRef(() => {});
+  if (enabled) {
+    callbackRef.current = () => subscription.subscribe();
+  } else {
+    callbackRef.current = () => {};
+  }
+  useEffect(() => callbackRef.current(), [enabled]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires a reachable ref call from a real React effect", () => {
+    const sources = [
+      `import { useEffect, useRef } from "react";
+export const DeadCall = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => {
+    if (false) callbackRef.current();
+  }, []);
+  return null;
+};`,
+      `import { useRef } from "react";
+const useEffect = (callback) => callback;
+export const FakeEffect = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    ];
+    for (const source of sources) {
+      const result = runRule(effectNeedsCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("abstains when effect ownership crosses a local helper", () => {
+    const sources = [
+      `import { useEffect, useRef } from "react";
+export const ReturnedHelper = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  const run = () => callbackRef.current();
+  useEffect(() => run(), []);
+  return null;
+};`,
+      `import { useEffect, useRef } from "react";
+export const DiscardedHelper = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  const run = () => callbackRef.current();
+  useEffect(() => {
+    run();
+  }, []);
+  return null;
+};`,
+    ];
+    for (const source of sources) {
+      const result = runRule(effectNeedsCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("keeps generator, identifier, and conditional right-hand sides outside v1 scope", () => {
+    const sources = [
+      `import { useEffect, useRef } from "react";
+export const GeneratorCallback = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = function* () {
+    subscription.subscribe();
+  };
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+      `import { useEffect, useRef } from "react";
+const subscribeLater = (subscription) => subscription.subscribe();
+export const IdentifierCallback = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = subscribeLater;
+  useEffect(() => callbackRef.current(subscription), [subscription]);
+  return null;
+};`,
+      `import { useEffect, useRef } from "react";
+export const ConditionalCallback = ({ enabled, subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = enabled
+    ? () => subscription.subscribe()
+    : () => {};
+  useEffect(() => callbackRef.current(), [enabled]);
+  return null;
+};`,
+    ];
+    for (const source of sources) {
+      const result = runRule(effectNeedsCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("reports a direct disposer when the effect discards it", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const DiscardedDisposer = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => {
+    callbackRef.current();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a direct disposer returned by the effect", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const OwnedDisposer = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a disposer returned from one branch of an effect conditional", () => {
+    const effectExpressions = [
+      `enabled ? callbackRef.current() : undefined`,
+      `enabled ? undefined : callbackRef.current()`,
+      `enabled ? callbackRef.current() : noop()`,
+      `outer ? (enabled ? callbackRef.current() : undefined) : undefined`,
+    ];
+    for (const effectExpression of effectExpressions) {
+      const result = runRule(
+        effectNeedsCleanup,
+        `import { useEffect, useRef } from "react";
+export const ConditionalOwner = ({ enabled, outer, subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => ${effectExpression}, [enabled, outer]);
+  return null;
+};`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("does not treat a Boolean-wrapped disposer as effect cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const WrappedDisposer = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => Boolean(callbackRef.current()), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("owns only a final sequence-expression result", () => {
+    const ownedResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const OwnedSequence = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => (track(), callbackRef.current()), []);
+  return null;
+};`,
+    );
+    const discardedResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const DiscardedSequence = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => (callbackRef.current(), track()), []);
+  return null;
+};`,
+    );
+    expect(ownedResult.parseErrors).toEqual([]);
+    expect(discardedResult.parseErrors).toEqual([]);
+    expect(ownedResult.diagnostics).toHaveLength(0);
+    expect(discardedResult.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a conditionally returned nested cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const PartialCleanup = ({ enabled, subscription }) => {
+  const callbackRef = useRef(() => () => {});
+  callbackRef.current = () => {
+    const unsubscribe = subscription.subscribe();
+    return enabled ? () => unsubscribe() : undefined;
+  };
+  useEffect(() => callbackRef.current(), [enabled]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("gates a named cleanup alias on effect ownership", () => {
+    const discardedResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const DiscardedAlias = ({ subscription }) => {
+  const callbackRef = useRef(() => () => {});
+  callbackRef.current = () => {
+    const unsubscribe = subscription.subscribe();
+    const cleanup = () => unsubscribe();
+    return cleanup;
+  };
+  useEffect(() => {
+    callbackRef.current();
+  }, []);
+  return null;
+};`,
+    );
+    const ownedResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const OwnedAlias = ({ subscription }) => {
+  const callbackRef = useRef(() => () => {});
+  callbackRef.current = () => {
+    const unsubscribe = subscription.subscribe();
+    const cleanup = () => unsubscribe();
+    return cleanup;
+  };
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    );
+    expect(discardedResult.parseErrors).toEqual([]);
+    expect(ownedResult.parseErrors).toEqual([]);
+    expect(discardedResult.diagnostics).toHaveLength(1);
+    expect(ownedResult.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a cleanup helper invoked on every path after acquisition", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const SynchronousCleanup = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => {
+    const unsubscribe = subscription.subscribe();
+    const cleanup = () => unsubscribe();
+    cleanup();
+  };
+  useEffect(() => {
+    callbackRef.current();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports when one effect owns the disposer but another discards it", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const MixedOwnership = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => callbackRef.current(), []);
+  useEffect(() => {
+    callbackRef.current();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a non-callable observe result returned through the effect", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const ObservedValue = ({ element, observer }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => observer.observe(element);
+  useEffect(() => callbackRef.current(), [element]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("observe");
+  });
+
+  it("preserves an observe result returned to an ordinary caller", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const ObserveButton = ({ element, observer }) => {
+  const attach = useCallback(() => observer.observe(element), [element, observer]);
+  return <button onClick={() => attach()}>Observe</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports resources acquired by async ref callbacks", () => {
+    const sources = [
+      `import { useEffect, useRef } from "react";
+export const AsyncDisposer = ({ subscription }) => {
+  const callbackRef = useRef(async () => {});
+  callbackRef.current = async () => subscription.subscribe();
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+      `import { useEffect, useRef } from "react";
+export const AsyncNestedCleanup = ({ subscription }) => {
+  const callbackRef = useRef(async () => {});
+  callbackRef.current = async () => {
+    const unsubscribe = subscription.subscribe();
+    return () => unsubscribe();
+  };
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    ];
+    for (const source of sources) {
+      const result = runRule(effectNeedsCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("reports partial cleanup that leaves an interval alive", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const PartialCleanup = ({ poll, subscription }) => {
+  const callbackRef = useRef(() => () => {});
+  callbackRef.current = () => {
+    setInterval(poll, 1000);
+    const unsubscribe = subscription.subscribe();
+    return () => unsubscribe();
+  };
+  useEffect(() => callbackRef.current(), [poll]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setInterval");
+  });
+
+  it("flags an invoked ref callback that starts an uncleared interval", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const PollingValue = ({ poll }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => setInterval(poll, 1000);
+  useEffect(() => callbackRef.current(), [poll]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setInterval");
+  });
+
+  it("accepts an invoked ref callback whose returned cleanup clears its interval", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const PollingValue = ({ poll }) => {
+  const callbackRef = useRef(() => () => {});
+  callbackRef.current = () => {
+    const interval = setInterval(poll, 1000);
+    return () => clearInterval(interval);
+  };
+  useEffect(() => callbackRef.current(), [poll]);
   return null;
 };`,
     );

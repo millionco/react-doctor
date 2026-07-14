@@ -855,7 +855,9 @@ export const runInspect = <HooksR = never>(
               didFail: true,
               reason: `Lint analysis exceeded ${
                 lintPhaseTimeoutMs / MILLISECONDS_PER_SECOND
-              }s and was skipped.`,
+              }s and was skipped. For large projects, increase the timeout: REACT_DOCTOR_LINT_PHASE_TIMEOUT_MS=${
+                Math.ceil((lintPhaseTimeoutMs * 2) / 1000) * 1000
+              } (or higher).`,
               reasonTag: "OxlintBatchExceeded",
               reasonKind: null,
             }).pipe(Effect.as<Diagnostic[]>([])),

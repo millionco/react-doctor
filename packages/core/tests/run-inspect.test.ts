@@ -207,6 +207,8 @@ describe("runInspect — phase timeouts & overall deadline", () => {
     expect(output.didLintFail).toBe(true);
     expect(output.lintFailureReasonTag).toBe("OxlintBatchExceeded");
     expect(output.lintFailureReason).toContain("Lint analysis exceeded");
+    expect(output.lintFailureReason).toContain("REACT_DOCTOR_LINT_PHASE_TIMEOUT_MS");
+    expect(output.lintFailureReason).toMatch(/REACT_DOCTOR_LINT_PHASE_TIMEOUT_MS=\d+/);
     expect(output.score).toBeNull();
     expect(output.diagnostics).toHaveLength(0);
   });

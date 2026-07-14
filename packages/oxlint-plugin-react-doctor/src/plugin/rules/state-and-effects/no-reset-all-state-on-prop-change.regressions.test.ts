@@ -216,6 +216,30 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
         };`,
       ],
       [
+        "a type parameter can shadow a top-level Boolean interface",
+        `import { useEffect, useState } from "react";
+        interface Props { visible: boolean }
+        const Menu = <Props extends { visible: string }>({ visible }: Props) => {
+          const [draft, setDraft] = useState("");
+          useEffect(() => setDraft(""), [visible]);
+          return visible && <output>{draft}</output>;
+        };`,
+      ],
+      [
+        "a local type alias can shadow a top-level Boolean interface",
+        `import { useEffect, useState } from "react";
+        interface Props { visible: boolean }
+        const makeMenu = () => {
+          type Props = { visible: string };
+          const Menu = ({ visible }: Props) => {
+            const [draft, setDraft] = useState("");
+            useEffect(() => setDraft(""), [visible]);
+            return visible && <output>{draft}</output>;
+          };
+          return Menu;
+        };`,
+      ],
+      [
         "a custom component can ignore hidden",
         `import { useEffect, useState } from "react";
         const Panel = ({ value }: { hidden: boolean; value: boolean }) => <output>{value}</output>;
@@ -274,6 +298,16 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
             onRegister(setOpen);
           }, [visible]);
           return visible && <output>{open}</output>;
+        };`,
+      ],
+      [
+        "the reset is observable from another effect",
+        `import { useEffect, useState } from "react";
+        const Menu = ({ visible }: { visible: boolean }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          useEffect(() => notify(open), [open]);
+          return visible && <button onClick={() => setOpen(true)}>{String(open)}</button>;
         };`,
       ],
     ])("still reports when %s", (_label, source) => {

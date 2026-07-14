@@ -8,6 +8,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { hasEnclosingTypeParameterNamed } from "../../utils/has-enclosing-type-parameter-named.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
@@ -54,13 +55,6 @@ interface BooleanFacts {
   didConflict: boolean;
   didChange: boolean;
 }
-
-const POST_COMMIT_EFFECT_HOOK_NAMES = new Set([
-  "useEffect",
-  "useEffectOnUpdate",
-  "useInsertionEffect",
-  "useLayoutEffect",
-]);
 
 const SYNCHRONOUS_ARRAY_CALLBACK_METHOD_NAMES = new Set([
   "every",
@@ -700,56 +694,6 @@ const collectExposureConditions = (
   return conditions;
 };
 
-const isStateReferenceInPostCommitEffect = (
-  referenceIdentifier: EsTreeNode,
-  stateSymbol: SymbolDescriptor,
-  scopes: ScopeAnalysis,
-): boolean => {
-  const functionNode = findEnclosingFunction(referenceIdentifier);
-  if (!functionNode) return false;
-  const callExpression = functionNode.parent;
-  if (
-    !isNodeOfType(callExpression, "CallExpression") ||
-    callExpression.arguments[0] !== functionNode ||
-    !POST_COMMIT_EFFECT_HOOK_NAMES.has(getCalleeName(callExpression) ?? "")
-  ) {
-    return false;
-  }
-  const dependencies = callExpression.arguments[1];
-  if (!isNodeOfType(dependencies, "ArrayExpression")) return false;
-  let containsStateDependency = false;
-  walkAst(dependencies, (candidate) => {
-    if (
-      isNodeOfType(candidate, "Identifier") &&
-      scopes.referenceFor(candidate)?.resolvedSymbol === stateSymbol
-    ) {
-      containsStateDependency = true;
-      return false;
-    }
-  });
-  return containsStateDependency;
-};
-
-const isStateReferenceInPostCommitEffectDependencies = (
-  referenceIdentifier: EsTreeNode,
-): boolean => {
-  let ancestor: EsTreeNode = referenceIdentifier;
-  while (ancestor.parent) {
-    const parent = ancestor.parent;
-    if (isNodeOfType(parent, "ArrayExpression")) {
-      const callExpression = parent.parent;
-      return Boolean(
-        isNodeOfType(callExpression, "CallExpression") &&
-        callExpression.arguments[1] === parent &&
-        POST_COMMIT_EFFECT_HOOK_NAMES.has(getCalleeName(callExpression) ?? ""),
-      );
-    }
-    if (isFunctionLike(parent)) return false;
-    ancestor = parent;
-  }
-  return false;
-};
-
 const isMountSnapshotInitializer = (context: RuleContext, node: EsTreeNode): boolean => {
   if (
     !isReactApiCall(node, "useMemo", context.scopes, {
@@ -960,7 +904,7 @@ const isBooleanTypeNode = (node: EsTreeNode | null | undefined): boolean => {
 const getBooleanPropertyType = (
   typeNode: EsTreeNode,
   propertyName: string,
-  programNode: EsTreeNode,
+  referenceNode: EsTreeNode,
 ): boolean => {
   const unwrappedType = isNodeOfType(typeNode, "TSTypeAnnotation")
     ? typeNode.typeAnnotation
@@ -980,6 +924,8 @@ const getBooleanPropertyType = (
     return false;
   }
   const typeName = unwrappedType.typeName.name;
+  if (hasEnclosingTypeParameterNamed(referenceNode, typeName)) return false;
+  const programNode = findProgramNode(referenceNode);
   if (!isNodeOfType(programNode, "Program")) return false;
   const matchingInterfaces = programNode.body.flatMap((statement) => {
     const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
@@ -990,13 +936,23 @@ const getBooleanPropertyType = (
       : [];
   });
   if (matchingInterfaces.length !== 1) return false;
-  let sameNameInterfaceCount = 0;
+  let sameNameTypeBindingCount = 0;
   walkAst(programNode, (candidate) => {
-    if (isNodeOfType(candidate, "TSInterfaceDeclaration") && candidate.id.name === typeName) {
-      sameNameInterfaceCount += 1;
+    const identifier =
+      isNodeOfType(candidate, "TSInterfaceDeclaration") ||
+      isNodeOfType(candidate, "TSTypeAliasDeclaration") ||
+      isNodeOfType(candidate, "ClassDeclaration") ||
+      isNodeOfType(candidate, "ClassExpression") ||
+      isNodeOfType(candidate, "TSEnumDeclaration")
+        ? candidate.id
+        : isNodeOfType(candidate, "TSTypeParameter")
+          ? candidate.name
+          : null;
+    if (isNodeOfType(identifier, "Identifier") && identifier.name === typeName) {
+      sameNameTypeBindingCount += 1;
     }
   });
-  if (sameNameInterfaceCount !== 1) return false;
+  if (sameNameTypeBindingCount !== 1) return false;
   return matchingInterfaces[0].body.body.some(
     (member) =>
       isNodeOfType(member, "TSPropertySignature") &&
@@ -1024,8 +980,7 @@ const hasBooleanBindingAnnotation = (symbol: SymbolDescriptor, identifier: EsTre
   }
   const propertyName = getPropertyName(property.key);
   return Boolean(
-    propertyName &&
-    getBooleanPropertyType(objectPattern.typeAnnotation, propertyName, findProgramNode(identifier)),
+    propertyName && getBooleanPropertyType(objectPattern.typeAnnotation, propertyName, identifier),
   );
 };
 
@@ -1222,12 +1177,6 @@ const areAllResetStateReadsHiddenUntilReset = (
     let exposedReadCount = 0;
     for (const reference of stateSymbol.references) {
       if (reference.flag === "write") continue;
-      if (
-        isStateReferenceInPostCommitEffect(reference.identifier, stateSymbol, context.scopes) ||
-        isStateReferenceInPostCommitEffectDependencies(reference.identifier)
-      ) {
-        continue;
-      }
       const isRenderRead = isNodeEvaluatedDuringRender(
         reference.identifier,
         componentNode,

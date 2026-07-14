@@ -252,6 +252,7 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `import { test as fuzzProviderTest } from "vitest"; import { FuzzProductProvider } from "./product-provider"; fuzzProviderTest("renders direct content", () => { render(<FuzzProductProvider><img src="/subject.png" /></FuzzProductProvider>); });`,
   `import { test as fuzzProviderChildrenTest } from "vitest"; import { FuzzChildrenProvider } from "./children-provider"; fuzzProviderChildrenTest("renders direct children", () => { render(<FuzzChildrenProvider children={<img src="/subject.png" />} />); });`,
   `import { motion as FuzzMotion } from "framer-motion"; export const FuzzMotionPanel = () => <FuzzMotion.div animate={{ x: 120 }}>moving</FuzzMotion.div>;`,
+  `import { motion as FuzzScaleMotion } from "framer-motion"; export const FuzzScaleEntry = () => <FuzzScaleMotion.div initial={{ scale: 0 }} animate={{ scale: 1 }}>enter</FuzzScaleMotion.div>;`,
   `import { createRoot as mountFuzzRoot } from "react-dom/client"; export const FuzzRootApp = () => <div />; export const fuzzRootConfig = getConfig(); const fuzzApplicationRoot = mountFuzzRoot(document.body); fuzzApplicationRoot.render(<FuzzRootApp />);`,
   `const GLOBAL_CACHE = new Map<string, unknown>();`,
   `class FuzzProtocolRegistry { static contextTypes = new Set(["json", "text"]); static childContextTypes = new Map(); getChildContext() { return { protocol: "json" }; } } const FuzzSchemaRegistry = {}; FuzzSchemaRegistry.contextTypes = new Set(["json", "text"]);`,

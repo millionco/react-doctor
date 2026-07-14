@@ -89,6 +89,67 @@ describe("performance/no-scale-from-zero — regressions", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("flags official tag namespace subpaths", () => {
+    const result = run(`
+      import * as ClientMotion from "motion/react-client";
+      import * as LegacyClientMotion from "framer-motion/client";
+      import * as MinimalMotion from "motion/react-mini";
+      import { div as MotionDiv } from "framer-motion/m";
+
+      export const Examples = () => (
+        <>
+          <ClientMotion.div initial={{ scale: 0 }} />
+          <LegacyClientMotion.span exit={{ scale: 0 }} />
+          <MinimalMotion.section initial={{ scale: 0 }} />
+          <MotionDiv initial={{ scale: 0 }} />
+        </>
+      );
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(4);
+  });
+
+  it("does not treat a root module namespace as a tag namespace", () => {
+    const result = run(`
+      import * as Framer from "framer-motion";
+
+      export const Example = () => <Framer.div initial={{ scale: 0 }} />;
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags proven motion factory and component aliases", () => {
+    const result = run(`
+      import { motion as motionFactory } from "framer-motion";
+      import * as Framer from "motion/react";
+
+      const Base = () => null;
+      const factoryAlias = motionFactory as typeof motionFactory;
+      const namespaceAlias = Framer;
+      const namespaceFactory = namespaceAlias.motion;
+      const MemberComponent = factoryAlias.div;
+      const MemberAlias = MemberComponent;
+      const CreatedComponent = motionFactory.create(Base);
+      const LegacyComponent = motionFactory(Base);
+
+      export const Examples = () => (
+        <>
+          <factoryAlias.div initial={{ scale: 0 }} />
+          <namespaceFactory.span initial={{ scale: 0 }} />
+          <MemberAlias initial={{ scale: 0 }} />
+          <CreatedComponent exit={{ scale: 0 }} />
+          <LegacyComponent initial={{ scale: 0 }} />
+        </>
+      );
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(5);
+  });
+
   it("does not trust a shadow of a motion import", () => {
     const result = run(`
       import { motion } from "framer-motion";
@@ -98,6 +159,46 @@ describe("performance/no-scale-from-zero — regressions", () => {
         const motion = { div: Panel };
         return <motion.div initial={{ scale: 0 }} />;
       };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not trust mutable or conditionally selected motion lookalikes", () => {
+    const result = run(`
+      import { motion } from "framer-motion";
+
+      const Panel = () => null;
+      let mutableFactory = motion;
+      mutableFactory = { div: Panel };
+      const MaybeAnimated = Math.random() > 0.5 ? motion.div : Panel;
+
+      export const Examples = ({ isOpen }) => (
+        <>
+          <mutableFactory.div initial={{ scale: 0 }} />
+          <MaybeAnimated initial={{ scale: 0 }} />
+          <motion.div initial={isOpen ? { scale: 0 } : { scale: 1 }} />
+          <motion.div initial={{ scale: isOpen ? 0 : 1 }} />
+        </>
+      );
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat type-only or default imports as motion factories", () => {
+    const result = run(`
+      import type { motion as MotionType } from "framer-motion";
+      import motion from "framer-motion";
+
+      export const Examples = () => (
+        <>
+          <MotionType.div initial={{ scale: 0 }} />
+          <motion.div initial={{ scale: 0 }} />
+        </>
+      );
     `);
 
     expect(result.parseErrors).toEqual([]);
@@ -123,6 +224,22 @@ describe("performance/no-scale-from-zero — regressions", () => {
 
       export const Example = ({ props }) => (
         <motion.div {...props} initial={{ scale: 0 }} />
+      );
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("uses only the last authoritative duplicate prop", () => {
+    const result = run(`
+      import { motion } from "framer-motion";
+
+      export const Examples = () => (
+        <>
+          <motion.div initial={{ scale: 0 }} initial={{ scale: 1 }} />
+          <motion.div initial={{ scale: 1 }} initial={{ scale: 0 }} />
+        </>
       );
     `);
 

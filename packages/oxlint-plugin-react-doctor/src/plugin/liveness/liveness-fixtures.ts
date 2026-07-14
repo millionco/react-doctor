@@ -836,7 +836,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     forceJsx: true,
   },
   "no-scale-from-zero": {
-    code: "const El = () => <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} />;",
+    code: 'import { motion } from "framer-motion";\nconst El = () => <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} />;',
   },
   "no-secrets-in-client-code": {
     code: 'const authEndpoint = "https://api.example.com/auth?token=supersecretvalue123";',

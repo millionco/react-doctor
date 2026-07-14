@@ -25,14 +25,39 @@ describe("a11y/role-supports-aria-props regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("recognizes an expression-literal number input type", () => {
+  it("recognizes case-insensitive and expression-literal number input types", () => {
     const result = runRule(
       roleSupportsAriaProps,
       `const NumberInputs = ({ value }) => (
-        <input type={"number"} aria-valuenow={value} />
+        <>
+          <input TYPE="NUMBER" aria-valuenow={value} />
+          <input type={"number"} aria-valuenow={value} />
+        </>
       );`,
     );
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("normalizes existing range and button input role branches", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const Inputs = ({ value, pressed }) => (
+        <>
+          <input type="RANGE" aria-valuenow={value} />
+          <input type="BUTTON" aria-pressed={pressed} />
+        </>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still treats an uppercase text input type as a textbox", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const TextInput = ({ value }) => <input type="TEXT" aria-valuenow={value} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("role `textbox`");
   });
 
   it("stays silent when a native input type cannot be resolved statically", () => {

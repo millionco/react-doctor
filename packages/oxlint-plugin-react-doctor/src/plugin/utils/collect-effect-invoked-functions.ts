@@ -1,10 +1,35 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { stripParenExpression } from "./strip-paren-expression.js";
+import {
+  stripParenExpression,
+  TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
+} from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
 const PROMISE_CHAIN_METHOD_NAMES = new Set(["then", "catch", "finally"]);
+
+const isPromiseChainCall = (callee: EsTreeNode): boolean =>
+  isNodeOfType(callee, "MemberExpression") &&
+  isNodeOfType(callee.property, "Identifier") &&
+  PROMISE_CHAIN_METHOD_NAMES.has(callee.property.name) &&
+  isNodeOfType(stripParenExpression(callee.object), "CallExpression");
+
+export const getPromiseChainCallForCallback = (candidate: EsTreeNode): EsTreeNode | null => {
+  let callbackContainer = candidate.parent;
+  while (callbackContainer && TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(callbackContainer.type)) {
+    callbackContainer = callbackContainer.parent;
+  }
+  if (!isNodeOfType(callbackContainer, "CallExpression")) return null;
+  if (
+    !callbackContainer.arguments?.some((argument) => stripParenExpression(argument) === candidate)
+  ) {
+    return null;
+  }
+  return isPromiseChainCall(stripParenExpression(callbackContainer.callee))
+    ? callbackContainer
+    : null;
+};
 
 // Nested functions the effect body executes as part of running the effect —
 // IIFEs, locally-declared functions invoked by a bare call on the synchronous
@@ -23,12 +48,6 @@ export const collectEffectInvokedFunctions = (effectCallback: EsTreeNode): Set<E
     invokedFunctions.add(strippedCandidate);
     pendingFunctions.push(strippedCandidate);
   };
-
-  const isPromiseChainCall = (callee: EsTreeNode): boolean =>
-    isNodeOfType(callee, "MemberExpression") &&
-    isNodeOfType(callee.property, "Identifier") &&
-    PROMISE_CHAIN_METHOD_NAMES.has(callee.property.name) &&
-    isNodeOfType(stripParenExpression(callee.object), "CallExpression");
 
   while (pendingFunctions.length > 0) {
     const currentFunction = pendingFunctions.pop();

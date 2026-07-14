@@ -205,16 +205,18 @@ const canBeReactFunctionComponent = (
     isNodeOfType(expression, "ArrowFunctionExpression") ||
     isNodeOfType(expression, "FunctionExpression")
   ) {
-    return (
-      functionContainsReactRenderOutput(expression, state.scopes, state.controlFlow) ||
-      functionHasReactElementReturnType(expression)
-    );
+    return functionHasReactRenderSemantics(expression, state);
   }
   if (isNodeOfType(expression, "CallExpression")) {
     return isHocCallee(expression.callee as EsTreeNode, state);
   }
   return false;
 };
+
+const functionHasReactRenderSemantics = (functionNode: EsTreeNode, state: AnalyzerState): boolean =>
+  functionContainsReactRenderOutput(functionNode, state.scopes, state.controlFlow) ||
+  functionHasReactElementReturnType(functionNode) ||
+  functionReturnsOnlyNull(functionNode);
 
 const isReactComponentInitializer = (expression: EsTreeNode, state: AnalyzerState): boolean => {
   const stripped = skipTsExpression(expression);
@@ -302,7 +304,7 @@ const isProvenComponentValue = (expression: EsTreeNode, state: AnalyzerState): b
     isNodeOfType(stripped, "ArrowFunctionExpression") ||
     isNodeOfType(stripped, "FunctionExpression")
   ) {
-    return functionContainsReactRenderOutput(stripped, state.scopes, state.controlFlow);
+    return functionHasReactRenderSemantics(stripped, state);
   }
   if (!isNodeOfType(stripped, "CallExpression")) return false;
   if (!isHocCallee(stripped.callee as EsTreeNode, state)) return false;
@@ -351,7 +353,7 @@ const objectExpressionBundlesComponents = (
     if (
       (isNodeOfType(value, "ArrowFunctionExpression") ||
         isNodeOfType(value, "FunctionExpression")) &&
-      functionContainsReactRenderOutput(value, state.scopes, state.controlFlow)
+      functionHasReactRenderSemantics(value, state)
     ) {
       return true;
     }
@@ -694,32 +696,6 @@ export const onlyExportComponents = defineRule({
         // boundary, so only top-level names participate.
         const localComponentNames = new Set<string>();
         const componentFactorySymbolIds = new Set<number>();
-        const defaultExportAliasNames = new Set<string>();
-        for (const child of exportNodes) {
-          if (isNodeOfType(child, "ExportDefaultDeclaration")) {
-            const declaration = skipTsExpression(child.declaration as EsTreeNode);
-            if (isNodeOfType(declaration, "Identifier") && isReactComponentName(declaration.name)) {
-              defaultExportAliasNames.add(declaration.name);
-            }
-            continue;
-          }
-          if (!isNodeOfType(child, "ExportNamedDeclaration") || Boolean(child.source)) {
-            continue;
-          }
-          for (const specifier of child.specifiers) {
-            if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
-            const exported = specifier.exported;
-            const local = specifier.local;
-            const exportedName = isNodeOfType(exported, "Identifier") ? exported.name : null;
-            if (
-              exportedName === "default" &&
-              isNodeOfType(local, "Identifier") &&
-              isReactComponentName(local.name)
-            ) {
-              defaultExportAliasNames.add(local.name);
-            }
-          }
-        }
         for (const child of componentCandidates) {
           if (isInsideFunctionScope(child)) continue;
           if (isNodeOfType(child, "FunctionDeclaration") && child.id) {
@@ -772,9 +748,7 @@ export const onlyExportComponents = defineRule({
             if (
               isReactComponentName(child.id.name) &&
               !isInsideFunctionScope(child) &&
-              (functionContainsReactRenderOutput(child, context.scopes, context.cfg) ||
-                functionHasReactElementReturnType(child) ||
-                (defaultExportAliasNames.has(child.id.name) && functionReturnsOnlyNull(child)))
+              functionHasReactRenderSemantics(child, state)
             ) {
               localComponentNames.add(child.id.name);
             }
@@ -795,24 +769,13 @@ export const onlyExportComponents = defineRule({
               expression !== null &&
               (isNodeOfType(expression, "ArrowFunctionExpression") ||
                 isNodeOfType(expression, "FunctionExpression"));
-            const isDefaultNullPlaceholder =
-              defaultExportAliasNames.has(child.id.name) &&
-              expression !== null &&
-              isDirectFunction &&
-              functionReturnsOnlyNull(expression);
             if (
               isReactComponentName(child.id.name) &&
               (canBeReactFunctionComponent(initializer, state) ||
-                (expression ? isEs6Component(expression) : false) ||
-                isDefaultNullPlaceholder) &&
+                (expression ? isEs6Component(expression) : false)) &&
               !isInsideFunctionScope(child)
             ) {
-              if (
-                !isDirectFunction ||
-                functionContainsReactRenderOutput(expression, context.scopes, context.cfg) ||
-                functionHasReactElementReturnType(expression) ||
-                isDefaultNullPlaceholder
-              ) {
+              if (!isDirectFunction || functionHasReactRenderSemantics(expression, state)) {
                 localComponentNames.add(child.id.name);
               }
             }
@@ -845,9 +808,7 @@ export const onlyExportComponents = defineRule({
               isNodeOfType(stripped, "FunctionDeclaration") ||
               isNodeOfType(stripped, "FunctionExpression")
             ) {
-              const hasRenderOutput =
-                functionContainsReactRenderOutput(stripped, context.scopes, context.cfg) ||
-                functionHasReactElementReturnType(stripped);
+              const hasRenderOutput = functionHasReactRenderSemantics(stripped, state);
               if ((stripped as EsTreeNodeOfType<"FunctionDeclaration">).id) {
                 const idNode = (stripped as EsTreeNodeOfType<"FunctionDeclaration">).id!;
                 isExportedNodeIds.add(stripped);
@@ -927,7 +888,7 @@ export const onlyExportComponents = defineRule({
               continue;
             }
             if (isNodeOfType(stripped, "ArrowFunctionExpression")) {
-              if (functionContainsReactRenderOutput(stripped, context.scopes, context.cfg)) {
+              if (functionHasReactRenderSemantics(stripped, state)) {
                 context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
                 hasReactExport = true;
               } else {
@@ -952,8 +913,7 @@ export const onlyExportComponents = defineRule({
               if (isNodeOfType(declaration, "FunctionDeclaration") && declaration.id) {
                 isExportedNodeIds.add(declaration);
                 exports.push(
-                  functionContainsReactRenderOutput(declaration, context.scopes, context.cfg) ||
-                    functionHasReactElementReturnType(declaration) ||
+                  functionHasReactRenderSemantics(declaration, state) ||
                     localComponentNames.has(declaration.id.name)
                     ? classifyExport(declaration.id.name, declaration.id, true, null, state)
                     : { kind: "non-component", reportNode: declaration.id },

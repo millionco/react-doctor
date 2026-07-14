@@ -1092,6 +1092,51 @@ describe("react-builtins/only-export-components — regressions", () => {
   });
 
   it.each([
+    `export function CurrentDeploymentCard(): null { return null; }`,
+    `export default function CurrentDeploymentCard(): null { return null; }`,
+  ])("reports a helper next to an inline null-only component", (componentExport) => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        export const formatCurrency = (value: number) => String(value);
+        ${componentExport}
+      `,
+      { filename: "src/CurrentDeploymentCard.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an anonymous null-only default component and its adjacent helper", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        export const formatCurrency = (value: number) => String(value);
+        export default (): null => null;
+      `,
+      { filename: "src/CurrentDeploymentCard.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it.each([
+    `export function formatCurrency(): null { return null; }`,
+    `export function CurrentDeploymentCard() { return undefined; }`,
+  ])("does not infer a null component without component semantics", (helperExport) => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        ${helperExport}
+        export const currencySymbol = "$";
+      `,
+      { filename: "src/format-currency.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
     `const FormatCurrency = (value: number) => String(value);
      export default FormatCurrency;`,
     `const FormatCurrency = (value: number) => String(value);

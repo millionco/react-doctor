@@ -635,6 +635,27 @@ describe("no-pass-data-to-parent — regressions", () => {
   });
 
   describe("callback refs sourced from parent callbacks (FN-024)", () => {
+    it("flags the React PhoneNr Input callback ref refreshed by a preceding effect", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, country, phoneNumber, withCountryMeta }) {
+          const onChangeRef = useRef(onChange);
+          useEffect(() => {
+            onChangeRef.current = onChange;
+          }, [onChange]);
+          useEffect(() => {
+            const data = withCountryMeta
+              ? { phoneNumber, country }
+              : phoneNumber;
+            onChangeRef.current(data);
+          }, [country, phoneNumber, withCountryMeta]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("flags the PhoneInput ref-laundering shape with an initializer and render assignment", () => {
       const result = runRule(
         noPassDataToParent,

@@ -430,6 +430,8 @@ export const JSX_LEAF_POOL = [
   `<div dangerouslySetInnerHTML={{ __html: value }} />`,
   `<img src={url} />`,
   `<a href={url} target="_blank">external</a>`,
+  `<a className="navigation-placeholder" />`,
+  `<a role="link" />`,
   `<StyledButton $active={isOpen} customFlag={state}>{state}</StyledButton>`,
   `<DynamicChart width={typeof window === "undefined" ? 0 : window.innerWidth} />`,
   `<a href={url}></a>`,

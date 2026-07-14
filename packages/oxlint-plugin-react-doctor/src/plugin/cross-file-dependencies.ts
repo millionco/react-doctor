@@ -1,22 +1,23 @@
 import { parseSync } from "oxc-parser";
 import type { StaticImport } from "oxc-parser";
+import { analyzeScopes } from "./semantic/scope-analysis.js";
 import {
   INTERNAL_PAGE_PATH_PATTERN,
   PAGE_FILE_PATTERN,
   PAGE_OR_LAYOUT_FILE_PATTERN,
 } from "./constants/nextjs.js";
-import {
-  CREATE_REF_PROP_FLOW_MAX_DEPTH,
-  CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
-} from "./constants/thresholds.js";
+import { CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH } from "./constants/thresholds.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
+import { attachParentReferences } from "./utils/attach-parent-references.js";
 import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout.js";
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
 import { isBarrelIndexModule } from "./utils/is-barrel-index-module.js";
 import { isLegacyArchReactNativeFile } from "./utils/is-legacy-arch-react-native-file.js";
+import { isNodeOfType } from "./utils/is-node-of-type.js";
+import { isReactApiCall } from "./utils/is-react-api-call.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
 import { resolveLang } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
@@ -27,6 +28,7 @@ import {
 import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
+import { isCreateRefResultWriteOnly } from "./rules/react-builtins/is-create-ref-result-write-only.js";
 
 /**
  * Per-rule cross-file dependency collectors — the foundation of the sidecar
@@ -204,49 +206,67 @@ const flattenProgramImportEntries = (program: EsTreeNode): ImportEntryName[] => 
   return entries;
 };
 
-const collectForwardedValueDependencies =
-  (maximumDepth: number): CrossFileDependencyCollector =>
-  ({ absoluteFilePath, staticImports }) => {
-    const greatestTraversedDepthByFilePath = new Map<string, number>();
+const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+}) => {
+  const greatestTraversedDepthByFilePath = new Map<string, number>();
 
-    const collectProgramDependencies = (
-      filePath: string,
-      program: EsTreeNode,
-      remainingDepth: number,
-    ): void => {
-      const previousDepth = greatestTraversedDepthByFilePath.get(filePath) ?? -1;
-      if (previousDepth >= remainingDepth) return;
-      greatestTraversedDepthByFilePath.set(filePath, remainingDepth);
+  const collectProgramDependencies = (
+    filePath: string,
+    program: EsTreeNode,
+    remainingDepth: number,
+  ): void => {
+    const previousDepth = greatestTraversedDepthByFilePath.get(filePath) ?? -1;
+    if (previousDepth >= remainingDepth) return;
+    greatestTraversedDepthByFilePath.set(filePath, remainingDepth);
 
-      for (const entry of flattenProgramImportEntries(program)) {
-        const resolved = resolveCrossFileValueExportWithFilePath(
-          filePath,
-          entry.source,
-          entry.exportedName,
-        );
-        if (!resolved || remainingDepth === 0) continue;
-        collectProgramDependencies(resolved.filePath, resolved.programNode, remainingDepth - 1);
-      }
-    };
-
-    for (const entry of flattenImportEntries(staticImports)) {
+    for (const entry of flattenProgramImportEntries(program)) {
       const resolved = resolveCrossFileValueExportWithFilePath(
-        absoluteFilePath,
+        filePath,
         entry.source,
         entry.exportedName,
       );
-      if (!resolved) continue;
-      collectProgramDependencies(resolved.filePath, resolved.programNode, maximumDepth);
+      if (!resolved || remainingDepth === 0) continue;
+      collectProgramDependencies(resolved.filePath, resolved.programNode, remainingDepth - 1);
     }
   };
 
-const collectForwardedHookDependencies = collectForwardedValueDependencies(
-  CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
-);
+  for (const entry of flattenImportEntries(staticImports)) {
+    const resolved = resolveCrossFileValueExportWithFilePath(
+      absoluteFilePath,
+      entry.source,
+      entry.exportedName,
+    );
+    if (!resolved) continue;
+    collectProgramDependencies(
+      resolved.filePath,
+      resolved.programNode,
+      CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
+    );
+  }
+};
 
-const collectCreateRefDependencies = collectForwardedValueDependencies(
-  CREATE_REF_PROP_FLOW_MAX_DEPTH,
-);
+const collectCreateRefDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  program,
+}) => {
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (
+      !isNodeOfType(node, "CallExpression") ||
+      !isReactApiCall(node, "createRef", scopes, {
+        allowGlobalReactNamespace: true,
+        allowUnboundBareCalls: true,
+        resolveNamedAliases: true,
+      })
+    ) {
+      return;
+    }
+    isCreateRefResultWriteOnly(node, absoluteFilePath, scopes);
+  });
+};
 
 // no-mutating-reducer-state only reads another file when a `useReducer`
 // call's reducer argument resolves to an imported binding, and the call must

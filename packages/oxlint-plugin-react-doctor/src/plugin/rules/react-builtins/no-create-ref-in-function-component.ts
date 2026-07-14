@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isCreateRefResultWriteOnly } from "./is-create-ref-result-write-only.js";
@@ -10,7 +11,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const MESSAGE =
-  "`createRef()` is observed beyond the render that created it, so a later render replaces the ref object and detaches the observed one. Hoist a `useRef()` call to the component's unconditional top level instead.";
+  "`createRef()` may escape or be observed beyond the render that created it, so a later render can replace the ref object and detach the observed one. Hoist a `useRef()` call to the component's unconditional top level instead.";
 
 // `useMemo(() => createRef(), [])` runs its callback during the enclosing
 // component/hook's render, so the memo callback is transparent when
@@ -46,14 +47,14 @@ export const noCreateRefInFunctionComponent = defineRule({
     "Replace `createRef()` with the `useRef()` hook inside function components and hooks. `createRef` is only for class components.",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isReactFunctionCall(node, "createRef")) return;
-
-      // Guard the bare `createRef()` form against a shadowing local binding
-      // (`const createRef = () => ({})`). If the identifier resolves to a
-      // non-import declaration it isn't React's `createRef`, so skip.
-      if (isNodeOfType(node.callee, "Identifier")) {
-        const symbol = context.scopes.symbolFor(node.callee);
-        if (symbol && symbol.kind !== "import") return;
+      if (
+        !isReactApiCall(node, "createRef", context.scopes, {
+          allowGlobalReactNamespace: true,
+          allowUnboundBareCalls: true,
+          resolveNamedAliases: true,
+        })
+      ) {
+        return;
       }
 
       const enclosingFunction = findEnclosingRenderFunction(node);

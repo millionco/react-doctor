@@ -390,16 +390,18 @@ describe("react-native collectors", () => {
 });
 
 describe("no-create-ref-in-function-component collector", () => {
-  it("records every module in a bounded ref-forwarding chain on warm and cold collection", () => {
+  it("records the modules in the createRef consumer chain on warm and cold collection", () => {
     writeFixtureFile(
       "src/use-forward-focus.ts",
-      `export default function useForwardFocus(ref) {
+      `import { useImperativeHandle } from "react";
+export default function useForwardFocus(ref) {
   useImperativeHandle(ref, () => ({}));
 }`,
     );
     writeFixtureFile(
       "src/button.tsx",
-      `import useForwardFocus from "./use-forward-focus";
+      `import React from "react";
+import useForwardFocus from "./use-forward-focus";
 export const Button = React.forwardRef((props, ref) => {
   useForwardFocus(ref);
   return <button {...props} />;
@@ -412,8 +414,12 @@ export const Navigation = ({ target }) => <Button ref={target} />;`,
     );
     const appPath = writeFixtureFile(
       "src/App.tsx",
-      `import { Navigation } from "./navigation";
-export const App = () => <Navigation target={createRef()} />;`,
+      `import { createRef } from "react";
+import { Navigation } from "./navigation";
+export const App = () => {
+  const target = createRef();
+  return <Navigation target={target} />;
+};`,
     );
 
     const firstTrace = collectFor(appPath, ["no-create-ref-in-function-component"]);
@@ -423,6 +429,27 @@ export const App = () => <Navigation target={createRef()} />;`,
       expect(trace?.contentPaths.has(fixturePath("src/button.tsx"))).toBe(true);
       expect(trace?.contentPaths.has(fixturePath("src/use-forward-focus.ts"))).toBe(true);
     }
+  });
+
+  it("does not traverse unrelated import fan-out while fingerprinting", () => {
+    for (let moduleIndex = 0; moduleIndex < 100; moduleIndex += 1) {
+      writeFixtureFile(
+        `src/unrelated-${moduleIndex}.tsx`,
+        `export const unrelated${moduleIndex} = ${moduleIndex};\n`,
+      );
+    }
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `${Array.from(
+        { length: 100 },
+        (_, moduleIndex) => `import { unrelated${moduleIndex} } from "./unrelated-${moduleIndex}";`,
+      ).join("\n")}
+export const App = () => <div>{unrelated0}</div>;`,
+    );
+    const trace = collectFor(appPath, ["no-create-ref-in-function-component"]);
+    expect(trace).not.toBeNull();
+    expect(trace?.contentPaths.size).toBe(0);
+    expect(trace?.existencePaths.size).toBe(0);
   });
 });
 

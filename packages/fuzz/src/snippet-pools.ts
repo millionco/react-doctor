@@ -99,6 +99,7 @@ export const STATE_SNIPPET_POOL = [
   `const [reducerState, dispatch] = useReducer(reducer, { count: 0 });`,
   `const containerRef = useRef(null);`,
   `const fuzzWriteOnlyFocusControl = { refs: { toggle: createRef(), close: createRef(), slider: createRef() }, setFocus: () => {}, loseFocus: () => {} }; const fuzzWriteOnlyFocusNode = <button ref={fuzzWriteOnlyFocusControl.refs.toggle}>Open</button>;`,
+  `const fuzzObservedTarget = createRef(); useEffect(() => handle(fuzzObservedTarget), [fuzzObservedTarget]);`,
   `const handleRef = useRef(handle); handleRef.current = handle;`,
   `const [copied, setCopied] = useState(false);`,
   `const [cache] = useState(new Map());`,

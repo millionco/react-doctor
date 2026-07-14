@@ -44,6 +44,81 @@ describe("correctness/no-uncontrolled-input — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it.each(["button", "hidden", "image", "reset", "submit"])(
+    "still flags an undefined-state transition for a %s input without asking for onChange",
+    (inputType) => {
+      const result = runRule(
+        noUncontrolledInput,
+        `import { useState } from "react";
+        export default function Control() {
+          const [label] = useState();
+          return <input type="${inputType}" value={label} />;
+        }`,
+        { filename: "app/control.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("Give useState a starting value");
+      expect(result.diagnostics[0]?.message).not.toContain("add onChange");
+    },
+  );
+
+  it.each(["checkbox", "radio"])(
+    "does not treat value state as the controlledness signal for an exact-lowercase %s input",
+    (inputType) => {
+      const result = runRule(
+        noUncontrolledInput,
+        `import { useState } from "react";
+        export default function Control() {
+          const [value] = useState();
+          return <input type="${inputType}" value={value} />;
+        }`,
+        { filename: "app/control.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("still flags an undefined-state transition for uppercase CHECKBOX because React's checked controlledness test is case-sensitive", () => {
+    const result = runRule(
+      noUncontrolledInput,
+      `import { useState } from "react";
+      export default function Control() {
+        const [value] = useState();
+        return <input type="CHECKBOX" value={value} />;
+      }`,
+      { filename: "app/control.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).not.toContain(
+      "When `type` resolves to a value-controlled input type",
+    );
+  });
+
+  it("uses conditional transition wording for dynamic and mixed checked-controlledness types", () => {
+    const result = runRule(
+      noUncontrolledInput,
+      `import { useState } from "react";
+      export default function Controls({ inputType, useCheckbox }) {
+        const [dynamicValue] = useState();
+        const [mixedValue] = useState();
+        return <>
+          <input type={inputType} value={dynamicValue} />
+          <input type={useCheckbox ? "checkbox" : "submit"} value={mixedValue} />
+        </>;
+      }`,
+      { filename: "app/controls.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+    for (const diagnostic of result.diagnostics) {
+      expect(diagnostic.message).toContain("When `type` resolves to a value-controlled input type");
+      expect(diagnostic.message).not.toContain("add onChange");
+    }
+  });
+
   it("stays silent on the DevLovers submit input whose value labels a button", () => {
     const result = runRule(
       noUncontrolledInput,
@@ -88,6 +163,17 @@ describe("correctness/no-uncontrolled-input — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toEqual([]);
     });
+
+    it(`still flags value and defaultValue together on a ${inputType} input`, () => {
+      const result = runRule(
+        noUncontrolledInput,
+        `export default function Control() { return <input type="${inputType}" value="Action" defaultValue="Fallback" />; }`,
+        { filename: "app/control.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("defaultValue");
+    });
   }
 
   it.each(["text", "search"])(
@@ -111,6 +197,9 @@ describe("correctness/no-uncontrolled-input — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain(
+      "When `type` resolves to an editable input type",
+    );
   });
 
   it("stays silent on expression, wrapped, const-alias, and all-bypass ternary types", () => {
@@ -123,6 +212,27 @@ describe("correctness/no-uncontrolled-input — regressions", () => {
           <input type={("IMAGE" as const)} value="Search" alt="Search" />
           <input type={inputType} value="Reset" />
           <input type={alternate ? "button" : "submit"} value="Action" />
+        </>;
+      }`,
+      { filename: "app/controls.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("resolves a constant ternary and a long const alias chain", () => {
+    const result = runRule(
+      noUncontrolledInput,
+      `export default function Controls() {
+        const firstType = "submit";
+        const secondType = firstType;
+        const thirdType = secondType;
+        const fourthType = thirdType;
+        const fifthType = fourthType;
+        const sixthType = fifthType;
+        return <>
+          <input type={true ? "submit" : editableType} value="Action" />
+          <input type={sixthType} value="Action" />
         </>;
       }`,
       { filename: "app/controls.tsx" },
@@ -145,6 +255,24 @@ describe("correctness/no-uncontrolled-input — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(2);
+    for (const diagnostic of result.diagnostics) {
+      expect(diagnostic.message).toContain("When `type` resolves to an editable input type");
+    }
+  });
+
+  it("uses the last explicit input type when duplicate attributes are present", () => {
+    const result = runRule(
+      noUncontrolledInput,
+      `export default function Controls({ value }) {
+        return <>
+          <input type="submit" type="text" value={value} />
+          <input type="text" type="submit" value="Action" />
+        </>;
+      }`,
+      { filename: "app/controls.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays conservative when an opaque spread appears before or after the input type", () => {

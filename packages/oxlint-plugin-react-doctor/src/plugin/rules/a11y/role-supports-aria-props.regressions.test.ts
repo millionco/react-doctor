@@ -25,6 +25,19 @@ describe("a11y/role-supports-aria-props regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("recognizes case-insensitive and expression-literal number input types", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const NumberInputs = ({ value }) => (
+        <>
+          <input TYPE="NUMBER" aria-valuenow={value} />
+          <input type={"number"} aria-valuenow={value} />
+        </>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when a native input type cannot be resolved statically", () => {
     const result = runRule(
       roleSupportsAriaProps,
@@ -53,6 +66,40 @@ describe("a11y/role-supports-aria-props regressions", () => {
       );`,
     );
     expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("still treats a missing or invalid static input type as a textbox", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const TextInputs = ({ value }) => (
+        <>
+          <input aria-valuenow={value} />
+          <input type="counter" aria-valuenow={value} />
+        </>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("still honors an explicit role over a native number input role", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const TextInput = ({ value }) => (
+        <input type="number" role="textbox" aria-valuenow={value} />
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags props unsupported by a native number input spinbutton", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const NumberInput = ({ expanded }) => (
+        <input type="number" aria-expanded={expanded} />
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("role `spinbutton`");
   });
 
   it("stays silent on range ARIA props supported by slider and explicit spinbutton roles", () => {

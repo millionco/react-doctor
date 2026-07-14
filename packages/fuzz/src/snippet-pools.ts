@@ -423,6 +423,8 @@ export const JSX_LEAF_POOL = [
   `<input type="radio" value="a" checked={state === "a"} onChange={() => setState("a")} />`,
   `<input type="radio" name="group" value="b" defaultChecked />`,
   `<input type="number" min={0} max={100} value={state} onChange={handleAmount} />`,
+  `<input type="number" min={0} max={100} value={state} aria-valuemin={0} aria-valuemax={100} aria-valuenow={state} onChange={handleAmount} />`,
+  `<input type="number" aria-expanded={isOpen} />`,
   `<textarea readOnly value={String(value)} />`,
   `<ThemeContext.Provider value={{ mode: state, toggle: handle }}>{state}</ThemeContext.Provider>`,
   `<ItemsContext.Provider value={items}>{state}</ItemsContext.Provider>`,

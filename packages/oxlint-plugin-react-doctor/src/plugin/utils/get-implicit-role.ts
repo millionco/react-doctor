@@ -69,9 +69,18 @@ export const getImplicitRole = (
       break;
     }
     case "input": {
-      const inputType = propStringValue("type");
-      if (inputType === null) implicit = "textbox";
-      else if (
+      const inputTypeAttribute = hasJsxPropIgnoreCase(node.attributes, "type");
+      if (!inputTypeAttribute) {
+        implicit = "textbox";
+        break;
+      }
+      const inputTypeValue = getJsxPropStringValue(inputTypeAttribute);
+      if (inputTypeValue === null) {
+        implicit = "";
+        break;
+      }
+      const inputType = inputTypeValue.toLowerCase();
+      if (
         inputType === "button" ||
         inputType === "image" ||
         inputType === "reset" ||
@@ -79,6 +88,7 @@ export const getImplicitRole = (
       )
         implicit = "button";
       else if (inputType === "checkbox") implicit = "checkbox";
+      else if (inputType === "number") implicit = "spinbutton";
       else if (inputType === "radio") implicit = "radio";
       else if (inputType === "range") implicit = "slider";
       else implicit = "textbox";

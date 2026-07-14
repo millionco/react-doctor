@@ -434,6 +434,8 @@ export const JSX_LEAF_POOL = [
   `<DynamicChart width={typeof window === "undefined" ? 0 : window.innerWidth} />`,
   `<a href={url}></a>`,
   `<a href="#">click here</a>`,
+  `<link rel="stylesheet" href="/styles.css" />`,
+  `<link rel="stylesheet" href="https://cdn.example.com/theme.css" />`,
   `<button onClick={handleClick}>Click here…</button>`,
   `<div onClick={condition ? undefined : () => setIsOpen(true)}>{!condition && <Button aria-label="Open" onPress={() => setIsOpen(true)}>Open</Button>}</div>`,
   `<button>Submit — now...</button>`,

@@ -1,10 +1,12 @@
-import { GOOGLE_FONTS_PATTERN } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
+
+const HTTP_STYLESHEET_URL_PATTERN = /^https?:\/\//i;
 
 export const nextjsNoCssLink = defineRule({
   id: "nextjs-no-css-link",
@@ -28,10 +30,14 @@ export const nextjsNoCssLink = defineRule({
 
       const hrefAttribute = findJsxAttribute(attributes, "href");
       if (!hrefAttribute?.value) return;
-      const hrefValue = isNodeOfType(hrefAttribute.value, "Literal")
-        ? hrefAttribute.value.value
-        : null;
-      if (typeof hrefValue === "string" && GOOGLE_FONTS_PATTERN.test(hrefValue)) return;
+      const hrefCandidates = getJsxPropStaticStringValues(hrefAttribute, context.scopes);
+      if (
+        hrefCandidates !== null &&
+        hrefCandidates.length > 0 &&
+        hrefCandidates.every((hrefCandidate) => HTTP_STYLESHEET_URL_PATTERN.test(hrefCandidate))
+      ) {
+        return;
+      }
 
       context.report({
         node,

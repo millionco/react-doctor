@@ -94,6 +94,7 @@ export const STATE_SNIPPET_POOL = [
   `const [internalValue, setInternalValue] = useState(value); useEffect(() => { setInternalValue(value); }, [value]);`,
   `const [previousValue, setPreviousValue] = useState(Boolean(value)); useEffect(() => { setPreviousValue(Boolean(value)); }, [value]);`,
   `const [resetDraft, setResetDraft] = useState(""); useEffect(() => { setResetDraft(""); }, [value]);`,
+  `const FuzzHiddenResetMenu = ({ visible }) => { const [open, setOpen] = useState(false); useEffect(() => { setOpen(false); }, [visible]); return visible && open && <div role="menu">Menu</div>; }; const fuzzHiddenResetMenuNode = <FuzzHiddenResetMenu visible={condition} />;`,
   `const [reducerState, dispatch] = useReducer(reducer, { count: 0 });`,
   `const containerRef = useRef(null);`,
   `const handleRef = useRef(handle); handleRef.current = handle;`,

@@ -1,13 +1,20 @@
 import type { Reference } from "eslint-scope";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { executesDuringRender } from "../../utils/executes-during-render.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { getCallExpr, getDownstreamRefs, getRef, getUpstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
@@ -32,6 +39,43 @@ interface LivePropExpressionIdentity {
   memberPath: string[];
   booleanNormalization: "identity" | "normalized" | "negated";
 }
+
+interface BooleanFormula {
+  kind: "and" | "atom" | "constant" | "not" | "or";
+  atomKey?: string;
+  constantValue?: boolean;
+  left?: BooleanFormula;
+  right?: BooleanFormula;
+}
+
+interface BooleanFacts {
+  assignments: Map<string, boolean>;
+  didConflict: boolean;
+  didChange: boolean;
+}
+
+const POST_COMMIT_EFFECT_HOOK_NAMES = new Set([
+  "useEffect",
+  "useEffectOnUpdate",
+  "useInsertionEffect",
+  "useLayoutEffect",
+]);
+
+const createConstantFormula = (constantValue: boolean): BooleanFormula => ({
+  kind: "constant",
+  constantValue,
+});
+
+const createNotFormula = (formula: BooleanFormula): BooleanFormula => ({
+  kind: "not",
+  left: formula,
+});
+
+const createBinaryFormula = (
+  kind: "and" | "or",
+  left: BooleanFormula,
+  right: BooleanFormula,
+): BooleanFormula => ({ kind, left, right });
 
 const isUndefinedNode = (node: EsTreeNode | null | undefined): boolean => {
   if (node === null || node === undefined) return true;
@@ -140,6 +184,550 @@ const getLivePropExpressionIdentity = (
   }
 
   return null;
+};
+
+const getLivePropAtomKey = (identity: LivePropExpressionIdentity): string =>
+  `prop:${identity.propSymbolId}:${JSON.stringify(identity.memberPath)}:${identity.booleanNormalization}`;
+
+const getBooleanFormula = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  node: EsTreeNode,
+  protectedSymbolIds: ReadonlySet<number>,
+  visitedSymbolIds: Set<number> = new Set(),
+): BooleanFormula | null => {
+  const expression = stripParenExpression(node);
+  if (isNodeOfType(expression, "Literal")) {
+    return createConstantFormula(Boolean(expression.value));
+  }
+  if (isNodeOfType(expression, "Identifier")) {
+    if (expression.name === "undefined" && context.scopes.isGlobalReference(expression)) {
+      return createConstantFormula(false);
+    }
+    const symbol = context.scopes.symbolFor(expression);
+    if (!symbol) return null;
+    if (
+      !protectedSymbolIds.has(symbol.id) &&
+      symbol.kind === "const" &&
+      !visitedSymbolIds.has(symbol.id) &&
+      isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+      symbol.declarationNode.id === symbol.bindingIdentifier
+    ) {
+      const initializer = getDirectConstInitializer(symbol);
+      if (initializer) {
+        visitedSymbolIds.add(symbol.id);
+        const initializerFormula = getBooleanFormula(
+          analysis,
+          context,
+          initializer,
+          protectedSymbolIds,
+          visitedSymbolIds,
+        );
+        if (initializerFormula) return initializerFormula;
+      }
+    }
+    return { kind: "atom", atomKey: `symbol:${symbol.id}` };
+  }
+  if (isNodeOfType(expression, "MemberExpression")) {
+    const identity = getLivePropExpressionIdentity(analysis, context, expression);
+    return identity ? { kind: "atom", atomKey: getLivePropAtomKey(identity) } : null;
+  }
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+    const argumentFormula = getBooleanFormula(
+      analysis,
+      context,
+      expression.argument as EsTreeNode,
+      protectedSymbolIds,
+      visitedSymbolIds,
+    );
+    return argumentFormula ? createNotFormula(argumentFormula) : null;
+  }
+  if (
+    isNodeOfType(expression, "CallExpression") &&
+    isNodeOfType(expression.callee, "Identifier") &&
+    expression.callee.name === "Boolean" &&
+    context.scopes.isGlobalReference(expression.callee) &&
+    expression.arguments.length === 1 &&
+    !isNodeOfType(expression.arguments[0], "SpreadElement")
+  ) {
+    return getBooleanFormula(
+      analysis,
+      context,
+      expression.arguments[0],
+      protectedSymbolIds,
+      visitedSymbolIds,
+    );
+  }
+  if (
+    isNodeOfType(expression, "LogicalExpression") &&
+    (expression.operator === "&&" || expression.operator === "||")
+  ) {
+    const leftFormula = getBooleanFormula(
+      analysis,
+      context,
+      expression.left,
+      protectedSymbolIds,
+      new Set(visitedSymbolIds),
+    );
+    const rightFormula = getBooleanFormula(
+      analysis,
+      context,
+      expression.right,
+      protectedSymbolIds,
+      new Set(visitedSymbolIds),
+    );
+    if (!leftFormula || !rightFormula) return null;
+    return createBinaryFormula(
+      expression.operator === "&&" ? "and" : "or",
+      leftFormula,
+      rightFormula,
+    );
+  }
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    const testFormula = getBooleanFormula(
+      analysis,
+      context,
+      expression.test,
+      protectedSymbolIds,
+      new Set(visitedSymbolIds),
+    );
+    const consequentFormula = getBooleanFormula(
+      analysis,
+      context,
+      expression.consequent,
+      protectedSymbolIds,
+      new Set(visitedSymbolIds),
+    );
+    const alternateFormula = getBooleanFormula(
+      analysis,
+      context,
+      expression.alternate,
+      protectedSymbolIds,
+      new Set(visitedSymbolIds),
+    );
+    if (!testFormula || !consequentFormula || !alternateFormula) return null;
+    return createBinaryFormula(
+      "or",
+      createBinaryFormula("and", testFormula, consequentFormula),
+      createBinaryFormula("and", createNotFormula(testFormula), alternateFormula),
+    );
+  }
+  return null;
+};
+
+const evaluateBooleanFormula = (
+  formula: BooleanFormula,
+  assignments: ReadonlyMap<string, boolean>,
+): boolean | null => {
+  if (formula.kind === "constant") return formula.constantValue ?? null;
+  if (formula.kind === "atom") {
+    return formula.atomKey === undefined ? null : (assignments.get(formula.atomKey) ?? null);
+  }
+  if (formula.kind === "not") {
+    if (!formula.left) return null;
+    const value = evaluateBooleanFormula(formula.left, assignments);
+    return value === null ? null : !value;
+  }
+  if (!formula.left || !formula.right) return null;
+  const leftValue = evaluateBooleanFormula(formula.left, assignments);
+  const rightValue = evaluateBooleanFormula(formula.right, assignments);
+  if (formula.kind === "and") {
+    if (leftValue === false || rightValue === false) return false;
+    return leftValue === true && rightValue === true ? true : null;
+  }
+  if (leftValue === true || rightValue === true) return true;
+  return leftValue === false && rightValue === false ? false : null;
+};
+
+const assignBooleanFact = (facts: BooleanFacts, atomKey: string, value: boolean): void => {
+  const existingValue = facts.assignments.get(atomKey);
+  if (existingValue === undefined) {
+    facts.assignments.set(atomKey, value);
+    facts.didChange = true;
+  } else if (existingValue !== value) {
+    facts.didConflict = true;
+  }
+};
+
+const addRequiredBooleanFacts = (
+  formula: BooleanFormula,
+  expectedValue: boolean,
+  facts: BooleanFacts,
+): void => {
+  const existingValue = evaluateBooleanFormula(formula, facts.assignments);
+  if (existingValue !== null) {
+    if (existingValue !== expectedValue) facts.didConflict = true;
+    return;
+  }
+  if (formula.kind === "atom" && formula.atomKey !== undefined) {
+    assignBooleanFact(facts, formula.atomKey, expectedValue);
+    return;
+  }
+  if (formula.kind === "not" && formula.left) {
+    addRequiredBooleanFacts(formula.left, !expectedValue, facts);
+    return;
+  }
+  if (!formula.left || !formula.right) return;
+  if (formula.kind === "and") {
+    if (expectedValue) {
+      addRequiredBooleanFacts(formula.left, true, facts);
+      addRequiredBooleanFacts(formula.right, true, facts);
+      return;
+    }
+    const leftValue = evaluateBooleanFormula(formula.left, facts.assignments);
+    const rightValue = evaluateBooleanFormula(formula.right, facts.assignments);
+    if (leftValue === true) addRequiredBooleanFacts(formula.right, false, facts);
+    if (rightValue === true) addRequiredBooleanFacts(formula.left, false, facts);
+    return;
+  }
+  if (!expectedValue) {
+    addRequiredBooleanFacts(formula.left, false, facts);
+    addRequiredBooleanFacts(formula.right, false, facts);
+    return;
+  }
+  const leftValue = evaluateBooleanFormula(formula.left, facts.assignments);
+  const rightValue = evaluateBooleanFormula(formula.right, facts.assignments);
+  if (leftValue === false) addRequiredBooleanFacts(formula.right, true, facts);
+  if (rightValue === false) addRequiredBooleanFacts(formula.left, true, facts);
+};
+
+const doConditionsImplyFormula = (
+  conditions: ReadonlyArray<BooleanFormula>,
+  target: BooleanFormula,
+): boolean => {
+  const facts: BooleanFacts = {
+    assignments: new Map(),
+    didConflict: false,
+    didChange: true,
+  };
+  while (facts.didChange && !facts.didConflict) {
+    facts.didChange = false;
+    for (const condition of conditions) addRequiredBooleanFacts(condition, true, facts);
+  }
+  return facts.didConflict || evaluateBooleanFormula(target, facts.assignments) === true;
+};
+
+const isHidingClassKey = (node: EsTreeNode): boolean => {
+  if (isNodeOfType(node, "Identifier")) return node.name === "hidden";
+  if (isNodeOfType(node, "Literal") && typeof node.value === "string") {
+    return node.value === "hidden" || node.value.endsWith("-hidden");
+  }
+  const memberName = getStaticMemberPropertyName(node);
+  return memberName === "hidden" || Boolean(memberName?.endsWith("-hidden"));
+};
+
+const getConditionalHidingClassFormula = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  expression: EsTreeNode,
+  protectedSymbolIds: ReadonlySet<number>,
+): BooleanFormula | null => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
+    const consequentText = isNodeOfType(unwrappedExpression.consequent, "Literal")
+      ? unwrappedExpression.consequent.value
+      : null;
+    const alternateText = isNodeOfType(unwrappedExpression.alternate, "Literal")
+      ? unwrappedExpression.alternate.value
+      : null;
+    const consequentHides =
+      typeof consequentText === "string" &&
+      consequentText.split(/\s+/).some((token) => token === "hidden" || token.endsWith("-hidden"));
+    const alternateHides =
+      typeof alternateText === "string" &&
+      alternateText.split(/\s+/).some((token) => token === "hidden" || token.endsWith("-hidden"));
+    if (consequentHides === alternateHides) return null;
+    const testFormula = getBooleanFormula(
+      analysis,
+      context,
+      unwrappedExpression.test,
+      protectedSymbolIds,
+    );
+    if (!testFormula) return null;
+    return consequentHides ? testFormula : createNotFormula(testFormula);
+  }
+  if (!isNodeOfType(unwrappedExpression, "CallExpression")) return null;
+  const hidingFormulas: BooleanFormula[] = [];
+  for (const argument of unwrappedExpression.arguments) {
+    if (!isNodeOfType(argument, "ObjectExpression")) continue;
+    for (const property of argument.properties) {
+      if (!isNodeOfType(property, "Property") || !isHidingClassKey(property.key)) continue;
+      const formula = getBooleanFormula(analysis, context, property.value, protectedSymbolIds);
+      if (formula) hidingFormulas.push(formula);
+    }
+  }
+  return hidingFormulas.reduce<BooleanFormula | null>(
+    (combinedFormula, formula) =>
+      combinedFormula ? createBinaryFormula("or", combinedFormula, formula) : formula,
+    null,
+  );
+};
+
+const getJsxElementHiddenFormula = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  protectedSymbolIds: ReadonlySet<number>,
+): BooleanFormula | null => {
+  const hiddenAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "hidden");
+  if (hiddenAttribute) {
+    if (!hiddenAttribute.value) return createConstantFormula(true);
+    if (isNodeOfType(hiddenAttribute.value, "JSXExpressionContainer")) {
+      const hiddenFormula = getBooleanFormula(
+        analysis,
+        context,
+        hiddenAttribute.value.expression,
+        protectedSymbolIds,
+      );
+      if (hiddenFormula) return hiddenFormula;
+    }
+  }
+  const classNameAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "className");
+  if (
+    classNameAttribute?.value &&
+    isNodeOfType(classNameAttribute.value, "JSXExpressionContainer")
+  ) {
+    return getConditionalHidingClassFormula(
+      analysis,
+      context,
+      classNameAttribute.value.expression,
+      protectedSymbolIds,
+    );
+  }
+  return null;
+};
+
+const getJsxAriaHiddenFormula = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  protectedSymbolIds: ReadonlySet<number>,
+): BooleanFormula | null => {
+  const ariaHiddenAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "aria-hidden");
+  if (!ariaHiddenAttribute) return null;
+  if (!ariaHiddenAttribute.value) return createConstantFormula(true);
+  if (isNodeOfType(ariaHiddenAttribute.value, "Literal")) {
+    return createConstantFormula(ariaHiddenAttribute.value.value === "true");
+  }
+  if (!isNodeOfType(ariaHiddenAttribute.value, "JSXExpressionContainer")) return null;
+  return getBooleanFormula(
+    analysis,
+    context,
+    ariaHiddenAttribute.value.expression,
+    protectedSymbolIds,
+  );
+};
+
+const isAccessibilityOnlyJsxReference = (node: EsTreeNode): boolean => {
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "JSXAttribute")) {
+      return Boolean(getJsxAttributeName(ancestor.name)?.toLowerCase().startsWith("aria-"));
+    }
+    if (isNodeOfType(ancestor, "JSXElement") || isFunctionLike(ancestor)) return false;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const findNearestFunction = (node: EsTreeNode): EsTreeNode | null => {
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor) {
+    if (isFunctionLike(ancestor)) return ancestor;
+    ancestor = ancestor.parent;
+  }
+  return null;
+};
+
+const getFunctionBindingSymbol = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor | null => {
+  if (isNodeOfType(functionNode, "FunctionDeclaration") && functionNode.id) {
+    return scopes.symbolFor(functionNode.id);
+  }
+  const parent = functionNode.parent;
+  if (
+    (isNodeOfType(functionNode, "ArrowFunctionExpression") ||
+      isNodeOfType(functionNode, "FunctionExpression")) &&
+    isNodeOfType(parent, "VariableDeclarator") &&
+    parent.init === functionNode &&
+    isNodeOfType(parent.id, "Identifier")
+  ) {
+    return scopes.symbolFor(parent.id);
+  }
+  return null;
+};
+
+const getComponentFunctionNode = (containingNode: EsTreeNode): EsTreeNode | null => {
+  if (isFunctionLike(containingNode)) return containingNode;
+  if (!isNodeOfType(containingNode, "VariableDeclarator") || !containingNode.init) return null;
+  const initializer = stripParenExpression(containingNode.init);
+  if (isFunctionLike(initializer)) return initializer;
+  if (!isNodeOfType(initializer, "CallExpression")) return null;
+  const firstArgument = initializer.arguments[0];
+  return firstArgument &&
+    !isNodeOfType(firstArgument, "SpreadElement") &&
+    isFunctionLike(firstArgument)
+    ? firstArgument
+    : null;
+};
+
+const isReferenceDirectlyCalled = (identifier: EsTreeNode): EsTreeNode | null => {
+  const unwrappedIdentifier = stripParenExpression(identifier);
+  const parent = unwrappedIdentifier.parent;
+  return isNodeOfType(parent, "CallExpression") && parent.callee === unwrappedIdentifier
+    ? parent
+    : null;
+};
+
+const isNodeEvaluatedDuringRender = (
+  node: EsTreeNode,
+  componentNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedFunctionSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const functionNode = findNearestFunction(node);
+  if (!functionNode) return false;
+  if (functionNode === componentNode) return true;
+  if (executesDuringRender(functionNode, scopes)) {
+    return isNodeEvaluatedDuringRender(
+      functionNode.parent ?? functionNode,
+      componentNode,
+      scopes,
+      visitedFunctionSymbolIds,
+    );
+  }
+  const functionSymbol = getFunctionBindingSymbol(functionNode, scopes);
+  if (!functionSymbol || visitedFunctionSymbolIds.has(functionSymbol.id)) return false;
+  visitedFunctionSymbolIds.add(functionSymbol.id);
+  let callCount = 0;
+  for (const reference of functionSymbol.references) {
+    const callExpression = isReferenceDirectlyCalled(reference.identifier);
+    if (!callExpression) return false;
+    if (
+      !isNodeEvaluatedDuringRender(
+        callExpression,
+        componentNode,
+        scopes,
+        new Set(visitedFunctionSymbolIds),
+      )
+    ) {
+      return false;
+    }
+    callCount += 1;
+  }
+  return callCount > 0;
+};
+
+const isInlineJsxCallback = (functionNode: EsTreeNode): boolean => {
+  let ancestor: EsTreeNode | null | undefined = functionNode.parent;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "JSXAttribute")) return true;
+    if (isFunctionLike(ancestor) || isNodeOfType(ancestor, "Program")) return false;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const collectExposureConditions = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  node: EsTreeNode,
+  componentNode: EsTreeNode,
+  protectedSymbolIds: ReadonlySet<number>,
+): BooleanFormula[] => {
+  const conditions: BooleanFormula[] = [];
+  const isAccessibilityOnlyReference = isAccessibilityOnlyJsxReference(node);
+  let child: EsTreeNode = node;
+  let parent: EsTreeNode | null | undefined = node.parent;
+  while (parent) {
+    if (isNodeOfType(parent, "LogicalExpression") && parent.right === child) {
+      const leftFormula = getBooleanFormula(analysis, context, parent.left, protectedSymbolIds);
+      if (leftFormula && parent.operator === "&&") conditions.push(leftFormula);
+      if (leftFormula && parent.operator === "||") conditions.push(createNotFormula(leftFormula));
+    } else if (isNodeOfType(parent, "ConditionalExpression")) {
+      const testFormula = getBooleanFormula(analysis, context, parent.test, protectedSymbolIds);
+      if (testFormula && parent.consequent === child) conditions.push(testFormula);
+      if (testFormula && parent.alternate === child) conditions.push(createNotFormula(testFormula));
+    } else if (isNodeOfType(parent, "IfStatement")) {
+      const testFormula = getBooleanFormula(analysis, context, parent.test, protectedSymbolIds);
+      if (testFormula && parent.consequent === child) conditions.push(testFormula);
+      if (testFormula && parent.alternate === child) conditions.push(createNotFormula(testFormula));
+    } else if (isNodeOfType(parent, "JSXElement")) {
+      const visuallyHiddenFormula = getJsxElementHiddenFormula(
+        analysis,
+        context,
+        parent.openingElement,
+        protectedSymbolIds,
+      );
+      if (visuallyHiddenFormula) conditions.push(createNotFormula(visuallyHiddenFormula));
+      if (!visuallyHiddenFormula && isAccessibilityOnlyReference) {
+        const ariaHiddenFormula = getJsxAriaHiddenFormula(
+          analysis,
+          context,
+          parent.openingElement,
+          protectedSymbolIds,
+        );
+        if (ariaHiddenFormula) conditions.push(createNotFormula(ariaHiddenFormula));
+      }
+    }
+    if (parent === componentNode) break;
+    if (isFunctionLike(parent) && parent !== componentNode && !isInlineJsxCallback(parent)) break;
+    child = parent;
+    parent = parent.parent;
+  }
+  return conditions;
+};
+
+const isStateReferenceInPostCommitEffect = (
+  referenceIdentifier: EsTreeNode,
+  stateSymbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const functionNode = findNearestFunction(referenceIdentifier);
+  if (!functionNode) return false;
+  const callExpression = functionNode.parent;
+  if (
+    !isNodeOfType(callExpression, "CallExpression") ||
+    callExpression.arguments[0] !== functionNode ||
+    !POST_COMMIT_EFFECT_HOOK_NAMES.has(getCalleeName(callExpression) ?? "")
+  ) {
+    return false;
+  }
+  const dependencies = callExpression.arguments[1];
+  if (!isNodeOfType(dependencies, "ArrayExpression")) return false;
+  let containsStateDependency = false;
+  walkAst(dependencies, (candidate) => {
+    if (
+      isNodeOfType(candidate, "Identifier") &&
+      scopes.referenceFor(candidate)?.resolvedSymbol === stateSymbol
+    ) {
+      containsStateDependency = true;
+      return false;
+    }
+  });
+  return containsStateDependency;
+};
+
+const isStateReferenceInPostCommitEffectDependencies = (
+  referenceIdentifier: EsTreeNode,
+): boolean => {
+  let ancestor: EsTreeNode = referenceIdentifier;
+  while (ancestor.parent) {
+    const parent = ancestor.parent;
+    if (isNodeOfType(parent, "ArrayExpression")) {
+      const callExpression = parent.parent;
+      return Boolean(
+        isNodeOfType(callExpression, "CallExpression") &&
+        callExpression.arguments[1] === parent &&
+        POST_COMMIT_EFFECT_HOOK_NAMES.has(getCalleeName(callExpression) ?? ""),
+      );
+    }
+    if (isFunctionLike(parent)) return false;
+    ancestor = parent;
+  }
+  return false;
 };
 
 const isMountSnapshotInitializer = (context: RuleContext, node: EsTreeNode): boolean => {
@@ -313,6 +901,110 @@ const countUseStates = (analysis: ProgramAnalysis, componentNode: EsTreeNode | n
   return stateVariables.size;
 };
 
+const getStateSymbolForSetter = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  setterReference: Reference,
+): SymbolDescriptor | null => {
+  const useStateDeclaration = getUseStateDecl(analysis, setterReference);
+  if (
+    !useStateDeclaration ||
+    !isNodeOfType(useStateDeclaration, "VariableDeclarator") ||
+    !isNodeOfType(useStateDeclaration.id, "ArrayPattern")
+  ) {
+    return null;
+  }
+  const stateBinding = useStateDeclaration.id.elements[0];
+  return stateBinding && isNodeOfType(stateBinding, "Identifier")
+    ? context.scopes.symbolFor(stateBinding)
+    : null;
+};
+
+const getPropDerivedDependencySymbols = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  dependencyReferences: ReadonlyArray<Reference>,
+): SymbolDescriptor[] => {
+  const symbolsById = new Map<number, SymbolDescriptor>();
+  for (const dependencyReference of dependencyReferences) {
+    if (
+      !getUpstreamRefs(analysis, dependencyReference).some((upstreamReference) =>
+        isProp(analysis, upstreamReference),
+      )
+    ) {
+      continue;
+    }
+    const symbol = context.scopes.symbolFor(
+      dependencyReference.identifier as unknown as EsTreeNode,
+    );
+    if (symbol) symbolsById.set(symbol.id, symbol);
+  }
+  return [...symbolsById.values()];
+};
+
+const areAllResetStateReadsHiddenUntilReset = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  componentNode: EsTreeNode,
+  setterReferences: ReadonlyArray<Reference>,
+  dependencyReferences: ReadonlyArray<Reference>,
+): boolean => {
+  if (dependencyReferences.length !== 1) return false;
+  const dependencySymbols = getPropDerivedDependencySymbols(
+    analysis,
+    context,
+    dependencyReferences,
+  );
+  if (dependencySymbols.length === 0) return false;
+  const dependencySymbolIds = new Set(dependencySymbols.map((symbol) => symbol.id));
+  const dependencyFormulas = dependencySymbols.map<BooleanFormula>((symbol) => ({
+    kind: "atom",
+    atomKey: `symbol:${symbol.id}`,
+  }));
+  const resetStateSymbolsById = new Map<number, SymbolDescriptor>();
+  for (const setterReference of setterReferences) {
+    const stateSymbol = getStateSymbolForSetter(analysis, context, setterReference);
+    if (!stateSymbol) return false;
+    resetStateSymbolsById.set(stateSymbol.id, stateSymbol);
+  }
+  for (const stateSymbol of resetStateSymbolsById.values()) {
+    let exposedReadCount = 0;
+    for (const reference of stateSymbol.references) {
+      if (reference.flag === "write") continue;
+      if (
+        isStateReferenceInPostCommitEffect(reference.identifier, stateSymbol, context.scopes) ||
+        isStateReferenceInPostCommitEffectDependencies(reference.identifier)
+      ) {
+        continue;
+      }
+      const isRenderRead = isNodeEvaluatedDuringRender(
+        reference.identifier,
+        componentNode,
+        context.scopes,
+      );
+      const functionNode = findNearestFunction(reference.identifier);
+      if (!isRenderRead && functionNode && !isInlineJsxCallback(functionNode)) return false;
+      const conditions = collectExposureConditions(
+        analysis,
+        context,
+        reference.identifier,
+        componentNode,
+        dependencySymbolIds,
+      );
+      if (
+        !dependencyFormulas.some((dependencyFormula) =>
+          doConditionsImplyFormula(conditions, dependencyFormula),
+        )
+      ) {
+        return false;
+      }
+      exposedReadCount += 1;
+    }
+    if (exposedReadCount === 0) return false;
+  }
+  return resetStateSymbolsById.size > 0;
+};
+
 const findPropUsedToResetAllState = (
   analysis: ProgramAnalysis,
   context: RuleContext,
@@ -355,6 +1047,20 @@ const findPropUsedToResetAllState = (
   // delta audit).
   const resetStateVariables = new Set(stateSetterRefs.map((setterRef) => setterRef.resolved));
   if (resetStateVariables.size !== countUseStates(analysis, containing)) return null;
+
+  const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;
+  if (
+    componentFunctionNode &&
+    areAllResetStateReadsHiddenUntilReset(
+      analysis,
+      context,
+      componentFunctionNode,
+      stateSetterRefs,
+      depsRefs,
+    )
+  ) {
+    return null;
+  }
 
   for (const depRef of depsRefs) {
     for (const upRef of getUpstreamRefs(analysis, depRef)) {

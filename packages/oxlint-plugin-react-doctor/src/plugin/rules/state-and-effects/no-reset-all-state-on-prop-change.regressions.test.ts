@@ -57,7 +57,10 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
           const content = (isVirtual) => {
             const showMenuTrigger = isVirtual || menuTriggerVisible;
             return (
-              <section aria-hidden={isVirtual ? true : undefined}>
+              <section
+                aria-hidden={isVirtual ? true : undefined}
+                className={isVirtual ? "measurement-hidden" : undefined}
+              >
                 {showMenuTrigger && <button aria-expanded={overflowMenuOpen}>Menu</button>}
               </section>
             );
@@ -112,6 +115,125 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
               <output>{String(overflowMenuOpen)}</output>
             </>
           );
+        };`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it.each([
+      [
+        "an immutable visibility alias",
+        `const visibleGate = visible;
+        return visibleGate && <div>{open}</div>;`,
+      ],
+      [
+        "a native hidden attribute",
+        `return <button hidden={!visible} aria-expanded={open}>Menu</button>;`,
+      ],
+      [
+        "an accessibility-only state read",
+        `return <div aria-hidden={!visible} aria-expanded={open} />;`,
+      ],
+      [
+        "an inline handler on a hidden trigger",
+        `return visible && <button onClick={() => notify(open)}>Menu</button>;`,
+      ],
+      ["a gated portal", `return visible && createPortal(<div>{open}</div>, document.body);`],
+      [
+        "TypeScript and parenthesis wrappers",
+        `return ((visible as boolean) && <div>{(open satisfies boolean)}</div>);`,
+      ],
+    ])("stays silent through %s", (_label, renderBody) => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        import { createPortal } from "react-dom";
+        const Menu = ({ visible }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          ${renderBody}
+        };`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when every reset state is gated by the same visibility transition", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const Menu = ({ visible }) => {
+          const [open, setOpen] = useState(false);
+          const [query, setQuery] = useState("");
+          useEffect(() => {
+            setOpen(false);
+            setQuery("");
+          }, [visible]);
+          return visible && <div data-open={open}>{query}</div>;
+        };`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
+      ["an inverse guard", `return !visible && <div>{open}</div>;`, "[visible]"],
+      ["a second reset dependency", `return visible && <div>{open}</div>;`, "[visible, userId]"],
+      [
+        "a mutable guard alias",
+        `let gate = visible;
+        gate = Boolean(visible);
+        return gate && <div>{open}</div>;`,
+        "[visible]",
+      ],
+      [
+        "a named event handler with opaque reachability",
+        `const handleClick = () => notify(open);
+        return visible && <button onClick={handleClick}>Menu</button>;`,
+        "[visible]",
+      ],
+      [
+        "an unguarded portal",
+        `return createPortal(<div>{open}</div>, document.body);`,
+        "[visible]",
+      ],
+      [
+        "visually exposed aria-hidden content",
+        `return <div aria-hidden={!visible}>{String(open)}</div>;`,
+        "[visible]",
+      ],
+    ])("still reports through %s", (_label, renderBody, dependencies) => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        import { createPortal } from "react-dom";
+        const Menu = ({ visible, userId }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), ${dependencies});
+          ${renderBody}
+        };`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still reports when one of multiple reset states remains exposed", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const Menu = ({ visible }) => {
+          const [open, setOpen] = useState(false);
+          const [query, setQuery] = useState("");
+          useEffect(() => {
+            setOpen(false);
+            setQuery("");
+          }, [visible]);
+          return <><output>{query}</output>{visible && open && <div>Menu</div>}</>;
         };`,
         { forceJsx: true },
       );

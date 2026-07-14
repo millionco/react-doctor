@@ -937,7 +937,8 @@ export const onlyExportComponents = defineRule({
                 isExportedNodeIds.add(declaration);
                 exports.push(
                   functionHasReactRenderSemantics(declaration, state) ||
-                    localComponentNames.has(declaration.id.name)
+                    localComponentNames.has(declaration.id.name) ||
+                    /^use[A-Z]/.test(declaration.id.name)
                     ? classifyExport(declaration.id.name, declaration.id, true, null, state)
                     : { kind: "non-component", reportNode: declaration.id },
                 );

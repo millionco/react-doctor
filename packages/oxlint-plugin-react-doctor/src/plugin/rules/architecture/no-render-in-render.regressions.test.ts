@@ -220,6 +220,20 @@ describe("architecture/no-render-in-render — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag a helper that only stores an uninvoked nested custom hook", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          const useUnusedState = () => useState(0);
+          void useUnusedState;
+          return <div>stable</div>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags when a nested NON-component closure calls hooks during the helper call", () => {
     const result = run(
       `const renderRows = (items) => {

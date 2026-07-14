@@ -4718,6 +4718,89 @@ export const Component = ({ load }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    { name: "loose null", guard: "timeoutId != null" },
+    { name: "reversed loose null", guard: "null != timeoutId" },
+    { name: "loose undefined", guard: "timeoutId != undefined" },
+    { name: "reversed loose undefined", guard: "undefined != timeoutId" },
+    { name: "strict undefined", guard: "timeoutId !== undefined" },
+    { name: "reversed strict undefined", guard: "undefined !== timeoutId" },
+    { name: "strict null", guard: "timeoutId !== null" },
+    { name: "reversed strict null", guard: "null !== timeoutId" },
+  ])("accepts cleanup guarded by the owned timer handle with $name", ({ guard }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Component = ({ load }) => {
+  useEffect(() => {
+    let isActive = true;
+    let timeoutId;
+    load().then(() => {
+      if (!isActive) return;
+      timeoutId = setTimeout(task, 1000);
+    });
+    return () => {
+      isActive = false;
+      if (${guard}) clearTimeout(timeoutId);
+    };
+  }, [load]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "loose null equality",
+      parameters: "{ load }",
+      declaration: "",
+      guard: "timeoutId == null",
+    },
+    {
+      name: "reversed strict equality",
+      parameters: "{ load }",
+      declaration: "",
+      guard: "undefined === timeoutId",
+    },
+    {
+      name: "another timer handle",
+      parameters: "{ load }",
+      declaration: "let otherTimeoutId;",
+      guard: "otherTimeoutId != null",
+    },
+    {
+      name: "a shadowed undefined value",
+      parameters: "{ load, undefined }",
+      declaration: "",
+      guard: "timeoutId !== undefined",
+    },
+  ])("rejects cleanup guarded by $name", ({ parameters, declaration, guard }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Component = (${parameters}) => {
+  useEffect(() => {
+    let isActive = true;
+    let timeoutId;
+    ${declaration}
+    load().then(() => {
+      if (!isActive) return;
+      timeoutId = setTimeout(task, 1000);
+    });
+    return () => {
+      isActive = false;
+      if (${guard}) clearTimeout(timeoutId);
+    };
+  }, [load]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts clearing and resetting the timer handle during cleanup", () => {
     const result = runRule(
       effectNeedsCleanup,

@@ -1187,11 +1187,35 @@ const findDirectHandleGuardForRelease = (
   context: RuleContext,
 ): EsTreeNode | null => {
   if (usage.handleKey === null) return null;
+  const doesTestRequireLiveHandle = (test: EsTreeNode): boolean => {
+    if (resolveExpressionKey(test, context) === usage.handleKey) return true;
+    const unwrappedTest = stripParenExpression(test);
+    if (
+      !isNodeOfType(unwrappedTest, "BinaryExpression") ||
+      (unwrappedTest.operator !== "!=" && unwrappedTest.operator !== "!==")
+    ) {
+      return false;
+    }
+    const isNullishOperand = (operand: EsTreeNode): boolean => {
+      const unwrappedOperand = stripParenExpression(operand);
+      return (
+        (isNodeOfType(unwrappedOperand, "Literal") && unwrappedOperand.value === null) ||
+        (isNodeOfType(unwrappedOperand, "Identifier") &&
+          unwrappedOperand.name === "undefined" &&
+          context.scopes.isGlobalReference(unwrappedOperand))
+      );
+    };
+    return (
+      (resolveExpressionKey(unwrappedTest.left, context) === usage.handleKey &&
+        isNullishOperand(unwrappedTest.right)) ||
+      (resolveExpressionKey(unwrappedTest.right, context) === usage.handleKey &&
+        isNullishOperand(unwrappedTest.left))
+    );
+  };
   let ancestor = releaseCall.parent;
   while (ancestor && ancestor !== owner) {
     if (isNodeOfType(ancestor, "IfStatement")) {
-      return ancestor.alternate === null &&
-        resolveExpressionKey(ancestor.test, context) === usage.handleKey
+      return ancestor.alternate === null && doesTestRequireLiveHandle(ancestor.test)
         ? ancestor
         : null;
     }

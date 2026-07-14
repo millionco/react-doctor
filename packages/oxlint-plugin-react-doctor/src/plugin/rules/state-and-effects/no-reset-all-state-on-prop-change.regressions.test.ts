@@ -191,6 +191,17 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
         };`,
       ],
       [
+        "a nested same-name interface cannot change the dependency type",
+        `import { useEffect, useState } from "react";
+        interface Props { visible: string }
+        namespace Other { export interface Props { visible: boolean } }
+        const Menu = ({ visible }: Props) => {
+          const [draft, setDraft] = useState("");
+          useEffect(() => setDraft(""), [visible]);
+          return visible && <output>{draft}</output>;
+        };`,
+      ],
+      [
         "a custom component can ignore hidden",
         `import { useEffect, useState } from "react";
         const Panel = ({ value }: { hidden: boolean; value: boolean }) => <output>{value}</output>;

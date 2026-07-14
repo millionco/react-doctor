@@ -4,6 +4,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
@@ -509,15 +510,6 @@ const isAccessibilityOnlyJsxReference = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const findNearestFunction = (node: EsTreeNode): EsTreeNode | null => {
-  let ancestor: EsTreeNode | null | undefined = node.parent;
-  while (ancestor) {
-    if (isFunctionLike(ancestor)) return ancestor;
-    ancestor = ancestor.parent;
-  }
-  return null;
-};
-
 const getFunctionBindingSymbol = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -581,7 +573,7 @@ const isNodeEvaluatedDuringRender = (
   scopes: ScopeAnalysis,
   visitedFunctionSymbolIds: Set<number> = new Set(),
 ): boolean => {
-  const functionNode = findNearestFunction(node);
+  const functionNode = findEnclosingFunction(node);
   if (!functionNode) return false;
   if (functionNode === componentNode) return true;
   const synchronousCallbackCall = getSynchronousCallbackCall(functionNode);
@@ -713,7 +705,7 @@ const isStateReferenceInPostCommitEffect = (
   stateSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const functionNode = findNearestFunction(referenceIdentifier);
+  const functionNode = findEnclosingFunction(referenceIdentifier);
   if (!functionNode) return false;
   const callExpression = functionNode.parent;
   if (
@@ -988,19 +980,22 @@ const getBooleanPropertyType = (
     return false;
   }
   const typeName = unwrappedType.typeName.name;
-  let isBooleanProperty = false;
-  walkAst(programNode, (candidate) => {
-    if (isNodeOfType(candidate, "TSInterfaceDeclaration") && candidate.id.name === typeName) {
-      isBooleanProperty = candidate.body.body.some(
-        (member) =>
-          isNodeOfType(member, "TSPropertySignature") &&
-          getPropertyName(member.key) === propertyName &&
-          isBooleanTypeNode(member.typeAnnotation?.typeAnnotation),
-      );
-      return false;
-    }
+  if (!isNodeOfType(programNode, "Program")) return false;
+  const matchingInterfaces = programNode.body.flatMap((statement) => {
+    const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
+      ? statement.declaration
+      : statement;
+    return isNodeOfType(declaration, "TSInterfaceDeclaration") && declaration.id.name === typeName
+      ? [declaration]
+      : [];
   });
-  return isBooleanProperty;
+  if (matchingInterfaces.length !== 1) return false;
+  return matchingInterfaces[0].body.body.some(
+    (member) =>
+      isNodeOfType(member, "TSPropertySignature") &&
+      getPropertyName(member.key) === propertyName &&
+      isBooleanTypeNode(member.typeAnnotation?.typeAnnotation),
+  );
 };
 
 const findProgramNode = (node: EsTreeNode): EsTreeNode => {
@@ -1110,7 +1105,7 @@ const getSetterExposureConditions = (
   componentNode: EsTreeNode,
   protectedSymbolIds: ReadonlySet<number>,
 ): BooleanFormula[][] | null => {
-  const functionNode = findNearestFunction(setterReference.identifier as unknown as EsTreeNode);
+  const functionNode = findEnclosingFunction(setterReference.identifier as unknown as EsTreeNode);
   if (!functionNode) return null;
   if (isInlineJsxCallback(functionNode)) {
     return [
@@ -1231,7 +1226,7 @@ const areAllResetStateReadsHiddenUntilReset = (
         componentNode,
         context.scopes,
       );
-      const functionNode = findNearestFunction(reference.identifier);
+      const functionNode = findEnclosingFunction(reference.identifier);
       if (!isRenderRead && functionNode && !isInlineJsxCallback(functionNode)) return false;
       const conditions = collectExposureConditions(
         analysis,

@@ -1171,6 +1171,62 @@ describe("react-builtins/only-export-components — regressions", () => {
   });
 
   it.each([
+    `const formatCurrency = (value: number) => String(value);
+     export { formatCurrency as FormatCurrency };`,
+    `const formatCurrency = (value: number) => String(value);
+     export const FormatCurrency = formatCurrency;`,
+    `const formatCurrency = (value: number) => String(value);
+     const formatterAlias = formatCurrency;
+     export { formatterAlias as FormatCurrency };`,
+    `const formatCurrency = (value: number) => String(value);
+     const formatterAlias = formatCurrency satisfies typeof formatCurrency;
+     export const FormatCurrency = (formatterAlias);`,
+  ])("reports a PascalCase named export backed by a non-component", (namedExport) => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        export const Card = () => <div />;
+        ${namedExport}
+      `,
+      { filename: "src/Card.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains the runtime's PascalCase heuristic for a same-name function export", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        const FormatCurrency = (value: number) => String(value);
+        export { FormatCurrency };
+        export const formatLocale = getLocale();
+      `,
+      { filename: "src/format-currency.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `const Card = () => <div />;
+     export { Card };`,
+    `const Card = () => <div />;
+     export { Card as ProfileCard };`,
+    `const Card = () => <div />;
+     export const ProfileCard = Card;`,
+    `const Card = () => <div />;
+     const CardAlias = Card;
+     export { CardAlias as ProfileCard };`,
+  ])("accepts a named export backed by a proven component", (namedExport) => {
+    const result = runRule(onlyExportComponents, namedExport, {
+      filename: "src/Card.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
     `import { createRoot } from "react-dom/client";
      export const Card = () => <div />;
      export const runtimeConfig = getConfig();

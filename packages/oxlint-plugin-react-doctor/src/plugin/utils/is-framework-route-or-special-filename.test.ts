@@ -42,6 +42,9 @@ describe("isFrameworkRouteOrSpecialFilename", () => {
     ["next", "src/components/page.tsx"],
     ["next", "src/components/opengraph-image.tsx"],
     ["next", "src/components/_app.tsx"],
+    ["expo", "src/components/_layout.tsx"],
+    ["expo", "src/components/+not-found.tsx"],
+    ["expo", "src/components/app/_layout.tsx"],
   ] as const)("does not apply %s semantics to %s", (runtime, filename) => {
     expect(
       isFrameworkRouteOrSpecialFilename({ filename: `/repo/${filename}`, settings: {} }, runtime),
@@ -56,6 +59,15 @@ describe("isFrameworkRouteOrSpecialFilename", () => {
           settings: { "react-doctor": { rootDirectory: "/app/project" } },
         },
         "next",
+      ),
+    ).toBe(false);
+    expect(
+      isFrameworkRouteOrSpecialFilename(
+        {
+          filename: "/app/project/src/components/_layout.tsx",
+          settings: { "react-doctor": { rootDirectory: "/app/project" } },
+        },
+        "expo",
       ),
     ).toBe(false);
   });

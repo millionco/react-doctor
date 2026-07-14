@@ -193,6 +193,26 @@ describe("only-export-components Fast Refresh applicability", () => {
     ).toHaveLength(0);
   });
 
+  it.each(["src/components/_layout.tsx", "src/components/+not-found.tsx"])(
+    "reports Expo reserved basenames outside the route root — %s",
+    (relativeFilename) => {
+      const projectDirectory = createProject({
+        dependencies: { expo: "55.0.0", "expo-router": "55.0.0", react: "19.0.0" },
+      });
+      expect(runMixedExportRule(projectDirectory, relativeFilename).diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each(["app/_layout.tsx", "src/app/(tabs)/+not-found.tsx"])(
+    "keeps actual Expo Router special modules exempt — %s",
+    (relativeFilename) => {
+      const projectDirectory = createProject({
+        dependencies: { expo: "55.0.0", "expo-router": "55.0.0", react: "19.0.0" },
+      });
+      expect(runMixedExportRule(projectDirectory, relativeFilename).diagnostics).toHaveLength(0);
+    },
+  );
+
   it("reports for a Parcel browser entry", () => {
     expect(
       runMixedExportRule(

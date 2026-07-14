@@ -1,8 +1,11 @@
 import * as path from "node:path";
 import { NEXTJS_SOURCE_FILE_EXTENSION_GROUP } from "../constants/nextjs.js";
+import { getProjectRelativeFilename } from "./get-project-relative-filename.js";
+import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import { isInProjectDirectory } from "./is-in-project-directory.js";
 import { isNextjsMetadataImageRouteFilename } from "./is-nextjs-metadata-image-route-filename.js";
 import { normalizeFilename } from "./normalize-filename.js";
+import { findNearestPackageDirectory } from "./read-nearest-package-manifest.js";
 import type { RuleContext } from "./rule-context.js";
 
 const NEXT_APP_ROUTE_FILE_PATTERN = new RegExp(
@@ -31,6 +34,21 @@ const isInNextDirectory = (
   return filename.startsWith(`${directoryPath}/`) || filename.includes(`/${directoryPath}/`);
 };
 
+const isInExpoRouteDirectory = (context: Pick<RuleContext, "filename" | "settings">): boolean => {
+  const filename = normalizeFilename(context.filename ?? "");
+  const configuredRootDirectory = getReactDoctorStringSetting(context.settings, "rootDirectory");
+  const packageDirectory = path.isAbsolute(filename) ? findNearestPackageDirectory(filename) : null;
+  const projectRelativeFilename = getProjectRelativeFilename(
+    filename,
+    configuredRootDirectory ?? packageDirectory ?? undefined,
+  );
+  const relativeFilename =
+    projectRelativeFilename === filename && path.isAbsolute(filename)
+      ? filename.split("/").slice(2).join("/")
+      : projectRelativeFilename;
+  return relativeFilename.startsWith("app/") || relativeFilename.startsWith("src/app/");
+};
+
 export const isFrameworkRouteOrSpecialFilename = (
   context: Pick<RuleContext, "filename" | "settings">,
   runtime: "expo" | "generic" | "next" | "react-router" | "remix" | "tanstack",
@@ -46,7 +64,9 @@ export const isFrameworkRouteOrSpecialFilename = (
       (isInNextDirectory(context, "pages") && NEXT_PAGES_ROUTE_FILE_PATTERN.test(basename))
     );
   }
-  if (runtime === "expo") return EXPO_ROUTE_FILE_PATTERN.test(basename);
+  if (runtime === "expo") {
+    return isInExpoRouteDirectory(context) && EXPO_ROUTE_FILE_PATTERN.test(basename);
+  }
   if (runtime === "tanstack") return TANSTACK_ROUTE_FILE_PATTERN.test(basename);
   if (runtime === "react-router" || runtime === "remix") {
     return REACT_ROUTER_FILE_PATTERN.test(basename);

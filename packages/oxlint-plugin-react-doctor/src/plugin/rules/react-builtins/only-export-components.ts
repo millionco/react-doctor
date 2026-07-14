@@ -7,6 +7,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { functionHasReactElementReturnType } from "../../utils/function-has-react-element-return-type.js";
 import { functionReturnsOnlyNull } from "../../utils/function-returns-only-null.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getFastRefreshFileStatus } from "../../utils/get-fast-refresh-file-status.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
@@ -282,13 +283,30 @@ const isComponentFactoryCall = (expression: EsTreeNode, state: AnalyzerState): b
   return symbol !== null && state.componentFactorySymbolIds.has(symbol.id);
 };
 
-const isProvenComponentValue = (expression: EsTreeNode, state: AnalyzerState): boolean => {
+const isProvenComponentValue = (
+  expression: EsTreeNode,
+  state: AnalyzerState,
+  inspectedSymbolIds: ReadonlySet<number> = new Set(),
+): boolean => {
   const stripped = skipTsExpression(expression);
   if (isNodeOfType(stripped, "Identifier")) {
-    if (state.localComponentNames.has(stripped.name)) return true;
-    return (
-      isReactComponentName(stripped.name) && state.scopes.symbolFor(stripped)?.kind === "import"
-    );
+    const symbol = state.scopes.symbolFor(stripped);
+    if (!symbol) return false;
+    if (state.localComponentNames.has(stripped.name)) {
+      return symbol.references.every((reference) => reference.flag === "read");
+    }
+    if (isReactComponentName(stripped.name) && symbol.kind === "import") return true;
+    if (inspectedSymbolIds.has(symbol.id)) return false;
+    const initializer = getDirectUnreassignedInitializer(symbol);
+    if (!initializer) return false;
+    const strippedInitializer = skipTsExpression(initializer);
+    if (
+      isNodeOfType(strippedInitializer, "ArrowFunctionExpression") ||
+      isNodeOfType(strippedInitializer, "FunctionExpression")
+    ) {
+      return false;
+    }
+    return isProvenComponentValue(initializer, state, new Set([...inspectedSymbolIds, symbol.id]));
   }
   if (
     isNodeOfType(stripped, "MemberExpression") &&
@@ -375,7 +393,7 @@ const classifyExport = (
   initializer: EsTreeNode | null | undefined,
   state: AnalyzerState,
 ): ExportType => {
-  if (isNodeOfType(reportNode, "Identifier") && state.localComponentNames.has(reportNode.name)) {
+  if (isNodeOfType(reportNode, "Identifier") && isProvenComponentValue(reportNode, state)) {
     return { kind: "react-component" };
   }
   // HoC-wrapped: `export const Foo = memo(...)` — treat as component.
@@ -460,6 +478,11 @@ const classifyExport = (
       return { kind: "namespace-object", reportNode };
     }
     if (isNodeOfType(stripped, "MemberExpression")) {
+      return isProvenComponentValue(stripped, state)
+        ? { kind: "react-component" }
+        : { kind: "non-component", reportNode };
+    }
+    if (isNodeOfType(stripped, "Identifier")) {
       return isProvenComponentValue(stripped, state)
         ? { kind: "react-component" }
         : { kind: "non-component", reportNode };
@@ -982,12 +1005,25 @@ export const onlyExportComponents = defineRule({
               let entry: ExportType;
               if (localName && localComponentNames.has(localName)) {
                 entry = { kind: "react-component" };
+              } else if (
+                !isReExportFromSource &&
+                localName === exportedName &&
+                localName !== null &&
+                isReactComponentName(localName)
+              ) {
+                entry = { kind: "react-component" };
               } else if (exportedName === "default" && localName && local) {
                 entry = isProvenComponentValue(local, state)
                   ? { kind: "react-component" }
                   : { kind: "non-component", reportNode };
               } else if (exportedName) {
-                entry = classifyExport(exportedName, reportNode, false, null, state);
+                entry = classifyExport(
+                  exportedName,
+                  reportNode,
+                  false,
+                  isReExportFromSource ? null : local,
+                  state,
+                );
               } else {
                 entry = { kind: "non-component", reportNode };
                 // `export { Foo as "🍌" }` still EXPORTS the component —

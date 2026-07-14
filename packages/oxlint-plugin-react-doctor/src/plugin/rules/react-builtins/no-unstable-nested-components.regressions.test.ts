@@ -36,6 +36,17 @@ describe("react-builtins/no-unstable-nested-components — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag a render callback passed to useMemo or called inline", () => {
+    const result = run(`
+      import { useMemo } from "react";
+      export const Parent = ({ memoize }: { memoize: boolean }) => {
+        const RenderContent = () => <div>Hello</div>;
+        return memoize ? useMemo(RenderContent, []) : RenderContent();
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not attribute JSX across a nested function boundary", () => {
     const result = run(`
       function Parent() {

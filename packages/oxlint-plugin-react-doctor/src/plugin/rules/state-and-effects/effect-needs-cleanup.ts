@@ -1395,14 +1395,41 @@ const collectBlockingBooleanStates = (
       ];
 };
 
-const isDirectEarlyReturnConsequent = (ifStatement: EsTreeNode): boolean => {
-  if (!isNodeOfType(ifStatement, "IfStatement") || ifStatement.alternate) return false;
-  if (isNodeOfType(ifStatement.consequent, "ReturnStatement")) return true;
-  return (
-    isNodeOfType(ifStatement.consequent, "BlockStatement") &&
-    ifStatement.consequent.body.length === 1 &&
-    isNodeOfType(ifStatement.consequent.body[0], "ReturnStatement")
-  );
+const canNodeReachLaterNodeWithinFunction = (
+  sourceNode: EsTreeNode,
+  targetNode: EsTreeNode,
+  owner: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const functionCfg = context.cfg.cfgFor(owner);
+  const sourceBlock = functionCfg?.blockOf(sourceNode);
+  const targetBlock = functionCfg?.blockOf(targetNode);
+  const sourceStart = getRangeStart(sourceNode);
+  const targetStart = getRangeStart(targetNode);
+  if (
+    !functionCfg ||
+    !sourceBlock ||
+    !targetBlock ||
+    sourceStart === null ||
+    targetStart === null
+  ) {
+    return true;
+  }
+  if (!isNodeReachableWithinFunction(sourceNode, context)) return false;
+  if (sourceBlock === targetBlock) return sourceStart < targetStart;
+  const visitedBlocks = new Set([sourceBlock]);
+  const pendingBlocks = [sourceBlock];
+  while (pendingBlocks.length > 0) {
+    const currentBlock = pendingBlocks.pop();
+    if (!currentBlock) break;
+    for (const edge of currentBlock.successors) {
+      if (edge.to === targetBlock) return true;
+      if (visitedBlocks.has(edge.to)) continue;
+      visitedBlocks.add(edge.to);
+      pendingBlocks.push(edge.to);
+    }
+  }
+  return false;
 };
 
 const collectDeferredUsageGuardStates = (
@@ -1416,7 +1443,8 @@ const collectDeferredUsageGuardStates = (
     if (child !== callback.body && isFunctionLike(child)) return false;
     if (
       isNodeOfType(child, "IfStatement") &&
-      isDirectEarlyReturnConsequent(child) &&
+      !child.alternate &&
+      !canNodeReachLaterNodeWithinFunction(child.consequent, usageNode, callback, context) &&
       doMatchingNodesCoverEveryPathBeforeUsage(usageNode, [child], callback, context)
     ) {
       guardStates.push(...collectBlockingBooleanStates(child.test, true, child, context));
@@ -1494,6 +1522,29 @@ const deferredUsageWritesGuardBeforeUsage = (
   return didWriteGuard;
 };
 
+const canInterruptionReachUsageThroughCatch = (
+  interruptionNode: EsTreeNode,
+  usageNode: EsTreeNode,
+  owner: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  let descendant = interruptionNode;
+  let ancestor = descendant.parent;
+  while (ancestor && ancestor !== owner) {
+    if (
+      isNodeOfType(ancestor, "TryStatement") &&
+      ancestor.block === descendant &&
+      ancestor.handler &&
+      canNodeReachLaterNodeWithinFunction(ancestor.handler.body, usageNode, owner, context)
+    ) {
+      return true;
+    }
+    descendant = ancestor;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
 const isEffectLocalLifecycleGuard = (
   callback: EsTreeNode,
   guardState: BooleanGuardState,
@@ -1528,6 +1579,7 @@ const hasPotentialInterruptionAfterGuard = (
   callback: EsTreeNode,
   guardState: BooleanGuardState,
   usageNode: EsTreeNode,
+  context: RuleContext,
 ): boolean => {
   if (!isFunctionLike(callback)) return true;
   const guardStart = getRangeStart(guardState.guardNode);
@@ -1544,8 +1596,13 @@ const hasPotentialInterruptionAfterGuard = (
       isNodeOfType(child, "AwaitExpression") ||
       isNodeOfType(child, "YieldExpression")
     ) {
-      hasPotentialInterruption = true;
-      return false;
+      if (
+        canNodeReachLaterNodeWithinFunction(child, usageNode, callback, context) ||
+        canInterruptionReachUsageThroughCatch(child, usageNode, callback, context)
+      ) {
+        hasPotentialInterruption = true;
+        return false;
+      }
     }
   });
   return hasPotentialInterruption;
@@ -1704,7 +1761,7 @@ const hasGuardedDeferredCleanup = (
   return collectDeferredUsageGuardStates(usageFunction, usage.node, context).some(
     (guardState) =>
       isEffectLocalLifecycleGuard(callback, guardState, cleanupFunctions, context) &&
-      !hasPotentialInterruptionAfterGuard(usageFunction, guardState, usage.node) &&
+      !hasPotentialInterruptionAfterGuard(usageFunction, guardState, usage.node, context) &&
       !deferredUsageWritesGuardBeforeUsage(usageFunction, usage.node, guardState, context) &&
       cleanupReturns.every((cleanupReturn) =>
         cleanupReturnInvalidatesGuard(cleanupReturn, guardState, context),

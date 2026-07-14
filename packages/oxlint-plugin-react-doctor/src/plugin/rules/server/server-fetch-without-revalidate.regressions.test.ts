@@ -155,4 +155,18 @@ export default async function Page() {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("does not apply Next global fetch caching semantics to node-fetch imports", () => {
+    const result = runRule(
+      serverFetchWithoutRevalidate,
+      `import fetch from "node-fetch";
+export async function GET() {
+  const response = await fetch("https://api.github.com/repos/millionco/react-doctor");
+  return Response.json(await response.json());
+}`,
+      { filename: "docs/app/funding.json/route.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

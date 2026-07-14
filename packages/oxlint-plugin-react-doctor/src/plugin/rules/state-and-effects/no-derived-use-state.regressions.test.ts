@@ -464,4 +464,42 @@ describe("no-derived-useState — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("stays silent when local selection falls back to the current prop seed", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `function AccessibleNavTree({ tree, activeId: controlledActiveId }) {
+        const [internalActiveId, setInternalActiveId] = useState(tree.id);
+        const isControlled = controlledActiveId !== undefined;
+        const parentMap = useMemo(() => buildParentMap(tree), [tree]);
+        const activeId = isControlled || internalActiveId === tree.id || parentMap.has(internalActiveId)
+          ? (controlledActiveId ?? internalActiveId)
+          : tree.id;
+        return <Tree activeId={activeId} onActiveChange={(node) => setInternalActiveId(node.id)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a prop-seeded selection rendered without current-prop validation", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `function AccessibleNavTree({ tree }) {
+        const [internalActiveId, setInternalActiveId] = useState(tree.id);
+        const activeId = tree.children.some((node) => node.id === internalActiveId)
+          ? internalActiveId
+          : tree.id;
+        return (
+          <Tree
+            activeId={activeId}
+            staleActiveId={internalActiveId}
+            onActiveChange={(node) => setInternalActiveId(node.id)}
+          />
+        );
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

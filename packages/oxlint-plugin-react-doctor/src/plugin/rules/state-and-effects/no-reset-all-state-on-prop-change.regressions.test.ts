@@ -165,6 +165,25 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("stays silent when a transient reset accompanies a live prop mirror", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const Editor = ({ disabled }: { disabled?: boolean }) => {
+          const [previouslyDisabled, setPreviouslyDisabled] = useState(Boolean(disabled));
+          const [draft, setDraft] = useState("");
+          useEffect(() => {
+            setPreviouslyDisabled(Boolean(disabled));
+            setDraft("");
+          }, [disabled]);
+          return <output>{String(previouslyDisabled)}{draft}</output>;
+        };`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("does not treat a shadowed useMemo lookalike as a React mount snapshot", () => {
       const result = runRule(
         noResetAllStateOnPropChange,

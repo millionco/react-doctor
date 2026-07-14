@@ -124,6 +124,47 @@ describe("no-prop-callback-in-render", () => {
        };`,
     ],
     [
+      "a native-looking method after its parameter is reassigned",
+      `const useItems = (items: string[], onRender: typeof items.forEach) => {
+         items = { forEach: onRender } as unknown as string[];
+         items.forEach(() => {});
+       };`,
+    ],
+    [
+      "an overwritten native method",
+      `const useItems = (items: string[], onRender: typeof items.forEach) => {
+         items.forEach = onRender;
+         items.forEach(() => {});
+       };`,
+    ],
+    [
+      "a dynamically overwritten native method",
+      `const useItems = (
+         items: string[],
+         methodName: keyof typeof items,
+         onRender: typeof items.forEach,
+       ) => {
+         items[methodName] = onRender;
+         items.forEach(() => {});
+       };`,
+    ],
+    [
+      "a native-looking method after a synchronous helper reassigns its parameter",
+      `const useItems = (items: string[], onRender: typeof items.forEach) => {
+         const replaceItems = () => {
+           items = { forEach: onRender } as unknown as string[];
+         };
+         replaceItems();
+         items.forEach(() => {});
+       };`,
+    ],
+    [
+      "a native type name shadowed by an enclosing type parameter",
+      `const useItems = <Array extends { forEach(callback: () => void): void }>(items: Array) => {
+         items.forEach(() => {});
+       };`,
+    ],
+    [
       "a mutating Set method on a custom hook parameter",
       `const useMutateValues = (values: Set<string>) => {
          values.add("next");
@@ -162,10 +203,24 @@ describe("no-prop-callback-in-render", () => {
        };`,
     ],
     [
+      "nested callback methods invoked by native iteration",
+      `interface Action { nested: { run(): void } }
+       const useRunActions = (actions: readonly Action[]) => {
+         actions.forEach((action) => action.nested.run());
+       };`,
+    ],
+    [
       "callback values invoked by a local iterator binding",
       `const useRunCallbacks = (callbacks: ReadonlyArray<() => void>) => {
          const runCallback = (callback: () => void) => callback();
          callbacks.forEach(runCallback);
+       };`,
+    ],
+    [
+      "a local iterator binding that invokes a captured callback parameter",
+      `const useVisitItems = (items: readonly string[], onVisit: (item: string) => void) => {
+         const visitItem = (item: string) => onVisit(item);
+         items.forEach(visitItem);
        };`,
     ],
     [
@@ -221,6 +276,13 @@ describe("no-prop-callback-in-render", () => {
       "a callback retrieved from a native collection",
       `const useRunCallback = (callbacks: ReadonlyMap<string, () => void>) => {
          callbacks.get("ready")?.();
+       };`,
+    ],
+    [
+      "a callback method retrieved from a native collection",
+      `interface Action { run(): void }
+       const useRunAction = (actions: ReadonlyArray<Action>) => {
+         actions.at(0)?.run();
        };`,
     ],
   ])("reports %s", (_name, code) => {
@@ -383,6 +445,14 @@ describe("no-prop-callback-in-render", () => {
        };`,
     ],
     [
+      "native iteration that defers a captured callback parameter",
+      `const useVisitItems = (items: readonly string[], onVisit: (item: string) => void) => {
+         items.forEach((item) => {
+           queueMicrotask(() => onVisit(item));
+         });
+       };`,
+    ],
+    [
       "native iteration through TypeScript and optional-chain wrappers",
       `const useItemTotal = (items: readonly string[]) => {
          (items as string[])?.forEach?.((item) => { consume(item); });
@@ -393,6 +463,23 @@ describe("no-prop-callback-in-render", () => {
       `function useItemTotal(seed: number, items: readonly string[] = []) {
          items.forEach((item) => { consume(seed, item); });
        }`,
+    ],
+    [
+      "a global Array annotation with an unrelated nested type declaration",
+      `const useItemTotal = (items: Array<string>) => {
+         items.forEach((item) => { consume(item); });
+       };
+       const unrelated = () => {
+         type Array<T> = { value: T };
+         return null as Array<string> | null;
+       };`,
+    ],
+    [
+      "native iteration before the method is overwritten",
+      `const useItems = (items: string[], replacement: typeof items.forEach) => {
+         items.forEach((item) => { consume(item); });
+         items.forEach = replacement;
+       };`,
     ],
   ])("stays silent for %s", (_name, code) => {
     const result = run(code);

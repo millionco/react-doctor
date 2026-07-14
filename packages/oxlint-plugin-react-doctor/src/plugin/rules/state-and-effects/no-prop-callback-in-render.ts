@@ -85,7 +85,7 @@ export const noPropCallbackInRender = defineRule({
       if (
         !getDownstreamRefs(analysis, callee).some((reference) =>
           isPropCallbackInvocationRef(analysis, reference, {
-            ignoreProvenNativeCustomHookMethod: true,
+            nativeMethodScopes: context.scopes,
           }),
         )
       ) {

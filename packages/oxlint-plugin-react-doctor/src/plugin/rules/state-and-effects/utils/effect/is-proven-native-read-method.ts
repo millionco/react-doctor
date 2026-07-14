@@ -1,6 +1,7 @@
 import type { Reference } from "eslint-scope";
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
 import { findProgramRoot } from "../../../../utils/find-program-root.js";
+import { hasEnclosingTypeParameterNamed } from "../../../../utils/has-enclosing-type-parameter-named.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
 import { walkAst } from "../../../../utils/walk-ast.js";
 
@@ -112,39 +113,89 @@ const NATIVE_TYPE_NAMES: ReadonlySet<string> = new Set([
   "Set",
 ]);
 
-const shadowedNativeTypeNamesByProgram: WeakMap<EsTreeNode, ReadonlySet<string>> = new WeakMap();
+interface NativeTypeDeclaration {
+  name: string;
+  scope: EsTreeNode;
+}
 
-const getShadowedNativeTypeNames = (node: EsTreeNode): ReadonlySet<string> => {
-  const program = findProgramRoot(node);
-  if (!program) return NATIVE_TYPE_NAMES;
-  const cachedNames = shadowedNativeTypeNamesByProgram.get(program);
-  if (cachedNames) return cachedNames;
-  const shadowedNames = new Set<string>();
+const nativeTypeDeclarationsByProgram: WeakMap<EsTreeNode, NativeTypeDeclaration[]> = new WeakMap();
+const shadowedNativeTypeNamesByBinding: WeakMap<EsTreeNode, ReadonlySet<string>> = new WeakMap();
+
+const isWithinNode = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
+  let current: EsTreeNode | null | undefined = node;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parent;
+  }
+  return false;
+};
+
+const findTypeDeclarationScope = (declaration: EsTreeNode): EsTreeNode | null => {
+  let current = declaration.parent;
+  while (current) {
+    if (
+      isNodeOfType(current, "Program") ||
+      isNodeOfType(current, "BlockStatement") ||
+      isNodeOfType(current, "TSModuleBlock") ||
+      isNodeOfType(current, "StaticBlock")
+    ) {
+      return current;
+    }
+    current = current.parent;
+  }
+  return null;
+};
+
+const getDeclaredTypeName = (declaration: EsTreeNode): string | null => {
+  if (
+    !isNodeOfType(declaration, "ClassDeclaration") &&
+    !isNodeOfType(declaration, "TSEnumDeclaration") &&
+    !isNodeOfType(declaration, "TSImportEqualsDeclaration") &&
+    !isNodeOfType(declaration, "TSInterfaceDeclaration") &&
+    !isNodeOfType(declaration, "TSModuleDeclaration") &&
+    !isNodeOfType(declaration, "TSTypeAliasDeclaration")
+  ) {
+    return null;
+  }
+  return declaration.id && isNodeOfType(declaration.id, "Identifier") ? declaration.id.name : null;
+};
+
+const getNativeTypeDeclarations = (program: EsTreeNode): NativeTypeDeclaration[] => {
+  const cachedDeclarations = nativeTypeDeclarationsByProgram.get(program);
+  if (cachedDeclarations) return cachedDeclarations;
+  const declarations: NativeTypeDeclaration[] = [];
   walkAst(program, (candidate) => {
     if (isNodeOfType(candidate, "ImportDeclaration")) {
       for (const specifier of candidate.specifiers) {
-        if (
-          (isNodeOfType(specifier, "ImportDefaultSpecifier") ||
-            isNodeOfType(specifier, "ImportNamespaceSpecifier") ||
-            isNodeOfType(specifier, "ImportSpecifier")) &&
-          NATIVE_TYPE_NAMES.has(specifier.local.name)
-        ) {
-          shadowedNames.add(specifier.local.name);
+        if (NATIVE_TYPE_NAMES.has(specifier.local.name)) {
+          declarations.push({ name: specifier.local.name, scope: program });
         }
       }
       return;
     }
-    if (
-      (isNodeOfType(candidate, "ClassDeclaration") ||
-        isNodeOfType(candidate, "TSInterfaceDeclaration") ||
-        isNodeOfType(candidate, "TSTypeAliasDeclaration")) &&
-      candidate.id &&
-      NATIVE_TYPE_NAMES.has(candidate.id.name)
-    ) {
-      shadowedNames.add(candidate.id.name);
-    }
+    const declaredTypeName = getDeclaredTypeName(candidate);
+    if (!declaredTypeName || !NATIVE_TYPE_NAMES.has(declaredTypeName)) return;
+    const declarationScope = findTypeDeclarationScope(candidate);
+    if (declarationScope) declarations.push({ name: declaredTypeName, scope: declarationScope });
   });
-  shadowedNativeTypeNamesByProgram.set(program, shadowedNames);
+  nativeTypeDeclarationsByProgram.set(program, declarations);
+  return declarations;
+};
+
+const getShadowedNativeTypeNames = (binding: EsTreeNode): ReadonlySet<string> => {
+  const cachedNames = shadowedNativeTypeNamesByBinding.get(binding);
+  if (cachedNames) return cachedNames;
+  const shadowedNames = new Set<string>();
+  for (const typeName of NATIVE_TYPE_NAMES) {
+    if (hasEnclosingTypeParameterNamed(binding, typeName)) shadowedNames.add(typeName);
+  }
+  const program = findProgramRoot(binding);
+  if (program) {
+    for (const declaration of getNativeTypeDeclarations(program)) {
+      if (isWithinNode(binding, declaration.scope)) shadowedNames.add(declaration.name);
+    }
+  }
+  shadowedNativeTypeNamesByBinding.set(binding, shadowedNames);
   return shadowedNames;
 };
 

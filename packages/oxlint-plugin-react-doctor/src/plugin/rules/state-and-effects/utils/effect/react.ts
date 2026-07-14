@@ -1,6 +1,10 @@
 import type { Reference } from "eslint-scope";
+import type { ScopeAnalysis } from "../../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
 import { getStaticPropertyName } from "../../../../utils/get-static-property-name.js";
+import { getRootIdentifier } from "../../../../utils/get-root-identifier.js";
+import { hasPossibleStaticPropertyWriteBefore } from "../../../../utils/has-static-property-write-before.js";
+import { hasSymbolWriteBefore } from "../../../../utils/has-symbol-write-before.js";
 import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
@@ -477,7 +481,7 @@ const SYNCHRONOUS_CALLBACK_ARGUMENT_INDEX_BY_METHOD: ReadonlyMap<string, number>
 ]);
 
 interface PropCallbackInvocationOptions {
-  ignoreProvenNativeCustomHookMethod?: boolean;
+  nativeMethodScopes?: ScopeAnalysis;
 }
 
 const addSimpleBindingNames = (pattern: EsTreeNode, names: Set<string>): boolean => {
@@ -532,10 +536,7 @@ const inlineCallbackInvokesParameter = (callback: EsTreeNode): boolean => {
         candidate.operator === "=" &&
         isNodeOfType(candidate.left, "Identifier")
       ) {
-        const assignedValue = stripParenExpression(candidate.right);
-        const assignedValueRoot = isNodeOfType(assignedValue, "MemberExpression")
-          ? stripParenExpression(assignedValue.object)
-          : assignedValue;
+        const assignedValueRoot = getRootIdentifier(candidate.right);
         if (
           isNodeOfType(assignedValueRoot, "Identifier") &&
           parameterNames.has(assignedValueRoot.name) &&
@@ -547,10 +548,7 @@ const inlineCallbackInvokesParameter = (callback: EsTreeNode): boolean => {
         return;
       }
       if (!isNodeOfType(candidate, "VariableDeclarator") || !candidate.init) return;
-      const initializer = stripParenExpression(candidate.init);
-      const initializerRoot = isNodeOfType(initializer, "MemberExpression")
-        ? stripParenExpression(initializer.object)
-        : initializer;
+      const initializerRoot = getRootIdentifier(candidate.init);
       if (
         !isNodeOfType(initializerRoot, "Identifier") ||
         !parameterNames.has(initializerRoot.name)
@@ -573,8 +571,8 @@ const inlineCallbackInvokesParameter = (callback: EsTreeNode): boolean => {
       return false;
     }
     if (isNodeOfType(callee, "MemberExpression")) {
-      const receiver = stripParenExpression(callee.object);
-      if (isNodeOfType(receiver, "Identifier") && parameterNames.has(receiver.name)) {
+      const receiverRoot = getRootIdentifier(callee.object);
+      if (receiverRoot && parameterNames.has(receiverRoot.name)) {
         didInvokeParameter = true;
         return false;
       }
@@ -583,19 +581,61 @@ const inlineCallbackInvokesParameter = (callback: EsTreeNode): boolean => {
   return didInvokeParameter;
 };
 
+const callbackInvokesPropCallback = (analysis: ProgramAnalysis, callback: EsTreeNode): boolean => {
+  if (!isFunctionLike(callback)) return false;
+  let didInvokePropCallback = false;
+  walkAst(callback.body, (candidate) => {
+    if (didInvokePropCallback) return false;
+    if (candidate !== callback.body && isFunctionLike(candidate)) return false;
+    if (!isNodeOfType(candidate, "CallExpression")) return;
+    const callee = stripParenExpression(candidate.callee);
+    if (
+      getDownstreamRefs(analysis, callee).some((reference) =>
+        isPropCallbackInvocationRef(analysis, reference),
+      )
+    ) {
+      didInvokePropCallback = true;
+      return false;
+    }
+  });
+  return didInvokePropCallback;
+};
+
 const isNativeMethodSuppressionSafe = (
   analysis: ProgramAnalysis,
   callExpression: EsTreeNode,
   methodName: string,
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (!isNodeOfType(callExpression, "CallExpression")) return false;
-  const callResultParent = callExpression.parent;
-  const callResultConsumer = isNodeOfType(callResultParent, "ChainExpression")
-    ? callResultParent.parent
-    : callResultParent;
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const receiverSymbol = scopes.symbolFor(receiver);
+  if (
+    !receiverSymbol ||
+    hasSymbolWriteBefore(receiverSymbol, callExpression, scopes) ||
+    hasPossibleStaticPropertyWriteBefore(receiver, methodName, callExpression, scopes)
+  ) {
+    return false;
+  }
+  let callResult: EsTreeNode = callExpression;
+  let callResultConsumer = callResult.parent;
+  while (
+    callResultConsumer &&
+    ((TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(callResultConsumer.type) &&
+      "expression" in callResultConsumer &&
+      callResultConsumer.expression === callResult) ||
+      (isNodeOfType(callResultConsumer, "MemberExpression") &&
+        callResultConsumer.object === callResult))
+  ) {
+    callResult = callResultConsumer;
+    callResultConsumer = callResult.parent;
+  }
   if (
     isNodeOfType(callResultConsumer, "CallExpression") &&
-    (callResultConsumer.callee === callExpression || callResultConsumer.callee === callResultParent)
+    callResultConsumer.callee === callResult
   ) {
     return false;
   }
@@ -604,7 +644,12 @@ const isNativeMethodSuppressionSafe = (
   const callbackArgument = callExpression.arguments?.[callbackArgumentIndex];
   if (!callbackArgument) return true;
   const callbackValue = stripParenExpression(callbackArgument);
-  if (isFunctionLike(callbackValue)) return !inlineCallbackInvokesParameter(callbackValue);
+  if (isFunctionLike(callbackValue)) {
+    return (
+      !inlineCallbackInvokesParameter(callbackValue) &&
+      !callbackInvokesPropCallback(analysis, callbackValue)
+    );
+  }
   if (!isNodeOfType(callbackValue, "Identifier")) return false;
   const callbackRef = getRef(analysis, callbackValue);
   if (!callbackRef || isPropAlias(analysis, callbackRef)) return false;
@@ -612,7 +657,8 @@ const isNativeMethodSuppressionSafe = (
   return Boolean(
     callbackFunction &&
     isFunctionLike(callbackFunction) &&
-    !inlineCallbackInvokesParameter(callbackFunction),
+    !inlineCallbackInvokesParameter(callbackFunction) &&
+    !callbackInvokesPropCallback(analysis, callbackFunction),
   );
 };
 
@@ -653,11 +699,16 @@ export const isPropCallbackInvocationRef = (
         return true;
       }
       if (
-        options.ignoreProvenNativeCustomHookMethod &&
+        options.nativeMethodScopes &&
         isCustomHookParameter(ref) &&
         propertyName &&
         isProvenNativeReadMethod(ref, propertyName) &&
-        isNativeMethodSuppressionSafe(analysis, memberParent, propertyName)
+        isNativeMethodSuppressionSafe(
+          analysis,
+          memberParent,
+          propertyName,
+          options.nativeMethodScopes,
+        )
       ) {
         return false;
       }

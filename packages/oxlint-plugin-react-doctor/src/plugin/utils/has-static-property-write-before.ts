@@ -356,6 +356,38 @@ export const hasPossibleStaticPropertyWrite = (
   );
 };
 
+const canExecuteBefore = (
+  candidateNode: EsTreeNode,
+  referenceNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const candidateBoundary = findExecutionBoundary(candidateNode);
+  const referenceBoundary = findExecutionBoundary(referenceNode);
+  if (!candidateBoundary || !referenceBoundary) return true;
+  if (candidateBoundary === referenceBoundary) {
+    return candidateNode.range[0] < referenceNode.range[0];
+  }
+  if (!isFunctionLike(candidateBoundary)) return true;
+  return isFunctionSynchronouslyInvokedBefore(candidateBoundary, referenceNode, scopes);
+};
+
+export const hasPossibleStaticPropertyWriteBefore = (
+  identifier: EsTreeNode,
+  propertyName: string,
+  referenceNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  return getPotentiallyAliasedSymbols(identifier, scopes).some((symbol) =>
+    symbol.references.some((reference) => {
+      const writeTarget = getMemberWriteTarget(reference.identifier);
+      if (!writeTarget || !canExecuteBefore(writeTarget, referenceNode, scopes)) return false;
+      const writtenPropertyName = getResolvedStaticPropertyName(writeTarget, scopes);
+      return writtenPropertyName === null || writtenPropertyName === propertyName;
+    }),
+  );
+};
+
 export const hasPossibleStaticPropertyMutationOrEscape = (
   identifier: EsTreeNode,
   propertyName: string,

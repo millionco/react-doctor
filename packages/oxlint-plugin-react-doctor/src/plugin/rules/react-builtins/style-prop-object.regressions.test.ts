@@ -52,6 +52,16 @@ describe("react-builtins/style-prop-object — JSX runtime ownership regressions
     );
   });
 
+  it("keeps earlier Solid string styles quiet before a later dialect marker", () => {
+    expectDiagnosticCount(
+      `export const SolidPanel = () => <>
+        <div style={\`left: 12px\`} />
+        <div classList={{ active: true }} />
+      </>;`,
+      0,
+    );
+  });
+
   it("still reports a React intrinsic string style in a mixed-runtime package", () => {
     expectDiagnosticCount(
       `import { useState } from "react";
@@ -60,6 +70,101 @@ describe("react-builtins/style-prop-object — JSX runtime ownership regressions
         return <div style={\`left: \${left}px\`}>React</div>;
       };`,
       1,
+    );
+  });
+
+  it("still reports when React and Solid runtime imports coexist", () => {
+    expectDiagnosticCount(
+      `import { useState } from "react";
+      import { createSignal } from "solid-js";
+      export const ReactPanel = () => {
+        const [left] = useState(12);
+        createSignal(left);
+        return <div style={\`left: \${left}px\`}>React</div>;
+      };`,
+      1,
+    );
+  });
+
+  it("still reports after a late Solid syntax marker in a React-owned file", () => {
+    expectDiagnosticCount(
+      `import { Fragment } from "react";
+      export const ReactPanel = () => <Fragment>
+        <div classList={{ active: true }} />
+        <div style="left: 12px" />
+      </Fragment>;`,
+      1,
+    );
+  });
+
+  it("does not infer Solid ownership from a type-only import", () => {
+    expectDiagnosticCount(
+      `import type { JSX } from "solid-js";
+      export const Panel = (): JSX.Element => <div style="left: 12px" />;`,
+      1,
+    );
+  });
+
+  it("does not infer Solid ownership from inline type-only imports", () => {
+    expectDiagnosticCount(
+      `import { type JSX } from "solid-js";
+      export const Panel = (): JSX.Element => <div style="left: 12px" />;`,
+      1,
+    );
+  });
+
+  it("accepts a Solid runtime import alongside a React type-only import", () => {
+    expectDiagnosticCount(
+      `import type { ReactNode } from "react";
+      import { createSignal as makeSignal } from "solid-js";
+      const [left] = makeSignal(12);
+      export const SolidPanel = (): ReactNode => <div style={\`left: \${left()}px\`} />;`,
+      0,
+    );
+  });
+
+  it("accepts explicit Solid JSX runtime ownership", () => {
+    expectDiagnosticCount(
+      `import { jsx } from "solid-js/jsx-runtime";
+      export const SolidPanel = () => <div style="left: 12px">{jsx}</div>;`,
+      0,
+    );
+  });
+
+  it("accepts a bare Solid runtime import", () => {
+    expectDiagnosticCount(
+      `import "solid-js";
+      export const SolidPanel = () => <div style="left: 12px" />;`,
+      0,
+    );
+  });
+
+  it("does not treat similarly named userland packages as Solid", () => {
+    expectDiagnosticCount(
+      `import { createSignal } from "solid-js-userland";
+      export const Panel = () => <div style="left: 12px">{createSignal}</div>;`,
+      1,
+    );
+  });
+
+  it("preserves React createElement diagnostics in mixed-runtime files", () => {
+    expectDiagnosticCount(
+      `import React from "react";
+      import { createSignal } from "solid-js";
+      const [left] = createSignal(12);
+      export const ReactPanel = () => React.createElement("div", {
+        style: \`left: \${left()}px\`,
+      });`,
+      1,
+    );
+  });
+
+  it("does not apply React createElement semantics to Solid-owned files", () => {
+    expectDiagnosticCount(
+      `import { createSignal } from "solid-js";
+      const createElement = (tag, props) => ({ tag, props });
+      export const solidNode = createElement("div", { style: "left: 12px" });`,
+      0,
     );
   });
 

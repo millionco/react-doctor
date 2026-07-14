@@ -1,11 +1,14 @@
+import { collectJsxRuntimeImports } from "../../utils/collect-jsx-runtime-imports.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { jsxAttributeIsNonReactDialectMarker } from "../../utils/non-react-jsx-dialect.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const MESSAGE =
   "Your styles don't render because you passed the `style` prop a string instead of an object.";
@@ -138,13 +141,32 @@ export const stylePropObject = defineRule({
   recommendation:
     "Pass `style` as an object so React can apply CSS properties instead of ignoring a string style value.",
   category: "Correctness",
-  tags: ["react-jsx-only"],
   create: (context) => {
     const { allow } = resolveSettings(context.settings);
     const allowSet = new Set(allow);
+    let fileIsProvenSolidJsx = false;
 
     return {
+      Program: (node: EsTreeNodeOfType<"Program">) => {
+        const runtimeImports = collectJsxRuntimeImports(node);
+        let hasSolidSyntaxMarker = false;
+        if (!runtimeImports.hasReactRuntime && !runtimeImports.hasSolidRuntime) {
+          walkAst(node, (descendantNode) => {
+            if (
+              isNodeOfType(descendantNode, "JSXOpeningElement") &&
+              jsxAttributeIsNonReactDialectMarker(descendantNode)
+            ) {
+              hasSolidSyntaxMarker = true;
+              return false;
+            }
+          });
+        }
+        fileIsProvenSolidJsx =
+          !runtimeImports.hasReactRuntime &&
+          (runtimeImports.hasSolidRuntime || hasSolidSyntaxMarker);
+      },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (fileIsProvenSolidJsx) return;
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
         const elementName = resolveJsxElementType(node);
         if (elementName && allowSet.has(elementName)) return;
@@ -182,6 +204,7 @@ export const stylePropObject = defineRule({
         }
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (fileIsProvenSolidJsx) return;
         if (!isCreateElementCall(node)) return;
         const firstArgument = node.arguments[0];
         if (!firstArgument) return;

@@ -5,6 +5,194 @@ import { preferUseEffectEvent } from "./prefer-use-effect-event.js";
 const runPreferUseEffectEvent = (code: string) => runRule(preferUseEffectEvent, code);
 
 describe("prefer-use-effect-event — callback stability regressions", () => {
+  it("stays silent when the Lobe typewriter helper is both scheduled and called synchronously", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const TypewriterEffect = ({ delay, onSentenceComplete }) => {
+        useEffect(() => {
+          const executeTypingAnimation = () => onSentenceComplete("done");
+          if (delay > 0) {
+            setTimeout(executeTypingAnimation, delay);
+          } else {
+            executeTypingAnimation();
+          }
+        }, [delay, onSentenceComplete]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps reporting when every execution of a local helper is scheduled", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const TypewriterEffect = ({ delay, onSentenceComplete }) => {
+        useEffect(() => {
+          const executeTypingAnimation = () => onSentenceComplete("done");
+          const timeoutId = setTimeout(executeTypingAnimation, delay);
+          return () => clearTimeout(timeoutId);
+        }, [delay, onSentenceComplete]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a local helper only runs synchronously", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const TypewriterEffect = ({ delay, onSentenceComplete }) => {
+        useEffect(() => {
+          const executeTypingAnimation = () => onSentenceComplete("done");
+          if (delay === 0) executeTypingAnimation();
+        }, [delay, onSentenceComplete]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when direct calls surround a scheduled helper reference", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const TypewriterEffect = ({ delay, onSentenceComplete }) => {
+        useEffect(() => {
+          const executeTypingAnimation = () => onSentenceComplete("done");
+          if (delay < 0) executeTypingAnimation();
+          setTimeout(executeTypingAnimation, delay);
+          if (delay === 0) executeTypingAnimation();
+        }, [delay, onSentenceComplete]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when cleanup directly invokes the scheduled helper", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onClose }) => {
+        useEffect(() => {
+          const close = () => onClose();
+          setTimeout(close, 100);
+          return () => close();
+        }, [active, onClose]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a scheduled helper escapes through direct-call aliases", () => {
+    const oneHopResult = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onClose }) => {
+        useEffect(() => {
+          const close = () => onClose();
+          const closeNow = close;
+          setTimeout(close, 100);
+          closeNow();
+        }, [active, onClose]);
+        return null;
+      };
+    `);
+    const multiHopResult = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onClose }) => {
+        useEffect(() => {
+          const close = () => onClose();
+          const closeAlias = close;
+          const closeNow = closeAlias;
+          setTimeout(close, 100);
+          closeNow();
+        }, [active, onClose]);
+        return null;
+      };
+    `);
+
+    expect(oneHopResult.parseErrors).toEqual([]);
+    expect(oneHopResult.diagnostics).toEqual([]);
+    expect(multiHopResult.parseErrors).toEqual([]);
+    expect(multiHopResult.diagnostics).toEqual([]);
+  });
+
+  it("keeps reporting a timer-only recursive helper", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Poller = ({ active, onPoll }) => {
+        useEffect(() => {
+          function poll(remaining) {
+            onPoll();
+            if (remaining > 0) poll(remaining - 1);
+          }
+          const timeoutId = setTimeout(poll, 100, 2);
+          return () => clearTimeout(timeoutId);
+        }, [active, onPoll]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps reporting subscription-only helpers with cleanup identity reads", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onKey }) => {
+        useEffect(() => {
+          const handleKey = (event) => onKey(event.key);
+          window.addEventListener("keydown", handleKey);
+          return () => window.removeEventListener("keydown", handleKey);
+        }, [active, onKey]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not correlate a direct helper with a shadowed scheduled binding", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onClose }) => {
+        useEffect(() => {
+          const close = () => onClose();
+          {
+            const close = () => log("shadow");
+            setTimeout(close, 100);
+          }
+          close();
+        }, [active, onClose]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent for the authentic empty-dependency useCallback false positive", () => {
     const result = runPreferUseEffectEvent(`
       import { useCallback, useEffect, useRef, useState } from "react";

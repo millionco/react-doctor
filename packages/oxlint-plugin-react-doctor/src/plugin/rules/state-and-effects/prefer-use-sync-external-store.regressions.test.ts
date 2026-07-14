@@ -31,6 +31,19 @@ function subscribePushState(listener) {
 `;
 
 describe("prefer-use-sync-external-store — module-scope store shape", () => {
+  it("stays silent when a subscription callback is received as a custom-hook parameter", () => {
+    const result = run(
+      `import { useEffect, useState } from "react";
+export function useForwardedSubscription(subscribe) {
+  const [state, setState] = useState("default");
+  useEffect(() => subscribe(setState), []);
+  return state;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags useState(sharedState) + useEffect(() => subscribe(setState), []) (ground-truth shape)", () => {
     const result = run(
       `${MODULE_STORE_PREAMBLE}

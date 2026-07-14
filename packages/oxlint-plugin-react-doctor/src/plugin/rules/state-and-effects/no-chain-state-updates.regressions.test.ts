@@ -167,6 +167,19 @@ describe("no-chain-state-updates — must-detect regressions", () => {
 });
 
 describe("no-chain-state-updates — regressions", () => {
+  it("stays silent when an effect passes a setter through a parameter-bound helper", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const useForwardedSetter = (invoke) => {
+  const [value, setValue] = useState(0);
+  useEffect(() => invoke(setValue), []);
+  return value;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("fires on mixed-origin state (handler setter plus one setTimeout site — basis form)", () => {
     const result = runRule(
       noChainStateUpdates,

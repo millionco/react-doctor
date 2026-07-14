@@ -3,6 +3,21 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noEffectEventHandler } from "./no-effect-event-handler.js";
 
 describe("state-and-effects/no-effect-event-handler regressions", () => {
+  it("does not flag a guarded effect returning an unknown cleanup parameter", () => {
+    const result = runRule(
+      noEffectEventHandler,
+      `const Component = ({ active, onEvent, cleanup }) => {
+  useEffect(() => {
+    if (active) onEvent();
+    return cleanup;
+  }, [active]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // Mined cloudscape FP (app-layout/mobile-toolbar): a prop-guarded body
   // scroll lock with a cleanup half. The cleanup cannot move into an
   // event handler, so the effect is synchronizing with an external

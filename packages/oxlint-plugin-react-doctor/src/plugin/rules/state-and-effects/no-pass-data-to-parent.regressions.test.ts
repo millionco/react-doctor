@@ -3,6 +3,20 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noPassDataToParent } from "./no-pass-data-to-parent.js";
 
 describe("no-pass-data-to-parent — regressions", () => {
+  it("stays silent when a callback parameter is passed through a parent callback", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `const useForwarder = (onRegister, callback) => {
+  useEffect(() => {
+    onRegister(callback);
+  }, [onRegister, callback]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   describe("external subscription notifications", () => {
     it("stays silent when notifying a parent of a media-query hook transition", () => {
       const result = runRule(

@@ -199,6 +199,16 @@ describe("no-impure-state-updater", () => {
 
   it.each([
     [
+      "a setter parameter invoked from an effect helper",
+      `import { useEffect, useState } from "react";
+       const invokeSetter = (setter, nextValue) => setter(nextValue);
+       const Component = () => {
+         const [value, setValue] = useState(0);
+         useEffect(() => invokeSetter(setValue, value), [value]);
+         return value;
+       };`,
+    ],
+    [
       "a pure arithmetic updater",
       `import { useState } from "react";
        const Counter = () => {

@@ -33,6 +33,30 @@ describe("correctness/no-uncontrolled-input — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("stays silent on the DevLovers submit input whose value labels a button", () => {
+    const result = runRule(
+      noUncontrolledInput,
+      `export default function BlogHeaderSearch() {
+        return <input id="search_submit" value="" type="submit" className="search-submit" />;
+      }`,
+      { filename: "components/blog/BlogHeaderSearch.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an editable text input adjacent to the DevLovers regression", () => {
+    const result = runRule(
+      noUncontrolledInput,
+      `export default function BlogHeaderSearch({ search }) {
+        return <input id="search_query" value={search} type="text" />;
+      }`,
+      { filename: "components/blog/BlogHeaderSearch.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on a static input mock in a __tests__ file (test-noise)", () => {
     const result = runRule(
       noUncontrolledInput,

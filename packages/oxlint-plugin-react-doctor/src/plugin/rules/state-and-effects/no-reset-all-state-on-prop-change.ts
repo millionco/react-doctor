@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -218,7 +219,9 @@ const isProvenLiveBinding = (
 ): boolean => {
   const reference = getRef(analysis, identifier);
   const symbol = context.scopes.symbolFor(identifier);
-  if (!reference || !symbol || symbol.kind !== "const") return false;
+  if (!reference || !symbol || symbol.kind !== "const" || isOutsideAllFunctions(symbol)) {
+    return false;
+  }
   const initializer = symbol.initializer;
   if (!initializer || isMountSnapshotBinding(context, identifier)) return false;
   const initializerReferences = getDownstreamRefs(analysis, initializer);

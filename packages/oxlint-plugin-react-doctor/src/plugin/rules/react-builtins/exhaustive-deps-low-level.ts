@@ -1,8 +1,9 @@
-import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+export { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
 
 /**
  * Lowest-level helpers consumed by both the main `exhaustive-deps`
@@ -70,21 +71,4 @@ export const getHookName = (callee: EsTreeNode, scopes?: ScopeAnalysis): string 
     return strippedCallee.property.name;
   }
   return null;
-};
-
-const FUNCTION_SCOPE_KINDS: ReadonlySet<string> = new Set(["function", "arrow-function", "method"]);
-
-/**
- * True for symbols declared at module scope (outside any function
- * scope). Module-scope bindings don't change between renders so they
- * don't need to live in dependency arrays.
- */
-export const isOutsideAllFunctions = (symbol: SymbolDescriptor): boolean => {
-  let scope: SymbolDescriptor["scope"] | null = symbol.scope;
-  while (scope) {
-    if (FUNCTION_SCOPE_KINDS.has(scope.kind)) return false;
-    if (scope.kind === "module") return true;
-    scope = scope.parent ?? null;
-  }
-  return true;
 };

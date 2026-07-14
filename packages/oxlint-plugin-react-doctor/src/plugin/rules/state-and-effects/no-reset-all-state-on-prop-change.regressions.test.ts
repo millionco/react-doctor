@@ -243,10 +243,26 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
           setPreviouslyDisabled(Boolean(disabled));
         }, [disabled]);`,
       ],
+      [
+        "module-scoped initial object",
+        `const [previouslyDisabled, setPreviouslyDisabled] = useState(INITIAL_STATE);
+        useEffect(() => {
+          setPreviouslyDisabled(INITIAL_STATE);
+        }, [disabled]);`,
+      ],
+      [
+        "module-scoped initial primitive",
+        `const [previouslyDisabled, setPreviouslyDisabled] = useState(INITIAL_TAG);
+        useEffect(() => {
+          setPreviouslyDisabled(INITIAL_TAG);
+        }, [disabled]);`,
+      ],
     ])("retains the diagnostic for a %s", (_label, componentBody) => {
       const result = runRule(
         noResetAllStateOnPropChange,
         `import { useEffect, useMemo, useRef, useState } from "react";
+        const INITIAL_STATE = {};
+        const INITIAL_TAG = "all";
         const Tracker = ({ disabled }: { disabled?: boolean }) => {
           ${componentBody}
           return previouslyDisabled;

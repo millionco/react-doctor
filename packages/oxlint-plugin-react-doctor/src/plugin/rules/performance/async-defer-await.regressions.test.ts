@@ -175,6 +175,28 @@ describe("performance/async-defer-await — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays silent when every branch of a compound guard checks response freshness", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      declare const latestRequest: { current: number };
+      declare const latestReview: { current: number };
+      export const run = async () => {
+        const requestId = latestRequest.current;
+        const reviewVersion = latestReview.current;
+        const rows = await load();
+        if (requestId !== latestRequest.current || reviewVersion !== latestReview.current) {
+          return [];
+        }
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays silent when the guard reads a flag reassigned around the await", () => {
     const result = runRule(
       asyncDeferAwait,

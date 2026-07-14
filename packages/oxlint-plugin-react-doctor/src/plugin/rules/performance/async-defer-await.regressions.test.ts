@@ -264,6 +264,7 @@ describe("performance/async-defer-await — regressions", () => {
 
   it.each([
     ["cancellation flag", `cancelled || enabled`],
+    ["cancellation ref", `cancelledRef.current || enabled`],
     ["mutable helper", `isCurrent() && enabled`],
   ])("preserves the existing whole-guard exemption for a %s", (_label, guardTest) => {
     const result = runRule(
@@ -272,10 +273,32 @@ describe("performance/async-defer-await — regressions", () => {
       declare const load: () => Promise<string[]>;
       declare const enabled: boolean;
       declare const cancelled: boolean;
+      declare const cancelledRef: { current: boolean };
       declare const isCurrent: () => boolean;
       export const run = async () => {
         const rows = await load();
         if (${guardTest}) return [];
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves the existing whole-guard exemption for a reassigned local", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      declare const enabled: boolean;
+      export const run = async () => {
+        let failed = false;
+        const rows = await load().catch(() => {
+          failed = true;
+          return [];
+        });
+        if (failed || enabled) return [];
         return rows;
       };
     `,

@@ -303,6 +303,32 @@ describe("no-pass-data-to-parent — regressions", () => {
   });
 
   describe("registration / subscription and external instances (verification run)", () => {
+    it("stays silent when a ref-held registerPage prop is destructured with an alias (react-pdf Page)", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, pageIndex, page }) {
+          const pageElement = useRef(null);
+          const currentPageIndex = isProvided(pageIndex) ? pageIndex : null;
+          const registerPagePropsRef = useRef({ pageIndex: currentPageIndex, registerPage });
+          useEffect(() => {
+            registerPagePropsRef.current = { pageIndex: currentPageIndex, registerPage };
+          }, [currentPageIndex, registerPage]);
+          useEffect(() => {
+            const {
+              pageIndex: currentPageIndex,
+              registerPage: currentRegisterPage,
+            } = registerPagePropsRef.current;
+            if (currentRegisterPage && pageElement.current) {
+              currentRegisterPage(currentPageIndex, pageElement.current);
+            }
+          }, [page]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("stays silent on sensor subscription with a concise-body cleanup (lightbox usePointerEvents)", () => {
       const result = runRule(
         noPassDataToParent,

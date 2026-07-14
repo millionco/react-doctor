@@ -348,6 +348,24 @@ const getBooleanFormula = (
   return null;
 };
 
+const getRequiredTruthyConditions = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  node: EsTreeNode,
+  protectedSymbolIds: ReadonlySet<number>,
+): BooleanFormula[] => {
+  const formula = getBooleanFormula(analysis, context, node, protectedSymbolIds);
+  if (formula) return [formula];
+  const expression = stripParenExpression(node);
+  if (!isNodeOfType(expression, "LogicalExpression") || expression.operator !== "&&") {
+    return [];
+  }
+  return [
+    ...getRequiredTruthyConditions(analysis, context, expression.left, protectedSymbolIds),
+    ...getRequiredTruthyConditions(analysis, context, expression.right, protectedSymbolIds),
+  ];
+};
+
 const evaluateBooleanFormula = (
   formula: BooleanFormula,
   assignments: ReadonlyMap<string, boolean>,
@@ -567,9 +585,15 @@ const collectExposureConditions = (
   let parent: EsTreeNode | null | undefined = node.parent;
   while (parent) {
     if (isNodeOfType(parent, "LogicalExpression") && parent.right === child) {
-      const leftFormula = getBooleanFormula(analysis, context, parent.left, protectedSymbolIds);
-      if (leftFormula && parent.operator === "&&") conditions.push(leftFormula);
-      if (leftFormula && parent.operator === "||") conditions.push(createNotFormula(leftFormula));
+      if (parent.operator === "&&") {
+        conditions.push(
+          ...getRequiredTruthyConditions(analysis, context, parent.left, protectedSymbolIds),
+        );
+      }
+      if (parent.operator === "||") {
+        const leftFormula = getBooleanFormula(analysis, context, parent.left, protectedSymbolIds);
+        if (leftFormula) conditions.push(createNotFormula(leftFormula));
+      }
     } else if (isNodeOfType(parent, "ConditionalExpression")) {
       const testFormula = getBooleanFormula(analysis, context, parent.test, protectedSymbolIds);
       if (testFormula && parent.consequent === child) conditions.push(testFormula);

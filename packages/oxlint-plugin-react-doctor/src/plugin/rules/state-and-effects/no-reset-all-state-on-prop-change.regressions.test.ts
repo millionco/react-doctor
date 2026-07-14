@@ -176,19 +176,19 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
     it.each([
       [
         "after the visibility gate",
-        `return visible && isAllowed() && open && <output>{String(open)}</output>;`,
+        `return visible && isAllowed() && open && <output onClick={() => setOpen(false)}>{String(open)}</output>;`,
       ],
       [
         "before the visibility gate",
-        `return isAllowed() && visible && open && <output>{String(open)}</output>;`,
+        `return isAllowed() && visible && open && <output onClick={() => setOpen(false)}>{String(open)}</output>;`,
       ],
     ])("stays silent when an opaque condition appears %s", (_label, renderBody) => {
       const result = runRule(
         noResetAllStateOnPropChange,
         `import { useEffect, useState } from "react";
         const Menu = ({ visible, isAllowed }: { visible: boolean; isAllowed: () => boolean }) => {
-          const [open, setOpen] = useState(false);
-          useEffect(() => setOpen(false), [visible]);
+          const [open, setOpen] = useState(true);
+          useEffect(() => setOpen(true), [visible]);
           ${renderBody}
         };`,
         { forceJsx: true },
@@ -200,23 +200,27 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
     it.each([
       [
         "there is no proven visibility gate",
-        `return isAllowed() && open && <output>{String(open)}</output>;`,
+        `return isAllowed() && open && <output onClick={() => setOpen(false)}>{String(open)}</output>;`,
       ],
       [
         "the visibility condition is only one branch of a disjunction",
-        `return (visible || isAllowed()) && open && <output>{String(open)}</output>;`,
+        `return (visible || isAllowed()) && open && <output onClick={() => setOpen(false)}>{String(open)}</output>;`,
       ],
       [
         "the state is read before the visibility gate",
-        `return isAllowed(open) && visible && <output>{String(open)}</output>;`,
+        `return isAllowed(open) && visible && <output onClick={() => setOpen(false)}>{String(open)}</output>;`,
+      ],
+      [
+        "repeated opaque calls can produce different values",
+        `return (visible || isAllowed()) && !isAllowed() && open && <output onClick={() => setOpen(false)}>{String(open)}</output>;`,
       ],
     ])("still reports when %s", (_label, renderBody) => {
       const result = runRule(
         noResetAllStateOnPropChange,
         `import { useEffect, useState } from "react";
         const Menu = ({ visible, isAllowed }: { visible: boolean; isAllowed: (value?: boolean) => boolean }) => {
-          const [open, setOpen] = useState(false);
-          useEffect(() => setOpen(false), [visible]);
+          const [open, setOpen] = useState(true);
+          useEffect(() => setOpen(true), [visible]);
           ${renderBody}
         };`,
         { forceJsx: true },

@@ -3,6 +3,24 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { rnNoFalsyAndRender } from "./rn-no-falsy-and-render.js";
 
 describe("react-native/rn-no-falsy-and-render — regressions", () => {
+  it("stays silent on a numeric gate rendered inside a DOM host", () => {
+    const result = runRule(
+      rnNoFalsyAndRender,
+      `interface CookieCardProps {
+  cookie: { maxAge?: string };
+}
+const CookieCard = ({ cookie }: CookieCardProps) => (
+  <div className="grid">
+    {cookie.maxAge && (
+      <div><span>Max-Age:</span> {cookie.maxAge}</div>
+    )}
+  </div>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a boolean useState named with a numeric-sounding word", () => {
     const result = runRule(
       rnNoFalsyAndRender,

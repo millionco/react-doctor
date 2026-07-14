@@ -935,11 +935,18 @@ export const onlyExportComponents = defineRule({
               const declaration = child.declaration;
               if (isNodeOfType(declaration, "FunctionDeclaration") && declaration.id) {
                 isExportedNodeIds.add(declaration);
+                const classifiedExport = classifyExport(
+                  declaration.id.name,
+                  declaration.id,
+                  true,
+                  null,
+                  state,
+                );
                 exports.push(
                   functionHasReactRenderSemantics(declaration, state) ||
                     localComponentNames.has(declaration.id.name) ||
-                    /^use[A-Z]/.test(declaration.id.name)
-                    ? classifyExport(declaration.id.name, declaration.id, true, null, state)
+                    classifiedExport.kind === "allowed"
+                    ? classifiedExport
                     : { kind: "non-component", reportNode: declaration.id },
                 );
               } else if (isNodeOfType(declaration, "ClassDeclaration") && declaration.id) {

@@ -411,6 +411,8 @@ export const JSX_LEAF_POOL = [
   `{condition && <em>maybe</em>}`,
   `{items.length && <span>has items</span>}`,
   `{items.length > 0 && <span>has items</span>}`,
+  `<div>{items.length && <span>has items</span>}</div>`,
+  `<View>{items.length && <Text>has items</Text>}</View>`,
   `{loading ? <span>Loading…</span> : <span>{String(state)}</span>}`,
   `{error && <span role="alert">{String(error)}</span>}`,
   `{...items}`,

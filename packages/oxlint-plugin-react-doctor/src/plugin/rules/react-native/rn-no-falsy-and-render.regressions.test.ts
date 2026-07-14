@@ -21,6 +21,48 @@ const CookieCard = ({ cookie }: CookieCardProps) => (
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    `<div>{itemCount && <span>Items</span>}</div>`,
+    `<svg>{itemCount && <text>Items</text>}</svg>`,
+    `<div><>{itemCount && <span>Items</span>}</></div>`,
+    `<div children={itemCount && <span>Items</span>} />`,
+    `createPortal(<div>{itemCount && <span>Items</span>}</div>, document.body)`,
+  ])("stays silent when the numeric gate reaches a proven DOM host: %s", (renderedValue) => {
+    const result = runRule(rnNoFalsyAndRender, `const Card = ({ itemCount }) => ${renderedValue};`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `<View>{itemCount && <Text>Items</Text>}</View>`,
+    `<NativeView>{itemCount && <NativeText>Items</NativeText>}</NativeView>`,
+    `<>{itemCount && <Text>Items</Text>}</>`,
+    `<Panel>{itemCount && <span>Items</span>}</Panel>`,
+    `<div><Panel>{itemCount && <span>Items</span>}</Panel></div>`,
+    `createPortal(<>{itemCount && <span>Items</span>}</>, document.body)`,
+    `<div content={<>{itemCount && <span>Items</span>}</>} />`,
+    `<List renderItem={() => <>{itemCount && <Text>Items</Text>}</>} />`,
+    `<mesh>{itemCount && <group />}</mesh>`,
+  ])("retains unknown or React Native renderer positives: %s", (renderedValue) => {
+    const result = runRule(
+      rnNoFalsyAndRender,
+      `import { Text, View, Text as NativeText, View as NativeView } from "react-native";
+const Card = ({ itemCount }) => ${renderedValue};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a configured custom component as intrinsic DOM proof", () => {
+    const result = runRule(
+      rnNoFalsyAndRender,
+      `const Card = ({ itemCount }) => <Panel>{itemCount && <span>Items</span>}</Panel>;`,
+      { settings: { "jsx-a11y": { components: { Panel: "div" } } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on a boolean useState named with a numeric-sounding word", () => {
     const result = runRule(
       rnNoFalsyAndRender,

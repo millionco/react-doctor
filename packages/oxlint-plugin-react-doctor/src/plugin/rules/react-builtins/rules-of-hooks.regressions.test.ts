@@ -48,6 +48,38 @@ describe("react-builtins/rules-of-hooks — invariant React capability guards", 
 
   it.each([
     {
+      name: "static-computed namespace member",
+      declaration: 'import * as ReactRuntime from "react";',
+      guard: 'if (ReactRuntime["useState"] == null) return null;',
+      call: "ReactRuntime.useState(0)",
+    },
+    {
+      name: "namespace alias",
+      declaration: 'import * as ReactRuntime from "react"; const RuntimeAlias = ReactRuntime;',
+      guard: 'if (typeof RuntimeAlias.useState === "undefined") return null;',
+      call: "RuntimeAlias.useState(0)",
+    },
+    {
+      name: "destructured namespace capability alias",
+      declaration:
+        'import * as ReactRuntime from "react"; const { useState: stateCapability } = ReactRuntime;',
+      guard: "if (!stateCapability) return null;",
+      call: "ReactRuntime.useState(0)",
+    },
+  ])("stays silent after a $name guard", ({ declaration, guard, call }) => {
+    const result = runTsx(`
+      ${declaration}
+      export const Panel = () => {
+        ${guard}
+        const [value] = ${call};
+        return <div>{value}</div>;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    {
       name: "prop guard",
       guard: "if (!enabled) return null;",
       parameter: "{ enabled }",
@@ -105,6 +137,68 @@ describe("react-builtins/rules-of-hooks — invariant React capability guards", 
           const [value] = useState(0);
           return <div>{value}</div>;
         }
+        return null;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports after a similarly named userland import guard", () => {
+    const result = runTsx(`
+      import { useState } from "./mutable-runtime";
+      export const Panel = () => {
+        if (!useState) return null;
+        const [value] = useState(0);
+        return <div>{value}</div>;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports when global undefined is shadowed", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      export const Panel = ({ undefined }) => {
+        if (useState === undefined) return null;
+        const [value] = useState(0);
+        return <div>{value}</div>;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "namespace Hook property is reassigned",
+      setup: "ReactRuntime.useState = replacementHook;",
+    },
+    {
+      name: "namespace object escapes to unknown code",
+      setup: "installRuntime(ReactRuntime);",
+    },
+    {
+      name: "namespace has a dynamic property write",
+      setup: "ReactRuntime[capabilityName] = replacementHook;",
+    },
+  ])("still reports when the $name", ({ setup }) => {
+    const result = runTsx(`
+      import ReactRuntime from "react";
+      ${setup}
+      export const Panel = () => {
+        if (!ReactRuntime.useState) return null;
+        const [value] = ReactRuntime.useState(0);
+        return <div>{value}</div>;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a short-circuited Hook after the capability guard", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      export const Panel = ({ enabled }) => {
+        if (!useState) return null;
+        enabled && useState(0);
         return null;
       };
     `);

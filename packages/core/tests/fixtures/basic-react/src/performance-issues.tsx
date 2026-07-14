@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, memo } from "react";
+import { motion } from "framer-motion";
 
 const MemoChild = memo(({ onClick }: { onClick: () => void }) => (
   <button onClick={onClick}>click</button>
@@ -11,8 +12,6 @@ const SimpleMemoComponent = ({ count }: { count: number }) => {
   return <div>{doubled}</div>;
 };
 
-declare const motion: { div: (props: Record<string, unknown>) => JSX.Element };
-
 const LayoutAnimationComponent = () => (
   <motion.div animate={{ width: 100, height: 200 }}>animated</motion.div>
 );
@@ -21,7 +20,7 @@ const TransitionAllComponent = () => <div style={{ transition: "all 0.3s ease" }
 
 const LargeBlurComponent = () => <div style={{ filter: "blur(20px)" }}>blurred</div>;
 
-const ScaleFromZeroComponent = () => <div initial={{ scale: 0 }}>scale</div>;
+const ScaleFromZeroComponent = () => <motion.div initial={{ scale: 0 }}>scale</motion.div>;
 
 const PermanentWillChangeComponent = () => <div style={{ willChange: "transform" }}>permanent</div>;
 

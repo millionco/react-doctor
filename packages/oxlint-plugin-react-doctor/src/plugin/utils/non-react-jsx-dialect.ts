@@ -1,6 +1,12 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isTypeOnlyImport } from "./is-type-only-import.js";
+
+export interface JsxRuntimeImports {
+  hasNonReactRuntime: boolean;
+  hasReactRuntime: boolean;
+}
 
 // Non-React JSX dialects that use raw HTML attribute names (`class`,
 // `for`, `tabindex`, etc.) and have their own a11y / keyboard /
@@ -29,22 +35,42 @@ const NON_REACT_JSX_DIALECT_PACKAGE_PREFIXES: ReadonlyArray<string> = [
   "@builder.io/qwik",
 ];
 
+const REACT_JSX_DIALECT_PACKAGE_PREFIXES: ReadonlyArray<string> = ["react", "react-dom", "preact"];
+
 const startsWithAny = (source: string, prefixes: ReadonlyArray<string>): boolean =>
   prefixes.some((prefix) => source === prefix || source.startsWith(`${prefix}/`));
 
-export const fileImportsNonReactJsxDialect = (program: EsTreeNodeOfType<"Program">): boolean => {
+export const collectJsxRuntimeImports = (
+  program: EsTreeNodeOfType<"Program">,
+): JsxRuntimeImports => {
+  let hasNonReactRuntime = false;
+  let hasReactRuntime = false;
   for (const statement of program.body) {
     if (!isNodeOfType(statement as EsTreeNode, "ImportDeclaration")) continue;
-    const source = (statement as EsTreeNodeOfType<"ImportDeclaration">).source;
+    const importDeclaration = statement as EsTreeNodeOfType<"ImportDeclaration">;
+    if (isTypeOnlyImport(importDeclaration)) continue;
+    const source = importDeclaration.source;
     const value =
       source && typeof (source as { value?: unknown }).value === "string"
         ? (source as { value: string }).value
         : null;
     if (!value) continue;
-    if (NON_REACT_JSX_DIALECT_PACKAGES.has(value)) return true;
-    if (startsWithAny(value, NON_REACT_JSX_DIALECT_PACKAGE_PREFIXES)) return true;
+    if (
+      NON_REACT_JSX_DIALECT_PACKAGES.has(value) ||
+      startsWithAny(value, NON_REACT_JSX_DIALECT_PACKAGE_PREFIXES)
+    ) {
+      hasNonReactRuntime = true;
+    }
+    if (startsWithAny(value, REACT_JSX_DIALECT_PACKAGE_PREFIXES)) {
+      hasReactRuntime = true;
+    }
   }
-  return false;
+  return { hasNonReactRuntime, hasReactRuntime };
+};
+
+export const fileImportsNonReactJsxDialect = (program: EsTreeNodeOfType<"Program">): boolean => {
+  const runtimeImports = collectJsxRuntimeImports(program);
+  return runtimeImports.hasNonReactRuntime && !runtimeImports.hasReactRuntime;
 };
 
 // `classList={...}` is Solid-distinctive — React JSX would write

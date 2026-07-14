@@ -1,6 +1,6 @@
 import type { FileScan } from "./file-scan.js";
 import {
-  fileImportsNonReactJsxDialect,
+  collectJsxRuntimeImports,
   jsxAttributeIsNonReactDialectMarker,
 } from "./non-react-jsx-dialect.js";
 import { skipNonProductionFiles } from "./skip-non-production-files.js";
@@ -36,6 +36,7 @@ const wrapCreateForReactJsxOnly = <
   ((context: Parameters<CreateFn>[0]) => {
     const innerVisitors = create(context);
     let fileIsNonReactJsx = false;
+    let fileImportsReactRuntime = false;
     // We need a Program visitor to seed the dialect status BEFORE any
     // JSX visitor fires. If the original rule already declared one,
     // wrap it; otherwise inject a fresh one.
@@ -52,14 +53,20 @@ const wrapCreateForReactJsxOnly = <
       }
       if (key === "Program") {
         wrappedVisitors.Program = (node: EsTreeNodeOfType<"Program">) => {
-          fileIsNonReactJsx = fileImportsNonReactJsxDialect(node);
+          const runtimeImports = collectJsxRuntimeImports(node);
+          fileImportsReactRuntime = runtimeImports.hasReactRuntime;
+          fileIsNonReactJsx = runtimeImports.hasNonReactRuntime && !runtimeImports.hasReactRuntime;
           (visitor as (n: EsTreeNodeOfType<"Program">) => void)(node);
         };
         continue;
       }
       if (key === "JSXOpeningElement") {
         wrappedVisitors.JSXOpeningElement = (node: EsTreeNodeOfType<"JSXOpeningElement">) => {
-          if (!fileIsNonReactJsx && jsxAttributeIsNonReactDialectMarker(node)) {
+          if (
+            !fileImportsReactRuntime &&
+            !fileIsNonReactJsx &&
+            jsxAttributeIsNonReactDialectMarker(node)
+          ) {
             fileIsNonReactJsx = true;
           }
           if (fileIsNonReactJsx) return;
@@ -74,7 +81,9 @@ const wrapCreateForReactJsxOnly = <
     }
     if (!("Program" in wrappedVisitors)) {
       wrappedVisitors.Program = (node: EsTreeNodeOfType<"Program">) => {
-        fileIsNonReactJsx = fileImportsNonReactJsxDialect(node);
+        const runtimeImports = collectJsxRuntimeImports(node);
+        fileImportsReactRuntime = runtimeImports.hasReactRuntime;
+        fileIsNonReactJsx = runtimeImports.hasNonReactRuntime && !runtimeImports.hasReactRuntime;
       };
     }
     return wrappedVisitors;

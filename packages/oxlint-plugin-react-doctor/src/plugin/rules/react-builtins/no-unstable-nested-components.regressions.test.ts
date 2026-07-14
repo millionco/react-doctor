@@ -78,6 +78,97 @@ describe("react-builtins/no-unstable-nested-components — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still reports when React and Solid runtime imports make ownership mixed", () => {
+    const result = run(`
+      import { useState } from "react";
+      import { createSignal } from "solid-js";
+      const App = () => {
+        const Child = () => {
+          const [count] = useState(0);
+          return <div>{count}</div>;
+        };
+        return <Child />;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports when a React file has a late Solid JSX marker", () => {
+    const result = run(`
+      import { useState } from "react";
+      const App = () => {
+        const Child = () => {
+          const [count] = useState(0);
+          return <div>{count}</div>;
+        };
+        return <main><Child /><Widget classList={{ active: true }} /></main>;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports when Solid is imported only for types", () => {
+    const result = run(`
+      import type { JSX } from "solid-js";
+      const App = () => {
+        const Child = (): JSX.Element => <div>Ambiguous</div>;
+        return <Child />;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores a React type-only import in a Solid-owned file", () => {
+    const result = run(`
+      import type { ReactNode } from "react";
+      import { createSignal } from "solid-js";
+      const App = () => {
+        const Child = () => {
+          const [count] = createSignal(0);
+          return <div>{count()}</div>;
+        };
+        return <Child />;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for an aliased Solid runtime import", () => {
+    const result = run(`
+      import { createSignal as makeSignal } from "solid-js";
+      const App = () => {
+        const Child = () => {
+          const [count] = makeSignal(0);
+          return <div>{count()}</div>;
+        };
+        return <Child />;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for the explicit Solid JSX runtime", () => {
+    const result = run(`
+      import { jsx } from "solid-js/jsx-runtime";
+      const App = () => {
+        const Child = () => <div>Solid</div>;
+        return <Child />;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat a similarly named userland package as Solid ownership", () => {
+    const result = run(`
+      import { createSignal } from "solid-js-userland";
+      const App = () => {
+        const Child = () => <div>Ambiguous</div>;
+        return <Child />;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps module-scope Solid and React components quiet", () => {
     const solidResult = run(`
       import { createSignal } from "solid-js";

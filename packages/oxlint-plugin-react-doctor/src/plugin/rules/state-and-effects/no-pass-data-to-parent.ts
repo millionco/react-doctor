@@ -830,10 +830,10 @@ export const noPassDataToParent = defineRule({
             if (isParentWiredHookResultRef(analysis, argRef)) return false;
             if (isParentWiredHookCalleeRef(analysis, argRef)) return false;
             // Only real function BINDINGS are registration callbacks; a
-            // parameter reference resolves to its enclosing function via
-            // defs[0].node, which must not be mistaken for one — parameters
-            // carry the data being handed up (cloudscape custom-forms,
-            // a delta-audit recall regression).
+            // parameter reference resolves to null (its binding holds data,
+            // not a callable), so a forwarded data parameter is not mistaken
+            // for one (cloudscape custom-forms, a delta-audit recall
+            // regression).
             if (resolveToFunction(argRef)) return false;
             // An imported binding in argument (not callee) position is
             // static module config (`subscribe(EVENT_NAME, handler)`),

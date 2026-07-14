@@ -262,6 +262,10 @@ const unwrapUseCallback = (node: EsTreeNode | null | undefined): EsTreeNode | nu
 // `const fn = useCallback(() => {}, [])` wrapper. Returns null
 // when the reference doesn't resolve to a function. Shared by
 // `getEffectFn`, `isCleanupReturnArgument`, and `resolvesToAsyncFunction`.
+// A `Parameter` def points its `node` at the ENCLOSING function that
+// declares the parameter, not at a function bound to the parameter — the
+// binding holds a value, not a callable. Resolving it would mistake plain
+// data arguments (`setRow(row)`) for the updater/callback function.
 export const hasParameterDef = (ref: Reference): boolean =>
   Boolean(ref.resolved?.defs.some((def) => def.type === "Parameter"));
 

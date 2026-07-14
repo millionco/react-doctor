@@ -11,7 +11,7 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 
-const DEEP_ALIAS_CHAIN_LENGTH = 20_000;
+const DEEP_ALIAS_CHAIN_LENGTH = 50_000;
 
 const resolveFirstAttribute = (
   code: string,

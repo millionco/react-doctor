@@ -1,12 +1,11 @@
-import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { expressionReadsPatternBinding } from "../../utils/expression-reads-pattern-binding.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getOrderIndependentLocalFunction } from "../../utils/get-order-independent-local-function.js";
 import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { isAuthGuardName } from "../../utils/is-auth-guard-name.js";
 import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -22,15 +21,6 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // where the second's initializer reads no identifier introduced by the
 // first declaration. We require both declarations to be at the top
 // level of the same block to keep precision high.
-const collectDeclaredNames = (declaration: EsTreeNode): Set<string> => {
-  const names = new Set<string>();
-  if (!isNodeOfType(declaration, "VariableDeclaration")) return names;
-  for (const declarator of declaration.declarations ?? []) {
-    collectPatternNames(declarator.id, names);
-  }
-  return names;
-};
-
 const declarationStartsWithAwait = (declaration: EsTreeNode): boolean => {
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   for (const declarator of declaration.declarations ?? []) {
@@ -44,18 +34,18 @@ const declarationStartsWithAwait = (declaration: EsTreeNode): boolean => {
 // b()` after `const { data } = await a()`) is a re-bind evaluated after
 // the await resolves, not a read of the first result — counting it would
 // miss the waterfall.
-const declarationReadsAnyName = (declaration: EsTreeNode, names: Set<string>): boolean => {
-  if (names.size === 0) return false;
+const declarationReadsAnyPatternBinding = (
+  declaration: EsTreeNode,
+  patterns: ReadonlyArray<EsTreeNode>,
+  context: RuleContext,
+): boolean => {
+  if (patterns.length === 0) return false;
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
-  let didRead = false;
   for (const declarator of declaration.declarations ?? []) {
     if (!declarator.init) continue;
-    walkAst(declarator.init, (child: EsTreeNode) => {
-      if (didRead) return;
-      if (isNodeOfType(child, "Identifier") && names.has(child.name)) didRead = true;
-    });
+    if (expressionReadsPatternBinding(declarator.init, patterns, context.scopes)) return true;
   }
-  return didRead;
+  return false;
 };
 
 // Leading verbs that mark an await run for ordering / a side effect rather
@@ -168,13 +158,13 @@ export const serverSequentialIndependentAwait = defineRule({
         const currentStatement = statements[statementIndex];
         if (!isNodeOfType(currentStatement, "VariableDeclaration")) continue;
         if (!declarationStartsWithAwait(currentStatement)) continue;
-        const declaredNames = collectDeclaredNames(currentStatement);
+        const declaredPatterns = currentStatement.declarations.map((declarator) => declarator.id);
 
         const nextStatement = statements[statementIndex + 1];
         if (!isNodeOfType(nextStatement, "VariableDeclaration")) continue;
         if (!declarationStartsWithAwait(nextStatement)) continue;
 
-        if (declarationReadsAnyName(nextStatement, declaredNames)) continue;
+        if (declarationReadsAnyPatternBinding(nextStatement, declaredPatterns, context)) continue;
         // The second await is on a promise that already exists
         // (`const p = fetchPosts(); … const posts = await p;`,
         // `await props.params`) — already running, so there's no

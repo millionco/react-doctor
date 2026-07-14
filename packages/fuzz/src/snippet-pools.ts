@@ -154,6 +154,7 @@ export const HANDLER_SNIPPET_POOL = [
   `const handleReplaceAll = (text: string) => { for (const item of items) { text.replaceAll(new RegExp("token", "g"), String(item)); } };`,
   `globalThis.RegExp = CustomRegExp; const handleCustomMatch = () => { for (const item of items) { new RegExp("token", "i").test(String(item)); } };`,
   `const handleSequence = async () => { const first = await fetch(url); const second = await fetch(url); handle(first, second); };`,
+  `const handleShadowedAwaitDependencies = async () => { const first = await fetch(url); const second = await api.post(url, (first) => first); const third = await api.put(url, (second) => second); handle(first, second, third); };`,
   `const handlePersistToken = () => { localStorage.setItem("auth_token", String(value)); };`,
   `const handleRedirect = () => { window.location.href = String(params.next); };`,
   `const renderStatus = () => { const [open] = useState(false); return <b>{String(open)}</b>; }; const statusNode = <div>{renderStatus()}</div>;`,

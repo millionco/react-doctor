@@ -1,6 +1,7 @@
 import { resolveExpressionKey } from "../../../utils/resolve-expression-key.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
+import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import type { SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
@@ -462,15 +463,6 @@ const statementCanCompleteNormally = (
   return true;
 };
 
-const isAncestorOf = (ancestor: EsTreeNode, node: EsTreeNode): boolean => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current) {
-    if (current === ancestor) return true;
-    current = current.parent;
-  }
-  return false;
-};
-
 const isReachableUnderSnapshotEnvironment = (
   target: EsTreeNode,
   effectFunction: EsTreeNode,
@@ -484,12 +476,12 @@ const isReachableUnderSnapshotEnvironment = (
     if (isFunctionLike(parent) && parent !== effectFunction) return true;
     if (isNodeOfType(parent, "IfStatement")) {
       const testValue = evaluateBoolean(parent.test as EsTreeNode, environment);
-      if (isAncestorOf(parent.consequent as EsTreeNode, current) && testValue === false) {
+      if (isAstDescendant(current, parent.consequent as EsTreeNode) && testValue === false) {
         return false;
       }
       if (
         parent.alternate &&
-        isAncestorOf(parent.alternate as EsTreeNode, current) &&
+        isAstDescendant(current, parent.alternate as EsTreeNode) &&
         testValue === true
       ) {
         return false;
@@ -507,7 +499,7 @@ const isReachableUnderSnapshotEnvironment = (
     }
     if (isNodeOfType(parent, "BlockStatement")) {
       const containingStatementIndex = (parent.body ?? []).findIndex((statement) =>
-        isAncestorOf(statement as EsTreeNode, current),
+        isAstDescendant(current, statement as EsTreeNode),
       );
       if (containingStatementIndex >= 0) {
         const precedingStatements = (parent.body ?? []).slice(0, containingStatementIndex);

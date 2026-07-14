@@ -45,11 +45,11 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
   });
 
   describe("hidden state resets", () => {
-    it("stays silent when every exposed overflow-menu read is hidden before reset", () => {
+    it("still reports when an overflow-menu dependency can change between truthy values", () => {
       const result = runRule(
         noResetAllStateOnPropChange,
         `import { useEffect, useState } from "react";
-        const TopNavigation = ({ menuTriggerVisible }) => {
+        const TopNavigation = ({ menuTriggerVisible }: { menuTriggerVisible?: number[] }) => {
           const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
           useEffect(() => {
             setOverflowMenuOpen(false);
@@ -76,14 +76,14 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
         { forceJsx: true },
       );
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
     });
 
     it("stays silent when a dismissed tooltip resets while its item is not highlighted", () => {
       const result = runRule(
         noResetAllStateOnPropChange,
         `import { useEffect, useState } from "react";
-        const Item = ({ highlighted, disabledReason }) => {
+        const Item = ({ highlighted, disabledReason }: { highlighted?: boolean; disabledReason: string }) => {
           const [canShowTooltip, setCanShowTooltip] = useState(true);
           useEffect(() => setCanShowTooltip(true), [highlighted]);
           return (
@@ -150,7 +150,7 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
         noResetAllStateOnPropChange,
         `import { useEffect, useState } from "react";
         import { createPortal } from "react-dom";
-        const Menu = ({ visible }) => {
+        const Menu = ({ visible }: { visible: boolean }) => {
           const [open, setOpen] = useState(false);
           useEffect(() => setOpen(false), [visible]);
           ${renderBody}
@@ -165,7 +165,7 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
       const result = runRule(
         noResetAllStateOnPropChange,
         `import { useEffect, useState } from "react";
-        const Menu = ({ visible }) => {
+        const Menu = ({ visible }: { visible: boolean }) => {
           const [open, setOpen] = useState(false);
           const [query, setQuery] = useState("");
           useEffect(() => {
@@ -173,6 +173,120 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
             setQuery("");
           }, [visible]);
           return visible && <div data-open={open}>{query}</div>;
+        };`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
+      [
+        "a string dependency remains visible across value changes",
+        `import { useEffect, useState } from "react";
+        const Menu = ({ userId }: { userId: string }) => {
+          const [draft, setDraft] = useState("");
+          useEffect(() => setDraft(""), [userId]);
+          return userId && <output>{draft}</output>;
+        };`,
+      ],
+      [
+        "a custom component can ignore hidden",
+        `import { useEffect, useState } from "react";
+        const Panel = ({ value }: { hidden: boolean; value: boolean }) => <output>{value}</output>;
+        const Menu = ({ visible }: { visible: boolean }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          return <Panel hidden={!visible} value={open} />;
+        };`,
+      ],
+      [
+        "a custom component can ignore aria-hidden",
+        `import { useEffect, useState } from "react";
+        const Panel = (props: { "aria-hidden": boolean; "aria-expanded": boolean }) => <button aria-expanded={props["aria-expanded"]}>Menu</button>;
+        const Menu = ({ visible }: { visible: boolean }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          return <Panel aria-hidden={!visible} aria-expanded={open} />;
+        };`,
+      ],
+      [
+        "a portal escapes a hidden DOM ancestor",
+        `import { useEffect, useState } from "react";
+        import { createPortal } from "react-dom";
+        const Menu = ({ visible }: { visible: boolean }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          return <div hidden={!visible}>{createPortal(<output>{open}</output>, document.body)}</div>;
+        };`,
+      ],
+      [
+        "an arbitrary class name has no hiding semantics",
+        `import { useEffect, useState } from "react";
+        const Menu = ({ visible }: { visible: boolean }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          return <output className={!visible ? "not-hidden" : ""}>{open}</output>;
+        };`,
+      ],
+      [
+        "an opaque callback can dirty state while hidden",
+        `import { useEffect, useState } from "react";
+        const Menu = ({ visible, onRegister }: { visible: boolean; onRegister: (callback: () => void) => void }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          useEffect(() => onRegister(() => setOpen(true)), [onRegister]);
+          return visible && <output>{open}</output>;
+        };`,
+      ],
+    ])("still reports when %s", (_label, source) => {
+      const result = runRule(noResetAllStateOnPropChange, source, { forceJsx: true });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it.each([
+      [
+        "the dependency is a negated visibility alias",
+        `const hidden = !visible;
+        useEffect(() => setOpen(false), [hidden]);
+        return !hidden && <button onClick={() => setOpen(true)}>{String(open)}</button>;`,
+      ],
+      [
+        "the state read is inside a gated map callback",
+        `useEffect(() => setOpen(false), [visible]);
+        return visible && items.map(item => (
+          <button key={item} onClick={() => setOpen(true)}>{String(open)}</button>
+        ));`,
+      ],
+      [
+        "the visibility gate uses a strict Boolean comparison",
+        `useEffect(() => setOpen(false), [visible]);
+        return visible === true ? (
+          <button onClick={() => setOpen(true)}>{String(open)}</button>
+        ) : null;`,
+      ],
+      [
+        "the state read is inside a singly invoked render helper",
+        `useEffect(() => setOpen(false), [visible]);
+        const renderContent = () => (
+          <button onClick={() => setOpen(true)}>{String(open)}</button>
+        );
+        return visible && renderContent();`,
+      ],
+      [
+        "a portal is directly gated before it escapes the tree",
+        `useEffect(() => setOpen(false), [visible]);
+        return visible && createPortal(<output>{open}</output>, document.body);`,
+      ],
+    ])("stays silent when %s", (_label, componentBody) => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        import { createPortal } from "react-dom";
+        const Menu = ({ visible, items }: { visible: boolean; items: string[] }) => {
+          const [open, setOpen] = useState(false);
+          ${componentBody}
         };`,
         { forceJsx: true },
       );

@@ -172,6 +172,117 @@ describe("prefer-use-effect-event — callback stability regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("stays conservative for callback-shaped arguments to unrelated release methods", () => {
+    const abortResult = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onClose }) => {
+        useEffect(() => {
+          const close = () => onClose();
+          setTimeout(close, 100);
+          controller.abort(close);
+        }, [active, onClose]);
+        return null;
+      };
+    `);
+    const closeResult = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onClose }) => {
+        useEffect(() => {
+          const close = () => onClose();
+          setTimeout(close, 100);
+          socket.close(close);
+        }, [active, onClose]);
+        return null;
+      };
+    `);
+
+    expect(abortResult.parseErrors).toEqual([]);
+    expect(abortResult.diagnostics).toEqual([]);
+    expect(closeResult.parseErrors).toEqual([]);
+    expect(closeResult.diagnostics).toEqual([]);
+  });
+
+  it("stays conservative for mismatched callback removal identities", () => {
+    const receiverResult = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onKey }) => {
+        useEffect(() => {
+          const handleKey = (event) => onKey(event.key);
+          firstTarget.addEventListener("keydown", handleKey);
+          return () => secondTarget.removeEventListener("keydown", handleKey);
+        }, [active, onKey]);
+        return null;
+      };
+    `);
+    const eventResult = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onKey }) => {
+        useEffect(() => {
+          const handleKey = (event) => onKey(event.key);
+          window.addEventListener("keydown", handleKey);
+          return () => window.removeEventListener("keyup", handleKey);
+        }, [active, onKey]);
+        return null;
+      };
+    `);
+    const computedMethodResult = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onKey, removeMethod }) => {
+        useEffect(() => {
+          const handleKey = (event) => onKey(event.key);
+          window.addEventListener("keydown", handleKey);
+          return () => window[removeMethod]("keydown", handleKey);
+        }, [active, onKey]);
+        return null;
+      };
+    `);
+
+    expect(receiverResult.parseErrors).toEqual([]);
+    expect(receiverResult.diagnostics).toEqual([]);
+    expect(eventResult.parseErrors).toEqual([]);
+    expect(eventResult.diagnostics).toEqual([]);
+    expect(computedMethodResult.parseErrors).toEqual([]);
+    expect(computedMethodResult.diagnostics).toEqual([]);
+  });
+
+  it("stays conservative when a scheduled helper is returned or stored", () => {
+    const returnedResult = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onClose }) => {
+        useEffect(() => {
+          const close = () => onClose();
+          setTimeout(close, 100);
+          return close;
+        }, [active, onClose]);
+        return null;
+      };
+    `);
+    const storedResult = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onClose }) => {
+        useEffect(() => {
+          const close = () => onClose();
+          setTimeout(close, 100);
+          const cleanup = { close };
+          return () => cleanup.close();
+        }, [active, onClose]);
+        return null;
+      };
+    `);
+
+    expect(returnedResult.parseErrors).toEqual([]);
+    expect(returnedResult.diagnostics).toEqual([]);
+    expect(storedResult.parseErrors).toEqual([]);
+    expect(storedResult.diagnostics).toEqual([]);
+  });
+
   it("does not correlate a direct helper with a shadowed scheduled binding", () => {
     const result = runPreferUseEffectEvent(`
       import { useEffect } from "react";

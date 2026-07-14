@@ -428,6 +428,7 @@ const getCallbackRefProvenance = (
   effectCall: EsTreeNode,
   callExpression: EsTreeNodeOfType<"CallExpression">,
   isReactUseRefCall: (node: EsTreeNode) => boolean,
+  isReactUseEffectCall: (node: EsTreeNode) => boolean,
 ): CallbackRefProvenance | null => {
   const callee = stripParenExpression(callExpression.callee as EsTreeNode);
   if (
@@ -450,7 +451,19 @@ const getCallbackRefProvenance = (
   ) {
     return null;
   }
-  if (!getDirectComponentBodyStatement(effectCall, componentFunction.body)) return null;
+  const notificationEffectStatement = getDirectComponentBodyStatement(
+    effectCall,
+    componentFunction.body,
+  );
+  const notificationEffectRoot = findTransparentExpressionRoot(effectCall);
+  if (
+    !notificationEffectStatement ||
+    !isNodeOfType(notificationEffectStatement, "ExpressionStatement") ||
+    notificationEffectRoot.parent !== notificationEffectStatement ||
+    !isReactUseEffectCall(effectCall)
+  ) {
+    return null;
+  }
 
   const callbackPropNames = new Set<string>();
   const initializer = refCall.arguments?.[0] as EsTreeNode | undefined;
@@ -487,8 +500,7 @@ const getCallbackRefProvenance = (
       if (
         assignment.operator !== "=" ||
         !assignmentStatement ||
-        !isNodeOfType(assignmentStatement, "ExpressionStatement") ||
-        assignmentStatement.parent !== componentFunction.body
+        !isNodeOfType(assignmentStatement, "ExpressionStatement")
       ) {
         return null;
       }
@@ -497,6 +509,46 @@ const getCallbackRefProvenance = (
         assignment.right as EsTreeNode,
       );
       if (!assignedCallbackName) return null;
+      if (assignmentStatement.parent !== componentFunction.body) {
+        if (!initializerCallbackName || assignedCallbackName !== initializerCallbackName) {
+          return null;
+        }
+        const assignmentEffectBody = assignmentStatement.parent;
+        if (!assignmentEffectBody || !isNodeOfType(assignmentEffectBody, "BlockStatement")) {
+          return null;
+        }
+        const assignmentEffectFunction = assignmentEffectBody.parent;
+        if (
+          !assignmentEffectFunction ||
+          !isFunctionLike(assignmentEffectFunction) ||
+          assignmentEffectFunction.body !== assignmentEffectBody
+        ) {
+          return null;
+        }
+        const assignmentEffectFunctionRoot =
+          findTransparentExpressionRoot(assignmentEffectFunction);
+        const assignmentEffectCall = assignmentEffectFunctionRoot.parent;
+        if (
+          !assignmentEffectCall ||
+          !isNodeOfType(assignmentEffectCall, "CallExpression") ||
+          !isReactUseEffectCall(assignmentEffectCall) ||
+          getEffectFn(analysis, assignmentEffectCall) !== assignmentEffectFunction
+        ) {
+          return null;
+        }
+        const assignmentEffectStatement = getDirectComponentBodyStatement(
+          assignmentEffectCall,
+          componentFunction.body,
+        );
+        if (
+          !assignmentEffectStatement ||
+          !isNodeOfType(assignmentEffectStatement, "ExpressionStatement") ||
+          assignmentEffectCall.parent !== assignmentEffectStatement ||
+          assignmentEffectStatement.range[0] >= notificationEffectStatement.range[0]
+        ) {
+          return null;
+        }
+      }
       callbackPropNames.add(assignedCallbackName);
     }
   }
@@ -670,6 +722,11 @@ export const noPassDataToParent = defineRule({
         allowGlobalReactNamespace: true,
         allowUnboundBareCalls: true,
       });
+    const isReactUseEffectCall = (node: EsTreeNode): boolean =>
+      isReactApiCall(node, "useEffect", context.scopes, {
+        allowGlobalReactNamespace: true,
+        allowUnboundBareCalls: true,
+      });
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isUseEffect(node)) return;
@@ -689,6 +746,7 @@ export const noPassDataToParent = defineRule({
             node,
             callExpr,
             isReactUseRefCall,
+            isReactUseEffectCall,
           );
           if (isRefCall(analysis, ref) && !callbackRefProvenance) continue;
           if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;

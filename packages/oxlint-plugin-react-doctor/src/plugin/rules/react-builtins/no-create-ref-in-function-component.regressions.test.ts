@@ -563,6 +563,15 @@ export const Input = ({ controller }) => { const target = createRef(); return <b
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports handler reads after destructuring or spread can execute user code", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = ({ value }) => { const target = createRef(); return <button ref={target} onClick={() => { const { item } = value; const copy = { ...value }; consume(item, copy); target.current?.focus(); }}>Focus</button>; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps an ordinary state setter before the fresh handler read safe", () => {
     const result = runRule(
       noCreateRefInFunctionComponent,
@@ -608,6 +617,39 @@ import { flushSync } from "react-dom";
 export const Input = () => { let [active, setActive] = useState(false); const originalSetActive = setActive; setActive = () => flushSync(() => originalSetActive((value) => !value)); const target = createRef(); return <button key={String(active)} ref={target} onClick={() => { setActive(true); target.current?.focus(); }}>Focus</button>; };`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps immutable useState setter aliases before the ref read safe", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef, useState } from "react";
+export const Input = () => { const [active, setActive] = useState(false); const update = setActive; const target = createRef(); return <button aria-pressed={active} ref={target} onClick={() => { update(true); target.current?.focus(); }}>Focus</button>; };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps render-local identity, Boolean, and void observations local", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = () => { const first = createRef(); const second = createRef(); const third = createRef(); void first; const isPresent = Boolean(second); const isSame = third === third; return <input aria-label={String(isPresent && isSame)} />; };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("suppresses only a discarded current read during render", () => {
+    const discardedResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = () => { const target = createRef(); void target.current; return <input ref={target} />; };`,
+    );
+    const observedResult = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = () => { const target = createRef(); return <span>{Boolean(target.current)} {String(target.current)}</span>; };`,
+    );
+    expect(discardedResult.diagnostics).toEqual([]);
+    expect(observedResult.diagnostics).toHaveLength(1);
   });
 
   it("reports a fresh handler read after a synchronous flush", () => {

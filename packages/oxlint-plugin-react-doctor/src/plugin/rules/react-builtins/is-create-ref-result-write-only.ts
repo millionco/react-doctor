@@ -559,7 +559,19 @@ const isReactStateSetterCall = (
 ): boolean => {
   const callee = findTransparentExpressionRoot(callExpression.callee);
   if (!isNodeOfType(callee, "Identifier")) return false;
-  const symbol = scopes.symbolFor(callee);
+  let symbol = scopes.symbolFor(callee);
+  const visitedSymbolIds = new Set<number>();
+  while (
+    symbol?.kind === "const" &&
+    symbol.initializer &&
+    isNodeOfType(symbol.initializer, "Identifier") &&
+    isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+    symbol.declarationNode.id === symbol.bindingIdentifier &&
+    !visitedSymbolIds.has(symbol.id)
+  ) {
+    visitedSymbolIds.add(symbol.id);
+    symbol = scopes.symbolFor(symbol.initializer);
+  }
   if (!symbol || symbol.references.some((reference) => reference.flag !== "read")) return false;
   const arrayPattern = symbol.bindingIdentifier.parent;
   if (
@@ -590,23 +602,19 @@ const isProvenNonCommittingCall = (
     if (!callback || isNodeOfType(callback, "SpreadElement") || !isFunctionLike(callback)) {
       return false;
     }
-    let isPureTransitionCallback = true;
-    walkAst(callback, (node) => {
-      if (!isPureTransitionCallback || findEnclosingFunction(node) !== callback) return;
-      if (isNodeOfType(node, "CallExpression")) {
-        if (!isReactStateSetterCall(node, scopes)) isPureTransitionCallback = false;
-        return;
-      }
-      if (
-        isNodeOfType(node, "MemberExpression") ||
-        isNodeOfType(node, "AwaitExpression") ||
-        isNodeOfType(node, "YieldExpression") ||
-        isNodeOfType(node, "NewExpression")
-      ) {
-        isPureTransitionCallback = false;
-      }
-    });
-    return isPureTransitionCallback;
+    if (!isNodeOfType(callback.body, "BlockStatement")) {
+      return (
+        isNodeOfType(callback.body, "CallExpression") &&
+        isReactStateSetterCall(callback.body, scopes)
+      );
+    }
+    return callback.body.body.every(
+      (statement) =>
+        isNodeOfType(statement, "EmptyStatement") ||
+        (isNodeOfType(statement, "ExpressionStatement") &&
+          isNodeOfType(statement.expression, "CallExpression") &&
+          isReactStateSetterCall(statement.expression, scopes)),
+    );
   }
   const callee = findTransparentExpressionRoot(callExpression.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
@@ -701,7 +709,10 @@ const isSafeSameRenderCurrentRead = (
       isNodeOfType(node, "UpdateExpression") ||
       isNodeOfType(node, "AssignmentExpression") ||
       isNodeOfType(node, "TemplateLiteral") ||
-      isNodeOfType(node, "NewExpression")
+      isNodeOfType(node, "NewExpression") ||
+      isNodeOfType(node, "SpreadElement") ||
+      (isNodeOfType(node, "VariableDeclarator") &&
+        (isNodeOfType(node.id, "ObjectPattern") || isNodeOfType(node.id, "ArrayPattern")))
     ) {
       hasPotentialCommit = true;
     }
@@ -857,6 +868,14 @@ const analyzeCallArgumentUse = (
   if (argumentIndex < 0) return false;
   if (
     argumentIndex === 0 &&
+    isNodeOfType(callExpression.callee, "Identifier") &&
+    callExpression.callee.name === "Boolean" &&
+    environment.scopes.isGlobalReference(callExpression.callee)
+  ) {
+    return true;
+  }
+  if (
+    argumentIndex === 0 &&
     isProvenReactCall(callExpression, "useImperativeHandle", environment.scopes)
   ) {
     return propertyPath.length === 0;
@@ -916,6 +935,23 @@ const analyzeValueUse = (
   const parent = expression.parent;
   if (!parent) return false;
   if (isNodeOfType(parent, "ExpressionStatement")) return true;
+  if (
+    isNodeOfType(parent, "UnaryExpression") &&
+    parent.operator === "void" &&
+    parent.argument === expression
+  ) {
+    return true;
+  }
+  if (
+    propertyPath.length === 0 &&
+    isNodeOfType(parent, "BinaryExpression") &&
+    (parent.operator === "===" ||
+      parent.operator === "!==" ||
+      parent.operator === "==" ||
+      parent.operator === "!=")
+  ) {
+    return true;
+  }
   if (isIntrinsicJsxSpreadRefUse(expression, propertyPath, environment)) return true;
   if (isIntrinsicCreateElementRefProperty(expression, propertyPath, environment)) return true;
   if (
@@ -1007,7 +1043,17 @@ const analyzeSymbolValuePath = (
     }
     if (reference.flag !== "read") return false;
     if (pathStartsWith(memberAccess.propertyPath, valuePath.propertyPath)) {
-      if (memberAccess.propertyPath.length > valuePath.propertyPath.length) return false;
+      if (memberAccess.propertyPath.length > valuePath.propertyPath.length) {
+        const parent = memberAccess.expression.parent;
+        return Boolean(
+          memberAccess.propertyPath.length === valuePath.propertyPath.length + 1 &&
+          memberAccess.propertyPath[valuePath.propertyPath.length] === "current" &&
+          parent &&
+          isNodeOfType(parent, "UnaryExpression") &&
+          parent.operator === "void" &&
+          parent.argument === memberAccess.expression,
+        );
+      }
       return analyzeValueUse(
         memberAccess.expression,
         [],

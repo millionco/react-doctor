@@ -1,5 +1,14 @@
 # @react-doctor/language-server
 
+## 0.7.8
+
+### Patch Changes
+
+- [#1257](https://github.com/millionco/react-doctor/pull/1257) [`e632f8a`](https://github.com/millionco/react-doctor/commit/e632f8a6c4d5a9ba1eddfb5a01d5dd0d109cce22) Thanks [@aidenybai](https://github.com/aidenybai)! - Give same-site diagnostics distinct deterministic occurrence IDs in JSON reports and editor actions.
+
+- Updated dependencies []:
+  - @react-doctor/core@0.7.8
+
 ## 0.7.7
 
 ### Patch Changes

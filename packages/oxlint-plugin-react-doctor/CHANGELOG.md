@@ -1,5 +1,57 @@
 # oxlint-plugin-react-doctor
 
+## 0.7.8
+
+### Patch Changes
+
+- [#1230](https://github.com/millionco/react-doctor/pull/1230) [`4a73399`](https://github.com/millionco/react-doctor/commit/4a73399f529580b18546df6addee71b53982f30c) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize native controls named by their own `title` attribute in `control-has-associated-label`.
+
+- [#1216](https://github.com/millionco/react-doctor/pull/1216) [`760a3b0`](https://github.com/millionco/react-doctor/commit/760a3b009eb445dc3234c923f2ae33e0441f0e60) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting every-commit effects whose state updates can converge through React's same-value bailout.
+
+- [#1245](https://github.com/millionco/react-doctor/pull/1245) [`af58965`](https://github.com/millionco/react-doctor/commit/af58965a7233b5b66283ad35b3a651435f1e0de9) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting live Boolean-normalized prop trackers as all-state resets.
+
+- [#1255](https://github.com/millionco/react-doctor/pull/1255) [`ed241c3`](https://github.com/millionco/react-doctor/commit/ed241c35e66b6b3759f49390ddcdcf92dcee1921) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid conditional Hook-order findings after immutable React capability guards while preserving mutable control-flow diagnostics.
+
+- [#1256](https://github.com/millionco/react-doctor/pull/1256) [`4190897`](https://github.com/millionco/react-doctor/commit/41908971fdb67be57afe862b0717f79f810bc5cf) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix no-chain-state-updates false positives when state dependencies cannot reach setters guarded by stable prop snapshots.
+
+- [#1249](https://github.com/millionco/react-doctor/pull/1249) [`4fce1c1`](https://github.com/millionco/react-doctor/commit/4fce1c1bff8af9adb66edad3ee66c25c20c5bd1e) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve parameter-provided cleanup callbacks and forwarded callback values as conservative external functions after parameter bindings stopped resolving to their enclosing function. This prevents false positives across shared state and effect analysis.
+
+- [#1250](https://github.com/millionco/react-doctor/pull/1250) [`c79c897`](https://github.com/millionco/react-doctor/commit/c79c897ec6128a3155ae23d10dda3f77e28683a5) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize timers created in synchronous Promise callbacks when an effect cleanup invalidates an effect-local boolean guard and releases the same effect-local handle on every cleanup path, including idiomatic truthy and nullish handle guards followed by a nullish reset and inactive branches that perform work before terminating. Guarded cleanup only counts when the actual release covers every live-handle path and precedes any handle reset. Repeated, suspended, shared-state, conditionally released, generator-cleanup, shadowed-API, unguarded, and rejoining-call callbacks remain diagnostics because they can allocate or orphan timers after cleanup, and the diagnostic now describes missing guaranteed ownership rather than claiming no cleanup was returned.
+
+- [#1220](https://github.com/millionco/react-doctor/pull/1220) [`517f87a`](https://github.com/millionco/react-doctor/commit/517f87a19f50893c4c19e79e6cdb37be12e71f01) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect fresh dependency values forwarded through local custom Hooks.
+
+- [#1196](https://github.com/millionco/react-doctor/pull/1196) [`ec144d9`](https://github.com/millionco/react-doctor/commit/ec144d99c9fb45698250b5ec47edbe1305cbfdbc) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid query-in-effect findings for unrelated refetch methods
+
+- [#1190](https://github.com/millionco/react-doctor/pull/1190) [`afed801`](https://github.com/millionco/react-doctor/commit/afed80154512c3fc4d55f3fe5c01bbc38afae627) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep js-set-map-lookups quiet when Set membership would change lookup semantics.
+
+- [#1222](https://github.com/millionco/react-doctor/pull/1222) [`9c612c5`](https://github.com/millionco/react-doctor/commit/9c612c57e4da1d48a489a6b9dcbbc532126904a0) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize immutable large-text threshold constants in no-polymorphic-children virtualization guards.
+
+- [#1239](https://github.com/millionco/react-doctor/pull/1239) [`9fab4fc`](https://github.com/millionco/react-doctor/commit/9fab4fc77e24d17079815edd0b2590615822ef6a) Thanks [@aidenybai](https://github.com/aidenybai)! - Prevent no-prop-callback-in-render from treating native collection methods on custom Hook parameters as caller callbacks.
+
+- [#1219](https://github.com/millionco/react-doctor/pull/1219) [`04c7e36`](https://github.com/millionco/react-doctor/commit/04c7e36b28b57ae4973662637946485504bc30af) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep no-effect-event-handler quiet for prop-gated external store-to-router synchronization.
+
+- [#1211](https://github.com/millionco/react-doctor/pull/1211) [`165a6cb`](https://github.com/millionco/react-doctor/commit/165a6cbd9c454f1eaff4f353f063503c808bd634) Thanks [@aidenybai](https://github.com/aidenybai)! - Report visibly independent local async helpers without trusting sequencing names or discarded void results.
+
+- [#1237](https://github.com/millionco/react-doctor/pull/1237) [`287dff7`](https://github.com/millionco/react-doctor/commit/287dff742b8d90274ce6ff2298daeee8e7441bcd) Thanks [@aidenybai](https://github.com/aidenybai)! - Only run `only-export-components` when the file is owned by a proven Fast Refresh integration, including source packages explicitly consumed by workspace Vite apps, serving Parcel commands, React Vite Storybooks, and Storybook Webpack projects that explicitly enable `reactOptions.fastRefresh`. Strengthen component, route, wrapper, barrel, React element return, portal, default alias, and React DOM root detection to avoid filename and PascalCase-only false positives.
+
+- [#1207](https://github.com/millionco/react-doctor/pull/1207) [`9fc93f8`](https://github.com/millionco/react-doctor/commit/9fc93f865c7ef2638bfa802f0544256fd5fc85e5) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect dynamic raw HTML rendered by React Markdown without a proven sanitizer.
+
+- [#1252](https://github.com/millionco/react-doctor/pull/1252) [`43327b5`](https://github.com/millionco/react-doctor/commit/43327b535c90fa29a266dc0627030f1b6e6cb925) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix no-unstable-nested-components to distinguish render callbacks from nested component element types.
+
+- [#1215](https://github.com/millionco/react-doctor/pull/1215) [`30b7eeb`](https://github.com/millionco/react-doctor/commit/30b7eebaeb1344b342ee2d59413cd5ef6e213f7a) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid rerender-memo-with-default-value false positives when a same-file React.memo comparator proves fresh empty defaults do not change its bailout.
+
+- [#1209](https://github.com/millionco/react-doctor/pull/1209) [`89dbf08`](https://github.com/millionco/react-doctor/commit/89dbf08d76beeb93d3959d7ea2e2d4a77cdd5c3d) Thanks [@aidenybai](https://github.com/aidenybai)! - Prevent no-legacy-context-api from reporting unrelated classes and registries.
+
+- [#1246](https://github.com/millionco/react-doctor/pull/1246) [`12e7193`](https://github.com/millionco/react-doctor/commit/12e719358046afde6294b5b620e735f8993ec56a) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Stop no-impure-state-updater flagging a data parameter forwarded to a setter. `resolveToFunction` mistook a `Parameter` definition (whose node is the enclosing function) for the updater, so idiomatic handlers like `(row) => { setSelected(row); setOpen(true) }` were reported. The shared resolver now rejects parameter bindings, which also removes a local workaround in no-pass-data-to-parent.
+
+- [#1227](https://github.com/millionco/react-doctor/pull/1227) [`fbc804e`](https://github.com/millionco/react-doctor/commit/fbc804e6768b292b63fe6d8c249469e32d8b8899) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix no-unstable-nested-components false positives in explicitly Solid-owned JSX files while preserving React and ambiguous-file diagnostics.
+
+- [#1213](https://github.com/millionco/react-doctor/pull/1213) [`046329c`](https://github.com/millionco/react-doctor/commit/046329caf3fdf99924e4b97ffe7b71106922787c) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting state read only by its sole writer effect's equality guard as a missing dependency.
+
+- [#1214](https://github.com/millionco/react-doctor/pull/1214) [`79abd71`](https://github.com/millionco/react-doctor/commit/79abd7177928fc79a91706cc2866b8097c7cd09c) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid `js-length-check-first` diagnostics when `Object.keys` and `Object.values` project the same proven frozen plain object.
+
+- [#1218](https://github.com/millionco/react-doctor/pull/1218) [`a468589`](https://github.com/millionco/react-doctor/commit/a4685891b8ee768176741a74eb7db2f4d0724bdc) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix style-prop-object false positives in explicitly Solid-owned JSX files while preserving React and ambiguous-file diagnostics.
+
 ## 0.7.7
 
 ### Patch Changes

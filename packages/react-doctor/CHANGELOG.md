@@ -1,5 +1,17 @@
 # react-doctor
 
+## 0.7.8
+
+### Patch Changes
+
+- [#1238](https://github.com/millionco/react-doctor/pull/1238) [`ed3e941`](https://github.com/millionco/react-doctor/commit/ed3e9411a1876348239032c78c289cded953b05b) Thanks [@aidenybai](https://github.com/aidenybai)! - Require executable motion-library usage and semantic reduced-motion handling before reporting the project-level accessibility diagnostic.
+
+- [#1257](https://github.com/millionco/react-doctor/pull/1257) [`e632f8a`](https://github.com/millionco/react-doctor/commit/e632f8a6c4d5a9ba1eddfb5a01d5dd0d109cce22) Thanks [@aidenybai](https://github.com/aidenybai)! - Give same-site diagnostics distinct deterministic occurrence IDs in JSON reports and editor actions.
+
+- Updated dependencies [[`4a73399`](https://github.com/millionco/react-doctor/commit/4a73399f529580b18546df6addee71b53982f30c), [`760a3b0`](https://github.com/millionco/react-doctor/commit/760a3b009eb445dc3234c923f2ae33e0441f0e60), [`af58965`](https://github.com/millionco/react-doctor/commit/af58965a7233b5b66283ad35b3a651435f1e0de9), [`ed241c3`](https://github.com/millionco/react-doctor/commit/ed241c35e66b6b3759f49390ddcdcf92dcee1921), [`4190897`](https://github.com/millionco/react-doctor/commit/41908971fdb67be57afe862b0717f79f810bc5cf), [`4fce1c1`](https://github.com/millionco/react-doctor/commit/4fce1c1bff8af9adb66edad3ee66c25c20c5bd1e), [`c79c897`](https://github.com/millionco/react-doctor/commit/c79c897ec6128a3155ae23d10dda3f77e28683a5), [`517f87a`](https://github.com/millionco/react-doctor/commit/517f87a19f50893c4c19e79e6cdb37be12e71f01), [`ec144d9`](https://github.com/millionco/react-doctor/commit/ec144d99c9fb45698250b5ec47edbe1305cbfdbc), [`afed801`](https://github.com/millionco/react-doctor/commit/afed80154512c3fc4d55f3fe5c01bbc38afae627), [`9c612c5`](https://github.com/millionco/react-doctor/commit/9c612c57e4da1d48a489a6b9dcbbc532126904a0), [`9fab4fc`](https://github.com/millionco/react-doctor/commit/9fab4fc77e24d17079815edd0b2590615822ef6a), [`04c7e36`](https://github.com/millionco/react-doctor/commit/04c7e36b28b57ae4973662637946485504bc30af), [`165a6cb`](https://github.com/millionco/react-doctor/commit/165a6cbd9c454f1eaff4f353f063503c808bd634), [`287dff7`](https://github.com/millionco/react-doctor/commit/287dff742b8d90274ce6ff2298daeee8e7441bcd), [`9fc93f8`](https://github.com/millionco/react-doctor/commit/9fc93f865c7ef2638bfa802f0544256fd5fc85e5), [`43327b5`](https://github.com/millionco/react-doctor/commit/43327b535c90fa29a266dc0627030f1b6e6cb925), [`30b7eeb`](https://github.com/millionco/react-doctor/commit/30b7eebaeb1344b342ee2d59413cd5ef6e213f7a), [`89dbf08`](https://github.com/millionco/react-doctor/commit/89dbf08d76beeb93d3959d7ea2e2d4a77cdd5c3d), [`12e7193`](https://github.com/millionco/react-doctor/commit/12e719358046afde6294b5b620e735f8993ec56a), [`fbc804e`](https://github.com/millionco/react-doctor/commit/fbc804e6768b292b63fe6d8c249469e32d8b8899), [`046329c`](https://github.com/millionco/react-doctor/commit/046329caf3fdf99924e4b97ffe7b71106922787c), [`79abd71`](https://github.com/millionco/react-doctor/commit/79abd7177928fc79a91706cc2866b8097c7cd09c), [`a468589`](https://github.com/millionco/react-doctor/commit/a4685891b8ee768176741a74eb7db2f4d0724bdc)]:
+  - oxlint-plugin-react-doctor@0.7.8
+  - deslop-js@0.7.8
+
 ## 0.7.7
 
 ### Patch Changes

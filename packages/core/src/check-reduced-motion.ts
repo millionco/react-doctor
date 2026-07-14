@@ -121,8 +121,13 @@ const getImportedBindingEvidence = (
     if (declaration.isTypeOnly) return null;
     return EMPTY_MOTION_EXPRESSION_EVIDENCE;
   }
-  if (ts.isImportSpecifier(declaration) && !declaration.isTypeOnly) {
-    const importedName = declaration.propertyName?.text ?? declaration.name.text;
+  if (
+    (ts.isImportSpecifier(declaration) && !declaration.isTypeOnly) ||
+    (ts.isImportClause(declaration) && !declaration.isTypeOnly && declaration.name)
+  ) {
+    const importedName = ts.isImportSpecifier(declaration)
+      ? (declaration.propertyName?.text ?? declaration.name.text)
+      : "default";
     const importingSourceFile = declaration.getSourceFile();
     const moduleSourceFile = getLocalModuleSourceFile(
       moduleSource,
@@ -188,6 +193,16 @@ const resolveModuleExportEvidence = (
   if (moduleSymbol) nextVisitedSymbols.add(moduleSymbol);
 
   for (const statement of sourceFile.statements) {
+    if (exportName === "default" && ts.isExportAssignment(statement) && !statement.isExportEquals) {
+      const evidence = resolveMotionExpressionEvidence(
+        statement.expression,
+        typeChecker,
+        program,
+        nextVisitedSymbols,
+      );
+      if (hasMotionExpressionEvidence(evidence)) return evidence;
+      continue;
+    }
     if (!ts.isExportDeclaration(statement) || !statement.moduleSpecifier) continue;
     if (statement.isTypeOnly) continue;
     if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;

@@ -274,6 +274,42 @@ export const App = () => <AnimatedCard animate={{ x: 120 }}>moving</AnimatedCard
     expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
   });
 
+  it("reports a default-exported motion wrapper", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/motion.ts",
+      `import { motion } from "framer-motion";
+export default motion;
+`,
+    );
+    writeNestedFile(
+      "src/app.tsx",
+      `import animated from "./motion";
+export const App = () => <animated.div animate={{ x: 120 }}>moving</animated.div>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("keeps a default-exported non-motion binding clean", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/motion.ts",
+      `import { useScroll } from "framer-motion";
+export default useScroll;
+`,
+    );
+    writeNestedFile(
+      "src/app.ts",
+      `import readScroll from "./motion";
+export const usePosition = () => readScroll();
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
   it("reports a local re-export imported with an explicit JavaScript extension", () => {
     writePackageJson();
     writeNestedFile("src/motion.ts", `export { motion } from "framer-motion";\n`);

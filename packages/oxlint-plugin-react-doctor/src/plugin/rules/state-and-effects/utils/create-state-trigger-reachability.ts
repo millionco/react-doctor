@@ -3,13 +3,21 @@ import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { getSymbolTypeAnnotation } from "../../../utils/get-symbol-type-annotation.js";
+import { findProgramRoot } from "../../../utils/find-program-root.js";
+import { hasPossibleStaticPropertyWrite } from "../../../utils/has-static-property-write-before.js";
 import type { SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { getDownstreamRefs, getRef, getUpstreamRefs, resolveToFunction } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
-import { isGenuineReactHookDeclarator, isProp, isState } from "./effect/react.js";
+import {
+  isCustomHookParameter,
+  isGenuineReactHookDeclarator,
+  isProp,
+  isState,
+} from "./effect/react.js";
 import { getStaticMemberPropertyName } from "./static-member-property-name.js";
 
 interface SnapshotShape {
@@ -73,46 +81,231 @@ const hasNonInitializerWrite = (analysis: ProgramAnalysis, identifier: EsTreeNod
   );
 };
 
+const isStableParameterDefault = (expression: EsTreeNode): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Literal")) {
+    return (
+      candidate.value === null ||
+      ["bigint", "boolean", "number", "string"].includes(typeof candidate.value)
+    );
+  }
+  return Boolean(
+    isNodeOfType(candidate, "TemplateLiteral") && (candidate.expressions ?? []).length === 0,
+  );
+};
+
+const isDirectComponentPropBinding = (symbol: SymbolDescriptor): boolean => {
+  const parameter = symbol.declarationNode;
+  if (parameter === symbol.bindingIdentifier) return true;
+  if (isNodeOfType(parameter, "AssignmentPattern")) {
+    return (
+      parameter.left === symbol.bindingIdentifier &&
+      isStableParameterDefault(parameter.right as EsTreeNode)
+    );
+  }
+  if (!isNodeOfType(parameter, "ObjectPattern")) return false;
+  return parameter.properties.some((property) => {
+    if (!isNodeOfType(property as EsTreeNode, "Property")) return false;
+    const propertyValue = property.value as EsTreeNode;
+    if (propertyValue === symbol.bindingIdentifier) return true;
+    return Boolean(
+      isNodeOfType(propertyValue, "AssignmentPattern") &&
+      propertyValue.left === symbol.bindingIdentifier &&
+      isStableParameterDefault(propertyValue.right as EsTreeNode),
+    );
+  });
+};
+
+const REFLEXIVE_TYPE_NODE_TYPES: ReadonlySet<string> = new Set([
+  "TSBigIntKeyword",
+  "TSBooleanKeyword",
+  "TSNeverKeyword",
+  "TSNullKeyword",
+  "TSObjectKeyword",
+  "TSStringKeyword",
+  "TSSymbolKeyword",
+  "TSUndefinedKeyword",
+]);
+
+const PRIMITIVE_TYPE_NODE_TYPES: ReadonlySet<string> = new Set([
+  "TSBigIntKeyword",
+  "TSBooleanKeyword",
+  "TSNeverKeyword",
+  "TSNullKeyword",
+  "TSNumberKeyword",
+  "TSStringKeyword",
+  "TSSymbolKeyword",
+  "TSUndefinedKeyword",
+]);
+
+const isDefinitelyReflexiveType = (typeNode: EsTreeNode): boolean => {
+  if (REFLEXIVE_TYPE_NODE_TYPES.has(typeNode.type)) return true;
+  if (isNodeOfType(typeNode, "TSLiteralType")) {
+    return Boolean(
+      isNodeOfType(typeNode.literal, "Literal") &&
+      (typeof typeNode.literal.value !== "number" || !Number.isNaN(typeNode.literal.value)),
+    );
+  }
+  if (isNodeOfType(typeNode, "TSUnionType")) {
+    return (typeNode.types ?? []).every((member) =>
+      isDefinitelyReflexiveType(member as EsTreeNode),
+    );
+  }
+  return false;
+};
+
+const isDefinitelyPrimitiveType = (typeNode: EsTreeNode): boolean => {
+  if (PRIMITIVE_TYPE_NODE_TYPES.has(typeNode.type)) return true;
+  if (isNodeOfType(typeNode, "TSLiteralType")) return true;
+  if (isNodeOfType(typeNode, "TSUnionType")) {
+    return (typeNode.types ?? []).every((member) =>
+      isDefinitelyPrimitiveType(member as EsTreeNode),
+    );
+  }
+  return false;
+};
+
+const isDefinitelyPrimitiveExpression = (expression: EsTreeNode, context: RuleContext): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Literal")) return true;
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(candidate);
+  const typeAnnotation = symbol ? getSymbolTypeAnnotation(symbol) : null;
+  return Boolean(typeAnnotation && isDefinitelyPrimitiveType(typeAnnotation));
+};
+
+const isDefinitelyReflexiveExpression = (
+  expression: EsTreeNode,
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  visitedSymbolIds: ReadonlySet<number> = new Set(),
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Literal")) {
+    return typeof candidate.value !== "number" || !Number.isNaN(candidate.value);
+  }
+  if (
+    isNodeOfType(candidate, "TemplateLiteral") ||
+    isNodeOfType(candidate, "ArrayExpression") ||
+    isNodeOfType(candidate, "ObjectExpression") ||
+    isFunctionLike(candidate)
+  ) {
+    return true;
+  }
+  if (isNodeOfType(candidate, "UnaryExpression")) {
+    return ["!", "typeof", "void", "~"].includes(candidate.operator);
+  }
+  if (isNodeOfType(candidate, "BinaryExpression")) {
+    return ["&", "|", "^", "<<", ">>", ">>>"].includes(candidate.operator);
+  }
+  if (isNodeOfType(candidate, "CallExpression")) {
+    const callee = stripParenExpression(candidate.callee);
+    return Boolean(
+      isNodeOfType(callee, "Identifier") &&
+      ["Boolean", "String"].includes(callee.name) &&
+      context.scopes.isGlobalReference(callee),
+    );
+  }
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  if (candidate.name === "undefined" && context.scopes.isGlobalReference(candidate)) return true;
+  const symbol = context.scopes.symbolFor(candidate);
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+  const typeAnnotation = getSymbolTypeAnnotation(symbol);
+  if (typeAnnotation && isDefinitelyReflexiveType(typeAnnotation)) return true;
+  if (!symbol.initializer || hasNonInitializerWrite(analysis, candidate)) {
+    return false;
+  }
+  const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+  nextVisitedSymbolIds.add(symbol.id);
+  return isDefinitelyReflexiveExpression(
+    symbol.initializer,
+    analysis,
+    context,
+    nextVisitedSymbolIds,
+  );
+};
+
 const isSupportedPropProjection = (
   analysis: ProgramAnalysis,
   expression: EsTreeNode,
+  context: RuleContext,
   visitedBindings: ReadonlySet<unknown> = new Set(),
 ): boolean => {
   const candidate = stripParenExpression(expression);
   if (isNodeOfType(candidate, "Identifier")) {
     const reference = getRef(analysis, candidate);
     if (!reference) return false;
-    if (isProp(analysis, reference)) return true;
+    if (isProp(analysis, reference)) {
+      if (isCustomHookParameter(reference)) return false;
+      const symbol = context.scopes.symbolFor(candidate);
+      return Boolean(symbol && isDirectComponentPropBinding(symbol));
+    }
     if (!reference.resolved || visitedBindings.has(reference.resolved)) return false;
     if (hasNonInitializerWrite(analysis, candidate)) return false;
     const declarator = reference.resolved.defs
       .map((definition) => definition.node as unknown as EsTreeNode)
       .find((definitionNode) => isNodeOfType(definitionNode, "VariableDeclarator"));
-    if (!declarator || !isNodeOfType(declarator, "VariableDeclarator") || !declarator.init) {
+    if (
+      !declarator ||
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      !isNodeOfType(declarator.id, "Identifier") ||
+      !declarator.init
+    ) {
       return false;
     }
     const nextVisitedBindings = new Set(visitedBindings);
     nextVisitedBindings.add(reference.resolved);
-    return isSupportedPropProjection(analysis, declarator.init as EsTreeNode, nextVisitedBindings);
+    return isSupportedPropProjection(
+      analysis,
+      declarator.init as EsTreeNode,
+      context,
+      nextVisitedBindings,
+    );
   }
   if (isNodeOfType(candidate, "MemberExpression")) {
-    if (
-      candidate.computed &&
-      !isNodeOfType(candidate.property, "Literal") &&
-      !isNodeOfType(candidate.property, "Identifier")
-    ) {
-      return false;
-    }
-    return isSupportedPropProjection(analysis, candidate.object as EsTreeNode, visitedBindings);
+    return false;
+  }
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "~") {
+    return Boolean(
+      isDefinitelyPrimitiveExpression(candidate.argument as EsTreeNode, context) &&
+      isSupportedPropProjection(
+        analysis,
+        candidate.argument as EsTreeNode,
+        context,
+        visitedBindings,
+      ),
+    );
+  }
+  if (
+    isNodeOfType(candidate, "BinaryExpression") &&
+    ["&", "|", "^", "<<", ">>", ">>>"].includes(candidate.operator)
+  ) {
+    const operands = [candidate.left as EsTreeNode, candidate.right as EsTreeNode];
+    return operands.every((operand) => {
+      const projectionOperand = stripParenExpression(operand);
+      return (
+        isNodeOfType(projectionOperand, "Literal") ||
+        (isDefinitelyPrimitiveExpression(projectionOperand, context) &&
+          isSupportedPropProjection(analysis, projectionOperand, context, visitedBindings))
+      );
+    });
   }
   if (isNodeOfType(candidate, "CallExpression")) {
     const callee = stripParenExpression(candidate.callee);
-    return Boolean(
-      isNodeOfType(callee, "MemberExpression") &&
-      getStaticMemberPropertyName(callee) === "getTime" &&
-      (candidate.arguments ?? []).length === 0 &&
-      isSupportedPropProjection(analysis, callee.object as EsTreeNode, visitedBindings),
-    );
+    if (
+      isNodeOfType(callee, "Identifier") &&
+      ["Boolean", "String"].includes(callee.name) &&
+      context.scopes.isGlobalReference(callee) &&
+      (candidate.arguments ?? []).length === 1
+    ) {
+      const argument = candidate.arguments?.[0];
+      return Boolean(
+        argument &&
+        isDefinitelyPrimitiveExpression(argument as EsTreeNode, context) &&
+        isSupportedPropProjection(analysis, argument as EsTreeNode, context, visitedBindings),
+      );
+    }
+    return false;
   }
   return false;
 };
@@ -124,7 +317,7 @@ const getStableCurrentValueKey = (
 ): string | null => {
   if (expressionReadsState(analysis, expression)) return null;
   if (!expressionReadsProp(analysis, expression)) return null;
-  if (!isSupportedPropProjection(analysis, expression)) return null;
+  if (!isSupportedPropProjection(analysis, expression, context)) return null;
   return resolveExpressionKey(expression, context);
 };
 
@@ -315,11 +508,105 @@ const evaluateComparison = (
     rightExpression,
     environment.context,
   );
-  const comparesSameValue =
-    (leftSnapshotKey !== null && leftSnapshotKey === rightCurrentKey) ||
-    (rightSnapshotKey !== null && rightSnapshotKey === leftCurrentKey);
-  if (!comparesSameValue) return null;
+  const currentExpression =
+    leftSnapshotKey !== null && leftSnapshotKey === rightCurrentKey
+      ? rightExpression
+      : rightSnapshotKey !== null && rightSnapshotKey === leftCurrentKey
+        ? leftExpression
+        : null;
+  if (
+    !currentExpression ||
+    !isDefinitelyReflexiveExpression(currentExpression, environment.analysis, environment.context)
+  ) {
+    return null;
+  }
   return expression.operator === "===" || expression.operator === "==";
+};
+
+const hasDirectGlobalObjectIsWrite = (
+  objectIdentifier: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const program = findProgramRoot(objectIdentifier);
+  if (!program) return true;
+  let didFindWrite = false;
+  walkAst(program, (candidate) => {
+    if (didFindWrite) return false;
+    let writeTarget: EsTreeNode | null = null;
+    if (isNodeOfType(candidate, "AssignmentExpression")) {
+      writeTarget = candidate.left as EsTreeNode;
+    } else if (isNodeOfType(candidate, "UpdateExpression")) {
+      writeTarget = candidate.argument as EsTreeNode;
+    } else if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "delete") {
+      writeTarget = candidate.argument as EsTreeNode;
+    }
+    if (!writeTarget) return;
+    const target = stripParenExpression(writeTarget);
+    if (isNodeOfType(target, "Identifier")) {
+      didFindWrite = target.name === "Object" && context.scopes.isGlobalReference(target);
+      return;
+    }
+    if (
+      isNodeOfType(target, "MemberExpression") &&
+      isNodeOfType(target.object, "Identifier") &&
+      target.object.name === "Object" &&
+      context.scopes.isGlobalReference(target.object)
+    ) {
+      const propertyName = getStaticMemberPropertyName(target);
+      didFindWrite = propertyName === null || propertyName === "is";
+    }
+  });
+  return didFindWrite;
+};
+
+const evaluateObjectIs = (
+  expression: EsTreeNode,
+  environment: BooleanEvaluationEnvironment,
+): boolean | null => {
+  if (!isNodeOfType(expression, "CallExpression")) return null;
+  const callee = stripParenExpression(expression.callee);
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    !isNodeOfType(callee.object, "Identifier") ||
+    callee.object.name !== "Object" ||
+    !environment.context.scopes.isGlobalReference(callee.object) ||
+    getStaticMemberPropertyName(callee) !== "is"
+  ) {
+    return null;
+  }
+  if (
+    hasPossibleStaticPropertyWrite(callee.object, "is", environment.context.scopes) ||
+    hasDirectGlobalObjectIsWrite(callee.object, environment.context)
+  ) {
+    return null;
+  }
+  const argumentsToCompare = expression.arguments ?? [];
+  if (argumentsToCompare.length !== 2) return null;
+  const resolveSubstitutedExpression = (operand: EsTreeNode): EsTreeNode => {
+    const candidate = stripParenExpression(operand);
+    if (!isNodeOfType(candidate, "Identifier")) return candidate;
+    const symbol = environment.context.scopes.symbolFor(candidate);
+    return (symbol && environment.substitutions.get(symbol.id)) ?? candidate;
+  };
+  const leftExpression = resolveSubstitutedExpression(argumentsToCompare[0] as EsTreeNode);
+  const rightExpression = resolveSubstitutedExpression(argumentsToCompare[1] as EsTreeNode);
+  const leftSnapshotKey = getSnapshotValueKey(leftExpression, environment);
+  const rightSnapshotKey = getSnapshotValueKey(rightExpression, environment);
+  const leftCurrentKey = getStableCurrentValueKey(
+    environment.analysis,
+    leftExpression,
+    environment.context,
+  );
+  const rightCurrentKey = getStableCurrentValueKey(
+    environment.analysis,
+    rightExpression,
+    environment.context,
+  );
+  return leftSnapshotKey !== null && leftSnapshotKey === rightCurrentKey
+    ? true
+    : rightSnapshotKey !== null && rightSnapshotKey === leftCurrentKey
+      ? true
+      : null;
 };
 
 const getHelperReturnExpression = (functionNode: EsTreeNode): EsTreeNode | null => {
@@ -385,6 +672,8 @@ const evaluateBoolean = (
     }
     return null;
   }
+  const objectIsValue = evaluateObjectIs(candidate, environment);
+  if (objectIsValue !== null) return objectIsValue;
   const comparisonValue = evaluateComparison(candidate, environment);
   if (comparisonValue !== null) return comparisonValue;
   if (!environment.allowHelperCall || !isNodeOfType(candidate, "CallExpression")) return null;
@@ -458,9 +747,138 @@ const statementCanCompleteNormally = (
     return consequentCanComplete || alternateCanComplete;
   }
   if (isNodeOfType(statement, "LabeledStatement")) {
-    return statementCanCompleteNormally(statement.body as EsTreeNode, environment);
+    const labelName = isNodeOfType(statement.label, "Identifier") ? statement.label.name : null;
+    if (
+      labelName &&
+      statementCanCompleteWithBreakToLabel(statement.body as EsTreeNode, labelName, environment)
+    ) {
+      return true;
+    }
+    return statementCanCompleteNormallyForLabel(statement.body as EsTreeNode, environment);
   }
   return true;
+};
+
+const statementCanCompleteNormallyForLabel = (
+  statement: EsTreeNode,
+  environment: BooleanEvaluationEnvironment,
+): boolean => {
+  if (
+    isNodeOfType(statement, "ReturnStatement") ||
+    isNodeOfType(statement, "ThrowStatement") ||
+    isNodeOfType(statement, "BreakStatement") ||
+    isNodeOfType(statement, "ContinueStatement")
+  ) {
+    return false;
+  }
+  if (isNodeOfType(statement, "BlockStatement")) {
+    return (statement.body ?? []).every((childStatement) =>
+      statementCanCompleteNormallyForLabel(childStatement as EsTreeNode, environment),
+    );
+  }
+  if (isNodeOfType(statement, "IfStatement")) {
+    const testValue = evaluateBoolean(statement.test as EsTreeNode, environment);
+    if (testValue === true) {
+      return statementCanCompleteNormallyForLabel(statement.consequent as EsTreeNode, environment);
+    }
+    if (testValue === false) {
+      return statement.alternate
+        ? statementCanCompleteNormallyForLabel(statement.alternate as EsTreeNode, environment)
+        : true;
+    }
+    const consequentCanComplete = statementCanCompleteNormallyForLabel(
+      statement.consequent as EsTreeNode,
+      environment,
+    );
+    const alternateCanComplete = statement.alternate
+      ? statementCanCompleteNormallyForLabel(statement.alternate as EsTreeNode, environment)
+      : true;
+    return consequentCanComplete || alternateCanComplete;
+  }
+  if (isNodeOfType(statement, "LabeledStatement")) {
+    return statementCanCompleteNormally(statement, environment);
+  }
+  return (
+    isNodeOfType(statement, "ExpressionStatement") ||
+    isNodeOfType(statement, "VariableDeclaration") ||
+    isNodeOfType(statement, "EmptyStatement") ||
+    isNodeOfType(statement, "DebuggerStatement")
+  );
+};
+
+const statementCanCompleteWithBreakToLabel = (
+  statement: EsTreeNode,
+  labelName: string,
+  environment: BooleanEvaluationEnvironment,
+): boolean => {
+  if (isNodeOfType(statement, "BreakStatement")) {
+    return Boolean(
+      isNodeOfType(statement.label, "Identifier") && statement.label.name === labelName,
+    );
+  }
+  if (
+    isNodeOfType(statement, "ReturnStatement") ||
+    isNodeOfType(statement, "ThrowStatement") ||
+    isNodeOfType(statement, "ContinueStatement")
+  ) {
+    return false;
+  }
+  if (isNodeOfType(statement, "BlockStatement")) {
+    for (const childStatement of statement.body ?? []) {
+      if (
+        statementCanCompleteWithBreakToLabel(childStatement as EsTreeNode, labelName, environment)
+      ) {
+        return true;
+      }
+      if (!statementCanCompleteNormallyForLabel(childStatement as EsTreeNode, environment)) {
+        return false;
+      }
+    }
+    return false;
+  }
+  if (isNodeOfType(statement, "IfStatement")) {
+    const testValue = evaluateBoolean(statement.test as EsTreeNode, environment);
+    if (testValue === true) {
+      return statementCanCompleteWithBreakToLabel(
+        statement.consequent as EsTreeNode,
+        labelName,
+        environment,
+      );
+    }
+    if (testValue === false) {
+      return Boolean(
+        statement.alternate &&
+        statementCanCompleteWithBreakToLabel(
+          statement.alternate as EsTreeNode,
+          labelName,
+          environment,
+        ),
+      );
+    }
+    return (
+      statementCanCompleteWithBreakToLabel(
+        statement.consequent as EsTreeNode,
+        labelName,
+        environment,
+      ) ||
+      Boolean(
+        statement.alternate &&
+        statementCanCompleteWithBreakToLabel(
+          statement.alternate as EsTreeNode,
+          labelName,
+          environment,
+        ),
+      )
+    );
+  }
+  if (isNodeOfType(statement, "LabeledStatement")) {
+    return statementCanCompleteWithBreakToLabel(
+      statement.body as EsTreeNode,
+      labelName,
+      environment,
+    );
+  }
+  return false;
 };
 
 const isReachableUnderSnapshotEnvironment = (

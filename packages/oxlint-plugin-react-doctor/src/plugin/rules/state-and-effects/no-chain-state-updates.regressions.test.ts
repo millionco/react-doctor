@@ -537,7 +537,7 @@ describe("no-chain-state-updates — dependency-to-setter causality", () => {
       noChainStateUpdates,
       `import { useEffect, useRef, useState } from "react";
 
-export const GuardedCalendar = ({ defaultsRevision, timezone }) => {
+export const GuardedCalendar = ({ defaultsRevision, timezone }: { defaultsRevision: string; timezone: string }) => {
   const [selectedRevision, setSelectedRevision] = useState(0);
   const [dateText, setDateText] = useState("");
   const [timeText, setTimeText] = useState("");
@@ -593,19 +593,17 @@ export const Search = () => {
   it("stays silent for tuple snapshot comparisons and a disjunctive change alias", () => {
     const result = runRule(
       noChainStateUpdates,
-      `const Calendar = ({ defaultDates }) => {
+      `const Calendar = ({ defaultStartKey, defaultEndKey }: { defaultStartKey: string; defaultEndKey: string }) => {
         const [selectedRevision, setSelectedRevision] = useState(0);
         const [label, setLabel] = useState("");
-        const defaultStartTimestamp = defaultDates?.[0].getTime();
-        const defaultEndTimestamp = defaultDates?.[1].getTime();
-        const previousDefaultsRef = useRef([defaultStartTimestamp, defaultEndTimestamp]);
+        const previousDefaultsRef = useRef([defaultStartKey, defaultEndKey]);
         useEffect(() => {
-          const [previousStartTimestamp, previousEndTimestamp] = previousDefaultsRef.current;
-          const didDefaultsChange = previousStartTimestamp !== defaultStartTimestamp || previousEndTimestamp !== defaultEndTimestamp;
-          previousDefaultsRef.current = [defaultStartTimestamp, defaultEndTimestamp];
+          const [previousStartKey, previousEndKey] = previousDefaultsRef.current;
+          const didDefaultsChange = previousStartKey !== defaultStartKey || previousEndKey !== defaultEndKey;
+          previousDefaultsRef.current = [defaultStartKey, defaultEndKey];
           if (!didDefaultsChange) return;
           setLabel("reset");
-        }, [defaultEndTimestamp, defaultStartTimestamp, selectedRevision]);
+        }, [defaultEndKey, defaultStartKey, selectedRevision]);
         return <button onClick={() => setSelectedRevision((value) => value + 1)}>{label}</button>;
       };`,
       { forceJsx: true },
@@ -618,7 +616,7 @@ export const Search = () => {
     const result = runRule(
       noChainStateUpdates,
       `const didChange = (previousValue, currentValue) => previousValue !== currentValue;
-      const Panel = ({ revision }) => {
+      const Panel = ({ revision }: { revision: string }) => {
         const [selection, setSelection] = useState(0);
         const [label, setLabel] = useState("");
         const previousRevisionRef = useRef(revision);
@@ -638,7 +636,7 @@ export const Search = () => {
   it("stays silent when equality with the prop snapshot exits before the setter", () => {
     const result = runRule(
       noChainStateUpdates,
-      `const Panel = ({ revision }) => {
+      `const Panel = ({ revision }: { revision: string }) => {
         const [selection, setSelection] = useState(0);
         const [label, setLabel] = useState("");
         const previousRevisionRef = useRef(revision);
@@ -659,7 +657,7 @@ export const Search = () => {
   it("stays silent through nested blocks and a known short-circuit return", () => {
     const result = runRule(
       noChainStateUpdates,
-      `const Panel = ({ revision, enabled }) => {
+      `const Panel = ({ revision, enabled }: { revision: string; enabled: boolean }) => {
         const [selection, setSelection] = useState(0);
         const [label, setLabel] = useState("");
         const previousRevisionRef = useRef(revision);
@@ -682,7 +680,7 @@ export const Search = () => {
   it("stays silent when an if-else setter branch requires a changed prop snapshot", () => {
     const result = runRule(
       noChainStateUpdates,
-      `const Panel = ({ revision }) => {
+      `const Panel = ({ revision }: { revision: string }) => {
         const [selection, setSelection] = useState(0);
         const [label, setLabel] = useState("");
         const previousRevisionRef = useRef(revision);
@@ -866,5 +864,702 @@ export const Search = () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports after a matching labeled break completes the outer statement", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          snapshotGuard: {
+            if (!revisionChanged) break snapshotGuard;
+          }
+          setLabel("selected");
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports when a nested label break completes before the setter", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          outerGuard: {
+            innerGuard: {
+              if (!revisionChanged) break innerGuard;
+            }
+            setLabel("selected");
+          }
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for a setter after a matching break in the same labeled block", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          snapshotGuard: {
+            if (!revisionChanged) break snapshotGuard;
+            setLabel("selected");
+          }
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a setter after a matching labeled continue in the same iteration", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          outerLoop: for (const item of [revision]) {
+            if (!revisionChanged) continue outerLoop;
+            setLabel(String(item));
+          }
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an unreachable matching break is followed by a return", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          snapshotGuard: {
+            if (false) break snapshotGuard;
+            if (!revisionChanged) return;
+          }
+          setLabel("selected");
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays conservative when a loop may break to the outer label", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          snapshotGuard: {
+            while (true) {
+              if (!revisionChanged) break snapshotGuard;
+              return;
+            }
+          }
+          setLabel("selected");
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a loop's matching break is in an unreachable branch", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          snapshotGuard: {
+            while (selection < 0) {
+              if (false) break snapshotGuard;
+            }
+            if (!revisionChanged) return;
+          }
+          setLabel("selected");
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays conservative when a switch case may break to the outer label", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          snapshotGuard: {
+            switch (revisionChanged) {
+              case false:
+                break snapshotGuard;
+              default:
+                return;
+            }
+          }
+          setLabel("selected");
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when finally overrides a matching break with return", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          snapshotGuard: {
+            if (!revisionChanged) {
+              try {
+                break snapshotGuard;
+              } finally {
+                return;
+              }
+            }
+          }
+          setLabel("selected");
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports when a typed alias reads a mutable nested prop", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ config }: { config: { revision: string } }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const revision: string = config.revision;
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return <button onClick={() => { config.revision = "next"; setSelection((value) => value + 1); }}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports for nested destructured prop bindings", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ config: { revision } }: { config: { revision: string } }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports for rest prop bindings", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ ignored, ...remainingProps }: { ignored: boolean; revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousPropsRef = useRef(remainingProps);
+        useEffect(() => {
+          const propsChanged = previousPropsRef.current !== remainingProps;
+          previousPropsRef.current = remainingProps;
+          if (!propsChanged) return;
+          setLabel(remainingProps.revision);
+        }, [remainingProps, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports for nondeterministic destructured defaults", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `let nextRevision = 0;
+      const Panel = ({ revision = String(nextRevision++) }: { revision?: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports for call-based destructured defaults", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision = String(Math.random()) }: { revision?: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for stable primitive destructured defaults", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision = "initial" }: { revision?: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports for custom hook parameters with dynamic callers", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const usePanel = (revision: string) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return { label, setSelection };
+      };
+      const Panel = () => {
+        const panel = usePanel(String(Math.random()));
+        return <button onClick={() => panel.setSelection((value) => value + 1)}>{panel.label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays conservative for custom hook parameters with stable-looking callers", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const usePanel = (revision: string) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return { label, setSelection };
+      };
+      const Panel = ({ revision }: { revision: string }) => {
+        const panel = usePanel(revision);
+        return <button onClick={() => panel.setSelection((value) => value + 1)}>{panel.label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for numeric snapshots compared with global Object.is", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: number }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState(0);
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = !Object.is(previousRevisionRef.current, revision);
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for unchanged numeric snapshots compared with global Object.is", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: number }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState(0);
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionIsUnchanged = Object.is(previousRevisionRef.current, revision);
+          previousRevisionRef.current = revision;
+          if (revisionIsUnchanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports for shadowed Object.is comparisons", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: number }) => {
+        const Object = { is: () => false };
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState(0);
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = !Object.is(previousRevisionRef.current, revision);
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports when global Object.is is overwritten", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `Object.is = () => false;
+      const Panel = ({ revision }: { revision: number }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState(0);
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = !Object.is(previousRevisionRef.current, revision);
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays conservative for aliases of global Object.is", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const isSameValue = Object.is;
+      const Panel = ({ revision }: { revision: number }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState(0);
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = !isSameValue(previousRevisionRef.current, revision);
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel(revision);
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when an empty for-of cannot break an outer label", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          snapshotGuard: {
+            for (const item of []) if (!revisionChanged) break snapshotGuard;
+            if (!revisionChanged) return;
+          }
+          setLabel("selected");
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an empty for-in cannot break an outer label", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          snapshotGuard: {
+            for (const key in {}) if (!revisionChanged) break snapshotGuard;
+            if (!revisionChanged) return;
+          }
+          setLabel("selected");
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an impossible switch case cannot break an outer label", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          snapshotGuard: {
+            switch (true) {
+              case false: break snapshotGuard;
+              default: return;
+            }
+          }
+          setLabel("selected");
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a nonthrowing try cannot reach a catch break", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          snapshotGuard: {
+            try { return; } catch { break snapshotGuard; }
+          }
+          setLabel("selected");
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports when a numeric snapshot can be NaN", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: number }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState({ revision });
+        const previousRevisionRef = useRef(revision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== revision;
+          previousRevisionRef.current = revision;
+          if (!revisionChanged) return;
+          setLabel({ revision });
+        }, [revision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label.revision}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports when invalid dates produce non-reflexive timestamps", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ date }: { date: Date }) => {
+        const [selection, setSelection] = useState(0);
+        const [selectedDate, setSelectedDate] = useState(date);
+        const timestamp = date.getTime();
+        const previousTimestampRef = useRef(timestamp);
+        useEffect(() => {
+          const timestampChanged = previousTimestampRef.current !== timestamp;
+          previousTimestampRef.current = timestamp;
+          if (!timestampChanged) return;
+          setSelectedDate(new Date(timestamp));
+        }, [selection, timestamp]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{selectedDate.toString()}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a string coercion makes the snapshot reflexive", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: string | number }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState("");
+        const revisionKey = String(revision);
+        const previousRevisionKeyRef = useRef(revisionKey);
+        useEffect(() => {
+          const revisionChanged = previousRevisionKeyRef.current !== revisionKey;
+          previousRevisionKeyRef.current = revisionKey;
+          if (!revisionChanged) return;
+          setLabel(revisionKey);
+        }, [revisionKey, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when bitwise normalization makes a numeric snapshot reflexive", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = ({ revision }: { revision: number }) => {
+        const [selection, setSelection] = useState(0);
+        const [label, setLabel] = useState(0);
+        const normalizedRevision = revision | 0;
+        const previousRevisionRef = useRef(normalizedRevision);
+        useEffect(() => {
+          const revisionChanged = previousRevisionRef.current !== normalizedRevision;
+          previousRevisionRef.current = normalizedRevision;
+          if (!revisionChanged) return;
+          setLabel(normalizedRevision);
+        }, [normalizedRevision, selection]);
+        return <button onClick={() => setSelection((value) => value + 1)}>{label}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 });

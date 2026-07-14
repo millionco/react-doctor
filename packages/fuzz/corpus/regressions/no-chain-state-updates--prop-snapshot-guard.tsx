@@ -8,7 +8,7 @@ export const GuardedCalendar = ({
   defaultsRevision,
   timezone,
 }: {
-  defaultsRevision: number;
+  defaultsRevision: string;
   timezone: string;
 }) => {
   const [selectedRevision, setSelectedRevision] = useState(0);
@@ -23,7 +23,7 @@ export const GuardedCalendar = ({
     previousTimezoneRef.current = timezone;
 
     if (didDefaultsChange) {
-      setDateText(String(defaultsRevision));
+      setDateText(defaultsRevision);
       return;
     }
 

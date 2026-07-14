@@ -5,7 +5,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { jsxAttributeIsNonReactDialectMarker } from "../../utils/non-react-jsx-dialect.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -129,6 +128,15 @@ const isInvalidStyleExpression = (expression: EsTreeNode): boolean => {
   return false;
 };
 
+const hasObjectValuedClassList = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean =>
+  openingElement.attributes.some((attribute) => {
+    if (!isNodeOfType(attribute, "JSXAttribute")) return false;
+    if (!isNodeOfType(attribute.name, "JSXIdentifier")) return false;
+    if (attribute.name.name !== "classList") return false;
+    if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return false;
+    return isNodeOfType(attribute.value.expression, "ObjectExpression");
+  });
+
 // Port of `oxc_linter::rules::react::style_prop_object`. Reports `style`
 // prop values that are clearly not objects: `style="..."` (string),
 // `style={true}` / `style={42}` / `style={"x"}` etc. Also flags
@@ -154,7 +162,7 @@ export const stylePropObject = defineRule({
           walkAst(node, (descendantNode) => {
             if (
               isNodeOfType(descendantNode, "JSXOpeningElement") &&
-              jsxAttributeIsNonReactDialectMarker(descendantNode)
+              hasObjectValuedClassList(descendantNode)
             ) {
               hasSolidSyntaxMarker = true;
               return false;

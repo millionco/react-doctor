@@ -42,6 +42,22 @@ describe("react-builtins/style-prop-object — JSX runtime ownership regressions
     );
   });
 
+  it("does not infer Solid ownership from a string classList prop", () => {
+    expectDiagnosticCount(
+      `export const Panel = () => <div classList="active" style="left: 12px" />;`,
+      1,
+    );
+  });
+
+  it("does not infer Solid ownership from an unresolved classList expression", () => {
+    expectDiagnosticCount(
+      `export const Panel = ({ classes }) => (
+        <div classList={classes} style="left: 12px" />
+      );`,
+      1,
+    );
+  });
+
   it("keeps later Solid string styles quiet after an earlier dialect marker", () => {
     expectDiagnosticCount(
       `export const SolidPanel = () => <>

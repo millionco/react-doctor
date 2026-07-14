@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
@@ -13,13 +14,17 @@ import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const UNCONTROLLED_INPUT_TAGS = new Set(["input", "textarea", "select"]);
 
-// HACK: <input type="checkbox"> / "radio" use the `checked` prop to be
-// controlled; `value` is just the form-submission token. <input
-// type="hidden"> never needs onChange — React's runtime warning skips
-// it for the same reason. Limiting our `value`-needs-onChange check to
-// non-hidden, non-checkable inputs keeps us aligned with React's own
-// rules.
-const VALUE_BYPASS_INPUT_TYPES = new Set(["hidden", "checkbox", "radio"]);
+// HACK: React treats `value` as read-only for these input types, so it does not
+// require an onChange handler for them.
+const VALUE_BYPASS_INPUT_TYPES = new Set([
+  "button",
+  "checkbox",
+  "hidden",
+  "image",
+  "radio",
+  "reset",
+  "submit",
+]);
 
 // `onInput` fires on every value change in React's DOM model exactly
 // like `onChange`, so a `value`-bound input wired to `onInput` is just
@@ -36,13 +41,6 @@ const isLiteralFalseAttributeValue = (attribute: EsTreeNodeOfType<"JSXAttribute"
   isNodeOfType(attribute.value, "JSXExpressionContainer") &&
   isNodeOfType(attribute.value.expression, "Literal") &&
   attribute.value.expression.value === false;
-
-const getInputTypeLiteral = (attributes: EsTreeNode[]): string | null => {
-  const typeAttribute = findJsxAttribute(attributes, "type");
-  if (!typeAttribute || !isNodeOfType(typeAttribute.value, "Literal")) return null;
-  const value = typeAttribute.value.value;
-  return typeof value === "string" ? value : null;
-};
 
 const isUseStateUndefinedInitializer = (init: EsTreeNode | null | undefined): boolean => {
   if (!init || !isNodeOfType(init, "CallExpression")) return false;
@@ -123,8 +121,19 @@ export const noUncontrolledInput = defineRule({
         if (!valueAttribute) return;
 
         if (tagName === "input") {
-          const inputType = getInputTypeLiteral(attributes);
-          if (inputType !== null && VALUE_BYPASS_INPUT_TYPES.has(inputType)) return;
+          const typeAttribute = findJsxAttribute(attributes, "type");
+          const inputTypeCandidates = typeAttribute
+            ? getJsxPropStaticStringValues(typeAttribute, context.scopes)
+            : null;
+          if (
+            inputTypeCandidates !== null &&
+            inputTypeCandidates.length > 0 &&
+            inputTypeCandidates.every((inputTypeCandidate) =>
+              VALUE_BYPASS_INPUT_TYPES.has(inputTypeCandidate.toLowerCase()),
+            )
+          ) {
+            return;
+          }
         }
 
         const hasAllowedPartner = VALUE_PARTNER_ATTRIBUTES.some((partnerAttributeName) => {

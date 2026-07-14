@@ -44,6 +44,82 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
     expect(result.diagnostics[0]?.message).toContain("clears all state");
   });
 
+  describe("hidden state resets", () => {
+    it("stays silent when every exposed overflow-menu read is hidden before reset", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const TopNavigation = ({ menuTriggerVisible }) => {
+          const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
+          useEffect(() => {
+            setOverflowMenuOpen(false);
+          }, [menuTriggerVisible]);
+          const content = (isVirtual) => {
+            const showMenuTrigger = isVirtual || menuTriggerVisible;
+            return (
+              <section aria-hidden={isVirtual ? true : undefined}>
+                {showMenuTrigger && <button aria-expanded={overflowMenuOpen}>Menu</button>}
+              </section>
+            );
+          };
+          return (
+            <>
+              {content(true)}
+              {content(false)}
+              {menuTriggerVisible && overflowMenuOpen && <div role="menu">Drawer</div>}
+            </>
+          );
+        };`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when a dismissed tooltip resets while its item is not highlighted", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const Item = ({ highlighted, disabledReason }) => {
+          const [canShowTooltip, setCanShowTooltip] = useState(true);
+          useEffect(() => setCanShowTooltip(true), [highlighted]);
+          return (
+            <div>
+              {highlighted && canShowTooltip && (
+                <Tooltip content={disabledReason} onEscape={() => setCanShowTooltip(false)} />
+              )}
+            </div>
+          );
+        };`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still reports when the reset state has an exposed consumer outside the visibility gate", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useState } from "react";
+        const TopNavigation = ({ menuTriggerVisible }) => {
+          const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
+          useEffect(() => {
+            setOverflowMenuOpen(false);
+          }, [menuTriggerVisible]);
+          return (
+            <>
+              {menuTriggerVisible && overflowMenuOpen && <div role="menu">Drawer</div>}
+              <output>{String(overflowMenuOpen)}</output>
+            </>
+          );
+        };`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
   describe("live prop normalizations", () => {
     it("stays silent when a transition tracker records the current Boolean-normalized prop", () => {
       const result = runRule(

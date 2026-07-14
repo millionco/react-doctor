@@ -193,7 +193,11 @@ const resolveModuleExportEvidence = (
     if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
     const moduleSource = statement.moduleSpecifier.text;
     if (!statement.exportClause) {
-      if (isMotionModuleSource(moduleSource)) return classifyMotionExport(exportName);
+      if (isMotionModuleSource(moduleSource)) {
+        const evidence = classifyMotionExport(exportName);
+        if (hasMotionExpressionEvidence(evidence)) return evidence;
+        continue;
+      }
       const moduleSourceFile = getLocalModuleSourceFile(moduleSource, sourceFile.fileName, program);
       if (moduleSourceFile) {
         const evidence = resolveModuleExportEvidence(

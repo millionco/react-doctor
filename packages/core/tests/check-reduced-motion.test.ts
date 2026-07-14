@@ -300,6 +300,42 @@ export const App = () => <motion.div animate={{ x: 120 }}>moving</motion.div>;
     expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
   });
 
+  it("continues past an unrelated star re-export to a later motion alias", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/motion.ts",
+      `export * from "framer-motion";
+export { motion as animated } from "framer-motion";
+`,
+    );
+    writeNestedFile(
+      "src/app.tsx",
+      `import { animated } from "./motion";
+export const App = () => <animated.div animate={{ x: 120 }}>moving</animated.div>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("keeps a non-motion alias after a star re-export clean", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/motion.ts",
+      `export * from "framer-motion";
+export { useScroll as readScroll } from "framer-motion";
+`,
+    );
+    writeNestedFile(
+      "src/app.tsx",
+      `import { readScroll } from "./motion";
+export const usePosition = () => readScroll();
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
   it("stays clean when a motion re-export is never imported", () => {
     writePackageJson();
     writeNestedFile("src/motion.ts", `export { motion } from "framer-motion";\n`);

@@ -20,7 +20,7 @@ export const RULES_OF_HOOKS_DIVERGENCES: UpstreamDivergence = {
 };
 
 export const EXHAUSTIVE_DEPS_DIVERGENCES: UpstreamDivergence = {
-  invalidSkips: [82, 187],
+  invalidSkips: [82, 130, 131, 132, 187],
   reason:
-    "Intentional: exact props members suppress a synthetic whole-props dependency, and useMemo accepts extra reactive invalidation tokens while useCallback remains strict.",
+    "Intentional: exact props members suppress a synthetic whole-props dependency; unknown or deferred state values can converge through React's same-value bailout; and useMemo accepts extra reactive invalidation tokens while useCallback remains strict.",
 };

@@ -71,6 +71,10 @@ export const EFFECT_SNIPPET_POOL = [
   `const fuzzDocumentEventArguments = condition ? [] : [() => handle(value), [value]]; useFuzzDocumentEvents(...fuzzDocumentEventArguments);`,
   `const fuzzDocumentEventOptions = { callback: () => handle(value) }; fuzzDocumentEventOptions.callback = handle; useFuzzDocumentEventOptions(fuzzDocumentEventOptions);`,
   `const fuzzSessionKey = String(value); const fuzzSessionUser = { role: value ? "admin" : "user" }; useEffect(() => { showLiveRole(fuzzSessionUser.role); }, [fuzzSessionKey]);`,
+  `const [domClassName, setDomClassName] = useState(""); const domClassRef = useRef(null); useLayoutEffect(() => { setDomClassName(domClassRef.current?.className ?? ""); });`,
+  `const [loopSnapshot, setLoopSnapshot] = useState(null); useEffect(() => { setLoopSnapshot({ value }); });`,
+  `const [fuzzPlatform, setFuzzPlatform] = useState(""); useEffect(() => { setFuzzPlatform(navigator.userAgent.includes("Mobile") ? "mobile" : "desktop"); });`,
+  `const [fuzzChildCount, setFuzzChildCount] = useState(0); useEffect(() => { setFuzzChildCount(Children.toArray(children).length); });`,
 ] as const;
 
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),

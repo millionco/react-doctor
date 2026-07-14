@@ -17,9 +17,9 @@ export interface OxcDivergence {
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
   "exhaustive-deps": {
-    failSkips: [81],
+    failSkips: [81, 125, 126, 127],
     reason:
-      "Intentional: exact props members suppress a synthetic whole-props dependency, and useMemo accepts extra reactive invalidation tokens.",
+      "Intentional: exact props members suppress a synthetic whole-props dependency, unknown or deferred state values can converge through React's same-value bailout, and useMemo accepts extra reactive invalidation tokens.",
   },
   "no-unknown-property": {
     // fp-review: 1110 unique false positives vs 28 true positives (1%

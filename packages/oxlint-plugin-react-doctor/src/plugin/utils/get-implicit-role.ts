@@ -79,7 +79,7 @@ export const getImplicitRole = (
         implicit = "";
         break;
       }
-      const inputType = inputTypeValue.toLowerCase();
+      const inputType = inputTypeValue;
       if (
         inputType === "button" ||
         inputType === "image" ||

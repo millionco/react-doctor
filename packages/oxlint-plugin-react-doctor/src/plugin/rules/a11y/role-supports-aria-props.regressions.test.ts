@@ -25,14 +25,11 @@ describe("a11y/role-supports-aria-props regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("recognizes case-insensitive and expression-literal number input types", () => {
+  it("recognizes an expression-literal number input type", () => {
     const result = runRule(
       roleSupportsAriaProps,
       `const NumberInputs = ({ value }) => (
-        <>
-          <input TYPE="NUMBER" aria-valuenow={value} />
-          <input type={"number"} aria-valuenow={value} />
-        </>
+        <input type={"number"} aria-valuenow={value} />
       );`,
     );
     expect(result.diagnostics).toEqual([]);

@@ -239,6 +239,18 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
           return visible && <output>{open}</output>;
         };`,
       ],
+      [
+        "the reset effect also exposes its setter",
+        `import { useEffect, useState } from "react";
+        const Menu = ({ visible, onRegister }: { visible: boolean; onRegister: (setter: (value: boolean) => void) => void }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => {
+            setOpen(false);
+            onRegister(setOpen);
+          }, [visible]);
+          return visible && <output>{open}</output>;
+        };`,
+      ],
     ])("still reports when %s", (_label, source) => {
       const result = runRule(noResetAllStateOnPropChange, source, { forceJsx: true });
       expect(result.parseErrors).toEqual([]);

@@ -1149,11 +1149,9 @@ const areAllSetterWritesVisibilityGuarded = (
   dependencyFormulas: ReadonlyArray<BooleanFormula>,
   visibleDependencyValue: boolean,
 ): boolean => {
-  const resetFunctionNodes = new Set<EsTreeNode>();
-  for (const setterReference of resetSetterReferences) {
-    const functionNode = findNearestFunction(setterReference.identifier as unknown as EsTreeNode);
-    if (functionNode) resetFunctionNodes.add(functionNode);
-  }
+  const resetIdentifiers = new Set(
+    resetSetterReferences.map((setterReference) => setterReference.identifier),
+  );
   const setterVariables = new Set(resetSetterReferences.map((reference) => reference.resolved));
   for (const setterVariable of setterVariables) {
     if (!setterVariable) return false;
@@ -1163,10 +1161,7 @@ const areAllSetterWritesVisibilityGuarded = (
       ) {
         continue;
       }
-      const functionNode = findNearestFunction(setterReference.identifier as unknown as EsTreeNode);
-      if (functionNode && resetFunctionNodes.has(functionNode)) {
-        continue;
-      }
+      if (resetIdentifiers.has(setterReference.identifier)) continue;
       const setterCall = getCallExpr(setterReference);
       if (!setterCall) return false;
       const conditionsByExposure = getSetterExposureConditions(

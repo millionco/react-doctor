@@ -3,6 +3,8 @@ import * as path from "node:path";
 import { MOTION_LIBRARY_PACKAGES } from "oxlint-plugin-react-doctor";
 import ts from "typescript";
 import type { Diagnostic } from "./types/index.js";
+import { getTypescriptScriptKind } from "./utils/get-typescript-script-kind.js";
+import { unwrapTypescriptExpression } from "./utils/unwrap-typescript-expression.js";
 import { walkSourceTreeFiles } from "./utils/walk-source-tree-files.js";
 import { isFile, readPackageJson } from "./project-info/index.js";
 
@@ -10,6 +12,7 @@ interface MotionExpressionEvidence {
   isAnimationFunction: boolean;
   isMotionComponent: boolean;
   isMotionComponentFactory: boolean;
+  isMotionComponentNamespace: boolean;
   isMotionConfig: boolean;
   isMotionNamespace: boolean;
   isReducedMotionHook: boolean;
@@ -25,44 +28,31 @@ export interface AnalyzeReducedMotionSourceInput {
   sourceText: string;
 }
 
+interface ScriptMotionSource {
+  fileName: string;
+  sourceText: string;
+}
+
 const EMPTY_MOTION_EXPRESSION_EVIDENCE: MotionExpressionEvidence = {
   isAnimationFunction: false,
   isMotionComponent: false,
   isMotionComponentFactory: false,
+  isMotionComponentNamespace: false,
   isMotionConfig: false,
   isMotionNamespace: false,
   isReducedMotionHook: false,
 };
 
 const MOTION_COMPONENT_FACTORY_EXPORT_NAMES = new Set(["m", "motion"]);
-const MOTION_COMPONENT_EXPORT_NAMES = new Set([
-  "AnimatePresence",
-  "LayoutGroup",
-  "LazyMotion",
-  "MotionConfig",
-  "Reorder",
-]);
-const MOTION_ANIMATION_FUNCTION_EXPORT_NAMES = new Set([
-  "animate",
-  "inView",
-  "scroll",
-  "spring",
-  "stagger",
-  "useAnimate",
-  "useAnimation",
-  "useAnimationControls",
-  "useMotionValue",
-  "useScroll",
-  "useSpring",
-  "useTime",
-  "useTransform",
-  "useVelocity",
-]);
+const MOTION_COMPONENT_NAMESPACE_EXPORT_NAMES = new Set(["Reorder"]);
+const MOTION_COMPONENT_NAMESPACE_MEMBER_NAMES = new Set(["Item"]);
+const MOTION_ANIMATION_FUNCTION_EXPORT_NAMES = new Set(["animate"]);
 const REDUCED_MOTION_HOOK_EXPORT_NAME = "useReducedMotion";
 const MOTION_CONFIG_EXPORT_NAME = "MotionConfig";
 const REDUCED_MOTION_PROP_NAME = "reducedMotion";
 const REDUCED_MOTION_CONFIG_VALUES = new Set(["always", "user"]);
-const SCRIPT_FILE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
+const SCRIPT_MODULE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
+const SCRIPT_FILE_EXTENSIONS = new Set(SCRIPT_MODULE_EXTENSIONS);
 const STYLE_FILE_EXTENSIONS = new Set([".css", ".scss"]);
 const MOTION_SOURCE_PREFILTER =
   /framer-motion|["']motion(?:\/[A-Za-z0-9_./-]+)?["']|MotionConfig|useReducedMotion/;
@@ -92,26 +82,13 @@ const isMotionModuleSource = (moduleSource: string): boolean => {
 
 const classifyMotionExport = (exportName: string): MotionExpressionEvidence => ({
   isAnimationFunction: MOTION_ANIMATION_FUNCTION_EXPORT_NAMES.has(exportName),
-  isMotionComponent: MOTION_COMPONENT_EXPORT_NAMES.has(exportName),
+  isMotionComponent: false,
   isMotionComponentFactory: MOTION_COMPONENT_FACTORY_EXPORT_NAMES.has(exportName),
+  isMotionComponentNamespace: MOTION_COMPONENT_NAMESPACE_EXPORT_NAMES.has(exportName),
   isMotionConfig: exportName === MOTION_CONFIG_EXPORT_NAME,
   isMotionNamespace: false,
   isReducedMotionHook: exportName === REDUCED_MOTION_HOOK_EXPORT_NAME,
 });
-
-const unwrapExpression = (expression: ts.Expression): ts.Expression => {
-  let currentExpression = expression;
-  while (
-    ts.isParenthesizedExpression(currentExpression) ||
-    ts.isAsExpression(currentExpression) ||
-    ts.isSatisfiesExpression(currentExpression) ||
-    ts.isNonNullExpression(currentExpression) ||
-    ts.isTypeAssertionExpression(currentExpression)
-  ) {
-    currentExpression = currentExpression.expression;
-  }
-  return currentExpression;
-};
 
 const getImportModuleSource = (node: ts.Node): string | null => {
   let currentNode: ts.Node | undefined = node;
@@ -126,22 +103,176 @@ const getImportModuleSource = (node: ts.Node): string | null => {
 
 const getImportedBindingEvidence = (
   declaration: ts.Declaration,
+  typeChecker: ts.TypeChecker,
+  program: ts.Program,
+  visitedSymbols: Set<ts.Symbol>,
 ): MotionExpressionEvidence | null => {
   const moduleSource = getImportModuleSource(declaration);
-  if (!moduleSource || !isMotionModuleSource(moduleSource)) return null;
+  if (!moduleSource) return null;
 
-  if (ts.isNamespaceImport(declaration)) {
+  if (isMotionModuleSource(moduleSource) && ts.isNamespaceImport(declaration)) {
     return { ...EMPTY_MOTION_EXPRESSION_EVIDENCE, isMotionNamespace: true };
   }
-  if (ts.isImportSpecifier(declaration)) {
+  if (isMotionModuleSource(moduleSource) && ts.isImportSpecifier(declaration)) {
     if (declaration.isTypeOnly) return null;
     return classifyMotionExport(declaration.propertyName?.text ?? declaration.name.text);
   }
-  if (ts.isImportClause(declaration)) {
+  if (isMotionModuleSource(moduleSource) && ts.isImportClause(declaration)) {
     if (declaration.isTypeOnly) return null;
     return EMPTY_MOTION_EXPRESSION_EVIDENCE;
   }
+  if (ts.isImportSpecifier(declaration) && !declaration.isTypeOnly) {
+    const importedName = declaration.propertyName?.text ?? declaration.name.text;
+    const importingSourceFile = declaration.getSourceFile();
+    const moduleSourceFile = getLocalModuleSourceFile(
+      moduleSource,
+      importingSourceFile.fileName,
+      program,
+    );
+    if (!moduleSourceFile) return null;
+    return resolveModuleExportEvidence(
+      moduleSourceFile,
+      importedName,
+      typeChecker,
+      program,
+      visitedSymbols,
+    );
+  }
   return null;
+};
+
+const getLocalModuleSourceFile = (
+  moduleSource: string,
+  importingFileName: string,
+  program: ts.Program,
+): ts.SourceFile | null => {
+  if (!moduleSource.startsWith(".")) return null;
+  const moduleBasePath = path.resolve(path.dirname(importingFileName), moduleSource);
+  const moduleBaseExtension = path.extname(moduleBasePath);
+  const typescriptModuleBasePath =
+    moduleBaseExtension === ".js" || moduleBaseExtension === ".jsx"
+      ? moduleBasePath.slice(0, -moduleBaseExtension.length)
+      : null;
+  const candidates = [
+    moduleBasePath,
+    ...(typescriptModuleBasePath
+      ? [
+          `${typescriptModuleBasePath}.ts`,
+          `${typescriptModuleBasePath}.tsx`,
+          path.join(typescriptModuleBasePath, "index.ts"),
+          path.join(typescriptModuleBasePath, "index.tsx"),
+        ]
+      : []),
+    ...SCRIPT_MODULE_EXTENSIONS.map((extension) => `${moduleBasePath}${extension}`),
+    ...SCRIPT_MODULE_EXTENSIONS.map((extension) => path.join(moduleBasePath, `index${extension}`)),
+  ];
+  for (const candidate of candidates) {
+    const sourceFile = program.getSourceFile(candidate);
+    if (sourceFile) return sourceFile;
+  }
+  return null;
+};
+
+const resolveModuleExportEvidence = (
+  sourceFile: ts.SourceFile,
+  exportName: string,
+  typeChecker: ts.TypeChecker,
+  program: ts.Program,
+  visitedSymbols: Set<ts.Symbol>,
+): MotionExpressionEvidence => {
+  const moduleSymbol = typeChecker.getSymbolAtLocation(sourceFile);
+  if (moduleSymbol && visitedSymbols.has(moduleSymbol)) {
+    return EMPTY_MOTION_EXPRESSION_EVIDENCE;
+  }
+  const nextVisitedSymbols = new Set(visitedSymbols);
+  if (moduleSymbol) nextVisitedSymbols.add(moduleSymbol);
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isExportDeclaration(statement) || !statement.moduleSpecifier) continue;
+    if (statement.isTypeOnly) continue;
+    if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const moduleSource = statement.moduleSpecifier.text;
+    if (!statement.exportClause) {
+      if (isMotionModuleSource(moduleSource)) return classifyMotionExport(exportName);
+      const moduleSourceFile = getLocalModuleSourceFile(moduleSource, sourceFile.fileName, program);
+      if (moduleSourceFile) {
+        const evidence = resolveModuleExportEvidence(
+          moduleSourceFile,
+          exportName,
+          typeChecker,
+          program,
+          nextVisitedSymbols,
+        );
+        if (hasMotionExpressionEvidence(evidence)) return evidence;
+      }
+      continue;
+    }
+    if (!ts.isNamedExports(statement.exportClause)) continue;
+    for (const exportSpecifier of statement.exportClause.elements) {
+      if (exportSpecifier.name.text !== exportName || exportSpecifier.isTypeOnly) continue;
+      const sourceExportName = exportSpecifier.propertyName?.text ?? exportSpecifier.name.text;
+      if (isMotionModuleSource(moduleSource)) return classifyMotionExport(sourceExportName);
+      const moduleSourceFile = getLocalModuleSourceFile(moduleSource, sourceFile.fileName, program);
+      if (!moduleSourceFile) continue;
+      return resolveModuleExportEvidence(
+        moduleSourceFile,
+        sourceExportName,
+        typeChecker,
+        program,
+        nextVisitedSymbols,
+      );
+    }
+  }
+
+  if (!moduleSymbol) return EMPTY_MOTION_EXPRESSION_EVIDENCE;
+  const exportedSymbol = typeChecker
+    .getExportsOfModule(moduleSymbol)
+    .find((candidateSymbol) => candidateSymbol.name === exportName);
+  if (!exportedSymbol || nextVisitedSymbols.has(exportedSymbol)) {
+    return EMPTY_MOTION_EXPRESSION_EVIDENCE;
+  }
+  nextVisitedSymbols.add(exportedSymbol);
+
+  let resolvedEvidence = EMPTY_MOTION_EXPRESSION_EVIDENCE;
+  for (const declaration of exportedSymbol.declarations ?? []) {
+    if (ts.isExportSpecifier(declaration)) {
+      const targetSymbol = typeChecker.getExportSpecifierLocalTargetSymbol(declaration);
+      for (const targetDeclaration of targetSymbol?.declarations ?? []) {
+        const importedEvidence = getImportedBindingEvidence(
+          targetDeclaration,
+          typeChecker,
+          program,
+          nextVisitedSymbols,
+        );
+        if (importedEvidence) {
+          resolvedEvidence = mergeMotionExpressionEvidence(resolvedEvidence, importedEvidence);
+        }
+        if (ts.isVariableDeclaration(targetDeclaration) && targetDeclaration.initializer) {
+          resolvedEvidence = mergeMotionExpressionEvidence(
+            resolvedEvidence,
+            resolveMotionExpressionEvidence(
+              targetDeclaration.initializer,
+              typeChecker,
+              program,
+              nextVisitedSymbols,
+            ),
+          );
+        }
+      }
+    }
+    if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
+      resolvedEvidence = mergeMotionExpressionEvidence(
+        resolvedEvidence,
+        resolveMotionExpressionEvidence(
+          declaration.initializer,
+          typeChecker,
+          program,
+          nextVisitedSymbols,
+        ),
+      );
+    }
+  }
+  return resolvedEvidence;
 };
 
 const mergeMotionExpressionEvidence = (
@@ -152,17 +283,46 @@ const mergeMotionExpressionEvidence = (
   isMotionComponent: leftEvidence.isMotionComponent || rightEvidence.isMotionComponent,
   isMotionComponentFactory:
     leftEvidence.isMotionComponentFactory || rightEvidence.isMotionComponentFactory,
+  isMotionComponentNamespace:
+    leftEvidence.isMotionComponentNamespace || rightEvidence.isMotionComponentNamespace,
   isMotionConfig: leftEvidence.isMotionConfig || rightEvidence.isMotionConfig,
   isMotionNamespace: leftEvidence.isMotionNamespace || rightEvidence.isMotionNamespace,
   isReducedMotionHook: leftEvidence.isReducedMotionHook || rightEvidence.isReducedMotionHook,
 });
 
+const hasMotionExpressionEvidence = (evidence: MotionExpressionEvidence): boolean =>
+  evidence.isAnimationFunction ||
+  evidence.isMotionComponent ||
+  evidence.isMotionComponentFactory ||
+  evidence.isMotionComponentNamespace ||
+  evidence.isMotionConfig ||
+  evidence.isMotionNamespace ||
+  evidence.isReducedMotionHook;
+
+const classifyMotionMember = (
+  receiverEvidence: MotionExpressionEvidence,
+  memberName: string,
+): MotionExpressionEvidence => {
+  if (receiverEvidence.isMotionNamespace) return classifyMotionExport(memberName);
+  if (receiverEvidence.isMotionComponentFactory) {
+    return { ...EMPTY_MOTION_EXPRESSION_EVIDENCE, isMotionComponent: true };
+  }
+  if (
+    receiverEvidence.isMotionComponentNamespace &&
+    MOTION_COMPONENT_NAMESPACE_MEMBER_NAMES.has(memberName)
+  ) {
+    return { ...EMPTY_MOTION_EXPRESSION_EVIDENCE, isMotionComponent: true };
+  }
+  return EMPTY_MOTION_EXPRESSION_EVIDENCE;
+};
+
 const resolveMotionExpressionEvidence = (
   expression: ts.Expression,
   typeChecker: ts.TypeChecker,
+  program: ts.Program,
   visitedSymbols: Set<ts.Symbol> = new Set(),
 ): MotionExpressionEvidence => {
-  const unwrappedExpression = unwrapExpression(expression);
+  const unwrappedExpression = unwrapTypescriptExpression(expression);
 
   if (ts.isIdentifier(unwrappedExpression)) {
     const symbol = typeChecker.getSymbolAtLocation(unwrappedExpression);
@@ -172,7 +332,12 @@ const resolveMotionExpressionEvidence = (
 
     let resolvedEvidence = EMPTY_MOTION_EXPRESSION_EVIDENCE;
     for (const declaration of symbol.declarations ?? []) {
-      const importedEvidence = getImportedBindingEvidence(declaration);
+      const importedEvidence = getImportedBindingEvidence(
+        declaration,
+        typeChecker,
+        program,
+        nextVisitedSymbols,
+      );
       if (importedEvidence) {
         resolvedEvidence = mergeMotionExpressionEvidence(resolvedEvidence, importedEvidence);
         continue;
@@ -180,8 +345,33 @@ const resolveMotionExpressionEvidence = (
       if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
         resolvedEvidence = mergeMotionExpressionEvidence(
           resolvedEvidence,
-          resolveMotionExpressionEvidence(declaration.initializer, typeChecker, nextVisitedSymbols),
+          resolveMotionExpressionEvidence(
+            declaration.initializer,
+            typeChecker,
+            program,
+            nextVisitedSymbols,
+          ),
         );
+      }
+      if (
+        ts.isBindingElement(declaration) &&
+        ts.isObjectBindingPattern(declaration.parent) &&
+        ts.isVariableDeclaration(declaration.parent.parent) &&
+        declaration.parent.parent.initializer
+      ) {
+        const propertyName = declaration.propertyName ?? declaration.name;
+        if (ts.isIdentifier(propertyName) || ts.isStringLiteral(propertyName)) {
+          const receiverEvidence = resolveMotionExpressionEvidence(
+            declaration.parent.parent.initializer,
+            typeChecker,
+            program,
+            nextVisitedSymbols,
+          );
+          resolvedEvidence = mergeMotionExpressionEvidence(
+            resolvedEvidence,
+            classifyMotionMember(receiverEvidence, propertyName.text),
+          );
+        }
       }
     }
     return resolvedEvidence;
@@ -191,15 +381,10 @@ const resolveMotionExpressionEvidence = (
     const receiverEvidence = resolveMotionExpressionEvidence(
       unwrappedExpression.expression,
       typeChecker,
+      program,
       visitedSymbols,
     );
-    if (receiverEvidence.isMotionNamespace) {
-      return classifyMotionExport(unwrappedExpression.name.text);
-    }
-    if (receiverEvidence.isMotionComponentFactory) {
-      return { ...EMPTY_MOTION_EXPRESSION_EVIDENCE, isMotionComponent: true };
-    }
-    return receiverEvidence;
+    return classifyMotionMember(receiverEvidence, unwrappedExpression.name.text);
   }
 
   if (
@@ -211,21 +396,39 @@ const resolveMotionExpressionEvidence = (
     const receiverEvidence = resolveMotionExpressionEvidence(
       unwrappedExpression.expression,
       typeChecker,
+      program,
       visitedSymbols,
     );
-    if (receiverEvidence.isMotionNamespace) {
-      return classifyMotionExport(unwrappedExpression.argumentExpression.text);
-    }
-    if (receiverEvidence.isMotionComponentFactory) {
-      return { ...EMPTY_MOTION_EXPRESSION_EVIDENCE, isMotionComponent: true };
-    }
-    return receiverEvidence;
+    return classifyMotionMember(receiverEvidence, unwrappedExpression.argumentExpression.text);
   }
 
   if (ts.isCallExpression(unwrappedExpression)) {
+    if (
+      ts.isIdentifier(unwrappedExpression.expression) &&
+      unwrappedExpression.expression.text === "require" &&
+      !typeChecker.getSymbolAtLocation(unwrappedExpression.expression) &&
+      unwrappedExpression.arguments.length === 1 &&
+      ts.isStringLiteral(unwrappedExpression.arguments[0]) &&
+      isMotionModuleSource(unwrappedExpression.arguments[0].text)
+    ) {
+      return { ...EMPTY_MOTION_EXPRESSION_EVIDENCE, isMotionNamespace: true };
+    }
+    if (
+      ts.isPropertyAccessExpression(unwrappedExpression.expression) &&
+      unwrappedExpression.expression.name.text === "bind"
+    ) {
+      const boundReceiverEvidence = resolveMotionExpressionEvidence(
+        unwrappedExpression.expression.expression,
+        typeChecker,
+        program,
+        visitedSymbols,
+      );
+      if (boundReceiverEvidence.isAnimationFunction) return boundReceiverEvidence;
+    }
     const calleeEvidence = resolveMotionExpressionEvidence(
       unwrappedExpression.expression,
       typeChecker,
+      program,
       visitedSymbols,
     );
     if (calleeEvidence.isMotionComponentFactory) {
@@ -237,29 +440,80 @@ const resolveMotionExpressionEvidence = (
   return EMPTY_MOTION_EXPRESSION_EVIDENCE;
 };
 
-const getStaticJsxAttributeValue = (attribute: ts.JsxAttribute): string | null => {
-  if (!attribute.initializer) return null;
-  if (ts.isStringLiteral(attribute.initializer)) return attribute.initializer.text;
-  if (!ts.isJsxExpression(attribute.initializer) || !attribute.initializer.expression) return null;
-  const expression = unwrapExpression(attribute.initializer.expression);
-  if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
-    return expression.text;
+const getStaticStringExpressionValue = (
+  expression: ts.Expression,
+  typeChecker: ts.TypeChecker,
+  visitedSymbols: Set<ts.Symbol> = new Set(),
+): string | null => {
+  const unwrappedExpression = unwrapTypescriptExpression(expression);
+  if (
+    ts.isStringLiteral(unwrappedExpression) ||
+    ts.isNoSubstitutionTemplateLiteral(unwrappedExpression)
+  ) {
+    return unwrappedExpression.text;
+  }
+  if (!ts.isIdentifier(unwrappedExpression)) return null;
+  const symbol = typeChecker.getSymbolAtLocation(unwrappedExpression);
+  if (!symbol || visitedSymbols.has(symbol)) return null;
+  const nextVisitedSymbols = new Set(visitedSymbols);
+  nextVisitedSymbols.add(symbol);
+  for (const declaration of symbol.declarations ?? []) {
+    if (!ts.isVariableDeclaration(declaration) || !declaration.initializer) continue;
+    if (!ts.isVariableDeclarationList(declaration.parent)) continue;
+    if (!(declaration.parent.flags & ts.NodeFlags.Const)) continue;
+    const value = getStaticStringExpressionValue(
+      declaration.initializer,
+      typeChecker,
+      nextVisitedSymbols,
+    );
+    if (value !== null) return value;
   }
   return null;
 };
 
-const jsxElementHasReducedMotionConfiguration = (attributes: ts.JsxAttributes): boolean =>
+const getStaticJsxAttributeValue = (
+  attribute: ts.JsxAttribute,
+  typeChecker: ts.TypeChecker,
+): string | null => {
+  if (!attribute.initializer) return null;
+  if (ts.isStringLiteral(attribute.initializer)) return attribute.initializer.text;
+  if (!ts.isJsxExpression(attribute.initializer) || !attribute.initializer.expression) return null;
+  return getStaticStringExpressionValue(attribute.initializer.expression, typeChecker);
+};
+
+const isExpressionValueConsumed = (expression: ts.Expression): boolean => {
+  let currentExpression = expression;
+  while (
+    ts.isParenthesizedExpression(currentExpression.parent) ||
+    ts.isAsExpression(currentExpression.parent) ||
+    ts.isSatisfiesExpression(currentExpression.parent) ||
+    ts.isNonNullExpression(currentExpression.parent) ||
+    ts.isTypeAssertionExpression(currentExpression.parent)
+  ) {
+    currentExpression = currentExpression.parent;
+  }
+  return (
+    !ts.isExpressionStatement(currentExpression.parent) &&
+    !ts.isVoidExpression(currentExpression.parent)
+  );
+};
+
+const jsxElementHasReducedMotionConfiguration = (
+  attributes: ts.JsxAttributes,
+  typeChecker: ts.TypeChecker,
+): boolean =>
   attributes.properties.some(
     (attribute) =>
       ts.isJsxAttribute(attribute) &&
       ts.isIdentifier(attribute.name) &&
       attribute.name.text === REDUCED_MOTION_PROP_NAME &&
-      REDUCED_MOTION_CONFIG_VALUES.has(getStaticJsxAttributeValue(attribute) ?? ""),
+      REDUCED_MOTION_CONFIG_VALUES.has(getStaticJsxAttributeValue(attribute, typeChecker) ?? ""),
   );
 
 const collectScriptMotionEvidence = (
   sourceFile: ts.SourceFile,
   typeChecker: ts.TypeChecker,
+  program: ts.Program,
 ): ProjectMotionEvidence => {
   const evidence: ProjectMotionEvidence = {
     hasMotionUse: false,
@@ -268,34 +522,37 @@ const collectScriptMotionEvidence = (
 
   const visitNode = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
-      const calleeEvidence = resolveMotionExpressionEvidence(node.expression, typeChecker);
-      if (
-        calleeEvidence.isAnimationFunction ||
-        calleeEvidence.isMotionComponentFactory ||
-        calleeEvidence.isReducedMotionHook
-      ) {
+      const calleeEvidence = resolveMotionExpressionEvidence(node.expression, typeChecker, program);
+      const isAnimationFunctionCallViaCallOrApply =
+        ((ts.isPropertyAccessExpression(node.expression) &&
+          (node.expression.name.text === "call" || node.expression.name.text === "apply")) ||
+          (ts.isElementAccessExpression(node.expression) &&
+            node.expression.argumentExpression &&
+            (ts.isStringLiteral(node.expression.argumentExpression) ||
+              ts.isNoSubstitutionTemplateLiteral(node.expression.argumentExpression)) &&
+            (node.expression.argumentExpression.text === "call" ||
+              node.expression.argumentExpression.text === "apply"))) &&
+        resolveMotionExpressionEvidence(node.expression.expression, typeChecker, program)
+          .isAnimationFunction;
+      if (calleeEvidence.isAnimationFunction || isAnimationFunctionCallViaCallOrApply) {
         evidence.hasMotionUse = true;
       }
-      if (calleeEvidence.isReducedMotionHook) evidence.hasReducedMotionHandling = true;
-    }
-
-    if (ts.isVariableDeclaration(node) && node.initializer) {
-      const initializerEvidence = resolveMotionExpressionEvidence(node.initializer, typeChecker);
-      if (initializerEvidence.isMotionComponent) evidence.hasMotionUse = true;
+      if (calleeEvidence.isReducedMotionHook && isExpressionValueConsumed(node)) {
+        evidence.hasReducedMotionHandling = true;
+      }
     }
 
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const tagEvidence = ts.isJsxNamespacedName(node.tagName)
         ? EMPTY_MOTION_EXPRESSION_EVIDENCE
-        : resolveMotionExpressionEvidence(node.tagName, typeChecker);
-      if (
-        tagEvidence.isMotionComponent ||
-        tagEvidence.isMotionComponentFactory ||
-        tagEvidence.isMotionConfig
-      ) {
+        : resolveMotionExpressionEvidence(node.tagName, typeChecker, program);
+      if (tagEvidence.isMotionComponent || tagEvidence.isMotionComponentFactory) {
         evidence.hasMotionUse = true;
       }
-      if (tagEvidence.isMotionConfig && jsxElementHasReducedMotionConfiguration(node.attributes)) {
+      if (
+        tagEvidence.isMotionConfig &&
+        jsxElementHasReducedMotionConfiguration(node.attributes, typeChecker)
+      ) {
         evidence.hasReducedMotionHandling = true;
       }
     }
@@ -307,13 +564,6 @@ const collectScriptMotionEvidence = (
   return evidence;
 };
 
-const getScriptKind = (fileName: string): ts.ScriptKind => {
-  if (fileName.endsWith(".tsx")) return ts.ScriptKind.TSX;
-  if (fileName.endsWith(".jsx")) return ts.ScriptKind.JSX;
-  if (fileName.endsWith(".ts")) return ts.ScriptKind.TS;
-  return ts.ScriptKind.JS;
-};
-
 export const analyzeReducedMotionSource = ({
   fileName,
   sourceText,
@@ -322,17 +572,33 @@ export const analyzeReducedMotionSource = ({
     return { hasMotionUse: false, hasReducedMotionHandling: false };
   }
 
+  const sources = [{ fileName, sourceText }];
+  return analyzeReducedMotionSources(sources);
+};
+
+const analyzeReducedMotionSources = (sources: ScriptMotionSource[]): ProjectMotionEvidence => {
+  if (!sources.some(({ sourceText }) => MOTION_SOURCE_PREFILTER.test(sourceText))) {
+    return { hasMotionUse: false, hasReducedMotionHandling: false };
+  }
+
   const compilerOptions: ts.CompilerOptions = {
     allowJs: true,
     checkJs: false,
     jsx: ts.JsxEmit.Preserve,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
     noEmit: true,
     noLib: true,
     noResolve: true,
     skipLibCheck: true,
     target: ts.ScriptTarget.Latest,
   };
-  const normalizedFileName = path.resolve(fileName);
+  const sourceTextByFileName = new Map(
+    sources.map(({ fileName: sourceFileName, sourceText: content }) => [
+      path.resolve(sourceFileName),
+      content,
+    ]),
+  );
   const compilerHost = ts.createCompilerHost(compilerOptions);
   const getDefaultSourceFile = compilerHost.getSourceFile.bind(compilerHost);
   compilerHost.getSourceFile = (
@@ -341,13 +607,13 @@ export const analyzeReducedMotionSource = ({
     onError,
     shouldCreateNewSourceFile,
   ) =>
-    path.resolve(requestedFileName) === normalizedFileName
+    sourceTextByFileName.has(path.resolve(requestedFileName))
       ? ts.createSourceFile(
-          normalizedFileName,
-          sourceText,
+          path.resolve(requestedFileName),
+          sourceTextByFileName.get(path.resolve(requestedFileName)) ?? "",
           languageVersionOrOptions,
           true,
-          getScriptKind(normalizedFileName),
+          getTypescriptScriptKind(requestedFileName),
         )
       : getDefaultSourceFile(
           requestedFileName,
@@ -355,10 +621,20 @@ export const analyzeReducedMotionSource = ({
           onError,
           shouldCreateNewSourceFile,
         );
-  const program = ts.createProgram([normalizedFileName], compilerOptions, compilerHost);
-  const sourceFile = program.getSourceFile(normalizedFileName);
-  if (!sourceFile) return { hasMotionUse: false, hasReducedMotionHandling: false };
-  return collectScriptMotionEvidence(sourceFile, program.getTypeChecker());
+  const program = ts.createProgram([...sourceTextByFileName.keys()], compilerOptions, compilerHost);
+  const typeChecker = program.getTypeChecker();
+  const evidence: ProjectMotionEvidence = {
+    hasMotionUse: false,
+    hasReducedMotionHandling: false,
+  };
+  for (const sourceFileName of sourceTextByFileName.keys()) {
+    const sourceFile = program.getSourceFile(sourceFileName);
+    if (!sourceFile) continue;
+    const fileEvidence = collectScriptMotionEvidence(sourceFile, typeChecker, program);
+    evidence.hasMotionUse ||= fileEvidence.hasMotionUse;
+    evidence.hasReducedMotionHandling ||= fileEvidence.hasReducedMotionHandling;
+  }
+  return evidence;
 };
 
 const removeCssCommentsAndStrings = (content: string): string => {
@@ -458,7 +734,7 @@ const hasReducedMotionMediaQuery = (content: string): boolean => {
 };
 
 const collectProjectMotionEvidence = (rootDirectory: string): ProjectMotionEvidence => {
-  const scriptFiles: Array<{ absolutePath: string; content: string }> = [];
+  const scriptSources: ScriptMotionSource[] = [];
   let hasReducedMotionHandling = false;
 
   for (const { absolutePath, name } of walkSourceTreeFiles(rootDirectory)) {
@@ -476,23 +752,16 @@ const collectProjectMotionEvidence = (rootDirectory: string): ProjectMotionEvide
       if (hasReducedMotionMediaQuery(content)) hasReducedMotionHandling = true;
       continue;
     }
-    if (MOTION_SOURCE_PREFILTER.test(content)) scriptFiles.push({ absolutePath, content });
+    scriptSources.push({ fileName: absolutePath, sourceText: content });
   }
 
-  if (scriptFiles.length === 0) {
+  if (scriptSources.length === 0) {
     return { hasMotionUse: false, hasReducedMotionHandling };
   }
 
-  let hasMotionUse = false;
-  for (const { absolutePath, content } of scriptFiles) {
-    const fileEvidence = analyzeReducedMotionSource({
-      fileName: absolutePath,
-      sourceText: content,
-    });
-    hasMotionUse ||= fileEvidence.hasMotionUse;
-    hasReducedMotionHandling ||= fileEvidence.hasReducedMotionHandling;
-    if (hasMotionUse && hasReducedMotionHandling) break;
-  }
+  const scriptEvidence = analyzeReducedMotionSources(scriptSources);
+  const hasMotionUse = scriptEvidence.hasMotionUse;
+  hasReducedMotionHandling ||= scriptEvidence.hasReducedMotionHandling;
 
   return { hasMotionUse, hasReducedMotionHandling };
 };

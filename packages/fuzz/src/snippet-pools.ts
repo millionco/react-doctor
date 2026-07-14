@@ -180,7 +180,7 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
-  `import { motion as FuzzMotion } from "framer-motion"; const FuzzMotionComponent = FuzzMotion.div;`,
+  `import { motion as FuzzMotion } from "framer-motion"; export const FuzzMotionPanel = () => <FuzzMotion.div animate={{ x: 120 }}>moving</FuzzMotion.div>;`,
   `const GLOBAL_CACHE = new Map<string, unknown>();`,
   `const FuzzPropTypesPanel = ({ value }) => <div>{value}</div>; FuzzPropTypesPanel.propTypes = { value: () => true };`,
   `function FuzzNestedWritePanel() { return <div />; } function unusedFuzzNestedWrite() { FuzzNestedWritePanel = () => null; } FuzzNestedWritePanel.propTypes = { value: () => true };`,

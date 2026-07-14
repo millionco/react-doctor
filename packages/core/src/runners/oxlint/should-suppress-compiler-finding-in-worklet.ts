@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import ts from "typescript";
 import type { ProjectInfo } from "../../types/index.js";
+import { getTypescriptScriptKind } from "../../utils/get-typescript-script-kind.js";
 
 // React Compiler diagnostics fire on `sharedValue.value` reads/writes even
 // inside Reanimated worklets. A worklet body is extracted by Reanimated's
@@ -48,13 +49,6 @@ interface OxlintDiagnosticCandidate {
   filename: string;
   labels: OxlintLabel[];
 }
-
-const getScriptKind = (filename: string): ts.ScriptKind => {
-  if (filename.endsWith(".tsx")) return ts.ScriptKind.TSX;
-  if (filename.endsWith(".jsx")) return ts.ScriptKind.JSX;
-  if (filename.endsWith(".ts")) return ts.ScriptKind.TS;
-  return ts.ScriptKind.JS;
-};
 
 const getUtf16Offset = (sourceText: string, utf8Offset: number): number =>
   Buffer.from(sourceText).subarray(0, utf8Offset).toString("utf8").length;
@@ -160,7 +154,7 @@ export const shouldSuppressCompilerFindingInWorklet = (
     sourceText,
     ts.ScriptTarget.Latest,
     true,
-    getScriptKind(absolutePath),
+    getTypescriptScriptKind(absolutePath),
   );
   return isOffsetInsideWorklet(sourceFile, getUtf16Offset(sourceText, primaryLabel.span.offset));
 };

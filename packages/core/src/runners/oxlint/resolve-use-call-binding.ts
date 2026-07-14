@@ -1,4 +1,6 @@
 import ts from "typescript";
+import { getTypescriptScriptKind } from "../../utils/get-typescript-script-kind.js";
+import { unwrapTypescriptExpression } from "../../utils/unwrap-typescript-expression.js";
 
 interface ReactImportBindings {
   namespaceNames: Set<string>;
@@ -29,36 +31,15 @@ const REACT_USE_BINDING_RESOLUTION: BindingResolution = {
   isReactNamespaceBinding: false,
 };
 
-const getScriptKind = (filename: string): ts.ScriptKind => {
-  if (filename.endsWith(".tsx")) return ts.ScriptKind.TSX;
-  if (filename.endsWith(".jsx")) return ts.ScriptKind.JSX;
-  if (filename.endsWith(".ts")) return ts.ScriptKind.TS;
-  return ts.ScriptKind.JS;
-};
-
 const getUtf16Offset = (sourceText: string, utf8Offset: number): number =>
   Buffer.from(sourceText).subarray(0, utf8Offset).toString("utf8").length;
-
-const unwrapExpression = (expression: ts.Expression): ts.Expression => {
-  let currentExpression = expression;
-  while (
-    ts.isParenthesizedExpression(currentExpression) ||
-    ts.isAsExpression(currentExpression) ||
-    ts.isSatisfiesExpression(currentExpression) ||
-    ts.isNonNullExpression(currentExpression) ||
-    ts.isTypeAssertionExpression(currentExpression)
-  ) {
-    currentExpression = currentExpression.expression;
-  }
-  return currentExpression;
-};
 
 const getStaticPropertyName = (node: ts.PropertyName | undefined): string | null => {
   if (!node) return null;
   if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node))
     return node.text;
   if (ts.isComputedPropertyName(node)) {
-    const expression = unwrapExpression(node.expression);
+    const expression = unwrapTypescriptExpression(node.expression);
     if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
       return expression.text;
     }
@@ -102,7 +83,7 @@ const isReactUseObjectBindingElement = (bindingElement: ts.BindingElement): bool
 };
 
 const isReactRequireCall = (expression: ts.Expression): boolean => {
-  const unwrappedExpression = unwrapExpression(expression);
+  const unwrappedExpression = unwrapTypescriptExpression(expression);
   return (
     ts.isCallExpression(unwrappedExpression) &&
     ts.isIdentifier(unwrappedExpression.expression) &&
@@ -273,7 +254,7 @@ const isReactNamespaceExpression = (
   sourceFile: ts.SourceFile,
   visitedDeclarations: Set<ts.Node>,
 ): boolean => {
-  const unwrappedExpression = unwrapExpression(expression);
+  const unwrappedExpression = unwrapTypescriptExpression(expression);
   if (isReactRequireCall(unwrappedExpression)) return true;
   if (!ts.isIdentifier(unwrappedExpression)) return false;
   if (
@@ -299,7 +280,7 @@ const isReactUseExpression = (
   visitedDeclarations: Set<ts.Node>,
 ): boolean => {
   if (!expression) return false;
-  const unwrappedExpression = unwrapExpression(expression);
+  const unwrappedExpression = unwrapTypescriptExpression(expression);
   if (ts.isIdentifier(unwrappedExpression)) {
     if (
       reactImportBindings.useImportNames.has(unwrappedExpression.text) &&
@@ -604,7 +585,7 @@ export const resolveUseCallBinding = (
     sourceText,
     ts.ScriptTarget.Latest,
     true,
-    getScriptKind(filename),
+    getTypescriptScriptKind(filename),
   );
   const useOffset = getUtf16Offset(sourceText, utf8Offset);
   const useIdentifier = findUseCallIdentifier(sourceFile, useOffset);

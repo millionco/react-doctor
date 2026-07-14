@@ -152,6 +152,42 @@ export const App = () => <Framer.motion.div>moving</Framer.motion.div>;
     expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
   });
 
+  it("reports a Reorder item", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `import { Reorder } from "framer-motion";
+export const App = () => <Reorder.Item value="one">moving</Reorder.Item>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("stays clean when only a Reorder group is rendered", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `import { Reorder } from "framer-motion";
+export const App = () => <Reorder.Group values={[]} onReorder={() => {}} />;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
+  it("stays clean when AnimatePresence has no motion child", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `import { AnimatePresence } from "framer-motion";
+export const App = () => <AnimatePresence><div>still</div></AnimatePresence>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
   it("reports motion use imported from the motion react subpath", () => {
     writePackageJson();
     writeNestedFile(
@@ -190,6 +226,137 @@ export const App = () => <AnimatedCard>moving</AnimatedCard>;
     expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
   });
 
+  it("stays clean when a module-local motion component wrapper is never rendered", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `import { motion } from "framer-motion";
+const AnimatedCard = motion.div;
+export const App = () => <div>still</div>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
+  it("reports a motion component imported through a local re-export", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/motion.ts",
+      `export { motion as animated } from "framer-motion";
+`,
+    );
+    writeNestedFile(
+      "src/app.tsx",
+      `import { animated } from "./motion";
+export const App = () => <animated.div animate={{ x: 120 }}>moving</animated.div>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("reports an exported module-local motion wrapper", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/motion.ts",
+      `import { motion } from "framer-motion";
+export const AnimatedCard = motion.div;
+`,
+    );
+    writeNestedFile(
+      "src/app.tsx",
+      `import { AnimatedCard } from "./motion";
+export const App = () => <AnimatedCard animate={{ x: 120 }}>moving</AnimatedCard>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("reports a local re-export imported with an explicit JavaScript extension", () => {
+    writePackageJson();
+    writeNestedFile("src/motion.ts", `export { motion } from "framer-motion";\n`);
+    writeNestedFile(
+      "src/app.tsx",
+      `import { motion } from "./motion.js";
+export const App = () => <motion.div animate={{ x: 120 }}>moving</motion.div>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("reports a motion component imported through a star re-export", () => {
+    writePackageJson();
+    writeNestedFile("src/motion.ts", `export * from "framer-motion";\n`);
+    writeNestedFile(
+      "src/app.tsx",
+      `import { motion } from "./motion";
+export const App = () => <motion.div animate={{ x: 120 }}>moving</motion.div>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("stays clean when a motion re-export is never imported", () => {
+    writePackageJson();
+    writeNestedFile("src/motion.ts", `export { motion } from "framer-motion";\n`);
+    writeNestedFile("src/app.tsx", `export const App = () => <div>still</div>;\n`);
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
+  it("resolves a motion component through circular star re-exports", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/motion-a.ts",
+      `export * from "./motion-b";
+`,
+    );
+    writeNestedFile(
+      "src/motion-b.ts",
+      `export * from "./motion-a";
+export * from "framer-motion";
+`,
+    );
+    writeNestedFile(
+      "src/app.tsx",
+      `import { motion } from "./motion-a";
+export const App = () => <motion.div animate={{ x: 120 }}>moving</motion.div>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("reports a destructured namespace motion component", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `import * as Framer from "framer-motion";
+const { motion: animated } = Framer;
+export const App = () => <animated.div animate={{ x: 120 }}>moving</animated.div>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("reports a destructured motion element", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `import { motion } from "framer-motion";
+const { div: AnimatedDiv } = motion;
+export const App = () => <AnimatedDiv animate={{ x: 120 }}>moving</AnimatedDiv>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
   it("reports a real animate function call", () => {
     writePackageJson();
     writeNestedFile(
@@ -200,6 +367,104 @@ export const start = (): void => { runAnimation("#box", { x: 120 }); };
     );
 
     expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("reports a motion component loaded through global require", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `const { motion } = require("framer-motion");
+export const App = () => <motion.div animate={{ x: 120 }}>moving</motion.div>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("stays clean when require is a local lookalike", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `const require = (_moduleName: string) => ({ motion: { div: "div" } });
+const { motion } = require("framer-motion");
+export const App = () => <motion.div>still</motion.div>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
+  it("reports animate invoked through Function call", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.ts",
+      `import { animate } from "framer-motion";
+export const start = (): void => { animate.call(undefined, "#box", { x: 120 }); };
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("reports a bound animate function when the bound function is invoked", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.ts",
+      `import { animate } from "framer-motion";
+const animateBox = animate.bind(undefined, "#box");
+export const start = (): void => { animateBox({ x: 120 }); };
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("stays clean when a non-animation property on animate is called", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.ts",
+      `import { animate } from "framer-motion";
+export const describe = (): string => animate.toString();
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
+  it("stays clean when inView only observes visibility", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.ts",
+      `import { inView } from "framer-motion";
+export const observe = (): void => { inView("#target", () => undefined); };
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
+  it("stays clean when a motion value is created without visual motion", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.ts",
+      `import { useMotionValue } from "framer-motion";
+export const useCurrentPosition = () => useMotionValue(0);
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
+  it("stays clean when stagger only creates a delay function", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.ts",
+      `import { stagger } from "framer-motion";
+export const delayByIndex = stagger(0.1);
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
   });
 
   it("accepts MotionConfig from the real library with user preference handling", () => {
@@ -250,7 +515,7 @@ export const App = () => (
     expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
   });
 
-  it("does not accept a dynamic MotionConfig preference", () => {
+  it("accepts a statically resolved MotionConfig preference", () => {
     writePackageJson();
     writeNestedFile(
       "src/app.tsx",
@@ -260,6 +525,51 @@ export const App = () => (
   <MotionConfig reducedMotion={preference}>
     <motion.div animate={{ x: 120 }}>moving</motion.div>
   </MotionConfig>
+);
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
+  it("does not accept a runtime MotionConfig preference", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `import { MotionConfig, motion } from "framer-motion";
+export const App = ({ preference }: { preference: "always" | "never" | "user" }) => (
+  <MotionConfig reducedMotion={preference}>
+    <motion.div animate={{ x: 120 }}>moving</motion.div>
+  </MotionConfig>
+);
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("stays clean when MotionConfig is rendered without any motion component", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `import { MotionConfig } from "framer-motion";
+export const App = () => <MotionConfig reducedMotion="never"><div>still</div></MotionConfig>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
+  it("does not accept reduced-motion configuration on an arbitrary nested member", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `import { MotionConfig, motion } from "framer-motion";
+const Provider = (MotionConfig as unknown as { Provider: typeof MotionConfig }).Provider;
+export const App = () => (
+  <Provider reducedMotion="user">
+    <motion.div animate={{ x: 120 }}>moving</motion.div>
+  </Provider>
 );
 `,
     );
@@ -280,6 +590,36 @@ export const App = () => {
     );
 
     expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
+  it("does not accept an ignored useReducedMotion result", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `import { motion, useReducedMotion } from "framer-motion";
+export const App = () => {
+  useReducedMotion();
+  return <motion.div animate={{ x: 120 }}>moving</motion.div>;
+};
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("does not accept a voided useReducedMotion result", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `import { motion, useReducedMotion } from "framer-motion";
+export const App = () => {
+  void useReducedMotion();
+  return <motion.div animate={{ x: 120 }}>moving</motion.div>;
+};
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
   });
 
   it("does not accept an unused useReducedMotion import", () => {

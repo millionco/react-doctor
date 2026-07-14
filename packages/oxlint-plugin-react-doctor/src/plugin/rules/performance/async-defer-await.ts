@@ -9,6 +9,7 @@ import { isEarlyExitIfStatement } from "../../utils/is-early-exit-if-statement.j
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 interface DeclarationProcessResult {
@@ -234,13 +235,42 @@ const guardTestReadsMutableEnvironment = (test: EsTreeNode | null): boolean => {
 // comparisons (`if (mode === "off") return`) stay reportable.
 const isNonLiteralComparisonTest = (test: EsTreeNode | null): boolean => {
   if (!test) return false;
-  if (!isNodeOfType(test, "BinaryExpression")) return false;
-  if (!["===", "!==", "==", "!="].includes(test.operator)) return false;
-  const isLiteralOperand = (operand: EsTreeNode): boolean =>
-    isNodeOfType(operand, "Literal") ||
-    isNodeOfType(operand, "TemplateLiteral") ||
-    (isNodeOfType(operand, "UnaryExpression") && isLiteralOperand(operand.argument));
-  return !isLiteralOperand(test.left) && !isLiteralOperand(test.right);
+  const unwrappedTest = stripParenExpression(test);
+  if (!isNodeOfType(unwrappedTest, "BinaryExpression")) return false;
+  if (!["===", "!==", "==", "!="].includes(unwrappedTest.operator)) return false;
+  const isLiteralOperand = (operand: EsTreeNode): boolean => {
+    const unwrappedOperand = stripParenExpression(operand);
+    return (
+      isNodeOfType(unwrappedOperand, "Literal") ||
+      isNodeOfType(unwrappedOperand, "TemplateLiteral") ||
+      (isNodeOfType(unwrappedOperand, "UnaryExpression") &&
+        isLiteralOperand(unwrappedOperand.argument))
+    );
+  };
+  return !isLiteralOperand(unwrappedTest.left) && !isLiteralOperand(unwrappedTest.right);
+};
+
+const isPostAwaitFreshnessGuardTest = (
+  test: EsTreeNode | null,
+  guardStatement: EsTreeNode,
+): boolean => {
+  if (!test) return false;
+  const unwrappedTest = stripParenExpression(test);
+  if (
+    isNodeOfType(unwrappedTest, "LogicalExpression") &&
+    (unwrappedTest.operator === "&&" || unwrappedTest.operator === "||")
+  ) {
+    return (
+      isPostAwaitFreshnessGuardTest(unwrappedTest.left, guardStatement) &&
+      isPostAwaitFreshnessGuardTest(unwrappedTest.right, guardStatement)
+    );
+  }
+  return (
+    isCancellationGuardTest(unwrappedTest) ||
+    guardTestReadsMutableEnvironment(unwrappedTest) ||
+    isNonLiteralComparisonTest(unwrappedTest) ||
+    guardTestReadsReassignedLocal(unwrappedTest, guardStatement)
+  );
 };
 
 // A guard whose consequent performs its own effect calls (`if (smime) {
@@ -398,10 +428,7 @@ export const asyncDeferAwait = defineRule({
           continue;
         }
         if (
-          isCancellationGuardTest(guardStatement.test) ||
-          guardTestReadsMutableEnvironment(guardStatement.test) ||
-          isNonLiteralComparisonTest(guardStatement.test) ||
-          guardTestReadsReassignedLocal(guardStatement.test, guardStatement) ||
+          isPostAwaitFreshnessGuardTest(guardStatement.test, guardStatement) ||
           guardConsequentPerformsSideEffects(guardStatement.consequent)
         ) {
           statementIndex = window.guardCandidateIndex - 1;

@@ -115,6 +115,7 @@ export const STATE_SNIPPET_POOL = [
 // Handlers — async submits with loading flags, keyboard commit paths,
 // numeric input parsing, window.open, clipboard, toggles.
 export const HANDLER_SNIPPET_POOL = [
+  `const latestRequest = { current: 0 }; const latestReview = { current: 0 }; const handleFreshRequest = async () => { const requestId = latestRequest.current; const reviewVersion = latestReview.current; const response = await fetch(url); if (requestId !== latestRequest.current || reviewVersion !== latestReview.current) return; setState(await response.json()); };`,
   `const handleSyncRequest = () => { const request = new XMLHttpRequest(); request.open("GET", String(url), false); request.send(); };`,
   `const handleSubmit = async () => { setLoading(true); try { await fetch(url, { method: "POST", body: JSON.stringify(values) }); setState(true); } catch (submitError) { setError(submitError); } finally { setLoading(false); } };`,
   `const handleSubmit = async () => { setLoading(true); const result = await api.post(url, values); setState(result); setLoading(false); };`,

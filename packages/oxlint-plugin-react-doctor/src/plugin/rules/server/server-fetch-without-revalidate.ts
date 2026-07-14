@@ -7,11 +7,76 @@ import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isMutatingFetchCall } from "../../utils/find-side-effect.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { NEXTJS_SOURCE_FILE_EXTENSION_GROUP } from "../../constants/nextjs.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
-const isFetchCall = (node: EsTreeNode): boolean => {
+const isGlobalThisFetchMember = (node: EsTreeNode, context: RuleContext): boolean => {
+  const memberExpression = stripParenExpression(node);
+  if (!isNodeOfType(memberExpression, "MemberExpression")) return false;
+  const receiver = stripParenExpression(memberExpression.object);
+  return (
+    getStaticPropertyName(memberExpression) === "fetch" &&
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "globalThis" &&
+    context.scopes.isGlobalReference(receiver)
+  );
+};
+
+const isGlobalThisIdentifier = (node: EsTreeNode, context: RuleContext): boolean => {
+  const expression = stripParenExpression(node);
+  return (
+    isNodeOfType(expression, "Identifier") &&
+    expression.name === "globalThis" &&
+    context.scopes.isGlobalReference(expression)
+  );
+};
+
+const isGlobalFetchDestructuringBinding = (
+  symbolBinding: EsTreeNode,
+  declaration: EsTreeNodeOfType<"VariableDeclarator">,
+  context: RuleContext,
+): boolean =>
+  isNodeOfType(declaration.id, "ObjectPattern") &&
+  Boolean(
+    declaration.id.properties.some(
+      (property) =>
+        isNodeOfType(property, "Property") &&
+        property.value === symbolBinding &&
+        getStaticPropertyKeyName(property, { allowComputedString: true }) === "fetch",
+    ) &&
+    declaration.init &&
+    isGlobalThisIdentifier(declaration.init, context),
+  );
+
+const isExactGlobalFetchValue = (
+  node: EsTreeNode,
+  context: RuleContext,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const expression = stripParenExpression(node);
+  if (isGlobalThisFetchMember(expression, context)) return true;
+  if (!isNodeOfType(expression, "Identifier")) return false;
+  if (expression.name === "fetch" && context.scopes.isGlobalReference(expression)) return true;
+  const symbol = context.scopes.symbolFor(expression);
+  if (!symbol || symbol.kind !== "const" || visitedSymbolIds.has(symbol.id)) return false;
+  if (!isNodeOfType(symbol.declarationNode, "VariableDeclarator")) return false;
+  if (
+    isGlobalFetchDestructuringBinding(symbol.bindingIdentifier, symbol.declarationNode, context)
+  ) {
+    return true;
+  }
+  if (symbol.declarationNode.id !== symbol.bindingIdentifier || !symbol.initializer) return false;
+  visitedSymbolIds.add(symbol.id);
+  return isExactGlobalFetchValue(symbol.initializer, context, visitedSymbolIds);
+};
+
+const isFetchCall = (node: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
-  return isNodeOfType(node.callee, "Identifier") && node.callee.name === "fetch";
+  const callee = stripParenExpression(node.callee);
+  if (!isNodeOfType(callee, "Identifier") || callee.name !== "fetch") return false;
+  return isExactGlobalFetchValue(callee, context);
 };
 
 const getPropertyKeyName = (property: EsTreeNode): string | null => {
@@ -121,7 +186,7 @@ export const serverFetchWithoutRevalidate = defineRule({
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isServerSideFile) return;
-        if (!isFetchCall(node)) return;
+        if (!isFetchCall(node, context)) return;
         // Next.js only caches GET requests, so a mutating fetch
         // (POST/PUT/PATCH/DELETE) can never serve stale cached data.
         if (isMutatingFetchCall(node)) return;

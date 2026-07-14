@@ -169,4 +169,96 @@ export async function GET() {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it.each([
+    [
+      "a named import",
+      `import { fetch } from "undici";
+export const GET = () => fetch("https://api.example.com/feed");`,
+    ],
+    ["a parameter", `export const GET = (fetch) => fetch("https://api.example.com/feed");`],
+    [
+      "a function declaration",
+      `function fetch(url) { return request(url); }
+export const GET = () => fetch("https://api.example.com/feed");`,
+    ],
+    [
+      "a local wrapper",
+      `const fetch = (...args) => globalThis.fetch(...args);
+export const GET = () => fetch("https://api.example.com/feed");`,
+    ],
+    [
+      "a reassigned binding",
+      `let fetch = globalThis.fetch;
+fetch = customFetch;
+export const GET = () => fetch("https://api.example.com/feed");`,
+    ],
+    [
+      "a multi-hop userland alias",
+      `const request = customFetch;
+const fetch = request;
+export const GET = () => fetch("https://api.example.com/feed");`,
+    ],
+    [
+      "a bound global method",
+      `const fetch = globalThis.fetch.bind(globalThis);
+export const GET = () => fetch("https://api.example.com/feed");`,
+    ],
+    [
+      "a shadowed globalThis receiver",
+      `const globalThis = { fetch: customFetch };
+const fetch = globalThis.fetch;
+export const GET = () => fetch("https://api.example.com/feed");`,
+    ],
+  ])("does not apply Next caching semantics to %s named fetch", (_name, code) => {
+    const result = runRule(serverFetchWithoutRevalidate, code, {
+      filename: "src/app/feed/page.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps an unbound global fetch reportable inside a nested function", () => {
+    const result = runRule(
+      serverFetchWithoutRevalidate,
+      `const loadFeed = () => fetch("https://api.example.com/feed");
+export const GET = () => loadFeed();`,
+      { filename: "src/app/feed/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "const fetch = globalThis.fetch;",
+    `const fetch = globalThis["fetch"];`,
+    "const fetch = (globalThis.fetch as typeof globalThis.fetch);",
+    "const firstFetch = globalThis.fetch; const fetch = firstFetch;",
+    "const { fetch } = globalThis;",
+    `const { ["fetch"]: fetch } = globalThis;`,
+    `const { fetch: firstFetch } = globalThis; const fetch = firstFetch;`,
+  ])("keeps an exact immutable global fetch alias reportable: %s", (declaration) => {
+    const result = runRule(
+      serverFetchWithoutRevalidate,
+      `${declaration}
+export const GET = () => fetch("https://api.example.com/feed");`,
+      { filename: "src/app/feed/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a nested fetch parameter suppress a separate global fetch finding", () => {
+    const result = runRule(
+      serverFetchWithoutRevalidate,
+      `const loadLocal = (fetch) => fetch("https://local.example.com/feed");
+export const GET = () => {
+  loadLocal(customFetch);
+  return fetch("https://api.example.com/feed");
+};`,
+      { filename: "src/app/feed/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

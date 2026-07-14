@@ -262,6 +262,10 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  `export default async function Page() {
+  const response = await fetch("https://api.example.com/feed");
+  return Response.json(await response.json());
+}`,
   `const initializeProfile = async (value: number) => { await Promise.resolve(); return value * 2; };
 const loadPreferences = async (value: number) => { await Promise.resolve(); return value * 3; };
 export const loadProfile = async () => {
@@ -493,6 +497,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 ] as const;
 
 export const IMPORT_LINE_POOL = [
+  `import fetch from "node-fetch";`,
   `import { motion, MotionConfig, useReducedMotion } from "framer-motion";`,
   `import React from "react";`,
   `import * as React from "react";`,
@@ -533,6 +538,7 @@ export const FUZZ_FILENAME_POOL = [
   "src/fuzz-fixture.tsx",
   "src/components/fuzz-widget.tsx",
   "src/hooks/use-fuzz-data.ts",
+  "src/app/feed/page.tsx",
   "app/dashboard/page.tsx",
   "app/layout.tsx",
   "pages/index.tsx",

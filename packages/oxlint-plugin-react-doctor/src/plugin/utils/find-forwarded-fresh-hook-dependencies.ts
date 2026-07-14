@@ -82,7 +82,10 @@ export interface ForwardedFreshHookDependency {
 
 const crossFileScopes = new WeakMap<EsTreeNode, ScopeAnalysis>();
 const crossFileControlFlow = new WeakMap<EsTreeNode, ControlFlowAnalysis>();
-const forwardedFreshDependencyCache = new WeakMap<EsTreeNode, ForwardedFreshHookDependency[]>();
+const forwardedFreshDependencyCache = new WeakMap<
+  EsTreeNode,
+  Map<string, ForwardedFreshHookDependency[]>
+>();
 
 const getCrossFileScopes = (resolved: { readonly programNode: EsTreeNode }): ScopeAnalysis => {
   const cached = crossFileScopes.get(resolved.programNode);
@@ -172,6 +175,7 @@ const resolveImportedHookFunction = (
 const dependencyIndexForReactHookReference = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
+  dependencyHookNames: ReadonlySet<string>,
   visitedSymbolIds: Set<number> = new Set(),
 ): number | null => {
   const candidate = stripParenExpression(expression);
@@ -180,16 +184,21 @@ const dependencyIndexForReactHookReference = (
     if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
     if (isImportedFromReact(symbol)) {
       const importedName = getImportedName(symbol.declarationNode);
-      if (!importedName || !DEPENDENCY_HOOK_NAMES.has(importedName)) return null;
+      if (!importedName || !dependencyHookNames.has(importedName)) return null;
       return importedName === "useImperativeHandle" ? 2 : 1;
     }
     if (symbol.kind !== "const" || !symbol.initializer || isSymbolMutated(symbol)) return null;
     visitedSymbolIds.add(symbol.id);
-    return dependencyIndexForReactHookReference(symbol.initializer, scopes, visitedSymbolIds);
+    return dependencyIndexForReactHookReference(
+      symbol.initializer,
+      scopes,
+      dependencyHookNames,
+      visitedSymbolIds,
+    );
   }
   if (isNodeOfType(candidate, "MemberExpression")) {
     const hookName = getStaticPropertyName(candidate);
-    if (!hookName || !DEPENDENCY_HOOK_NAMES.has(hookName)) return null;
+    if (!hookName || !dependencyHookNames.has(hookName)) return null;
     const receiver = stripParenExpression(candidate.object);
     if (!isNodeOfType(receiver, "Identifier") || !isReactNamespaceImport(receiver, scopes)) {
       return null;
@@ -200,11 +209,13 @@ const dependencyIndexForReactHookReference = (
   const consequentIndex = dependencyIndexForReactHookReference(
     candidate.consequent,
     scopes,
+    dependencyHookNames,
     new Set(visitedSymbolIds),
   );
   const alternateIndex = dependencyIndexForReactHookReference(
     candidate.alternate,
     scopes,
+    dependencyHookNames,
     new Set(visitedSymbolIds),
   );
   return consequentIndex !== null && consequentIndex === alternateIndex ? consequentIndex : null;
@@ -214,6 +225,7 @@ const getImportedReactDependencyIndex = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
   currentFilename: string | undefined,
+  dependencyHookNames: ReadonlySet<string>,
 ): number | null => {
   if (!currentFilename) return null;
   const importedBinding = getImportedHookBinding(
@@ -227,7 +239,11 @@ const getImportedReactDependencyIndex = (
     importedBinding.exportedName,
   );
   if (!resolved) return null;
-  return dependencyIndexForReactHookReference(resolved.exportedNode, getCrossFileScopes(resolved));
+  return dependencyIndexForReactHookReference(
+    resolved.exportedNode,
+    getCrossFileScopes(resolved),
+    dependencyHookNames,
+  );
 };
 
 const resolveHookFunction = (
@@ -321,7 +337,7 @@ const resolveConstObjectExpression = (
     symbol.kind !== "const" ||
     !symbol.initializer ||
     visitedSymbolIds.has(symbol.id) ||
-    symbol.references.some((reference) => reference.flag !== "read")
+    isSymbolMutated(symbol)
   ) {
     return null;
   }
@@ -357,8 +373,15 @@ const resolveArgumentValue = (
   parameter: HookParameterBinding,
   callerScopes: ScopeAnalysis,
 ): ResolvedArgumentValue => {
+  const argumentsBeforeOrAtParameter = (callExpression.arguments ?? []).slice(
+    0,
+    parameter.parameterIndex + 1,
+  );
+  if (argumentsBeforeOrAtParameter.some((argument) => isNodeOfType(argument, "SpreadElement"))) {
+    return { expression: null, isProvenOmitted: false };
+  }
   const argument = callExpression.arguments?.[parameter.parameterIndex];
-  if (!argument || isNodeOfType(argument, "SpreadElement")) {
+  if (!argument) {
     return { expression: null, isProvenOmitted: true };
   }
   if (parameter.propertyName === null) {
@@ -497,6 +520,7 @@ const taintReachesBuiltInDependency = (
   taint: TaintState,
   remainingDepth: number,
   visitedFunctions: Set<EsTreeNode>,
+  dependencyHookNames: ReadonlySet<string>,
 ): boolean => {
   if (!isFunctionLike(target.functionNode)) return false;
   const functionNode = target.functionNode;
@@ -521,7 +545,7 @@ const taintReachesBuiltInDependency = (
     if (!isNodeOfType(node, "CallExpression")) return;
     if (!isNodeReachable(node, target.cfg)) return;
     if (
-      isReactApiCall(node, DEPENDENCY_HOOK_NAMES, target.scopes, {
+      isReactApiCall(node, dependencyHookNames, target.scopes, {
         allowGlobalReactNamespace: true,
       })
     ) {
@@ -547,6 +571,7 @@ const taintReachesBuiltInDependency = (
       node,
       target.scopes,
       target.filePath,
+      dependencyHookNames,
     );
     if (importedDependencyIndex !== null) {
       const dependencies = node.arguments?.[importedDependencyIndex];
@@ -573,6 +598,7 @@ const taintReachesBuiltInDependency = (
         forwardedTaint,
         remainingDepth - 1,
         nextVisitedFunctions,
+        dependencyHookNames,
       )
     ) {
       didReachDependency = true;
@@ -585,11 +611,18 @@ const taintReachesBuiltInDependency = (
 export const findForwardedFreshHookDependencies = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
+  dependencyHookNames: ReadonlySet<string> = DEPENDENCY_HOOK_NAMES,
 ): ReadonlyArray<ForwardedFreshHookDependency> => {
-  const cached = forwardedFreshDependencyCache.get(callExpression);
+  const cacheKey = [...dependencyHookNames].sort().join("\0");
+  const cacheForCall = forwardedFreshDependencyCache.get(callExpression);
+  const cached = cacheForCall?.get(cacheKey);
   if (cached) return cached;
   const findings: ForwardedFreshHookDependency[] = [];
-  forwardedFreshDependencyCache.set(callExpression, findings);
+  if (cacheForCall) {
+    cacheForCall.set(cacheKey, findings);
+  } else {
+    forwardedFreshDependencyCache.set(callExpression, new Map([[cacheKey, findings]]));
+  }
   if (!findRenderPhaseComponentOrHook(callExpression, context.scopes)) return findings;
   if (!isNodeReachable(callExpression, context.cfg)) return findings;
   const target = resolveHookFunction(callExpression, context.scopes, context.cfg, context.filename);
@@ -610,7 +643,13 @@ export const findForwardedFreshHookDependencies = (
       valueSymbolIds: new Set([targetSymbol.id]),
     };
     if (
-      !taintReachesBuiltInDependency(target, taint, CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH, new Set())
+      !taintReachesBuiltInDependency(
+        target,
+        taint,
+        CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
+        new Set(),
+        dependencyHookNames,
+      )
     ) {
       continue;
     }

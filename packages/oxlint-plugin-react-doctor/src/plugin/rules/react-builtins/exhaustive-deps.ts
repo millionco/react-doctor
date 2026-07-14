@@ -15,7 +15,7 @@ import { isReactComponentOrHookName } from "../../utils/is-react-component-or-ho
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { REACT_HOC_NAMES } from "../../constants/react.js";
+import { EFFECT_HOOK_NAMES, REACT_HOC_NAMES } from "../../constants/react.js";
 import {
   getHookName,
   isOutsideAllFunctions,
@@ -1150,7 +1150,11 @@ If the missing value is recreated every render, move it inside the hook or stabi
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        for (const finding of findForwardedFreshHookDependencies(node, context)) {
+        for (const finding of findForwardedFreshHookDependencies(
+          node,
+          context,
+          EFFECT_HOOK_NAMES,
+        )) {
           context.report({
             node: finding.reportNode,
             message: buildForwardedUnstableDepMessage(finding.bindingName),

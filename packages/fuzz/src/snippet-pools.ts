@@ -56,6 +56,9 @@ export const EFFECT_SNIPPET_POOL = [
   `const equalSnapshots = () => false; const [namedGuardSnapshot, setNamedGuardSnapshot] = useState(value); useEffect(() => { if (!equalSnapshots(namedGuardSnapshot, value)) setNamedGuardSnapshot(value); }, [value]);`,
   `const [mismatchedSnapshot, setMismatchedSnapshot] = useState(value); useEffect(() => { if (mismatchedSnapshot !== value) setMismatchedSnapshot(state); }, [state, value]);`,
   `const directoryStore = useDirectoryStore(); const directorySnapshot = directoryStore(); const nextDirectory = directorySnapshot.path.directory; useEffect(() => { if (props.draftId) return; const next = nextDirectory; if (!next || next === props.directory) return; navigate(encodeDirectory(next), { replace: true }); }, [props.draftId, props.directory, nextDirectory, navigate]);`,
+  `useFuzzDocumentEvents(() => handle(value), [value]);`,
+  `const fuzzDocumentEventArguments = condition ? [] : [() => handle(value), [value]]; useFuzzDocumentEvents(...fuzzDocumentEventArguments);`,
+  `const fuzzDocumentEventOptions = { callback: () => handle(value) }; fuzzDocumentEventOptions.callback = handle; useFuzzDocumentEventOptions(fuzzDocumentEventOptions);`,
 ] as const;
 
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),
@@ -225,6 +228,8 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `const defaults = { title: "untitled", pageSize: 20 };`,
   `reaction(() => store.value, (next) => persist(next));`,
   `let sharedSnapshot = "idle"; const snapshotListeners = new Set(); function subscribeSnapshot(listener) { snapshotListeners.add(listener); return () => snapshotListeners.delete(listener); }`,
+  `const useFuzzDocumentEvents = (callback = () => {}, dependencies = []) => { useEffect(() => callback(), [callback, dependencies]); };`,
+  `const useFuzzDocumentEventOptions = ({ callback }) => { useEffect(callback, [callback]); };`,
   `const FuzzPolyfillScript = () => <script src="https://polyfill.io/v3/polyfill.min.js" />;`,
   `import FuzzRawMarkdown from "react-markdown"; import fuzzRawPlugin from "rehype-raw"; export const FuzzRawMarkdownPreview = ({ value }) => <FuzzRawMarkdown rehypePlugins={[fuzzRawPlugin]}>{String(value)}</FuzzRawMarkdown>;`,
 ] as const;

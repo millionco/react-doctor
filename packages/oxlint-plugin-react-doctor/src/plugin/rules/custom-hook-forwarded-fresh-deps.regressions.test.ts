@@ -129,6 +129,27 @@ export const Picker = ({ inputRef }) => {
       expect(result.diagnostics).toHaveLength(1);
       expect(result.diagnostics[0]?.message).toContain(ruleCase.expectedMessageFragment);
     });
+
+    it(`${ruleCase.name} stays quiet for an inline selector consumed by useMemo`, () => {
+      const result = runRuleWithFilename(
+        ruleCase.rule,
+        `import { createContext, useContext, useMemo } from "react";
+const SizeContext = createContext(undefined);
+const useSize = (customSize) => {
+  const size = useContext(SizeContext);
+  return useMemo(() => customSize(size), [customSize, size]);
+};
+export const Button = ({ customSize }) => {
+  const size = useSize((contextSize) => customSize ?? contextSize);
+  return <button data-size={size} />;
+};
+`,
+        entryFilename,
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
   }
 
   for (const ruleCase of defaultFreshnessRuleCases) {
@@ -270,6 +291,52 @@ const usePicker = (triggerRefs) => {
 };
 export const Picker = ({ inputRef }) => {
   usePicker([inputRef]);
+  return null;
+};
+`,
+        entryFilename,
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it(`${ruleCase.name} stays quiet when a positional spread makes the argument unknown`, () => {
+      const result = runRuleWithFilename(
+        ruleCase.rule,
+        `import { useEffect } from "react";
+const usePicker = (triggerRefs = []) => {
+  useEffect(() => {
+    void triggerRefs;
+  }, [triggerRefs]);
+};
+export const Picker = ({ inputRef }) => {
+  const argumentsForPicker = Math.random() > 0.5 ? [] : [[inputRef]];
+  usePicker(...argumentsForPicker);
+  return null;
+};
+`,
+        entryFilename,
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it(`${ruleCase.name} stays quiet after an object argument property is overwritten`, () => {
+      const result = runRuleWithFilename(
+        ruleCase.rule,
+        `import { useEffect } from "react";
+const STABLE_REFS = [];
+const usePicker = ({ triggerRefs }) => {
+  useEffect(() => {
+    void triggerRefs;
+  }, [triggerRefs]);
+};
+export const Picker = ({ inputRef }) => {
+  const pickerOptions = { triggerRefs: [inputRef] };
+  pickerOptions.triggerRefs = STABLE_REFS;
+  usePicker(pickerOptions);
   return null;
 };
 `,

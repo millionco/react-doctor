@@ -1,4 +1,4 @@
-import { HOOKS_WITH_DEPS } from "../../constants/react.js";
+import { EFFECT_HOOK_NAMES, HOOKS_WITH_DEPS } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -134,7 +134,7 @@ export const noEffectWithFreshDeps = defineRule({
     "Move the value inside the hook body and depend on its simple inputs instead, or wrap it in useMemo / useCallback so it stays the same between renders.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      for (const finding of findForwardedFreshHookDependencies(node, context)) {
+      for (const finding of findForwardedFreshHookDependencies(node, context, EFFECT_HOOK_NAMES)) {
         context.report({
           node: finding.reportNode,
           message: `A dependency inside this custom Hook changes every render because \`${finding.bindingName}\` is a new ${finding.kind} built fresh each time.`,

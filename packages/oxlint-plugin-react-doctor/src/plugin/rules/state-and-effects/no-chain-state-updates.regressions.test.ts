@@ -532,6 +532,86 @@ describe("no-chain-state-updates — docs-validation FP wave", () => {
 });
 
 describe("no-chain-state-updates — dependency-to-setter causality", () => {
+  it("stays silent when a stable callback dependency only writes state", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useCallback, useEffect, useRef, useState } from "react";
+
+export const Settings = ({ apiKeys }) => {
+  const [serverKeys, setServerKeys] = useState(apiKeys);
+  const [localKeys, setLocalKeys] = useState(new Map());
+  const localKeysRef = useRef(localKeys);
+
+  const commitLocalKeys = useCallback((next) => {
+    localKeysRef.current = next;
+    setLocalKeys(next);
+  }, []);
+
+  useEffect(() => {
+    const nextServerKeys = apiKeys.map((key) => key);
+    setServerKeys(nextServerKeys);
+    if (localKeysRef.current.size > 0) {
+      commitLocalKeys(new Map());
+    }
+  }, [apiKeys, commitLocalKeys]);
+
+  return <output>{serverKeys.length + localKeys.size}</output>;
+};`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for the equivalent inline setter", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useEffect, useRef, useState } from "react";
+
+export const Settings = ({ apiKeys }) => {
+  const [serverKeys, setServerKeys] = useState(apiKeys);
+  const [localKeys, setLocalKeys] = useState(new Map());
+  const localKeysRef = useRef(localKeys);
+
+  useEffect(() => {
+    const nextServerKeys = apiKeys.map((key) => key);
+    setServerKeys(nextServerKeys);
+    if (localKeysRef.current.size > 0) {
+      const nextLocalKeys = new Map();
+      localKeysRef.current = nextLocalKeys;
+      setLocalKeys(nextLocalKeys);
+    }
+  }, [apiKeys]);
+
+  return <output>{serverKeys.length + localKeys.size}</output>;
+};`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports a distinct state update triggered by live state", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useEffect, useState } from "react";
+
+export const Search = () => {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("idle");
+
+  useEffect(() => {
+    if (query) setStatus("ready");
+  }, [query]);
+
+  return <button onClick={() => setQuery("next")}>{status}</button>;
+};`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when state-only reruns cannot pass prop snapshot guards", () => {
     const result = runRule(
       noChainStateUpdates,

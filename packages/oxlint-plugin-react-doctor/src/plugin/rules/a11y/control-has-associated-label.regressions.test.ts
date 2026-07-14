@@ -476,6 +476,7 @@ describe("a11y/control-has-associated-label regressions", () => {
             <button title={undefined}><svg aria-hidden /></button>
             <button title={void 0}><svg aria-hidden /></button>
             <button title={() => "Edit"}><svg aria-hidden /></button>
+            <button title={class Title {}}><svg aria-hidden /></button>
             <button title={Symbol("Edit")}><svg aria-hidden /></button>
             <button title={[]}><svg aria-hidden /></button>
             <button title={[""]}><svg aria-hidden /></button>
@@ -487,7 +488,7 @@ describe("a11y/control-has-associated-label regressions", () => {
       `,
     );
 
-    expect(result.diagnostics).toHaveLength(14);
+    expect(result.diagnostics).toHaveLength(15);
   });
 
   it("accepts native title names through DOM string coercion and unresolved expressions", () => {
@@ -548,6 +549,53 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toHaveLength(4);
   });
 
+  it("follows static logical title values through React DOM coercion", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = () => (
+          <div>
+            <button title={0 && "Edit"}><svg aria-hidden /></button>
+            <button title={0n && "Edit"}><svg aria-hidden /></button>
+            <button title={false && "Edit"}><svg aria-hidden /></button>
+            <button title={null && "Edit"}><svg aria-hidden /></button>
+            <button title={"" && "Edit"}><svg aria-hidden /></button>
+            <button title={true && "Edit"}><svg aria-hidden /></button>
+            <button title={true && ""}><svg aria-hidden /></button>
+            <button title={false || "Edit"}><svg aria-hidden /></button>
+            <button title={true || "Edit"}><svg aria-hidden /></button>
+            <button title={0 || "Edit"}><svg aria-hidden /></button>
+            <button title={null ?? "Edit"}><svg aria-hidden /></button>
+            <button title={false ?? "Edit"}><svg aria-hidden /></button>
+            <button title={0 ?? ""}><svg aria-hidden /></button>
+            <button title={(console.log("render"), "")}><svg aria-hidden /></button>
+            <button title={(console.log("render"), "Edit")}><svg aria-hidden /></button>
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(7);
+  });
+
+  it("handles transparent TypeScript wrappers around title values", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = ({ label }: { label: string }) => (
+          <div>
+            <button title={("Edit" as string)!}><svg aria-hidden /></button>
+            <button title={((label satisfies string))}><svg aria-hidden /></button>
+            <button title={("" as string)!}><svg aria-hidden /></button>
+            <button title={(null as string | null)}><svg aria-hidden /></button>
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("keeps a shadowed undefined title conservative", () => {
     const result = runRule(
       controlHasAssociatedLabel,
@@ -577,6 +625,54 @@ describe("a11y/control-has-associated-label regressions", () => {
           },
         },
       },
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps JSX spreads conservative regardless of title ordering", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = ({ props }) => (
+          <div>
+            <button title="Edit" {...props}><svg aria-hidden /></button>
+            <button {...props} title="Edit"><svg aria-hidden /></button>
+            <button title="" {...props}><svg aria-hidden /></button>
+            <button {...props} title=""><svg aria-hidden /></button>
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not apply React title semantics to Solid-owned JSX", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        import { createSignal } from "solid-js";
+        const Demo = () => {
+          const [label] = createSignal("Edit");
+          return <button title={label()}><svg aria-hidden /></button>;
+        };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let a nested title-only control label its native parent", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = () => (
+          <button>
+            <button title="Edit"><svg aria-hidden /></button>
+          </button>
+        );
+      `,
     );
 
     expect(result.diagnostics).toHaveLength(1);

@@ -418,6 +418,7 @@ const hasNonEmptyNativeTitleExpression = (
   if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") return false;
   if (isNodeOfType(expression, "ArrowFunctionExpression")) return false;
   if (isNodeOfType(expression, "FunctionExpression")) return false;
+  if (isNodeOfType(expression, "ClassExpression")) return false;
   if (isNodeOfType(expression, "ArrayExpression")) {
     const staticValue = getStaticNativeTitleArrayValue(expression, scopes);
     return staticValue === null || staticValue.trim().length > 0;
@@ -435,10 +436,32 @@ const hasNonEmptyNativeTitleExpression = (
       hasNonEmptyNativeTitleExpression(expression.alternate, scopes)
     );
   }
-  if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "&&") {
+  if (isNodeOfType(expression, "SequenceExpression")) {
+    const finalExpression = expression.expressions.at(-1);
+    return finalExpression ? hasNonEmptyNativeTitleExpression(finalExpression, scopes) : false;
+  }
+  if (isNodeOfType(expression, "LogicalExpression")) {
     const leftExpression = stripParenExpression(expression.left);
-    if (!isNodeOfType(leftExpression, "Literal") || !leftExpression.value) return false;
-    return hasNonEmptyNativeTitleExpression(expression.right, scopes);
+    if (!isNodeOfType(leftExpression, "Literal")) {
+      return expression.operator !== "&&";
+    }
+    if (expression.operator === "??") {
+      return hasNonEmptyNativeTitleExpression(
+        leftExpression.value === null ? expression.right : leftExpression,
+        scopes,
+      );
+    }
+    const leftValueIsTruthy = Boolean(leftExpression.value);
+    if (expression.operator === "&&") {
+      return hasNonEmptyNativeTitleExpression(
+        leftValueIsTruthy ? expression.right : leftExpression,
+        scopes,
+      );
+    }
+    return hasNonEmptyNativeTitleExpression(
+      leftValueIsTruthy ? leftExpression : expression.right,
+      scopes,
+    );
   }
   return true;
 };

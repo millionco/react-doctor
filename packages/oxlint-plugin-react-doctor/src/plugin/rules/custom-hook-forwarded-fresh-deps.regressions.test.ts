@@ -192,6 +192,34 @@ export const Picker = ({ inputRef }) => {
       expect(result.diagnostics).toHaveLength(1);
       expect(result.diagnostics[0]?.message).toContain(ruleCase.expectedMessageFragment);
     });
+
+    it(`${ruleCase.name} resolves a named Hook re-exported after its default declaration`, () => {
+      writeFixtureFile(
+        "src/use-picker.ts",
+        `import { useEffect } from "react";
+export default function usePicker({ inputRef, triggerRefs = [inputRef] }) {
+  useEffect(() => {
+    void triggerRefs;
+  }, [triggerRefs]);
+}
+export { usePicker };
+`,
+      );
+      const result = runRuleWithFilename(
+        ruleCase.rule,
+        `import { usePicker } from "./use-picker";
+export const Picker = ({ inputRef }) => {
+  usePicker({ inputRef });
+  return null;
+};
+`,
+        entryFilename,
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain(ruleCase.expectedMessageFragment);
+    });
   }
 
   for (const ruleCase of defaultFreshnessRuleCases) {

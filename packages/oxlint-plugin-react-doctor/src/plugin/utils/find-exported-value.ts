@@ -77,6 +77,13 @@ export const findExportedValue = (
     if (isNodeOfType(declaration, "Identifier")) {
       defaultExportIdentifierName = declaration.name;
     } else {
+      if (
+        (isNodeOfType(declaration, "FunctionDeclaration") ||
+          isNodeOfType(declaration, "ClassDeclaration")) &&
+        declaration.id
+      ) {
+        localBindings.set(declaration.id.name, declaration);
+      }
       defaultExport = stripParenExpression(declaration);
     }
   }

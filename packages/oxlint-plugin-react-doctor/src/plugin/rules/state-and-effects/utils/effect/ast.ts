@@ -257,18 +257,14 @@ const unwrapUseCallback = (node: EsTreeNode | null | undefined): EsTreeNode | nu
   return isUseCallbackCallee ? node.arguments?.[0] : node;
 };
 
+export const hasParameterDefinition = (ref: Reference): boolean =>
+  Boolean(ref.resolved?.defs.some((definition) => definition.type === "Parameter"));
+
 // Resolves a reference to the function-like node its first definition
 // denotes, unwrapping a `const fn = () => {}` declarator and a
 // `const fn = useCallback(() => {}, [])` wrapper. Returns null
 // when the reference doesn't resolve to a function. Shared by
 // `getEffectFn`, `isCleanupReturnArgument`, and `resolvesToAsyncFunction`.
-// A `Parameter` def points its `node` at the ENCLOSING function that
-// declares the parameter, not at a function bound to the parameter — the
-// binding holds a value, not a callable. Resolving it would mistake plain
-// data arguments (`setRow(row)`) for the updater/callback function.
-export const hasParameterDef = (ref: Reference): boolean =>
-  Boolean(ref.resolved?.defs.some((def) => def.type === "Parameter"));
-
 export const resolveToFunction = (
   ref: Reference,
 ):
@@ -276,9 +272,13 @@ export const resolveToFunction = (
   | EsTreeNodeOfType<"FunctionExpression">
   | EsTreeNodeOfType<"FunctionDeclaration">
   | null => {
-  if (hasParameterDef(ref)) return null;
-
-  const definitionNode = ref.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
+  const definition = ref.resolved?.defs[0];
+  // A `Parameter` def points its `node` at the ENCLOSING function that
+  // declares the parameter, not at a function bound to the parameter — the
+  // binding holds a value, not a callable. Resolving it would mistake plain
+  // data arguments (`setRow(row)`) for the updater/callback function.
+  if (!definition || hasParameterDefinition(ref)) return null;
+  const definitionNode = definition.node as unknown as EsTreeNode | undefined;
   if (!definitionNode) return null;
   if (isFunctionLike(definitionNode)) return definitionNode;
   if (isNodeOfType(definitionNode, "VariableDeclarator")) {

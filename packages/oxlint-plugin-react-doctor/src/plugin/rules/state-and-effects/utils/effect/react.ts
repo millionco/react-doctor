@@ -12,7 +12,7 @@ import {
   getDownstreamRefs,
   getRef,
   getUpstreamRefs,
-  hasParameterDef,
+  hasParameterDefinition,
   isEventualCallTo,
   isSynchronous,
   resolvesToAsyncFunction,
@@ -520,7 +520,7 @@ const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): b
   if (isNodeOfType(node, "MemberExpression")) return true;
   if (isNodeOfType(node, "Identifier")) {
     const ref = getRef(analysis, node);
-    if (ref && (hasParameterDef(ref) || resolveToFunction(ref))) return true;
+    if (ref && (hasParameterDefinition(ref) || resolveToFunction(ref))) return true;
   }
   if (isNodeOfType(node, "ConditionalExpression")) {
     return (

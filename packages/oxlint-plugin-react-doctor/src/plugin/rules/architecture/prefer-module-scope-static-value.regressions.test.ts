@@ -34,6 +34,49 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each(["window", "self"])(
+    "does not flag an object built from %s.crypto.randomUUID()",
+    (globalObjectName) => {
+      const result = run(
+        `function Row() { const id = { value: ${globalObjectName}.crypto.randomUUID() }; return <li>{id.value}</li>; }`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each([
+    [
+      "a shadowed globalThis",
+      'const globalThis = { crypto: { randomUUID: () => "fixed" } };',
+      "globalThis.crypto.randomUUID()",
+    ],
+    [
+      "a shadowed direct namespace",
+      'const crypto = { randomUUID: () => "fixed" };',
+      "crypto.randomUUID()",
+    ],
+    [
+      "a userland receiver chain",
+      'const runtime = { crypto: { randomUUID: () => "fixed" } };',
+      "runtime.crypto.randomUUID()",
+    ],
+    [
+      "a dynamic namespace member",
+      'const namespaceName = "crypto";',
+      "globalThis[namespaceName].randomUUID()",
+    ],
+    [
+      "a dynamic method member",
+      'const methodName = "randomUUID";',
+      "globalThis.crypto[methodName]()",
+    ],
+  ])("still flags a pure object built from %s", (_label, setup, expression) => {
+    const result = run(
+      `${setup} function Row() { const id = { value: ${expression} }; return <li>{id.value}</li>; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag an array built from nanoid() (impure id generator)", () => {
     const result = run(
       `import { nanoid } from "nanoid"; function Row() { const ids = [nanoid(), nanoid()]; return <div>{ids.join()}</div>; }`,

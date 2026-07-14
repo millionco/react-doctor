@@ -82,6 +82,7 @@ export const EFFECT_SNIPPET_POOL = [
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),
 // toggles, loading triples, prop mirrors, reducers, ref-sync.
 export const STATE_SNIPPET_POOL = [
+  `const fuzzRandomIdentity = { id: globalThis.crypto.randomUUID() };`,
   `const FuzzNestedPanel = () => <div>nested</div>; const fuzzNestedPanelNode = <FuzzNestedPanel />;`,
   `const [state, setState] = useState(0);`,
   `const [state, setState] = useState(() => Number(localStorage.getItem("count") ?? 0));`,

@@ -145,6 +145,7 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
         "TypeScript and parenthesis wrappers",
         `return ((visible as boolean) && <div>{(open satisfies boolean)}</div>);`,
       ],
+      ["a custom child directly gated by visibility", `return visible && <Child value={open} />;`],
     ])("stays silent through %s", (_label, renderBody) => {
       const result = runRule(
         noResetAllStateOnPropChange,
@@ -267,6 +268,38 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
           const [open, setOpen] = useState(false);
           useEffect(() => setOpen(false), [visible]);
           return <div hidden={!visible}>{createPortal(<output>{open}</output>, document.body)}</div>;
+        };`,
+      ],
+      [
+        "an aliased portal import escapes a hidden DOM ancestor",
+        `import { useEffect, useState } from "react";
+        import { createPortal as mountPortal } from "react-dom";
+        const Menu = ({ visible }: { visible: boolean }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          return <div hidden={!visible}>{mountPortal(<output>{open}</output>, document.body)}</div>;
+        };`,
+      ],
+      [
+        "a const-aliased portal escapes a hidden DOM ancestor",
+        `import { useEffect, useState } from "react";
+        import { createPortal } from "react-dom";
+        const mountPortal = createPortal;
+        const Menu = ({ visible }: { visible: boolean }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          return <div hidden={!visible}>{mountPortal(<output>{open}</output>, document.body)}</div>;
+        };`,
+      ],
+      [
+        "a custom child can portal through a hidden DOM ancestor",
+        `import { useEffect, useState } from "react";
+        import { createPortal } from "react-dom";
+        const Child = ({ value }: { value: boolean }) => createPortal(<output>{value}</output>, document.body);
+        const Menu = ({ visible }: { visible: boolean }) => {
+          const [open, setOpen] = useState(false);
+          useEffect(() => setOpen(false), [visible]);
+          return <div hidden={!visible}><Child value={open} /><button onClick={() => setOpen(true)}>Open</button></div>;
         };`,
       ],
       [

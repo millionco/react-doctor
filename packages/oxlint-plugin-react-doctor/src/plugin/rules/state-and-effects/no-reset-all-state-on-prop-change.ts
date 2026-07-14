@@ -5,12 +5,12 @@ import { executesDuringRender } from "../../utils/executes-during-render.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
-import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { hasEnclosingTypeParameterNamed } from "../../utils/has-enclosing-type-parameter-named.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isReactDomCreatePortalCall } from "../../utils/function-contains-react-render-output.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -644,28 +644,32 @@ const collectExposureConditions = (
       const testFormula = getBooleanFormula(analysis, context, parent.test, protectedSymbolIds);
       if (testFormula && parent.consequent === child) conditions.push(testFormula);
       if (testFormula && parent.alternate === child) conditions.push(createNotFormula(testFormula));
-    } else if (isNodeOfType(parent, "JSXElement") && !didCrossPortalBoundary) {
-      const visuallyHiddenFormula = getJsxElementHiddenFormula(
-        analysis,
-        context,
-        parent.openingElement,
-        protectedSymbolIds,
-      );
-      if (visuallyHiddenFormula) conditions.push(createNotFormula(visuallyHiddenFormula));
-      if (!visuallyHiddenFormula && isAccessibilityOnlyReference) {
-        const ariaHiddenFormula = getJsxAriaHiddenFormula(
+    } else if (isNodeOfType(parent, "JSXElement")) {
+      if (!isIntrinsicJsxElement(parent.openingElement)) {
+        didCrossPortalBoundary = true;
+      } else if (!didCrossPortalBoundary) {
+        const visuallyHiddenFormula = getJsxElementHiddenFormula(
           analysis,
           context,
           parent.openingElement,
           protectedSymbolIds,
         );
-        if (ariaHiddenFormula) conditions.push(createNotFormula(ariaHiddenFormula));
+        if (visuallyHiddenFormula) conditions.push(createNotFormula(visuallyHiddenFormula));
+        if (!visuallyHiddenFormula && isAccessibilityOnlyReference) {
+          const ariaHiddenFormula = getJsxAriaHiddenFormula(
+            analysis,
+            context,
+            parent.openingElement,
+            protectedSymbolIds,
+          );
+          if (ariaHiddenFormula) conditions.push(createNotFormula(ariaHiddenFormula));
+        }
       }
     }
     if (
       isNodeOfType(parent, "CallExpression") &&
       parent.arguments[0] === child &&
-      getCalleeName(parent) === "createPortal"
+      isReactDomCreatePortalCall(parent, context.scopes)
     ) {
       didCrossPortalBoundary = true;
     }

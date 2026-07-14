@@ -4066,3 +4066,150 @@ export const LanguageProvider = ({ i18next }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("effect-needs-cleanup regressions (issue #1241 promise-callback timer with active-flag guard)", () => {
+  it("does not flag a promise-callback timer guarded by an isActive early-return with its handle cleared", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useState } from "react";
+export const PermissionWatcher = ({ syncReminder }) => {
+  const [, setPermissionCheckTick] = useState(0);
+  useEffect(() => {
+    let isActive = true;
+    let permissionRecheckTimeout;
+    void syncReminder().then((result) => {
+      if (!isActive || result !== "permission-pending") return;
+      permissionRecheckTimeout = setTimeout(() => {
+        if (isActive) setPermissionCheckTick((tick) => tick + 1);
+      }, 5000);
+    });
+    return () => {
+      isActive = false;
+      if (permissionRecheckTimeout) clearTimeout(permissionRecheckTimeout);
+    };
+  }, [syncReminder]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a promise-callback timer wrapped in an `if (isMounted)` block with its handle cleared", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Retrier = ({ load }) => {
+  useEffect(() => {
+    let isMounted = true;
+    let retryTimer;
+    void load().then(() => {
+      if (isMounted) {
+        retryTimer = setTimeout(() => {}, 1000);
+      }
+    });
+    return () => {
+      isMounted = false;
+      clearTimeout(retryTimer);
+    };
+  }, [load]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a promise-callback timer guarded by a ref invalidated in cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Retrier = ({ load }) => {
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    let timer;
+    void load().then(() => {
+      if (!mountedRef.current) return;
+      timer = setTimeout(() => {}, 1000);
+    });
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(timer);
+    };
+  }, [load]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a self-rescheduling poll whose cleanup clears the current timer but never stops the chain", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Poller = ({ fetchData }) => {
+  useEffect(() => {
+    let timeoutId;
+    const poll = () => {
+      void fetchData().then(() => {
+        timeoutId = setTimeout(poll, 1000);
+      });
+    };
+    poll();
+    return () => clearTimeout(timeoutId);
+  }, [fetchData]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a promise-callback timer whose cleanup clears the handle but never invalidates the guard", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Retrier = ({ load }) => {
+  useEffect(() => {
+    let isActive = true;
+    let timer;
+    void load().then(() => {
+      if (!isActive) return;
+      timer = setTimeout(() => {}, 1000);
+    });
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [load]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a promise-callback timer created before the guard read, so a falsy-flag path leaks it", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Retrier = ({ load }) => {
+  useEffect(() => {
+    let isActive = true;
+    let timer;
+    void load().then(() => {
+      timer = setTimeout(() => {}, 1000);
+      if (!isActive) return;
+    });
+    return () => {
+      isActive = false;
+      clearTimeout(timer);
+    };
+  }, [load]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

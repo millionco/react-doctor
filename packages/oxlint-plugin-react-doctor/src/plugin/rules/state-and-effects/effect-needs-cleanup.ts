@@ -24,6 +24,7 @@ import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
@@ -1300,6 +1301,153 @@ const hasSplitLifecycleCleanup = (
   hasRerunReleaseBeforeUsage(callback, usage, context) &&
   hasStableUnmountCleanupForUsage(callback, usage, context);
 
+// A timer created inside a nested callback the effect invokes (a Promise
+// `.then`/`.catch`/`.finally` continuation, an IIFE, a helper) can outlive the
+// synchronous effect run, so the CFG path check — which reasons within the
+// effect callback — cannot connect it to a cleanup return. Such a timer is
+// still owned when the returned cleanup both clears its stored handle AND
+// invalidates an "active" flag that gates the timer's creation: a continuation
+// resolving after unmount reads the falsy flag and never schedules, while one
+// that resolved before unmount stored a handle the cleanup clears. Without that
+// flag (e.g. a self-rescheduling poll) a trailing timer still leaks, so the
+// finding must stand.
+const SCALAR_FALSY_LITERAL_VALUES: ReadonlySet<unknown> = new Set([false, null, 0, ""]);
+
+const isScalarFalsyExpression = (expression: EsTreeNode, context: RuleContext): boolean => {
+  const value = stripParenExpression(expression);
+  if (isNodeOfType(value, "Literal")) return SCALAR_FALSY_LITERAL_VALUES.has(value.value);
+  return (
+    isNodeOfType(value, "Identifier") &&
+    value.name === "undefined" &&
+    context.scopes.isGlobalReference(value)
+  );
+};
+
+const collectCleanupInvalidatedGuardKeys = (
+  cleanupReturns: ReadonlyArray<EsTreeNode>,
+  context: RuleContext,
+): Set<string> => {
+  const guardKeys = new Set<string>();
+  for (const cleanupReturn of cleanupReturns) {
+    if (!isNodeOfType(cleanupReturn, "ReturnStatement") || !cleanupReturn.argument) continue;
+    const cleanupFunction = resolveStableValue(cleanupReturn.argument, context);
+    if (!cleanupFunction || !isFunctionLike(cleanupFunction)) continue;
+    walkAst(cleanupFunction, (node: EsTreeNode) => {
+      if (node !== cleanupFunction && isFunctionLike(node)) return false;
+      if (
+        !isNodeOfType(node, "AssignmentExpression") ||
+        node.operator !== "=" ||
+        !isScalarFalsyExpression(node.right, context)
+      ) {
+        return;
+      }
+      const targetKey = resolveExpressionKey(node.left, context);
+      if (targetKey !== null) guardKeys.add(targetKey);
+    });
+  }
+  return guardKeys;
+};
+
+const isGuardFlagExpression = (
+  expression: EsTreeNode,
+  guardKeys: ReadonlySet<string>,
+  context: RuleContext,
+): boolean => {
+  const key = resolveExpressionKey(expression, context);
+  return key !== null && guardKeys.has(key);
+};
+
+// Entering this test's truthy branch requires a guard flag to be truthy
+// (`flag`, `flag && rest`), so its guarded body never runs once invalidated.
+const testRequiresGuardFlagTruthy = (
+  test: EsTreeNode,
+  guardKeys: ReadonlySet<string>,
+  context: RuleContext,
+): boolean => {
+  const unwrappedTest = stripParenExpression(test);
+  if (isNodeOfType(unwrappedTest, "LogicalExpression") && unwrappedTest.operator === "&&") {
+    return (
+      testRequiresGuardFlagTruthy(unwrappedTest.left, guardKeys, context) ||
+      testRequiresGuardFlagTruthy(unwrappedTest.right, guardKeys, context)
+    );
+  }
+  return isGuardFlagExpression(unwrappedTest, guardKeys, context);
+};
+
+// This test is truthy whenever a guard flag is falsy (`!flag`, `!flag || rest`),
+// so a leading `if (test) return` bails before a falsy-flag path reaches a timer.
+const testBailsWhenGuardFlagFalsy = (
+  test: EsTreeNode,
+  guardKeys: ReadonlySet<string>,
+  context: RuleContext,
+): boolean => {
+  const unwrappedTest = stripParenExpression(test);
+  if (isNodeOfType(unwrappedTest, "UnaryExpression") && unwrappedTest.operator === "!") {
+    return isGuardFlagExpression(unwrappedTest.argument, guardKeys, context);
+  }
+  if (isNodeOfType(unwrappedTest, "LogicalExpression") && unwrappedTest.operator === "||") {
+    return (
+      testBailsWhenGuardFlagFalsy(unwrappedTest.left, guardKeys, context) ||
+      testBailsWhenGuardFlagFalsy(unwrappedTest.right, guardKeys, context)
+    );
+  }
+  return false;
+};
+
+const isTimerCreationGuardedByFlag = (
+  usageNode: EsTreeNode,
+  usageFunction: EsTreeNode,
+  guardKeys: ReadonlySet<string>,
+  context: RuleContext,
+): boolean => {
+  let currentNode = usageNode;
+  let parentNode = currentNode.parent;
+  while (parentNode && parentNode !== usageFunction) {
+    if (
+      isNodeOfType(parentNode, "IfStatement") &&
+      parentNode.consequent === currentNode &&
+      testRequiresGuardFlagTruthy(parentNode.test, guardKeys, context)
+    ) {
+      return true;
+    }
+    if (isNodeOfType(parentNode, "BlockStatement")) {
+      for (const precedingStatement of parentNode.body ?? []) {
+        if (precedingStatement === currentNode) break;
+        if (
+          isNodeOfType(precedingStatement, "IfStatement") &&
+          statementAlwaysExits(precedingStatement.consequent) &&
+          testBailsWhenGuardFlagFalsy(precedingStatement.test, guardKeys, context)
+        ) {
+          return true;
+        }
+      }
+    }
+    currentNode = parentNode;
+    parentNode = currentNode.parent;
+  }
+  return false;
+};
+
+const hasGuardedDeferredTimerOwnership = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  matchingCleanupReturns: ReadonlyArray<EsTreeNode>,
+  context: RuleContext,
+): boolean => {
+  if (usage.kind !== "timer" || usage.handleKey === null) return false;
+  const usageFunction = findEnclosingFunction(usage.node);
+  if (!usageFunction || usageFunction === callback) return false;
+  if (
+    matchingCleanupReturns.length === 0 ||
+    !doMatchingNodesCoverEveryPathFromFunctionEntry(callback, matchingCleanupReturns, context)
+  ) {
+    return false;
+  }
+  const guardKeys = collectCleanupInvalidatedGuardKeys(matchingCleanupReturns, context);
+  if (guardKeys.size === 0) return false;
+  return isTimerCreationGuardedByFlag(usage.node, usageFunction, guardKeys, context);
+};
+
 const effectHasCleanupForUsage = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -1376,11 +1524,16 @@ const effectHasCleanupForUsage = (
       matchingCleanupReturns.push(child);
     }
   });
-  return doMatchingNodesCoverEveryPathAfterUsage(
-    resolveCleanupPathAnchor(usage.node, callback, context),
-    matchingCleanupReturns,
-    context,
-  );
+  if (
+    doMatchingNodesCoverEveryPathAfterUsage(
+      resolveCleanupPathAnchor(usage.node, callback, context),
+      matchingCleanupReturns,
+      context,
+    )
+  ) {
+    return true;
+  }
+  return hasGuardedDeferredTimerOwnership(callback, usage, matchingCleanupReturns, context);
 };
 
 const findFirstUsageWithoutCleanup = (

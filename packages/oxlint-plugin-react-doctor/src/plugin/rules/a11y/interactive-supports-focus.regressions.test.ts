@@ -175,8 +175,8 @@ const X = ({ go }) => <div role={role} onClick={go}>{label}</div>;`,
   it("does not flag a statically enabled editing host", () => {
     const result = runRule(
       interactiveSupportsFocus,
-      `const Editor = ({ handleInput }) => (
-        <div role="textbox" contentEditable="plaintext-only" onInput={handleInput} />
+      `const Editor = ({ handleKeyDown }) => (
+        <div role="textbox" contentEditable="plaintext-only" onKeyDown={handleKeyDown} />
       );`,
     );
     expect(result.diagnostics).toEqual([]);
@@ -185,10 +185,67 @@ const X = ({ go }) => <div role={role} onClick={go}>{label}</div>;`,
   it("still flags a statically disabled editing host", () => {
     const result = runRule(
       interactiveSupportsFocus,
-      `const Editor = ({ handleInput }) => (
-        <div role="textbox" contentEditable={false} onInput={handleInput} />
+      `const Editor = ({ handleKeyDown }) => (
+        <div role="textbox" contentEditable={false} onKeyDown={handleKeyDown} />
       );`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("handles static editing-host value variants", () => {
+    const validSources = [
+      `<div role="textbox" contentEditable onKeyDown={handleKeyDown} />`,
+      `<div role="textbox" contentEditable="TRUE" onKeyDown={handleKeyDown} />`,
+      `<div role="textbox" contentEditable={true} onKeyDown={handleKeyDown} />`,
+      `<div role="textbox" contentEditable={enabled ? true : false} onKeyDown={handleKeyDown} />`,
+      `const editable = true; <div role="textbox" contentEditable={editable} onKeyDown={handleKeyDown} />`,
+    ];
+    for (const source of validSources) {
+      expect(runRule(interactiveSupportsFocus, source).diagnostics).toEqual([]);
+    }
+
+    const invalidSources = [
+      `<div role="textbox" contentEditable="false" onKeyDown={handleKeyDown} />`,
+      `<div role="textbox" contentEditable={false} onKeyDown={handleKeyDown} />`,
+      `<div role="textbox" contentEditable="inherit" onKeyDown={handleKeyDown} />`,
+      `<div role="textbox" contentEditable="invalid" onKeyDown={handleKeyDown} />`,
+      `const editable = false; <div role="textbox" contentEditable={editable} onKeyDown={handleKeyDown} />`,
+      `<div role="textbox" contentEditable={enabled ? false : false} onKeyDown={handleKeyDown} />`,
+      `const editable = false; <div role="textbox" contentEditable={condition ? editable : editable} onKeyDown={handleKeyDown} />`,
+    ];
+    for (const source of invalidSources) {
+      expect(runRule(interactiveSupportsFocus, source).diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("still flags a nested editing host without an explicit tabIndex", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `<div contentEditable>
+        <div role="textbox" contentEditable onKeyDown={handleKeyDown} />
+      </div>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a nested editing host under a const-enabled ancestor", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `const outerEditable = true;
+      <div contentEditable={outerEditable}>
+        <div role="textbox" contentEditable onKeyDown={handleKeyDown} />
+      </div>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not assume a dynamic editing ancestor is always enabled", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `<div contentEditable={outerEnabled}>
+        <div role="textbox" contentEditable onKeyDown={handleKeyDown} />
+      </div>`,
+    );
+    expect(result.diagnostics).toEqual([]);
   });
 });

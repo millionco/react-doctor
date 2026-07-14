@@ -424,6 +424,8 @@ export const JSX_LEAF_POOL = [
   `<input type="radio" name="group" value="b" defaultChecked />`,
   `<input type="number" min={0} max={100} value={state} onChange={handleAmount} />`,
   `<textarea readOnly value={String(value)} />`,
+  `<div role="textbox" contentEditable={!loading} onKeyDown={handleKeyDown} />`,
+  `<div role="textbox" contentEditable={false} onKeyDown={handleKeyDown} />`,
   `<ThemeContext.Provider value={{ mode: state, toggle: handle }}>{state}</ThemeContext.Provider>`,
   `<ItemsContext.Provider value={items}>{state}</ItemsContext.Provider>`,
   `{createPortal(<div>{state}</div>, document.body)}`,

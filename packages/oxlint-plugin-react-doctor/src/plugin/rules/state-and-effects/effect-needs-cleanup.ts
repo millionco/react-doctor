@@ -3005,8 +3005,30 @@ const getAssignedReactRefSymbol = (
 const isExpressionReturnedFromFunction = (
   expression: EsTreeNode,
   ownerFunction: EsTreeNode,
+  context: RuleContext,
 ): boolean => {
   let expressionRoot = findTransparentExpressionRoot(expression);
+  const bindingDeclarator = expressionRoot.parent;
+  if (
+    isNodeOfType(bindingDeclarator, "VariableDeclarator") &&
+    bindingDeclarator.init === expressionRoot &&
+    isNodeOfType(bindingDeclarator.id, "Identifier") &&
+    isNodeOfType(bindingDeclarator.parent, "VariableDeclaration") &&
+    bindingDeclarator.parent.kind === "const"
+  ) {
+    const resultSymbol = context.scopes.symbolFor(bindingDeclarator.id);
+    if (!resultSymbol) return false;
+    const matchingReturnStatements = resultSymbol.references.flatMap((reference) => {
+      if (reference.flag !== "read") return [];
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      return isNodeOfType(referenceRoot.parent, "ReturnStatement") &&
+        referenceRoot.parent.argument === referenceRoot &&
+        findEnclosingFunction(referenceRoot.parent) === ownerFunction
+        ? [referenceRoot.parent]
+        : [];
+    });
+    return doMatchingNodesCoverEveryPathAfterUsage(expression, matchingReturnStatements, context);
+  }
   while (true) {
     const container = expressionRoot.parent;
     if (
@@ -3090,7 +3112,10 @@ const getReactRefEffectUsage = (
         return;
       }
       didInvokeRef = true;
-      if (effectCallback.async || !isExpressionReturnedFromFunction(effectChild, effectCallback)) {
+      if (
+        effectCallback.async ||
+        !isExpressionReturnedFromFunction(effectChild, effectCallback, context)
+      ) {
         doesEffectOwnEveryResult = false;
       }
     });

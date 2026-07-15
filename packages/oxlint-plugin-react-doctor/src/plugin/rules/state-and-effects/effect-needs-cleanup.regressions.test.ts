@@ -4469,6 +4469,42 @@ export const OwnedDisposer = ({ subscription }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts a ref callback result returned through an effect binding", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const OwnedDisposer = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => {
+    const cleanup = callbackRef.current();
+    return cleanup;
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports a ref callback result conditionally returned through an effect binding", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const PartialDisposer = ({ enabled, subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => {
+    const cleanup = callbackRef.current();
+    if (enabled) return cleanup;
+  }, [enabled]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts a disposer returned from one branch of an effect conditional", () => {
     const effectExpressions = [
       `enabled ? callbackRef.current() : undefined`,

@@ -674,8 +674,9 @@ describe("no-effect-chain — regressions", () => {
         noEffectChain,
         `function DerivedSelection({ controller }) {
           const [source, setSource] = useState(0);
+          const controllerRef = useRef(controller);
           useEffect(() => { setSource(1); }, []);
-          useEffect(() => { controller.${methodName}(source); }, [controller, source]);
+          useEffect(() => { controllerRef.current.${methodName}(source); }, [source]);
           return null;
         }`,
       );
@@ -683,6 +684,41 @@ describe("no-effect-chain — regressions", () => {
       expect(result.diagnostics).toHaveLength(1);
     },
   );
+
+  it("keeps a ref shared with a custom component conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ImperativeControllerChain() {
+        const [source, setSource] = useState(0);
+        const controllerRef = useRef(null);
+        useEffect(() => { setSource(1); }, []);
+        useEffect(() => { controllerRef.current?.focus(); }, [source]);
+        return (
+          <>
+            <input ref={controllerRef} />
+            <Controller ref={controllerRef} />
+          </>
+        );
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a ref-backed collection with non-DOM initial values conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ImperativeControllerChain({ controller }) {
+        const [source, setSource] = useState(0);
+        const controllerRefs = useRef(new Map([["primary", controller]]));
+        useEffect(() => { setSource(1); }, []);
+        useEffect(() => { controllerRefs.current.get("primary")?.focus(); }, [source]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 
   it("still reports when committed DOM work is mixed with a local state update", () => {
     const result = runRule(

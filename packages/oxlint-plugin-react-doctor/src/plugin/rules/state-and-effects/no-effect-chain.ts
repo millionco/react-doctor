@@ -2,7 +2,7 @@ import {
   EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
 } from "../../constants/dom.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import {
   EFFECT_HOOK_NAMES,
   EXTERNAL_SYNC_AMBIGUOUS_HTTP_METHOD_NAMES,
@@ -11,16 +11,21 @@ import {
   EXTERNAL_SYNC_MEMBER_METHOD_NAMES,
 } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isInlineIntrinsicRefCallback } from "../../utils/is-inline-intrinsic-ref-callback.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenBrowserApiReceiver } from "../../utils/is-proven-browser-api-receiver.js";
+import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx-element.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
@@ -274,38 +279,152 @@ const callsOpaqueExternalSetter = (
   return didFindOpaqueSetterCall;
 };
 
-const isReactRefValue = (
-  rawExpression: EsTreeNode,
-  scopes: ScopeAnalysis,
-  visitedSymbolIds: Set<number>,
-): boolean => {
-  const expression = stripParenExpression(rawExpression);
-  if (isNodeOfType(expression, "Identifier")) {
-    const symbol = scopes.symbolFor(expression);
-    if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
-    const initializer = getDirectUnreassignedInitializer(symbol);
-    if (!initializer) return false;
-    visitedSymbolIds.add(symbol.id);
-    return isReactRefValue(initializer, scopes, visitedSymbolIds);
-  }
-  return (
-    isNodeOfType(expression, "CallExpression") &&
-    (isReactApiCall(expression, "useRef", scopes, {
+const isReactRefCall = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  isNodeOfType(expression, "CallExpression") &&
+  (isReactApiCall(expression, "useRef", scopes, {
+    allowGlobalReactNamespace: true,
+    allowUnboundBareCalls: true,
+    resolveNamedAliases: true,
+  }) ||
+    isReactApiCall(expression, "createRef", scopes, {
       allowGlobalReactNamespace: true,
       allowUnboundBareCalls: true,
       resolveNamedAliases: true,
-    }) ||
-      isReactApiCall(expression, "createRef", scopes, {
-        allowGlobalReactNamespace: true,
-        allowUnboundBareCalls: true,
-        resolveNamedAliases: true,
-      }))
-  );
-};
+    }));
 
-const isDerivedFromReactRefCurrent = (
+const getDirectReactRefSymbol = (
   rawExpression: EsTreeNode,
   scopes: ScopeAnalysis,
+): SymbolDescriptor | null => {
+  const expression = stripParenExpression(rawExpression);
+  if (!isNodeOfType(expression, "Identifier")) return null;
+  const symbol = scopes.symbolFor(expression);
+  if (!symbol) return null;
+  const initializer = getDirectUnreassignedInitializer(symbol);
+  return initializer && isReactRefCall(stripParenExpression(initializer), scopes) ? symbol : null;
+};
+
+const isDirectIntrinsicJsxRef = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean => {
+  let intrinsicRefCount = 0;
+  for (const reference of symbol.references) {
+    const expression = findTransparentExpressionRoot(reference.identifier);
+    const container = expression.parent;
+    if (
+      isNodeOfType(container, "MemberExpression") &&
+      container.object === expression &&
+      getStaticPropertyName(container) === "current"
+    ) {
+      continue;
+    }
+    if (
+      !container ||
+      !isNodeOfType(container, "JSXExpressionContainer") ||
+      container.expression !== expression
+    ) {
+      return false;
+    }
+    const attribute = container.parent;
+    if (
+      !attribute ||
+      !isNodeOfType(attribute, "JSXAttribute") ||
+      getJsxAttributeName(attribute.name) !== "ref"
+    ) {
+      return false;
+    }
+    const openingElement = attribute.parent;
+    if (
+      !openingElement ||
+      !isNodeOfType(openingElement, "JSXOpeningElement") ||
+      !isProvenIntrinsicJsxElement(openingElement, scopes)
+    ) {
+      return false;
+    }
+    intrinsicRefCount += 1;
+  }
+  return intrinsicRefCount > 0;
+};
+
+const isIntrinsicRefCallbackParameter = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const identifier = stripParenExpression(expression);
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  const callback = findEnclosingFunction(identifier);
+  if (!callback || !isFunctionLike(callback) || !isInlineIntrinsicRefCallback(callback, scopes)) {
+    return false;
+  }
+  const firstParameter = callback.params?.[0];
+  const symbol = scopes.symbolFor(identifier);
+  return Boolean(firstParameter && symbol?.bindingIdentifier === firstParameter);
+};
+
+const getDirectReactRefCall = (
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  const initializer = getDirectUnreassignedInitializer(symbol);
+  if (!initializer) return null;
+  const expression = stripParenExpression(initializer);
+  return isNodeOfType(expression, "CallExpression") && isReactRefCall(expression, scopes)
+    ? expression
+    : null;
+};
+
+const storesOnlyIntrinsicRefCallbackValues = (
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const refCall = getDirectReactRefCall(symbol, scopes);
+  const initialValue = refCall?.arguments?.[0];
+  if (
+    !initialValue ||
+    !isNodeOfType(initialValue, "NewExpression") ||
+    !isNodeOfType(initialValue.callee, "Identifier") ||
+    initialValue.callee.name !== "Map" ||
+    !scopes.isGlobalReference(initialValue.callee) ||
+    initialValue.arguments.length !== 0
+  ) {
+    return false;
+  }
+
+  let intrinsicValueWriteCount = 0;
+  for (const reference of symbol.references) {
+    const identifier = findTransparentExpressionRoot(reference.identifier);
+    const currentMember = identifier.parent;
+    if (
+      !isNodeOfType(currentMember, "MemberExpression") ||
+      currentMember.object !== identifier ||
+      getStaticPropertyName(currentMember) !== "current"
+    ) {
+      return false;
+    }
+    const methodMember = currentMember.parent;
+    if (!isNodeOfType(methodMember, "MemberExpression") || methodMember.object !== currentMember) {
+      return false;
+    }
+    const methodName = getStaticPropertyName(methodMember);
+    const call = methodMember.parent;
+    if (!isNodeOfType(call, "CallExpression") || call.callee !== methodMember) return false;
+    if (methodName === "get") continue;
+    if (methodName !== "set") return false;
+    const storedValue = call.arguments[1];
+    if (
+      !storedValue ||
+      isNodeOfType(storedValue, "SpreadElement") ||
+      !isIntrinsicRefCallbackParameter(storedValue, scopes)
+    ) {
+      return false;
+    }
+    intrinsicValueWriteCount += 1;
+  }
+  return intrinsicValueWriteCount > 0;
+};
+
+const isDerivedFromProvenDomRefCurrent = (
+  rawExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  didReadCollectionValue = false,
   visitedSymbolIds: Set<number> = new Set(),
 ): boolean => {
   const expression = stripParenExpression(rawExpression);
@@ -315,22 +434,37 @@ const isDerivedFromReactRefCurrent = (
     const initializer = getDirectUnreassignedInitializer(symbol);
     if (!initializer) return false;
     visitedSymbolIds.add(symbol.id);
-    return isDerivedFromReactRefCurrent(initializer, scopes, visitedSymbolIds);
+    return isDerivedFromProvenDomRefCurrent(
+      initializer,
+      scopes,
+      didReadCollectionValue,
+      visitedSymbolIds,
+    );
   }
   if (isNodeOfType(expression, "MemberExpression")) {
-    if (
-      getStaticPropertyName(expression) === "current" &&
-      isReactRefValue(expression.object, scopes, new Set(visitedSymbolIds))
-    ) {
-      return true;
+    if (getStaticPropertyName(expression) === "current") {
+      const symbol = getDirectReactRefSymbol(expression.object, scopes);
+      return Boolean(
+        symbol &&
+        (isDirectIntrinsicJsxRef(symbol, scopes) ||
+          (didReadCollectionValue && storesOnlyIntrinsicRefCallbackValues(symbol, scopes))),
+      );
     }
-    return isDerivedFromReactRefCurrent(expression.object, scopes, visitedSymbolIds);
+    return isDerivedFromProvenDomRefCurrent(
+      expression.object,
+      scopes,
+      didReadCollectionValue,
+      visitedSymbolIds,
+    );
   }
   if (!isNodeOfType(expression, "CallExpression")) return false;
   const callee = stripParenExpression(expression.callee);
-  return (
-    isNodeOfType(callee, "MemberExpression") &&
-    isDerivedFromReactRefCurrent(callee.object, scopes, visitedSymbolIds)
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  return isDerivedFromProvenDomRefCurrent(
+    callee.object,
+    scopes,
+    didReadCollectionValue || getStaticPropertyName(callee) === "get",
+    visitedSymbolIds,
   );
 };
 
@@ -343,7 +477,7 @@ const isCommittedDomSyncNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolea
     return false;
   }
   return (
-    isDerivedFromReactRefCurrent(callee.object, scopes) ||
+    isDerivedFromProvenDomRefCurrent(callee.object, scopes) ||
     isProvenBrowserApiReceiver(callee.object, "dom-event-target", scopes)
   );
 };

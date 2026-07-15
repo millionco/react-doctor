@@ -9,7 +9,7 @@ import { walkAst } from "./walk-ast.js";
 
 const PROMISE_CHAIN_METHOD_NAMES = new Set(["then", "catch", "finally"]);
 
-const isPromiseChainCall = (callee: EsTreeNode): boolean =>
+export const isPromiseChainCallee = (callee: EsTreeNode): boolean =>
   isNodeOfType(callee, "MemberExpression") &&
   isNodeOfType(callee.property, "Identifier") &&
   PROMISE_CHAIN_METHOD_NAMES.has(callee.property.name) &&
@@ -26,7 +26,7 @@ export const getPromiseChainCallForCallback = (candidate: EsTreeNode): EsTreeNod
   ) {
     return null;
   }
-  return isPromiseChainCall(stripParenExpression(callbackContainer.callee))
+  return isPromiseChainCallee(stripParenExpression(callbackContainer.callee))
     ? callbackContainer
     : null;
 };
@@ -83,7 +83,7 @@ export const collectEffectInvokedFunctions = (effectCallback: EsTreeNode): Set<E
         return;
       }
 
-      if (isPromiseChainCall(callee)) {
+      if (isPromiseChainCallee(callee)) {
         for (const callArgument of child.arguments ?? []) {
           enqueue(callArgument);
         }

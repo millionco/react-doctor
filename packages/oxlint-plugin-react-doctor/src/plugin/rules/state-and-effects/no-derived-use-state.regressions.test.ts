@@ -464,4 +464,41 @@ describe("no-derived-useState — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("stays silent when every local use remounts for each copied prop seed", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `interface BindingRule {
+        command: string;
+        key: string;
+        when?: string;
+      }
+
+      interface BindingView {
+        id: string;
+        rule: BindingRule;
+      }
+
+      function BindingRow({ view }: { view: BindingView }) {
+        const [keyDraft, setKeyDraft] = useState(view.rule.key);
+        const [whenDraft, setWhenDraft] = useState(view.rule.when);
+        return (
+          <button onClick={() => { setKeyDraft(""); setWhenDraft(undefined); }}>
+            {keyDraft}:{whenDraft}
+          </button>
+        );
+      }
+
+      function KeybindingsSettings({ rules }: { rules: BindingRule[] }) {
+        const views = useMemo(() => rules.map((rule, index) => ({
+          id: \`\${index}:\${rule.command}:\${rule.key}:\${rule.when ?? ""}\`,
+          rule,
+        })), [rules]);
+        const filteredViews = useMemo(() => views.filter(Boolean), [views]);
+        return filteredViews.map((view) => <BindingRow key={view.id} view={view} />);
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

@@ -65,6 +65,27 @@ describe("no-ref-current-in-render — falsy lazy initialization guards", () => 
          return itemRefs.current ? <output>{itemRefs.current.size}</output> : null;
        };`,
     ],
+    [
+      "a ref alias and multi-hop immutable initialization alias",
+      `import { useRef } from "react";
+       const Panel = () => {
+         const firstMap = new Map<string, HTMLElement>();
+         const secondMap = firstMap;
+         const itemRefs = useRef<Map<string, HTMLElement> | undefined>(undefined);
+         const itemRefsAlias = itemRefs;
+         if (!itemRefsAlias.current) itemRefsAlias.current = secondMap;
+         return <output>{itemRefs.current.size}</output>;
+       };`,
+    ],
+    [
+      "both nullish sentinels in a closed domain",
+      `import { useRef } from "react";
+       const Panel = () => {
+         const itemRefs = useRef<Map<string, HTMLElement> | null | undefined>(null);
+         if (!itemRefs.current) itemRefs.current = new Map();
+         return <output>{itemRefs.current.size}</output>;
+       };`,
+    ],
   ])("stays silent for %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -167,6 +188,45 @@ describe("no-ref-current-in-render — falsy lazy initialization guards", () => 
          const gateRef = useRef<Map<string, string> | undefined>(undefined);
          const valueRef = useRef<Map<string, string> | undefined>(undefined);
          if (!gateRef.current) valueRef.current = new Map();
+         return null;
+       };`,
+    ],
+    [
+      "a non-sentinel initial value",
+      `import { useRef } from "react";
+       const Panel = ({ initialMap }: { initialMap: Map<string, string> | undefined }) => {
+         const valueRef = useRef<Map<string, string> | undefined>(initialMap);
+         if (!valueRef.current) valueRef.current = new Map();
+         return null;
+       };`,
+    ],
+    [
+      "an escaped ref object",
+      `import { useRef } from "react";
+       declare const registerRef: (value: { current: Map<string, string> | undefined }) => void;
+       const Panel = () => {
+         const valueRef = useRef<Map<string, string> | undefined>(undefined);
+         registerRef(valueRef);
+         if (!valueRef.current) valueRef.current = new Map();
+         return null;
+       };`,
+    ],
+    [
+      "a conditional initialization value",
+      `import { useRef } from "react";
+       const Panel = ({ enabled }: { enabled: boolean }) => {
+         const valueRef = useRef<Map<string, string> | undefined>(undefined);
+         if (!valueRef.current) valueRef.current = enabled ? new Map() : undefined;
+         return null;
+       };`,
+    ],
+    [
+      "a destructured current alias",
+      `import { useRef } from "react";
+       const Panel = () => {
+         const valueRef = useRef<Map<string, string> | undefined>(undefined);
+         const { current } = valueRef;
+         if (!current) valueRef.current = new Map();
          return null;
        };`,
     ],

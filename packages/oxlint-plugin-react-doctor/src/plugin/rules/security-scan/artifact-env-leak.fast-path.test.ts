@@ -27,10 +27,33 @@ describe("security-scan/artifact-env-leak — parse fast path", () => {
     expect(maskSourceCommentsMock).not.toHaveBeenCalled();
   });
 
+  it("does not parse independent context tokens and URL-like string text", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/client.js",
+      content: `const processName = "process";
+const keyName = "DATABASE_URL";
+const documentationUrl = "https://example.com";`,
+      isGeneratedBundle: true,
+    });
+
+    expect(findings).toHaveLength(0);
+    expect(maskSourceCommentsMock).not.toHaveBeenCalled();
+  });
+
   it("parses an artifact only after the raw scan finds a candidate", () => {
     runScanRule(artifactEnvLeak, {
       relativePath: "dist/assets/client.js",
       content: `export const databaseUrl = process.env.DATABASE_URL;`,
+      isGeneratedBundle: true,
+    });
+
+    expect(maskSourceCommentsMock).toHaveBeenCalledOnce();
+  });
+
+  it("parses an artifact when comment trivia separates an env access", () => {
+    runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/client.js",
+      content: `export const databaseUrl = process/* keep */.env.DATABASE_URL;`,
       isGeneratedBundle: true,
     });
 

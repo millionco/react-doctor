@@ -294,6 +294,7 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `const SECRET_KEY = "sk-live-abc123def456ghi789jkl012mno345";`,
   `const FUZZ_DATABASE_URL = process.env.DATABASE_URL;`,
   `/** process.env.DATABASE_URL */ const FuzzGeneratedDatabaseClient = {};`,
+  `const FuzzProcessName = "process"; const FuzzDatabaseKeyName = "DATABASE_URL"; const FuzzDocumentationUrl = "https://example.com";`,
   `const ARROW_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);`,
   `export const STATIC_STYLED_ELEMENT = <div style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />;`,
   `const defaults = { title: "untitled", pageSize: 20 };`,

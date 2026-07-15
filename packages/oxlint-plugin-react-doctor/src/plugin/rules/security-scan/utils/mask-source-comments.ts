@@ -2,10 +2,12 @@ import { parseSync } from "oxc-parser";
 import { resolveLang } from "../../../utils/parse-source-file.js";
 
 const SOURCE_FILE_EXTENSION_PATTERN = /\.(?:[cm]?[jt]sx?)$/i;
+const POSSIBLE_SOURCE_COMMENT_PATTERN =
+  /\/\/|\/\*|<!--|(?:^|[\r\n\u2028\u2029])[^\S\r\n\u2028\u2029]*-->/;
 
-export const maskSourceComments = (relativePath: string, content: string): string => {
+export const maskSourceComments = (relativePath: string, content: string): string | undefined => {
   if (!SOURCE_FILE_EXTENSION_PATTERN.test(relativePath)) return content;
-  if (!content.startsWith("#!") && !content.includes("//") && !content.includes("/*")) {
+  if (!content.startsWith("#!") && !POSSIBLE_SOURCE_COMMENT_PATTERN.test(content)) {
     return content;
   }
   try {
@@ -13,7 +15,7 @@ export const maskSourceComments = (relativePath: string, content: string): strin
       astType: "ts",
       lang: resolveLang(relativePath),
     });
-    if (result.errors.some((parseError) => parseError.severity === "Error")) return content;
+    if (result.errors.some((parseError) => parseError.severity === "Error")) return undefined;
     const firstLineTerminatorIndex = content.search(/[\r\n\u2028\u2029]/);
     const hashbangRanges = content.startsWith("#!")
       ? [
@@ -38,6 +40,6 @@ export const maskSourceComments = (relativePath: string, content: string): strin
     contentParts.push(content.slice(previousEnd));
     return contentParts.join("");
   } catch {
-    return content;
+    return undefined;
   }
 };

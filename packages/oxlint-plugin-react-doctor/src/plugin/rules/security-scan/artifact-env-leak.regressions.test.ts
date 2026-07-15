@@ -107,6 +107,15 @@ export const environmentName = "DATABASE_URL";`,
     expect(findings).toHaveLength(1);
   });
 
+  it("keeps conservative raw matching for comment-trivia access when parsing fails", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/generated/client.ts",
+      content: `process/* keep */.env.DATABASE_URL ???`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("ignores env access that exists only in a hashbang", () => {
     const findings = runScanRule(artifactEnvLeak, {
       relativePath: "dist/generated/client.js",
@@ -126,7 +135,12 @@ export const client = {};`,
       content: `#!/usr/bin/env node${separator}export const databaseUrl = process.env.DATABASE_URL;`,
       isGeneratedBundle: true,
     });
-    expect(findings).toHaveLength(1);
+    expect(findings).toEqual([
+      expect.objectContaining({
+        line: 2,
+        column: 40,
+      }),
+    ]);
   });
 
   it.each([
@@ -139,6 +153,27 @@ export const client = {};`,
       isGeneratedBundle: true,
     });
     expect(findings).toHaveLength(0);
+  });
+
+  it.each([
+    ["opening", `<!-- process.env.DATABASE_URL\nvar client = {};`],
+    ["closing", `var client = {};\n  --> process.env.DATABASE_URL\nclient.ready = true;`],
+  ])("ignores env access inside an Annex-B HTML %s comment", (_label, content) => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/generated/client.js",
+      content,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("keeps executable env access live next to a postfix decrement comparison", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/generated/client.js",
+      content: `var isPositive = value-->0;\nvar databaseUrl = process.env.DATABASE_URL;`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(1);
   });
 
   it.each([
@@ -163,7 +198,7 @@ export const client = {};`,
     (expression) => {
       const findings = runScanRule(artifactEnvLeak, {
         relativePath: "src/generated/client.ts",
-        content: `/** Example: ${expression} */\nexport const client = {};`,
+        content: `// Example: ${expression}\nexport const client = {};`,
         isGeneratedBundle: true,
       });
       expect(findings).toHaveLength(0);

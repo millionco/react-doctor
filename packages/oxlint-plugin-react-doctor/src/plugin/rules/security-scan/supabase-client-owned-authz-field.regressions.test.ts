@@ -26,10 +26,10 @@ describe("security-scan/supabase-client-owned-authz-field — regressions", () =
     expect(findings).toHaveLength(0);
   });
 
-  it("stays silent on files with 'use server' directive", () => {
+  it("stays silent on the exact semicolonless server-action report", () => {
     const findings = runScanRule(supabaseClientOwnedAuthzField, {
       relativePath: "app/(admin)/faq/actions.ts",
-      content: `"use server";
+      content: `'use server'
 
 import { createClient } from "@/lib/supabase/server";
 import { requireTenantRole } from "@/lib/auth/require-role";
@@ -49,15 +49,49 @@ export async function createFaqItem(tenantId: string, formData: FormData) {
     expect(findings).toHaveLength(0);
   });
 
-  it("stays silent on files with single-quoted 'use server' directive", () => {
+  it("stays silent on a pinned semicolonless OSS server action", () => {
     const findings = runScanRule(supabaseClientOwnedAuthzField, {
-      relativePath: "src/actions/delete-post.ts",
-      content: `'use server';
+      relativePath: "app/actions/token-trading-actions.ts",
+      content: `"use server"
 
-export async function deletePost(userId: string, postId: string) {
-  await supabase.from("posts").delete().match({ id: postId, ownerId: userId });
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+
+export async function createBuyOffer(formData: { userId: string; poolId: string }) {
+  const supabase = await createServerSupabaseClient();
+  await supabase.from("token_offers").insert({
+    buyer_id: formData.userId,
+    pool_id: formData.poolId,
+  });
 }`,
     });
     expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when a multiline license precedes a real directive", () => {
+    const findings = runScanRule(supabaseClientOwnedAuthzField, {
+      relativePath: "src/actions/create-team.ts",
+      content: `/**
+ * Copyright Example Corp.
+ */
+'use server'
+
+export async function createTeam(ownerId: string) {
+  await supabase.from("teams").insert({ ownerId, role: "admin" });
+}`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a client write when 'use server' only appears in a block comment", () => {
+    const findings = runScanRule(supabaseClientOwnedAuthzField, {
+      relativePath: "src/lib/create-team.ts",
+      content: `/*
+'use server';
+*/
+export const createTeam = async (ownerId: string) => {
+  await supabase.from("teams").insert({ ownerId, role: "admin" });
+};`,
+    });
+    expect(findings).toHaveLength(1);
   });
 });

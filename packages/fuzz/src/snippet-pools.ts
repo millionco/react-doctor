@@ -248,6 +248,7 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `export const createFuzzTeam = async (ownerId: string) => { await supabase.from("teams").insert({ ownerId, role: "admin" }); };`,
   `import { ImageResponse as FuzzImageResponse } from "next/og"; export const FuzzPostcardLayout = ({ url }) => <img src={url} alt="" />; export const FuzzPostcardRoute = () => new FuzzImageResponse(FuzzPostcardLayout({ url }));`,
   `import { render as fuzzRender } from "@testing-library/react"; it("mounts a one-shot ref harness", () => { const FuzzOneShotRefTarget = () => { const targetRef = React.createRef(); return <FuzzFocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FuzzFocusTrap>; }; fuzzRender(<FuzzOneShotRefTarget />); });`,
   `import { render as fuzzRenderWithTypeWrapper } from "@testing-library/react"; it("mounts a type-wrapped one-shot ref harness", () => { const FuzzTypeWrappedOneShotRefTarget = () => { const targetRef = React.createRef(); return <FuzzFocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FuzzFocusTrap>; }; fuzzRenderWithTypeWrapper((<FuzzTypeWrappedOneShotRefTarget />) as React.ReactElement); });`,
@@ -304,6 +305,10 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  `"use server"
+export const createFuzzTeam = async (ownerId: string) => {
+  await supabase.from("teams").insert({ ownerId, role: "admin" });
+};`,
   `export default async function Page() {
   const response = await fetch("https://api.example.com/feed");
   return Response.json(await response.json());

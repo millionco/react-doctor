@@ -182,6 +182,17 @@ describe("no-ref-current-in-render — falsy lazy initialization guards", () => 
        };`,
     ],
     [
+      "a falsy guard nested inside a loop",
+      `import { useRef } from "react";
+       const Panel = ({ entries }: { entries: string[] }) => {
+         const valueRef = useRef<Map<string, string> | undefined>(undefined);
+         for (const entry of entries) {
+           if (!valueRef.current) valueRef.current = new Map([[entry, entry]]);
+         }
+         return null;
+       };`,
+    ],
+    [
       "a guard over another ref",
       `import { useRef } from "react";
        const Panel = () => {

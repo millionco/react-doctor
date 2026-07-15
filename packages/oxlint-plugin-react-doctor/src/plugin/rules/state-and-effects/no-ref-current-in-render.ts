@@ -268,6 +268,15 @@ const hasRepeatedExecutionAncestor = (node: EsTreeNode, stop: EsTreeNode): boole
   return ancestor !== stop;
 };
 
+const hasLoopAncestor = (node: EsTreeNode, stop: EsTreeNode): boolean => {
+  let ancestor = node.parent;
+  while (ancestor && ancestor !== stop) {
+    if (REPEATED_ANCESTOR_TYPES.has(ancestor.type)) return true;
+    ancestor = ancestor.parent;
+  }
+  return ancestor !== stop;
+};
+
 const getBranchConstraints = (
   node: EsTreeNode,
   branchRoot: EsTreeNode,
@@ -353,6 +362,7 @@ const isDocumentedLazyInitialization = (
       isProvablyTruthyInitializationValue(assignmentExpression.right, scopes) &&
       refHasClosedFalsySentinelDomain(refSymbol, assignmentExpression.right, scopes) &&
       !hasRepeatedExecutionAncestor(assignmentExpression, ancestor.consequent) &&
+      !hasLoopAncestor(ancestor, renderOwner) &&
       hasNoPriorCoExecutableWrite(assignmentExpression, ancestor.consequent, refSymbol, scopes) &&
       hasNoCompetingRefCurrentWrite(renderOwner, assignmentExpression, refSymbol, scopes) &&
       refDoesNotEscape(renderOwner, refSymbol, scopes)

@@ -7,6 +7,7 @@ import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -70,13 +71,159 @@ const TYPE_RESOLUTION_DEPTH_LIMIT = 4;
 const ARITHMETIC_KEY_OPERATORS = new Set(["+", "-", "*", "/", "%"]);
 const bindingMutationResultsByProgram = new WeakMap<EsTreeNode, Map<string, boolean>>();
 
+interface StaticKeyBranchValue {
+  isNullish: boolean | null;
+  isTruthy: boolean | null;
+}
+
+const UNKNOWN_STATIC_KEY_BRANCH_VALUE: StaticKeyBranchValue = {
+  isNullish: null,
+  isTruthy: null,
+};
+
+const mergeStaticKeyBranchValues = (
+  firstValue: StaticKeyBranchValue,
+  secondValue: StaticKeyBranchValue,
+): StaticKeyBranchValue => ({
+  isNullish: firstValue.isNullish === secondValue.isNullish ? firstValue.isNullish : null,
+  isTruthy: firstValue.isTruthy === secondValue.isTruthy ? firstValue.isTruthy : null,
+});
+
+const readStaticKeyBranchValue = (
+  expression: EsTreeNode,
+  depth: number,
+): StaticKeyBranchValue | null => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return null;
+  const node = stripParenExpression(expression);
+  if (isNodeOfType(node, "Literal")) {
+    return {
+      isNullish: node.value === null,
+      isTruthy: Boolean(node.value),
+    };
+  }
+  if (
+    isNodeOfType(node, "ArrayExpression") ||
+    isNodeOfType(node, "ObjectExpression") ||
+    isNodeOfType(node, "ArrowFunctionExpression") ||
+    isNodeOfType(node, "FunctionExpression") ||
+    isNodeOfType(node, "ClassExpression") ||
+    isNodeOfType(node, "NewExpression")
+  ) {
+    return { isNullish: false, isTruthy: true };
+  }
+  if (isNodeOfType(node, "TemplateLiteral")) {
+    const hasStaticContent = (node.quasis ?? []).some(
+      (quasi) => typeof quasi.value?.cooked === "string" && quasi.value.cooked.length > 0,
+    );
+    return {
+      isNullish: false,
+      isTruthy: hasStaticContent ? true : null,
+    };
+  }
+  if (isNodeOfType(node, "BinaryExpression")) {
+    return { isNullish: false, isTruthy: null };
+  }
+  if (isNodeOfType(node, "Identifier")) {
+    const binding = findVariableInitializer(node, node.name);
+    if (!binding) {
+      if (node.name === "undefined") return { isNullish: true, isTruthy: false };
+      if (node.name === "NaN") return { isNullish: false, isTruthy: false };
+      if (node.name === "Infinity") return { isNullish: false, isTruthy: true };
+      return null;
+    }
+    if (!isConstDeclaredBinding(binding) || !binding.initializer) return null;
+    const declarator = binding.bindingIdentifier.parent;
+    if (
+      !declarator ||
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      declarator.id !== binding.bindingIdentifier ||
+      declarator.init !== binding.initializer
+    ) {
+      return null;
+    }
+    return readStaticKeyBranchValue(binding.initializer, depth + 1);
+  }
+  if (isNodeOfType(node, "CallExpression") && isNodeOfType(node.callee, "Identifier")) {
+    const hasLocalBinding = Boolean(findVariableInitializer(node.callee, node.callee.name));
+    if (!hasLocalBinding && STRING_COERCION_FUNCTIONS.has(node.callee.name)) {
+      return { isNullish: false, isTruthy: null };
+    }
+  }
+  if (isNodeOfType(node, "UnaryExpression")) {
+    if (node.operator === "void") return { isNullish: true, isTruthy: false };
+    if (node.operator === "typeof") return { isNullish: false, isTruthy: true };
+    if (node.operator === "+" || node.operator === "-" || node.operator === "~") {
+      return { isNullish: false, isTruthy: null };
+    }
+    if (node.operator !== "!") return null;
+    const argumentValue = readStaticKeyBranchValue(node.argument, depth + 1);
+    if (!argumentValue || argumentValue.isTruthy === null) return null;
+    return { isNullish: false, isTruthy: !argumentValue.isTruthy };
+  }
+  if (isNodeOfType(node, "SequenceExpression")) {
+    const finalExpression = node.expressions.at(-1);
+    return finalExpression ? readStaticKeyBranchValue(finalExpression, depth + 1) : null;
+  }
+  if (isNodeOfType(node, "LogicalExpression")) {
+    const leftValue =
+      readStaticKeyBranchValue(node.left, depth + 1) ?? UNKNOWN_STATIC_KEY_BRANCH_VALUE;
+    if (node.operator === "&&" && leftValue.isTruthy !== null) {
+      return leftValue.isTruthy ? readStaticKeyBranchValue(node.right, depth + 1) : leftValue;
+    }
+    if (node.operator === "||" && leftValue.isTruthy !== null) {
+      return leftValue.isTruthy ? leftValue : readStaticKeyBranchValue(node.right, depth + 1);
+    }
+    if (node.operator === "??" && leftValue.isNullish !== null) {
+      return leftValue.isNullish ? readStaticKeyBranchValue(node.right, depth + 1) : leftValue;
+    }
+    const rightValue =
+      readStaticKeyBranchValue(node.right, depth + 1) ?? UNKNOWN_STATIC_KEY_BRANCH_VALUE;
+    if (node.operator === "||") {
+      return {
+        isNullish: rightValue.isNullish === false ? false : null,
+        isTruthy: rightValue.isTruthy === true ? true : null,
+      };
+    }
+    if (node.operator === "&&") {
+      return {
+        isNullish: leftValue.isNullish === false && rightValue.isNullish === false ? false : null,
+        isTruthy: rightValue.isTruthy === false ? false : null,
+      };
+    }
+    return {
+      isNullish: rightValue.isNullish === false ? false : null,
+      isTruthy:
+        leftValue.isTruthy !== null && leftValue.isTruthy === rightValue.isTruthy
+          ? leftValue.isTruthy
+          : null,
+    };
+  }
+  if (isNodeOfType(node, "ConditionalExpression")) {
+    const testValue = readStaticKeyBranchValue(node.test, depth + 1);
+    if (testValue?.isTruthy !== null && testValue?.isTruthy !== undefined) {
+      return readStaticKeyBranchValue(
+        testValue.isTruthy ? node.consequent : node.alternate,
+        depth + 1,
+      );
+    }
+    const consequentValue =
+      readStaticKeyBranchValue(node.consequent, depth + 1) ?? UNKNOWN_STATIC_KEY_BRANCH_VALUE;
+    const alternateValue =
+      readStaticKeyBranchValue(node.alternate, depth + 1) ?? UNKNOWN_STATIC_KEY_BRANCH_VALUE;
+    return mergeStaticKeyBranchValues(consequentValue, alternateValue);
+  }
+  return null;
+};
+
 // The identifiers a key expression could get its value from — the bare
 // identifier, template-literal slots, `x.toString()`, `String(x)` /
 // `Number(x)`, `x + ""` / `"" + x` coercions, arithmetic offsets
 // (`x + 1`, `x * 2`), and unary negation (`-x`).
 const extractCandidateIdentifiers = (
   expression: EsTreeNode,
+  depth = 0,
 ): Array<EsTreeNodeOfType<"Identifier">> => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return [];
   const node = stripParenExpression(expression);
   if (isNodeOfType(node, "Identifier")) return [node];
 
@@ -85,34 +232,72 @@ const extractCandidateIdentifiers = (
   if (
     isNodeOfType(node, "UnaryExpression") &&
     (node.operator === "-" || node.operator === "+" || node.operator === "~") &&
-    isNodeOfType(node.argument, "Identifier")
+    node.argument
   ) {
-    return [node.argument];
+    return extractCandidateIdentifiers(node.argument, depth + 1);
   }
 
   if (isNodeOfType(node, "TemplateLiteral")) {
     const identifiers: Array<EsTreeNodeOfType<"Identifier">> = [];
     for (const templateExpression of node.expressions ?? []) {
-      if (isNodeOfType(templateExpression, "Identifier")) identifiers.push(templateExpression);
+      identifiers.push(...extractCandidateIdentifiers(templateExpression, depth + 1));
     }
     return identifiers;
+  }
+
+  if (isNodeOfType(node, "LogicalExpression")) {
+    const leftValue = readStaticKeyBranchValue(node.left, 0);
+    if (leftValue) {
+      if (node.operator === "&&" && leftValue.isTruthy !== null) {
+        return extractCandidateIdentifiers(leftValue.isTruthy ? node.right : node.left, depth + 1);
+      }
+      if (node.operator === "||" && leftValue.isTruthy !== null) {
+        return extractCandidateIdentifiers(leftValue.isTruthy ? node.left : node.right, depth + 1);
+      }
+      if (node.operator === "??" && leftValue.isNullish !== null) {
+        return extractCandidateIdentifiers(leftValue.isNullish ? node.right : node.left, depth + 1);
+      }
+    }
+    return [
+      ...extractCandidateIdentifiers(node.left, depth + 1),
+      ...extractCandidateIdentifiers(node.right, depth + 1),
+    ];
+  }
+
+  if (isNodeOfType(node, "ConditionalExpression")) {
+    const testValue = readStaticKeyBranchValue(node.test, 0);
+    if (testValue && testValue.isTruthy !== null) {
+      return extractCandidateIdentifiers(
+        testValue.isTruthy ? node.consequent : node.alternate,
+        depth + 1,
+      );
+    }
+    return [
+      ...extractCandidateIdentifiers(node.consequent, depth + 1),
+      ...extractCandidateIdentifiers(node.alternate, depth + 1),
+    ];
+  }
+
+  if (isNodeOfType(node, "SequenceExpression")) {
+    const finalExpression = node.expressions.at(-1);
+    return finalExpression ? extractCandidateIdentifiers(finalExpression, depth + 1) : [];
   }
 
   if (isNodeOfType(node, "CallExpression")) {
     if (
       isNodeOfType(node.callee, "MemberExpression") &&
-      isNodeOfType(node.callee.object, "Identifier") &&
       isNodeOfType(node.callee.property, "Identifier") &&
       node.callee.property.name === "toString"
     ) {
-      return [node.callee.object];
+      return extractCandidateIdentifiers(node.callee.object, depth + 1);
     }
     if (
       isNodeOfType(node.callee, "Identifier") &&
       STRING_COERCION_FUNCTIONS.has(node.callee.name) &&
-      isNodeOfType(node.arguments?.[0], "Identifier")
+      !findVariableInitializer(node.callee, node.callee.name) &&
+      node.arguments?.[0]
     ) {
-      return [node.arguments[0]];
+      return extractCandidateIdentifiers(node.arguments[0], depth + 1);
     }
     return [];
   }

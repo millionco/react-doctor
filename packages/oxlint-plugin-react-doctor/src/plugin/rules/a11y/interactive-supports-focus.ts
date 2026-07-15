@@ -1,5 +1,6 @@
 import { ALL_EVENT_HANDLERS_LOWER } from "../../constants/event-handlers.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
+import { canContentEditableBeTabbable } from "../../utils/can-content-editable-be-tabbable.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
@@ -122,6 +123,7 @@ export const interactiveSupportsFocus = defineRule({
         // already handles focus correctly.
         if (!HTML_TAGS.has(elementType)) return;
         if (
+          canContentEditableBeTabbable(node, context.scopes, context.settings) ||
           isDisabledElement(node) ||
           isHiddenFromScreenReader(node, context.settings) ||
           isPresentationRole(node)

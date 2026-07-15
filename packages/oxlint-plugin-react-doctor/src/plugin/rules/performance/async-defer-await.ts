@@ -1,4 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
+import {
+  isDescendantScope,
+  type ScopeAnalysis,
+  type ScopeDescriptor,
+} from "../../semantic/scope-analysis.js";
 import { collectPatternDefaultReferenceNames } from "../../utils/collect-pattern-default-reference-names.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
@@ -9,6 +14,7 @@ import { isEarlyExitIfStatement } from "../../utils/is-early-exit-if-statement.j
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 interface DeclarationProcessResult {
@@ -234,13 +240,98 @@ const guardTestReadsMutableEnvironment = (test: EsTreeNode | null): boolean => {
 // comparisons (`if (mode === "off") return`) stay reportable.
 const isNonLiteralComparisonTest = (test: EsTreeNode | null): boolean => {
   if (!test) return false;
-  if (!isNodeOfType(test, "BinaryExpression")) return false;
-  if (!["===", "!==", "==", "!="].includes(test.operator)) return false;
-  const isLiteralOperand = (operand: EsTreeNode): boolean =>
-    isNodeOfType(operand, "Literal") ||
-    isNodeOfType(operand, "TemplateLiteral") ||
-    (isNodeOfType(operand, "UnaryExpression") && isLiteralOperand(operand.argument));
-  return !isLiteralOperand(test.left) && !isLiteralOperand(test.right);
+  const unwrappedTest = stripParenExpression(test);
+  if (!isNodeOfType(unwrappedTest, "BinaryExpression")) return false;
+  if (!["===", "!==", "==", "!="].includes(unwrappedTest.operator)) return false;
+  const isLiteralOperand = (operand: EsTreeNode): boolean => {
+    const unwrappedOperand = stripParenExpression(operand);
+    return (
+      isNodeOfType(unwrappedOperand, "Literal") ||
+      isNodeOfType(unwrappedOperand, "TemplateLiteral") ||
+      (isNodeOfType(unwrappedOperand, "UnaryExpression") &&
+        isLiteralOperand(unwrappedOperand.argument))
+    );
+  };
+  return !isLiteralOperand(unwrappedTest.left) && !isLiteralOperand(unwrappedTest.right);
+};
+
+const isLocalConstSnapshotOperand = (
+  operand: EsTreeNode,
+  scopes: ScopeAnalysis,
+  functionScope: ScopeDescriptor,
+): boolean => {
+  const unwrappedOperand = stripParenExpression(operand);
+  if (!isNodeOfType(unwrappedOperand, "Identifier")) return false;
+  const symbol = scopes.symbolFor(unwrappedOperand);
+  return Boolean(
+    symbol &&
+    symbol.kind === "const" &&
+    symbol.initializer &&
+    isDescendantScope(symbol.scope, functionScope),
+  );
+};
+
+const isLiveFreshnessOperand = (
+  operand: EsTreeNode,
+  scopes: ScopeAnalysis,
+  functionScope: ScopeDescriptor,
+): boolean => {
+  const unwrappedOperand = stripParenExpression(operand);
+  if (isNodeOfType(unwrappedOperand, "MemberExpression")) return true;
+  if (!isNodeOfType(unwrappedOperand, "Identifier")) return false;
+  const symbol = scopes.symbolFor(unwrappedOperand);
+  return Boolean(
+    symbol &&
+    (symbol.kind === "let" || symbol.kind === "var" || symbol.kind === "import") &&
+    !isDescendantScope(symbol.scope, functionScope),
+  );
+};
+
+const isProvenFreshnessComparison = (
+  test: EsTreeNode,
+  scopes: ScopeAnalysis,
+  functionScope: ScopeDescriptor,
+): boolean => {
+  const unwrappedTest = stripParenExpression(test);
+  if (!isNonLiteralComparisonTest(unwrappedTest)) return false;
+  if (!isNodeOfType(unwrappedTest, "BinaryExpression")) return false;
+  return (
+    (isLocalConstSnapshotOperand(unwrappedTest.left, scopes, functionScope) &&
+      isLiveFreshnessOperand(unwrappedTest.right, scopes, functionScope)) ||
+    (isLocalConstSnapshotOperand(unwrappedTest.right, scopes, functionScope) &&
+      isLiveFreshnessOperand(unwrappedTest.left, scopes, functionScope))
+  );
+};
+
+const isLogicalCompositionOfFreshnessComparisons = (
+  test: EsTreeNode | null,
+  scopes: ScopeAnalysis,
+  functionScope: ScopeDescriptor | null,
+): boolean => {
+  if (!functionScope) return false;
+  if (!test) return false;
+  const unwrappedTest = stripParenExpression(test);
+  if (
+    !isNodeOfType(unwrappedTest, "LogicalExpression") ||
+    (unwrappedTest.operator !== "&&" && unwrappedTest.operator !== "||")
+  ) {
+    return false;
+  }
+  const pendingTests = [unwrappedTest.left, unwrappedTest.right];
+  while (pendingTests.length > 0) {
+    const candidateTest = pendingTests.pop();
+    if (!candidateTest) continue;
+    const unwrappedCandidateTest = stripParenExpression(candidateTest);
+    if (
+      isNodeOfType(unwrappedCandidateTest, "LogicalExpression") &&
+      (unwrappedCandidateTest.operator === "&&" || unwrappedCandidateTest.operator === "||")
+    ) {
+      pendingTests.push(unwrappedCandidateTest.left, unwrappedCandidateTest.right);
+      continue;
+    }
+    if (!isProvenFreshnessComparison(unwrappedCandidateTest, scopes, functionScope)) return false;
+  }
+  return true;
 };
 
 // A guard whose consequent performs its own effect calls (`if (smime) {
@@ -397,10 +488,19 @@ export const asyncDeferAwait = defineRule({
           statementIndex = window.guardCandidateIndex - 1;
           continue;
         }
+        const enclosingFunction = findEnclosingFunction(guardStatement);
+        const functionScope = enclosingFunction
+          ? context.scopes.ownScopeFor(enclosingFunction)
+          : null;
         if (
           isCancellationGuardTest(guardStatement.test) ||
           guardTestReadsMutableEnvironment(guardStatement.test) ||
           isNonLiteralComparisonTest(guardStatement.test) ||
+          isLogicalCompositionOfFreshnessComparisons(
+            guardStatement.test,
+            context.scopes,
+            functionScope,
+          ) ||
           guardTestReadsReassignedLocal(guardStatement.test, guardStatement) ||
           guardConsequentPerformsSideEffects(guardStatement.consequent)
         ) {

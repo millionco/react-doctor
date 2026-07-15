@@ -1,14 +1,24 @@
 import { BUILTIN_HOOK_NAMES, EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { executesDuringRender } from "../../utils/executes-during-render.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import {
+  isProvenGlobalNamespaceReference,
+  isProvenGlobalObjectReference,
+} from "../../utils/is-proven-global-namespace-reference.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { collectRenderReachableExpressions } from "./utils/collect-render-reachable-expressions.js";
 import { buildLocalDependencyGraph } from "./utils/build-local-dependency-graph.js";
@@ -25,6 +35,183 @@ interface EffectDependencyInfo {
   payloadReadNames: Set<string>;
   nestedCallbackCalledFunctionNames: Set<string>;
 }
+
+const HISTORY_LOCATION_MUTATION_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "pushState",
+  "replaceState",
+]);
+const LOCATION_CHANGE_EVENT_NAMES: ReadonlySet<string> = new Set(["hashchange", "popstate"]);
+
+const containsGlobalLocationSnapshotRead = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  let didFindLocationSnapshotRead = false;
+  walkAst(node, (child: EsTreeNode): boolean | void => {
+    if (didFindLocationSnapshotRead) return false;
+    if (child !== node && isFunctionLike(child) && !executesDuringRender(child, scopes)) {
+      return false;
+    }
+    if (!isProvenGlobalNamespaceReference(child, "location", scopes)) return;
+    didFindLocationSnapshotRead = true;
+    return false;
+  });
+  return didFindLocationSnapshotRead;
+};
+
+const hasRenderReachableLocationSnapshotRead = (
+  componentBody: EsTreeNodeOfType<"BlockStatement">,
+  renderReachableExpressions: EsTreeNode[],
+  renderReachableNames: ReadonlySet<string>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    renderReachableExpressions.some((expression) =>
+      containsGlobalLocationSnapshotRead(expression, scopes),
+    )
+  ) {
+    return true;
+  }
+
+  for (const statement of componentBody.body ?? []) {
+    if (isNodeOfType(statement, "FunctionDeclaration") && statement.id) {
+      if (
+        renderReachableNames.has(statement.id.name) &&
+        containsGlobalLocationSnapshotRead(statement.body, scopes)
+      ) {
+        return true;
+      }
+      continue;
+    }
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+    for (const declarator of statement.declarations ?? []) {
+      if (!isNodeOfType(declarator.id, "Identifier") || !declarator.init) continue;
+      if (!renderReachableNames.has(declarator.id.name)) continue;
+      let renderReachableValue = isFunctionLike(declarator.init)
+        ? declarator.init.body
+        : declarator.init;
+      if (
+        isNodeOfType(declarator.init, "CallExpression") &&
+        isReactApiCall(declarator.init, "useCallback", scopes)
+      ) {
+        const callback = declarator.init.arguments?.[0];
+        if (callback && !isNodeOfType(callback, "SpreadElement") && isFunctionLike(callback)) {
+          renderReachableValue = callback.body;
+        }
+      }
+      if (containsGlobalLocationSnapshotRead(renderReachableValue, scopes)) return true;
+    }
+  }
+  return false;
+};
+
+const isGlobalHistoryLocationMutation = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  if (!isNodeOfType(node.callee, "MemberExpression")) return false;
+  const methodName = getStaticPropertyName(node.callee);
+  return Boolean(
+    methodName &&
+    HISTORY_LOCATION_MUTATION_METHOD_NAMES.has(methodName) &&
+    isProvenGlobalNamespaceReference(node.callee.object, "history", scopes),
+  );
+};
+
+const containsGlobalHistoryLocationMutation = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedFunctions = new Set<EsTreeNode>(),
+): boolean => {
+  let didFindLocationMutation = false;
+  walkAst(node, (child: EsTreeNode): boolean | void => {
+    if (didFindLocationMutation) return false;
+    if (child !== node && isFunctionLike(child)) return false;
+    if (isGlobalHistoryLocationMutation(child, scopes)) {
+      didFindLocationMutation = true;
+      return false;
+    }
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const localFunction = resolveExactLocalFunction(child.callee, scopes);
+    if (
+      !isFunctionLike(localFunction) ||
+      localFunction.async ||
+      localFunction.generator ||
+      visitedFunctions.has(localFunction)
+    ) {
+      return;
+    }
+    visitedFunctions.add(localFunction);
+    if (!containsGlobalHistoryLocationMutation(localFunction.body, scopes, visitedFunctions))
+      return;
+    didFindLocationMutation = true;
+    return false;
+  });
+  return didFindLocationMutation;
+};
+
+const isStaticLocationChangeEvent = (node: EsTreeNode | null | undefined): boolean =>
+  Boolean(
+    node &&
+    isNodeOfType(node, "Literal") &&
+    typeof node.value === "string" &&
+    LOCATION_CHANGE_EVENT_NAMES.has(node.value),
+  );
+
+const isFunctionRegisteredForLocationChange = (
+  functionNode: EsTreeNode,
+  componentBody: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let isRegistered = false;
+  walkAst(componentBody, (child: EsTreeNode): boolean | void => {
+    if (isRegistered) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const isGlobalListenerRegistration =
+      (isNodeOfType(child.callee, "MemberExpression") &&
+        getStaticPropertyName(child.callee) === "addEventListener" &&
+        isProvenGlobalObjectReference(child.callee.object, scopes)) ||
+      (isNodeOfType(child.callee, "Identifier") &&
+        child.callee.name === "addEventListener" &&
+        scopes.isGlobalReference(child.callee));
+    if (!isGlobalListenerRegistration) return;
+    if (!isStaticLocationChangeEvent(child.arguments?.[0])) return;
+    const listener = child.arguments?.[1];
+    if (!listener || isNodeOfType(listener, "SpreadElement")) return;
+    if (resolveExactLocalFunction(listener, scopes) !== functionNode) return;
+    isRegistered = true;
+    return false;
+  });
+  return isRegistered;
+};
+
+const setterInvalidatesGlobalLocationSnapshot = (
+  componentBody: EsTreeNode,
+  setterName: string,
+  setterBindingIdentifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const setterSymbol = scopes.symbolFor(setterBindingIdentifier);
+  let doesInvalidateLocationSnapshot = false;
+  walkAst(componentBody, (child: EsTreeNode): boolean | void => {
+    if (doesInvalidateLocationSnapshot) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (!isNodeOfType(child.callee, "Identifier") || child.callee.name !== setterName) return;
+    if (setterSymbol && scopes.symbolFor(child.callee) !== setterSymbol) return;
+
+    const enclosingFunction = findEnclosingFunction(child);
+    if (
+      isFunctionLike(enclosingFunction) &&
+      (containsGlobalHistoryLocationMutation(enclosingFunction.body, scopes) ||
+        isFunctionRegisteredForLocationChange(enclosingFunction, componentBody, scopes))
+    ) {
+      doesInvalidateLocationSnapshot = true;
+      return false;
+    }
+    for (const argument of child.arguments ?? []) {
+      if (isNodeOfType(argument, "SpreadElement")) continue;
+      if (!containsGlobalHistoryLocationMutation(argument, scopes)) continue;
+      doesInvalidateLocationSnapshot = true;
+      return false;
+    }
+  });
+  return doesInvalidateLocationSnapshot;
+};
 
 // A read whose enclosing expression is the TEST of a conditional — the
 // `currentPage < visibleRange.start` in `if (currentPage < visibleRange.start)`
@@ -274,6 +461,12 @@ export const rerenderStateOnlyInHandlers = defineRule({
       )) {
         renderReachableNames.add(reachableName);
       }
+      const hasRenderReachableLocationSnapshot = hasRenderReachableLocationSnapshotRead(
+        componentBody,
+        renderReachableExpressions,
+        renderReachableNames,
+        context.scopes,
+      );
       const calledSetterNames = new Set<string>();
       walkAst(componentBody, (child: EsTreeNode) => {
         if (
@@ -287,6 +480,21 @@ export const rerenderStateOnlyInHandlers = defineRule({
 
       for (const binding of bindings) {
         if (renderReachableNames.has(binding.valueName)) continue;
+        const setterBindingIdentifier = isNodeOfType(binding.declarator.id, "ArrayPattern")
+          ? binding.declarator.id.elements?.[1]
+          : null;
+        if (
+          hasRenderReachableLocationSnapshot &&
+          setterBindingIdentifier &&
+          setterInvalidatesGlobalLocationSnapshot(
+            componentBody,
+            binding.setterName,
+            setterBindingIdentifier,
+            context.scopes,
+          )
+        ) {
+          continue;
+        }
         // Underscore-only or underscore-prefixed value names signal
         // the user is intentionally using useState to FORCE a re-
         // render and doesn't care about the value (`const [_, force]

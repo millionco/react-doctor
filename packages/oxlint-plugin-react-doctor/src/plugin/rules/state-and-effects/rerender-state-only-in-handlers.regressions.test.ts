@@ -822,6 +822,77 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    {
+      name: "global aliases and transparent TypeScript wrappers",
+      source: `import { useState } from "react";
+        function AliasedLocation() {
+          const [revision, setRevision] = useState(0);
+          const browser = window;
+          const currentLocation = browser.location as Location;
+          const currentPath = currentLocation!.pathname;
+          const navigationHistory = globalThis.history;
+          const navigate = () => {
+            navigationHistory["replaceState"]({}, "", "/next");
+            setRevision((previous) => previous + 1);
+          };
+          return <button onClick={navigate}>{currentPath}</button>;
+        }`,
+    },
+    {
+      name: "a render-invoked useCallback location reader",
+      source: `import { useCallback, useState } from "react";
+        function MemoizedLocationReader() {
+          const [revision, setRevision] = useState(0);
+          const readPath = useCallback(() => window.location.pathname, []);
+          const navigate = () => {
+            history.pushState({}, "", "/next");
+            setRevision((previous) => previous + 1);
+          };
+          return <button onClick={navigate}>{readPath()}</button>;
+        }`,
+    },
+    {
+      name: "an inline hashchange listener",
+      source: `function HashStatus() {
+        const [revision, setRevision] = useState(0);
+        useEffect(() => {
+          window.addEventListener("hashchange", () => setRevision((previous) => previous + 1));
+        }, []);
+        return <output>{location.hash}</output>;
+      }`,
+    },
+    {
+      name: "an unqualified global popstate listener",
+      source: `function GlobalPopState() {
+        const [revision, setRevision] = useState(0);
+        useEffect(() => {
+          const update = () => setRevision((previous) => previous + 1);
+          addEventListener("popstate", update);
+          return () => removeEventListener("popstate", update);
+        }, []);
+        return <output>{globalThis.location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a multi-hop synchronous navigation helper",
+      source: `function HelperNavigation() {
+        const [revision, setRevision] = useState(0);
+        const commitNavigation = () => history.pushState({}, "", "/next");
+        const navigate = () => commitNavigation();
+        const handleClick = () => {
+          navigate();
+          setRevision((previous) => previous + 1);
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+  ])("stays silent for $name", ({ source }) => {
+    const result = runRule(rerenderStateOnlyInHandlers, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags unrelated write-only state beside a location invalidator", () => {
     const result = runRule(
       rerenderStateOnlyInHandlers,
@@ -870,6 +941,65 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
       source: `function UnrelatedSetter() {
         const [logged, setLogged] = useState(false);
         return <button onClick={() => setLogged(true)}>{window.location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "the history mutation is deferred until after the setter-triggered render",
+      source: `function DeferredNavigation() {
+        const [logged, setLogged] = useState(false);
+        const handleClick = () => {
+          setTimeout(() => window.history.pushState({}, "", "/next"), 0);
+          setLogged(true);
+        };
+        return <button onClick={handleClick}>{window.location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a non-window event target owns the popstate listener",
+      source: `function UserlandPopState() {
+        const [logged, setLogged] = useState(false);
+        useEffect(() => {
+          document.addEventListener("popstate", () => setLogged(true));
+        }, []);
+        return <output>{window.location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a shadowed setter performs the location mutation",
+      source: `function ShadowedSetter() {
+        const [logged, setLogged] = useState(false);
+        const navigate = (setLogged) => {
+          history.pushState({}, "", "/next");
+          setLogged(true);
+        };
+        return <button onClick={() => navigate(console.log)}>{window.location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "an async navigation helper mutates location after suspension",
+      source: `function AsyncNavigation() {
+        const [logged, setLogged] = useState(false);
+        const navigate = async () => {
+          await Promise.resolve();
+          history.pushState({}, "", "/next");
+        };
+        const handleClick = () => {
+          void navigate();
+          setLogged(true);
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a synchronous helper only schedules a deferred location mutation",
+      source: `function DeferredNavigationHelper() {
+        const [logged, setLogged] = useState(false);
+        const navigate = () => setTimeout(() => history.pushState({}, "", "/next"), 0);
+        const handleClick = () => {
+          navigate();
+          setLogged(true);
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
       }`,
     },
   ])("still flags write-only state when $name", ({ source }) => {

@@ -1,6 +1,7 @@
 import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
 import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
 import { executesDuringRender } from "../../../utils/executes-during-render.js";
+import { doNodesCoverEveryPathFromFunctionEntry } from "../../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { getEffectCallback } from "../../../utils/get-effect-callback.js";
 import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../../utils/get-range-start.js";
@@ -568,7 +569,7 @@ const isPossiblyMatchingLocationListenerRemoval = (
     removal.capture === null ||
     registration.capture === removal.capture);
 
-const functionMaySynchronouslyRemoveLocationListener = (
+const functionMustSynchronouslyRemoveLocationListener = (
   functionNode: EsTreeNode,
   registration: LocationListenerRegistration,
   index: LocationInvalidationIndex,
@@ -578,43 +579,30 @@ const functionMaySynchronouslyRemoveLocationListener = (
   if (visitingFunctions.has(functionNode)) return false;
   const nextVisitingFunctions = new Set(visitingFunctions);
   nextVisitingFunctions.add(functionNode);
+  const removalExecutions: EsTreeNode[] = [];
   for (const removal of index.listenerRemovals) {
     if (!isPossiblyMatchingLocationListenerRemoval(registration, removal)) continue;
     if (index.context.cfg.enclosingFunction(removal.callExpression) !== functionNode) continue;
-    if (
-      canExecuteBeforeAsyncSuspension(removal.callExpression, functionNode, index) &&
-      canNodeReachNormalFunctionExit(removal.callExpression, functionNode, index)
-    ) {
-      return true;
+    if (canExecuteBeforeAsyncSuspension(removal.callExpression, functionNode, index)) {
+      removalExecutions.push(removal.callExpression);
     }
   }
   for (const expression of index.expressionsByOwner.get(functionNode) ?? []) {
     const calledFunction = index.calledFunctionByExpression.get(expression);
     if (
       calledFunction &&
-      functionMaySynchronouslyRemoveLocationListener(
+      canExecuteBeforeAsyncSuspension(expression, functionNode, index) &&
+      functionMustSynchronouslyRemoveLocationListener(
         calledFunction,
         registration,
         index,
         nextVisitingFunctions,
       )
     ) {
-      return true;
-    }
-    for (const callbackFunction of index.synchronousCallbacksByExpression.get(expression) ?? []) {
-      if (
-        functionMaySynchronouslyRemoveLocationListener(
-          callbackFunction,
-          registration,
-          index,
-          nextVisitingFunctions,
-        )
-      ) {
-        return true;
-      }
+      removalExecutions.push(expression);
     }
   }
-  return false;
+  return doNodesCoverEveryPathFromFunctionEntry(functionNode, removalExecutions, index.context);
 };
 
 const collectPotentialLocationListenerRemovalExecutions = (
@@ -635,21 +623,14 @@ const collectPotentialLocationListenerRemovalExecutions = (
     const calledFunction = index.calledFunctionByExpression.get(expression);
     if (
       calledFunction &&
-      functionMaySynchronouslyRemoveLocationListener(calledFunction, registration, index, new Set())
+      functionMustSynchronouslyRemoveLocationListener(
+        calledFunction,
+        registration,
+        index,
+        new Set(),
+      )
     ) {
       removalExecutions.add(expression);
-    }
-    for (const callbackFunction of index.synchronousCallbacksByExpression.get(expression) ?? []) {
-      if (
-        functionMaySynchronouslyRemoveLocationListener(
-          callbackFunction,
-          registration,
-          index,
-          new Set(),
-        )
-      ) {
-        removalExecutions.add(expression);
-      }
     }
   }
   return removalExecutions;

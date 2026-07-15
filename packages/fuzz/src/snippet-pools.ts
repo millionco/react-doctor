@@ -10,6 +10,7 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  `const FuzzConditionalLocationListenerRemoval = ({ shouldRemove }) => { const [revision, setRevision] = useState(0); useEffect(() => { const onPopState = () => setRevision((previous) => previous + 1); const unregister = () => { if (shouldRemove) window.removeEventListener("popstate", onPopState); }; window.addEventListener("popstate", onPopState); unregister(); }, [shouldRemove]); return <output>{window.location.pathname}</output>; }; const fuzzConditionalLocationListenerRemovalNode = <FuzzConditionalLocationListenerRemoval shouldRemove={condition} />;`,
   `{ const [fuzzEffectSource, setFuzzEffectSource] = useState(0); const [fuzzEffectTarget, setFuzzEffectTarget] = useState(0); const useFuzzIsomorphicLayoutEffect = typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect; useEffect(() => { setFuzzEffectSource(1); }, []); useFuzzIsomorphicLayoutEffect(() => { setFuzzEffectTarget(fuzzEffectSource + 1); }, [fuzzEffectSource]); }`,
   `useEffect(() => { const handleWheel = () => handle(); window.addEventListener("wheel", handleWheel); return () => window.removeEventListener("wheel", handleWheel); }, []);`,
   `useEffect(() => { const handleWheel = (event) => handle(event); window.addEventListener("wheel", handleWheel); return () => window.removeEventListener("wheel", handleWheel); }, []);`,

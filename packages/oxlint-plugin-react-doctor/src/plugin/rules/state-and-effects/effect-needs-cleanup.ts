@@ -20,6 +20,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
@@ -375,37 +376,6 @@ const doMatchingNodesCoverEveryPathAfterUsage = (
     }
   }
   return matchingBlocks.size > 0;
-};
-
-const doMatchingNodesCoverEveryPathFromFunctionEntry = (
-  owner: EsTreeNode,
-  matchingNodes: ReadonlyArray<EsTreeNode>,
-  context: RuleContext,
-): boolean => {
-  const functionCfg = context.cfg.cfgFor(owner);
-  if (!functionCfg) return false;
-  const matchingBlocks = new Set(
-    matchingNodes.flatMap((matchingNode) => {
-      if (context.cfg.enclosingFunction(matchingNode) !== owner) return [];
-      const matchingBlock = functionCfg.blockOf(matchingNode);
-      return matchingBlock ? [matchingBlock] : [];
-    }),
-  );
-  if (matchingBlocks.size === 0) return false;
-  const visitedBlocks = new Set([functionCfg.entry]);
-  const pendingBlocks = [functionCfg.entry];
-  while (pendingBlocks.length > 0) {
-    const currentBlock = pendingBlocks.pop();
-    if (!currentBlock) break;
-    if (matchingBlocks.has(currentBlock)) continue;
-    for (const edge of currentBlock.successors) {
-      if (edge.to === functionCfg.exit) return false;
-      if (visitedBlocks.has(edge.to)) continue;
-      visitedBlocks.add(edge.to);
-      pendingBlocks.push(edge.to);
-    }
-  }
-  return true;
 };
 
 // A resource registered and then released SYNCHRONOUSLY later in the same
@@ -1119,11 +1089,7 @@ const doesCleanupFunctionReleaseUsage = (
   });
   return (
     didCleanupFunctionMatch ||
-    doMatchingNodesCoverEveryPathFromFunctionEntry(
-      cleanupFunction,
-      matchingLoopOrHelperAnchors,
-      context,
-    )
+    doNodesCoverEveryPathFromFunctionEntry(cleanupFunction, matchingLoopOrHelperAnchors, context)
   );
 };
 
@@ -1215,7 +1181,7 @@ const callbackReturnsCleanupForUsage = (
       matchingCleanupReturns.push(child);
     }
   });
-  return doMatchingNodesCoverEveryPathFromFunctionEntry(callback, matchingCleanupReturns, context);
+  return doNodesCoverEveryPathFromFunctionEntry(callback, matchingCleanupReturns, context);
 };
 
 const findDirectHandleGuardForRelease = (
@@ -1308,7 +1274,7 @@ const hasRerunReleaseBeforeUsage = (
       matchingReleaseAnchors.push(handleGuard ?? child);
     }
   });
-  return doMatchingNodesCoverEveryPathFromFunctionEntry(callback, matchingReleaseAnchors, context);
+  return doNodesCoverEveryPathFromFunctionEntry(callback, matchingReleaseAnchors, context);
 };
 
 const hasStableUnmountCleanupForUsage = (
@@ -1722,7 +1688,7 @@ const hasGuardedDeferredCleanup = (
       }
     });
     if (
-      !doMatchingNodesCoverEveryPathFromFunctionEntry(
+      !doNodesCoverEveryPathFromFunctionEntry(
         cleanupFunction,
         globalReleaseProofs.map((releaseProof) => releaseProof.anchor),
         context,
@@ -2734,7 +2700,7 @@ const effectReturnsRefOwnedCleanup = (
       matchingReturns.push(child);
     }
   });
-  return doMatchingNodesCoverEveryPathFromFunctionEntry(effectCallback, matchingReturns, context);
+  return doNodesCoverEveryPathFromFunctionEntry(effectCallback, matchingReturns, context);
 };
 
 const hasGuaranteedRefOwnedUnmountCleanup = (
@@ -3324,11 +3290,7 @@ const isReactRefCallbackCleanupOwnedByEffect = (
         matchingCalls.push(child);
       }
     });
-    return doMatchingNodesCoverEveryPathFromFunctionEntry(
-      returnedCleanupFunction,
-      matchingCalls,
-      context,
-    );
+    return doNodesCoverEveryPathFromFunctionEntry(returnedCleanupFunction, matchingCalls, context);
   };
   const matchingReturns: EsTreeNode[] = [];
   walkInsideStatementBlocks(retainedFunction.body, (child: EsTreeNode) => {

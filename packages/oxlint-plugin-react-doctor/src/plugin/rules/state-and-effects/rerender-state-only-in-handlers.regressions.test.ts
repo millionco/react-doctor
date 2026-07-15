@@ -1116,6 +1116,84 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
       }`,
     },
     {
+      name: "a listener removal helper is conditional",
+      source: `function ConditionalRemovalHelper({ shouldRemove }) {
+        const [revision, setRevision] = useState(0);
+        const onPopState = () => setRevision((previous) => previous + 1);
+        const unregister = () => {
+          if (shouldRemove) window.removeEventListener("popstate", onPopState);
+        };
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState);
+          unregister();
+        }, [shouldRemove]);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a listener removal helper has an early-return path",
+      source: `function EarlyReturnRemovalHelper({ shouldKeep }) {
+        const [revision, setRevision] = useState(0);
+        const onPopState = () => setRevision((previous) => previous + 1);
+        const unregister = () => {
+          if (shouldKeep) return;
+          window.removeEventListener("popstate", onPopState);
+        };
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState);
+          unregister();
+        }, [shouldKeep]);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a nested listener removal helper remains conditional",
+      source: `function NestedConditionalRemovalHelper({ shouldRemove }) {
+        const [revision, setRevision] = useState(0);
+        const onPopState = () => setRevision((previous) => previous + 1);
+        const maybeUnregister = () => {
+          if (shouldRemove) window.removeEventListener("popstate", onPopState);
+        };
+        const unregister = () => maybeUnregister();
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState);
+          unregister();
+        }, [shouldRemove]);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a listener removal helper defers removal until after suspension",
+      source: `function AsyncRemovalHelper() {
+        const [revision, setRevision] = useState(0);
+        const onPopState = () => setRevision((previous) => previous + 1);
+        const unregister = async () => {
+          await Promise.resolve();
+          window.removeEventListener("popstate", onPopState);
+        };
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState);
+          void unregister();
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a listener removal callback may execute zero times",
+      source: `function OptionalIteratorRemovalHelper({ removals }) {
+        const [revision, setRevision] = useState(0);
+        const onPopState = () => setRevision((previous) => previous + 1);
+        const unregister = () => removals.forEach(() => {
+          window.removeEventListener("popstate", onPopState);
+        });
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState);
+          unregister();
+        }, [removals]);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
       name: "a React event batches the setter before the location mutation",
       source: `function BatchedEventNavigation() {
         const [revision, setRevision] = useState(0);
@@ -1331,6 +1409,36 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
         const [logged, setLogged] = useState(false);
         const onPopState = () => setLogged(true);
         const unregister = () => window.removeEventListener("popstate", onPopState);
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState);
+          unregister();
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "every branch of a removal helper removes the listener",
+      source: `function ExhaustiveRemovalHelper({ capture }) {
+        const [logged, setLogged] = useState(false);
+        const onPopState = () => setLogged(true);
+        const unregister = () => {
+          if (capture) window.removeEventListener("popstate", onPopState, true);
+          else window.removeEventListener("popstate", onPopState, true);
+        };
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState, true);
+          unregister();
+        }, [capture]);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "an unconditional removal helper is reached through another helper",
+      source: `function NestedRemovalHelper() {
+        const [logged, setLogged] = useState(false);
+        const onPopState = () => setLogged(true);
+        const removeListener = () => window.removeEventListener("popstate", onPopState);
+        const unregister = () => removeListener();
         useEffect(() => {
           window.addEventListener("popstate", onPopState);
           unregister();

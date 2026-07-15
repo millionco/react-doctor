@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
+import { isProvenNodeCryptoNamespaceReference } from "../../utils/is-proven-node-crypto-namespace-reference.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -263,7 +264,8 @@ const isImpureCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   for (const [receiverName, receiverMethodNames] of IMPURE_MEMBER_RECEIVERS) {
     if (
       receiverMethodNames.has(callee.property.name) &&
-      isProvenGlobalNamespaceReference(callee.object, receiverName, scopes)
+      (isProvenGlobalNamespaceReference(callee.object, receiverName, scopes) ||
+        (receiverName === "crypto" && isProvenNodeCryptoNamespaceReference(callee.object, scopes)))
     ) {
       return true;
     }

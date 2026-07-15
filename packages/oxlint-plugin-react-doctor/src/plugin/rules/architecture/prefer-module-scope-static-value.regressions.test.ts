@@ -46,6 +46,30 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
 
   it.each([
     [
+      "a namespace import from node:crypto",
+      'import * as nodeCrypto from "node:crypto";',
+      "nodeCrypto.randomUUID()",
+    ],
+    [
+      "a default import from crypto",
+      'import nodeCrypto from "crypto";',
+      "nodeCrypto.randomBytes(16)",
+    ],
+    [
+      "a node:crypto require",
+      'const nodeCrypto = require("node:crypto");',
+      "nodeCrypto.randomUUID()",
+    ],
+    ["a crypto require", 'const nodeCrypto = require("crypto");', "nodeCrypto.randomBytes(16)"],
+  ])("does not flag an object built from %s", (_label, setup, expression) => {
+    const result = run(
+      `${setup} function Row() { const id = { value: ${expression} }; return <li>{String(id.value)}</li>; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
       "a shadowed globalThis",
       'const globalThis = { crypto: { randomUUID: () => "fixed" } };',
       "globalThis.crypto.randomUUID()",
@@ -59,6 +83,16 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
       "a userland receiver chain",
       'const runtime = { crypto: { randomUUID: () => "fixed" } };',
       "runtime.crypto.randomUUID()",
+    ],
+    [
+      "an imported userland crypto lookalike",
+      'import * as nodeCrypto from "custom-crypto";',
+      "nodeCrypto.randomUUID()",
+    ],
+    [
+      "a required userland crypto lookalike",
+      'const nodeCrypto = require("custom-crypto");',
+      "nodeCrypto.randomBytes(16)",
     ],
     [
       "a dynamic namespace member",

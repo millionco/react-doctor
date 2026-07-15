@@ -50,6 +50,14 @@ describe("a11y/no-redundant-roles regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a redundant spinbutton role when the number type is an expression literal", () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const F = () => <input type={"number"} role="spinbutton" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not assume a redundant role when an input type is unresolved", () => {
     const result = runRule(
       noRedundantRoles,

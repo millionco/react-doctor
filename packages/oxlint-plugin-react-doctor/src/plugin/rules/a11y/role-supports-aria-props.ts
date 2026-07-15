@@ -66,7 +66,9 @@ export const roleSupportsAriaProps = defineRule({
       // roles have to be known and all have to lack support for the prop.
       const roleCandidates = roleAttribute
         ? getJsxPropStaticStringValues(roleAttribute, context.scopes)
-        : [getImplicitRole(node, elementType)].filter((role): role is string => role !== null);
+        : [getImplicitRole(node, elementType, context.scopes)].filter(
+            (role): role is string => role !== null,
+          );
       if (roleCandidates === null || roleCandidates.length === 0) return;
       const supportedSets: Array<ReadonlySet<string>> = [];
       for (const role of roleCandidates) {

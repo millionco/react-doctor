@@ -124,6 +124,17 @@ describe("a11y/role-supports-aria-props regressions", () => {
     expect(result.diagnostics[0].message).toContain("role `spinbutton`");
   });
 
+  it("flags unsupported props when the number type is an expression literal", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const NumberInput = ({ expanded }) => (
+        <input type={"number"} aria-expanded={expanded} />
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("role `spinbutton`");
+  });
+
   it("stays silent on range ARIA props supported by slider and explicit spinbutton roles", () => {
     const result = runRule(
       roleSupportsAriaProps,

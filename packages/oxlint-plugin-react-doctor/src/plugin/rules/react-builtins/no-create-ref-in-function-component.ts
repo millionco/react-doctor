@@ -6,6 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isCreateRefResultWriteOnly } from "./is-create-ref-result-write-only.js";
+import { isProvenOneShotTestingLibraryComponent } from "./is-proven-one-shot-testing-library-component.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -71,6 +72,11 @@ export const noCreateRefInFunctionComponent = defineRule({
         isReactHookName(displayName) ||
         functionContainsReactRenderOutput(enclosingFunction, context.scopes, context.cfg);
       if (!isComponentOrHook) return;
+      if (
+        isProvenOneShotTestingLibraryComponent(enclosingFunction, context.filename, context.scopes)
+      ) {
+        return;
+      }
       if (isCreateRefResultWriteOnly(node, context.filename, context.scopes)) return;
 
       context.report({ node, message: MESSAGE });

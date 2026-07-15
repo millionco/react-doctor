@@ -20,8 +20,14 @@ export const expressionReadsPatternBinding = (
   let didReadBinding = false;
   walkAst(expression, (child: EsTreeNode) => {
     if (didReadBinding || !isNodeOfType(child, "Identifier")) return;
-    const symbol = scopes.symbolFor(child);
-    if (symbol && bindingSymbolIds.has(symbol.id)) didReadBinding = true;
+    const reference = scopes.referenceFor(child);
+    if (
+      reference?.flag !== "write" &&
+      reference?.resolvedSymbol &&
+      bindingSymbolIds.has(reference.resolvedSymbol.id)
+    ) {
+      didReadBinding = true;
+    }
   });
   return didReadBinding;
 };

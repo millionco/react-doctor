@@ -38,6 +38,24 @@ describe("server-sequential-independent-await — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("ignores write-only references to the previous result", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `async function load() { let first = await loadFirst(); const second = await loadSecond((first = fallback)); return [first, second]; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("retains read-write references to the previous result", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `async function load() { let first = await loadFirst(); const second = await loadSecond((first += fallback)); return [first, second]; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags an independent visible helper even when its name starts with initialize", () => {
     const result = runRule(
       serverSequentialIndependentAwait,

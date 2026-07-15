@@ -55,6 +55,18 @@ describe("js-performance/async-parallel — regressions", () => {
     expectPass(code);
   });
 
+  it("ignores write-only references to earlier results", () => {
+    expectFail(
+      `async function load() { let first = await loadFirst(); let second = await loadSecond((first = fallback)); const third = await loadThird((second = fallback)); return [first, second, third]; }`,
+    );
+  });
+
+  it("retains read-write references to earlier results", () => {
+    expectPass(
+      `async function load() { let first = await loadFirst(); let second = await loadSecond((first += fallback)); const third = await loadThird((second += fallback)); return [first, second, third]; }`,
+    );
+  });
+
   it("flags independent visible helpers even when they are named query", () => {
     expectFail(
       `const query = async (item) => { await Promise.resolve(); return item * 2; }; async function load() { const first = await query(1); const second = await query(2); const third = await query(3); return [first, second, third]; }`,

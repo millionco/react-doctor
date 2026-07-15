@@ -6,8 +6,10 @@ import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-co
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
+import { isAfterFalsyServerSnapshotEarlyReturn } from "../../utils/is-after-falsy-server-snapshot-early-return.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
+import { isGatedByFalsyServerSnapshot } from "../../utils/is-gated-by-falsy-server-snapshot.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
@@ -275,7 +277,17 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
         return;
       }
       if (isGatedByFalsyInitialState(node, context.scopes)) return;
+      if (isGatedByFalsyServerSnapshot(node, context.scopes, context.filename)) return;
       if (isAfterClientOnlyEarlyReturn(node, componentOrHookNode, context.scopes)) return;
+      if (
+        isAfterFalsyServerSnapshotEarlyReturn(
+          node,
+          componentOrHookNode,
+          context.scopes,
+          context.filename,
+        )
+      )
+        return;
       if (isInsideAvailabilityGuard(node, browserGlobalName, context)) return;
       if (isAfterAvailabilityEarlyExit(node, componentOrHookNode, browserGlobalName, context))
         return;

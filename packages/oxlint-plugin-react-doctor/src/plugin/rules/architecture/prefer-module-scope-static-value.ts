@@ -4,6 +4,8 @@ import { enclosingComponentOrHookScope } from "../../utils/enclosing-component-o
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
+import { isProvenNodeCryptoNamespaceReference } from "../../utils/is-proven-node-crypto-namespace-reference.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -258,9 +260,17 @@ const isImpureCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const callee = node.callee;
   if (isNodeOfType(callee, "Identifier")) return isImpureBareCallee(callee, scopes);
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
-  if (!isNodeOfType(callee.object, "Identifier")) return false;
   if (!isNodeOfType(callee.property, "Identifier")) return false;
-  return Boolean(IMPURE_MEMBER_RECEIVERS.get(callee.object.name)?.has(callee.property.name));
+  for (const [receiverName, receiverMethodNames] of IMPURE_MEMBER_RECEIVERS) {
+    if (
+      receiverMethodNames.has(callee.property.name) &&
+      (isProvenGlobalNamespaceReference(callee.object, receiverName, scopes) ||
+        (receiverName === "crypto" && isProvenNodeCryptoNamespaceReference(callee.object, scopes)))
+    ) {
+      return true;
+    }
+  }
+  return false;
 };
 
 // True when the initializer contains a call to a known-impure global.

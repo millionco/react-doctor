@@ -7,6 +7,10 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import {
+  isProvenGlobalNamespaceReference,
+  isProvenGlobalObjectReference,
+} from "../../utils/is-proven-global-namespace-reference.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -107,55 +111,6 @@ const isSafeFreshNumericArray = (arrayExpression: EsTreeNodeOfType<"ArrayExpress
   return !(didFindPositiveZero && didFindNegativeZero);
 };
 
-const isGlobalObjectReference = (
-  expression: EsTreeNode,
-  scopes: ScopeAnalysis,
-  visitedSymbols = new Set<number>(),
-): boolean => {
-  const strippedExpression = stripParenExpression(expression);
-  if (!isNodeOfType(strippedExpression, "Identifier")) return false;
-  if (
-    (strippedExpression.name === "globalThis" ||
-      strippedExpression.name === "window" ||
-      strippedExpression.name === "self" ||
-      strippedExpression.name === "global") &&
-    scopes.isGlobalReference(strippedExpression)
-  ) {
-    return true;
-  }
-  const symbol = scopes.symbolFor(strippedExpression);
-  if (!symbol?.initializer || symbol.kind !== "const" || visitedSymbols.has(symbol.id)) {
-    return false;
-  }
-  visitedSymbols.add(symbol.id);
-  return isGlobalObjectReference(symbol.initializer, scopes, visitedSymbols);
-};
-
-const resolvesToGlobalNamespace = (
-  expression: EsTreeNode,
-  namespaceName: string,
-  scopes: ScopeAnalysis,
-  visitedSymbols = new Set<number>(),
-): boolean => {
-  const strippedExpression = stripParenExpression(expression);
-  if (isNodeOfType(strippedExpression, "Identifier")) {
-    if (strippedExpression.name === namespaceName && scopes.isGlobalReference(strippedExpression)) {
-      return true;
-    }
-    const symbol = scopes.symbolFor(strippedExpression);
-    if (!symbol?.initializer || symbol.kind !== "const" || visitedSymbols.has(symbol.id)) {
-      return false;
-    }
-    visitedSymbols.add(symbol.id);
-    return resolvesToGlobalNamespace(symbol.initializer, namespaceName, scopes, visitedSymbols);
-  }
-  return (
-    isNodeOfType(strippedExpression, "MemberExpression") &&
-    getStaticPropertyName(strippedExpression) === namespaceName &&
-    isGlobalObjectReference(strippedExpression.object, scopes)
-  );
-};
-
 const resolvesToGlobalMethod = (
   expression: EsTreeNode,
   namespaceName: string,
@@ -181,7 +136,7 @@ const resolvesToGlobalMethod = (
   return (
     isNodeOfType(strippedExpression, "MemberExpression") &&
     methodNames.has(getStaticPropertyName(strippedExpression) ?? "") &&
-    resolvesToGlobalNamespace(strippedExpression.object, namespaceName, scopes)
+    isProvenGlobalNamespaceReference(strippedExpression.object, namespaceName, scopes)
   );
 };
 
@@ -202,7 +157,7 @@ const resolvesToNativeArrayPrototype = (
   if (isNodeOfType(strippedExpression, "MemberExpression")) {
     const propertyName = getStaticPropertyName(strippedExpression);
     if (propertyName === "prototype") {
-      return resolvesToGlobalNamespace(strippedExpression.object, "Array", scopes);
+      return isProvenGlobalNamespaceReference(strippedExpression.object, "Array", scopes);
     }
     return (
       propertyName === "__proto__" &&
@@ -232,7 +187,7 @@ const isGlobalNamespaceReplacementTarget = (
   return (
     isNodeOfType(strippedTarget, "MemberExpression") &&
     getStaticPropertyName(strippedTarget) === namespaceName &&
-    isGlobalObjectReference(strippedTarget.object, scopes)
+    isProvenGlobalObjectReference(strippedTarget.object, scopes)
   );
 };
 
@@ -247,11 +202,11 @@ const isUnsafeBuiltinMemberTarget = (
   if (resolvesToNativeArrayPrototype(strippedTarget.object, scopes)) {
     return propertyName === null || propertyName === "sort";
   }
-  if (resolvesToGlobalNamespace(strippedTarget.object, "Math", scopes)) {
+  if (isProvenGlobalNamespaceReference(strippedTarget.object, "Math", scopes)) {
     return propertyName === null || propertyName === targetFunction;
   }
   return (
-    isGlobalObjectReference(strippedTarget.object, scopes) &&
+    isProvenGlobalObjectReference(strippedTarget.object, scopes) &&
     (propertyName === null || propertyName === "Math")
   );
 };
@@ -266,9 +221,9 @@ const isUnsafeBuiltinMutationApiCall = (
   let propertyName: string | null = null;
   if (resolvesToNativeArrayPrototype(target, scopes)) {
     propertyName = "sort";
-  } else if (resolvesToGlobalNamespace(target, "Math", scopes)) {
+  } else if (isProvenGlobalNamespaceReference(target, "Math", scopes)) {
     propertyName = targetFunction;
-  } else if (isGlobalObjectReference(target, scopes)) {
+  } else if (isProvenGlobalObjectReference(target, scopes)) {
     propertyName = "Math";
   }
   if (!propertyName) return false;
@@ -351,7 +306,7 @@ const hasUnsafeMathBinding = (node: EsTreeNode, scopes: ScopeAnalysis): boolean 
       return !(
         symbol.kind === "const" &&
         symbol.initializer &&
-        resolvesToGlobalNamespace(symbol.initializer, "Math", scopes)
+        isProvenGlobalNamespaceReference(symbol.initializer, "Math", scopes)
       );
     }
     scope = scope.parent;

@@ -1,15 +1,23 @@
 import { BUILTIN_GLOBAL_NAMESPACE_NAMES } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { Reference } from "eslint-scope";
-import { getArgsUpstreamRefs, getCallExpr, getRef, getUpstreamRefs } from "./utils/effect/ast.js";
+import {
+  getArgsUpstreamRefs,
+  getCallExpr,
+  getDownstreamRefs,
+  getRef,
+  getUpstreamRefs,
+} from "./utils/effect/ast.js";
 import { readsPostMountValueThroughLocals } from "./utils/reads-post-mount-through-locals.js";
 import { createStateTriggerReachability } from "./utils/create-state-trigger-reachability.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
@@ -53,6 +61,48 @@ const isBuiltinNamespaceCallee = (callee: EsTreeNode | null | undefined): boolea
     return rootName !== null && BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName);
   }
   return false;
+};
+
+const getReactUseCallbackSource = (
+  reference: Reference,
+  context: RuleContext,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  const identifier = reference.identifier as unknown as EsTreeNode;
+  const symbol = resolveConstIdentifierAlias(identifier, context.scopes);
+  if (!symbol || symbol.kind !== "const" || !symbol.initializer) return null;
+  const initializer = stripParenExpression(symbol.initializer);
+  if (
+    isNodeOfType(initializer, "CallExpression") &&
+    isReactApiCall(initializer, "useCallback", context.scopes, {
+      allowGlobalReactNamespace: true,
+      resolveNamedAliases: true,
+    })
+  ) {
+    return initializer;
+  }
+  return null;
+};
+
+const getDependencyStateRefs = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  dependencyReference: Reference,
+): Reference[] => {
+  const useCallbackCall = getReactUseCallbackSource(dependencyReference, context);
+  if (!useCallbackCall) {
+    return getUpstreamRefs(analysis, dependencyReference).filter((reference) =>
+      isState(analysis, reference),
+    );
+  }
+  const dependencyList = useCallbackCall.arguments?.[1];
+  if (!dependencyList || !isNodeOfType(dependencyList, "ArrayExpression")) {
+    return getUpstreamRefs(analysis, dependencyReference).filter((reference) =>
+      isState(analysis, reference),
+    );
+  }
+  return getDownstreamRefs(analysis, dependencyList)
+    .flatMap((reference) => getUpstreamRefs(analysis, reference))
+    .filter((reference) => isState(analysis, reference));
 };
 
 // A "simple" setter argument only re-derives from values already in the
@@ -138,9 +188,9 @@ export const noChainStateUpdates = defineRule({
       const effectFn = getEffectFn(analysis, node);
       if (!effectFn) return;
 
-      const stateDeps = depsRefs
-        .flatMap((ref) => getUpstreamRefs(analysis, ref))
-        .filter((ref) => isState(analysis, ref));
+      const stateDeps = depsRefs.flatMap((reference) =>
+        getDependencyStateRefs(analysis, context, reference),
+      );
       if (stateDeps.length === 0) return;
       // Every triggering state dep is driven by a timer / listener / observer
       // / subscription — there is no single event handler to set all the

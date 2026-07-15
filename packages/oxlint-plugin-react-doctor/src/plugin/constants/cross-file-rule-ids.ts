@@ -9,7 +9,7 @@
 //
 // Two flavors live here:
 //   - Source-file readers — resolve imports / walk ancestor layouts and read
-//     OTHER source files (`no-barrel-import`, the two `nextjs-*` rules,
+//     OTHER source files (`no-barrel-import`, the `nextjs-*` rules,
 //     `no-mutating-reducer-state`, and `rn-no-raw-text`, which resolves an
 //     imported component to see whether it forwards its children into a
 //     `<Text>` or a non-text host).
@@ -38,6 +38,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "exhaustive-deps",
   "no-barrel-import",
   "nextjs-missing-metadata",
+  "nextjs-no-img-element",
   "nextjs-no-use-search-params-without-suspense",
   "no-dynamic-import-path",
   "no-full-lodash-import",

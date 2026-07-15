@@ -3,6 +3,374 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noEffectChain } from "./no-effect-chain.js";
 
 describe("no-effect-chain — regressions", () => {
+  it("stays silent when a clear-only effect cannot satisfy the downstream truthy guard", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => {
+          if (!isOpen) setError(null);
+        }, [isOpen]);
+        useEffect(() => {
+          if (error) setAnnouncement(error.message);
+        }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ["undefined", "undefined", "if (error) setAnnouncement(error.message)"],
+    ["false", "false", "if (error) setAnnouncement('failed')"],
+    ["zero", "0", "if (error) setAnnouncement('failed')"],
+    ["empty string", "''", "if (error) setAnnouncement('failed')"],
+    ["a conjunction", "null", "error && isOpen && setAnnouncement(error.message)"],
+    ["an optional property", "null", "if (error?.message) setAnnouncement(error.message)"],
+    ["a non-null comparison", "null", "if (error !== null) setAnnouncement(error.message)"],
+    ["a loose non-null comparison", "null", "if (error != null) setAnnouncement(error.message)"],
+    ["an early return", "null", "if (!error) return; setAnnouncement(error.message)"],
+    [
+      "an equality early return",
+      "null",
+      "if (error === null) return; setAnnouncement(error.message)",
+    ],
+  ])("stays silent for a clear-only %s write behind a contradictory guard", (_, value, work) => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => { if (!isOpen) setError(${value}); }, [isOpen]);
+        useEffect(() => { ${work}; }, [error, isOpen]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent through exact const aliases and transparent wrappers", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        const clearedError = null;
+        useEffect(() => { if (!isOpen) setError(clearedError as null); }, [isOpen]);
+        useEffect(() => {
+          const currentError = error;
+          if (currentError) setAnnouncement(currentError.message);
+        }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a destructuring default unknown when the source can supply a truthy value", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen, payload }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        const { nextError = null } = payload;
+        useEffect(() => { if (!isOpen) setError(nextError); }, [isOpen, nextError]);
+        useEffect(() => { if (error) setAnnouncement(error.message); }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for a functional setter that always clears the state", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => { if (!isOpen) setError(() => null); }, [isOpen]);
+        useEffect(() => { if (error) setAnnouncement(error.message); }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["() => { return; }", "() => {}"])(
+    "stays silent for an undefined-returning updater %s",
+    (updater) => {
+      const result = runRule(
+        noEffectChain,
+        `function ErrorDialog({ isOpen }) {
+          const [error, setError] = useState(null);
+          const [announcement, setAnnouncement] = useState('ready');
+          useEffect(() => { if (!isOpen) setError(${updater}); }, [isOpen]);
+          useEffect(() => { if (error) setAnnouncement(error.message); }, [error]);
+          return announcement;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each(["async () => null", "function* () { return null; }"])(
+    "still flags for an object-returning updater %s",
+    (updater) => {
+      const result = runRule(
+        noEffectChain,
+        `function ErrorDialog({ isOpen }) {
+          const [error, setError] = useState(null);
+          const [announcement, setAnnouncement] = useState('ready');
+          useEffect(() => { if (!isOpen) setError(${updater}); }, [isOpen]);
+          useEffect(() => { if (error) setAnnouncement(error.message); }, [error]);
+          return announcement;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("stays silent after a nested branch that always returns for the clear-only value", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen, preferEarlyReturn }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => { if (!isOpen) setError(null); }, [isOpen]);
+        useEffect(() => {
+          if (!error) {
+            if (preferEarlyReturn) return;
+            else return;
+          }
+          setAnnouncement(error.message);
+        }, [error, preferEarlyReturn]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when every call site in one writer effect clears the state", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen, didReset }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => {
+          if (!isOpen) setError(null);
+          if (didReset) setError(() => null);
+        }, [isOpen, didReset]);
+        useEffect(() => { if (error) setAnnouncement(error.message); }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not let a handler-only truthy writer contaminate the clear-only effect edge", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => { if (!isOpen) setError(null); }, [isOpen]);
+        useEffect(() => { if (error) setAnnouncement(error.message); }, [error]);
+        return <button onClick={() => setError(new Error('failed'))}>{announcement}</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the contradictory work lives in an invoked local helper", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        const announceError = () => { if (error) setAnnouncement(error.message); };
+        useEffect(() => { if (!isOpen) setError(null); }, [isOpen]);
+        useEffect(() => { announceError(); }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ["the cleared branch performs work", "setError(null)", "if (!error) setAnnouncement('clear')"],
+    [
+      "one writer can establish a truthy value",
+      "setError(null); setError(new Error('failed'))",
+      "if (error) setAnnouncement(error.message)",
+    ],
+    [
+      "the setter value is opaque",
+      "setError(loadError())",
+      "if (error) setAnnouncement(error.message)",
+    ],
+    [
+      "the functional setter result is state-dependent",
+      "setError((previous) => previous ?? new Error('failed'))",
+      "if (error) setAnnouncement(error.message)",
+    ],
+    [
+      "unrelated downstream work remains reachable",
+      "setError(null)",
+      "recordAttempt(); if (error) setAnnouncement(error.message)",
+    ],
+  ])("still flags when %s", (_, writer, reader) => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => { if (!isOpen) { ${writer}; } }, [isOpen]);
+        useEffect(() => { ${reader}; }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["a property assignment", "if (enabled) document.title = 'ready'"],
+    ["an update", "if (enabled) window.renderCount++"],
+    ["a constructor", "if (enabled) new RenderSession()"],
+    ["a deletion", "if (enabled) delete window.pendingRender"],
+    ["a throw", "if (enabled) throw new Error('failed')"],
+  ])("still flags when downstream work is %s", (_, work) => {
+    const result = runRule(
+      noEffectChain,
+      `function StatusPanel({ active }) {
+        const [enabled, setEnabled] = useState(false);
+        useEffect(() => { if (active) setEnabled(true); }, [active]);
+        useEffect(() => { ${work}; }, [enabled]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a clear-only value cannot reach non-call work", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        useEffect(() => { if (!isOpen) setError(null); }, [isOpen]);
+        useEffect(() => { if (error) document.title = 'failed'; }, [error]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags when a shadowed downstream name makes work reachable", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        const announceError = (error) => { if (error) setAnnouncement(error.message); };
+        useEffect(() => { if (!isOpen) setError(null); }, [isOpen]);
+        useEffect(() => { announceError(new Error('other')); }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags when another sibling effect can satisfy the reader guard", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen, didFail }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => { if (!isOpen) setError(null); }, [isOpen]);
+        useEffect(() => { if (didFail) setError(new Error('failed')); }, [didFail]);
+        useEffect(() => { if (error) setAnnouncement(error.message); }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags when the reader's alternate branch performs work for the cleared value", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => { if (!isOpen) setError(null); }, [isOpen]);
+        useEffect(() => {
+          if (error) setAnnouncement(error.message);
+          else setAnnouncement('clear');
+        }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["a null equality", "if (error === null) setAnnouncement('clear')"],
+    ["a loose null equality", "if (error == null) setAnnouncement('clear')"],
+    ["a negated guard", "if (!error) setAnnouncement('clear')"],
+    ["a disjunction", "if (error || isOpen) setAnnouncement('active')"],
+    ["an opaque predicate", "if (shouldAnnounce(error)) setAnnouncement('active')"],
+  ])("still flags a clear-only write when the reader uses %s", (_, reader) => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => { if (!isOpen) setError(null); }, [isOpen]);
+        useEffect(() => { ${reader}; }, [error, isOpen]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["closed", "closed", "open"],
+    ["idle", "idle", "ready"],
+  ])(
+    "stays silent when a %s discriminant cannot satisfy the reader equality",
+    (_, value, guard) => {
+      const result = runRule(
+        noEffectChain,
+        `function StatusDialog({ isOpen }) {
+        const [status, setStatus] = useState('ready');
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => { if (!isOpen) setStatus('${value}'); }, [isOpen]);
+        useEffect(() => { if (status === '${guard}') setAnnouncement(status); }, [status]);
+        return announcement;
+      }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
   it("stays silent when an effect callback is received as a custom-hook parameter", () => {
     const result = runRule(
       noEffectChain,

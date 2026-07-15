@@ -27,6 +27,135 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag an object built from globalThis.crypto.randomUUID()", () => {
+    const result = run(
+      `function Row() { const id = { value: globalThis.crypto.randomUUID() }; return <li>{id.value}</li>; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["window", "self"])(
+    "does not flag an object built from %s.crypto.randomUUID()",
+    (globalObjectName) => {
+      const result = run(
+        `function Row() { const id = { value: ${globalObjectName}.crypto.randomUUID() }; return <li>{id.value}</li>; }`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each([
+    [
+      "a namespace import from node:crypto",
+      'import * as nodeCrypto from "node:crypto";',
+      "nodeCrypto.randomUUID()",
+    ],
+    [
+      "a default import from crypto",
+      'import nodeCrypto from "crypto";',
+      "nodeCrypto.randomBytes(16)",
+    ],
+    [
+      "a const alias of a node:crypto import",
+      'import * as nodeCrypto from "node:crypto"; const runtimeCrypto = nodeCrypto;',
+      "runtimeCrypto.randomUUID()",
+    ],
+    [
+      "a node:crypto require",
+      'const nodeCrypto = require("node:crypto");',
+      "nodeCrypto.randomUUID()",
+    ],
+    ["a crypto require", 'const nodeCrypto = require("crypto");', "nodeCrypto.randomBytes(16)"],
+    [
+      "an asserted node:crypto require",
+      'const nodeCrypto = require("node:crypto") as typeof import("node:crypto");',
+      "nodeCrypto.randomUUID()",
+    ],
+    [
+      "a parenthesized non-null crypto require",
+      'const nodeCrypto = (require("crypto")!);',
+      "nodeCrypto.randomBytes(16)",
+    ],
+    [
+      "transitive const aliases of a crypto require",
+      'const nodeCrypto = require("crypto"); const cryptoAlias = nodeCrypto; const runtimeCrypto = cryptoAlias;',
+      "runtimeCrypto.randomBytes(16)",
+    ],
+  ])("does not flag an object built from %s", (_label, setup, expression) => {
+    const result = run(
+      `${setup} function Row() { const id = { value: ${expression} }; return <li>{String(id.value)}</li>; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a shadowed globalThis",
+      'const globalThis = { crypto: { randomUUID: () => "fixed" } };',
+      "globalThis.crypto.randomUUID()",
+    ],
+    [
+      "a shadowed direct namespace",
+      'const crypto = { randomUUID: () => "fixed" };',
+      "crypto.randomUUID()",
+    ],
+    [
+      "a userland receiver chain",
+      'const runtime = { crypto: { randomUUID: () => "fixed" } };',
+      "runtime.crypto.randomUUID()",
+    ],
+    [
+      "a const alias of a userland crypto lookalike",
+      'const localCrypto = { randomUUID: () => "fixed" }; const runtimeCrypto = localCrypto;',
+      "runtimeCrypto.randomUUID()",
+    ],
+    [
+      "a mutable alias of a node:crypto import",
+      'import * as nodeCrypto from "node:crypto"; let runtimeCrypto = nodeCrypto;',
+      "runtimeCrypto.randomUUID()",
+    ],
+    [
+      "a mutable alias of a crypto require",
+      'const nodeCrypto = require("crypto"); let runtimeCrypto = nodeCrypto;',
+      "runtimeCrypto.randomBytes(16)",
+    ],
+    [
+      "cyclic const aliases",
+      "const firstCrypto = secondCrypto; const secondCrypto = firstCrypto;",
+      "firstCrypto.randomUUID()",
+    ],
+    [
+      "an imported userland crypto lookalike",
+      'import * as nodeCrypto from "custom-crypto";',
+      "nodeCrypto.randomUUID()",
+    ],
+    [
+      "a required userland crypto lookalike",
+      'const nodeCrypto = require("custom-crypto");',
+      "nodeCrypto.randomBytes(16)",
+    ],
+    [
+      "an asserted userland crypto lookalike",
+      'const nodeCrypto = require("custom-crypto") as CryptoLike;',
+      "nodeCrypto.randomBytes(16)",
+    ],
+    [
+      "a dynamic namespace member",
+      'const namespaceName = "crypto";',
+      "globalThis[namespaceName].randomUUID()",
+    ],
+    [
+      "a dynamic method member",
+      'const methodName = "randomUUID";',
+      "globalThis.crypto[methodName]()",
+    ],
+  ])("still flags a pure object built from %s", (_label, setup, expression) => {
+    const result = run(
+      `${setup} function Row() { const id = { value: ${expression} }; return <li>{id.value}</li>; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag an array built from nanoid() (impure id generator)", () => {
     const result = run(
       `import { nanoid } from "nanoid"; function Row() { const ids = [nanoid(), nanoid()]; return <div>{ids.join()}</div>; }`,

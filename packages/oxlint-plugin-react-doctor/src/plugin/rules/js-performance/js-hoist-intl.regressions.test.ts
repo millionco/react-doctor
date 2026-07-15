@@ -21,6 +21,49 @@ describe("js-performance/js-hoist-intl — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("does not assign native Intl semantics to local lookalikes", () => {
+    for (const code of [
+      `class NumberFormat {
+  constructor(public readonly token: string) {}
+}
+const Intl = { NumberFormat };
+export const buildLocalFormatters = (values: string[]): NumberFormat[] =>
+  values.map((value) => new Intl.NumberFormat(value));`,
+      `function buildFormatter(Intl) { return new Intl.NumberFormat("local"); }`,
+      `class Intl { static NumberFormat = class {}; }
+function buildFormatter() { return new Intl.NumberFormat(); }`,
+      `function Intl() {}
+Intl.NumberFormat = class {};
+function buildFormatter() { return new Intl.NumberFormat(); }`,
+      `import Intl from "custom-intl";
+function buildFormatter() { return new Intl.NumberFormat(); }`,
+      `import * as Intl from "custom-intl";
+function buildFormatter() { return new Intl.NumberFormat(); }`,
+      `import { formatterNamespace as Intl } from "custom-intl";
+function buildFormatter() { return new Intl.NumberFormat(); }`,
+      `const { Intl } = customRuntime;
+function buildFormatter() { return new Intl.NumberFormat(); }`,
+      `function buildFormatter() {
+  const Intl = { NumberFormat: class {} };
+  return new Intl.NumberFormat();
+}`,
+    ]) {
+      const result = runRule(jsHoistIntl, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
+  it("retains native Intl diagnostics beside a shadowed control", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `function buildNativeFormatter() { return new Intl.NumberFormat("en-US"); }
+function buildLocalFormatter(Intl) { return new Intl.NumberFormat("local"); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   // Bugbot: pushing a new Intl into an array is unkeyed accumulation, not a
   // memo — it must still be flagged.
   it("still flags a new Intl pushed into an array (not a keyed memo)", () => {

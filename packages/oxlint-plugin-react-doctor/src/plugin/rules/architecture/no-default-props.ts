@@ -43,7 +43,8 @@ const isStableClassReceiver = (
   ) {
     return true;
   }
-  return Boolean(symbol.kind === "const" && isNodeOfType(symbol.initializer, "ClassExpression"));
+  const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
+  return Boolean(symbol.kind === "const" && isNodeOfType(initializer, "ClassExpression"));
 };
 
 export const noDefaultProps = defineRule({

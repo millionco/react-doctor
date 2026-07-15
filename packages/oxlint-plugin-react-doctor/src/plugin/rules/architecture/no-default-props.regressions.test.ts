@@ -74,6 +74,18 @@ const Wordcloud = class WordcloudComponent extends Component {};
 Wordcloud.defaultProps = { height: 400 };`,
       ],
       [
+        "type-asserted class expression",
+        `import { Component } from "react";
+const Wordcloud = (class extends Component {}) as typeof Component;
+Wordcloud.defaultProps = { height: 400 };`,
+      ],
+      [
+        "satisfies-wrapped class expression",
+        `import { Component } from "react";
+const Wordcloud = (class extends Component {}) satisfies typeof Component;
+Wordcloud.defaultProps = { height: 400 };`,
+      ],
+      [
         "stable const alias chain",
         `import { Component } from "react";
 class WordcloudClass extends Component {}

@@ -667,6 +667,42 @@ describe("no-effect-chain — regressions", () => {
     },
   );
 
+  it.each(["focus", "measure", "select"])(
+    "keeps a non-DOM %s method conservative",
+    (methodName) => {
+      const result = runRule(
+        noEffectChain,
+        `function DerivedSelection({ controller }) {
+          const [source, setSource] = useState(0);
+          useEffect(() => { setSource(1); }, []);
+          useEffect(() => { controller.${methodName}(source); }, [controller, source]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("still reports when committed DOM work is mixed with a local state update", () => {
+    const result = runRule(
+      noEffectChain,
+      `function MixedChain() {
+        const [isMounted, setIsMounted] = useState(false);
+        const [status, setStatus] = useState("idle");
+        const nodeRef = useRef(null);
+        useEffect(() => { setIsMounted(true); }, []);
+        useEffect(() => {
+          nodeRef.current?.focus();
+          setStatus(isMounted ? "ready" : "idle");
+        }, [isMounted]);
+        return <div>{status}</div>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps a dynamic method name conservative", () => {
     const result = runRule(
       noEffectChain,

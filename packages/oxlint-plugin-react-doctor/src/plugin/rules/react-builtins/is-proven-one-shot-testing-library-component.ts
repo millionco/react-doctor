@@ -176,6 +176,9 @@ const hasProvenOneShotComponentBody = (
   if (!isFunctionLike(functionNode) || !isNodeOfType(functionNode.body, "BlockStatement")) {
     return false;
   }
+  if (!functionNode.params.every((parameter) => isNodeOfType(parameter, "Identifier"))) {
+    return false;
+  }
   const statements = functionNode.body.body;
   if (statements.length < 2) return false;
   const returnStatement = statements.at(-1);
@@ -273,7 +276,10 @@ const isSafeRenderResultBinding = (pattern: EsTreeNode): boolean => {
   if (!isNodeOfType(pattern, "ObjectPattern")) return false;
   return pattern.properties.every((property) => {
     if (!isNodeOfType(property, "Property") || property.computed) return false;
-    return getStaticPropertyKeyName(property) !== "rerender";
+    return (
+      isNodeOfType(property.value, "Identifier") &&
+      getStaticPropertyKeyName(property) !== "rerender"
+    );
   });
 };
 

@@ -127,6 +127,33 @@ it("captures every render method", () => {
     expect(restResult.diagnostics).toHaveLength(1);
   });
 
+  it("accepts renamed query bindings but reports executable result defaults", () => {
+    const renamedResult = runOneShotRule(`import React from "react";
+import { render } from "@testing-library/react";
+import { FocusTrap } from "./focus-trap";
+it("renames a query", () => {
+  const FocusTarget = () => {
+    const targetRef = React.createRef<HTMLButtonElement>();
+    return <FocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FocusTrap>;
+  };
+  const { getByText: query } = render(<FocusTarget />);
+  void query;
+});`);
+    const defaultResult = runOneShotRule(`import React from "react";
+import { render } from "@testing-library/react";
+import { FocusTrap } from "./focus-trap";
+it("runs a result default", () => {
+  const FocusTarget = () => {
+    const targetRef = React.createRef<HTMLButtonElement>();
+    return <FocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FocusTrap>;
+  };
+  const { missing = rerenderRoot() } = render(<FocusTarget />);
+  void missing;
+});`);
+    expect(renamedResult.diagnostics).toEqual([]);
+    expect(defaultResult.diagnostics).toHaveLength(1);
+  });
+
   it("reports render options that can reuse or wrap the root", () => {
     const sources = [
       `const container = document.createElement("div"); render(<FocusTarget />, { container });`,
@@ -263,6 +290,28 @@ import { FocusTrap } from "./focus-trap";
 it("mounts a rerenderable component", () => {
   const FocusTarget = () => {
     ${extraBody}
+    const targetRef = React.createRef<HTMLButtonElement>();
+    return <FocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FocusTrap>;
+  };
+  render(<FocusTarget />);
+});`);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("reports executable or complex component parameters", () => {
+    const parameterLists = [
+      `(props = observeRender())`,
+      `({ target = observeRender() } = {})`,
+      `({ target }: { target?: string })`,
+      `(...props: unknown[])`,
+    ];
+    for (const parameterList of parameterLists) {
+      const result = runOneShotRule(`import React from "react";
+import { render } from "@testing-library/react";
+import { FocusTrap } from "./focus-trap";
+it("mounts a component with complex parameters", () => {
+  const FocusTarget = ${parameterList} => {
     const targetRef = React.createRef<HTMLButtonElement>();
     return <FocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FocusTrap>;
   };

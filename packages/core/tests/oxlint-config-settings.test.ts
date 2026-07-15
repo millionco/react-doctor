@@ -13,6 +13,7 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   framework: "react-native",
   hasTypeScript: true,
   hasReactCompiler: false,
+  hasReactCompilerLintPlugin: false,
   hasTanStackQuery: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
@@ -93,6 +94,19 @@ describe("createOxlintConfig settings", () => {
     expect(Object.keys(config.rules).some((ruleKey) => ruleKey.startsWith("react-hooks-js/"))).toBe(
       true,
     );
+  });
+
+  it("keeps compatibility lint rules without enabling transform-only rules", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({ hasReactCompilerLintPlugin: true }),
+    });
+
+    expect(hasReactHooksJsEntry(config)).toBe(true);
+    expect(Object.keys(config.rules).some((ruleKey) => ruleKey.startsWith("react-hooks-js/"))).toBe(
+      true,
+    );
+    expect(config.rules).not.toHaveProperty("react-doctor/react-compiler-no-manual-memoization");
   });
 
   it("keeps opt-out (defaultEnabled: false) rules off by default", () => {

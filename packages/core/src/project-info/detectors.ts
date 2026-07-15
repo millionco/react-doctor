@@ -272,11 +272,12 @@ export const frameworkMergeRank = (framework: Framework): number => {
   return MOBILE_FRAMEWORKS.has(framework) ? 2 : 1;
 };
 
-const REACT_COMPILER_PACKAGES = new Set([
+const REACT_COMPILER_TRANSFORM_PACKAGES = new Set([
   "babel-plugin-react-compiler",
   "react-compiler-runtime",
-  "eslint-plugin-react-compiler",
 ]);
+
+const REACT_COMPILER_LINT_PACKAGES = new Set(["eslint-plugin-react-compiler"]);
 
 const NEXT_CONFIG_FILENAMES = [
   "next.config.js",
@@ -308,7 +309,7 @@ const VITE_CONFIG_FILENAMES = [
 const EXPO_APP_CONFIG_FILENAMES = ["app.json", "app.config.js", "app.config.ts"];
 
 const REACT_COMPILER_PACKAGE_REFERENCE_PATTERN =
-  /babel-plugin-react-compiler|react-compiler-runtime|eslint-plugin-react-compiler|["']react-compiler["']/;
+  /babel-plugin-react-compiler|react-compiler-runtime|["']react-compiler["']/;
 const REACT_COMPILER_ENABLED_FLAG_PATTERN = /["']?reactCompiler["']?\s*:\s*(?:true\b|\{)/;
 
 // `output: "export"` (static HTML export) in next.config.*. The leading
@@ -316,15 +317,36 @@ const REACT_COMPILER_ENABLED_FLAG_PATTERN = /["']?reactCompiler["']?\s*:\s*(?:tr
 // `experimental.output` or `outputFileTracingRoot`.
 const STATIC_EXPORT_OUTPUT_PATTERN = /(?:^|[^.\w])["']?output["']?\s*:\s*["']export["']/m;
 
-const hasCompilerPackage = (packageJson: PackageJson): boolean => {
+const hasCompilerPackage = (
+  packageJson: PackageJson,
+  compilerPackages: ReadonlySet<string>,
+): boolean => {
   const allDependencies = {
     ...packageJson.peerDependencies,
     ...packageJson.dependencies,
     ...packageJson.devDependencies,
   };
-  return Object.keys(allDependencies).some((packageName) =>
-    REACT_COMPILER_PACKAGES.has(packageName),
-  );
+  return Object.keys(allDependencies).some((packageName) => compilerPackages.has(packageName));
+};
+
+const hasCompilerPackageInAncestors = (
+  directory: string,
+  compilerPackages: ReadonlySet<string>,
+): boolean => {
+  if (isProjectBoundary(directory)) return false;
+
+  let ancestorDirectory = path.dirname(directory);
+  while (ancestorDirectory !== path.dirname(ancestorDirectory)) {
+    const ancestorPackagePath = path.join(ancestorDirectory, "package.json");
+    if (isFile(ancestorPackagePath)) {
+      const ancestorPackageJson = readPackageJson(ancestorPackagePath);
+      if (hasCompilerPackage(ancestorPackageJson, compilerPackages)) return true;
+    }
+    if (isProjectBoundary(ancestorDirectory)) return false;
+    ancestorDirectory = path.dirname(ancestorDirectory);
+  }
+
+  return false;
 };
 
 const hasCompilerInConfigFile = (filePath: string): boolean => {
@@ -340,28 +362,22 @@ const hasCompilerInConfigFiles = (directory: string, filenames: string[]): boole
   filenames.some((filename) => hasCompilerInConfigFile(path.join(directory, filename)));
 
 export const detectReactCompiler = (directory: string, packageJson: PackageJson): boolean => {
-  if (hasCompilerPackage(packageJson)) return true;
+  if (hasCompilerPackage(packageJson, REACT_COMPILER_TRANSFORM_PACKAGES)) return true;
 
   if (hasCompilerInConfigFiles(directory, NEXT_CONFIG_FILENAMES)) return true;
   if (hasCompilerInConfigFiles(directory, BABEL_CONFIG_FILENAMES)) return true;
   if (hasCompilerInConfigFiles(directory, VITE_CONFIG_FILENAMES)) return true;
   if (hasCompilerInConfigFiles(directory, EXPO_APP_CONFIG_FILENAMES)) return true;
 
-  if (isProjectBoundary(directory)) return false;
-
-  let ancestorDirectory = path.dirname(directory);
-  while (ancestorDirectory !== path.dirname(ancestorDirectory)) {
-    const ancestorPackagePath = path.join(ancestorDirectory, "package.json");
-    if (isFile(ancestorPackagePath)) {
-      const ancestorPackageJson = readPackageJson(ancestorPackagePath);
-      if (hasCompilerPackage(ancestorPackageJson)) return true;
-    }
-    if (isProjectBoundary(ancestorDirectory)) return false;
-    ancestorDirectory = path.dirname(ancestorDirectory);
-  }
-
-  return false;
+  return hasCompilerPackageInAncestors(directory, REACT_COMPILER_TRANSFORM_PACKAGES);
 };
+
+export const detectReactCompilerLintPlugin = (
+  directory: string,
+  packageJson: PackageJson,
+): boolean =>
+  hasCompilerPackage(packageJson, REACT_COMPILER_LINT_PACKAGES) ||
+  hasCompilerPackageInAncestors(directory, REACT_COMPILER_LINT_PACKAGES);
 
 // Whether `next.config.*` opts into static HTML export (`output: "export"`).
 // Reuses the same next.config filenames + raw-text read as the React Compiler

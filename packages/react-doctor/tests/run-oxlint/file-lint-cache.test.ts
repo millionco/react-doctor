@@ -37,6 +37,7 @@ interface ScanOptions {
   perFileLintCacheEnabled?: boolean;
   respectInlineDisables?: boolean;
   hasReactCompiler?: boolean;
+  hasReactCompilerLintPlugin?: boolean;
   includePaths?: string[];
   onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
   onFileCoverage?: (coverage: RunOxlintFileCoverage) => void;
@@ -65,6 +66,7 @@ const scan = (projectDir: string, options: ScanOptions = {}): Promise<Diagnostic
       rootDirectory: projectDir,
       framework: "nextjs",
       hasReactCompiler: options.hasReactCompiler ?? false,
+      hasReactCompilerLintPlugin: options.hasReactCompilerLintPlugin ?? false,
     }),
     userConfig: USER_CONFIG,
     includePaths: options.includePaths,
@@ -269,6 +271,21 @@ export const App = () => <div><Button /></div>;
     });
     // react-hooks-js can fail to load mid-run; a zero-miss warm scan would never
     // re-trigger that, so React Compiler projects bypass the cache entirely.
+    expect(cacheStatsCalled).toBe(false);
+    expect(diagnostics.some((diagnostic) => diagnostic.rule === "no-barrel-import")).toBe(true);
+  });
+
+  it("bypasses the cache when only React Compiler compatibility lint is installed", async () => {
+    const projectDir = setupFixture("react-compiler-lint-bypass", BARREL_INDEX);
+    let cacheStatsCalled = false;
+    const diagnostics = await scan(projectDir, {
+      perFileLintCacheEnabled: true,
+      hasReactCompilerLintPlugin: true,
+      onCacheStats: () => {
+        cacheStatsCalled = true;
+      },
+    });
+
     expect(cacheStatsCalled).toBe(false);
     expect(diagnostics.some((diagnostic) => diagnostic.rule === "no-barrel-import")).toBe(true);
   });

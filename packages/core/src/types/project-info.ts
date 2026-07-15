@@ -16,6 +16,7 @@ export interface ProjectInfo {
   framework: Framework;
   hasTypeScript: boolean;
   hasReactCompiler: boolean;
+  hasReactCompilerLintPlugin?: boolean;
   hasTanStackQuery: boolean;
   /**
    * `true` when the project or a workspace declares a Vite-based SSR runtime

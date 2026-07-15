@@ -114,6 +114,7 @@ export interface CollectRuleHitsOptions {
    */
   framework?: ProjectInfo["framework"];
   hasReactCompiler?: boolean;
+  hasReactCompilerLintPlugin?: boolean;
   hasTanStackQuery?: boolean;
   hasSsrDependency?: boolean;
 }
@@ -182,6 +183,7 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     framework,
     hasTypeScript: options.hasTypeScript ?? true,
     hasReactCompiler: options.hasReactCompiler ?? false,
+    hasReactCompilerLintPlugin: options.hasReactCompilerLintPlugin ?? false,
     hasTanStackQuery: options.hasTanStackQuery ?? false,
     hasSsrDependency: options.hasSsrDependency ?? false,
     nextjsVersion,

@@ -131,7 +131,10 @@ export const createOxlintConfig = ({
   const reactHooksJsPlugin =
     disableReactHooksJsPlugin || ruleSelection === "sidecar"
       ? null
-      : resolveReactHooksJsPlugin(project.hasReactCompiler, customRulesOnly);
+      : resolveReactHooksJsPlugin(
+          project.hasReactCompiler || project.hasReactCompilerLintPlugin === true,
+          customRulesOnly,
+        );
   const reactCompilerRules = reactHooksJsPlugin
     ? applyRuleSeverityControls(
         filterRulesToAvailable(

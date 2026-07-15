@@ -1816,7 +1816,7 @@ const effectHasCleanupForUsage = (
   if (
     usage.kind === "subscribe" &&
     findEnclosingFunction(usage.node) === callback &&
-    doesResourceResultEscape(usage.node, true, context) &&
+    doesResourceResultEscape(usage.node, true, true, context) &&
     isCleanupReturningSubscribeLikeCallExpression(usage.node)
   ) {
     return true;
@@ -2796,9 +2796,11 @@ const isUseSyncExternalStoreSubscribeFunction = (
 
 const doesResourceResultEscape = (
   resourceNode: EsTreeNode,
+  allowReturnedResourceEscape: boolean,
   allowConciseReturnEscape: boolean,
   context: RuleContext,
 ): boolean => {
+  if (!allowReturnedResourceEscape) return false;
   let currentNode = resourceNode;
   let parentNode = currentNode.parent;
   while (parentNode) {
@@ -2863,7 +2865,7 @@ const findRetainedFunctionLeak = (
   // A registration returned directly from the function escapes to the
   // caller, which owns the handle.
   let leak: SubscribeLikeUsage | null = null;
-  const allowConciseReturnEscape =
+  const allowReturnedResourceEscape =
     options?.allowReturnedResourceEscape !== false &&
     !retainedFunction.async &&
     !isInlineRetainedHandlerFunction(retainedFunction, context);
@@ -2880,7 +2882,7 @@ const findRetainedFunctionLeak = (
     if (leak !== null) return false;
     if (isFunctionLike(child)) return false;
 
-    if (isSocketConstruction(child) && !doesResourceResultEscape(child, false, context)) {
+    if (isSocketConstruction(child) && !doesResourceResultEscape(child, true, false, context)) {
       const socketUsage: SubscribeLikeUsage = {
         kind: "socket",
         node: child,
@@ -2906,7 +2908,7 @@ const findRetainedFunctionLeak = (
           child.callee.name === "setTimeout" &&
           context.scopes.isGlobalReference(child.callee))) &&
       (options?.allowReturnedTimerEscape === false ||
-        !doesResourceResultEscape(child, allowConciseReturnEscape, context))
+        !doesResourceResultEscape(child, true, allowReturnedResourceEscape, context))
     ) {
       const timerUsage: SubscribeLikeUsage = {
         kind: "timer",
@@ -2926,7 +2928,12 @@ const findRetainedFunctionLeak = (
 
     if (
       isSubscribeOrObserveCall(child) &&
-      (!doesResourceResultEscape(child, allowConciseReturnEscape, context) ||
+      (!doesResourceResultEscape(
+        child,
+        allowReturnedResourceEscape,
+        allowReturnedResourceEscape,
+        context,
+      ) ||
         (options?.requireCallableReturnedResource === true &&
           !isCleanupReturningSubscribeLikeCallExpression(child)))
     ) {

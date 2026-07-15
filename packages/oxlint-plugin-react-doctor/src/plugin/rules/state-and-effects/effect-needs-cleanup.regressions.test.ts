@@ -4417,6 +4417,43 @@ export const DiscardedDisposer = ({ subscription }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports a bound disposer when the effect discards it", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const DiscardedDisposer = ({ subscription }) => {
+  const callbackRef = useRef(() => () => {});
+  callbackRef.current = () => {
+    const unsubscribe = subscription.subscribe();
+    return unsubscribe;
+  };
+  useEffect(() => {
+    callbackRef.current();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a block-returned disposer from an async ref callback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const AsyncDisposer = ({ subscription }) => {
+  const callbackRef = useRef(async () => {});
+  callbackRef.current = async () => {
+    return subscription.subscribe();
+  };
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts a direct disposer returned by the effect", () => {
     const result = runRule(
       effectNeedsCleanup,

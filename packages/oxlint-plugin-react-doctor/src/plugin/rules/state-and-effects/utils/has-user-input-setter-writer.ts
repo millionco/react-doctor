@@ -1,6 +1,7 @@
 import type { Reference, Variable } from "eslint-scope";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import {
   getFunctionBindingIdentifier,
   getFunctionBindingName,
@@ -11,7 +12,6 @@ import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
-import { TRANSPARENT_EXPRESSION_WRAPPER_TYPES } from "../../../utils/strip-paren-expression.js";
 import { isEventHandlerName } from "./event-handler-reference.js";
 import { getCallExpr } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
@@ -148,16 +148,8 @@ const getImmutableFunctionVariable = (
   return null;
 };
 
-const ascendTransparentExpression = (node: EsTreeNode): EsTreeNode => {
-  let expression = node;
-  while (expression.parent && TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(expression.parent.type)) {
-    expression = expression.parent;
-  }
-  return expression;
-};
-
 const getJsxEventValueAttribute = (identifier: EsTreeNode): EsTreeNode | null => {
-  const expression = ascendTransparentExpression(identifier);
+  const expression = findTransparentExpressionRoot(identifier);
   const expressionContainer = expression.parent;
   if (
     !isNodeOfType(expressionContainer, "JSXExpressionContainer") ||
@@ -178,7 +170,7 @@ const getInlineJsxEventCallbackAttribute = (callExpression: EsTreeNode): EsTreeN
 };
 
 const isReactHookDependencyReference = (identifier: EsTreeNode): boolean => {
-  const expression = ascendTransparentExpression(identifier);
+  const expression = findTransparentExpressionRoot(identifier);
   const dependencyArray = expression.parent;
   if (
     !isNodeOfType(dependencyArray, "ArrayExpression") ||

@@ -995,4 +995,62 @@ describe("a11y/control-has-associated-label regressions", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("accepts component-wrapped Label with static htmlFor matching control id (shadcn/Radix pattern)", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        import { Label } from '@/components/ui/label';
+
+        const Demo = () => (
+          <div className="space-y-2">
+            <Label htmlFor="departmentId">Department</Label>
+            <select id="departmentId" name="departmentId">
+              <option value="">All</option>
+            </select>
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts component-wrapped Label with dynamic htmlFor matching control id", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        import { Label } from '@/components/ui/label';
+
+        const Demo = ({ fieldId }) => (
+          <div className="space-y-2">
+            <Label htmlFor={fieldId}>Department</Label>
+            <select id={fieldId} name="department">
+              <option value="">All</option>
+            </select>
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts FormLabel component with htmlFor matching control id", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        import { FormLabel } from '@/components/form';
+
+        const Demo = () => (
+          <div>
+            <FormLabel htmlFor="email">Email</FormLabel>
+            <input id="email" type="email" name="email" />
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
 });

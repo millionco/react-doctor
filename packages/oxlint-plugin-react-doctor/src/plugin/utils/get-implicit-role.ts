@@ -1,13 +1,33 @@
 import { VALID_ARIA_ROLES } from "../constants/aria-roles.js";
+import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { getJsxPropStaticStringValues } from "./get-jsx-prop-static-string-values.js";
 import { getJsxPropStringValue } from "./get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "./has-jsx-prop-ignore-case.js";
+
+const getInputTypeImplicitRole = (inputTypeValue: string): string => {
+  const inputType = inputTypeValue.toLowerCase();
+  if (
+    inputType === "button" ||
+    inputType === "image" ||
+    inputType === "reset" ||
+    inputType === "submit"
+  ) {
+    return "button";
+  }
+  if (inputType === "checkbox") return "checkbox";
+  if (inputType === "number") return "spinbutton";
+  if (inputType === "radio") return "radio";
+  if (inputType === "range") return "slider";
+  return "textbox";
+};
 
 // Port of `get_implicit_role` from OXC. Returns the implicit ARIA
 // role for an HTML element, or null if there isn't one.
 export const getImplicitRole = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
   elementType: string,
+  scopes: ScopeAnalysis,
 ): string | null => {
   const propStringValue = (propName: string): string | null => {
     const attribute = hasJsxPropIgnoreCase(node.attributes, propName);
@@ -69,19 +89,18 @@ export const getImplicitRole = (
       break;
     }
     case "input": {
-      const inputType = propStringValue("type");
-      if (inputType === null) implicit = "textbox";
-      else if (
-        inputType === "button" ||
-        inputType === "image" ||
-        inputType === "reset" ||
-        inputType === "submit"
-      )
-        implicit = "button";
-      else if (inputType === "checkbox") implicit = "checkbox";
-      else if (inputType === "radio") implicit = "radio";
-      else if (inputType === "range") implicit = "slider";
-      else implicit = "textbox";
+      const inputTypeAttribute = hasJsxPropIgnoreCase(node.attributes, "type");
+      if (!inputTypeAttribute) {
+        implicit = "textbox";
+        break;
+      }
+      const inputTypeValues = getJsxPropStaticStringValues(inputTypeAttribute, scopes);
+      if (inputTypeValues === null) {
+        implicit = "";
+        break;
+      }
+      const implicitRoles = new Set(inputTypeValues.map(getInputTypeImplicitRole));
+      implicit = implicitRoles.size === 1 ? (implicitRoles.values().next().value ?? "") : "";
       break;
     }
     case "li":

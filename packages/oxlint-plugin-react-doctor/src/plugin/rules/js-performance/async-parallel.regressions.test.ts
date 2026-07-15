@@ -15,6 +15,58 @@ const expectPass = (code: string): void => {
 };
 
 describe("js-performance/async-parallel — regressions", () => {
+  it("flags awaits when callback parameters shadow earlier results", () => {
+    expectFail(
+      `declare const loadFirst: () => Promise<number>; declare const loadSecond: (selector: (first: number) => number) => Promise<number>; declare const loadThird: (selector: (second: number) => number) => Promise<number>; export const loadAll = async (): Promise<number[]> => { const first = await loadFirst(); const second = await loadSecond((first) => first + 1); const third = await loadThird((second) => second + 1); return [first, second, third]; };`,
+    );
+  });
+
+  it.each([
+    ["(first) => first + 1", "(second) => second + 1"],
+    [
+      "({ first }: { first: number }) => first + 1",
+      "({ second }: { second: number }) => second + 1",
+    ],
+    [
+      "() => { const first = 1; return first + 1; }",
+      "() => { const second = 2; return second + 1; }",
+    ],
+    [
+      "Promise.resolve(1).then((first) => first + 1)",
+      "Promise.resolve(2).then((second) => second + 1)",
+    ],
+    [
+      "Promise.reject(1).catch((first) => first + 1)",
+      "Promise.reject(2).catch((second) => second + 1)",
+    ],
+    ["function (first) { return first + 1; }", "function (second) { return second + 1; }"],
+  ])("does not fabricate dependencies from nested bindings", (secondArgument, thirdArgument) => {
+    expectFail(
+      `async function load() { const first = await loadFirst(); const second = await loadSecond(${secondArgument}); const third = await loadThird(${thirdArgument}); return [first, second, third]; }`,
+    );
+  });
+
+  it.each([
+    `async function load() { const first = await loadFirst(); const second = await loadSecond((value) => value + first); const third = await loadThird(); return [first, second, third]; }`,
+    `async function load() { const first = await loadFirst(); const second = await loadSecond({ [first]: true }); const third = await loadThird(); return [first, second, third]; }`,
+    `async function load() { const first = await loadFirst(); const second = await first.loadSecond(); const third = await loadThird(); return [first, second, third]; }`,
+    `async function load() { const first = await loadFirst(); const second = await loadSecond(); const third = await loadThird((value) => value + second); return [first, second, third]; }`,
+  ])("retains genuine symbol dependencies", (code) => {
+    expectPass(code);
+  });
+
+  it("ignores write-only references to earlier results", () => {
+    expectFail(
+      `async function load() { let first = await loadFirst(); let second = await loadSecond((first = fallback)); const third = await loadThird((second = fallback)); return [first, second, third]; }`,
+    );
+  });
+
+  it("retains read-write references to earlier results", () => {
+    expectPass(
+      `async function load() { let first = await loadFirst(); let second = await loadSecond((first += fallback)); const third = await loadThird((second += fallback)); return [first, second, third]; }`,
+    );
+  });
+
   it("flags independent visible helpers even when they are named query", () => {
     expectFail(
       `const query = async (item) => { await Promise.resolve(); return item * 2; }; async function load() { const first = await query(1); const second = await query(2); const third = await query(3); return [first, second, third]; }`,

@@ -220,6 +220,267 @@ describe("architecture/no-render-in-render — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag a helper that only stores an uninvoked nested custom hook", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          const useUnusedState = () => useState(0);
+          void useUnusedState;
+          return <div>stable</div>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag uninvoked nested function declarations", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          function useUnusedState() { return useState(0); }
+          return <div>{useUnusedState.name}</div>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag hooks stored in deferred callbacks", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          const useLater = () => useState(0);
+          setTimeout(useLater, 0);
+          Promise.resolve().then(useLater);
+          return <button onClick={useLater}>Open</button>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag hooks stored in returned cleanup closures", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          const subscribe = () => () => useState(0);
+          void subscribe;
+          return <div>stable</div>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags hooks reached through an invoked nested helper", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          const buildPanel = () => {
+            const [count] = useState(0);
+            return <div>{count}</div>;
+          };
+          return buildPanel();
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags hooks reached through multi-hop const aliases", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          const buildPanel = () => {
+            const [count] = useState(0);
+            return <div>{count}</div>;
+          };
+          const firstAlias = buildPanel;
+          const secondAlias = firstAlias;
+          return secondAlias();
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags hooks reached through an IIFE", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => (() => {
+          const [count] = useState(0);
+          return <div>{count}</div>;
+        })();
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags hooks reached through a conditional local invocation", () => {
+    const result = run(
+      `const Panel = ({ open }) => {
+        const renderPanel = () => {
+          const buildPanel = () => {
+            const [count] = useState(0);
+            return <div>{count}</div>;
+          };
+          return open ? buildPanel() : null;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags hooks reached through a named synchronous array callback", () => {
+    const result = run(
+      `const Panel = ({ items }) => {
+        const renderPanel = () => {
+          const buildItem = (item) => {
+            const [selected] = useState(false);
+            return <li>{String(selected)} {item}</li>;
+          };
+          return <ul>{items.map(buildItem)}</ul>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags hooks reached through inline synchronous callbacks", () => {
+    const result = run(
+      `const Panel = ({ items }) => {
+        const renderPanel = () => <ul>{items.map((item) => {
+          const [selected] = useState(false);
+          return <li>{String(selected)} {item}</li>;
+        })}</ul>;
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags hooks reached through an inline Promise executor", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          new Promise((resolve) => {
+            const [count] = useState(0);
+            resolve(count);
+          });
+          return <div>panel</div>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags hooks reached through a named Promise executor", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          const initializePanel = (resolve) => {
+            const [count] = useState(0);
+            resolve(count);
+          };
+          new Promise(initializePanel);
+          return <div>panel</div>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat shadowed Promise constructors as synchronous", () => {
+    const result = run(
+      `class Promise {
+        constructor(executor) {
+          queueMicrotask(executor);
+        }
+      }
+      const Panel = () => {
+        const renderPanel = () => {
+          new Promise(() => {
+            const [count] = useState(0);
+            return count;
+          });
+          return <div>panel</div>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("preserves render-phase hook callback positives", () => {
+    const memoResult = run(
+      `const Panel = () => {
+        const renderPanel = () => useMemo(() => {
+          const [count] = useState(0);
+          return <div>{count}</div>;
+        }, []);
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    const initializerResult = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          const [value] = useState(() => {
+            const [count] = useState(0);
+            return count;
+          });
+          return <div>{value}</div>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(memoResult.diagnostics).toHaveLength(1);
+    expect(initializerResult.diagnostics).toHaveLength(1);
+  });
+
+  it("does not chase mutable local callback bindings", () => {
+    const result = run(
+      `const Panel = ({ replacement }) => {
+        const renderPanel = () => {
+          let buildPanel = () => {
+            const [count] = useState(0);
+            return <div>{count}</div>;
+          };
+          buildPanel = replacement;
+          return buildPanel();
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags directly invoked PascalCase locals instead of treating them as mounted children", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          const HiddenPanel = () => {
+            const [count] = useState(0);
+            return <div>{count}</div>;
+          };
+          return HiddenPanel();
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags when a nested NON-component closure calls hooks during the helper call", () => {
     const result = run(
       `const renderRows = (items) => {

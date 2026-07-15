@@ -87,8 +87,11 @@ const getTestCallbackBaseIdentifier = (
     if (!memberName || !TEST_CALLBACK_MEMBER_NAMES.has(memberName)) return null;
     return getTestCallbackBaseIdentifier(unwrappedCallee.object);
   }
-  if (!isNodeOfType(unwrappedCallee, "CallExpression")) return null;
-  const tableBuilderCallee = stripParenExpression(unwrappedCallee.callee);
+  const tableBuilderCallee = isNodeOfType(unwrappedCallee, "CallExpression")
+    ? stripParenExpression(unwrappedCallee.callee)
+    : isNodeOfType(unwrappedCallee, "TaggedTemplateExpression")
+      ? stripParenExpression(unwrappedCallee.tag)
+      : null;
   if (!isNodeOfType(tableBuilderCallee, "MemberExpression")) return null;
   if (getStaticPropertyName(tableBuilderCallee) !== TEST_CALLBACK_TABLE_MEMBER_NAME) return null;
   return getTestCallbackBaseIdentifier(tableBuilderCallee.object);

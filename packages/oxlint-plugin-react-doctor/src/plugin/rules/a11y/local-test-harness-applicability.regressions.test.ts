@@ -225,6 +225,24 @@ describe("local unit-test harness accessibility applicability", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent for an inline fixture in a tagged table-driven test callback", () => {
+    const result = runRule(
+      altText,
+      `import { test as verify } from "vitest";
+      import { ProductComponent } from "../product-component";
+      verify.each\`
+        layout
+        portrait
+      \`("forwards $layout media", () => {
+        render(<ProductComponent media={<img src="/fixture.png" />} />);
+      });`,
+      { filename: "/repo/src/fixture.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still reports an imported component's own mapped accessibility violation", () => {
     const result = runRule(
       interactiveSupportsFocus,
@@ -248,6 +266,24 @@ describe("local unit-test harness accessibility applicability", () => {
       `import { ProductComponent } from "../product-component";
       const test = { each: () => (_name, callback) => callback() };
       test.each([["portrait"]])("forwards media", () => {
+        render(<ProductComponent media={<img src="/subject.png" />} />);
+      });`,
+      { filename: "/repo/src/product-component.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a tagged table callback reached through a shadowed userland function", () => {
+    const result = runRule(
+      altText,
+      `import { ProductComponent } from "../product-component";
+      const test = { each: () => (_name, callback) => callback() };
+      test.each\`
+        layout
+        portrait
+      \`("forwards media", () => {
         render(<ProductComponent media={<img src="/subject.png" />} />);
       });`,
       { filename: "/repo/src/product-component.test.tsx" },

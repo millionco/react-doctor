@@ -36,6 +36,11 @@ export const databaseUrl = process.env.DATABASE_URL;`;
     expect(maskSourceComments("client.js.map", content)).toBe(content);
   });
 
+  it("returns source without possible comment markers unchanged", () => {
+    const content = `export const databaseUrl = process.env.DATABASE_URL;`;
+    expect(maskSourceComments("client.js", content)).toBe(content);
+  });
+
   it("returns malformed source unchanged", () => {
     const content = `const value = process.env.DATABASE_URL ??? // docs`;
     expect(maskSourceComments("client.ts", content)).toBe(content);

@@ -116,4 +116,42 @@ export const client = {};`,
     });
     expect(findings).toHaveLength(0);
   });
+
+  it.each([
+    "process/* keep */.env.DATABASE_URL",
+    "process./* keep */env.DATABASE_URL",
+    "process// keep\n.env.DATABASE_URL",
+    "import/* keep */.meta.env.DATABASE_URL",
+    "import./* keep */meta.env.DATABASE_URL",
+    "process . env.DATABASE_URL",
+    "import . meta . env.DATABASE_URL",
+  ])("keeps executable env access live across JavaScript trivia: %s", (expression) => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/generated/client.js",
+      content: `export const databaseUrl = ${expression};`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each(["process/* keep */.env.DATABASE_URL", "import/* keep */.meta.env.DATABASE_URL"])(
+    "ignores comment-only trivia-separated env examples: %s",
+    (expression) => {
+      const findings = runScanRule(artifactEnvLeak, {
+        relativePath: "src/generated/client.ts",
+        content: `/** Example: ${expression} */\nexport const client = {};`,
+        isGeneratedBundle: true,
+      });
+      expect(findings).toHaveLength(0);
+    },
+  );
+
+  it("does not turn unrelated context and secret-name tokens into a finding", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/generated/client.js",
+      content: `export const processName = "process";\nexport const keyName = "DATABASE_URL";`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

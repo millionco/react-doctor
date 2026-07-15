@@ -120,6 +120,24 @@ describe("no-effect-chain — regressions", () => {
     },
   );
 
+  it.each(["async () => null", "function* () { return null; }"])(
+    "still flags for an object-returning updater %s",
+    (updater) => {
+      const result = runRule(
+        noEffectChain,
+        `function ErrorDialog({ isOpen }) {
+          const [error, setError] = useState(null);
+          const [announcement, setAnnouncement] = useState('ready');
+          useEffect(() => { if (!isOpen) setError(${updater}); }, [isOpen]);
+          useEffect(() => { if (error) setAnnouncement(error.message); }, [error]);
+          return announcement;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("stays silent after a nested branch that always returns for the clear-only value", () => {
     const result = runRule(
       noEffectChain,

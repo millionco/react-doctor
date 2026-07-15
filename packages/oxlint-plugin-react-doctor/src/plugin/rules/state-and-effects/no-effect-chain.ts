@@ -297,7 +297,7 @@ const readStaticUpdaterReturnValue = (
   updater: EsTreeNode,
   scopes: ScopeAnalysis,
 ): StaticEffectStateValue | null => {
-  if (!isFunctionLike(updater)) return null;
+  if (!isFunctionLike(updater) || updater.async || updater.generator) return null;
   if (!isNodeOfType(updater.body, "BlockStatement")) {
     return readStaticEffectValue(updater.body, scopes, null, null);
   }

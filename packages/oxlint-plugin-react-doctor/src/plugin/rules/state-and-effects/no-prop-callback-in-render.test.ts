@@ -486,4 +486,58 @@ describe("no-prop-callback-in-render", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it.each([
+    [
+      "a PascalCase plugin installer",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       const EventsHarnessPlugin = ({ addModule }: PluginProps): void => {
+         addModule("test-events");
+       };
+       const installPlugin = (props: PluginProps): void => {
+         EventsHarnessPlugin(props);
+       };`,
+      0,
+    ],
+    [
+      "a camelCase plugin installer",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       const eventsHarnessPlugin = ({ addModule }: PluginProps): void => {
+         addModule("test-events");
+       };
+       const installPlugin = (props: PluginProps): void => {
+         eventsHarnessPlugin(props);
+       };`,
+      0,
+    ],
+    [
+      "a genuine component that calls a prop callback during render",
+      `interface RenderPositiveProps {
+         onRender: () => void;
+       }
+       const RenderPositive = ({ onRender }: RenderPositiveProps) => {
+         onRender();
+         return <div />;
+       };`,
+      1,
+    ],
+    [
+      "a genuine component that defers a prop callback to an event",
+      `interface EventNegativeProps {
+         onRender: () => void;
+       }
+       const EventNegative = ({ onRender }: EventNegativeProps) => (
+         <button type="button" onClick={onRender}>Run</button>
+       );`,
+      0,
+    ],
+  ])("classifies component ownership for %s", (_caseName, sourceCode, expectedDiagnosticCount) => {
+    const result = run(sourceCode);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedDiagnosticCount);
+  });
 });

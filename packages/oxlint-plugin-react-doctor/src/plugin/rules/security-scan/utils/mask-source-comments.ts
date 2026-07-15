@@ -2,12 +2,32 @@ import { parseSync } from "oxc-parser";
 import { resolveLang } from "../../../utils/parse-source-file.js";
 
 const SOURCE_FILE_EXTENSION_PATTERN = /\.(?:[cm]?[jt]sx?)$/i;
-const POSSIBLE_SOURCE_COMMENT_PATTERN =
-  /\/\/|\/\*|<!--|(?:^|[\r\n\u2028\u2029])[^\S\r\n\u2028\u2029]*-->/;
+const POSSIBLE_SOURCE_COMMENT_PATTERN = /\/\/|\/\*|<!--/;
+const LINE_TERMINATORS = new Set(["\r", "\n", "\u2028", "\u2029"]);
+
+const hasPossibleAnnexBClosingComment = (content: string): boolean => {
+  let searchIndex = 0;
+  while (searchIndex < content.length) {
+    const closingCommentIndex = content.indexOf("-->", searchIndex);
+    if (closingCommentIndex === -1) return false;
+    let prefixIndex = closingCommentIndex - 1;
+    while (prefixIndex >= 0 && !LINE_TERMINATORS.has(content[prefixIndex] ?? "")) {
+      if (content[prefixIndex]?.trim() !== "") break;
+      prefixIndex -= 1;
+    }
+    if (prefixIndex < 0 || LINE_TERMINATORS.has(content[prefixIndex] ?? "")) return true;
+    searchIndex = closingCommentIndex + 3;
+  }
+  return false;
+};
 
 export const maskSourceComments = (relativePath: string, content: string): string | undefined => {
   if (!SOURCE_FILE_EXTENSION_PATTERN.test(relativePath)) return content;
-  if (!content.startsWith("#!") && !POSSIBLE_SOURCE_COMMENT_PATTERN.test(content)) {
+  if (
+    !content.startsWith("#!") &&
+    !POSSIBLE_SOURCE_COMMENT_PATTERN.test(content) &&
+    !hasPossibleAnnexBClosingComment(content)
+  ) {
     return content;
   }
   try {

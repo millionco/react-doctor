@@ -82,6 +82,11 @@ export const databaseUrl = process.env.DATABASE_URL;`;
     expect(maskSourceComments("client.js", content)).toBe(content);
   });
 
+  it("does not treat an HTML --!> close as an Annex-B JavaScript comment", () => {
+    const content = `--!> process.env.DATABASE_URL`;
+    expect(maskSourceComments("client.js", content)).toBe(content);
+  });
+
   it("returns non-source artifacts unchanged", () => {
     const content = `{"source":"/* process.env.DATABASE_URL */"}`;
     expect(maskSourceComments("client.js.map", content)).toBe(content);

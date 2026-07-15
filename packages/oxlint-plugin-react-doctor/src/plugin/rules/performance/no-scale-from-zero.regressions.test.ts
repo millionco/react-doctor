@@ -93,14 +93,14 @@ describe("performance/no-scale-from-zero — regressions", () => {
     const result = run(`
       import * as ClientMotion from "motion/react-client";
       import * as LegacyClientMotion from "framer-motion/client";
-      import * as MinimalMotion from "motion/react-mini";
+      import * as CompactMotion from "motion/react-m";
       import { div as MotionDiv } from "framer-motion/m";
 
       export const Examples = () => (
         <>
           <ClientMotion.div initial={{ scale: 0 }} />
           <LegacyClientMotion.span exit={{ scale: 0 }} />
-          <MinimalMotion.section initial={{ scale: 0 }} />
+          <CompactMotion.section initial={{ scale: 0 }} />
           <MotionDiv initial={{ scale: 0 }} />
         </>
       );
@@ -108,6 +108,23 @@ describe("performance/no-scale-from-zero — regressions", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(4);
+  });
+
+  it("does not treat animation-only mini entrypoints as tag namespaces", () => {
+    const result = run(`
+      import * as FramerMini from "framer-motion/mini";
+      import * as MotionMini from "motion/react-mini";
+
+      export const Examples = () => (
+        <>
+          <FramerMini.div initial={{ scale: 0 }} />
+          <MotionMini.section initial={{ scale: 0 }} />
+        </>
+      );
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("does not treat a root module namespace as a tag namespace", () => {

@@ -12,10 +12,8 @@ const MOTION_FACTORY_MODULES: ReadonlySet<string> = new Set(["framer-motion", "m
 const MOTION_TAG_NAMESPACE_MODULES: ReadonlySet<string> = new Set([
   "framer-motion/client",
   "framer-motion/m",
-  "framer-motion/mini",
   "motion/react-client",
   "motion/react-m",
-  "motion/react-mini",
 ]);
 const MOTION_FACTORY_EXPORTS: ReadonlySet<string> = new Set(["m", "motion"]);
 

@@ -33,7 +33,7 @@ import { isProvenNativeReadMethod } from "./is-proven-native-read-method.js";
 // `eslint-plugin-react-you-might-not-need-an-effect`. See `./ast.ts`
 // for the matching analyzer-side port.
 
-const KNOWN_PURE_HOC_NAMES = new Set(["memo", "forwardRef"]);
+const KNOWN_COMPONENT_WRAPPER_NAMES = new Set(["memo", "forwardRef", "observer"]);
 
 const startsWithUppercase = (name: string | undefined): boolean =>
   Boolean(name && name.length > 0 && name[0] >= "A" && name[0] <= "Z");
@@ -66,7 +66,7 @@ const isReactFunctionalHOC = (
   const isWrappedInline = (): boolean => {
     if (!isNodeOfType(init, "CallExpression")) return false;
     if (!isNodeOfType(init.callee, "Identifier")) return false;
-    if (KNOWN_PURE_HOC_NAMES.has(init.callee.name)) return false;
+    if (KNOWN_COMPONENT_WRAPPER_NAMES.has(init.callee.name)) return false;
     const firstArg = init.arguments?.[0];
     if (!firstArg) return false;
     return (
@@ -100,7 +100,7 @@ const isReactFunctionalHOC = (
         : isNodeOfType(callee, "CallExpression") && isNodeOfType(callee.callee, "Identifier")
           ? callee.callee.name
           : null;
-      if (calleeName != null && !KNOWN_PURE_HOC_NAMES.has(calleeName)) {
+      if (calleeName != null && !KNOWN_COMPONENT_WRAPPER_NAMES.has(calleeName)) {
         return true;
       }
     }

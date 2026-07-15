@@ -62,12 +62,23 @@ const isConstAliasOfGlobalArrayFrom = (node: EsTreeNode, scopes: ScopeAnalysis):
 };
 
 // A nested function usually runs on a user event, not during the render
-// pass — but three shapes DO execute while rendering: an immediately
+// pass — but four shapes DO execute while rendering: an immediately
 // invoked function (`{(() => new Date().toLocaleString())()}`), a
 // useMemo factory (`{useMemo(() => Date.now(), [])}`), and a synchronous
-// iteration callback (`{rows.map((row) => …)}`).
+// iteration callback (`{rows.map((row) => …)}`), or a global Promise
+// constructor executor (`new Promise((resolve) => resolve())`).
 export const executesDuringRender = (functionNode: EsTreeNode, scopes?: ScopeAnalysis): boolean => {
   const parent = functionNode.parent;
+  if (isNodeOfType(parent, "NewExpression")) {
+    const callee = stripParenExpression(parent.callee);
+    return Boolean(
+      scopes &&
+      parent.arguments?.[0] === functionNode &&
+      isNodeOfType(callee, "Identifier") &&
+      callee.name === "Promise" &&
+      scopes.isGlobalReference(callee),
+    );
+  }
   if (!isNodeOfType(parent, "CallExpression")) return false;
   if (parent.callee === functionNode) return true;
   const isRenderPhaseHook = scopes

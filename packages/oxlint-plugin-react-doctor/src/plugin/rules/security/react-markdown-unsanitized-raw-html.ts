@@ -2,6 +2,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analy
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
@@ -163,24 +164,6 @@ const collectPluginEntries = (
   return entries;
 };
 
-const findEffectiveExplicitAttribute = (
-  attributes: EsTreeNode[],
-  attributeName: string,
-): EsTreeNodeOfType<"JSXAttribute"> | null => {
-  for (let attributeIndex = attributes.length - 1; attributeIndex >= 0; attributeIndex -= 1) {
-    const attribute = attributes[attributeIndex];
-    if (!attribute || isNodeOfType(attribute, "JSXSpreadAttribute")) return null;
-    if (
-      isNodeOfType(attribute, "JSXAttribute") &&
-      isNodeOfType(attribute.name, "JSXIdentifier") &&
-      attribute.name.name === attributeName
-    ) {
-      return attribute;
-    }
-  }
-  return null;
-};
-
 const getAttributeExpression = (attribute: EsTreeNodeOfType<"JSXAttribute">): EsTreeNode | null => {
   if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return null;
   return isNodeOfType(attribute.value.expression, "JSXEmptyExpression")
@@ -270,7 +253,7 @@ const hasDynamicUnsanitizedChildren = (
       return !isStaticOrSanitizedMarkdownExpression(child.expression, scopes, new Set());
     });
   }
-  const childrenAttribute = findEffectiveExplicitAttribute(openingElement.attributes, "children");
+  const childrenAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "children");
   if (!childrenAttribute) return false;
   const childrenExpression = getAttributeExpression(childrenAttribute);
   return Boolean(
@@ -288,7 +271,7 @@ export const reactMarkdownUnsanitizedRawHtml = defineRule({
   create: skipNonProductionFiles((context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isReactMarkdownComponent(node.name, context.scopes)) return;
-      const pluginsAttribute = findEffectiveExplicitAttribute(node.attributes, "rehypePlugins");
+      const pluginsAttribute = getAuthoritativeJsxAttribute(node.attributes, "rehypePlugins");
       if (!pluginsAttribute) return;
       const pluginsExpression = getAttributeExpression(pluginsAttribute);
       if (!pluginsExpression) return;

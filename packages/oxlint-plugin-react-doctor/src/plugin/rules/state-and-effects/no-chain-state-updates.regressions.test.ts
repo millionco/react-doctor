@@ -1562,4 +1562,71 @@ export const Search = () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("reports state chains through an isomorphic layout effect alias", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import * as React from "react";
+      const useIsomorphicLayoutEffect =
+        typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
+
+      const NavigationTree = () => {
+        const [activeId, setActiveId] = React.useState("");
+        const [selectedId, setSelectedId] = React.useState("");
+        const clearLater = () => setTimeout(() => setActiveId(""), 100);
+        const onChange = (event) => setActiveId(event.target.value);
+        useIsomorphicLayoutEffect(() => {
+          setSelectedId("");
+        }, [activeId]);
+        return <input value={selectedId} onChange={onChange} onBlur={clearLater} />;
+      };`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports the same state chain in a direct layout effect", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useLayoutEffect, useState } from "react";
+      const NavigationTree = () => {
+        const [activeId, setActiveId] = useState("");
+        const [selectedId, setSelectedId] = useState("");
+        const clearLater = () => setTimeout(() => setActiveId(""), 100);
+        const onChange = (event) => setActiveId(event.target.value);
+        useLayoutEffect(() => {
+          setSelectedId("");
+        }, [activeId]);
+        return <input value={selectedId} onChange={onChange} onBlur={clearLater} />;
+      };`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays conservative when an effect alias can select an opaque hook", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useEffect, useState } from "react";
+      const useMaybeEffect = Math.random() > 0.5 ? useEffect : useCustomEffect;
+      const NavigationTree = () => {
+        const [activeId, setActiveId] = useState("");
+        const [selectedId, setSelectedId] = useState("");
+        const clearLater = () => setTimeout(() => setActiveId(""), 100);
+        const onChange = (event) => setActiveId(event.target.value);
+        useMaybeEffect(() => {
+          setSelectedId("");
+        }, [activeId]);
+        return <input value={selectedId} onChange={onChange} onBlur={clearLater} />;
+      };`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

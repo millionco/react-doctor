@@ -1,4 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { HTML_TAGS } from "../../constants/html-tags.js";
+import { SVG_TAGS } from "../../constants/svg-tags.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { hasDirective } from "../../utils/has-directive.js";
@@ -8,6 +11,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 
 const COMPARISON_OPERATORS = new Set(["===", "!==", "==", "!=", "<", "<=", ">", ">="]);
 
@@ -193,6 +198,42 @@ const isLikelyNumericExpression = (node: EsTreeNode): boolean => {
   return false;
 };
 
+const isRenderedInsideIntrinsicDomHost = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  let ancestor = node.parent;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "JSXAttribute")) {
+      const isChildrenAttribute =
+        isNodeOfType(ancestor.name, "JSXIdentifier") && ancestor.name.name === "children";
+      if (!isChildrenAttribute) return false;
+    }
+
+    if (
+      isNodeOfType(ancestor, "JSXElement") &&
+      !isJsxFragmentElement(ancestor.openingElement, scopes)
+    ) {
+      const elementName = ancestor.openingElement.name;
+      if (!isNodeOfType(elementName, "JSXIdentifier")) return false;
+      return HTML_TAGS.has(elementName.name) || SVG_TAGS.has(elementName.name);
+    }
+
+    if (
+      isNodeOfType(ancestor, "CallExpression") ||
+      isNodeOfType(ancestor, "NewExpression") ||
+      isNodeOfType(ancestor, "VariableDeclarator") ||
+      isNodeOfType(ancestor, "AssignmentExpression") ||
+      isNodeOfType(ancestor, "Property") ||
+      isFunctionLike(ancestor) ||
+      isNodeOfType(ancestor, "Program")
+    ) {
+      return false;
+    }
+
+    ancestor = ancestor.parent;
+  }
+
+  return false;
+};
+
 // HACK: `{count && <Component />}` renders the raw number `0` when
 // `count` is 0. On React Native, rendering a bare number outside
 // `<Text>` causes a hard production crash. This rule flags `&&`
@@ -229,6 +270,7 @@ export const rnNoFalsyAndRender = defineRule({
           isNodeOfType(parent, "JSXExpressionContainer") ||
           (isNodeOfType(parent, "LogicalExpression") && parent.operator === "&&");
         if (!isInsideJsx) return;
+        if (isRenderedInsideIntrinsicDomHost(node, context.scopes)) return;
 
         const left = node.left;
         if (!left) return;

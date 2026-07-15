@@ -156,6 +156,20 @@ export const ObservedRef = ({ label, observe }: ObservedRefProps) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports comparison against another ref identity", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = ({ previousTarget }) => {
+  const target = createRef();
+  const didRefIdentityChange = target !== previousTarget;
+  return <input ref={target} data-changed={didRefIdentityChange} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for an observed useRef equivalent", () => {
     const result = runRule(
       noCreateRefInFunctionComponent,
@@ -663,6 +677,24 @@ export const Input = () => { const target = createRef(); const render = () => <U
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports a ref passed through a component binding reassigned before render", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+let Sink = ({ target }) => <input ref={target} />;
+Sink = ({ target, observe }) => {
+  observe(target);
+  return null;
+};
+export const Input = ({ observe }) => {
+  const target = createRef();
+  return <Sink target={target} observe={observe} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for intrinsic ref props in closed JSX spreads", () => {
     const result = runRule(
       noCreateRefInFunctionComponent,
@@ -702,6 +734,19 @@ export const Input = () => {
 };`,
     );
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports callback-ref writes deferred through another closure", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = () => {
+  const target = createRef();
+  return <input ref={(node) => { queueMicrotask(() => { target.current = node; }); }} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("reports a callback ref that reads the fresh ref", () => {
@@ -760,6 +805,20 @@ export const Input = ({ span }) => {
   return <><Tag ref={first} /><UnionTag ref={second} /><LegacyInput ref={third} /></>;
 };`,
     );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("recognizes props.children forwarded during the same render", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+const Wrapper = (props) => <section>{props.children}</section>;
+export const Input = () => {
+  const target = createRef();
+  return <Wrapper><input ref={target} /></Wrapper>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
 

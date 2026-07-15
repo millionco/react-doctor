@@ -77,10 +77,25 @@ export const isSafeCreateRefCallbackCurrentWrite = (
   ) {
     return false;
   }
-  let enclosingFunction = findEnclosingFunction(referenceNode);
-  while (enclosingFunction) {
-    if (isInlineIntrinsicRefCallback(enclosingFunction, scopes)) return true;
-    enclosingFunction = findEnclosingFunction(enclosingFunction);
+  const enclosingFunction = findEnclosingFunction(referenceNode);
+  if (!enclosingFunction) return false;
+  if (isInlineIntrinsicRefCallback(enclosingFunction, scopes)) return true;
+  if (
+    !isFunctionLike(enclosingFunction) ||
+    enclosingFunction.async ||
+    enclosingFunction.generator
+  ) {
+    return false;
   }
-  return false;
+  const callbackFunction = findEnclosingFunction(enclosingFunction);
+  if (!callbackFunction || !isInlineIntrinsicRefCallback(callbackFunction, scopes)) return false;
+  const cleanupFunction = findTransparentExpressionRoot(enclosingFunction);
+  const cleanupContainer = cleanupFunction.parent;
+  return Boolean(
+    (isNodeOfType(cleanupContainer, "ReturnStatement") &&
+      cleanupContainer.argument === cleanupFunction &&
+      findEnclosingFunction(cleanupContainer) === callbackFunction) ||
+    (isNodeOfType(callbackFunction, "ArrowFunctionExpression") &&
+      callbackFunction.body === cleanupFunction),
+  );
 };

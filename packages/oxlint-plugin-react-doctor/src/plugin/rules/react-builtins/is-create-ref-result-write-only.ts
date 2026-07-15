@@ -1,24 +1,22 @@
 import { CREATE_REF_PROP_FLOW_MAX_DEPTH } from "../../constants/thresholds.js";
 import { analyzeScopes } from "../../semantic/scope-analysis.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { collectFunctionChildrenReferences } from "../../utils/collect-function-children-references.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
-import { getImportedName } from "../../utils/get-imported-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenReactClassComponent as isProvenReactClassNode } from "../../utils/is-proven-react-class-component.js";
 import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx-element.js";
 import { walkAst } from "../../utils/walk-ast.js";
-import {
-  isImportedFromReact,
-  isReactApiCall,
-  isReactNamespaceImport,
-} from "../../utils/is-react-api-call.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import {
   resolveCrossFileValueExportWithFilePath,
   type ResolvedCrossFileValueExport,
@@ -173,7 +171,14 @@ const unwrapProvenReactHocFunction = (
   if (isFunctionLike(current)) return current;
   if (isNodeOfType(current, "Identifier")) {
     const symbol = scopes.symbolFor(current);
-    if (!symbol || visitedSymbolIds.has(symbol.id) || !symbol.initializer) return null;
+    if (
+      !symbol ||
+      visitedSymbolIds.has(symbol.id) ||
+      !symbol.initializer ||
+      hasSymbolWriteBefore(symbol, current, scopes)
+    ) {
+      return null;
+    }
     visitedSymbolIds.add(symbol.id);
     return unwrapProvenReactHocFunction(symbol.initializer, scopes, visitedSymbolIds);
   }
@@ -197,7 +202,14 @@ const isForwardRefValue = (
   const current = findTransparentExpressionRoot(node);
   if (isNodeOfType(current, "Identifier")) {
     const symbol = scopes.symbolFor(current);
-    if (!symbol || !symbol.initializer || visitedSymbolIds.has(symbol.id)) return false;
+    if (
+      !symbol ||
+      !symbol.initializer ||
+      visitedSymbolIds.has(symbol.id) ||
+      hasSymbolWriteBefore(symbol, current, scopes)
+    ) {
+      return false;
+    }
     visitedSymbolIds.add(symbol.id);
     return isForwardRefValue(symbol.initializer, scopes, visitedSymbolIds);
   }
@@ -233,6 +245,7 @@ const resolveFunctionValue = (
   }
   const symbol = environment.scopes.symbolFor(identifier);
   if (symbol && symbol.kind !== "import") {
+    if (hasSymbolWriteBefore(symbol, identifier, environment.scopes)) return null;
     const functionNode = unwrapProvenReactHocFunction(symbol.initializer, environment.scopes);
     if (!functionNode) return null;
     return {
@@ -277,7 +290,7 @@ const resolveJsxFunctionValue = (
   return resolved ? functionFromExport(resolved, state) : null;
 };
 
-const isProvenReactClassComponent = (
+const isProvenReactClassValue = (
   node: EsTreeNode,
   environment: AnalysisEnvironment,
   visitedSymbolIds: Set<number> = new Set(),
@@ -285,36 +298,18 @@ const isProvenReactClassComponent = (
   const current = findTransparentExpressionRoot(node);
   if (isNodeOfType(current, "Identifier")) {
     const symbol = environment.scopes.symbolFor(current);
-    if (!symbol || !symbol.initializer || visitedSymbolIds.has(symbol.id)) return false;
-    visitedSymbolIds.add(symbol.id);
-    return isProvenReactClassComponent(symbol.initializer, environment, visitedSymbolIds);
-  }
-  if (!isNodeOfType(current, "ClassDeclaration") && !isNodeOfType(current, "ClassExpression")) {
-    return false;
-  }
-  const isProvenReactComponentBase = (baseNode: EsTreeNode): boolean => {
-    const base = findTransparentExpressionRoot(baseNode);
-    if (isNodeOfType(base, "Identifier")) {
-      const symbol = environment.scopes.symbolFor(base);
-      if (symbol?.kind === "const" && symbol.initializer && !visitedSymbolIds.has(symbol.id)) {
-        visitedSymbolIds.add(symbol.id);
-        return isProvenReactComponentBase(symbol.initializer);
-      }
-      const importedName = symbol ? getImportedName(symbol.declarationNode) : null;
-      return Boolean(
-        symbol &&
-        isImportedFromReact(symbol) &&
-        (importedName === "Component" || importedName === "PureComponent"),
-      );
+    if (
+      !symbol ||
+      !symbol.initializer ||
+      visitedSymbolIds.has(symbol.id) ||
+      hasSymbolWriteBefore(symbol, current, environment.scopes)
+    ) {
+      return false;
     }
-    if (!isNodeOfType(base, "MemberExpression")) return false;
-    const propertyName = getStaticPropertyName(base);
-    return Boolean(
-      (propertyName === "Component" || propertyName === "PureComponent") &&
-      isReactNamespaceImport(base.object, environment.scopes),
-    );
-  };
-  return Boolean(current.superClass && isProvenReactComponentBase(current.superClass));
+    visitedSymbolIds.add(symbol.id);
+    return isProvenReactClassValue(symbol.initializer, environment, visitedSymbolIds);
+  }
+  return isProvenReactClassNode(current, environment.scopes);
 };
 
 const isProvenClassComponentIdentifier = (
@@ -325,9 +320,8 @@ const isProvenClassComponentIdentifier = (
   if (!isNodeOfType(identifier, "JSXIdentifier")) return false;
   const symbol = environment.scopes.symbolFor(identifier);
   if (symbol && symbol.kind !== "import") {
-    return Boolean(
-      symbol.initializer && isProvenReactClassComponent(symbol.initializer, environment),
-    );
+    if (hasSymbolWriteBefore(symbol, identifier, environment.scopes)) return false;
+    return Boolean(symbol.initializer && isProvenReactClassValue(symbol.initializer, environment));
   }
   const binding = getImportBindingForName(identifier, identifier.name);
   if (!binding || binding.isNamespace || binding.exportedName === null) return false;
@@ -338,7 +332,7 @@ const isProvenClassComponentIdentifier = (
   );
   if (!resolved) return false;
   const resolvedEnvironment = getEnvironment(resolved.programNode, resolved.filePath, state);
-  return isProvenReactClassComponent(resolved.exportedNode, resolvedEnvironment);
+  return isProvenReactClassValue(resolved.exportedNode, resolvedEnvironment);
 };
 
 const resolveClassValue = (
@@ -349,7 +343,7 @@ const resolveClassValue = (
   const classNode = findTransparentExpressionRoot(node);
   if (
     (!isNodeOfType(classNode, "ClassDeclaration") && !isNodeOfType(classNode, "ClassExpression")) ||
-    !isProvenReactClassComponent(classNode, environment)
+    !isProvenReactClassValue(classNode, environment)
   ) {
     return null;
   }
@@ -364,6 +358,7 @@ const resolveJsxClassValue = (
   if (!isNodeOfType(elementName, "JSXIdentifier")) return null;
   const symbol = environment.scopes.symbolFor(elementName);
   if (symbol && symbol.kind !== "import") {
+    if (hasSymbolWriteBefore(symbol, elementName, environment.scopes)) return null;
     return resolveClassValue(symbol.initializer, environment);
   }
   const binding = getImportBindingForName(elementName, elementName.name);
@@ -566,33 +561,6 @@ const analyzeFunctionInput = (
   );
 };
 
-const getFunctionChildrenSymbol = (
-  resolvedFunction: ResolvedFunctionValue,
-): SymbolDescriptor | null => {
-  const { functionNode } = resolvedFunction;
-  if (
-    !isNodeOfType(functionNode, "ArrowFunctionExpression") &&
-    !isNodeOfType(functionNode, "FunctionExpression") &&
-    !isNodeOfType(functionNode, "FunctionDeclaration")
-  ) {
-    return null;
-  }
-  const propsParameter = functionNode.params[0];
-  if (!propsParameter || !isNodeOfType(propsParameter, "ObjectPattern")) return null;
-  const childrenProperty = propsParameter.properties.find(
-    (property) =>
-      isNodeOfType(property, "Property") &&
-      getStaticPropertyKeyName(property, { allowComputedString: true }) === "children",
-  );
-  if (!childrenProperty || !isNodeOfType(childrenProperty, "Property")) return null;
-  const childrenBinding = isNodeOfType(childrenProperty.value, "AssignmentPattern")
-    ? childrenProperty.value.left
-    : childrenProperty.value;
-  return isNodeOfType(childrenBinding, "Identifier")
-    ? resolvedFunction.environment.scopes.symbolFor(childrenBinding)
-    : null;
-};
-
 const isThisPropsChildren = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "MemberExpression") || getStaticPropertyName(node) !== "children") {
     return false;
@@ -654,18 +622,19 @@ const doesFunctionComponentRenderChildren = (
   ) {
     return false;
   }
-  const childrenSymbol = getFunctionChildrenSymbol(resolvedFunction);
-  if (!childrenSymbol || childrenSymbol.references.length === 0) return false;
+  const childrenReferences = collectFunctionChildrenReferences(
+    functionNode,
+    resolvedFunction.environment.scopes,
+  );
+  if (!childrenReferences) return false;
   state.activeRenderedChildrenComponents.add(functionNode);
-  const isRendered = childrenSymbol.references.every(
-    (reference) =>
-      reference.flag === "read" &&
-      isValueRenderedForEnvironment(
-        reference.identifier,
-        resolvedFunction.environment,
-        state,
-        remainingDepth,
-      ),
+  const isRendered = childrenReferences.every((childrenReference) =>
+    isValueRenderedForEnvironment(
+      childrenReference,
+      resolvedFunction.environment,
+      state,
+      remainingDepth,
+    ),
   );
   state.activeRenderedChildrenComponents.delete(functionNode);
   return isRendered;
@@ -894,7 +863,13 @@ const analyzeValueUse = (
       parent.operator === "==" ||
       parent.operator === "!=")
   ) {
-    return true;
+    const comparedExpression = parent.left === expression ? parent.right : parent.left;
+    return Boolean(
+      isNodeOfType(expression, "Identifier") &&
+      isNodeOfType(comparedExpression, "Identifier") &&
+      environment.scopes.symbolFor(expression)?.id ===
+        environment.scopes.symbolFor(comparedExpression)?.id,
+    );
   }
   if (isIntrinsicJsxSpreadRefUse(expression, propertyPath, environment, state, remainingDepth)) {
     return true;

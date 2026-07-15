@@ -26,7 +26,7 @@ export const noAdjustStateOnPropChange = defineRule({
         )
         .some((reference) => isProp(analysis, reference));
       if (!hasPropDependency) return;
-      for (const fact of collectEffectStateWriteFacts(analysis, node, context.filename)) {
+      for (const fact of collectEffectStateWriteFacts(analysis, context, node, context.filename)) {
         if (!fact.isRenderKnownCopy || fact.resetsSourceState) continue;
         context.report({
           node: fact.callExpression,

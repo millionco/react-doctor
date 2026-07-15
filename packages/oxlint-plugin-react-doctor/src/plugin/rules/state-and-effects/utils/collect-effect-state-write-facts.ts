@@ -7,6 +7,7 @@ import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { readsPostMountValue } from "../../../utils/reads-post-mount-value.js";
+import type { RuleContext } from "../../../utils/rule-context.js";
 import { resolveCrossFileFunctionExport } from "../../../utils/resolve-cross-file-function-export.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
@@ -1593,6 +1594,7 @@ const areInMutuallyExclusiveBranches = (leftNode: EsTreeNode, rightNode: EsTreeN
 
 export const collectEffectStateWriteFacts = (
   analysis: ProgramAnalysis,
+  context: RuleContext,
   effectNode: EsTreeNode,
   currentFilename?: string,
 ): ReadonlyArray<EffectStateWriteFact> => {
@@ -1646,7 +1648,13 @@ export const collectEffectStateWriteFacts = (
       const sourceReferences = [...valueEvidence.sourceReferences].filter(
         (sourceReference) => getUseStateDecl(analysis, sourceReference) !== stateDeclarator,
       );
-      const hasIndependentWriter = hasUserInputSetterWriter(setterReference, effectNode, true);
+      const hasIndependentWriter = hasUserInputSetterWriter(
+        analysis,
+        context,
+        setterReference,
+        effectNode,
+        true,
+      );
       const doesMatchStateInitializer = matchesStateInitializer(
         analysis,
         callExpression,

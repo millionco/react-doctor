@@ -679,6 +679,7 @@ describe("discoverProject", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.hasReactCompiler).toBe(false);
+    expect(projectInfo.hasReactCompilerLintPlugin).toBe(false);
   });
 
   it("detects React Compiler when next.config sets reactCompiler to true", () => {
@@ -698,6 +699,89 @@ describe("discoverProject", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.hasReactCompiler).toBe(true);
+  });
+
+  it("does not treat the React Compiler ESLint plugin as a build transform", () => {
+    const projectDirectory = path.join(tempDirectory, "react-compiler-eslint-only");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-compiler-eslint-only",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "eslint-plugin-react-compiler": "^19.0.0-beta" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(false);
+    expect(projectInfo.hasReactCompilerLintPlugin).toBe(true);
+  });
+
+  it("does not treat a React Compiler ESLint plugin reference in build config as a transform", () => {
+    const projectDirectory = path.join(tempDirectory, "react-compiler-eslint-config-only");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-compiler-eslint-config-only",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "vite.config.ts"),
+      "const lintPlugin = 'eslint-plugin-react-compiler';\nexport default { lintPlugin };\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(false);
+    expect(projectInfo.hasReactCompilerLintPlugin).toBe(false);
+  });
+
+  it("does not inherit React Compiler capability from ancestor lint tooling", () => {
+    const workspaceDirectory = path.join(tempDirectory, "react-compiler-eslint-workspace");
+    const projectDirectory = path.join(workspaceDirectory, "packages", "app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(workspaceDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-compiler-eslint-workspace",
+        private: true,
+        devDependencies: { "eslint-plugin-react-compiler": "^19.0.0-beta" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "app",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(false);
+    expect(projectInfo.hasReactCompilerLintPlugin).toBe(true);
+  });
+
+  it("detects a Babel Compiler transform alongside the ESLint plugin", () => {
+    const projectDirectory = path.join(tempDirectory, "react-compiler-eslint-and-babel");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-compiler-eslint-and-babel",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "eslint-plugin-react-compiler": "^19.0.0-beta" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "babel.config.js"),
+      "module.exports = { plugins: ['babel-plugin-react-compiler'] };\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(true);
+    expect(projectInfo.hasReactCompilerLintPlugin).toBe(true);
   });
 });
 

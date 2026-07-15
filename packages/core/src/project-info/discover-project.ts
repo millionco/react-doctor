@@ -8,6 +8,7 @@ import {
   detectNextjsStaticExport,
   detectPreES2023Target,
   detectReactCompiler,
+  detectReactCompilerLintPlugin,
 } from "./detectors.js";
 import {
   extractDependencyInfo,
@@ -97,6 +98,7 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     framework: "unknown",
     hasTypeScript: hasOwnTsConfig,
     hasReactCompiler: false,
+    hasReactCompilerLintPlugin: false,
     hasTanStackQuery: false,
     hasSsrDependency: false,
     preactVersion: null,
@@ -276,6 +278,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     framework,
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),
+    hasReactCompilerLintPlugin: detectReactCompilerLintPlugin(directory, packageJson),
     hasTanStackQuery: hasTanStackQuery(packageJson),
     hasSsrDependency: workspaceFacts.hasSsrDependency,
     preactVersion,

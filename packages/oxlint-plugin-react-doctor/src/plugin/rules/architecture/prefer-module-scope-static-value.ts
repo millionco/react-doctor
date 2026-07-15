@@ -3,10 +3,14 @@ import { defineRule } from "../../utils/define-rule.js";
 import { enclosingComponentOrHookScope } from "../../utils/enclosing-component-or-hook-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { isProvenNodeCryptoNamespaceReference } from "../../utils/is-proven-node-crypto-namespace-reference.js";
-import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import {
+  stripParenExpression,
+  TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
+} from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import {
@@ -42,56 +46,48 @@ const MUTATING_RECEIVER_METHOD_NAMES = new Set([
 //      completeness).
 //   4. Mutating method call: `OPTS.push(...)` / `byId.set(...)`.
 const isMutationContext = (referenceIdentifier: EsTreeNode): boolean => {
-  const parent = referenceIdentifier.parent;
-  if (!parent) return false;
+  let mutationTarget = referenceIdentifier;
+  let receiverMethodName: string | null = null;
 
-  // Direct rebinding: `OPTS = somethingElse`.
-  if (isNodeOfType(parent, "AssignmentExpression") && parent.left === referenceIdentifier) {
-    return true;
-  }
+  while (mutationTarget.parent) {
+    const parent = mutationTarget.parent;
 
-  // `++OPTS` / `OPTS--` — primitive mutation; rare for array/object
-  // bindings but treated as a mutation for completeness.
-  if (isNodeOfType(parent, "UpdateExpression") && parent.argument === referenceIdentifier) {
-    return true;
-  }
-
-  // Member-expression contexts: `OPTS.foo` / `OPTS[0]`.
-  if (isNodeOfType(parent, "MemberExpression") && parent.object === referenceIdentifier) {
-    const grandparent = parent.parent;
-    if (!grandparent) return false;
-
-    // `OPTS.foo = bar` / `OPTS[0] = x` / compound assignments.
-    if (isNodeOfType(grandparent, "AssignmentExpression") && grandparent.left === parent) {
-      return true;
-    }
-
-    // `OPTS.count++` / `++OPTS.foo`.
-    if (isNodeOfType(grandparent, "UpdateExpression") && grandparent.argument === parent) {
-      return true;
-    }
-
-    // `delete OPTS.foo` / `delete OPTS[0]`.
     if (
-      isNodeOfType(grandparent, "UnaryExpression") &&
-      grandparent.operator === "delete" &&
-      grandparent.argument === parent
+      TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type) &&
+      "expression" in parent &&
+      parent.expression === mutationTarget
+    ) {
+      mutationTarget = parent;
+      continue;
+    }
+
+    if (isNodeOfType(parent, "MemberExpression") && parent.object === mutationTarget) {
+      receiverMethodName = getStaticPropertyName(parent);
+      mutationTarget = parent;
+      continue;
+    }
+
+    if (isNodeOfType(parent, "AssignmentExpression") && parent.left === mutationTarget) {
+      return true;
+    }
+
+    if (isNodeOfType(parent, "UpdateExpression") && parent.argument === mutationTarget) {
+      return true;
+    }
+
+    if (
+      isNodeOfType(parent, "UnaryExpression") &&
+      parent.operator === "delete" &&
+      parent.argument === mutationTarget
     ) {
       return true;
     }
 
-    // `OPTS.push(...)` — mutating method call. The MemberExpression
-    // must itself be the callee of a CallExpression and the property
-    // must be a non-computed Identifier in our mutating-names set.
-    if (
-      isNodeOfType(grandparent, "CallExpression") &&
-      grandparent.callee === parent &&
-      !parent.computed &&
-      isNodeOfType(parent.property, "Identifier") &&
-      MUTATING_RECEIVER_METHOD_NAMES.has(parent.property.name)
-    ) {
-      return true;
-    }
+    return Boolean(
+      isNodeOfType(parent, "CallExpression") &&
+      parent.callee === mutationTarget &&
+      MUTATING_RECEIVER_METHOD_NAMES.has(receiverMethodName ?? ""),
+    );
   }
 
   return false;

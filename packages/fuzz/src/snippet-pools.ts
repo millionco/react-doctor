@@ -64,6 +64,11 @@ export const EFFECT_SNIPPET_POOL = [
   `const onTick = useEffectEvent(() => handle(value)); useEffect(() => { onTick(); }, [onTick]);`,
   `const [, setOpen] = useState(false); const stableHandle = useCallback(() => setOpen(true), [setOpen]); useEffect(() => { const timeoutId = setTimeout(() => stableHandle(), 100); return () => clearTimeout(timeoutId); }, [stableHandle, value]);`,
   `const deferredHandle = useCallback(() => handle(value), [value]); useEffect(() => { const timeoutId = setTimeout(() => deferredHandle(), 100); return () => clearTimeout(timeoutId); }, [deferredHandle, value]);`,
+  `const fuzzDeferredHelper = useCallback(() => handle(value), [value]); useEffect(() => { const executeDeferredHelper = () => fuzzDeferredHelper(); const timeoutId = setTimeout(executeDeferredHelper, 100); return () => clearTimeout(timeoutId); }, [fuzzDeferredHelper, value]);`,
+  `const fuzzNestedDeclaration = useCallback(() => handle(value), [value]); useEffect(() => { if (value) { const timeoutId = setTimeout(executeNestedDeclaration, 100); function executeNestedDeclaration() { fuzzNestedDeclaration(); } return () => clearTimeout(timeoutId); } }, [fuzzNestedDeclaration, value]);`,
+  `const fuzzMixedHelper = useCallback(() => handle(value), [value]); useEffect(() => { const executeMixedHelper = () => fuzzMixedHelper(); if (condition) executeMixedHelper(); const timeoutId = setTimeout(executeMixedHelper, 100); return () => clearTimeout(timeoutId); }, [fuzzMixedHelper, value]);`,
+  `const fuzzAliasedHelper = useCallback(() => handle(value), [value]); useEffect(() => { const executeAliasedHelper = () => fuzzAliasedHelper(); const executeAliasedHelperNow = executeAliasedHelper; const timeoutId = setTimeout(executeAliasedHelper, 100); executeAliasedHelperNow(); return () => clearTimeout(timeoutId); }, [fuzzAliasedHelper, value]);`,
+  `const fuzzCleanupHelper = useCallback(() => handle(value), [value]); useEffect(() => { const executeCleanupHelper = () => fuzzCleanupHelper(); const timeoutId = setTimeout(executeCleanupHelper, 100); return () => { clearTimeout(timeoutId); executeCleanupHelper(); }; }, [fuzzCleanupHelper, value]);`,
   `const [didSubmit, setDidSubmit] = useState(false); useEffect(() => { if (didSubmit) handle(value); }, [didSubmit, value]); const eventRelayButton = <button onClick={() => setDidSubmit(true)}>Submit</button>;`,
   `const [phase, setPhase] = useState(""); const [total, setTotal] = useState(0); const [ready, setReady] = useState(false); useEffect(() => { setPhase("sync"); setTotal(items.length); setReady(true); }, [items]);`,
   `const [snapshot, setSnapshot] = useState(sharedSnapshot); useEffect(() => subscribeSnapshot(setSnapshot), []);`,
@@ -89,6 +94,9 @@ export const EFFECT_SNIPPET_POOL = [
 // toggles, loading triples, prop mirrors, reducers, ref-sync.
 export const STATE_SNIPPET_POOL = [
   `const fuzzRandomIdentity = { id: globalThis.crypto.randomUUID() };`,
+  `const fuzzTweetColumns = [[], [], []]; items.forEach((item, index) => fuzzTweetColumns[index % 3]!.push(item)); const fuzzTweetColumnsNode = <Grid columns={fuzzTweetColumns} />;`,
+  `const fuzzWrappedColumns = [[], []]; items.forEach((item) => (fuzzWrappedColumns[0]!.push as (value: typeof item) => number)(item)); const fuzzWrappedColumnsNode = <Grid columns={fuzzWrappedColumns} />;`,
+  `const fuzzReadOnlyColumns = [["first"], ["second"]]; const fuzzReadOnlyColumnsNode = <Grid columns={fuzzReadOnlyColumns} />;`,
   `const FuzzNestedPanel = () => <div>nested</div>; const fuzzNestedPanelNode = <FuzzNestedPanel />;`,
   `const [state, setState] = useState(0);`,
   `const [state, setState] = useState(() => Number(localStorage.getItem("count") ?? 0));`,

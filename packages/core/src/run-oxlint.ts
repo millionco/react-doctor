@@ -643,6 +643,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     const useFileLintCache =
       perFileLintCacheEnabled &&
       !project.hasReactCompiler &&
+      project.hasReactCompilerLintPlugin !== true &&
       extendsPaths.length === 0 &&
       userPlugins.length === 0;
 

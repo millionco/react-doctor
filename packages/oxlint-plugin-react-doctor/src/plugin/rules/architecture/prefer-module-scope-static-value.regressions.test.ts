@@ -273,6 +273,81 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not prescribe hoisting a nested array accumulator mutated in a callback", () => {
+    const result = run(`
+      const Tweets = [{ showOnHomepage: true }];
+      function TweetsSection() {
+        const tweetColumns = [[], [], []];
+        Tweets.filter((tweet) => tweet.showOnHomepage).forEach((tweet, index) =>
+          tweetColumns[index % 3]!.push(tweet),
+        );
+        return <div>{tweetColumns.map((column) => column.length)}</div>;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags the same nested array when it remains read-only", () => {
+    const result = run(`
+      function TweetsSection() {
+        const tweetColumns = [[], [], []];
+        return <Grid columns={tweetColumns} />;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "matrix[0]!.push(1)",
+    "matrix[0]?.push(1)",
+    "(matrix[0] as number[]).push(1)",
+    "matrix['0']['push'](1)",
+    "matrix[0]!.sort()",
+    "(matrix.push as (value: number[]) => number)([])",
+    "(matrix[0]!.push as (value: number) => number)(1)",
+    "((matrix['push'] as (value: number[]) => number))([])",
+  ])("recognizes a nested receiver mutation through %s", (mutation) => {
+    const result = run(`
+      function Matrix() {
+        const matrix = [[], []];
+        ${mutation};
+        return <Grid matrix={matrix} />;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "state.nested.count += 1",
+    "state.nested.count++",
+    "delete state.nested.count",
+    "state['nested']['count'] = 1",
+  ])("recognizes a nested property mutation through %s", (mutation) => {
+    const result = run(`
+      function Counter() {
+        const state = { nested: { count: 0 } };
+        ${mutation};
+        return <Output value={state} />;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "matrix.map((row) => row).push([])",
+    "matrix.slice().reverse()",
+    "(matrix.slice().push as (value: number[]) => number)([])",
+  ])("still reports when only a derived array is mutated through %s", (mutation) => {
+    const result = run(`
+        function Matrix() {
+          const matrix = [[], []];
+          ${mutation};
+          return <Grid matrix={matrix} />;
+        }
+      `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a static array built from a pure module-scope helper named `random`", () => {
     const result = run(`
       const random = (seed) => (seed * 9301 + 49297) % 233280;

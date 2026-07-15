@@ -273,6 +273,30 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not prescribe hoisting a nested array accumulator mutated in a callback", () => {
+    const result = run(`
+      const Tweets = [{ showOnHomepage: true }];
+      function TweetsSection() {
+        const tweetColumns = [[], [], []];
+        Tweets.filter((tweet) => tweet.showOnHomepage).forEach((tweet, index) =>
+          tweetColumns[index % 3]!.push(tweet),
+        );
+        return <div>{tweetColumns.map((column) => column.length)}</div>;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags the same nested array when it remains read-only", () => {
+    const result = run(`
+      function TweetsSection() {
+        const tweetColumns = [[], [], []];
+        return <Grid columns={tweetColumns} />;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a static array built from a pure module-scope helper named `random`", () => {
     const result = run(`
       const random = (seed) => (seed * 9301 + 49297) % 233280;

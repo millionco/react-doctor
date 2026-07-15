@@ -4094,6 +4094,41 @@ export const LiveValue = ({ subscription, otherSubscription }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports when a bound disposer does not escape on every callback path", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const LiveValue = ({ enabled, subscription }) => {
+  const callbackRef = useRef(() => () => {});
+  callbackRef.current = () => {
+    const unsubscribe = subscription.subscribe();
+    if (enabled) return unsubscribe;
+  };
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts ref callback results returned through logical effect expressions", () => {
+    for (const operator of ["&&", "||"]) {
+      const result = runRule(
+        effectNeedsCleanup,
+        `import { useEffect, useRef } from "react";
+export const LiveValue = ({ enabled, subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => enabled ${operator} callbackRef.current(), [enabled]);
+  return null;
+};`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
   it("ignores an uncalled React ref callback", () => {
     const result = runRule(
       effectNeedsCleanup,

@@ -2830,17 +2830,20 @@ const doesResourceResultEscape = (
     ) {
       const ownerFunction = findEnclosingFunction(resourceNode);
       const resourceSymbol = context.scopes.symbolFor(parentNode.id);
-      return Boolean(
-        ownerFunction &&
-        resourceSymbol?.references.some((reference) => {
-          if (reference.flag !== "read") return false;
-          const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-          return Boolean(
-            isNodeOfType(referenceRoot.parent, "ReturnStatement") &&
-            referenceRoot.parent.argument === referenceRoot &&
-            findEnclosingFunction(referenceRoot.parent) === ownerFunction,
-          );
-        }),
+      if (!ownerFunction || !resourceSymbol) return false;
+      const matchingReturnStatements = resourceSymbol.references.flatMap((reference) => {
+        if (reference.flag !== "read") return [];
+        const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+        return isNodeOfType(referenceRoot.parent, "ReturnStatement") &&
+          referenceRoot.parent.argument === referenceRoot &&
+          findEnclosingFunction(referenceRoot.parent) === ownerFunction
+          ? [referenceRoot.parent]
+          : [];
+      });
+      return doMatchingNodesCoverEveryPathAfterUsage(
+        resourceNode,
+        matchingReturnStatements,
+        context,
       );
     }
     return false;
@@ -3010,6 +3013,10 @@ const isExpressionReturnedFromFunction = (
       isNodeOfType(container, "SequenceExpression") &&
       container.expressions.at(-1) === expressionRoot
     ) {
+      expressionRoot = findTransparentExpressionRoot(container);
+      continue;
+    }
+    if (isNodeOfType(container, "LogicalExpression") && container.right === expressionRoot) {
       expressionRoot = findTransparentExpressionRoot(container);
       continue;
     }

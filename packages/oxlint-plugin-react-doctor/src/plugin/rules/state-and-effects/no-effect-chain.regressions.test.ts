@@ -1043,6 +1043,40 @@ describe("no-effect-chain — regressions", () => {
     ["implicit setter result", "() => setIntermediate(source)"],
     ["block-bodied setter", "() => { setIntermediate(source); }"],
     ["explicit setter result", "function () { return setIntermediate(source); }"],
+    ["explicit undefined after a setter", "() => { setIntermediate(source); return undefined; }"],
+    ["explicit null after a setter", "() => { setIntermediate(source); return null; }"],
+    ["explicit false after a setter", "() => { setIntermediate(source); return false; }"],
+    ["explicit number after a setter", "() => { setIntermediate(source); return 0; }"],
+    ["explicit string after a setter", "() => { setIntermediate(source); return 'done'; }"],
+    [
+      "explicit template string after a setter",
+      "() => { setIntermediate(source); return `done`; }",
+    ],
+    ["explicit void after a setter", "() => { setIntermediate(source); return void noop(); }"],
+    ["explicit object after a setter", "() => { setIntermediate(source); return {}; }"],
+    ["explicit array after a setter", "() => { setIntermediate(source); return []; }"],
+    [
+      "all-non-cleanup conditional after a setter",
+      "() => { setIntermediate(source); return source ? undefined : null; }",
+    ],
+    [
+      "global Boolean result after a setter",
+      "() => { setIntermediate(source); return Boolean(source); }",
+    ],
+    [
+      "global String result after a setter",
+      "() => { setIntermediate(source); return String(source); }",
+    ],
+    ["global Symbol result after a setter", "() => { setIntermediate(source); return Symbol(); }"],
+    [
+      "global Promise result after a setter",
+      "() => { setIntermediate(source); return Promise.resolve(source); }",
+    ],
+    [
+      "global constructed object after a setter",
+      "() => { setIntermediate(source); return new Date(); }",
+    ],
+    ["ignored helper result after a setter", "() => { setIntermediate(source); noop(); }"],
   ])("flags a redundant state-copy chain through an explicitly returned %s", (_, callback) => {
     const result = runRule(
       noEffectChain,
@@ -1058,6 +1092,168 @@ describe("no-effect-chain — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when the stable callback returns a real cleanup function", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const subscribeAndCopy = React.useCallback(() => {
+          setIntermediate(source);
+          const unsubscribe = subscribe(source);
+          return () => unsubscribe();
+        }, [source]);
+        React.useEffect(() => { return subscribeAndCopy(); }, [subscribeAndCopy]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the stable callback returns a resolved cleanup identifier", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const subscribeAndCopy = React.useCallback(() => {
+          setIntermediate(source);
+          const unsubscribe = subscribe(source);
+          const cleanup = () => unsubscribe();
+          return cleanup;
+        }, [source]);
+        React.useEffect(() => { return subscribeAndCopy(); }, [subscribeAndCopy]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ["shadowed primitive constructor", "Boolean", "Boolean(source)"],
+    ["shadowed object constructor", "Date", "new Date()"],
+  ])("keeps a $name return conservative", (_, parameter, returnedValue) => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source, ${parameter} }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const copyIntermediate = React.useCallback(() => {
+          setIntermediate(source);
+          return ${returnedValue};
+        }, [source, ${parameter}]);
+        React.useEffect(() => { return copyIntermediate(); }, [copyIntermediate]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a conditional return with an unknown cleanup branch conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source, cleanup }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const copyIntermediate = React.useCallback(() => {
+          setIntermediate(source);
+          return source ? undefined : cleanup;
+        }, [source, cleanup]);
+        React.useEffect(() => { return copyIntermediate(); }, [copyIntermediate]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags an optional call to a stable state-copy callback", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const copyIntermediate = React.useCallback(() => setIntermediate(source), [source]);
+        React.useEffect(() => { return copyIntermediate?.(); }, [copyIntermediate]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a nested stable state-copy callback", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const copyIntermediate = React.useCallback(() => setIntermediate(source), [source]);
+        const copyThroughWrapper = React.useCallback(() => copyIntermediate(), [copyIntermediate]);
+        React.useEffect(() => { return copyThroughWrapper(); }, [copyThroughWrapper]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not follow a stable callback that is only passed to a deferred API", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const copyIntermediate = React.useCallback(() => setIntermediate(source), [source]);
+        React.useEffect(() => queueMicrotask(copyIntermediate), [copyIntermediate]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("resolves a TypeScript-wrapped React useCallback argument", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Slideshow({ disabled }) {
+        const [playing, setPlaying] = React.useState(true);
+        const scheduler = React.useRef();
+        const cancelScheduler = React.useCallback((() => {
+          clearTimeout(scheduler.current);
+          scheduler.current = undefined;
+        }) satisfies () => void, []);
+        React.useEffect(() => {
+          if (!playing || disabled) cancelScheduler();
+        }, [playing, disabled, cancelScheduler]);
+        React.useEffect(() => {
+          if (playing && disabled) setPlaying(false);
+        }, [playing, disabled]);
+        return playing;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("stays silent for a declared opaque context setter", () => {

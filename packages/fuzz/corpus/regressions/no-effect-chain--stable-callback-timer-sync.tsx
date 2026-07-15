@@ -44,3 +44,17 @@ export const RedundantChain = ({ source }: RedundantChainProps) => {
 
   return target;
 };
+
+export const ReturnedNonCleanupChain = ({ source }: RedundantChainProps) => {
+  const [intermediate, setIntermediate] = React.useState(source);
+  const [target, setTarget] = React.useState(source);
+  const copyIntermediate = React.useCallback(() => {
+    setIntermediate(source);
+    return null;
+  }, [source]);
+
+  React.useEffect(() => copyIntermediate(), [copyIntermediate]);
+  React.useEffect(() => setTarget(intermediate), [intermediate]);
+
+  return target;
+};

@@ -34,6 +34,7 @@ import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-funct
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -510,8 +511,41 @@ const NON_CONTAMINATING_MAP_METHOD_NAMES = new Set([
   "keys",
   "values",
 ]);
+const DEFINITELY_NON_FUNCTION_GLOBAL_CALL_NAMES = new Set([
+  "Array",
+  "BigInt",
+  "Boolean",
+  "Date",
+  "Number",
+  "String",
+  "Symbol",
+]);
+const DEFINITELY_NON_FUNCTION_GLOBAL_CONSTRUCTOR_NAMES = new Set([
+  "Array",
+  "Boolean",
+  "Date",
+  "Map",
+  "Number",
+  "Promise",
+  "RegExp",
+  "Set",
+  "String",
+  "URL",
+  "URLSearchParams",
+  "WeakMap",
+  "WeakSet",
+]);
+const PROMISE_STATIC_RESULT_METHOD_NAMES = new Set([
+  "all",
+  "allSettled",
+  "any",
+  "race",
+  "reject",
+  "resolve",
+  "withResolvers",
+]);
 
-const returnsOnlyLocalStateSetterResult = (
+const returnsOnlyNonCleanupValues = (
   functionNode: EsTreeNode,
   setterToStateName: ReadonlyMap<string, string>,
   scopes: ScopeAnalysis,
@@ -525,36 +559,88 @@ const returnsOnlyLocalStateSetterResult = (
   ) {
     return false;
   }
-  let returnValue: EsTreeNode | null = null;
-  if (!isNodeOfType(functionNode.body, "BlockStatement")) {
-    returnValue = functionNode.body;
-  } else if (functionNode.body.body.length === 1) {
-    const statement = functionNode.body.body[0];
-    if (isNodeOfType(statement, "ReturnStatement") && statement.argument) {
-      returnValue = statement.argument;
-    } else if (isNodeOfType(statement, "ExpressionStatement")) {
-      returnValue = statement.expression;
+  const nextVisitedFunctions = new Set(visitedFunctions).add(functionNode);
+  const isNonCleanupValue = (returnValue: EsTreeNode): boolean => {
+    const expression = stripParenExpression(returnValue);
+    if (
+      isNodeOfType(expression, "Identifier") &&
+      expression.name === "undefined" &&
+      scopes.isGlobalReference(expression)
+    ) {
+      return true;
     }
+    if (
+      isNodeOfType(expression, "Literal") ||
+      isNodeOfType(expression, "ArrayExpression") ||
+      isNodeOfType(expression, "ObjectExpression") ||
+      isNodeOfType(expression, "TemplateLiteral") ||
+      (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void")
+    ) {
+      return true;
+    }
+    if (isNodeOfType(expression, "ConditionalExpression")) {
+      return isNonCleanupValue(expression.consequent) && isNonCleanupValue(expression.alternate);
+    }
+    if (isNodeOfType(expression, "LogicalExpression")) {
+      return isNonCleanupValue(expression.left) && isNonCleanupValue(expression.right);
+    }
+    if (isNodeOfType(expression, "SequenceExpression")) {
+      const finalExpression = expression.expressions.at(-1);
+      return Boolean(finalExpression && isNonCleanupValue(finalExpression));
+    }
+    if (
+      isNodeOfType(expression, "NewExpression") &&
+      isNodeOfType(expression.callee, "Identifier") &&
+      DEFINITELY_NON_FUNCTION_GLOBAL_CONSTRUCTOR_NAMES.has(expression.callee.name) &&
+      scopes.isGlobalReference(expression.callee)
+    ) {
+      return true;
+    }
+    if (!isNodeOfType(expression, "CallExpression")) return false;
+    if (
+      isNodeOfType(expression.callee, "Identifier") &&
+      DEFINITELY_NON_FUNCTION_GLOBAL_CALL_NAMES.has(expression.callee.name) &&
+      scopes.isGlobalReference(expression.callee)
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(expression.callee, "MemberExpression") &&
+      isNodeOfType(expression.callee.object, "Identifier") &&
+      expression.callee.object.name === "Promise" &&
+      scopes.isGlobalReference(expression.callee.object) &&
+      PROMISE_STATIC_RESULT_METHOD_NAMES.has(getStaticPropertyName(expression.callee) ?? "")
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(expression.callee, "Identifier") &&
+      setterToStateName.has(expression.callee.name)
+    ) {
+      return true;
+    }
+    const invokedFunction = resolveSynchronouslyInvokedFunction(expression.callee, scopes);
+    return Boolean(
+      invokedFunction &&
+      returnsOnlyNonCleanupValues(invokedFunction, setterToStateName, scopes, nextVisitedFunctions),
+    );
+  };
+
+  if (!isNodeOfType(functionNode.body, "BlockStatement")) {
+    return isNonCleanupValue(functionNode.body);
   }
-  if (!returnValue) return false;
-  const expression = stripParenExpression(returnValue);
-  if (!isNodeOfType(expression, "CallExpression")) return false;
-  if (
-    isNodeOfType(expression.callee, "Identifier") &&
-    setterToStateName.has(expression.callee.name)
-  ) {
-    return true;
-  }
-  const invokedFunction = resolveSynchronouslyInvokedFunction(expression.callee, scopes);
-  return Boolean(
-    invokedFunction &&
-    returnsOnlyLocalStateSetterResult(
-      invokedFunction,
-      setterToStateName,
-      scopes,
-      new Set(visitedFunctions).add(functionNode),
-    ),
-  );
+
+  let returnsOnlyNonCleanup = true;
+  walkAst(functionNode.body, (child: EsTreeNode) => {
+    if (!returnsOnlyNonCleanup) return false;
+    if (child !== functionNode.body && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "ReturnStatement")) return;
+    if (child.argument && !isNonCleanupValue(child.argument)) {
+      returnsOnlyNonCleanup = false;
+      return false;
+    }
+  });
+  return returnsOnlyNonCleanup;
 };
 
 // HACK: a useEffect cleanup return value MUST be a function (or
@@ -591,7 +677,7 @@ const isFunctionShapedReturn = (
     const invokedFunction = resolveSynchronouslyInvokedFunction(returnedValue.callee, scopes);
     if (
       invokedFunction &&
-      returnsOnlyLocalStateSetterResult(invokedFunction, setterToStateName, scopes)
+      returnsOnlyNonCleanupValues(invokedFunction, setterToStateName, scopes)
     ) {
       return false;
     }

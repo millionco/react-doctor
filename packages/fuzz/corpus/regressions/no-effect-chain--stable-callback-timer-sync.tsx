@@ -58,3 +58,18 @@ export const ReturnedNonCleanupChain = ({ source }: RedundantChainProps) => {
 
   return target;
 };
+
+export const ConciseCleanupSynchronization = ({ source }: RedundantChainProps) => {
+  const [intermediate, setIntermediate] = React.useState(source);
+  const [target, setTarget] = React.useState(source);
+  const subscribeAndCopy = React.useCallback(() => {
+    setIntermediate(source);
+    const unsubscribe = subscribe(source);
+    return () => unsubscribe();
+  }, [source]);
+
+  React.useEffect(() => subscribeAndCopy(), [subscribeAndCopy]);
+  React.useEffect(() => setTarget(intermediate), [intermediate]);
+
+  return target;
+};

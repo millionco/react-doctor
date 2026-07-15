@@ -643,6 +643,94 @@ const returnsOnlyNonCleanupValues = (
   return returnsOnlyNonCleanup;
 };
 
+interface CleanupReturnProof {
+  hasCleanup: boolean;
+  isValid: boolean;
+}
+
+const getResolvedFunctionCleanupReturnProof = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedFunctions: ReadonlySet<EsTreeNode> = new Set(),
+): CleanupReturnProof => {
+  if (
+    !isFunctionLike(functionNode) ||
+    functionNode.async ||
+    functionNode.generator ||
+    visitedFunctions.has(functionNode)
+  ) {
+    return { hasCleanup: false, isValid: false };
+  }
+  const nextVisitedFunctions = new Set(visitedFunctions).add(functionNode);
+  const getCleanupReturnProof = (returnValue: EsTreeNode): CleanupReturnProof => {
+    const expression = stripParenExpression(returnValue);
+    if (
+      isNodeOfType(expression, "ArrowFunctionExpression") ||
+      isNodeOfType(expression, "FunctionExpression")
+    ) {
+      return { hasCleanup: true, isValid: true };
+    }
+    if (isNodeOfType(expression, "Identifier")) {
+      if (expression.name === "undefined" && scopes.isGlobalReference(expression)) {
+        return { hasCleanup: false, isValid: true };
+      }
+      const localFunction = resolveExactLocalFunction(expression, scopes);
+      return { hasCleanup: Boolean(localFunction), isValid: Boolean(localFunction) };
+    }
+    if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void") {
+      return { hasCleanup: false, isValid: true };
+    }
+    if (isNodeOfType(expression, "ConditionalExpression")) {
+      const consequentProof = getCleanupReturnProof(expression.consequent);
+      const alternateProof = getCleanupReturnProof(expression.alternate);
+      return {
+        hasCleanup: consequentProof.hasCleanup || alternateProof.hasCleanup,
+        isValid: consequentProof.isValid && alternateProof.isValid,
+      };
+    }
+    if (isNodeOfType(expression, "LogicalExpression")) {
+      const leftProof = getCleanupReturnProof(expression.left);
+      const rightProof = getCleanupReturnProof(expression.right);
+      return {
+        hasCleanup: leftProof.hasCleanup || rightProof.hasCleanup,
+        isValid: leftProof.isValid && rightProof.isValid,
+      };
+    }
+    if (isNodeOfType(expression, "SequenceExpression")) {
+      const finalExpression = expression.expressions.at(-1);
+      return finalExpression
+        ? getCleanupReturnProof(finalExpression)
+        : { hasCleanup: false, isValid: false };
+    }
+    if (!isNodeOfType(expression, "CallExpression")) {
+      return { hasCleanup: false, isValid: false };
+    }
+    const invokedFunction = resolveSynchronouslyInvokedFunction(expression.callee, scopes);
+    return invokedFunction
+      ? getResolvedFunctionCleanupReturnProof(invokedFunction, scopes, nextVisitedFunctions)
+      : { hasCleanup: false, isValid: false };
+  };
+
+  if (!isNodeOfType(functionNode.body, "BlockStatement")) {
+    return getCleanupReturnProof(functionNode.body);
+  }
+
+  let cleanupReturnProof: CleanupReturnProof = { hasCleanup: false, isValid: true };
+  walkAst(functionNode.body, (child: EsTreeNode) => {
+    if (!cleanupReturnProof.isValid) return false;
+    if (child !== functionNode.body && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "ReturnStatement")) return;
+    if (!child.argument) return;
+    const returnProof = getCleanupReturnProof(child.argument);
+    if (!returnProof.isValid) {
+      cleanupReturnProof = { hasCleanup: false, isValid: false };
+      return false;
+    }
+    cleanupReturnProof.hasCleanup ||= returnProof.hasCleanup;
+  });
+  return cleanupReturnProof;
+};
+
 // HACK: a useEffect cleanup return value MUST be a function (or
 // undefined). Anything else is either user error or "I'm using
 // `return` for early-exit, not for cleanup". For the chain detector,
@@ -684,6 +772,10 @@ const isFunctionShapedReturn = (
       returnsOnlyNonCleanupValues(invokedFunction, setterToStateName, scopes)
     ) {
       return false;
+    }
+    if (invokedFunction) {
+      const cleanupReturnProof = getResolvedFunctionCleanupReturnProof(invokedFunction, scopes);
+      if (cleanupReturnProof.isValid && cleanupReturnProof.hasCleanup) return true;
     }
     return isCleanupReturn(unwrappedReturnedValue, EMPTY_CLEANUP_NAME_SET, EMPTY_CLEANUP_NAME_SET, {
       allowOpaqueReturn: isExplicitReturnStatement,

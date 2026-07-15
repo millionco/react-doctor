@@ -1115,6 +1115,93 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when a concise effect returns a stable callback's cleanup function", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const subscribeAndCopy = React.useCallback(() => {
+          setIntermediate(source);
+          const unsubscribe = subscribe(source);
+          return () => unsubscribe();
+        }, [source]);
+        React.useEffect(() => subscribeAndCopy(), [subscribeAndCopy]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ["bare return", "return;"],
+    ["global undefined", "return undefined;"],
+  ])("stays silent when a concise stable callback returns cleanup or $name", (_, earlyReturn) => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source, enabled }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const subscribeAndCopy = React.useCallback(() => {
+          setIntermediate(source);
+          if (!enabled) ${earlyReturn}
+          const unsubscribe = subscribe(source);
+          return () => unsubscribe();
+        }, [source, enabled]);
+        React.useEffect(() => subscribeAndCopy(), [subscribeAndCopy]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not suppress a concise stable callback with a non-cleanup return branch", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source, shouldSubscribe }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const subscribeAndCopy = React.useCallback(() => {
+          setIntermediate(source);
+          const unsubscribe = subscribe(source);
+          return shouldSubscribe ? (() => unsubscribe()) : { invalidCleanup: true };
+        }, [source, shouldSubscribe]);
+        React.useEffect(() => subscribeAndCopy(), [subscribeAndCopy]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat an opaque result from a stable callback as concise cleanup", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const copyAndReturnUnknown = React.useCallback(() => {
+          setIntermediate(source);
+          return createUnknownValue(source);
+        }, [source]);
+        React.useEffect(() => copyAndReturnUnknown(), [copyAndReturnUnknown]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when the stable callback returns a resolved cleanup identifier", () => {
     const result = runRule(
       noEffectChain,

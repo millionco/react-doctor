@@ -484,6 +484,15 @@ const canStateWriteReachReaderWork = (
 };
 
 const EMPTY_CLEANUP_NAME_SET = new Set<string>();
+const NON_CONTAMINATING_MAP_METHOD_NAMES = new Set([
+  "clear",
+  "delete",
+  "entries",
+  "get",
+  "has",
+  "keys",
+  "values",
+]);
 
 // HACK: a useEffect cleanup return value MUST be a function (or
 // undefined). Anything else is either user error or "I'm using
@@ -761,9 +770,10 @@ const storesOnlyIntrinsicRefCallbackValues = (
       return false;
     }
     const methodName = getStaticPropertyName(methodMember);
+    if (methodName === "size") continue;
     const call = methodMember.parent;
     if (!isNodeOfType(call, "CallExpression") || call.callee !== methodMember) return false;
-    if (methodName === "get" || methodName === "delete" || methodName === "clear") continue;
+    if (methodName && NON_CONTAMINATING_MAP_METHOD_NAMES.has(methodName)) continue;
     if (methodName !== "set") return false;
     const storedValue = call.arguments[1];
     if (

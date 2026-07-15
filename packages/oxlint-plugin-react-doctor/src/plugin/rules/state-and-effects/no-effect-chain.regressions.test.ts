@@ -1045,6 +1045,32 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("allows read-only access to a ref-backed DOM map", () => {
+    const result = runRule(
+      noEffectChain,
+      `function AccessibleNavTree({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(new Map());
+        const hasActiveRef = itemRefs.current.has(activeId);
+        const refCount = itemRefs.current.size;
+        useEffect(() => {
+          setExpanded(findAncestorPath(activeId));
+        }, [activeId]);
+        useEffect(() => {
+          itemRefs.current.get(activeId)?.focus();
+        }, [activeId, expanded]);
+        return expanded.has(activeId) ? (
+          <>
+            <button ref={node => itemRefs.current.set(activeId, node)} />
+            <output>{hasActiveRef ? refCount : 0}</output>
+          </>
+        ) : null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it.each(["focus", "scrollIntoView", "select", "getBoundingClientRect"])(
     "treats committed DOM %s calls as external synchronization",
     (methodName) => {

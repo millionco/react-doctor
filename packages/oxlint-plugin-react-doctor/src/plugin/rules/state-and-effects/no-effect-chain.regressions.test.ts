@@ -828,9 +828,9 @@ describe("no-effect-chain — regressions", () => {
   });
 
   it.each([
-    ["direct transition", "setPlaying(false);"],
+    ["direct transition", "cancelScheduler(); setPlaying(false);"],
     ["stable callback transition", "pause();"],
-    ["inline transition", "(() => setPlaying(false))();"],
+    ["inline transition", "(() => { cancelScheduler(); setPlaying(false); })();"],
   ])("stays silent for the Slideshow timer synchronization through a %s", (_, transition) => {
     const result = runRule(
       noEffectChain,
@@ -860,6 +860,31 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent for the exact Slideshow direct transition job", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Slideshow({ disabled, currentIndex }) {
+        const [playing, setPlaying] = React.useState(true);
+        const scheduler = React.useRef();
+        const cancelScheduler = React.useCallback(() => {
+          clearTimeout(scheduler.current);
+          scheduler.current = undefined;
+        }, []);
+        React.useEffect(() => {
+          if (playing && !disabled) scheduleNextSlide();
+          else cancelScheduler();
+        }, [currentIndex, playing, disabled, cancelScheduler]);
+        React.useEffect(() => {
+          if (playing && disabled) setPlaying(false);
+        }, [playing, disabled]);
+        return playing;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags a redundant state-copy chain hidden behind React useCallback", () => {
     const result = runRule(
       noEffectChain,
@@ -870,6 +895,164 @@ describe("no-effect-chain — regressions", () => {
         const copyIntermediate = useCallback(() => setIntermediate(source), [source]);
         useEffect(() => copyIntermediate(), [copyIntermediate]);
         useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "named import",
+      imports: 'import { useCallback, useEffect, useRef, useState } from "react";',
+      hook: "useCallback",
+      callback: "cancelScheduler",
+    },
+    {
+      name: "renamed import through a TypeScript wrapper",
+      imports:
+        'import { useCallback as useStableCallback, useEffect, useRef, useState } from "react";',
+      hook: "useStableCallback",
+      callback: "cancelScheduler satisfies typeof cancelScheduler",
+    },
+    {
+      name: "multi-hop const alias",
+      imports: 'import { useCallback, useEffect, useRef, useState } from "react";',
+      hook: "useCallback",
+      callback: "secondAlias",
+      aliases: "const firstAlias = cancelScheduler; const secondAlias = firstAlias;",
+    },
+  ])("resolves timer synchronization through a $name", ({ imports, hook, callback, aliases }) => {
+    const result = runRule(
+      noEffectChain,
+      `${imports}
+      function Slideshow({ disabled }) {
+        const [playing, setPlaying] = useState(true);
+        const scheduler = useRef();
+        const cancelScheduler = ${hook}(() => {
+          clearTimeout(scheduler.current);
+          scheduler.current = undefined;
+        }, []);
+        ${aliases ?? ""}
+        useEffect(() => {
+          if (!playing || disabled) (${callback})();
+        }, [playing, disabled, cancelScheduler]);
+        useEffect(() => {
+          if (playing && disabled) setPlaying(false);
+        }, [playing, disabled]);
+        return playing;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("resolves nested stable callbacks transitively", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Slideshow({ disabled }) {
+        const [playing, setPlaying] = React.useState(true);
+        const scheduler = React.useRef();
+        const cancelScheduler = React.useCallback(() => {
+          clearTimeout(scheduler.current);
+          scheduler.current = undefined;
+        }, []);
+        const stopScheduler = React.useCallback(() => cancelScheduler(), [cancelScheduler]);
+        React.useEffect(() => {
+          if (!playing || disabled) stopScheduler();
+        }, [playing, disabled, stopScheduler]);
+        React.useEffect(() => {
+          if (playing && disabled) setPlaying(false);
+        }, [playing, disabled]);
+        return playing;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "userland useCallback",
+      "const useCallback = (callback) => callback; const cancelScheduler = useCallback(() => { clearTimeout(scheduler.current); scheduler.current = undefined; });",
+      "cancelScheduler",
+    ],
+    ["shadowed useCallback parameter", "", "useCallback"],
+    [
+      "mutable callback alias",
+      "const stableCancel = React.useCallback(() => { clearTimeout(scheduler.current); scheduler.current = undefined; }, []); let cancelScheduler = stableCancel; cancelScheduler = replacement;",
+      "cancelScheduler",
+    ],
+    [
+      "async stable callback",
+      "const cancelScheduler = React.useCallback(async () => { clearTimeout(scheduler.current); scheduler.current = undefined; });",
+      "cancelScheduler",
+    ],
+    [
+      "generator stable callback",
+      "const cancelScheduler = React.useCallback(function* () { clearTimeout(scheduler.current); scheduler.current = undefined; }, []);",
+      "cancelScheduler",
+    ],
+  ])("keeps unknown or deferred $name conservative", (name, declaration, callback) => {
+    const callbackParameter = name === "shadowed useCallback parameter" ? ", useCallback" : "";
+    const callbackDeclaration =
+      declaration ||
+      "const cancelScheduler = useCallback(() => { clearTimeout(scheduler.current); scheduler.current = undefined; }, []);";
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Slideshow({ disabled, replacement${callbackParameter} }) {
+        const [playing, setPlaying] = React.useState(true);
+        const scheduler = React.useRef();
+        ${callbackDeclaration}
+        React.useEffect(() => {
+          if (!playing || disabled) ${callback}();
+        }, [playing, disabled, ${callback}]);
+        React.useEffect(() => {
+          if (playing && disabled) setPlaying(false);
+        }, [playing, disabled]);
+        return playing;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a redundant state-copy chain through a multi-hop stable callback alias", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const copyIntermediate = React.useCallback(() => setIntermediate(source), [source]);
+        const firstCopy = copyIntermediate;
+        const secondCopy = firstCopy;
+        React.useEffect(() => secondCopy(), [secondCopy]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["implicit setter result", "() => setIntermediate(source)"],
+    ["block-bodied setter", "() => { setIntermediate(source); }"],
+    ["explicit setter result", "function () { return setIntermediate(source); }"],
+  ])("flags a redundant state-copy chain through an explicitly returned %s", (_, callback) => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const copyIntermediate = React.useCallback(${callback}, [source]);
+        React.useEffect(() => { return copyIntermediate(); }, [copyIntermediate]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
         return target;
       }`,
     );

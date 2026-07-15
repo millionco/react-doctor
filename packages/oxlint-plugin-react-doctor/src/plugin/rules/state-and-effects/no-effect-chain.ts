@@ -16,6 +16,7 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -29,7 +30,6 @@ import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
-import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -103,21 +103,9 @@ const resolveSynchronouslyInvokedFunction = (
   const localFunction = resolveExactLocalFunction(expression, scopes);
   if (localFunction) return localFunction;
 
-  const unwrappedExpression = stripParenExpression(expression);
-  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
-  const symbol = resolveConstIdentifierAlias(unwrappedExpression, scopes);
-  if (symbol?.kind !== "const" || !symbol.initializer) return null;
-  const initializer = stripParenExpression(symbol.initializer);
-  if (
-    !isNodeOfType(initializer, "CallExpression") ||
-    !isReactApiCall(initializer, "useCallback", scopes, {
-      allowGlobalReactNamespace: true,
-      resolveNamedAliases: true,
-    })
-  ) {
-    return null;
-  }
-  const callback = initializer.arguments[0];
+  const useCallbackCall = getReactUseCallbackCall(expression, scopes);
+  if (!useCallbackCall) return null;
+  const callback = useCallbackCall.arguments[0];
   if (!callback || isNodeOfType(callback, "SpreadElement")) return null;
   return resolveExactLocalFunction(callback, scopes);
 };
@@ -135,7 +123,9 @@ const collectSynchronouslyInvokedFunctions = (
       if (!isNodeOfType(child, "CallExpression")) return;
       const invokedFunction = resolveSynchronouslyInvokedFunction(child.callee, scopes);
       if (!invokedFunction || analysisFunctions.has(invokedFunction)) return;
-      if (isFunctionLike(invokedFunction) && invokedFunction.async) return;
+      if (isFunctionLike(invokedFunction) && (invokedFunction.async || invokedFunction.generator)) {
+        return;
+      }
       analysisFunctions.add(invokedFunction);
       pendingFunctions.push(invokedFunction);
     });
@@ -521,6 +511,52 @@ const NON_CONTAMINATING_MAP_METHOD_NAMES = new Set([
   "values",
 ]);
 
+const returnsOnlyLocalStateSetterResult = (
+  functionNode: EsTreeNode,
+  setterToStateName: ReadonlyMap<string, string>,
+  scopes: ScopeAnalysis,
+  visitedFunctions: ReadonlySet<EsTreeNode> = new Set(),
+): boolean => {
+  if (
+    !isFunctionLike(functionNode) ||
+    functionNode.async ||
+    functionNode.generator ||
+    visitedFunctions.has(functionNode)
+  ) {
+    return false;
+  }
+  let returnValue: EsTreeNode | null = null;
+  if (!isNodeOfType(functionNode.body, "BlockStatement")) {
+    returnValue = functionNode.body;
+  } else if (functionNode.body.body.length === 1) {
+    const statement = functionNode.body.body[0];
+    if (isNodeOfType(statement, "ReturnStatement") && statement.argument) {
+      returnValue = statement.argument;
+    } else if (isNodeOfType(statement, "ExpressionStatement")) {
+      returnValue = statement.expression;
+    }
+  }
+  if (!returnValue) return false;
+  const expression = stripParenExpression(returnValue);
+  if (!isNodeOfType(expression, "CallExpression")) return false;
+  if (
+    isNodeOfType(expression.callee, "Identifier") &&
+    setterToStateName.has(expression.callee.name)
+  ) {
+    return true;
+  }
+  const invokedFunction = resolveSynchronouslyInvokedFunction(expression.callee, scopes);
+  return Boolean(
+    invokedFunction &&
+    returnsOnlyLocalStateSetterResult(
+      invokedFunction,
+      setterToStateName,
+      scopes,
+      new Set(visitedFunctions).add(functionNode),
+    ),
+  );
+};
+
 // HACK: a useEffect cleanup return value MUST be a function (or
 // undefined). Anything else is either user error or "I'm using
 // `return` for early-exit, not for cleanup". For the chain detector,
@@ -532,6 +568,7 @@ const isFunctionShapedReturn = (
   returnedValue: EsTreeNode,
   setterToStateName: ReadonlyMap<string, string>,
   isExplicitReturnStatement: boolean,
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (
     isNodeOfType(returnedValue, "ArrowFunctionExpression") ||
@@ -550,6 +587,13 @@ const isFunctionShapedReturn = (
     if (isNodeOfType(returnedValue.callee, "Identifier")) {
       if (setterToStateName.has(returnedValue.callee.name)) return false;
       if (isSetterIdentifier(returnedValue.callee.name)) return true;
+    }
+    const invokedFunction = resolveSynchronouslyInvokedFunction(returnedValue.callee, scopes);
+    if (
+      invokedFunction &&
+      returnsOnlyLocalStateSetterResult(invokedFunction, setterToStateName, scopes)
+    ) {
+      return false;
     }
     return isCleanupReturn(returnedValue, EMPTY_CLEANUP_NAME_SET, EMPTY_CLEANUP_NAME_SET, {
       allowOpaqueReturn: isExplicitReturnStatement,
@@ -922,13 +966,13 @@ const isExternalSyncEffect = (
   // an external resource — once we see one, we don't need to inspect
   // the body for an external-sync call shape.
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
-    if (isFunctionShapedReturn(effectCallback.body, setterToStateName, false)) return true;
+    if (isFunctionShapedReturn(effectCallback.body, setterToStateName, false, scopes)) return true;
   } else {
     for (const statement of effectCallback.body.body ?? []) {
       if (
         isNodeOfType(statement, "ReturnStatement") &&
         statement.argument &&
-        isFunctionShapedReturn(statement.argument, setterToStateName, true)
+        isFunctionShapedReturn(statement.argument, setterToStateName, true, scopes)
       ) {
         return true;
       }

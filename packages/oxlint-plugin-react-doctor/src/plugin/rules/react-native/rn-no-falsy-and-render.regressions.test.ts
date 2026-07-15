@@ -25,6 +25,8 @@ const CookieCard = ({ cookie }: CookieCardProps) => (
     `<div>{itemCount && <span>Items</span>}</div>`,
     `<svg>{itemCount && <text>Items</text>}</svg>`,
     `<div><>{itemCount && <span>Items</span>}</></div>`,
+    `<div><Fragment>{itemCount && <span>Items</span>}</Fragment></div>`,
+    `<div><React.Fragment>{itemCount && <span>Items</span>}</React.Fragment></div>`,
     `<div children={itemCount && <span>Items</span>} />`,
     `createPortal(<div>{itemCount && <span>Items</span>}</div>, document.body)`,
   ])("stays silent when the numeric gate reaches a proven DOM host: %s", (renderedValue) => {
@@ -58,6 +60,18 @@ const Card = ({ itemCount }) => ${renderedValue};`,
       rnNoFalsyAndRender,
       `const Card = ({ itemCount }) => <Panel>{itemCount && <span>Items</span>}</Panel>;`,
       { settings: { "jsx-a11y": { components: { Panel: "div" } } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a locally bound Fragment component as transparent", () => {
+    const result = runRule(
+      rnNoFalsyAndRender,
+      `const Fragment = ({ children }) => <Panel>{children}</Panel>;
+      const Card = ({ itemCount }) => (
+        <div><Fragment>{itemCount && <span>Items</span>}</Fragment></div>
+      );`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

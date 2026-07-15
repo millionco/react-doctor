@@ -4650,6 +4650,97 @@ export const OwnedAlias = ({ subscription }) => {
     expect(ownedResult.diagnostics).toHaveLength(0);
   });
 
+  it("gates wrapped and transitively aliased cleanups on effect ownership", () => {
+    const cleanupShapes = [
+      {
+        aliasDeclaration: "",
+        returnExpression: "() => cleanup()",
+      },
+      {
+        aliasDeclaration: "const cleanupAlias = cleanup;",
+        returnExpression: "cleanupAlias",
+      },
+    ];
+    for (const cleanupShape of cleanupShapes) {
+      const source = (effectCallback: string): string => `import { useEffect, useRef } from "react";
+export const CleanupOwner = ({ subscription }) => {
+  const callbackRef = useRef(() => () => {});
+  callbackRef.current = () => {
+    const unsubscribe = subscription.subscribe();
+    const cleanup = () => unsubscribe();
+    ${cleanupShape.aliasDeclaration}
+    return ${cleanupShape.returnExpression};
+  };
+  useEffect(${effectCallback}, []);
+  return null;
+};`;
+      const ownedResult = runRule(effectNeedsCleanup, source("() => callbackRef.current()"));
+      const discardedResult = runRule(
+        effectNeedsCleanup,
+        source(`() => {
+          callbackRef.current();
+        }`),
+      );
+      expect(ownedResult.parseErrors).toEqual([]);
+      expect(discardedResult.parseErrors).toEqual([]);
+      expect(ownedResult.diagnostics).toHaveLength(0);
+      expect(discardedResult.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("accepts bound disposers returned as final sequence values", () => {
+    const callbackBindingResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const CallbackBinding = ({ subscription }) => {
+  const callbackRef = useRef(() => () => {});
+  callbackRef.current = () => {
+    const cleanup = subscription.subscribe();
+    return (track(), cleanup);
+  };
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    );
+    const effectBindingResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const EffectBinding = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => {
+    const cleanup = callbackRef.current();
+    return (track(), cleanup);
+  }, []);
+  return null;
+};`,
+    );
+    expect(callbackBindingResult.parseErrors).toEqual([]);
+    expect(effectBindingResult.parseErrors).toEqual([]);
+    expect(callbackBindingResult.diagnostics).toHaveLength(0);
+    expect(effectBindingResult.diagnostics).toHaveLength(0);
+  });
+
+  it("reports bound effect disposers behind partial expression returns", () => {
+    for (const returnExpression of ["enabled && cleanup", "enabled ? cleanup : undefined"]) {
+      const result = runRule(
+        effectNeedsCleanup,
+        `import { useEffect, useRef } from "react";
+export const PartialCleanup = ({ enabled, subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => {
+    const cleanup = callbackRef.current();
+    return ${returnExpression};
+  }, [enabled]);
+  return null;
+};`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
   it("accepts a cleanup helper invoked on every path after acquisition", () => {
     const result = runRule(
       effectNeedsCleanup,

@@ -2794,6 +2794,35 @@ const isUseSyncExternalStoreSubscribeFunction = (
   return isSubscribeBinding(bindingIdentifier);
 };
 
+const findUnconditionalReturnStatement = (
+  expression: EsTreeNode,
+  ownerFunction: EsTreeNode,
+): EsTreeNode | null => {
+  let expressionRoot = findTransparentExpressionRoot(expression);
+  while (
+    isNodeOfType(expressionRoot.parent, "SequenceExpression") &&
+    expressionRoot.parent.expressions.at(-1) === expressionRoot
+  ) {
+    expressionRoot = findTransparentExpressionRoot(expressionRoot.parent);
+  }
+  const returnStatement = expressionRoot.parent;
+  return isNodeOfType(returnStatement, "ReturnStatement") &&
+    returnStatement.argument === expressionRoot &&
+    findEnclosingFunction(returnStatement) === ownerFunction
+    ? returnStatement
+    : null;
+};
+
+const getFinalSequenceExpressionValue = (expression: EsTreeNode): EsTreeNode => {
+  let finalExpression = stripParenExpression(expression);
+  while (isNodeOfType(finalExpression, "SequenceExpression")) {
+    const sequenceResult = finalExpression.expressions.at(-1);
+    if (!sequenceResult) break;
+    finalExpression = stripParenExpression(sequenceResult);
+  }
+  return finalExpression;
+};
+
 const doesResourceResultEscape = (
   resourceNode: EsTreeNode,
   allowReturnedResourceEscape: boolean,
@@ -2835,12 +2864,11 @@ const doesResourceResultEscape = (
       if (!ownerFunction || !resourceSymbol) return false;
       const matchingReturnStatements = resourceSymbol.references.flatMap((reference) => {
         if (reference.flag !== "read") return [];
-        const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-        return isNodeOfType(referenceRoot.parent, "ReturnStatement") &&
-          referenceRoot.parent.argument === referenceRoot &&
-          findEnclosingFunction(referenceRoot.parent) === ownerFunction
-          ? [referenceRoot.parent]
-          : [];
+        const returnStatement = findUnconditionalReturnStatement(
+          reference.identifier,
+          ownerFunction,
+        );
+        return returnStatement ? [returnStatement] : [];
       });
       return doMatchingNodesCoverEveryPathAfterUsage(
         resourceNode,
@@ -3025,12 +3053,8 @@ const isExpressionReturnedFromFunction = (
     if (!resultSymbol) return false;
     const matchingReturnStatements = resultSymbol.references.flatMap((reference) => {
       if (reference.flag !== "read") return [];
-      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-      return isNodeOfType(referenceRoot.parent, "ReturnStatement") &&
-        referenceRoot.parent.argument === referenceRoot &&
-        findEnclosingFunction(referenceRoot.parent) === ownerFunction
-        ? [referenceRoot.parent]
-        : [];
+      const returnStatement = findUnconditionalReturnStatement(reference.identifier, ownerFunction);
+      return returnStatement ? [returnStatement] : [];
     });
     return doMatchingNodesCoverEveryPathAfterUsage(expression, matchingReturnStatements, context);
   }
@@ -3142,12 +3166,36 @@ const isReactRefCallbackCleanupOwnedByEffect = (
     return false;
   }
   if (!isNodeOfType(retainedFunction.body, "BlockStatement")) return false;
+  const doesReturnedCleanupCallFunction = (returnedValue: EsTreeNode): boolean => {
+    const returnedCleanupFunction = resolveRefOwnedCleanupFunction(
+      getFinalSequenceExpressionValue(returnedValue),
+      context,
+    );
+    if (!returnedCleanupFunction) return false;
+    if (returnedCleanupFunction === cleanupFunction) return true;
+    if (!isFunctionLike(returnedCleanupFunction)) return false;
+    const matchingCalls: EsTreeNode[] = [];
+    walkAst(returnedCleanupFunction.body, (child: EsTreeNode) => {
+      if (child !== returnedCleanupFunction.body && isFunctionLike(child)) return false;
+      if (
+        isNodeOfType(child, "CallExpression") &&
+        resolveRefOwnedCleanupFunction(child.callee, context) === cleanupFunction
+      ) {
+        matchingCalls.push(child);
+      }
+    });
+    return doMatchingNodesCoverEveryPathFromFunctionEntry(
+      returnedCleanupFunction,
+      matchingCalls,
+      context,
+    );
+  };
   const matchingReturns: EsTreeNode[] = [];
   walkInsideStatementBlocks(retainedFunction.body, (child: EsTreeNode) => {
     if (
       isNodeOfType(child, "ReturnStatement") &&
       child.argument &&
-      resolveRefOwnedCleanupFunction(child.argument, context) === cleanupFunction
+      doesReturnedCleanupCallFunction(child.argument)
     ) {
       matchingReturns.push(child);
     }
@@ -3163,20 +3211,16 @@ const isCleanupFunctionReferencedByReturn = (
   if (!isFunctionLike(ownerFunction) || !isNodeOfType(ownerFunction.body, "BlockStatement")) {
     return false;
   }
-  const bindingIdentifier = getFunctionBindingIdentifier(cleanupFunction);
-  const symbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
   let isReferencedByReturn = false;
   walkInsideStatementBlocks(ownerFunction.body, (child: EsTreeNode) => {
     if (isReferencedByReturn || !isNodeOfType(child, "ReturnStatement") || !child.argument) {
       return;
     }
-    const returnedValue = child.argument;
-    if (
-      isAstDescendant(cleanupFunction, returnedValue) ||
-      symbol?.references.some((reference) => isAstDescendant(reference.identifier, returnedValue))
-    ) {
+    walkAst(child.argument, (returnedChild: EsTreeNode) => {
+      if (resolveRefOwnedCleanupFunction(returnedChild, context) !== cleanupFunction) return;
       isReferencedByReturn = true;
-    }
+      return false;
+    });
   });
   return isReferencedByReturn;
 };

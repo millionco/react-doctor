@@ -220,6 +220,7 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { ImageResponse as FuzzImageResponse } from "next/og"; export const FuzzPostcardLayout = ({ url }) => <img src={url} alt="" />; export const FuzzPostcardRoute = () => new FuzzImageResponse(FuzzPostcardLayout({ url }));`,
   `import { motion as FuzzMotion } from "framer-motion"; export const FuzzMotionPanel = () => <FuzzMotion.div animate={{ x: 120 }}>moving</FuzzMotion.div>;`,
   `import { createRoot as mountFuzzRoot } from "react-dom/client"; export const FuzzRootApp = () => <div />; export const fuzzRootConfig = getConfig(); const fuzzApplicationRoot = mountFuzzRoot(document.body); fuzzApplicationRoot.render(<FuzzRootApp />);`,
   `const GLOBAL_CACHE = new Map<string, unknown>();`,

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noPassDataToParent } from "./no-pass-data-to-parent.js";
 
+const DEEP_REGISTER_ALIAS_CHAIN_LENGTH = 2_000;
+
 describe("no-pass-data-to-parent — regressions", () => {
   it("stays silent when a callback parameter is passed through a parent callback", () => {
     const result = runRule(
@@ -303,6 +305,506 @@ describe("no-pass-data-to-parent — regressions", () => {
   });
 
   describe("registration / subscription and external instances (verification run)", () => {
+    it("stays silent when a ref-held registerPage prop is destructured with an alias (react-pdf Page)", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useDocumentContext } from "./document-context";
+        function Page(props) {
+          const documentContext = useDocumentContext();
+          const mergedProps = { ...documentContext, ...props };
+          const { _enableRegisterUnregisterPage = true, pageIndex, registerPage } = mergedProps;
+          const pageElement = useRef(null);
+          const page = usePage();
+          const currentPageIndex = isProvided(pageIndex) ? pageIndex : null;
+          const registerPagePropsRef = useRef({
+            _enableRegisterUnregisterPage,
+            pageIndex: currentPageIndex,
+            registerPage,
+          });
+          useEffect(() => {
+            registerPagePropsRef.current = {
+              _enableRegisterUnregisterPage,
+              pageIndex: currentPageIndex,
+              registerPage,
+            };
+          }, [_enableRegisterUnregisterPage, currentPageIndex, registerPage]);
+          useEffect(() => {
+            const {
+              _enableRegisterUnregisterPage: enableRegisterUnregisterPage,
+              pageIndex: currentPageIndex,
+              registerPage: currentRegisterPage,
+            } = registerPagePropsRef.current;
+            if (enableRegisterUnregisterPage && currentRegisterPage && pageElement.current) {
+              currentRegisterPage(currentPageIndex, pageElement.current);
+            }
+          }, [page]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("preserves the direct register command exemption with a default value", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage = () => {} }) {
+          const pageData = usePageData();
+          useEffect(() => registerPage(pageData), [registerPage, pageData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags register commands injected through mutated props", () => {
+      const reassignedPropsResult = runRule(
+        noPassDataToParent,
+        `import { useDocumentContext } from "./document-context";
+        function Page(props) {
+          const documentContext = useDocumentContext();
+          props = { ...props, registerPage: props.onData };
+          const mergedProps = { ...documentContext, ...props };
+          const { registerPage } = mergedProps;
+          const callbackBagRef = useRef({ registerPage });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      const mutatedPropertyResult = runRule(
+        noPassDataToParent,
+        `import { useDocumentContext } from "./document-context";
+        function Page(props) {
+          const documentContext = useDocumentContext();
+          props.registerPage = props.onData;
+          const mergedProps = { ...documentContext, ...props };
+          const { registerPage } = mergedProps;
+          const callbackBagRef = useRef({ registerPage });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(reassignedPropsResult.parseErrors).toEqual([]);
+      expect(reassignedPropsResult.diagnostics).toHaveLength(1);
+      expect(mutatedPropertyResult.parseErrors).toEqual([]);
+      expect(mutatedPropertyResult.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a register command from an escaped context object", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useDocumentContext } from "./document-context";
+        function Page(props) {
+          const documentContext = useDocumentContext();
+          mutate(documentContext);
+          const mergedProps = { ...documentContext, ...props };
+          const { registerPage } = mergedProps;
+          const callbackBagRef = useRef({ registerPage });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags reverse-order and shadowed context merges", () => {
+      const reverseOrderResult = runRule(
+        noPassDataToParent,
+        `import { useDocumentContext } from "./document-context";
+        function Page(props) {
+          const documentContext = useDocumentContext();
+          const mergedProps = { ...props, ...documentContext };
+          const { registerPage } = mergedProps;
+          const callbackBagRef = useRef({ registerPage });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      const shadowedContextResult = runRule(
+        noPassDataToParent,
+        `function Page(props) {
+          const useDocumentContext = () => ({ registerPage: props.onData });
+          const documentContext = useDocumentContext();
+          const mergedProps = { ...documentContext, ...props };
+          const { registerPage } = mergedProps;
+          const callbackBagRef = useRef({ registerPage });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(reverseOrderResult.parseErrors).toEqual([]);
+      expect(reverseOrderResult.diagnostics).toHaveLength(1);
+      expect(shadowedContextResult.parseErrors).toEqual([]);
+      expect(shadowedContextResult.diagnostics).toHaveLength(1);
+    });
+
+    it("preserves register command names through direct destructuring and immutable aliases", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function Page(props) {
+          const { registerPage: currentRegisterPage } = props;
+          const registerCurrentPage = currentRegisterPage;
+          const command = registerCurrentPage;
+          const pageData = buildPageData();
+          useEffect(() => {
+            command(pageData);
+          }, [command, pageData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("preserves register command names through ref aliases and static property reads", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, pageIndex }) {
+          const registerPagePropsRef = React.useRef({ registerPage });
+          const registerPagePropsRefAlias = registerPagePropsRef;
+          registerPagePropsRefAlias.current = { registerPage };
+          const currentRegisterPage = registerPagePropsRefAlias["current"]["registerPage"];
+          const registerCurrentPage = currentRegisterPage;
+          const pageData = buildPageData(pageIndex);
+          useEffect(() => {
+            registerCurrentPage(pageData);
+          }, [pageData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags an ordinary callback stored under a register-named object property", () => {
+      const localObjectResult = runRule(
+        noPassDataToParent,
+        `function Page({ onData }) {
+          const callbackBag = { registerPage: onData };
+          const { registerPage: notifyParent } = callbackBag;
+          const pageData = buildPageData();
+          useEffect(() => {
+            notifyParent(pageData);
+          }, [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      const refObjectResult = runRule(
+        noPassDataToParent,
+        `function Page({ onData }) {
+          const callbackBagRef = useRef({ registerPage: onData });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => {
+            notifyParent(pageData);
+          }, [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(localObjectResult.parseErrors).toEqual([]);
+      expect(localObjectResult.diagnostics).toHaveLength(1);
+      expect(refObjectResult.parseErrors).toEqual([]);
+      expect(refObjectResult.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags ref-held register properties with competing or opaque assignments", () => {
+      const competingAssignmentResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, onData, disabled }) {
+          const callbackBagRef = useRef({ registerPage });
+          if (disabled) callbackBagRef.current = { registerPage: onData };
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => {
+            notifyParent(pageData);
+          }, [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      const opaqueAssignmentResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, nextCallbacks }) {
+          const callbackBagRef = useRef({ registerPage });
+          callbackBagRef.current = nextCallbacks;
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => {
+            notifyParent(pageData);
+          }, [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(competingAssignmentResult.parseErrors).toEqual([]);
+      expect(competingAssignmentResult.diagnostics).toHaveLength(1);
+      expect(opaqueAssignmentResult.parseErrors).toEqual([]);
+      expect(opaqueAssignmentResult.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags computed properties that can override register commands", () => {
+      const initializerResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, onData, commandName }) {
+          const callbackBagRef = useRef({ registerPage, [commandName]: onData });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      const assignmentResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, onData, commandName }) {
+          const callbackBagRef = useRef({ registerPage });
+          callbackBagRef.current = { registerPage, [commandName]: onData };
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(initializerResult.parseErrors).toEqual([]);
+      expect(initializerResult.diagnostics).toHaveLength(1);
+      expect(assignmentResult.parseErrors).toEqual([]);
+      expect(assignmentResult.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags mutable, dynamically keyed, and shadowed ref variants", () => {
+      const mutableResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, onData }) {
+          const callbackBagRef = useRef({ registerPage });
+          let { registerPage: notifyParent } = callbackBagRef.current;
+          notifyParent = onData;
+          const pageData = buildPageData();
+          useEffect(() => {
+            notifyParent(pageData);
+          }, [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      const dynamicResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, commandName }) {
+          const callbackBagRef = useRef({ registerPage });
+          const { [commandName]: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => {
+            notifyParent(pageData);
+          }, [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      const shadowedResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage }) {
+          const useRef = (value) => ({ current: value });
+          const callbackBagRef = useRef({ registerPage });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => {
+            notifyParent(pageData);
+          }, [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(mutableResult.parseErrors).toEqual([]);
+      expect(mutableResult.diagnostics).toHaveLength(1);
+      expect(dynamicResult.parseErrors).toEqual([]);
+      expect(dynamicResult.diagnostics).toHaveLength(1);
+      expect(shadowedResult.parseErrors).toEqual([]);
+      expect(shadowedResult.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags target property writes and opaque ref-object escape", () => {
+      const propertyWriteResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, onData }) {
+          const callbackBagRef = useRef({ registerPage });
+          callbackBagRef.current.registerPage = onData;
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => {
+            notifyParent(pageData);
+          }, [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      const escapedRefResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage }) {
+          const callbackBagRef = useRef({ registerPage });
+          synchronizeCallbacks(callbackBagRef);
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => {
+            notifyParent(pageData);
+          }, [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(propertyWriteResult.parseErrors).toEqual([]);
+      expect(propertyWriteResult.diagnostics).toHaveLength(1);
+      expect(escapedRefResult.parseErrors).toEqual([]);
+      expect(escapedRefResult.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags mutable and reassigned callback sources stored under registerPage", () => {
+      const mutableAliasResult = runRule(
+        noPassDataToParent,
+        `function Page({ onData }) {
+          let registerPage = onData;
+          const callbackBagRef = useRef({ registerPage });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      const reassignedPropResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, onData }) {
+          registerPage = onData;
+          const callbackBagRef = useRef({ registerPage });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(mutableAliasResult.parseErrors).toEqual([]);
+      expect(mutableAliasResult.diagnostics).toHaveLength(1);
+      expect(reassignedPropResult.parseErrors).toEqual([]);
+      expect(reassignedPropResult.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a mutated props member stored under registerPage", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function Page(props) {
+          props.registerPage = props.onData;
+          const callbackBagRef = useRef({ registerPage: props.registerPage });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags local-bag and fallback laundering", () => {
+      const localBagResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, onData }) {
+          const localBag = { registerPage: onData };
+          const { registerPage: fakeRegisterPage } = localBag;
+          const callbackBagRef = useRef({ registerPage: fakeRegisterPage });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      const fallbackResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, onData }) {
+          const callbackBagRef = useRef({ registerPage });
+          const { registerPage: notifyParent = onData } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(localBagResult.parseErrors).toEqual([]);
+      expect(localBagResult.diagnostics).toHaveLength(1);
+      expect(fallbackResult.parseErrors).toEqual([]);
+      expect(fallbackResult.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags pattern and loop writes to a ref-held registerPage property", () => {
+      const patterns = [
+        `({ registerPage: callbackBagRef.current.registerPage } = { registerPage: onData });`,
+        `[callbackBagRef.current.registerPage] = [onData];`,
+        `for (callbackBagRef.current.registerPage of [onData]) break;`,
+      ];
+      for (const pattern of patterns) {
+        const result = runRule(
+          noPassDataToParent,
+          `function Page({ registerPage, onData }) {
+            const callbackBagRef = useRef({ registerPage });
+            ${pattern}
+            const { registerPage: notifyParent } = callbackBagRef.current;
+            const pageData = buildPageData();
+            useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+            return null;
+          }`,
+        );
+        expect(result.parseErrors).toEqual([]);
+        expect(result.diagnostics).toHaveLength(1);
+      }
+    });
+
+    it("preserves callback-ref diagnostics for defaulted and later-reassigned props", () => {
+      const defaultedPropResult = runRule(
+        noPassDataToParent,
+        `function Page({ onData = () => {} }) {
+          const callbackRef = useRef(onData);
+          const pageData = buildPageData();
+          useEffect(() => callbackRef.current(pageData), [pageData]);
+          return null;
+        }`,
+      );
+      const reassignedPropResult = runRule(
+        noPassDataToParent,
+        `function Page({ onData }) {
+          const callbackRef = useRef(onData);
+          onData = (pageData) => log(pageData);
+          const pageData = buildPageData();
+          useEffect(() => callbackRef.current(pageData), [pageData]);
+          return null;
+        }`,
+      );
+      expect(defaultedPropResult.parseErrors).toEqual([]);
+      expect(defaultedPropResult.diagnostics).toHaveLength(1);
+      expect(reassignedPropResult.parseErrors).toEqual([]);
+      expect(reassignedPropResult.diagnostics).toHaveLength(1);
+    });
+
+    it("does not overflow on a deep immutable callback alias chain", () => {
+      const aliasDeclarations = Array.from(
+        { length: DEEP_REGISTER_ALIAS_CHAIN_LENGTH },
+        (_, aliasIndex) => `const registerAlias${aliasIndex + 1} = registerAlias${aliasIndex};`,
+      ).join("\n");
+      const result = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage }) {
+          const callbackBagRef = useRef({ registerPage });
+          const { registerPage: registerAlias0 } = callbackBagRef.current;
+          ${aliasDeclarations}
+          const pageData = buildPageData();
+          useEffect(() => {
+            registerAlias${DEEP_REGISTER_ALIAS_CHAIN_LENGTH}(pageData);
+          }, [pageData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("stays silent on sensor subscription with a concise-body cleanup (lightbox usePointerEvents)", () => {
       const result = runRule(
         noPassDataToParent,

@@ -389,6 +389,85 @@ describe("react-native collectors", () => {
   });
 });
 
+describe("no-create-ref-in-function-component collector", () => {
+  it("records the modules in the createRef consumer chain on warm and cold collection", () => {
+    writeFixtureFile(
+      "src/use-forward-focus.ts",
+      `import { useImperativeHandle } from "react";
+export default function useForwardFocus(ref) {
+  useImperativeHandle(ref, () => ({}));
+}`,
+    );
+    writeFixtureFile(
+      "src/button.tsx",
+      `import React from "react";
+import useForwardFocus from "./use-forward-focus";
+export const Button = React.forwardRef((props, ref) => {
+  useForwardFocus(ref);
+  return <button {...props} />;
+});`,
+    );
+    writeFixtureFile(
+      "src/navigation.tsx",
+      `import { Button } from "./button";
+export const Navigation = ({ target }) => <Button ref={target} />;`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { createRef } from "react";
+import { Navigation } from "./navigation";
+export const App = () => {
+  const target = createRef();
+  return <Navigation target={target} />;
+};`,
+    );
+
+    const firstTrace = collectFor(appPath, ["no-create-ref-in-function-component"]);
+    const repeatTrace = collectFor(appPath, ["no-create-ref-in-function-component"]);
+    for (const trace of [firstTrace, repeatTrace]) {
+      expect(trace?.contentPaths.has(fixturePath("src/navigation.tsx"))).toBe(true);
+      expect(trace?.contentPaths.has(fixturePath("src/button.tsx"))).toBe(true);
+      expect(trace?.contentPaths.has(fixturePath("src/use-forward-focus.ts"))).toBe(true);
+    }
+  });
+
+  it("does not traverse unrelated import fan-out while fingerprinting", () => {
+    for (let moduleIndex = 0; moduleIndex < 100; moduleIndex += 1) {
+      writeFixtureFile(
+        `src/unrelated-${moduleIndex}.tsx`,
+        `export const unrelated${moduleIndex} = ${moduleIndex};\n`,
+      );
+    }
+    writeFixtureFile(
+      "src/ref-sink.tsx",
+      `export const RefSink = ({ target }) => <input ref={target} />;\n`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { createRef } from "react";
+import { RefSink } from "./ref-sink";
+${Array.from(
+  { length: 100 },
+  (_, moduleIndex) => `import { unrelated${moduleIndex} } from "./unrelated-${moduleIndex}";`,
+).join("\n")}
+export const App = () => {
+  const target = createRef();
+  return <><RefSink target={target} /><div>{unrelated0}</div></>;
+};`,
+    );
+    const trace = collectFor(appPath, ["no-create-ref-in-function-component"]);
+    expect(trace).not.toBeNull();
+    expect(trace?.contentPaths).toEqual(new Set([fixturePath("src/ref-sink.tsx")]));
+    expect(trace?.existencePaths.size).toBeLessThan(20);
+    for (let moduleIndex = 0; moduleIndex < 100; moduleIndex += 1) {
+      expect(trace?.contentPaths.has(fixturePath(`src/unrelated-${moduleIndex}.tsx`))).toBe(false);
+      expect(trace?.existencePaths.has(fixturePath(`src/unrelated-${moduleIndex}.tsx`))).toBe(
+        false,
+      );
+    }
+  });
+});
+
 describe("collector registry", () => {
   it("classifies every cross-file rule as bounded or unbounded", () => {
     expect(

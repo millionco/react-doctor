@@ -5,8 +5,8 @@ import {
   ORDERED_UI_FLOW_CALLEE_PREFIXES,
 } from "../../constants/js.js";
 import { SEQUENTIAL_AWAIT_THRESHOLD } from "../../constants/thresholds.js";
-import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { expressionReadsPatternBinding } from "../../utils/expression-reads-pattern-binding.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { getCalleeIdentifierTrail } from "../../utils/get-callee-identifier-trail.js";
@@ -14,7 +14,6 @@ import { getOrderIndependentLocalFunction } from "../../utils/get-order-independ
 import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
 import { isTestLibraryImportSource } from "../../utils/is-test-library-import-source.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -148,27 +147,20 @@ const isInsideTransactionCallback = (node: EsTreeNode): boolean => {
 };
 
 const reportIfIndependent = (statements: EsTreeNode[], context: RuleContext): void => {
-  const declaredNames = new Set<string>();
+  const declaredPatterns: EsTreeNode[] = [];
 
   for (const statement of statements) {
     const awaitArgument = getAwaitedCall(statement);
     if (!awaitArgument) continue;
 
-    let referencesEarlierResult = false;
-    walkAst(awaitArgument, (child: EsTreeNode) => {
-      if (isNodeOfType(child, "Identifier") && declaredNames.has(child.name)) {
-        referencesEarlierResult = true;
-      }
-    });
-
-    if (referencesEarlierResult) return;
+    if (expressionReadsPatternBinding(awaitArgument, declaredPatterns, context.scopes)) return;
 
     // Destructured results (`const { prepareConfig } = await import(…)`,
     // `const [row] = await db.insert(…)`) bind names a later await may
     // consume, so every pattern-bound name must join the dependency set —
     // not just plain identifier declarations.
     if (isNodeOfType(statement, "VariableDeclaration") && statement.declarations[0]?.id) {
-      collectPatternNames(statement.declarations[0].id, declaredNames);
+      declaredPatterns.push(statement.declarations[0].id);
     }
   }
 

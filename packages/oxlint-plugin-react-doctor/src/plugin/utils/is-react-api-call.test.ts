@@ -54,6 +54,33 @@ describe("isReactApiCall", () => {
       expectedCount: 1,
     },
     {
+      name: "conditional aliases whose branches are React APIs",
+      code: `import { useEffect, useLayoutEffect } from "react";
+        const useIsomorphicLayoutEffect =
+          typeof window !== "undefined" ? useLayoutEffect : useEffect;
+        useIsomorphicLayoutEffect(() => {});`,
+      options: { resolveConditionalAliases: true, resolveNamedAliases: true },
+      expectedCount: 1,
+    },
+    {
+      name: "conditional aliases with an opaque branch",
+      code: `import { useEffect } from "react";
+        const useMaybeEffect = Math.random() > 0.5 ? useEffect : useCustomEffect;
+        useMaybeEffect(() => {});`,
+      options: { resolveConditionalAliases: true, resolveNamedAliases: true },
+      expectedCount: 0,
+    },
+    {
+      name: "multi-hop aliases of conditional React APIs",
+      code: `import * as ReactClient from "react";
+        const useIsomorphicLayoutEffect =
+          typeof window !== "undefined" ? ReactClient.useLayoutEffect : ReactClient.useEffect;
+        const useAliasedEffect = useIsomorphicLayoutEffect;
+        useAliasedEffect(() => {});`,
+      options: { resolveConditionalAliases: true, resolveNamedAliases: true },
+      expectedCount: 1,
+    },
+    {
       name: "default React receivers",
       code: 'import ReactClient from "react"; ReactClient.useEffect(() => {});',
       expectedCount: 1,

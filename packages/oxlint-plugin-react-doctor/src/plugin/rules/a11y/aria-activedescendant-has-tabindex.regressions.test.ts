@@ -46,6 +46,69 @@ describe("a11y/aria-activedescendant-has-tabindex regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags a const-disabled editing host", () => {
+    const result = runRule(
+      ariaActivedescendantHasTabindex,
+      `const editable = false;
+      <div contentEditable={editable} aria-activedescendant={activeId} />`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags invalid inherited contentEditable values", () => {
+    const sources = [
+      `<div contentEditable="inherit" aria-activedescendant={activeId} />`,
+      `<div contentEditable="invalid" aria-activedescendant={activeId} />`,
+      `<div contentEditable><div contentEditable="inherit" aria-activedescendant={activeId} /></div>`,
+    ];
+    for (const source of sources) {
+      expect(runRule(ariaActivedescendantHasTabindex, source).diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("still flags a nested enabled editing host", () => {
+    const result = runRule(
+      ariaActivedescendantHasTabindex,
+      `<div contentEditable>
+        <div contentEditable aria-activedescendant={activeId} />
+      </div>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not assume a dynamic editing ancestor is always enabled", () => {
+    const result = runRule(
+      ariaActivedescendantHasTabindex,
+      `<div contentEditable={outerEnabled}>
+        <div contentEditable aria-activedescendant={activeId} />
+      </div>`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not look past uncertain or disabled editing-host boundaries", () => {
+    const sources = [
+      `<div contentEditable>
+        <div contentEditable={false}>
+          <div contentEditable aria-activedescendant={activeId} />
+        </div>
+      </div>`,
+      `<div contentEditable>
+        <div contentEditable={innerEnabled}>
+          <div contentEditable aria-activedescendant={activeId} />
+        </div>
+      </div>`,
+      `<div contentEditable>
+        <Wrapper>
+          <div contentEditable aria-activedescendant={activeId} />
+        </Wrapper>
+      </div>`,
+    ];
+    for (const source of sources) {
+      expect(runRule(ariaActivedescendantHasTabindex, source).diagnostics).toEqual([]);
+    }
+  });
+
   it("still flags a plain div with aria-activedescendant and no tabIndex", () => {
     const result = runRule(
       ariaActivedescendantHasTabindex,

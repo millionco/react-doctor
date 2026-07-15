@@ -1,17 +1,52 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// HACK: React 19 removes `Component.defaultProps` for FUNCTION components
-// (class components still tolerate it but the team recommends ES6
-// default parameters anyway). Detection target: any
-// `<Identifier>.defaultProps = <ObjectExpression>` assignment where the
-// identifier looks like a component (uppercase first letter). We can't
-// distinguish class vs function from the assignment alone, but the
-// recommendation is the same either way — switch to ES6 default params
-// in destructured props — so the guidance is uniform.
+const hasReachingWriteOnAliasPath = (
+  receiver: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const visitedSymbolIds = new Set<number>();
+  let reference = receiver;
+  let symbol = context.scopes.symbolFor(reference);
+  while (symbol) {
+    if (
+      visitedSymbolIds.has(symbol.id) ||
+      hasSymbolWriteBefore(symbol, reference, context.scopes)
+    ) {
+      return true;
+    }
+    visitedSymbolIds.add(symbol.id);
+    if (symbol.kind !== "const" || !symbol.initializer) return false;
+    const initializer = stripParenExpression(symbol.initializer);
+    if (!isNodeOfType(initializer, "Identifier")) return false;
+    reference = initializer;
+    symbol = context.scopes.symbolFor(reference);
+  }
+  return false;
+};
+
+const isStableClassReceiver = (
+  receiver: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const symbol = resolveConstIdentifierAlias(receiver, context.scopes);
+  if (!symbol || hasReachingWriteOnAliasPath(receiver, context)) return false;
+  if (
+    isNodeOfType(symbol.declarationNode, "ClassDeclaration") ||
+    isNodeOfType(symbol.declarationNode, "ClassExpression")
+  ) {
+    return true;
+  }
+  const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
+  return Boolean(symbol.kind === "const" && isNodeOfType(initializer, "ClassExpression"));
+};
+
 export const noDefaultProps = defineRule({
   id: "no-default-props",
   title: "defaultProps removed in React 19",
@@ -34,6 +69,7 @@ export const noDefaultProps = defineRule({
         return;
       if (!isNodeOfType(left.object, "Identifier")) return;
       if (!isUppercaseName(left.object.name)) return;
+      if (isStableClassReceiver(left.object, context)) return;
       context.report({
         node: left,
         message: `${left.object.name}.defaultProps stops applying in React 19, so your users see missing defaults. Set them in the destructured props parameter instead, like \`function ${left.object.name}({ size = "md" })\`.`,

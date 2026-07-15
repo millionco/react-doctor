@@ -30,11 +30,12 @@ import {
   hasCleanup,
   isState,
   isSyncStateSetterCall,
-  isUseEffect,
 } from "./utils/effect/react.js";
 
 // Port of upstream `src/rules/no-chain-state-updates.js`, plus the
 // guarded-self-sync exemption below (prod telemetry review 2026-07).
+
+const APPLICABLE_EFFECT_HOOK_NAMES: ReadonlySet<string> = new Set(["useEffect", "useLayoutEffect"]);
 
 const getUseStateDeclarator = (ref: Reference): EsTreeNode | null =>
   (ref.resolved?.defs ?? [])
@@ -168,7 +169,16 @@ export const noChainStateUpdates = defineRule({
     "Set all the related state together in the event handler that starts it, instead of having one useEffect react to a state change and set more state. See https://react.dev/learn/you-might-not-need-an-effect#chains-of-computations",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isUseEffect(node)) return;
+      if (
+        !isReactApiCall(node, APPLICABLE_EFFECT_HOOK_NAMES, context.scopes, {
+          allowGlobalReactNamespace: true,
+          allowUnboundBareCalls: true,
+          resolveConditionalAliases: true,
+          resolveNamedAliases: true,
+        })
+      ) {
+        return;
+      }
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
       if (hasCleanup(analysis, node)) return;

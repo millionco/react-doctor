@@ -318,12 +318,13 @@ const getProvenIndependentRenderCall = (
 ): EsTreeNodeOfType<"CallExpression"> | null => {
   const rootElement = getRootElementForComponentReference(componentReference, scopes);
   if (!rootElement) return null;
-  const callExpression = rootElement.parent;
+  const renderedArgument = findTransparentExpressionRoot(rootElement);
+  const callExpression = renderedArgument.parent;
   if (
     !callExpression ||
     !isNodeOfType(callExpression, "CallExpression") ||
     callExpression.arguments.length !== 1 ||
-    callExpression.arguments[0] !== rootElement ||
+    callExpression.arguments[0] !== renderedArgument ||
     !isProvenTestingLibraryRenderCall(callExpression, scopes)
   ) {
     return null;

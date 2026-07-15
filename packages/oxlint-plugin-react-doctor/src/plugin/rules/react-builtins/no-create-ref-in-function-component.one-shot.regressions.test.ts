@@ -84,6 +84,53 @@ it("mounts separate instances", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent through transparent TypeScript render wrappers", () => {
+    const renderStatements = [
+      `render((((<FocusTarget />))));`,
+      `render((<FocusTarget />) as React.ReactElement);`,
+      `render(<FocusTarget /> satisfies React.ReactElement);`,
+      `render((<FocusTarget />)!);`,
+    ];
+    for (const renderStatement of renderStatements) {
+      const result = runOneShotRule(`import React from "react";
+import { render } from "@testing-library/react";
+import { FocusTrap } from "./focus-trap";
+it("mounts a type-wrapped node", () => {
+  const FocusTarget = () => {
+    const targetRef = React.createRef<HTMLButtonElement>();
+    return <FocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FocusTrap>;
+  };
+  ${renderStatement}
+});`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
+  it("reports nontransparent render argument transforms", () => {
+    const renderStatements = [
+      `render((observeRender(), <FocusTarget />));`,
+      `render(condition ? <FocusTarget /> : <FocusTarget />);`,
+      `render([<FocusTarget />]);`,
+      `render(wrap(<FocusTarget />));`,
+      `const mounted = <FocusTarget />; render(mounted as React.ReactElement);`,
+    ];
+    for (const renderStatement of renderStatements) {
+      const result = runOneShotRule(`import React from "react";
+import { render } from "@testing-library/react";
+import { FocusTrap } from "./focus-trap";
+it("mounts a transformed node", () => {
+  const FocusTarget = () => {
+    const targetRef = React.createRef<HTMLButtonElement>();
+    return <FocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FocusTrap>;
+  };
+  ${renderStatement}
+});`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
   it("reports a same-root Testing Library rerender", () => {
     const result = runOneShotRule(`import React from "react";
 import { render } from "@testing-library/react";

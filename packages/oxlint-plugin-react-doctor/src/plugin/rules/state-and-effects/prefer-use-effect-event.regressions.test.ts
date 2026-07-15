@@ -44,6 +44,221 @@ describe("prefer-use-effect-event — callback stability regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("keeps reporting a deferred function declaration nested in a block", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const SearchInput = ({ delay, onSearch }) => {
+        useEffect(() => {
+          if (delay > 0) {
+            const timeoutId = setTimeout(searchLater, delay);
+            function searchLater() {
+              onSearch("done");
+            }
+            return () => clearTimeout(timeoutId);
+          }
+        }, [delay, onSearch]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves deferred declarations nested in loop, switch, and try blocks", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const SearchInput = ({ delay, mode, onForSearch, onSwitchSearch, onTrySearch }) => {
+        useEffect(() => {
+          for (const timeoutDelay of [delay]) {
+            setTimeout(searchAfterLoop, timeoutDelay);
+            function searchAfterLoop() {
+              onForSearch("done");
+            }
+          }
+        }, [delay, onForSearch]);
+
+        useEffect(() => {
+          switch (mode) {
+            case "deferred": {
+              setTimeout(searchAfterSwitch, delay);
+              function searchAfterSwitch() {
+                onSwitchSearch("done");
+              }
+              break;
+            }
+          }
+        }, [mode, onSwitchSearch]);
+
+        useEffect(() => {
+          try {
+            setTimeout(searchAfterTry, delay);
+            function searchAfterTry() {
+              onTrySearch("done");
+            }
+          } catch {}
+        }, [delay, onTrySearch]);
+
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("resolves a wrapped deferred declaration without confusing shadowed reads", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const SearchInput = ({ delay, onSearch }) => {
+        useEffect(() => {
+          if (delay > 0) {
+            setTimeout((searchLater as (() => void))!, delay);
+            ["shadow"].forEach((searchLater) => searchLater.toUpperCase());
+            function searchLater() {
+              onSearch("done");
+            }
+          }
+        }, [delay, onSearch]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps reporting a nested declaration used only by a paired subscription", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onKey }) => {
+        useEffect(() => {
+          if (active) {
+            window.addEventListener("keydown", handleKey);
+            function handleKey(event) {
+              onKey(event.key);
+            }
+            return () => window.removeEventListener("keydown", handleKey);
+          }
+        }, [active, onKey]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for nested declarations with mixed direct and deferred calls", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const SearchInput = ({ delay, onSearch }) => {
+        useEffect(() => {
+          if (delay > 0) {
+            setTimeout(searchLater, delay);
+            if (delay === 1) searchLater();
+            function searchLater() {
+              onSearch("done");
+            }
+          }
+        }, [delay, onSearch]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a nested declaration is aliased, reassigned, stored, escaped, or never called", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const SearchInput = ({ delay, mode, onAliased, onReassigned, onStored, onEscaped, onUnused }) => {
+        useEffect(() => {
+          if (delay > 0) {
+            const searchNow = searchLater;
+            setTimeout(searchLater, delay);
+            searchNow();
+            function searchLater() {
+              onAliased("done");
+            }
+          }
+        }, [delay, onAliased]);
+
+        useEffect(() => {
+          if (delay > 0) {
+            setTimeout(searchLater, delay);
+            searchLater = fallbackSearch;
+            function searchLater() {
+              onReassigned("done");
+            }
+          }
+        }, [delay, onReassigned]);
+
+        useEffect(() => {
+          if (delay > 0) {
+            setTimeout(searchLater, delay);
+            const callbacks = { searchLater };
+            consume(callbacks);
+            function searchLater() {
+              onStored("done");
+            }
+          }
+        }, [delay, onStored]);
+
+        useEffect(() => {
+          if (delay > 0) {
+            setTimeout(searchLater, delay);
+            consume(searchLater);
+            function searchLater() {
+              onEscaped("done");
+            }
+          }
+        }, [delay, onEscaped]);
+
+        useEffect(() => {
+          if (mode === "unused") {
+            function searchLater() {
+              onUnused("done");
+            }
+          }
+        }, [mode, onUnused]);
+
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a nested declaration is passed to an ordinary callback API", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const SearchInput = ({ delay, onSearch }) => {
+        useEffect(() => {
+          if (delay > 0) {
+            [delay].forEach(searchLater);
+            function searchLater() {
+              onSearch("done");
+            }
+          }
+        }, [delay, onSearch]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when a local helper only runs synchronously", () => {
     const result = runPreferUseEffectEvent(`
       import { useEffect } from "react";

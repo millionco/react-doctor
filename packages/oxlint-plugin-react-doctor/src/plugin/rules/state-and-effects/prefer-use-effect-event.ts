@@ -19,6 +19,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeDescriptor } from "../../semantic/scope-analysis.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { symbolHasStableHookOrigin } from "../react-builtins/exhaustive-deps-symbol-stability.js";
 
@@ -282,9 +283,18 @@ const findExclusiveSubHandlerCall = (
 
   const bindingIdentifier = getFunctionBindingIdentifier(enclosingFunction);
   if (!bindingIdentifier) return null;
-  const bindingSymbol = isNodeOfType(enclosingFunction, "FunctionDeclaration")
-    ? context.scopes.scopeFor(enclosingFunction).symbolsByName.get(bindingIdentifier.name)
-    : context.scopes.symbolFor(bindingIdentifier);
+  let bindingSymbol = context.scopes.symbolFor(bindingIdentifier);
+  if (isNodeOfType(enclosingFunction, "FunctionDeclaration")) {
+    let bindingScope: ScopeDescriptor | null = context.scopes.scopeFor(enclosingFunction);
+    bindingSymbol = null;
+    while (bindingScope && !bindingSymbol) {
+      bindingSymbol =
+        bindingScope.symbols.find(
+          (candidateSymbol) => candidateSymbol.declarationNode === enclosingFunction,
+        ) ?? null;
+      bindingScope = bindingScope.parent;
+    }
+  }
   if (!bindingSymbol) return null;
 
   const registrations: CallArgumentUse[] = [];

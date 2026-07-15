@@ -783,7 +783,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: `
       const Image = ({ error, onError }) => {
         if (error) onError(error);
-        return null;
+        return <div />;
       };
     `,
   },

@@ -46,9 +46,15 @@ const functionBindingSymbols = (
     }
   }
   if (!bindingIdentifier) return [];
-  return scopes
-    .scopeFor(functionNode)
-    .symbols.filter((symbol) => symbol.bindingIdentifier === bindingIdentifier);
+  let scope: ScopeAnalysis["rootScope"] | null = scopes.scopeFor(functionNode);
+  while (scope) {
+    const symbols = scope.symbols.filter(
+      (symbol) => symbol.bindingIdentifier === bindingIdentifier,
+    );
+    if (symbols.length > 0) return symbols;
+    scope = scope.parent;
+  }
+  return [];
 };
 
 const symbolHasReactComponentUse = (

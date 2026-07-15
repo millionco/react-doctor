@@ -769,6 +769,34 @@ describe("no-prop-callback-in-render", () => {
       1,
     ],
     [
+      "a hookless null function declaration hoisted outside its block",
+      `function Parent() {
+         if (true) {
+           function NullComponent({ onRender }) {
+             onRender();
+             return null;
+           }
+           const node = <NullComponent onRender={() => undefined} />;
+         }
+         return null;
+       }`,
+      1,
+    ],
+    [
+      "a hookless null var component hoisted outside its block",
+      `function Parent() {
+         if (true) {
+           var NullComponent = ({ onRender }) => {
+             onRender();
+             return null;
+           };
+           const node = <NullComponent onRender={() => undefined} />;
+         }
+         return null;
+       }`,
+      1,
+    ],
+    [
       "a hookless null function passed to a shadowed createElement lookalike",
       `interface NullComponentProps {
          onRender: () => void;

@@ -2869,6 +2869,8 @@ const findRetainedFunctionLeak = (
     options?.allowReturnedResourceEscape !== false &&
     !retainedFunction.async &&
     !isInlineRetainedHandlerFunction(retainedFunction, context);
+  const allowReturnedSocketEscape =
+    allowReturnedResourceEscape && options?.requireCallableReturnedResource !== true;
   const isExternalStoreSubscribeFunction = isUseSyncExternalStoreSubscribeFunction(
     retainedFunction,
     context,
@@ -2882,7 +2884,10 @@ const findRetainedFunctionLeak = (
     if (leak !== null) return false;
     if (isFunctionLike(child)) return false;
 
-    if (isSocketConstruction(child) && !doesResourceResultEscape(child, true, false, context)) {
+    if (
+      isSocketConstruction(child) &&
+      !doesResourceResultEscape(child, allowReturnedSocketEscape, false, context)
+    ) {
       const socketUsage: SubscribeLikeUsage = {
         kind: "socket",
         node: child,

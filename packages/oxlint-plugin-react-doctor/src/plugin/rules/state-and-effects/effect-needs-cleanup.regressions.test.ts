@@ -4454,6 +4454,31 @@ export const AsyncDisposer = ({ subscription }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports a socket returned from a ref callback regardless of effect ownership", () => {
+    const effectCallbacks = [
+      `() => callbackRef.current()`,
+      `() => {
+        callbackRef.current();
+      }`,
+    ];
+    for (const effectCallback of effectCallbacks) {
+      const result = runRule(
+        effectNeedsCleanup,
+        `import { useEffect, useRef } from "react";
+export const LiveSocket = ({ url }) => {
+  const callbackRef = useRef(() => null);
+  callbackRef.current = () => {
+    return new WebSocket(url);
+  };
+  useEffect(${effectCallback}, []);
+  return null;
+};`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
   it("accepts a direct disposer returned by the effect", () => {
     const result = runRule(
       effectNeedsCleanup,

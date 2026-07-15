@@ -20,4 +20,33 @@ describe("security-scan/artifact-env-leak — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on Prisma 7 generated TypeScript client with env refs in JSDoc (#1318)", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "src/generated/prisma/internal/class.ts",
+      content: `/**
+ * ## Example
+ * 
+ * \`\`\`ts
+ * const prisma = new PrismaClient({
+ *   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL })
+ * })
+ * \`\`\`
+ */
+export class PrismaClient {
+}
+${"a".repeat(60000)}`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on any TypeScript source file marked as generated bundle", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "src/__generated__/schema.tsx",
+      content: `export const schema = { dbUrl: process.env.DATABASE_URL };`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

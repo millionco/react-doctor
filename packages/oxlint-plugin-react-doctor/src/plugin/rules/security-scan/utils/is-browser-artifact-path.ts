@@ -34,12 +34,15 @@ const isNonShippedBuildArtifactPath = (relativePath: string): boolean => {
   return false;
 };
 
+const isTypeScriptSourceFile = (relativePath: string): boolean =>
+  /\.tsx?$/.test(relativePath);
+
 export const isBrowserArtifactPath = (
   relativePath: string,
   isGeneratedBundle: boolean,
 ): boolean => {
   if (isNonShippedBuildArtifactPath(relativePath)) return false;
-  if (isGeneratedBundle) return true;
+  if (isGeneratedBundle && !isTypeScriptSourceFile(relativePath)) return true;
   if (relativePath.endsWith(".map")) return true;
   return BROWSER_ARTIFACT_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
 };

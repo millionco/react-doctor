@@ -96,6 +96,7 @@ export const STATE_SNIPPET_POOL = [
   `const [resetDraft, setResetDraft] = useState(""); useEffect(() => { setResetDraft(""); }, [value]);`,
   `const FuzzHiddenResetMenu = ({ visible }) => { const [open, setOpen] = useState(false); useEffect(() => { setOpen(false); }, [visible]); return visible && open && <div role="menu">Menu</div>; }; const fuzzHiddenResetMenuNode = <FuzzHiddenResetMenu visible={condition} />;`,
   `const FuzzOpaqueVisibilityPanel = ({ visible, isAllowed }) => { const [canShowPanel, setCanShowPanel] = useState(true); useEffect(() => { setCanShowPanel(true); }, [visible]); return visible && isAllowed() && canShowPanel && <output onClick={() => setCanShowPanel(false)}>Panel</output>; }; const fuzzOpaqueVisibilityPanelNode = <FuzzOpaqueVisibilityPanel visible={condition} isAllowed={() => condition} />;`,
+  `const FuzzClearOnlyChain = ({ visible }) => { const [error, setError] = useState(null); const [message, setMessage] = useState(""); useEffect(() => { if (!visible) setError(null); }, [visible]); useEffect(() => { if (error) setMessage(error.message); }, [error]); return message; }; const fuzzClearOnlyChainNode = <FuzzClearOnlyChain visible={condition} />;`,
   `const [reducerState, dispatch] = useReducer(reducer, { count: 0 });`,
   `const containerRef = useRef(null);`,
   `const handleRef = useRef(handle); handleRef.current = handle;`,

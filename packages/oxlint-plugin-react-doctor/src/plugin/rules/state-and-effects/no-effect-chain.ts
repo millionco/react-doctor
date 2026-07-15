@@ -641,8 +641,23 @@ const getDirectReactRefSymbol = (
   return initializer && isReactRefCall(stripParenExpression(initializer), scopes) ? symbol : null;
 };
 
-const isDirectIntrinsicJsxRef = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean => {
-  let intrinsicRefCount = 0;
+const isReactNativeJsxElement = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(openingElement.name, "JSXIdentifier")) return false;
+  const symbol = scopes.symbolFor(openingElement.name);
+  const importDeclaration = symbol?.declarationNode.parent;
+  return Boolean(
+    symbol?.kind === "import" &&
+    importDeclaration &&
+    isNodeOfType(importDeclaration, "ImportDeclaration") &&
+    importDeclaration.source.value === "react-native",
+  );
+};
+
+const isDirectHostJsxRef = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean => {
+  let hostRefCount = 0;
   for (const reference of symbol.references) {
     const expression = findTransparentExpressionRoot(reference.identifier);
     const container = expression.parent;
@@ -672,13 +687,14 @@ const isDirectIntrinsicJsxRef = (symbol: SymbolDescriptor, scopes: ScopeAnalysis
     if (
       !openingElement ||
       !isNodeOfType(openingElement, "JSXOpeningElement") ||
-      !isProvenIntrinsicJsxElement(openingElement, scopes)
+      (!isProvenIntrinsicJsxElement(openingElement, scopes) &&
+        !isReactNativeJsxElement(openingElement, scopes))
     ) {
       return false;
     }
-    intrinsicRefCount += 1;
+    hostRefCount += 1;
   }
-  return intrinsicRefCount > 0;
+  return hostRefCount > 0;
 };
 
 const isIntrinsicRefCallbackParameter = (
@@ -736,14 +752,18 @@ const storesOnlyIntrinsicRefCallbackValues = (
     ) {
       return false;
     }
-    const methodMember = currentMember.parent;
-    if (!isNodeOfType(methodMember, "MemberExpression") || methodMember.object !== currentMember) {
+    const currentExpression = findTransparentExpressionRoot(currentMember);
+    const methodMember = currentExpression.parent;
+    if (
+      !isNodeOfType(methodMember, "MemberExpression") ||
+      methodMember.object !== currentExpression
+    ) {
       return false;
     }
     const methodName = getStaticPropertyName(methodMember);
     const call = methodMember.parent;
     if (!isNodeOfType(call, "CallExpression") || call.callee !== methodMember) return false;
-    if (methodName === "get") continue;
+    if (methodName === "get" || methodName === "delete" || methodName === "clear") continue;
     if (methodName !== "set") return false;
     const storedValue = call.arguments[1];
     if (
@@ -783,7 +803,7 @@ const isDerivedFromProvenDomRefCurrent = (
       const symbol = getDirectReactRefSymbol(expression.object, scopes);
       return Boolean(
         symbol &&
-        (isDirectIntrinsicJsxRef(symbol, scopes) ||
+        (isDirectHostJsxRef(symbol, scopes) ||
           (didReadCollectionValue && storesOnlyIntrinsicRefCallbackValues(symbol, scopes))),
       );
     }

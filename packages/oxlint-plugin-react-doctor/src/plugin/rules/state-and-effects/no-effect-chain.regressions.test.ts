@@ -998,6 +998,53 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("follows transparent wrappers around a ref-backed DOM map", () => {
+    const result = runRule(
+      noEffectChain,
+      `function AccessibleNavTree({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(new Map());
+        useEffect(() => {
+          setExpanded(findAncestorPath(activeId));
+        }, [activeId]);
+        useEffect(() => {
+          itemRefs.current!.get(activeId)?.focus();
+        }, [activeId, expanded]);
+        return expanded.has(activeId)
+          ? <button ref={node => itemRefs.current!.set(activeId, node)} />
+          : null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("allows ref-backed DOM maps to delete unmounted nodes", () => {
+    const result = runRule(
+      noEffectChain,
+      `function AccessibleNavTree({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(new Map());
+        useEffect(() => {
+          setExpanded(findAncestorPath(activeId));
+        }, [activeId]);
+        useEffect(() => {
+          itemRefs.current.get(activeId)?.focus();
+        }, [activeId, expanded]);
+        return expanded.has(activeId) ? (
+          <button
+            ref={node => {
+              if (node) itemRefs.current.set(activeId, node);
+              else itemRefs.current.delete(activeId);
+            }}
+          />
+        ) : null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it.each(["focus", "scrollIntoView", "select", "getBoundingClientRect"])(
     "treats committed DOM %s calls as external synchronization",
     (methodName) => {
@@ -1034,6 +1081,24 @@ describe("no-effect-chain — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     },
   );
+
+  it("treats measurement on a React Native host ref as external synchronization", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { View } from "react-native";
+      function NativeMeasurement({ activeId }) {
+        const [isMounted, setIsMounted] = useState(false);
+        const viewRef = useRef(null);
+        useEffect(() => { setIsMounted(true); }, [activeId]);
+        useEffect(() => {
+          viewRef.current?.measure(() => undefined);
+        }, [isMounted]);
+        return isMounted ? <View ref={viewRef} /> : null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 
   it.each(["focus", "measure", "select"])(
     "keeps a non-DOM %s method conservative",

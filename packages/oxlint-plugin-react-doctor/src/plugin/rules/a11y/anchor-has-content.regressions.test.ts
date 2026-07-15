@@ -3,6 +3,75 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { anchorHasContent } from "./anchor-has-content.js";
 
 describe("a11y/anchor-has-content regressions", () => {
+  it("exempts href-less React Datepicker navigation placeholders", () => {
+    const result = runRule(
+      anchorHasContent,
+      `const YearNavigation = ({ incrementYears, decrementYears }) => (
+        <>
+          <div className="react-datepicker__year-option" onClick={incrementYears}>
+            <a className="react-datepicker__navigation react-datepicker__navigation--years react-datepicker__navigation--years-upcoming" />
+          </div>
+          <div className="react-datepicker__year-option" onClick={decrementYears}>
+            <a className="react-datepicker__navigation react-datepicker__navigation--years react-datepicker__navigation--years-previous" />
+          </div>
+        </>
+      );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("exempts href-less anchors with statically non-link roles", () => {
+    const cases = [
+      `const A = () => <a />;`,
+      `const A = () => <a role="button" />;`,
+      `const A = () => <a role="none" />;`,
+      `const A = () => <a role="button link" />;`,
+      `const A = ({ isButton }) => <a role={isButton ? "button" : "menuitem"} />;`,
+    ];
+    for (const code of cases) {
+      const result = runRule(anchorHasContent, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
+  it("still flags empty anchors with href or link-role semantics", () => {
+    const cases = [
+      `const A = () => <a href="" />;`,
+      `const A = () => <a href="/settings" />;`,
+      `const A = ({ destination }) => <a href={destination} />;`,
+      `const A = () => <a HREF={undefined} />;`,
+      `const A = () => <a role="link" />;`,
+      `const ROLE = "link"; const A = () => <a role={ROLE} />;`,
+      `const A = () => <a role="future-role link" />;`,
+      `const A = ({ isLink }) => <a role={isLink ? "link" : "button"} />;`,
+      `const A = ({ role }) => <a role={role} />;`,
+      `const A = () => <a href="/settings" role="presentation" />;`,
+    ];
+    for (const code of cases) {
+      const result = runRule(anchorHasContent, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("exempts an href-less configured anchor alias", () => {
+    const result = runRule(anchorHasContent, `const A = () => <Link />;`, {
+      settings: { "jsx-a11y": { components: { Link: "a" } } },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a configured anchor alias with an explicit link role", () => {
+    const result = runRule(anchorHasContent, `const A = () => <Link role="link" />;`, {
+      settings: { "jsx-a11y": { components: { Link: "a" } } },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("exempts an `<a>` named via `aria-labelledby`", () => {
     const result = runRule(
       anchorHasContent,

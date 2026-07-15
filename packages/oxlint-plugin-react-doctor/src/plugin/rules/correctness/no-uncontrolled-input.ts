@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { getJsxPropExhaustiveStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
@@ -13,13 +14,17 @@ import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 const UNCONTROLLED_INPUT_TAGS = new Set(["input", "textarea", "select"]);
 
-// HACK: <input type="checkbox"> / "radio" use the `checked` prop to be
-// controlled; `value` is just the form-submission token. <input
-// type="hidden"> never needs onChange — React's runtime warning skips
-// it for the same reason. Limiting our `value`-needs-onChange check to
-// non-hidden, non-checkable inputs keeps us aligned with React's own
-// rules.
-const VALUE_BYPASS_INPUT_TYPES = new Set(["hidden", "checkbox", "radio"]);
+// HACK: React does not require an onChange handler for `value` on these input
+// types. Its value/defaultValue and controlledness warnings are separate.
+const VALUE_BYPASS_INPUT_TYPES = new Set([
+  "button",
+  "checkbox",
+  "hidden",
+  "image",
+  "radio",
+  "reset",
+  "submit",
+]);
 
 // `onInput` fires on every value change in React's DOM model exactly
 // like `onChange`, so a `value`-bound input wired to `onInput` is just
@@ -36,13 +41,6 @@ const isLiteralFalseAttributeValue = (attribute: EsTreeNodeOfType<"JSXAttribute"
   isNodeOfType(attribute.value, "JSXExpressionContainer") &&
   isNodeOfType(attribute.value.expression, "Literal") &&
   attribute.value.expression.value === false;
-
-const getInputTypeLiteral = (attributes: EsTreeNode[]): string | null => {
-  const typeAttribute = findJsxAttribute(attributes, "type");
-  if (!typeAttribute || !isNodeOfType(typeAttribute.value, "Literal")) return null;
-  const value = typeAttribute.value.value;
-  return typeof value === "string" ? value : null;
-};
 
 const isUseStateUndefinedInitializer = (init: EsTreeNode | null | undefined): boolean => {
   if (!init || !isNodeOfType(init, "CallExpression")) return false;
@@ -122,9 +120,40 @@ export const noUncontrolledInput = defineRule({
         const valueAttribute = findJsxAttribute(attributes, "value");
         if (!valueAttribute) return;
 
+        let inputTypeCandidates: ReadonlyArray<string> | null = null;
+        let hasExplicitInputType = false;
+        let doesTypeBypassMissingOnChange = false;
+        let doesTypeUseCheckedControlledness = false;
+        let couldTypeUseCheckedControlledness = false;
         if (tagName === "input") {
-          const inputType = getInputTypeLiteral(attributes);
-          if (inputType !== null && VALUE_BYPASS_INPUT_TYPES.has(inputType)) return;
+          const typeAttribute = findJsxAttribute([...attributes].reverse(), "type");
+          hasExplicitInputType = Boolean(typeAttribute);
+          inputTypeCandidates = typeAttribute
+            ? getJsxPropExhaustiveStaticStringValues(typeAttribute, context.scopes)
+            : null;
+          doesTypeBypassMissingOnChange = Boolean(
+            inputTypeCandidates !== null &&
+            inputTypeCandidates.length > 0 &&
+            inputTypeCandidates.every((inputTypeCandidate) =>
+              VALUE_BYPASS_INPUT_TYPES.has(inputTypeCandidate.toLowerCase()),
+            ),
+          );
+          doesTypeUseCheckedControlledness = Boolean(
+            inputTypeCandidates !== null &&
+            inputTypeCandidates.length > 0 &&
+            inputTypeCandidates.every(
+              (inputTypeCandidate) =>
+                inputTypeCandidate === "checkbox" || inputTypeCandidate === "radio",
+            ),
+          );
+          couldTypeUseCheckedControlledness = Boolean(
+            hasExplicitInputType &&
+            (inputTypeCandidates === null ||
+              inputTypeCandidates.some(
+                (inputTypeCandidate) =>
+                  inputTypeCandidate === "checkbox" || inputTypeCandidate === "radio",
+              )),
+          );
         }
 
         const hasAllowedPartner = VALUE_PARTNER_ATTRIBUTES.some((partnerAttributeName) => {
@@ -138,15 +167,19 @@ export const noUncontrolledInput = defineRule({
         if (
           isNodeOfType(valueAttribute.value, "JSXExpressionContainer") &&
           isNodeOfType(valueAttribute.value.expression, "Identifier") &&
-          undefinedInitialStateNames.has(valueAttribute.value.expression.name)
+          undefinedInitialStateNames.has(valueAttribute.value.expression.name) &&
+          !doesTypeUseCheckedControlledness
         ) {
           const stateName = valueAttribute.value.expression.name;
-          const partnerHint = hasAllowedPartner
-            ? "Give useState a starting value"
-            : "Give useState a starting value and add onChange (or readOnly)";
+          const partnerHint =
+            hasAllowedPartner || doesTypeBypassMissingOnChange || couldTypeUseCheckedControlledness
+              ? "Give useState a starting value"
+              : "Give useState a starting value and add onChange (or readOnly)";
           context.report({
             node: child,
-            message: `This can trigger a console warning and reset the field because "${stateName}" starts undefined, so <${tagName} value={${stateName}}> flips from uncontrolled to controlled. ${partnerHint} (e.g. \`useState("")\`).`,
+            message: couldTypeUseCheckedControlledness
+              ? `When \`type\` resolves to a value-controlled input type, this can trigger a console warning and reset the field because "${stateName}" starts undefined, so <input value={${stateName}}> can flip from uncontrolled to controlled. ${partnerHint} (e.g. \`useState("")\`).`
+              : `This can trigger a console warning and reset the field because "${stateName}" starts undefined, so <${tagName} value={${stateName}}> flips from uncontrolled to controlled. ${partnerHint} (e.g. \`useState("")\`).`,
           });
           return;
         }
@@ -159,10 +192,19 @@ export const noUncontrolledInput = defineRule({
           return;
         }
 
-        if (!hasAllowedPartner) {
+        if (!hasAllowedPartner && !doesTypeBypassMissingOnChange) {
+          const couldResolveToReadOnlyValueType =
+            tagName === "input" &&
+            hasExplicitInputType &&
+            (inputTypeCandidates === null ||
+              inputTypeCandidates.some((inputTypeCandidate) =>
+                VALUE_BYPASS_INPUT_TYPES.has(inputTypeCandidate.toLowerCase()),
+              ));
           context.report({
             node: child,
-            message: `Your users can't type in this <${tagName} value={...}> because it has no \`onChange\` or \`readOnly\`, so add \`onChange\` (or \`readOnly\` if that's intended).`,
+            message: couldResolveToReadOnlyValueType
+              ? `When \`type\` resolves to an editable input type, users can't type in this <input value={...}> because it has no \`onChange\` or \`readOnly\`. Add \`onChange\` or \`readOnly\` unless \`type\` is always a read-only-value input type.`
+              : `Your users can't type in this <${tagName} value={...}> because it has no \`onChange\` or \`readOnly\`, so add \`onChange\` (or \`readOnly\` if that's intended).`,
           });
         }
       });

@@ -3,12 +3,20 @@ import { attachParentReferences } from "../../test-utils/attach-parent-reference
 import { parseFixture } from "../../test-utils/parse-fixture.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
-import { getJsxPropStaticStringValues } from "./get-jsx-prop-static-string-values.js";
+import {
+  getJsxPropExhaustiveStaticStringValues,
+  getJsxPropStaticStringValues,
+} from "./get-jsx-prop-static-string-values.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 
-const resolveFirstAttribute = (code: string): ReadonlyArray<string> | null => {
+const DEEP_ALIAS_CHAIN_LENGTH = 50_000;
+
+const resolveFirstAttribute = (
+  code: string,
+  shouldResolveExhaustively = false,
+): ReadonlyArray<string> | null => {
   const { program, errors } = parseFixture(code);
   expect(errors).toEqual([]);
   attachParentReferences(program);
@@ -19,7 +27,9 @@ const resolveFirstAttribute = (code: string): ReadonlyArray<string> | null => {
     if (isNodeOfType(child, "JSXAttribute")) attribute = child;
   });
   if (!attribute) throw new Error("fixture has no JSX attribute");
-  return getJsxPropStaticStringValues(attribute, scopes);
+  return shouldResolveExhaustively
+    ? getJsxPropExhaustiveStaticStringValues(attribute, scopes)
+    : getJsxPropStaticStringValues(attribute, scopes);
 };
 
 describe("getJsxPropStaticStringValues", () => {
@@ -62,18 +72,71 @@ describe("getJsxPropStaticStringValues", () => {
     ).toEqual(["button", "link", "menu"]);
   });
 
-  it("resolves a const chain at exactly the 4-hop cap", () => {
+  it("resolves only the reachable branch of a statically known ternary", () => {
+    expect(
+      resolveFirstAttribute(`const x = <div role={true ? "button" : dynamicRole} />;`, true),
+    ).toEqual(["button"]);
+    expect(
+      resolveFirstAttribute(`const x = <div role={false ? dynamicRole : "link"} />;`, true),
+    ).toEqual(["link"]);
+  });
+
+  it("keeps the default mode conservative across a statically unreachable dynamic branch", () => {
+    expect(
+      resolveFirstAttribute(`const x = <div role={true ? "button" : dynamicRole} />;`),
+    ).toBeNull();
+  });
+
+  it("resolves long acyclic const chains in exhaustive mode", () => {
+    expect(
+      resolveFirstAttribute(
+        `const a = "button"; const b = a; const c = b; const d = c; const e = d; const f = e;\nconst x = <div role={f} />;`,
+        true,
+      ),
+    ).toEqual(["button"]);
+  });
+
+  it("keeps the default mode's four-alias resolution limit", () => {
     expect(
       resolveFirstAttribute(
         `const a = "button"; const b = a; const c = b; const d = c;\nconst x = <div role={d} />;`,
       ),
     ).toEqual(["button"]);
-  });
-
-  it("returns null for a const chain past the 4-hop cap", () => {
     expect(
       resolveFirstAttribute(
         `const a = "button"; const b = a; const c = b; const d = c; const e = d;\nconst x = <div role={e} />;`,
+      ),
+    ).toBeNull();
+  });
+
+  it("resolves a deep acyclic const chain without overflowing the call stack", () => {
+    const declarations = Array.from({ length: DEEP_ALIAS_CHAIN_LENGTH }, (_, declarationIndex) =>
+      declarationIndex === 0
+        ? `const type0 = "button";`
+        : `const type${declarationIndex} = type${declarationIndex - 1};`,
+    ).join("\n");
+    expect(
+      resolveFirstAttribute(
+        `${declarations}\nconst x = <div role={type${DEEP_ALIAS_CHAIN_LENGTH - 1}} />;`,
+        true,
+      ),
+    ).toEqual(["button"]);
+  });
+
+  it("allows sibling ternary branches to resolve the same const alias", () => {
+    expect(
+      resolveFirstAttribute(
+        `const sharedRole = "button";\nconst x = <div role={condition ? sharedRole : sharedRole} />;`,
+        true,
+      ),
+    ).toEqual(["button", "button"]);
+  });
+
+  it("returns null for cyclic const aliases", () => {
+    expect(
+      resolveFirstAttribute(
+        `const firstRole = secondRole; const secondRole = firstRole;\nconst x = <div role={firstRole} />;`,
+        true,
       ),
     ).toBeNull();
   });

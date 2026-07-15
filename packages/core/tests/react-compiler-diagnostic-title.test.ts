@@ -17,8 +17,9 @@ describe("parseOxlintOutput react-hooks-js diagnostic titles", () => {
     expect(diagnostic).toMatchObject({
       title: "JSX render errors need an Error Boundary",
       category: "Bugs",
+      message:
+        "This try/catch cannot catch errors thrown while the JSX child renders. Use an Error Boundary instead.",
     });
-    expect(diagnostic.message).toContain("cannot catch errors thrown while the JSX child renders");
     expect(diagnostic.message).not.toContain("React Compiler");
     expect(diagnostic.message).not.toContain("re-renders");
     expect(diagnostic.help).toContain("React does not immediately render components");
@@ -56,5 +57,18 @@ describe("parseOxlintOutput react-hooks-js diagnostic titles", () => {
     const [diagnostic] = parseOxlintOutput(stdout, buildProject(), TEST_ROOT_DIRECTORY);
 
     expect(diagnostic.title).toBe("React Compiler can't optimize this");
+    expect(diagnostic.category).toBe("Performance");
+    expect(diagnostic.message).toContain("misses React Compiler's automatic memoization");
+  });
+
+  it("does not apply the adopted-rule override to another plugin", () => {
+    const stdout = buildOxlintStdout(
+      "custom(error-boundaries)",
+      "A custom rule with the same name",
+    );
+    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), TEST_ROOT_DIRECTORY);
+
+    expect(diagnostic.title).toBeUndefined();
+    expect(diagnostic.message).toBe("A custom rule with the same name");
   });
 });

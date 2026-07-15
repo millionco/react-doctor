@@ -37,6 +37,9 @@ const REACT_COMPILER_TITLE = "React Compiler can't optimize this";
 // an unsupported-syntax bail-out, not an optimization miss in the
 // user's code, so it gets its own headline.
 const REACT_COMPILER_TODO_TITLE = "React Compiler doesn't support this syntax";
+const REACT_ERROR_BOUNDARY_TITLE = "JSX render errors need an Error Boundary";
+const REACT_ERROR_BOUNDARY_MESSAGE =
+  "This try/catch cannot catch errors thrown while the JSX child renders. Use an Error Boundary instead.";
 const REACT_COMPILER_IMPACT =
   "This component misses React Compiler's automatic memoization & re-renders more than it should";
 const REACT_COMPILER_ACTION = "Rewrite the flagged code so the compiler can optimize it.";
@@ -127,6 +130,7 @@ const getRuleTitle = (ruleName: string): string | undefined =>
 // diagnostics get a fixed human headline instead of their bare id.
 const resolveDiagnosticTitle = (plugin: string, rule: string): string | undefined => {
   if (plugin !== "react-hooks-js") return getRuleTitle(rule);
+  if (rule === "error-boundaries") return REACT_ERROR_BOUNDARY_TITLE;
   return rule === "todo" ? REACT_COMPILER_TODO_TITLE : REACT_COMPILER_TITLE;
 };
 
@@ -187,6 +191,12 @@ const resolveCleanedDiagnostic = (
     // and only the elaboration stays in `help`.
     const [reasonSummary = "", ...reasonDetailLines] = bailoutReason.split("\n");
     const reasonDetail = reasonDetailLines.join("\n").trim();
+    if (rule === "error-boundaries") {
+      return {
+        message: REACT_ERROR_BOUNDARY_MESSAGE,
+        help: reasonDetail || help,
+      };
+    }
     return {
       message: buildReactCompilerMessage(
         reasonSummary.trim(),
@@ -210,8 +220,10 @@ const parseRuleCode = (code: string): { plugin: string; rule: string } => {
   return { plugin: match[1].replace(/^eslint-plugin-/, ""), rule: match[2] };
 };
 
-const resolveDiagnosticCategory = (plugin: string, rule: string): string =>
-  getRuleCategory(rule) ?? lookupOwnString(PLUGIN_CATEGORY_MAP, plugin) ?? "Bugs";
+const resolveDiagnosticCategory = (plugin: string, rule: string): string => {
+  if (plugin === "react-hooks-js" && rule === "error-boundaries") return "Bugs";
+  return getRuleCategory(rule) ?? lookupOwnString(PLUGIN_CATEGORY_MAP, plugin) ?? "Bugs";
+};
 
 // Whether the finding's identity is the flagged element rather than the
 // flagged line's text, so `computeDiagnosticDelta` matches it by

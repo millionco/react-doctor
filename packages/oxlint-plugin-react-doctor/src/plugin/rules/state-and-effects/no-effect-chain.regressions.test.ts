@@ -71,6 +71,22 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("keeps a destructuring default unknown when the source can supply a truthy value", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen, payload }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        const { nextError = null } = payload;
+        useEffect(() => { if (!isOpen) setError(nextError); }, [isOpen, nextError]);
+        useEffect(() => { if (error) setAnnouncement(error.message); }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for a functional setter that always clears the state", () => {
     const result = runRule(
       noEffectChain,
@@ -170,6 +186,40 @@ describe("no-effect-chain — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["a property assignment", "if (enabled) document.title = 'ready'"],
+    ["an update", "if (enabled) window.renderCount++"],
+    ["a constructor", "if (enabled) new RenderSession()"],
+    ["a deletion", "if (enabled) delete window.pendingRender"],
+    ["a throw", "if (enabled) throw new Error('failed')"],
+  ])("still flags when downstream work is %s", (_, work) => {
+    const result = runRule(
+      noEffectChain,
+      `function StatusPanel({ active }) {
+        const [enabled, setEnabled] = useState(false);
+        useEffect(() => { if (active) setEnabled(true); }, [active]);
+        useEffect(() => { ${work}; }, [enabled]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a clear-only value cannot reach non-call work", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        useEffect(() => { if (!isOpen) setError(null); }, [isOpen]);
+        useEffect(() => { if (error) document.title = 'failed'; }, [error]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("still flags when a shadowed downstream name makes work reachable", () => {

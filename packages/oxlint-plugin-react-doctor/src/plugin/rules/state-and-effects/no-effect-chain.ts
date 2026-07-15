@@ -152,6 +152,9 @@ const readStaticEffectValue = (
     if (
       immutableSymbol?.kind !== "const" ||
       !immutableSymbol.initializer ||
+      !isNodeOfType(immutableSymbol.declarationNode, "VariableDeclarator") ||
+      immutableSymbol.declarationNode.id !== immutableSymbol.bindingIdentifier ||
+      immutableSymbol.declarationNode.init !== immutableSymbol.initializer ||
       immutableSymbol.references.some((reference) => reference.flag !== "read") ||
       visitedSymbolIds.has(immutableSymbol.id)
     ) {
@@ -363,13 +366,13 @@ const isGlobalBooleanCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =
   );
 };
 
-const isCallReachableForStateValue = (
-  callExpression: EsTreeNodeOfType<"CallExpression">,
+const isWorkNodeReachableForStateValue = (
+  workNode: EsTreeNode,
   stateSymbolId: number,
   stateValue: StaticEffectStateValue,
   scopes: ScopeAnalysis,
 ): boolean => {
-  let currentNode: EsTreeNode = callExpression;
+  let currentNode = workNode;
   while (currentNode.parent) {
     const parentNode: EsTreeNode = currentNode.parent;
     if (isFunctionLike(parentNode)) break;
@@ -428,6 +431,26 @@ const isCallReachableForStateValue = (
   return true;
 };
 
+const isReaderWorkNode = (
+  node: EsTreeNode,
+  analysisFunctions: ReadonlySet<EsTreeNode>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (isNodeOfType(node, "CallExpression")) {
+    if (isGlobalBooleanCall(node, scopes)) return false;
+    const invokedFunction = resolveExactLocalFunction(node.callee, scopes);
+    return !invokedFunction || !analysisFunctions.has(invokedFunction);
+  }
+  return (
+    isNodeOfType(node, "AssignmentExpression") ||
+    isNodeOfType(node, "UpdateExpression") ||
+    isNodeOfType(node, "NewExpression") ||
+    isNodeOfType(node, "TaggedTemplateExpression") ||
+    isNodeOfType(node, "ThrowStatement") ||
+    (isNodeOfType(node, "UnaryExpression") && node.operator === "delete")
+  );
+};
+
 const canStateWriteReachReaderWork = (
   writeInfo: EffectStateWriteInfo,
   readerEffect: EffectInfo,
@@ -439,11 +462,13 @@ const canStateWriteReachReaderWork = (
     const stateValue = { value: writtenValue };
     let didFindReachableWork = false;
     visitSynchronousFunctionBodies(readerEffect.analysisFunctions, (child) => {
-      if (didFindReachableWork || !isNodeOfType(child, "CallExpression")) return;
-      if (isGlobalBooleanCall(child, scopes)) return;
-      const invokedFunction = resolveExactLocalFunction(child.callee, scopes);
-      if (invokedFunction && readerEffect.analysisFunctions.has(invokedFunction)) return;
-      if (isCallReachableForStateValue(child, stateSymbolId, stateValue, scopes)) {
+      if (
+        didFindReachableWork ||
+        !isReaderWorkNode(child, readerEffect.analysisFunctions, scopes)
+      ) {
+        return;
+      }
+      if (isWorkNodeReachableForStateValue(child, stateSymbolId, stateValue, scopes)) {
         didFindReachableWork = true;
       }
     });

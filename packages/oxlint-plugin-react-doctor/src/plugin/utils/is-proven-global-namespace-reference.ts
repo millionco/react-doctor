@@ -4,7 +4,7 @@ import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
-const isGlobalObjectReference = (
+export const isProvenGlobalObjectReference = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds = new Set<number>(),
@@ -25,7 +25,7 @@ const isGlobalObjectReference = (
     return false;
   }
   visitedSymbolIds.add(symbol.id);
-  return isGlobalObjectReference(symbol.initializer, scopes, visitedSymbolIds);
+  return isProvenGlobalObjectReference(symbol.initializer, scopes, visitedSymbolIds);
 };
 
 export const isProvenGlobalNamespaceReference = (
@@ -54,6 +54,6 @@ export const isProvenGlobalNamespaceReference = (
   return (
     isNodeOfType(strippedExpression, "MemberExpression") &&
     getStaticPropertyName(strippedExpression) === namespaceName &&
-    isGlobalObjectReference(strippedExpression.object, scopes)
+    isProvenGlobalObjectReference(strippedExpression.object, scopes)
   );
 };

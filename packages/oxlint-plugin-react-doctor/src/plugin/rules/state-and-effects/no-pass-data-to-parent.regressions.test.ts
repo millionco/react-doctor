@@ -552,6 +552,34 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(opaqueAssignmentResult.diagnostics).toHaveLength(1);
     });
 
+    it("still flags computed properties that can override register commands", () => {
+      const initializerResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, onData, commandName }) {
+          const callbackBagRef = useRef({ registerPage, [commandName]: onData });
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      const assignmentResult = runRule(
+        noPassDataToParent,
+        `function Page({ registerPage, onData, commandName }) {
+          const callbackBagRef = useRef({ registerPage });
+          callbackBagRef.current = { registerPage, [commandName]: onData };
+          const { registerPage: notifyParent } = callbackBagRef.current;
+          const pageData = buildPageData();
+          useEffect(() => notifyParent(pageData), [notifyParent, pageData]);
+          return null;
+        }`,
+      );
+      expect(initializerResult.parseErrors).toEqual([]);
+      expect(initializerResult.diagnostics).toHaveLength(1);
+      expect(assignmentResult.parseErrors).toEqual([]);
+      expect(assignmentResult.diagnostics).toHaveLength(1);
+    });
+
     it("still flags mutable, dynamically keyed, and shadowed ref variants", () => {
       const mutableResult = runRule(
         noPassDataToParent,

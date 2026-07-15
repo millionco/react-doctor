@@ -651,9 +651,11 @@ const objectExpressionPreservesCallbackProperty = (
   let callbackSourceName: string | null = null;
   for (const property of unwrappedExpression.properties ?? []) {
     if (!isNodeOfType(property, "Property")) return false;
-    if (getStaticPropertyKeyName(property, { allowComputedString: true }) !== propertyName) {
-      continue;
-    }
+    const candidatePropertyName = getStaticPropertyKeyName(property, {
+      allowComputedString: true,
+    });
+    if (candidatePropertyName === null) return false;
+    if (candidatePropertyName !== propertyName) continue;
     if (callbackSourceName || property.kind !== "init") return false;
     if (!isNodeOfType(stripParenExpression(property.value as EsTreeNode), "Identifier")) {
       return false;

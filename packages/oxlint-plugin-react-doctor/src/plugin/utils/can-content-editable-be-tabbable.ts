@@ -11,6 +11,7 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 interface ContentEditablePossibilities {
   canBeDisabled: boolean;
   canBeEnabled: boolean;
+  canBeInherited: boolean;
 }
 
 const ENABLED_CONTENT_EDITABLE_VALUES: ReadonlySet<string> = new Set([
@@ -22,16 +23,25 @@ const ENABLED_CONTENT_EDITABLE_VALUES: ReadonlySet<string> = new Set([
 const ENABLED_CONTENT_EDITABLE: ContentEditablePossibilities = {
   canBeDisabled: false,
   canBeEnabled: true,
+  canBeInherited: false,
 };
 
 const DISABLED_CONTENT_EDITABLE: ContentEditablePossibilities = {
   canBeDisabled: true,
   canBeEnabled: false,
+  canBeInherited: false,
+};
+
+const INHERITED_CONTENT_EDITABLE: ContentEditablePossibilities = {
+  canBeDisabled: false,
+  canBeEnabled: false,
+  canBeInherited: true,
 };
 
 const UNKNOWN_CONTENT_EDITABLE: ContentEditablePossibilities = {
   canBeDisabled: true,
   canBeEnabled: true,
+  canBeInherited: true,
 };
 
 const mergeContentEditablePossibilities = (
@@ -40,6 +50,7 @@ const mergeContentEditablePossibilities = (
 ): ContentEditablePossibilities => ({
   canBeDisabled: left.canBeDisabled || right.canBeDisabled,
   canBeEnabled: left.canBeEnabled || right.canBeEnabled,
+  canBeInherited: left.canBeInherited || right.canBeInherited,
 });
 
 const resolveContentEditableExpression = (
@@ -53,11 +64,15 @@ const resolveContentEditableExpression = (
       return expression.value ? ENABLED_CONTENT_EDITABLE : DISABLED_CONTENT_EDITABLE;
     }
     if (typeof expression.value === "string") {
-      return ENABLED_CONTENT_EDITABLE_VALUES.has(expression.value.toLowerCase())
-        ? ENABLED_CONTENT_EDITABLE
-        : DISABLED_CONTENT_EDITABLE;
+      const contentEditableValue = expression.value.toLowerCase();
+      if (ENABLED_CONTENT_EDITABLE_VALUES.has(contentEditableValue)) {
+        return ENABLED_CONTENT_EDITABLE;
+      }
+      return contentEditableValue === "false"
+        ? DISABLED_CONTENT_EDITABLE
+        : INHERITED_CONTENT_EDITABLE;
     }
-    return DISABLED_CONTENT_EDITABLE;
+    return INHERITED_CONTENT_EDITABLE;
   }
   if (isNodeOfType(expression, "ConditionalExpression")) {
     return mergeContentEditablePossibilities(
@@ -102,9 +117,21 @@ const hasDefinitelyEnabledContentEditableAncestor = (
   while (ancestor) {
     if (isNodeOfType(ancestor, "JSXElement")) {
       const openingElement = ancestor.openingElement;
-      if (HTML_TAGS.has(getElementType(openingElement, settings))) {
-        const possibilities = getContentEditablePossibilities(openingElement, scopes);
-        if (possibilities?.canBeEnabled && !possibilities.canBeDisabled) return true;
+      if (!HTML_TAGS.has(getElementType(openingElement, settings))) return false;
+      const possibilities = getContentEditablePossibilities(openingElement, scopes);
+      if (possibilities) {
+        if (
+          possibilities.canBeEnabled &&
+          !possibilities.canBeDisabled &&
+          !possibilities.canBeInherited
+        ) {
+          return true;
+        }
+        const isDefinitelyInherited =
+          possibilities.canBeInherited &&
+          !possibilities.canBeDisabled &&
+          !possibilities.canBeEnabled;
+        if (!isDefinitelyInherited) return false;
       }
     }
     ancestor = ancestor.parent;

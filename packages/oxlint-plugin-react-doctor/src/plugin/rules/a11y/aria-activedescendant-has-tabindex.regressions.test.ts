@@ -86,6 +86,29 @@ describe("a11y/aria-activedescendant-has-tabindex regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not look past uncertain or disabled editing-host boundaries", () => {
+    const sources = [
+      `<div contentEditable>
+        <div contentEditable={false}>
+          <div contentEditable aria-activedescendant={activeId} />
+        </div>
+      </div>`,
+      `<div contentEditable>
+        <div contentEditable={innerEnabled}>
+          <div contentEditable aria-activedescendant={activeId} />
+        </div>
+      </div>`,
+      `<div contentEditable>
+        <Wrapper>
+          <div contentEditable aria-activedescendant={activeId} />
+        </Wrapper>
+      </div>`,
+    ];
+    for (const source of sources) {
+      expect(runRule(ariaActivedescendantHasTabindex, source).diagnostics).toEqual([]);
+    }
+  });
+
   it("still flags a plain div with aria-activedescendant and no tabIndex", () => {
     const result = runRule(
       ariaActivedescendantHasTabindex,

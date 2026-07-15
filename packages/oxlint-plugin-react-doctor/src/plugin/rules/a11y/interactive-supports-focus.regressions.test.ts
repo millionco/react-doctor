@@ -248,4 +248,27 @@ const X = ({ go }) => <div role={role} onClick={go}>{label}</div>;`,
     );
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not look past uncertain or disabled editing-host boundaries", () => {
+    const sources = [
+      `<div contentEditable>
+        <div contentEditable={false}>
+          <div role="textbox" contentEditable onKeyDown={handleKeyDown} />
+        </div>
+      </div>`,
+      `<div contentEditable>
+        <div contentEditable={innerEnabled}>
+          <div role="textbox" contentEditable onKeyDown={handleKeyDown} />
+        </div>
+      </div>`,
+      `<div contentEditable>
+        <Wrapper>
+          <div role="textbox" contentEditable onKeyDown={handleKeyDown} />
+        </Wrapper>
+      </div>`,
+    ];
+    for (const source of sources) {
+      expect(runRule(interactiveSupportsFocus, source).diagnostics).toEqual([]);
+    }
+  });
 });

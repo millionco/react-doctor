@@ -81,12 +81,14 @@ export const EFFECT_SNIPPET_POOL = [
   `const [fuzzChildCount, setFuzzChildCount] = useState(0); useEffect(() => { setFuzzChildCount(Children.toArray(children).length); });`,
   `const [guardSelection, setGuardSelection] = useState(0); const [guardLabel, setGuardLabel] = useState(""); const guardValueKey = String(value); const previousGuardValueRef = useRef(guardValueKey); useEffect(() => { const didGuardValueChange = previousGuardValueRef.current !== guardValueKey; previousGuardValueRef.current = guardValueKey; if (!didGuardValueChange) return; setGuardLabel("reset"); }, [guardSelection, guardValueKey]); const guardedChainButton = <button onClick={() => setGuardSelection((previousSelection) => previousSelection + 1)}>{guardLabel}</button>;`,
   `const [labeledSelection, setLabeledSelection] = useState(0); const [labeledValue, setLabeledValue] = useState(""); const labeledValueKey = String(value); const previousLabeledValueRef = useRef(labeledValueKey); useEffect(() => { const didLabeledValueChange = previousLabeledValueRef.current !== labeledValueKey; previousLabeledValueRef.current = labeledValueKey; snapshotGuard: { if (!didLabeledValueChange) break snapshotGuard; } setLabeledValue(labeledValueKey); }, [labeledSelection, labeledValueKey]); const labeledChainButton = <button onClick={() => setLabeledSelection((previousSelection) => previousSelection + 1)}>{labeledValue}</button>;`,
+  `const [isFuzzNodeMounted, setIsFuzzNodeMounted] = useState(false); const fuzzNodeRef = useRef(null); useEffect(() => { setIsFuzzNodeMounted(Boolean(value)); }, [value]); useEffect(() => { fuzzNodeRef.current?.focus(); }, [isFuzzNodeMounted]); const fuzzFocusedNode = isFuzzNodeMounted ? <button ref={fuzzNodeRef}>Focus</button> : null;`,
   `const [callbackServerKeys, setCallbackServerKeys] = useState(items); const [callbackLocalKeys, setCallbackLocalKeys] = useState(items); const callbackLocalKeysRef = useRef(callbackLocalKeys); const commitCallbackLocalKeys = useCallback((nextKeys) => { callbackLocalKeysRef.current = nextKeys; setCallbackLocalKeys(nextKeys); }, []); useEffect(() => { setCallbackServerKeys(items); if (callbackLocalKeysRef.current.length > 0) commitCallbackLocalKeys([]); }, [items, commitCallbackLocalKeys]);`,
 ] as const;
 
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),
 // toggles, loading triples, prop mirrors, reducers, ref-sync.
 export const STATE_SNIPPET_POOL = [
+  `const fuzzRandomIdentity = { id: globalThis.crypto.randomUUID() };`,
   `const FuzzNestedPanel = () => <div>nested</div>; const fuzzNestedPanelNode = <FuzzNestedPanel />;`,
   `const [state, setState] = useState(0);`,
   `const [state, setState] = useState(() => Number(localStorage.getItem("count") ?? 0));`,
@@ -102,8 +104,10 @@ export const STATE_SNIPPET_POOL = [
   `const [fuzzLoading, setFuzzLoading] = useState(true); const loadFuzzValue = async () => { await Promise.resolve(value); setFuzzLoading(false); }; useEffect(() => { setFuzzLoading(true); void loadFuzzValue(); }, [value]);`,
   `const FuzzHiddenResetMenu = ({ visible }) => { const [open, setOpen] = useState(false); useEffect(() => { setOpen(false); }, [visible]); return visible && open && <div role="menu">Menu</div>; }; const fuzzHiddenResetMenuNode = <FuzzHiddenResetMenu visible={condition} />;`,
   `const FuzzOpaqueVisibilityPanel = ({ visible, isAllowed }) => { const [canShowPanel, setCanShowPanel] = useState(true); useEffect(() => { setCanShowPanel(true); }, [visible]); return visible && isAllowed() && canShowPanel && <output onClick={() => setCanShowPanel(false)}>Panel</output>; }; const fuzzOpaqueVisibilityPanelNode = <FuzzOpaqueVisibilityPanel visible={condition} isAllowed={() => condition} />;`,
+  `const FuzzClearOnlyChain = ({ visible }) => { const [error, setError] = useState(null); const [message, setMessage] = useState(""); useEffect(() => { if (!visible) setError(null); }, [visible]); useEffect(() => { if (error) setMessage(error.message); }, [error]); return message; }; const fuzzClearOnlyChainNode = <FuzzClearOnlyChain visible={condition} />;`,
   `const [reducerState, dispatch] = useReducer(reducer, { count: 0 });`,
   `const containerRef = useRef(null);`,
+  `const lazyMapRef = useRef<Map<string, string> | undefined>(undefined); if (!lazyMapRef.current) lazyMapRef.current = new Map(); const lazyMapSize = lazyMapRef.current.size;`,
   `const fuzzWriteOnlyFocusControl = { refs: { toggle: createRef(), close: createRef(), slider: createRef() }, setFocus: () => {}, loseFocus: () => {} }; const fuzzWriteOnlyFocusNode = <button ref={fuzzWriteOnlyFocusControl.refs.toggle}>Open</button>;`,
   `const fuzzObservedTarget = createRef(); useEffect(() => handle(fuzzObservedTarget), [fuzzObservedTarget]);`,
   `const handleRef = useRef(handle); handleRef.current = handle;`,
@@ -241,6 +245,7 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `const fuzzLeftItems = ["a", "b"]; const fuzzRightItems = ["a", "b"]; const fuzzItemsMatch = fuzzLeftItems.every((item, index) => item === fuzzRightItems[index]);`,
   `const FuzzLargeTextThreshold = 50_000; const FuzzLargeTextCodeBlock = ({ children }) => { if (typeof children === "string" && children.length > FuzzLargeTextThreshold) return <VirtualizedCode text={children} />; return <pre>{children}</pre>; }; const FuzzPolymorphicChildPanel = ({ children }) => typeof children === "string" ? <span>{children}</span> : <div>{children}</div>;`,
   `const FuzzMemoList = React.memo(({ items }) => <div>{items.length}</div>, (previousProps, nextProps) => previousProps.items.length === nextProps.items.length); const FuzzDefaultList = ({ items = [] }) => <FuzzMemoList items={items} />;`,
+  `interface FuzzPluginProps { addModule: (name: string) => void; } interface FuzzPlugin { (props: FuzzPluginProps): void; } interface FuzzPluginConfig { modules: string[]; } const FuzzEventsHarnessPlugin = ({ addModule }: FuzzPluginProps): void => { addModule("fuzz-events"); }; const fuzzInstallPlugins = (plugins: readonly FuzzPlugin[]): string[] => { const config: FuzzPluginConfig = { modules: [] }; const addModule = (name: string): void => { config.modules.push(name); }; plugins.forEach((plugin) => plugin({ addModule })); return config.modules; }; const fuzzPluginModules = fuzzInstallPlugins([FuzzEventsHarnessPlugin]);`,
   `const useFuzzCollection = (items: readonly string[]) => { items.forEach((item) => consume(item)); }; const useFuzzCallback = (onVisit: (item: string) => void) => { onVisit(String(value)); };`,
   `const FuzzPropTypesPanel = ({ value }) => <div>{value}</div>; FuzzPropTypesPanel.propTypes = { value: () => true };`,
   `const FuzzDefaultPropsPanel = ({ value }) => <div>{value}</div>; FuzzDefaultPropsPanel.defaultProps = { value: "fallback" };`,

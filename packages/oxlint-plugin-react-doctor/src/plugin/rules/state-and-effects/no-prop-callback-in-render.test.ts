@@ -22,7 +22,7 @@ describe("no-prop-callback-in-render", () => {
       "a callback on the whole props object",
       `function Image(props) {
          if (props.error) props.onError(props.error);
-         return null;
+         return <div />;
        }`,
     ],
     [
@@ -30,35 +30,35 @@ describe("no-prop-callback-in-render", () => {
       `const Image = ({ error, onError }) => {
          const notifyError = onError;
          if (error) notifyError(error);
-         return null;
+         return <div />;
        };`,
     ],
     [
       "an IIFE that executes while rendering",
       `const Image = ({ error, onError }) => {
          (() => { if (error) onError(error); })();
-         return null;
+         return <div />;
        };`,
     ],
     [
       "a synchronous iteration callback",
       `const List = ({ items, onVisit }) => {
          items.forEach((item) => { onVisit(item); });
-         return null;
+         return <div />;
        };`,
     ],
     [
       "a concise IIFE",
       `const Image = ({ error, onError }) => {
          if (error) (() => onError(error))();
-         return null;
+         return <div />;
        };`,
     ],
     [
       "a concise forEach callback",
       `const List = ({ items, onVisit }) => {
          items.forEach((item) => onVisit(item));
-         return null;
+         return <div />;
        };`,
     ],
     [
@@ -485,5 +485,474 @@ describe("no-prop-callback-in-render", () => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a PascalCase plugin installer arrow with an explicit void return",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       const EventsHarnessPlugin = ({ addModule }: PluginProps): void => {
+         addModule("test-events");
+       };
+       const installPlugin = (props: PluginProps): void => {
+         EventsHarnessPlugin(props);
+       };`,
+      0,
+    ],
+    [
+      "a PascalCase plugin installer declaration with an inferred void return",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       function EventsHarnessPlugin({ addModule }: PluginProps) {
+         addModule("test-events");
+       }
+       const installPlugin = (props: PluginProps): void => {
+         EventsHarnessPlugin(props);
+       };`,
+      0,
+    ],
+    [
+      "a PascalCase plugin installer arrow without a return statement",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       const EventsHarnessPlugin = ({ addModule }: PluginProps) => {
+         addModule("test-events");
+       };`,
+      0,
+    ],
+    [
+      "a behavior-equivalent camelCase plugin installer",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       const eventsHarnessPlugin = ({ addModule }: PluginProps): void => {
+         addModule("test-events");
+       };
+       const installPlugin = (props: PluginProps): void => {
+         eventsHarnessPlugin(props);
+       };`,
+      0,
+    ],
+    [
+      "a plugin installer invoked directly",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       function EventsHarnessPlugin({ addModule }: PluginProps): void {
+         addModule("test-events");
+       }
+       const config = { modules: [] as string[] };
+       EventsHarnessPlugin({ addModule: (name) => config.modules.push(name) });`,
+      0,
+    ],
+    [
+      "a plugin installer invoked from an array iteration",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       interface Plugin {
+         (props: PluginProps): void;
+       }
+       function EventsHarnessPlugin({ addModule }: PluginProps): void {
+         addModule("test-events");
+       }
+       const installPlugins = (plugins: readonly Plugin[], props: PluginProps): void => {
+         plugins.forEach((plugin) => plugin(props));
+       };
+       installPlugins([EventsHarnessPlugin], { addModule: () => undefined });`,
+      0,
+    ],
+    [
+      "a plugin installer mutating only fresh render-local configuration",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       interface Plugin {
+         (props: PluginProps): void;
+       }
+       function EventsHarnessPlugin({ addModule }: PluginProps): void {
+         addModule("test-events");
+       }
+       const withPlugins = (plugins: readonly Plugin[]) => {
+         const config = { modules: [] as string[] };
+         const addModule = (name: string): void => {
+           config.modules.push(name);
+         };
+         plugins.forEach((plugin) => plugin({ addModule }));
+         return config;
+       };
+       withPlugins([EventsHarnessPlugin]);`,
+      0,
+    ],
+    [
+      "an aliased and TypeScript-wrapped plugin callback",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       function EventsHarnessPlugin({ addModule }: PluginProps): void {
+         const registerModule = addModule;
+         (registerModule satisfies PluginProps["addModule"])("test-events");
+       }`,
+      0,
+    ],
+    [
+      "a PascalCase installer with a misleading userland hook and null return",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       const useRegistry = (): void => undefined;
+       function EventsHarnessPlugin({ addModule }: PluginProps) {
+         useRegistry();
+         addModule("test-events");
+         return null;
+       }`,
+      0,
+    ],
+    [
+      "a PascalCase installer with a shadowed React hook name and null return",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       const useState = (): void => undefined;
+       function EventsHarnessPlugin({ addModule }: PluginProps) {
+         useState();
+         addModule("test-events");
+         return null;
+       }`,
+      0,
+    ],
+    [
+      "an unrendered hookless null-returning PascalCase function",
+      `interface RenderLikeProps {
+         onRender: () => void;
+       }
+       function RenderLike({ onRender }: RenderLikeProps) {
+         onRender();
+         return null;
+       }`,
+      0,
+    ],
+    [
+      "a hookless null component proven by JSX use",
+      `interface NullComponentProps {
+         onRender: () => void;
+       }
+       function NullComponent({ onRender }: NullComponentProps) {
+         onRender();
+         return null;
+       }
+       const node = <NullComponent onRender={() => undefined} />;`,
+      1,
+    ],
+    [
+      "a memo-wrapped hookless null component proven by JSX use",
+      `import { memo } from "react";
+       interface NullComponentProps {
+         onRender: () => void;
+       }
+       const NullComponent = memo(({ onRender }: NullComponentProps) => {
+         onRender();
+         return null;
+       });
+       const node = <NullComponent onRender={() => undefined} />;`,
+      1,
+    ],
+    [
+      "a forwardRef-wrapped hookless null component proven by JSX use",
+      `import * as React from "react";
+       interface NullComponentProps {
+         onRender: () => void;
+       }
+       const NullComponent = React.forwardRef<unknown, NullComponentProps>(
+         ({ onRender }, forwardedRef) => {
+           onRender();
+           return null;
+         },
+       );
+       const node = <NullComponent onRender={() => undefined} />;`,
+      1,
+    ],
+    [
+      "an observer-wrapped hookless null component proven by JSX use",
+      `import { observer } from "mobx-react-lite";
+       interface NullComponentProps {
+         onRender: () => void;
+       }
+       const NullComponent = observer(({ onRender }: NullComponentProps) => {
+         onRender();
+         return null;
+       });
+       const node = <NullComponent onRender={() => undefined} />;`,
+      1,
+    ],
+    [
+      "a hookless null component proven by React createElement use",
+      `import { createElement } from "react";
+       interface NullComponentProps {
+         onRender: () => void;
+       }
+       function NullComponent({ onRender }: NullComponentProps) {
+         onRender();
+         return null;
+       }
+       const node = createElement(NullComponent, { onRender: () => undefined });`,
+      1,
+    ],
+    [
+      "a hookless null component proven by an immutable createElement alias",
+      `import { createElement } from "react";
+       interface NullComponentProps {
+         onRender: () => void;
+       }
+       function NullComponent({ onRender }: NullComponentProps) {
+         onRender();
+         return null;
+       }
+       const renderElement = createElement;
+       const node = renderElement(NullComponent, { onRender: () => undefined });`,
+      1,
+    ],
+    [
+      "a hookless null component proven through a const JSX alias",
+      `interface NullComponentProps {
+         onRender: () => void;
+       }
+       function NullComponent({ onRender }: NullComponentProps) {
+         onRender();
+         return null;
+       }
+       const AliasedNullComponent = NullComponent;
+       const node = <AliasedNullComponent onRender={() => undefined} />;`,
+      1,
+    ],
+    [
+      "a hookless null component proven through a TypeScript-wrapped alias",
+      `interface NullComponentProps {
+         onRender: () => void;
+       }
+       interface NullComponentType {
+         (props: NullComponentProps): null;
+       }
+       function NullComponent({ onRender }: NullComponentProps) {
+         onRender();
+         return null;
+       }
+       const AliasedNullComponent = NullComponent satisfies NullComponentType;
+       const node = <AliasedNullComponent onRender={() => undefined} />;`,
+      1,
+    ],
+    [
+      "a hookless null component proven through nested TypeScript-wrapped aliases",
+      `interface NullComponentProps {
+         onRender: () => void;
+       }
+       interface NullComponentType {
+         (props: NullComponentProps): null;
+       }
+       function NullComponent({ onRender }: NullComponentProps) {
+         onRender();
+         return null;
+       }
+       const AliasedNullComponent =
+         (NullComponent as NullComponentType) satisfies NullComponentType;
+       const node = <AliasedNullComponent onRender={() => undefined} />;`,
+      1,
+    ],
+    [
+      "a hookless null component proven through a nested TypeScript-wrapped createElement argument",
+      `import { createElement } from "react";
+       interface NullComponentProps {
+         onRender: () => void;
+       }
+       interface NullComponentType {
+         (props: NullComponentProps): null;
+       }
+       function NullComponent({ onRender }: NullComponentProps) {
+         onRender();
+         return null;
+       }
+       const node = createElement(
+         (NullComponent as NullComponentType) satisfies NullComponentType,
+         { onRender: () => undefined },
+       );`,
+      1,
+    ],
+    [
+      "a hookless null function declaration hoisted outside its block",
+      `function Parent() {
+         if (true) {
+           function NullComponent({ onRender }) {
+             onRender();
+             return null;
+           }
+           const node = <NullComponent onRender={() => undefined} />;
+         }
+         return null;
+       }`,
+      1,
+    ],
+    [
+      "a hookless null var component hoisted outside its block",
+      `function Parent() {
+         if (true) {
+           var NullComponent = ({ onRender }) => {
+             onRender();
+             return null;
+           };
+           const node = <NullComponent onRender={() => undefined} />;
+         }
+         return null;
+       }`,
+      1,
+    ],
+    [
+      "a hookless null function passed to a shadowed createElement lookalike",
+      `interface NullComponentProps {
+         onRender: () => void;
+       }
+       const createElement = (...values: unknown[]): unknown => values;
+       function NullComponent({ onRender }: NullComponentProps) {
+         onRender();
+         return null;
+       }
+       createElement(NullComponent, { onRender: () => undefined });`,
+      0,
+    ],
+    [
+      "a reassigned PascalCase function whose replacement is rendered",
+      `interface PluginProps {
+         addModule: (name: string) => void;
+       }
+       function EventsHarnessPlugin({ addModule }: PluginProps) {
+         addModule("test-events");
+         return null;
+       }
+       EventsHarnessPlugin = () => null;
+       const node = <EventsHarnessPlugin addModule={() => undefined} />;`,
+      0,
+    ],
+    [
+      "a genuine JSX component that calls a prop callback during render",
+      `interface RenderPositiveProps {
+         onRender: () => void;
+       }
+       const RenderPositive = ({ onRender }: RenderPositiveProps) => {
+         onRender();
+         return <div />;
+       };`,
+      1,
+    ],
+    [
+      "a genuine fragment component",
+      `interface RenderPositiveProps {
+         onRender: () => void;
+       }
+       function RenderPositive({ onRender }: RenderPositiveProps) {
+         onRender();
+         return <>Ready</>;
+       }`,
+      1,
+    ],
+    [
+      "a genuine createElement component",
+      `import { createElement } from "react";
+       interface RenderPositiveProps {
+         onRender: () => void;
+       }
+       function RenderPositive({ onRender }: RenderPositiveProps) {
+         onRender();
+         return createElement("div");
+       }`,
+      1,
+    ],
+    [
+      "a genuine component returning props children",
+      `interface RenderPositiveProps {
+         onRender: () => void;
+         children: unknown;
+       }
+       function RenderPositive(props: RenderPositiveProps) {
+         props.onRender();
+         return props.children;
+       }`,
+      1,
+    ],
+    [
+      "a null component with a proven React Hook",
+      `import { useState } from "react";
+       interface RenderPositiveProps {
+         onRender: () => void;
+       }
+       function RenderPositive({ onRender }: RenderPositiveProps) {
+         useState(0);
+         onRender();
+         return null;
+       }`,
+      1,
+    ],
+    [
+      "a null component with an aliased proven React Hook",
+      `import { useState as useLocalState } from "react";
+       interface RenderPositiveProps {
+         onRender: () => void;
+       }
+       function RenderPositive({ onRender }: RenderPositiveProps) {
+         useLocalState(0);
+         onRender();
+         return null;
+       }`,
+      1,
+    ],
+    [
+      "a custom Hook invoking its callback parameter",
+      `interface InstallOptions {
+         addModule: (name: string) => void;
+       }
+       const useInstallPlugin = ({ addModule }: InstallOptions): void => {
+         addModule("test-events");
+       };`,
+      1,
+    ],
+    [
+      "a TypeScript-wrapped prop callback in a genuine component",
+      `interface RenderPositiveProps {
+         onRender: () => void;
+       }
+       function RenderPositive({ onRender }: RenderPositiveProps) {
+         (onRender satisfies () => void)();
+         return (<div />);
+       }`,
+      1,
+    ],
+    [
+      "a genuine component that defers a prop callback to an event",
+      `interface EventNegativeProps {
+         onRender: () => void;
+       }
+       const EventNegative = ({ onRender }: EventNegativeProps) => (
+         <button type="button" onClick={onRender}>Run</button>
+       );`,
+      0,
+    ],
+    [
+      "a genuine component that defers a prop callback to an effect",
+      `import { useEffect } from "react";
+       interface EffectNegativeProps {
+         onRender: () => void;
+       }
+       const EffectNegative = ({ onRender }: EffectNegativeProps) => {
+         useEffect(() => onRender(), [onRender]);
+         return <div />;
+       };`,
+      0,
+    ],
+  ])("classifies component ownership for %s", (_caseName, sourceCode, expectedDiagnosticCount) => {
+    const result = run(sourceCode);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedDiagnosticCount);
   });
 });

@@ -1,10 +1,9 @@
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
-import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { isInlineIntrinsicRefCallback } from "../../utils/is-inline-intrinsic-ref-callback.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx-element.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 
@@ -24,33 +23,6 @@ const collectMemberExpression = (identifier: EsTreeNode): EsTreeNode | null => {
     expression = findTransparentExpressionRoot(expression.parent);
   }
   return expression;
-};
-
-const isInlineIntrinsicRefCallback = (functionNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const functionExpression = findTransparentExpressionRoot(functionNode);
-  if (
-    !isFunctionLike(functionExpression) ||
-    functionExpression.async ||
-    functionExpression.generator
-  ) {
-    return false;
-  }
-  const container = functionExpression.parent;
-  if (!container || !isNodeOfType(container, "JSXExpressionContainer")) return false;
-  const attribute = container.parent;
-  if (
-    !attribute ||
-    !isNodeOfType(attribute, "JSXAttribute") ||
-    getJsxAttributeName(attribute.name) !== "ref"
-  ) {
-    return false;
-  }
-  const openingElement = attribute.parent;
-  return Boolean(
-    openingElement &&
-    isNodeOfType(openingElement, "JSXOpeningElement") &&
-    isProvenIntrinsicJsxElement(openingElement, scopes),
-  );
 };
 
 export const isSafeCreateRefCallbackCurrentWrite = (

@@ -69,12 +69,8 @@ const symbolHasReactComponentUse = (
     ) {
       return true;
     }
-    let expression = identifier;
-    let expressionParent = expression.parent;
-    while (expressionParent && stripParenExpression(expressionParent) === expression) {
-      expression = expressionParent;
-      expressionParent = expression.parent;
-    }
+    const expression = findTransparentExpressionRoot(identifier);
+    const expressionParent = expression.parent;
     if (
       isNodeOfType(expressionParent, "CallExpression") &&
       expressionParent.arguments[0] === expression &&

@@ -733,6 +733,42 @@ describe("no-prop-callback-in-render", () => {
       1,
     ],
     [
+      "a hookless null component proven through nested TypeScript-wrapped aliases",
+      `interface NullComponentProps {
+         onRender: () => void;
+       }
+       interface NullComponentType {
+         (props: NullComponentProps): null;
+       }
+       function NullComponent({ onRender }: NullComponentProps) {
+         onRender();
+         return null;
+       }
+       const AliasedNullComponent =
+         (NullComponent as NullComponentType) satisfies NullComponentType;
+       const node = <AliasedNullComponent onRender={() => undefined} />;`,
+      1,
+    ],
+    [
+      "a hookless null component proven through a nested TypeScript-wrapped createElement argument",
+      `import { createElement } from "react";
+       interface NullComponentProps {
+         onRender: () => void;
+       }
+       interface NullComponentType {
+         (props: NullComponentProps): null;
+       }
+       function NullComponent({ onRender }: NullComponentProps) {
+         onRender();
+         return null;
+       }
+       const node = createElement(
+         (NullComponent as NullComponentType) satisfies NullComponentType,
+         { onRender: () => undefined },
+       );`,
+      1,
+    ],
+    [
       "a hookless null function passed to a shadowed createElement lookalike",
       `interface NullComponentProps {
          onRender: () => void;

@@ -325,6 +325,27 @@ describe("performance/async-defer-await — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags compound comparisons between invariant parameters", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      export const run = async (
+        enabled: boolean,
+        expectedEnabled: boolean,
+        mode: string,
+        expectedMode: string,
+      ) => {
+        const rows = await load();
+        if (enabled === expectedEnabled || mode === expectedMode) return [];
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when the guard reads a flag reassigned around the await", () => {
     const result = runRule(
       asyncDeferAwait,

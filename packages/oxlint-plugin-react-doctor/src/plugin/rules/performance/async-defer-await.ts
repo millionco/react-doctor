@@ -1,4 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
+import {
+  isDescendantScope,
+  type ScopeAnalysis,
+  type ScopeDescriptor,
+} from "../../semantic/scope-analysis.js";
 import { collectPatternDefaultReferenceNames } from "../../utils/collect-pattern-default-reference-names.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
@@ -250,7 +255,60 @@ const isNonLiteralComparisonTest = (test: EsTreeNode | null): boolean => {
   return !isLiteralOperand(unwrappedTest.left) && !isLiteralOperand(unwrappedTest.right);
 };
 
-const isLogicalCompositionOfNonLiteralComparisons = (test: EsTreeNode | null): boolean => {
+const isLocalConstSnapshotOperand = (
+  operand: EsTreeNode,
+  scopes: ScopeAnalysis,
+  functionScope: ScopeDescriptor,
+): boolean => {
+  const unwrappedOperand = stripParenExpression(operand);
+  if (!isNodeOfType(unwrappedOperand, "Identifier")) return false;
+  const symbol = scopes.symbolFor(unwrappedOperand);
+  return Boolean(
+    symbol &&
+    symbol.kind === "const" &&
+    symbol.initializer &&
+    isDescendantScope(symbol.scope, functionScope),
+  );
+};
+
+const isLiveFreshnessOperand = (
+  operand: EsTreeNode,
+  scopes: ScopeAnalysis,
+  functionScope: ScopeDescriptor,
+): boolean => {
+  const unwrappedOperand = stripParenExpression(operand);
+  if (isNodeOfType(unwrappedOperand, "MemberExpression")) return true;
+  if (!isNodeOfType(unwrappedOperand, "Identifier")) return false;
+  const symbol = scopes.symbolFor(unwrappedOperand);
+  return Boolean(
+    symbol &&
+    (symbol.kind === "let" || symbol.kind === "var" || symbol.kind === "import") &&
+    !isDescendantScope(symbol.scope, functionScope),
+  );
+};
+
+const isProvenFreshnessComparison = (
+  test: EsTreeNode,
+  scopes: ScopeAnalysis,
+  functionScope: ScopeDescriptor,
+): boolean => {
+  const unwrappedTest = stripParenExpression(test);
+  if (!isNonLiteralComparisonTest(unwrappedTest)) return false;
+  if (!isNodeOfType(unwrappedTest, "BinaryExpression")) return false;
+  return (
+    (isLocalConstSnapshotOperand(unwrappedTest.left, scopes, functionScope) &&
+      isLiveFreshnessOperand(unwrappedTest.right, scopes, functionScope)) ||
+    (isLocalConstSnapshotOperand(unwrappedTest.right, scopes, functionScope) &&
+      isLiveFreshnessOperand(unwrappedTest.left, scopes, functionScope))
+  );
+};
+
+const isLogicalCompositionOfFreshnessComparisons = (
+  test: EsTreeNode | null,
+  scopes: ScopeAnalysis,
+  functionScope: ScopeDescriptor | null,
+): boolean => {
+  if (!functionScope) return false;
   if (!test) return false;
   const unwrappedTest = stripParenExpression(test);
   if (
@@ -271,7 +329,7 @@ const isLogicalCompositionOfNonLiteralComparisons = (test: EsTreeNode | null): b
       pendingTests.push(unwrappedCandidateTest.left, unwrappedCandidateTest.right);
       continue;
     }
-    if (!isNonLiteralComparisonTest(unwrappedCandidateTest)) return false;
+    if (!isProvenFreshnessComparison(unwrappedCandidateTest, scopes, functionScope)) return false;
   }
   return true;
 };
@@ -430,11 +488,19 @@ export const asyncDeferAwait = defineRule({
           statementIndex = window.guardCandidateIndex - 1;
           continue;
         }
+        const enclosingFunction = findEnclosingFunction(guardStatement);
+        const functionScope = enclosingFunction
+          ? context.scopes.ownScopeFor(enclosingFunction)
+          : null;
         if (
           isCancellationGuardTest(guardStatement.test) ||
           guardTestReadsMutableEnvironment(guardStatement.test) ||
           isNonLiteralComparisonTest(guardStatement.test) ||
-          isLogicalCompositionOfNonLiteralComparisons(guardStatement.test) ||
+          isLogicalCompositionOfFreshnessComparisons(
+            guardStatement.test,
+            context.scopes,
+            functionScope,
+          ) ||
           guardTestReadsReassignedLocal(guardStatement.test, guardStatement) ||
           guardConsequentPerformsSideEffects(guardStatement.consequent)
         ) {

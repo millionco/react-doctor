@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
+import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
@@ -36,7 +37,7 @@ const findEnclosingRenderFunction = (
   return enclosingFunction;
 };
 
-const isCreateRefStoredAsInitialReactState = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const isReactUseStateInitialState = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const initialState = findTransparentExpressionRoot(node);
   const stateCall = initialState.parent;
   return Boolean(
@@ -47,6 +48,47 @@ const isCreateRefStoredAsInitialReactState = (node: EsTreeNode, scopes: ScopeAna
       allowGlobalReactNamespace: true,
       resolveNamedAliases: true,
     }),
+  );
+};
+
+const hasDirectExportWrapper = (declarationNode: EsTreeNode): boolean => {
+  const parent = declarationNode.parent;
+  if (
+    isNodeOfType(parent, "ExportNamedDeclaration") ||
+    isNodeOfType(parent, "ExportDefaultDeclaration")
+  ) {
+    return true;
+  }
+  return Boolean(
+    isNodeOfType(declarationNode, "VariableDeclarator") &&
+    (isNodeOfType(parent?.parent, "ExportNamedDeclaration") ||
+      isNodeOfType(parent?.parent, "ExportDefaultDeclaration")),
+  );
+};
+
+const isFunctionExclusivelyUsedAsReactStateInitializer = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (isReactUseStateInitialState(functionNode, scopes)) return true;
+  const bindingIdentifier = getFunctionBindingIdentifier(
+    findTransparentExpressionRoot(functionNode),
+  );
+  if (!bindingIdentifier) return false;
+  const bindingSymbol = isNodeOfType(functionNode, "FunctionDeclaration")
+    ? scopes.scopeFor(functionNode).symbolsByName.get(bindingIdentifier.name)
+    : scopes.symbolFor(bindingIdentifier);
+  if (
+    !bindingSymbol ||
+    (bindingSymbol.kind !== "const" && bindingSymbol.kind !== "function") ||
+    hasDirectExportWrapper(bindingSymbol.declarationNode) ||
+    bindingSymbol.references.length === 0
+  ) {
+    return false;
+  }
+  return bindingSymbol.references.every(
+    (reference) =>
+      reference.flag === "read" && isReactUseStateInitialState(reference.identifier, scopes),
   );
 };
 
@@ -87,7 +129,12 @@ export const noCreateRefInFunctionComponent = defineRule({
         isReactHookName(displayName) ||
         functionContainsReactRenderOutput(enclosingFunction, context.scopes, context.cfg);
       if (!isComponentOrHook) return;
-      if (isCreateRefStoredAsInitialReactState(node, context.scopes)) return;
+      if (
+        isReactUseStateInitialState(node, context.scopes) ||
+        isFunctionExclusivelyUsedAsReactStateInitializer(enclosingFunction, context.scopes)
+      ) {
+        return;
+      }
       if (
         isProvenOneShotTestingLibraryComponent(enclosingFunction, context.filename, context.scopes)
       ) {

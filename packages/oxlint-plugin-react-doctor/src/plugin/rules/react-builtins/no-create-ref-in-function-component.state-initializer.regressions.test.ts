@@ -35,17 +35,56 @@ export const Skeleton = () => {
     }
   });
 
-  it("stays silent for eager, lazy, and StrictMode state initialization", () => {
+  it("stays silent for eager and inline lazy state initialization under StrictMode", () => {
     const result = runCreateRefRule(`import React, { StrictMode, createRef, useState } from "react";
 const EagerTarget = () => {
   const [target] = useState(createRef<HTMLButtonElement>());
   return <button ref={target}>Eager</button>;
 };
 const LazyTarget = () => {
-  const [target] = useState(() => createRef<HTMLButtonElement>());
+  const [target] = useState(function useInitialTargetRef() {
+    return createRef<HTMLButtonElement>();
+  });
   return <button ref={target}>Lazy</button>;
 };
 export const App = () => <StrictMode><EagerTarget /><LazyTarget /></StrictMode>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when every reference to a local initializer is a useState initializer", () => {
+    const result = runCreateRefRule(`import React, { createRef, useState } from "react";
+const useModuleInitialRef = () => createRef<HTMLDivElement>();
+function useDeclaredInitialRef() {
+  return createRef<HTMLDivElement>();
+}
+const ModuleTarget = () => {
+  const [target] = useState(useModuleInitialRef);
+  const [declaredTarget] = useState(useDeclaredInitialRef);
+  return <><div ref={target} /><div ref={declaredTarget} /></>;
+};
+export const LocalTarget = () => {
+  const useLocalInitialRef = () => createRef<HTMLButtonElement>();
+  const [firstTarget] = useState(useLocalInitialRef);
+  const [secondTarget] = React.useState(useLocalInitialRef);
+  return <><button ref={firstTarget}>First</button><button ref={secondTarget}>Second</button></>;
+};`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("resolves transparent wrappers around named lazy initializer functions and references", () => {
+    const result =
+      runCreateRefRule(`import React, { createRef, useState, type RefObject } from "react";
+const useNamedInitialRef = ((function useWrappedInitialRef() {
+  return createRef<HTMLButtonElement>();
+}) as () => RefObject<HTMLButtonElement>);
+const useArrowInitialRef = ((() => createRef<HTMLButtonElement>()) satisfies () => RefObject<HTMLButtonElement>);
+export const Target = () => {
+  const [namedTarget] = useState((useNamedInitialRef as () => RefObject<HTMLButtonElement>));
+  const [arrowTarget] = useState(useArrowInitialRef satisfies () => RefObject<HTMLButtonElement>);
+  return <><button ref={namedTarget}>Named</button><button ref={arrowTarget}>Arrow</button></>;
+};`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
@@ -123,5 +162,73 @@ export const Target = () => {
     expect(localStateResult.diagnostics).toHaveLength(1);
     expect(shadowedNamespaceResult.diagnostics).toHaveLength(1);
     expect(localCreateRefResult.diagnostics).toEqual([]);
+  });
+
+  it("reports named initializers with non-state, mutable, or ambiguous uses", () => {
+    const sources = [
+      `import { createRef, useState } from "react";
+export const Target = () => {
+  const useInitialRef = () => createRef();
+  const [target] = useState(useInitialRef);
+  const unstableTarget = useInitialRef();
+  return <><input ref={target} /><input ref={unstableTarget} /></>;
+};`,
+      `import { createRef, useState } from "react";
+export const Target = () => {
+  let useInitialRef = () => createRef();
+  const [target] = useState(useInitialRef);
+  useInitialRef = () => ({ current: null });
+  return <input ref={target} />;
+};`,
+      `import { createRef, useState } from "react";
+export const Target = () => {
+  const useInitialRef = () => createRef();
+  observe(useInitialRef);
+  const [target] = useState(useInitialRef);
+  return <input ref={target} />;
+};`,
+      `import { createRef } from "react";
+const useState = (initializer) => [initializer()];
+export const Target = () => {
+  const useInitialRef = () => createRef();
+  const [target] = useState(useInitialRef);
+  return <input ref={target} />;
+};`,
+      `import { createRef } from "react";
+export const Target = () => run(function useInitialRef() {
+  return createRef();
+});`,
+      `import { createRef, useState } from "react";
+export const useInitialRef = () => createRef();
+export const Target = () => {
+  const [target] = useState(useInitialRef);
+  return <input ref={target} />;
+};`,
+      `import { createRef, useState } from "react";
+export function useInitialRef() { return createRef(); }
+export const Target = () => {
+  const [target] = useState(useInitialRef);
+  return <input ref={target} />;
+};`,
+      `import { createRef, useState } from "react";
+const useInitialRef = () => createRef();
+export { useInitialRef };
+export const Target = () => {
+  const [target] = useState(useInitialRef);
+  return <input ref={target} />;
+};`,
+      `import { createRef, useState } from "react";
+const useInitialRef = () => createRef();
+export default useInitialRef;
+export const Target = () => {
+  const [target] = useState(useInitialRef);
+  return <input ref={target} />;
+};`,
+    ];
+    for (const source of sources) {
+      const result = runCreateRefRule(source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
   });
 });

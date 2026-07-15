@@ -15,6 +15,11 @@ export interface OxcDivergence {
 }
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
+  "anchor-has-content": {
+    failSkips: [0, 1, 2, 3, 4, 5, 6],
+    reason:
+      "A bare `<a>` without `href` or an explicit link role has no hyperlink semantics, so an accessible link name is inapplicable.",
+  },
   // anchor-is-valid: `href="#"` WITHOUT a click handler is a working
   // scroll-to-top link — focusable, keyboard-reachable, and it navigates
   // (to the top of the page), so the "goes nowhere" message is false

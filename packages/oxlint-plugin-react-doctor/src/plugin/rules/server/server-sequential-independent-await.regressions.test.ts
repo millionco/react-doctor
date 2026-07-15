@@ -3,6 +3,59 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { serverSequentialIndependentAwait } from "./server-sequential-independent-await.js";
 
 describe("server-sequential-independent-await — regressions", () => {
+  it("flags awaits when a callback parameter shadows the previous result", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `declare const loadFirst: () => Promise<number>; declare const loadSecond: (selector: (first: number) => number) => Promise<number>; export const loadAll = async (): Promise<number[]> => { const first = await loadFirst(); const second = await loadSecond((first) => first + 1); return [first, second]; };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    "(first) => first + 1",
+    "({ first }: { first: number }) => first + 1",
+    "() => { const first = 1; return first + 1; }",
+    "Promise.resolve(1).then((first) => first + 1)",
+    "Promise.reject(1).catch((first) => first + 1)",
+    "function (first) { return first + 1; }",
+  ])("does not fabricate a dependency from nested bindings", (secondArgument) => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `async function load() { const first = await loadFirst(); const second = await loadSecond(${secondArgument}); return [first, second]; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `async function load() { const first = await loadFirst(); const second = await loadSecond((value) => value + first); return [first, second]; }`,
+    `async function load() { const first = await loadFirst(); const second = await loadSecond({ [first]: true }); return [first, second]; }`,
+    `async function load() { const first = await loadFirst(); const second = await first.loadSecond(); return [first, second]; }`,
+  ])("retains genuine symbol dependencies", (code) => {
+    const result = runRule(serverSequentialIndependentAwait, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores write-only references to the previous result", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `async function load() { let first = await loadFirst(); const second = await loadSecond((first = fallback)); return [first, second]; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("retains read-write references to the previous result", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `async function load() { let first = await loadFirst(); const second = await loadSecond((first += fallback)); return [first, second]; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags an independent visible helper even when its name starts with initialize", () => {
     const result = runRule(
       serverSequentialIndependentAwait,

@@ -11,6 +11,7 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 export interface ReactApiCallOptions {
   allowGlobalReactNamespace?: boolean;
   allowUnboundBareCalls?: boolean;
+  resolveConditionalAliases?: boolean;
   resolveNamedAliases?: boolean;
 }
 
@@ -105,7 +106,23 @@ export const isReactApiCall = (
   options: ReactApiCallOptions = {},
 ): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
-  const callee = stripParenExpression(node.callee);
+  return isReactApiCallee(node.callee, apiNames, scopes, options, new Set());
+};
+
+const isReactApiCallee = (
+  rawCallee: EsTreeNode,
+  apiNames: string | ReadonlySet<string>,
+  scopes: ScopeAnalysis,
+  options: ReactApiCallOptions,
+  visitedSymbolIds: Set<number>,
+): boolean => {
+  const callee = stripParenExpression(rawCallee);
+  if (options.resolveConditionalAliases && isNodeOfType(callee, "ConditionalExpression")) {
+    return (
+      isReactApiCallee(callee.consequent, apiNames, scopes, options, new Set(visitedSymbolIds)) &&
+      isReactApiCallee(callee.alternate, apiNames, scopes, options, new Set(visitedSymbolIds))
+    );
+  }
   if (isNodeOfType(callee, "Identifier")) {
     if (isNamedReactApiImport(callee, apiNames, scopes, Boolean(options.resolveNamedAliases))) {
       return true;
@@ -115,6 +132,13 @@ export const isReactApiCall = (
       isDestructuredReactApiBinding(callee, apiNames, scopes, options)
     ) {
       return true;
+    }
+    if (options.resolveConditionalAliases) {
+      const symbol = scopes.symbolFor(callee);
+      if (symbol?.kind === "const" && symbol.initializer && !visitedSymbolIds.has(symbol.id)) {
+        visitedSymbolIds.add(symbol.id);
+        return isReactApiCallee(symbol.initializer, apiNames, scopes, options, visitedSymbolIds);
+      }
     }
     return Boolean(
       options.allowUnboundBareCalls &&

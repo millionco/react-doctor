@@ -172,7 +172,9 @@ const hasImportedProductComponentAttributeAncestor = (
           importBinding &&
           !REACT_MODULE_SOURCES.has(importBinding.source) &&
           !isTestLibraryImportSource(importBinding.source) &&
-          attributeAncestor?.parent === current.openingElement
+          attributeAncestor?.parent === current.openingElement &&
+          isNodeOfType(attributeAncestor.name, "JSXIdentifier") &&
+          attributeAncestor.name.name !== "children"
         ) {
           return true;
         }

@@ -716,7 +716,10 @@ const isIntrinsicRefCallbackParameter = (
   if (!callback || !isFunctionLike(callback) || !isInlineIntrinsicRefCallback(callback, scopes)) {
     return false;
   }
-  const firstParameter = callback.params?.[0];
+  const rawFirstParameter = callback.params?.[0];
+  const firstParameter = isNodeOfType(rawFirstParameter, "AssignmentPattern")
+    ? rawFirstParameter.left
+    : rawFirstParameter;
   const symbol = scopes.symbolFor(identifier);
   return Boolean(firstParameter && symbol?.bindingIdentifier === firstParameter);
 };

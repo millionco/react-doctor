@@ -1019,6 +1019,27 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("recognizes a defaulted intrinsic ref callback parameter", () => {
+    const result = runRule(
+      noEffectChain,
+      `function AccessibleNavTree({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(new Map());
+        useEffect(() => {
+          setExpanded(findAncestorPath(activeId));
+        }, [activeId]);
+        useEffect(() => {
+          itemRefs.current.get(activeId)?.focus();
+        }, [activeId, expanded]);
+        return expanded.has(activeId)
+          ? <button ref={(node = null) => itemRefs.current.set(activeId, node)} />
+          : null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("allows ref-backed DOM maps to delete unmounted nodes", () => {
     const result = runRule(
       noEffectChain,

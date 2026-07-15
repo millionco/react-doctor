@@ -102,6 +102,45 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each(["() => { return; }", "() => {}"])(
+    "stays silent for an undefined-returning updater %s",
+    (updater) => {
+      const result = runRule(
+        noEffectChain,
+        `function ErrorDialog({ isOpen }) {
+          const [error, setError] = useState(null);
+          const [announcement, setAnnouncement] = useState('ready');
+          useEffect(() => { if (!isOpen) setError(${updater}); }, [isOpen]);
+          useEffect(() => { if (error) setAnnouncement(error.message); }, [error]);
+          return announcement;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("stays silent after a nested branch that always returns for the clear-only value", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen, preferEarlyReturn }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => { if (!isOpen) setError(null); }, [isOpen]);
+        useEffect(() => {
+          if (!error) {
+            if (preferEarlyReturn) return;
+            else return;
+          }
+          setAnnouncement(error.message);
+        }, [error, preferEarlyReturn]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when every call site in one writer effect clears the state", () => {
     const result = runRule(
       noEffectChain,

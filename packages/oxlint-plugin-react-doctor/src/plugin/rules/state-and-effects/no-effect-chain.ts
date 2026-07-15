@@ -18,6 +18,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
@@ -300,9 +301,11 @@ const readStaticUpdaterReturnValue = (
   if (!isNodeOfType(updater.body, "BlockStatement")) {
     return readStaticEffectValue(updater.body, scopes, null, null);
   }
+  if (updater.body.body.length === 0) return { value: undefined };
   if (updater.body.body.length !== 1) return null;
   const returnStatement = updater.body.body[0];
-  if (!isNodeOfType(returnStatement, "ReturnStatement") || !returnStatement.argument) return null;
+  if (!isNodeOfType(returnStatement, "ReturnStatement")) return null;
+  if (!returnStatement.argument) return { value: undefined };
   return readStaticEffectValue(returnStatement.argument, scopes, null, null);
 };
 
@@ -346,15 +349,6 @@ const collectStateWritesInEffect = (
     stateWrites.set(stateName, writeInfo);
   });
   return stateWrites;
-};
-
-const doesStatementTerminateControlFlow = (statement: EsTreeNode): boolean => {
-  if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
-    return true;
-  }
-  if (!isNodeOfType(statement, "BlockStatement")) return false;
-  const finalStatement = statement.body.at(-1);
-  return finalStatement ? doesStatementTerminateControlFlow(finalStatement) : false;
 };
 
 const isGlobalBooleanCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -412,7 +406,7 @@ const isWorkNodeReachableForStateValue = (
           if (
             !isNodeOfType(earlierStatement, "IfStatement") ||
             earlierStatement.alternate ||
-            !doesStatementTerminateControlFlow(earlierStatement.consequent)
+            !statementAlwaysExits(earlierStatement.consequent)
           ) {
             continue;
           }

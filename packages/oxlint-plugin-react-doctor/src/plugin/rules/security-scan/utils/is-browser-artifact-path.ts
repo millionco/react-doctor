@@ -34,8 +34,7 @@ const isNonShippedBuildArtifactPath = (relativePath: string): boolean => {
   return false;
 };
 
-const isTypeScriptSourceFile = (relativePath: string): boolean =>
-  /\.tsx?$/.test(relativePath);
+const isTypeScriptSourceFile = (relativePath: string): boolean => /\.tsx?$/.test(relativePath);
 
 export const isBrowserArtifactPath = (
   relativePath: string,

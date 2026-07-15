@@ -100,6 +100,7 @@ export const STATE_SNIPPET_POOL = [
   `const fuzzReadOnlyColumns = [["first"], ["second"]]; const fuzzReadOnlyColumnsNode = <Grid columns={fuzzReadOnlyColumns} />;`,
   `const FuzzNestedPanel = () => <div>nested</div>; const fuzzNestedPanelNode = <FuzzNestedPanel />;`,
   `const [state, setState] = useState(0);`,
+  `const [fuzzStableStateRef] = useState(createRef()); const fuzzStableStateRefNode = <button ref={fuzzStableStateRef}>Open</button>;`,
   `const [state, setState] = useState(() => Number(localStorage.getItem("count") ?? 0));`,
   `const [theme, setTheme] = useState(() => (typeof window === "undefined" ? "light" : (localStorage.getItem("theme") ?? "light")));`,
   `const [isDark, setIsDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);`,

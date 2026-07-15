@@ -1,6 +1,7 @@
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -33,6 +34,20 @@ const findEnclosingRenderFunction = (
     enclosingFunction = findEnclosingFunction(enclosingFunction);
   }
   return enclosingFunction;
+};
+
+const isCreateRefStoredAsInitialReactState = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const initialState = findTransparentExpressionRoot(node);
+  const stateCall = initialState.parent;
+  return Boolean(
+    stateCall &&
+    isNodeOfType(stateCall, "CallExpression") &&
+    stateCall.arguments[0] === initialState &&
+    isReactApiCall(stateCall, "useState", scopes, {
+      allowGlobalReactNamespace: true,
+      resolveNamedAliases: true,
+    }),
+  );
 };
 
 // `createRef` is the class-component ref API. Inside a function component or a
@@ -72,6 +87,7 @@ export const noCreateRefInFunctionComponent = defineRule({
         isReactHookName(displayName) ||
         functionContainsReactRenderOutput(enclosingFunction, context.scopes, context.cfg);
       if (!isComponentOrHook) return;
+      if (isCreateRefStoredAsInitialReactState(node, context.scopes)) return;
       if (
         isProvenOneShotTestingLibraryComponent(enclosingFunction, context.filename, context.scopes)
       ) {

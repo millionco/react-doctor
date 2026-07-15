@@ -81,6 +81,7 @@ export const EFFECT_SNIPPET_POOL = [
   `const [fuzzChildCount, setFuzzChildCount] = useState(0); useEffect(() => { setFuzzChildCount(Children.toArray(children).length); });`,
   `const [guardSelection, setGuardSelection] = useState(0); const [guardLabel, setGuardLabel] = useState(""); const guardValueKey = String(value); const previousGuardValueRef = useRef(guardValueKey); useEffect(() => { const didGuardValueChange = previousGuardValueRef.current !== guardValueKey; previousGuardValueRef.current = guardValueKey; if (!didGuardValueChange) return; setGuardLabel("reset"); }, [guardSelection, guardValueKey]); const guardedChainButton = <button onClick={() => setGuardSelection((previousSelection) => previousSelection + 1)}>{guardLabel}</button>;`,
   `const [labeledSelection, setLabeledSelection] = useState(0); const [labeledValue, setLabeledValue] = useState(""); const labeledValueKey = String(value); const previousLabeledValueRef = useRef(labeledValueKey); useEffect(() => { const didLabeledValueChange = previousLabeledValueRef.current !== labeledValueKey; previousLabeledValueRef.current = labeledValueKey; snapshotGuard: { if (!didLabeledValueChange) break snapshotGuard; } setLabeledValue(labeledValueKey); }, [labeledSelection, labeledValueKey]); const labeledChainButton = <button onClick={() => setLabeledSelection((previousSelection) => previousSelection + 1)}>{labeledValue}</button>;`,
+  `const [callbackServerKeys, setCallbackServerKeys] = useState(items); const [callbackLocalKeys, setCallbackLocalKeys] = useState(items); const callbackLocalKeysRef = useRef(callbackLocalKeys); const commitCallbackLocalKeys = useCallback((nextKeys) => { callbackLocalKeysRef.current = nextKeys; setCallbackLocalKeys(nextKeys); }, []); useEffect(() => { setCallbackServerKeys(items); if (callbackLocalKeysRef.current.length > 0) commitCallbackLocalKeys([]); }, [items, commitCallbackLocalKeys]);`,
 ] as const;
 
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),
@@ -112,6 +113,7 @@ export const STATE_SNIPPET_POOL = [
   `const id = useId();`,
   `const deferredValue = useDeferredValue(state);`,
   `const [isPending, startTransition] = useTransition();`,
+  `const subscribeHydrationSnapshot = () => () => {}; const useServerReady = () => useSyncExternalStore(subscribeHydrationSnapshot, () => true, () => false); const serverReady = useServerReady(); const hydratedDocumentTitle = serverReady && document.title;`,
   `const [counterState, dispatchCounter] = useReducer((state, action) => { state.count += 1; return state; }, { count: 0 });`,
   `const [persistedCount, setPersistedCount] = useState(0); const incrementPersistedCount = () => setPersistedCount((previousCount) => { localStorage.setItem("count", String(previousCount + 1)); return previousCount + 1; });`,
   `const [parsedItems, setParsedItems] = useState(parseItems(value));`,
@@ -230,6 +232,7 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { ImageResponse as FuzzImageResponse } from "next/og"; export const FuzzPostcardLayout = ({ url }) => <img src={url} alt="" />; export const FuzzPostcardRoute = () => new FuzzImageResponse(FuzzPostcardLayout({ url }));`,
   `export function useFuzzCountryOptions() { return []; } export function FuzzCountryPickerSheet() { return <div />; }`,
   `import { motion as FuzzMotion } from "framer-motion"; export const FuzzMotionPanel = () => <FuzzMotion.div animate={{ x: 120 }}>moving</FuzzMotion.div>;`,
   `import { createRoot as mountFuzzRoot } from "react-dom/client"; export const FuzzRootApp = () => <div />; export const fuzzRootConfig = getConfig(); const fuzzApplicationRoot = mountFuzzRoot(document.body); fuzzApplicationRoot.render(<FuzzRootApp />);`,
@@ -274,6 +277,10 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  `export default async function Page() {
+  const response = await fetch("https://api.example.com/feed");
+  return Response.json(await response.json());
+}`,
   `const initializeProfile = async (value: number) => { await Promise.resolve(); return value * 2; };
 const loadPreferences = async (value: number) => { await Promise.resolve(); return value * 3; };
 export const loadProfile = async () => {
@@ -487,6 +494,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
   `const numericMembershipValues: number[] = []; const numericMembershipAllowed: number[] = []; numericMembershipValues.reduce((count, value) => numericMembershipAllowed.indexOf(value) !== -1 ? count + 1 : count, 0);`,
   `class NumericMembershipCollection<Value extends number> { retain(candidates: Value[], allowed: Value[]) { return candidates.filter((candidate) => allowed.indexOf(candidate) !== -1); } }`,
   `const localeOptionsBase = { timeZone: "UTC" }; const localeOptionsAlias = localeOptionsBase; const { timeZone: localeTimeZone } = localeOptionsAlias;`,
+  `class FuzzLocalNumberFormat { constructor(public readonly token: string) {} } const Intl = { NumberFormat: FuzzLocalNumberFormat }; const buildFuzzLocalFormatter = () => new Intl.NumberFormat(String(value));`,
   `const useState = () => [0, () => {}] as const;`,
   `const { useEffect: renamedEffect } = React;`,
   `const { onConfirm, onCancel } = props;`,
@@ -518,6 +526,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 ] as const;
 
 export const IMPORT_LINE_POOL = [
+  `import fetch from "node-fetch";`,
   `import { motion, MotionConfig, useReducedMotion } from "framer-motion";`,
   `import React from "react";`,
   `import * as React from "react";`,
@@ -558,6 +567,7 @@ export const FUZZ_FILENAME_POOL = [
   "src/fuzz-fixture.tsx",
   "src/components/fuzz-widget.tsx",
   "src/hooks/use-fuzz-data.ts",
+  "src/app/feed/page.tsx",
   "app/dashboard/page.tsx",
   "app/layout.tsx",
   "pages/index.tsx",

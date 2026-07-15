@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -28,9 +29,12 @@ export const nextjsNoCssLink = defineRule({
         : null;
       if (relValue !== "stylesheet") return;
 
-      const hrefAttribute = findJsxAttribute(attributes, "href");
-      if (!hrefAttribute?.value) return;
-      const hrefCandidates = getJsxPropStaticStringValues(hrefAttribute, context.scopes);
+      const declaredHrefAttribute = findJsxAttribute(attributes, "href");
+      if (!declaredHrefAttribute?.value) return;
+      const authoritativeHrefAttribute = getAuthoritativeJsxAttribute(attributes, "href");
+      const hrefCandidates = authoritativeHrefAttribute
+        ? getJsxPropStaticStringValues(authoritativeHrefAttribute, context.scopes)
+        : null;
       if (
         hrefCandidates !== null &&
         hrefCandidates.length > 0 &&

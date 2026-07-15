@@ -56,6 +56,30 @@ describe("nextjs/nextjs-no-css-link — remote stylesheets", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("still reports when a later spread can override a remote href", () => {
+    const result = runRule(
+      nextjsNoCssLink,
+      `export const DocumentHead = ({ linkProps }) => (
+        <link rel="stylesheet" href="https://cdn.example.com/theme.css" {...linkProps} />
+      );`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when an explicit remote href follows a spread", () => {
+    const result = runRule(
+      nextjsNoCssLink,
+      `export const DocumentHead = ({ linkProps }) => (
+        <link rel="stylesheet" {...linkProps} href="https://cdn.example.com/theme.css" />
+      );`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("still reports a local stylesheet that Next.js can bundle", () => {
     const result = runRule(
       nextjsNoCssLink,

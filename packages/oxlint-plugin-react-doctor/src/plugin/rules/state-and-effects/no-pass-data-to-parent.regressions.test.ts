@@ -1137,6 +1137,160 @@ describe("no-pass-data-to-parent — regressions", () => {
   });
 
   describe("callback refs sourced from parent callbacks (FN-024)", () => {
+    it("flags the React PhoneNr Input callback ref refreshed by a preceding effect", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, withCountryMeta }) {
+          const { country, phoneNumber } = usePhonenumber();
+          const onChangeRef = useRef(onChange);
+          useEffect(() => {
+            onChangeRef.current = onChange;
+          }, [onChange]);
+          useEffect(() => {
+            const data = withCountryMeta
+              ? { phoneNumber, country }
+              : phoneNumber;
+            onChangeRef.current(data);
+          }, [country, phoneNumber, withCountryMeta]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("flags a React namespace callback ref with the same ordered refresh", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import * as React from "react";
+        function PhoneInput({ onChange }) {
+          const childData = usePhoneData();
+          const onChangeRef = React.useRef(onChange);
+          React.useEffect(() => {
+            onChangeRef.current = onChange;
+          }, [onChange]);
+          React.useEffect(() => {
+            onChangeRef.current(childData);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent when an effect refresh does not prove the same parent callback", () => {
+      const validSources = [
+        `function PhoneInput({ onChange, onCommit }) {
+          const childData = usePhoneData();
+          const callbackRef = useRef(onChange);
+          useEffect(() => { callbackRef.current = onCommit; }, [onCommit]);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange }) {
+          const childData = usePhoneData();
+          const callbackRef = useRef(null);
+          useEffect(() => { callbackRef.current = onChange; }, [onChange]);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange, disabled }) {
+          const childData = usePhoneData();
+          const callbackRef = useRef(onChange);
+          useEffect(() => {
+            if (!disabled) callbackRef.current = onChange;
+          }, [disabled, onChange]);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange }) {
+          const childData = usePhoneData();
+          const callbackRef = useRef(onChange);
+          useEffect(() => {
+            const refresh = () => { callbackRef.current = onChange; };
+            refresh();
+          }, [onChange]);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange }) {
+          const childData = usePhoneData();
+          const callbackRef = useRef(onChange);
+          useEffect(() => {
+            queueMicrotask(() => { callbackRef.current = onChange; });
+          }, [onChange]);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange }) {
+          const useEffect = (callback) => callback();
+          const childData = usePhoneData();
+          const callbackRef = useRef(onChange);
+          useEffect(() => { callbackRef.current = onChange; }, [onChange]);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange }) {
+          const childData = usePhoneData();
+          const callbackRef = useRef(onChange);
+          useLayoutEffect(() => { callbackRef.current = onChange; }, [onChange]);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange }) {
+          const childData = usePhoneData();
+          const callbackRef = useRef(onChange);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          useEffect(() => { callbackRef.current = onChange; }, [onChange]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange }) {
+          const childData = usePhoneData();
+          const callbackRef = useRef(onChange);
+          useEffect(() => { refreshCallbackRef(callbackRef, onChange); }, [onChange]);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange }) {
+          const childData = usePhoneData();
+          const callbackRef = useRef(onChange);
+          useEffect(() => { callbackRef.current += onChange; }, [onChange]);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange }) {
+          const useRef = (value) => ({ current: value });
+          const childData = usePhoneData();
+          const callbackRef = useRef(onChange);
+          useEffect(() => { callbackRef.current = onChange; }, [onChange]);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange }) {
+          const localCallback = (value) => log(value);
+          const childData = usePhoneData();
+          const callbackRef = useRef(onChange);
+          useEffect(() => { callbackRef.current = onChange; }, [onChange]);
+          callbackRef.current = localCallback;
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+        `function PhoneInput({ onChange }) {
+          const childData = usePhoneData();
+          const callbackRef = useCallbackRef(onChange);
+          useEffect(() => { callbackRef.current = onChange; }, [onChange]);
+          useEffect(() => { callbackRef.current(childData); }, [childData]);
+          return null;
+        }`,
+      ];
+      for (const validSource of validSources) {
+        const result = runRule(noPassDataToParent, validSource);
+        expect(result.parseErrors).toEqual([]);
+        expect(result.diagnostics).toEqual([]);
+      }
+    });
+
     it("flags the PhoneInput ref-laundering shape with an initializer and render assignment", () => {
       const result = runRule(
         noPassDataToParent,

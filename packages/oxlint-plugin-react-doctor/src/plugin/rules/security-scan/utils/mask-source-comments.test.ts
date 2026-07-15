@@ -31,6 +31,31 @@ export const databaseUrl = process.env.DATABASE_URL;`;
     expect(maskedContent).toContain("export const databaseUrl = process.env.DATABASE_URL;");
   });
 
+  it.each(["\u2028", "\u2029"])(
+    "stops hashbang masking at an ECMAScript line terminator",
+    (separator) => {
+      const content = `#!/usr/bin/env node process.env.DATABASE_URL${separator}export const databaseUrl = process.env.DATABASE_URL;`;
+      const maskedContent = maskSourceComments("client.js", content);
+
+      expect(maskedContent).toHaveLength(content.length);
+      expect(maskedContent).not.toContain("#!/usr/bin/env");
+      expect(maskedContent).toContain("export const databaseUrl = process.env.DATABASE_URL;");
+    },
+  );
+
+  it.each(["\u2028", "\u2029"])(
+    "preserves ECMAScript line terminators inside comments",
+    (separator) => {
+      const content = `/* process.env.DATABASE_URL${separator}still a comment */${separator}export const databaseUrl = process.env.DATABASE_URL;`;
+      const maskedContent = maskSourceComments("client.js", content);
+
+      expect(maskedContent).toHaveLength(content.length);
+      expect(maskedContent.split(separator)).toHaveLength(3);
+      expect(maskedContent).not.toContain("still a comment");
+      expect(maskedContent).toContain("export const databaseUrl = process.env.DATABASE_URL;");
+    },
+  );
+
   it("returns non-source artifacts unchanged", () => {
     const content = `{"source":"/* process.env.DATABASE_URL */"}`;
     expect(maskSourceComments("client.js.map", content)).toBe(content);

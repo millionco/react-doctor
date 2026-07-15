@@ -306,6 +306,8 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  `#!/usr/bin/env node\u2028export const FUZZ_DATABASE_URL = process.env.DATABASE_URL;`,
+  `#!/usr/bin/env node process.env.DATABASE_URL\u2029export const FuzzGeneratedDatabaseClient = {};`,
   `export default async function Page() {
   const response = await fetch("https://api.example.com/feed");
   return Response.json(await response.json());

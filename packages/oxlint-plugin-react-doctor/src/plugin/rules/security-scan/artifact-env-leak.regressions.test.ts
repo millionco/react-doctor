@@ -118,6 +118,30 @@ export const client = {};`,
   });
 
   it.each([
+    ["line separator", "\u2028"],
+    ["paragraph separator", "\u2029"],
+  ])("keeps executable env access after a hashbang %s", (_label, separator) => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/generated/client.js",
+      content: `#!/usr/bin/env node${separator}export const databaseUrl = process.env.DATABASE_URL;`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each([
+    ["line separator", "\u2028"],
+    ["paragraph separator", "\u2029"],
+  ])("ignores hashbang-only env access before a %s", (_label, separator) => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/generated/client.js",
+      content: `#!/usr/bin/env node process.env.DATABASE_URL${separator}export const client = {};`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each([
     "process/* keep */.env.DATABASE_URL",
     "process./* keep */env.DATABASE_URL",
     "process// keep\n.env.DATABASE_URL",

@@ -14,7 +14,7 @@ export const maskSourceComments = (relativePath: string, content: string): strin
       lang: resolveLang(relativePath),
     });
     if (result.errors.some((parseError) => parseError.severity === "Error")) return content;
-    const firstLineTerminatorIndex = content.search(/[\r\n]/);
+    const firstLineTerminatorIndex = content.search(/[\r\n\u2028\u2029]/);
     const hashbangRanges = content.startsWith("#!")
       ? [
           {
@@ -31,7 +31,7 @@ export const maskSourceComments = (relativePath: string, content: string): strin
     for (const ignoredRange of ignoredRanges) {
       contentParts.push(content.slice(previousEnd, ignoredRange.start));
       contentParts.push(
-        content.slice(ignoredRange.start, ignoredRange.end).replace(/[^\r\n]/g, " "),
+        content.slice(ignoredRange.start, ignoredRange.end).replace(/[^\r\n\u2028\u2029]/g, " "),
       );
       previousEnd = ignoredRange.end;
     }

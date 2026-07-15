@@ -3121,7 +3121,8 @@ const getReactRefEffectUsage = (
     }
     const effectCallback = getEffectCallback(child);
     if (!isFunctionLike(effectCallback)) return;
-    let didWriteRefBeforeCall = false;
+    const refWrites: EsTreeNode[] = [];
+    const refCalls: EsTreeNode[] = [];
     walkAst(effectCallback.body, (effectChild: EsTreeNode) => {
       if (effectChild !== effectCallback.body && isFunctionLike(effectChild)) return false;
       if (
@@ -3130,24 +3131,27 @@ const getReactRefEffectUsage = (
         resolveReactRefSymbol(stripParenExpression(effectChild.left), context.scopes)?.id ===
           refSymbol.id
       ) {
-        didWriteRefBeforeCall = true;
-        return false;
+        refWrites.push(effectChild);
       }
       if (
-        didWriteRefBeforeCall ||
-        !isReactRefCurrentCall(effectChild, refSymbol, context) ||
-        !isNodeReachableWithinFunction(effectChild, context)
+        isReactRefCurrentCall(effectChild, refSymbol, context) &&
+        isNodeReachableWithinFunction(effectChild, context)
       ) {
-        return;
+        refCalls.push(effectChild);
+      }
+    });
+    for (const refCall of refCalls) {
+      if (doMatchingNodesCoverEveryPathBeforeUsage(refCall, refWrites, effectCallback, context)) {
+        continue;
       }
       didInvokeRef = true;
       if (
         effectCallback.async ||
-        !isExpressionReturnedFromFunction(effectChild, effectCallback, context)
+        !isExpressionReturnedFromFunction(refCall, effectCallback, context)
       ) {
         doesEffectOwnEveryResult = false;
       }
-    });
+    }
   });
   return didInvokeRef ? { doesEffectOwnEveryResult } : null;
 };

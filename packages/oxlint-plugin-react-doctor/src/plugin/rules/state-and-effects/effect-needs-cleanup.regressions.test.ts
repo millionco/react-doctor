@@ -4272,6 +4272,43 @@ export const LatestCallback = ({ subscription }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("requires effect-local overwrites on every path before invocation", () => {
+    const partialOverwriteResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const PartialOverwrite = ({ enabled, subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => {
+    if (enabled) callbackRef.current = () => {};
+    callbackRef.current();
+  }, [enabled]);
+  return null;
+};`,
+    );
+    const completeOverwriteResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const CompleteOverwrite = ({ enabled, subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => {
+    if (enabled) {
+      callbackRef.current = () => {};
+    } else {
+      callbackRef.current = () => {};
+    }
+    callbackRef.current();
+  }, [enabled]);
+  return null;
+};`,
+    );
+    expect(partialOverwriteResult.parseErrors).toEqual([]);
+    expect(completeOverwriteResult.parseErrors).toEqual([]);
+    expect(partialOverwriteResult.diagnostics).toHaveLength(1);
+    expect(completeOverwriteResult.diagnostics).toHaveLength(0);
+  });
+
   it("still reports cleanup work after the selected callback reassigns its own ref", () => {
     const result = runRule(
       effectNeedsCleanup,

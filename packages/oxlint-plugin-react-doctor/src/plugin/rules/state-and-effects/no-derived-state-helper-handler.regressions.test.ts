@@ -247,8 +247,17 @@ describe("no-derived-state helper-owned event state", () => {
         useEffect(() => updateDraft(value), [value]);
         if (false) return <div onWheel={onWheel}>{draft}</div>;
         return <div>{draft}</div>;
+      }
+      function UnreachableInlineCall({ value }) {
+        const [draft, setDraft] = useState("");
+        const commitDraft = (nextValue) => setDraft(nextValue);
+        const updateDraft = () => commitDraft(value);
+        useEffect(() => commitDraft(value), [value]);
+        return <div onWheel={() => {
+          if (false) updateDraft();
+        }}>{draft}</div>;
       }`,
-      5,
+      6,
     );
   });
 });

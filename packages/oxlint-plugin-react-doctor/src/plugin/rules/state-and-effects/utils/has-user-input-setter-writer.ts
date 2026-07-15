@@ -227,7 +227,10 @@ const hasReachableJsxEventCallPath = (
     if (!callExpression) return false;
     const jsxEventCallbackAttribute = getInlineJsxEventCallbackAttribute(callExpression);
     if (jsxEventCallbackAttribute) {
-      if (isNodeReachableWithinFunction(jsxEventCallbackAttribute, context)) {
+      if (
+        isNodeReachableWithinFunction(callExpression, context) &&
+        isNodeReachableWithinFunction(jsxEventCallbackAttribute, context)
+      ) {
         hasDirectJsxEventReference = true;
       }
       continue;

@@ -67,6 +67,16 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     ],
     ["a crypto require", 'const nodeCrypto = require("crypto");', "nodeCrypto.randomBytes(16)"],
     [
+      "an asserted node:crypto require",
+      'const nodeCrypto = require("node:crypto") as typeof import("node:crypto");',
+      "nodeCrypto.randomUUID()",
+    ],
+    [
+      "a parenthesized non-null crypto require",
+      'const nodeCrypto = (require("crypto")!);',
+      "nodeCrypto.randomBytes(16)",
+    ],
+    [
       "transitive const aliases of a crypto require",
       'const nodeCrypto = require("crypto"); const cryptoAlias = nodeCrypto; const runtimeCrypto = cryptoAlias;',
       "runtimeCrypto.randomBytes(16)",
@@ -122,6 +132,11 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     [
       "a required userland crypto lookalike",
       'const nodeCrypto = require("custom-crypto");',
+      "nodeCrypto.randomBytes(16)",
+    ],
+    [
+      "an asserted userland crypto lookalike",
+      'const nodeCrypto = require("custom-crypto") as CryptoLike;',
       "nodeCrypto.randomBytes(16)",
     ],
     [

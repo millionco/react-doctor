@@ -25,4 +25,39 @@ describe("security-scan/supabase-client-owned-authz-field — regressions", () =
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on files with 'use server' directive", () => {
+    const findings = runScanRule(supabaseClientOwnedAuthzField, {
+      relativePath: "app/(admin)/faq/actions.ts",
+      content: `"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { requireTenantRole } from "@/lib/auth/require-role";
+
+export async function createFaqItem(tenantId: string, formData: FormData) {
+  const auth = await requireTenantRole(tenantId, "admin");
+  if ("error" in auth) return { error: auth.error };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("faq_items").insert({
+    tenant_id: tenantId,
+    question: String(formData.get("question")),
+  });
+  return error ? { error: error.message } : {};
+}`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on files with single-quoted 'use server' directive", () => {
+    const findings = runScanRule(supabaseClientOwnedAuthzField, {
+      relativePath: "src/actions/delete-post.ts",
+      content: `'use server';
+
+export async function deletePost(userId: string, postId: string) {
+  await supabase.from("posts").delete().match({ id: postId, ownerId: userId });
+}`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

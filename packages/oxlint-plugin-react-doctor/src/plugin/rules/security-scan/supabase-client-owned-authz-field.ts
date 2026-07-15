@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { hasUseServerDirectiveInContent } from "./utils/has-use-server-directive-in-content.js";
 import { isClientSourcePath } from "./utils/is-client-source-path.js";
 import { scanByPattern } from "./utils/scan-by-pattern.js";
 
@@ -15,7 +16,8 @@ export const supabaseClientOwnedAuthzField = defineRule({
   recommendation:
     "Use RLS policies based on `auth.uid()` and server-owned membership rows; do not trust client-provided owner, org, or role columns.",
   scan: scanByPattern({
-    shouldScan: (file) => isClientSourcePath(file.relativePath),
+    shouldScan: (file) =>
+      isClientSourcePath(file.relativePath) && !hasUseServerDirectiveInContent(file.content),
     pattern: SENSITIVE_AUTH_FIELD_PATTERN,
     requireAll: [SUPABASE_CLIENT_AUTHZ_WRITE_PATTERN],
     message:

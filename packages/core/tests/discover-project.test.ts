@@ -699,6 +699,22 @@ describe("discoverProject", () => {
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.hasReactCompiler).toBe(true);
   });
+
+  it("does not treat the React Compiler ESLint plugin as a build transform", () => {
+    const projectDirectory = path.join(tempDirectory, "react-compiler-eslint-only");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-compiler-eslint-only",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "eslint-plugin-react-compiler": "^19.0.0-beta" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(false);
+  });
 });
 
 describe("listWorkspacePackages", () => {

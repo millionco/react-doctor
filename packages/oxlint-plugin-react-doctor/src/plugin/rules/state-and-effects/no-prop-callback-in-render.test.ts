@@ -677,6 +677,19 @@ describe("no-prop-callback-in-render", () => {
       1,
     ],
     [
+      "an observer-wrapped hookless null component proven by JSX use",
+      `import { observer } from "mobx-react-lite";
+       interface NullComponentProps {
+         onRender: () => void;
+       }
+       const NullComponent = observer(({ onRender }: NullComponentProps) => {
+         onRender();
+         return null;
+       });
+       const node = <NullComponent onRender={() => undefined} />;`,
+      1,
+    ],
+    [
       "a hookless null component proven by React createElement use",
       `import { createElement } from "react";
        interface NullComponentProps {

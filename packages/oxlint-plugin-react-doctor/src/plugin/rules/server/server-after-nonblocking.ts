@@ -44,14 +44,11 @@ const isDeferrableSideEffectCall = (objectName: string, methodName: string): boo
   return false;
 };
 
-const isInsideAfterCallback = (
-  node: EsTreeNode,
-  afterImportNames: Set<string>,
-): boolean => {
+const isInsideAfterCallback = (node: EsTreeNode, afterImportNames: Set<string>): boolean => {
   if (afterImportNames.size === 0) return false;
-  
+
   let cursor: EsTreeNode | null | undefined = node.parent;
-  
+
   while (cursor) {
     if (
       isNodeOfType(cursor, "ArrowFunctionExpression") ||
@@ -69,7 +66,7 @@ const isInsideAfterCallback = (
     }
     cursor = cursor.parent ?? null;
   }
-  
+
   return false;
 };
 
@@ -98,7 +95,7 @@ export const serverAfterNonblocking = defineRule({
       },
       ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
         if (node.source?.value !== "next/server") return;
-        
+
         for (const specifier of node.specifiers ?? []) {
           if (
             isNodeOfType(specifier, "ImportSpecifier") &&

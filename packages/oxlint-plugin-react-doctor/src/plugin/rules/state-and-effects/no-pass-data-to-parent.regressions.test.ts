@@ -20,17 +20,88 @@ describe("no-pass-data-to-parent — regressions", () => {
   });
 
   describe("external subscription notifications", () => {
-    it("stays silent when notifying a parent of a media-query hook transition", () => {
+    it("stays silent for the React Pro Sidebar media-query transition notification", () => {
       const result = runRule(
         noPassDataToParent,
-        `const Sidebar = ({ onBreakPoint }) => {
-          const broken = useMediaQuery("(max-width: 768px)");
-          const previousBroken = useRef(broken);
-          useEffect(() => {
-            if (previousBroken.current !== broken) {
-              previousBroken.current = broken;
-              onBreakPoint(broken);
+        `import React from "react";
+        import { useMediaQuery } from "../hooks/use-media-query";
+
+        type PredefinedBreakPoint = "sm" | "md" | "lg" | "all";
+        type BreakPoint = PredefinedBreakPoint | (string & {});
+
+        const BREAK_POINTS: Record<Exclude<PredefinedBreakPoint, "all">, string> = {
+          sm: "576px",
+          md: "768px",
+          lg: "992px",
+        };
+
+        interface SidebarProps {
+          breakPoint?: BreakPoint;
+          onBreakPoint?: (broken: boolean) => void;
+        }
+
+        const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(({
+          breakPoint,
+          onBreakPoint,
+        }, ref) => {
+          const getBreakpointValue = () => {
+            if (!breakPoint) return undefined;
+            if (breakPoint === "all") return "screen";
+            if (breakPoint in BREAK_POINTS) {
+              return \`(max-width: \${BREAK_POINTS[
+                breakPoint as Exclude<PredefinedBreakPoint, "all">
+              ]})\`;
             }
+            return \`(max-width: \${breakPoint})\`;
+          };
+          const onBreakPointRef = React.useRef(onBreakPoint);
+          onBreakPointRef.current = onBreakPoint;
+          const broken = useMediaQuery(getBreakpointValue());
+          const reportedBrokenRef = React.useRef(null);
+          React.useEffect(() => {
+            if (reportedBrokenRef.current === broken) return;
+            const isInitialReport = reportedBrokenRef.current === null;
+            reportedBrokenRef.current = broken;
+            if (isInitialReport && !broken) return;
+            onBreakPointRef.current?.(broken);
+          }, [broken]);
+          return null;
+        });`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for a renamed imported media-query hook", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useMediaQuery as useViewportQuery } from "../hooks/use-media-query";
+
+        const BREAK_POINTS = { md: "768px" };
+        const Sidebar = ({ breakPoint, onBreakPoint }) => {
+          const broken = useViewportQuery(\`(max-width: \${BREAK_POINTS[breakPoint]})\`);
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for a namespace-imported media-query hook", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import * as mediaQueryHooks from "../hooks/use-media-query";
+
+        const BREAK_POINTS = { md: "768px" };
+        const Sidebar = ({ breakPoint, onBreakPoint }) => {
+          const broken = mediaQueryHooks.useMediaQuery(
+            \`(max-width: \${BREAK_POINTS[breakPoint]})\`,
+          );
+          useEffect(() => {
+            onBreakPoint(broken);
           }, [broken, onBreakPoint]);
           return null;
         };`,
@@ -64,7 +135,9 @@ describe("no-pass-data-to-parent — regressions", () => {
     it("still flags ordinary child-owned form state passed to a parent", () => {
       const result = runRule(
         noPassDataToParent,
-        `const Form = ({ onChange }) => {
+        `import { useFormValue } from "../hooks/use-form-value";
+
+        const Form = ({ onChange }) => {
           const value = useFormValue();
           useEffect(() => {
             onChange(value);

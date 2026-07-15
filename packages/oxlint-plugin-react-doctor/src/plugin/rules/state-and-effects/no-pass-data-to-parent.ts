@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -922,6 +923,73 @@ const EXTERNAL_SUBSCRIPTION_HOOK_NAMES: ReadonlySet<string> = new Set([
   "useWindowSize",
 ]);
 
+const isImportBindingRef = (ref: Reference): boolean =>
+  Boolean(ref.resolved?.defs.some((def) => def.type === "ImportBinding"));
+
+const isImportedExternalSubscriptionHookCallee = (
+  analysis: ProgramAnalysis,
+  rawCallee: EsTreeNode,
+): boolean => {
+  const callee = stripParenExpression(rawCallee);
+  if (isNodeOfType(callee, "Identifier")) {
+    const calleeRef = getRef(analysis, callee);
+    if (!calleeRef || !isImportBindingRef(calleeRef)) return false;
+    const importBinding = getImportBindingForName(callee, callee.name);
+    return Boolean(
+      importBinding &&
+      !importBinding.isNamespace &&
+      importBinding.exportedName &&
+      EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(importBinding.exportedName),
+    );
+  }
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const hookName = getStaticMemberPropertyName(callee);
+  const namespaceIdentifier = stripParenExpression(callee.object);
+  if (
+    !hookName ||
+    !EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(hookName) ||
+    !isNodeOfType(namespaceIdentifier, "Identifier")
+  ) {
+    return false;
+  }
+  const namespaceRef = getRef(analysis, namespaceIdentifier);
+  if (!namespaceRef || !isImportBindingRef(namespaceRef)) return false;
+  return Boolean(
+    getImportBindingForName(namespaceIdentifier, namespaceIdentifier.name)?.isNamespace,
+  );
+};
+
+const isExternalSubscriptionHookResultRef = (analysis: ProgramAnalysis, ref: Reference): boolean =>
+  Boolean(
+    ref.resolved?.defs.some((def) => {
+      const declarator = def.node as unknown as EsTreeNode;
+      if (
+        !isNodeOfType(declarator, "VariableDeclarator") ||
+        !declarator.init ||
+        !isNodeOfType(declarator.id, "Identifier") ||
+        !isNodeOfType(declarator.parent, "VariableDeclaration") ||
+        declarator.parent.kind !== "const"
+      ) {
+        return false;
+      }
+      const initializer = stripParenExpression(declarator.init as EsTreeNode);
+      return (
+        isNodeOfType(initializer, "CallExpression") &&
+        isImportedExternalSubscriptionHookCallee(analysis, initializer.callee as EsTreeNode)
+      );
+    }),
+  );
+
+const isExternalSubscriptionHookResultArgument = (
+  analysis: ProgramAnalysis,
+  argument: EsTreeNode,
+): boolean => {
+  const unwrappedArgument = stripParenExpression(argument);
+  if (!isNodeOfType(unwrappedArgument, "Identifier")) return false;
+  const argumentRef = getRef(analysis, unwrappedArgument);
+  return Boolean(argumentRef && isExternalSubscriptionHookResultRef(analysis, argumentRef));
+};
+
 // A value produced by a custom hook that is itself WIRED TO the component's
 // props (`useMarqueeSelection({ containerRef, onSelectionChange, ... })`)
 // is hook-owned interaction state the component merely bridges up — the
@@ -981,29 +1049,6 @@ const isParentWiredHookCalleeRef = (analysis: ProgramAnalysis, ref: Reference): 
     ),
   );
 };
-
-const isExternalSubscriptionHookRef = (ref: Reference): boolean => {
-  const identifier = ref.identifier as unknown as EsTreeNode;
-  if (!isNodeOfType(identifier, "Identifier")) return false;
-  if (EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(identifier.name) && isCalleePosition(identifier)) {
-    return true;
-  }
-  return Boolean(
-    ref.resolved?.defs.some((def) => {
-      const node = def.node as unknown as EsTreeNode;
-      if (!isNodeOfType(node, "VariableDeclarator") || !node.init) return false;
-      const initializer = stripParenExpression(node.init as EsTreeNode);
-      if (!isNodeOfType(initializer, "CallExpression")) return false;
-      const callee = stripParenExpression(initializer.callee as EsTreeNode);
-      return (
-        isNodeOfType(callee, "Identifier") && EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(callee.name)
-      );
-    }),
-  );
-};
-
-const isImportBindingRef = (ref: Reference): boolean =>
-  Boolean(ref.resolved?.defs.some((def) => def.type === "ImportBinding"));
 
 const isCalleePosition = (identifier: EsTreeNode): boolean => {
   const parent = (identifier as unknown as { parent?: EsTreeNode | null }).parent;
@@ -1154,6 +1199,9 @@ export const noPassDataToParent = defineRule({
                 return getFunctionalUpdaterDataRefs(analysis, argument as EsTreeNode);
               }
               if (isHandlerBagArgument(analysis, argument as EsTreeNode)) return [];
+              if (isExternalSubscriptionHookResultArgument(analysis, argument as EsTreeNode)) {
+                return [];
+              }
               if (isParentWiredHookResultArgument(analysis, argument as EsTreeNode)) return [];
               if (isNodeOfType(argument, "Identifier")) {
                 const argumentRef = getRef(analysis, argument as EsTreeNode);
@@ -1176,7 +1224,6 @@ export const noPassDataToParent = defineRule({
 
           const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
             if (isUseStateIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
-            if (isExternalSubscriptionHookRef(argRef)) return false;
             if (isProp(analysis, argRef)) return false;
             if (isUseRefIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
             if (isRefCurrent(argRef)) return false;

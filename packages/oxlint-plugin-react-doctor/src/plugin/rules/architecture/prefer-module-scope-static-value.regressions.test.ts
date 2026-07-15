@@ -297,6 +297,53 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    "matrix[0]!.push(1)",
+    "matrix[0]?.push(1)",
+    "(matrix[0] as number[]).push(1)",
+    "matrix['0']['push'](1)",
+    "matrix[0]!.sort()",
+  ])("recognizes a nested receiver mutation through %s", (mutation) => {
+    const result = run(`
+      function Matrix() {
+        const matrix = [[], []];
+        ${mutation};
+        return <Grid matrix={matrix} />;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "state.nested.count += 1",
+    "state.nested.count++",
+    "delete state.nested.count",
+    "state['nested']['count'] = 1",
+  ])("recognizes a nested property mutation through %s", (mutation) => {
+    const result = run(`
+      function Counter() {
+        const state = { nested: { count: 0 } };
+        ${mutation};
+        return <Output value={state} />;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["matrix.map((row) => row).push([])", "matrix.slice().reverse()"])(
+    "still reports when only a derived array is mutated through %s",
+    (mutation) => {
+      const result = run(`
+        function Matrix() {
+          const matrix = [[], []];
+          ${mutation};
+          return <Grid matrix={matrix} />;
+        }
+      `);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("still flags a static array built from a pure module-scope helper named `random`", () => {
     const result = run(`
       const random = (seed) => (seed * 9301 + 49297) % 233280;

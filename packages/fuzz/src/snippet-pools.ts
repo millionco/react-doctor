@@ -87,6 +87,8 @@ export const EFFECT_SNIPPET_POOL = [
 // toggles, loading triples, prop mirrors, reducers, ref-sync.
 export const STATE_SNIPPET_POOL = [
   `const fuzzRandomIdentity = { id: globalThis.crypto.randomUUID() };`,
+  `const fuzzTweetColumns = [[], [], []]; items.forEach((item, index) => fuzzTweetColumns[index % 3]!.push(item)); const fuzzTweetColumnsNode = <Grid columns={fuzzTweetColumns} />;`,
+  `const fuzzReadOnlyColumns = [["first"], ["second"]]; const fuzzReadOnlyColumnsNode = <Grid columns={fuzzReadOnlyColumns} />;`,
   `const FuzzNestedPanel = () => <div>nested</div>; const fuzzNestedPanelNode = <FuzzNestedPanel />;`,
   `const [state, setState] = useState(0);`,
   `const [state, setState] = useState(() => Number(localStorage.getItem("count") ?? 0));`,

@@ -1816,7 +1816,7 @@ const effectHasCleanupForUsage = (
   if (
     usage.kind === "subscribe" &&
     findEnclosingFunction(usage.node) === callback &&
-    doesResourceResultEscape(usage.node, true) &&
+    doesResourceResultEscape(usage.node, true, context) &&
     isCleanupReturningSubscribeLikeCallExpression(usage.node)
   ) {
     return true;
@@ -2797,6 +2797,7 @@ const isUseSyncExternalStoreSubscribeFunction = (
 const doesResourceResultEscape = (
   resourceNode: EsTreeNode,
   allowConciseReturnEscape: boolean,
+  context: RuleContext,
 ): boolean => {
   let currentNode = resourceNode;
   let parentNode = currentNode.parent;
@@ -2819,6 +2820,28 @@ const doesResourceResultEscape = (
       currentNode = parentNode;
       parentNode = currentNode.parent;
       continue;
+    }
+    if (
+      isNodeOfType(parentNode, "VariableDeclarator") &&
+      parentNode.init === currentNode &&
+      isNodeOfType(parentNode.id, "Identifier") &&
+      isNodeOfType(parentNode.parent, "VariableDeclaration") &&
+      parentNode.parent.kind === "const"
+    ) {
+      const ownerFunction = findEnclosingFunction(resourceNode);
+      const resourceSymbol = context.scopes.symbolFor(parentNode.id);
+      return Boolean(
+        ownerFunction &&
+        resourceSymbol?.references.some((reference) => {
+          if (reference.flag !== "read") return false;
+          const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+          return Boolean(
+            isNodeOfType(referenceRoot.parent, "ReturnStatement") &&
+            referenceRoot.parent.argument === referenceRoot &&
+            findEnclosingFunction(referenceRoot.parent) === ownerFunction,
+          );
+        }),
+      );
     }
     return false;
   }
@@ -2854,7 +2877,7 @@ const findRetainedFunctionLeak = (
     if (leak !== null) return false;
     if (isFunctionLike(child)) return false;
 
-    if (isSocketConstruction(child) && !doesResourceResultEscape(child, false)) {
+    if (isSocketConstruction(child) && !doesResourceResultEscape(child, false, context)) {
       const socketUsage: SubscribeLikeUsage = {
         kind: "socket",
         node: child,
@@ -2880,7 +2903,7 @@ const findRetainedFunctionLeak = (
           child.callee.name === "setTimeout" &&
           context.scopes.isGlobalReference(child.callee))) &&
       (options?.allowReturnedTimerEscape === false ||
-        !doesResourceResultEscape(child, allowConciseReturnEscape))
+        !doesResourceResultEscape(child, allowConciseReturnEscape, context))
     ) {
       const timerUsage: SubscribeLikeUsage = {
         kind: "timer",
@@ -2900,7 +2923,7 @@ const findRetainedFunctionLeak = (
 
     if (
       isSubscribeOrObserveCall(child) &&
-      (!doesResourceResultEscape(child, allowConciseReturnEscape) ||
+      (!doesResourceResultEscape(child, allowConciseReturnEscape, context) ||
         (options?.requireCallableReturnedResource === true &&
           !isCleanupReturningSubscribeLikeCallExpression(child)))
     ) {

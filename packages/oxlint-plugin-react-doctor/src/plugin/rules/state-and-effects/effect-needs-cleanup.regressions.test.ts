@@ -4057,6 +4057,43 @@ export const LiveValue = ({ data, subscription }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts a React ref callback that returns a bound disposer to its effect", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const LiveValue = ({ subscription }) => {
+  const callbackRef = useRef(() => () => {});
+  callbackRef.current = () => {
+    const unsubscribe = subscription.subscribe();
+    return unsubscribe;
+  };
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports when a React ref callback returns a different bound disposer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const LiveValue = ({ subscription, otherSubscription }) => {
+  const callbackRef = useRef(() => () => {});
+  callbackRef.current = () => {
+    subscription.subscribe();
+    const unsubscribeOther = otherSubscription.subscribe();
+    return unsubscribeOther;
+  };
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("ignores an uncalled React ref callback", () => {
     const result = runRule(
       effectNeedsCleanup,

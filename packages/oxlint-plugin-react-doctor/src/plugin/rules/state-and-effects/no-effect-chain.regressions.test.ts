@@ -827,6 +827,56 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    ["direct transition", "setPlaying(false);"],
+    ["stable callback transition", "pause();"],
+    ["inline transition", "(() => setPlaying(false))();"],
+  ])("stays silent for the Slideshow timer synchronization through a %s", (_, transition) => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Slideshow({ disabled, currentIndex }) {
+        const [playing, setPlaying] = React.useState(true);
+        const scheduler = React.useRef();
+        const cancelScheduler = React.useCallback(() => {
+          clearTimeout(scheduler.current);
+          scheduler.current = undefined;
+        }, []);
+        const pause = React.useCallback(() => {
+          cancelScheduler();
+          setPlaying(false);
+        }, [cancelScheduler]);
+        React.useEffect(() => {
+          if (playing && !disabled) scheduleNextSlide();
+          else cancelScheduler();
+        }, [currentIndex, playing, disabled, cancelScheduler]);
+        React.useEffect(() => {
+          if (playing && disabled) ${transition}
+        }, [playing, disabled, pause]);
+        return playing;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a redundant state-copy chain hidden behind React useCallback", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useCallback, useEffect, useState } from "react";
+      function Widget({ source }) {
+        const [intermediate, setIntermediate] = useState(source);
+        const [target, setTarget] = useState(source);
+        const copyIntermediate = useCallback(() => setIntermediate(source), [source]);
+        useEffect(() => copyIntermediate(), [copyIntermediate]);
+        useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for a declared opaque context setter", () => {
     const result = runRule(
       noEffectChain,

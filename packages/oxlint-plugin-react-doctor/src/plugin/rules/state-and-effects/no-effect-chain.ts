@@ -29,6 +29,7 @@ import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -95,6 +96,32 @@ const collectDepIdentifierNames = (effectNode: EsTreeNode): Set<string> => {
   return depNames;
 };
 
+const resolveSynchronouslyInvokedFunction = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  const localFunction = resolveExactLocalFunction(expression, scopes);
+  if (localFunction) return localFunction;
+
+  const unwrappedExpression = stripParenExpression(expression);
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
+  const symbol = resolveConstIdentifierAlias(unwrappedExpression, scopes);
+  if (symbol?.kind !== "const" || !symbol.initializer) return null;
+  const initializer = stripParenExpression(symbol.initializer);
+  if (
+    !isNodeOfType(initializer, "CallExpression") ||
+    !isReactApiCall(initializer, "useCallback", scopes, {
+      allowGlobalReactNamespace: true,
+      resolveNamedAliases: true,
+    })
+  ) {
+    return null;
+  }
+  const callback = initializer.arguments[0];
+  if (!callback || isNodeOfType(callback, "SpreadElement")) return null;
+  return resolveExactLocalFunction(callback, scopes);
+};
+
 const collectSynchronouslyInvokedFunctions = (
   effectCallback: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -106,7 +133,7 @@ const collectSynchronouslyInvokedFunctions = (
     if (!currentFunction || !isFunctionLike(currentFunction)) continue;
     walkInsideStatementBlocks(currentFunction.body, (child) => {
       if (!isNodeOfType(child, "CallExpression")) return;
-      const invokedFunction = resolveExactLocalFunction(child.callee, scopes);
+      const invokedFunction = resolveSynchronouslyInvokedFunction(child.callee, scopes);
       if (!invokedFunction || analysisFunctions.has(invokedFunction)) return;
       if (isFunctionLike(invokedFunction) && invokedFunction.async) return;
       analysisFunctions.add(invokedFunction);
@@ -444,7 +471,7 @@ const isReaderWorkNode = (
 ): boolean => {
   if (isNodeOfType(node, "CallExpression")) {
     if (isGlobalBooleanCall(node, scopes)) return false;
-    const invokedFunction = resolveExactLocalFunction(node.callee, scopes);
+    const invokedFunction = resolveSynchronouslyInvokedFunction(node.callee, scopes);
     return !invokedFunction || !analysisFunctions.has(invokedFunction);
   }
   return (

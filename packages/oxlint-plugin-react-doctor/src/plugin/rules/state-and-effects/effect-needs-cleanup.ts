@@ -3033,9 +3033,20 @@ const getReactRefEffectUsage = (
     }
     const effectCallback = getEffectCallback(child);
     if (!isFunctionLike(effectCallback)) return;
+    let didWriteRefBeforeCall = false;
     walkAst(effectCallback.body, (effectChild: EsTreeNode) => {
       if (effectChild !== effectCallback.body && isFunctionLike(effectChild)) return false;
       if (
+        isNodeOfType(effectChild, "AssignmentExpression") &&
+        isNodeReachableWithinFunction(effectChild, context) &&
+        resolveReactRefSymbol(stripParenExpression(effectChild.left), context.scopes)?.id ===
+          refSymbol.id
+      ) {
+        didWriteRefBeforeCall = true;
+        return false;
+      }
+      if (
+        didWriteRefBeforeCall ||
         !isReactRefCurrentCall(effectChild, refSymbol, context) ||
         !isNodeReachableWithinFunction(effectChild, context)
       ) {

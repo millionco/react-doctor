@@ -4182,6 +4182,42 @@ export const LatestCallback = ({ subscription }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("ignores a leaking assignment overwritten inside the invoking effect", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const LatestCallback = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => subscription.subscribe();
+  useEffect(() => {
+    callbackRef.current = () => {};
+    callbackRef.current();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still reports cleanup work after the selected callback reassigns its own ref", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const LatestCallback = ({ subscription }) => {
+  const callbackRef = useRef(() => {});
+  callbackRef.current = () => {
+    callbackRef.current = () => {};
+    subscription.subscribe();
+  };
+  useEffect(() => callbackRef.current(), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("ignores conditional competing assignments", () => {
     const result = runRule(
       effectNeedsCleanup,

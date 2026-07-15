@@ -304,6 +304,18 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  `"use server";
+import { after } from "next/server";
+export const saveFuzzEvent = async () => {
+  console.info("before response");
+  after(() => console.info("after response"));
+};`,
+  `"use server";
+import * as NextServer from "next/server";
+const reportFuzzEvent = () => analytics.track("saved");
+export const saveFuzzRecord = async () => {
+  NextServer["after"](reportFuzzEvent);
+};`,
   `export default async function Page() {
   const response = await fetch("https://api.example.com/feed");
   return Response.json(await response.json());

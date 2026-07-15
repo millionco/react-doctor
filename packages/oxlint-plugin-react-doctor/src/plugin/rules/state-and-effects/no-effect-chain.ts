@@ -656,9 +656,10 @@ const isFunctionShapedReturn = (
   isExplicitReturnStatement: boolean,
   scopes: ScopeAnalysis,
 ): boolean => {
+  const unwrappedReturnedValue = stripParenExpression(returnedValue);
   if (
-    isNodeOfType(returnedValue, "ArrowFunctionExpression") ||
-    isNodeOfType(returnedValue, "FunctionExpression")
+    isNodeOfType(unwrappedReturnedValue, "ArrowFunctionExpression") ||
+    isNodeOfType(unwrappedReturnedValue, "FunctionExpression")
   ) {
     return true;
   }
@@ -669,19 +670,22 @@ const isFunctionShapedReturn = (
   // return (`useEffect(() => helper(x), [x])`) is usually just a call,
   // not a cleanup contract, so it must prove itself. A proven local
   // state write (`return setSource(1)`) is never cleanup.
-  if (isNodeOfType(returnedValue, "CallExpression")) {
-    if (isNodeOfType(returnedValue.callee, "Identifier")) {
-      if (setterToStateName.has(returnedValue.callee.name)) return false;
-      if (isSetterIdentifier(returnedValue.callee.name)) return true;
+  if (isNodeOfType(unwrappedReturnedValue, "CallExpression")) {
+    if (isNodeOfType(unwrappedReturnedValue.callee, "Identifier")) {
+      if (setterToStateName.has(unwrappedReturnedValue.callee.name)) return false;
+      if (isSetterIdentifier(unwrappedReturnedValue.callee.name)) return true;
     }
-    const invokedFunction = resolveSynchronouslyInvokedFunction(returnedValue.callee, scopes);
+    const invokedFunction = resolveSynchronouslyInvokedFunction(
+      unwrappedReturnedValue.callee,
+      scopes,
+    );
     if (
       invokedFunction &&
       returnsOnlyNonCleanupValues(invokedFunction, setterToStateName, scopes)
     ) {
       return false;
     }
-    return isCleanupReturn(returnedValue, EMPTY_CLEANUP_NAME_SET, EMPTY_CLEANUP_NAME_SET, {
+    return isCleanupReturn(unwrappedReturnedValue, EMPTY_CLEANUP_NAME_SET, EMPTY_CLEANUP_NAME_SET, {
       allowOpaqueReturn: isExplicitReturnStatement,
     });
   }
@@ -689,7 +693,7 @@ const isFunctionShapedReturn = (
   // `const unsub = subscribe(...)` line. We can't statically prove
   // it's function-typed without scope analysis, but in idiomatic React
   // this is the dominant cleanup pattern. Accept.
-  if (isNodeOfType(returnedValue, "Identifier")) return true;
+  if (isNodeOfType(unwrappedReturnedValue, "Identifier")) return true;
   return false;
 };
 

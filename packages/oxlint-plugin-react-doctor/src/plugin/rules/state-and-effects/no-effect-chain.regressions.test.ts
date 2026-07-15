@@ -1137,6 +1137,27 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when an optional stable callback call returns a cleanup function", () => {
+    const result = runRule(
+      noEffectChain,
+      `import * as React from "react";
+      function Widget({ source }) {
+        const [intermediate, setIntermediate] = React.useState(source);
+        const [target, setTarget] = React.useState(source);
+        const subscribeAndCopy = React.useCallback(() => {
+          setIntermediate(source);
+          const unsubscribe = subscribe(source);
+          return () => unsubscribe();
+        }, [source]);
+        React.useEffect(() => { return subscribeAndCopy?.(); }, [subscribeAndCopy]);
+        React.useEffect(() => setTarget(intermediate), [intermediate]);
+        return target;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it.each([
     ["shadowed primitive constructor", "Boolean", "Boolean(source)"],
     ["shadowed object constructor", "Date", "new Date()"],

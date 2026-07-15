@@ -144,17 +144,21 @@ const isInsideRecognizedMockFactory = (node: EsTreeNode, context: RuleContext): 
   return false;
 };
 
-const hasImportedProductComponentAncestor = (
+const hasImportedProductComponentAttributeAncestor = (
   node: EsTreeNode,
   enclosingFunction: EsTreeNode,
   context: RuleContext,
 ): boolean => {
   let current: EsTreeNode | null | undefined = node.parent;
+  let attributeAncestor: EsTreeNodeOfType<"JSXAttribute"> | null = null;
   if (current && isNodeOfType(current, "JSXElement") && current.openingElement === node) {
     current = current.parent;
   }
   while (current && current !== enclosingFunction) {
     if (isFunctionLike(current)) return false;
+    if (isNodeOfType(current, "JSXAttribute")) {
+      attributeAncestor = current;
+    }
     if (isNodeOfType(current, "JSXElement")) {
       const componentName = current.openingElement.name;
       if (isNodeOfType(componentName, "JSXIdentifier")) {
@@ -164,11 +168,13 @@ const hasImportedProductComponentAncestor = (
           reference?.resolvedSymbol?.kind === "import" &&
           importBinding &&
           !REACT_MODULE_SOURCES.has(importBinding.source) &&
-          !isTestLibraryImportSource(importBinding.source)
+          !isTestLibraryImportSource(importBinding.source) &&
+          attributeAncestor?.parent === current.openingElement
         ) {
           return true;
         }
       }
+      attributeAncestor = null;
     }
     current = current.parent;
   }
@@ -182,5 +188,5 @@ export const isLocalTestScaffoldJsx = (
   if (isInsideRecognizedMockFactory(node, context)) return true;
   const enclosingFunction = findEnclosingFunction(node);
   if (!enclosingFunction || !isDirectTestCallback(enclosingFunction, context)) return false;
-  return hasImportedProductComponentAncestor(node, enclosingFunction, context);
+  return hasImportedProductComponentAttributeAncestor(node, enclosingFunction, context);
 };

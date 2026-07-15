@@ -78,6 +78,41 @@ describe("local unit-test harness accessibility applicability", () => {
   );
 
   it.each(ACCESSIBILITY_APPLICABILITY_CASES)(
+    "$id stays silent for an inline dummy prop beneath an imported provider",
+    ({ rule, invalidElement }) => {
+      const result = runRule(
+        rule,
+        `import { ProductComponent } from "../product-component";
+        import { ProductProvider } from "../product-provider";
+        test("forwards the fixture", () => {
+          render(<ProductProvider><ProductComponent fixture={${invalidElement}} /></ProductProvider>);
+        });`,
+        { filename: "/repo/src/__tests__/product-component.test.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each(ACCESSIBILITY_APPLICABILITY_CASES)(
+    "$id still reports direct JSX beneath an imported provider",
+    ({ rule, invalidElement }) => {
+      const result = runRule(
+        rule,
+        `import { ProductProvider } from "../product-provider";
+        test("renders the subject", () => {
+          render(<ProductProvider>${invalidElement}</ProductProvider>);
+        });`,
+        { filename: "/repo/src/__tests__/product-component.test.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each(ACCESSIBILITY_APPLICABILITY_CASES)(
     "$id stays silent for a dependency mock factory",
     ({ rule, invalidElement }) => {
       const result = runRule(

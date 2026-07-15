@@ -56,11 +56,21 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
       "nodeCrypto.randomBytes(16)",
     ],
     [
+      "a const alias of a node:crypto import",
+      'import * as nodeCrypto from "node:crypto"; const runtimeCrypto = nodeCrypto;',
+      "runtimeCrypto.randomUUID()",
+    ],
+    [
       "a node:crypto require",
       'const nodeCrypto = require("node:crypto");',
       "nodeCrypto.randomUUID()",
     ],
     ["a crypto require", 'const nodeCrypto = require("crypto");', "nodeCrypto.randomBytes(16)"],
+    [
+      "transitive const aliases of a crypto require",
+      'const nodeCrypto = require("crypto"); const cryptoAlias = nodeCrypto; const runtimeCrypto = cryptoAlias;',
+      "runtimeCrypto.randomBytes(16)",
+    ],
   ])("does not flag an object built from %s", (_label, setup, expression) => {
     const result = run(
       `${setup} function Row() { const id = { value: ${expression} }; return <li>{String(id.value)}</li>; }`,
@@ -83,6 +93,26 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
       "a userland receiver chain",
       'const runtime = { crypto: { randomUUID: () => "fixed" } };',
       "runtime.crypto.randomUUID()",
+    ],
+    [
+      "a const alias of a userland crypto lookalike",
+      'const localCrypto = { randomUUID: () => "fixed" }; const runtimeCrypto = localCrypto;',
+      "runtimeCrypto.randomUUID()",
+    ],
+    [
+      "a mutable alias of a node:crypto import",
+      'import * as nodeCrypto from "node:crypto"; let runtimeCrypto = nodeCrypto;',
+      "runtimeCrypto.randomUUID()",
+    ],
+    [
+      "a mutable alias of a crypto require",
+      'const nodeCrypto = require("crypto"); let runtimeCrypto = nodeCrypto;',
+      "runtimeCrypto.randomBytes(16)",
+    ],
+    [
+      "cyclic const aliases",
+      "const firstCrypto = secondCrypto; const secondCrypto = firstCrypto;",
+      "firstCrypto.randomUUID()",
     ],
     [
       "an imported userland crypto lookalike",

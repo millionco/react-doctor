@@ -1,4 +1,7 @@
-import { EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS } from "../../constants/dom.js";
+import {
+  EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
+  EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
+} from "../../constants/dom.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import {
   EFFECT_HOOK_NAMES,
@@ -11,6 +14,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -286,15 +290,16 @@ const isExternalSyncNode = (node: EsTreeNode): boolean => {
   if (isNodeOfType(node.callee, "Identifier")) {
     return EXTERNAL_SYNC_DIRECT_CALLEE_NAMES.has(node.callee.name);
   }
-  if (
-    !isNodeOfType(node.callee, "MemberExpression") ||
-    !isNodeOfType(node.callee.property, "Identifier")
-  ) {
-    return false;
-  }
+  if (!isNodeOfType(node.callee, "MemberExpression")) return false;
 
-  const propertyName = node.callee.property.name;
-  if (EXTERNAL_SYNC_MEMBER_METHOD_NAMES.has(propertyName)) return true;
+  const propertyName = getStaticPropertyName(node.callee);
+  if (propertyName === null) return false;
+  if (
+    EXTERNAL_SYNC_MEMBER_METHOD_NAMES.has(propertyName) ||
+    EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES.has(propertyName)
+  ) {
+    return true;
+  }
   if (isBrowserStorageReceiver(node.callee.object)) return true;
   if (!EXTERNAL_SYNC_AMBIGUOUS_HTTP_METHOD_NAMES.has(propertyName)) return false;
   const receiverRootName = getRootIdentifierName(node.callee.object);

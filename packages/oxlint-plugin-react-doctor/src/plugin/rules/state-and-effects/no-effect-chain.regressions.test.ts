@@ -648,19 +648,34 @@ describe("no-effect-chain — regressions", () => {
     },
   );
 
-  it("still reports when the downstream effect also computes React state", () => {
+  it.each(['["focus"]', "[`scrollIntoView`]", "focus"])(
+    "follows static DOM method spelling %s through a synchronous helper",
+    (methodAccess) => {
+      const result = runRule(
+        noEffectChain,
+        `function CommittedDomSync({ activeId }) {
+          const [isMounted, setIsMounted] = useState(false);
+          const nodeRef = useRef(null);
+          const synchronizeNode = () => nodeRef.current?.${methodAccess}();
+          useEffect(() => { setIsMounted(true); }, [activeId]);
+          useEffect(() => { synchronizeNode(); }, [isMounted]);
+          return isMounted ? <input ref={nodeRef} /> : null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("keeps a dynamic method name conservative", () => {
     const result = runRule(
       noEffectChain,
-      `function MixedChain() {
+      `function DynamicMethodChain({ methodName }) {
         const [isMounted, setIsMounted] = useState(false);
-        const [status, setStatus] = useState('idle');
         const nodeRef = useRef(null);
         useEffect(() => { setIsMounted(true); }, []);
-        useEffect(() => {
-          nodeRef.current?.focus();
-          setStatus(isMounted ? 'ready' : 'idle');
-        }, [isMounted]);
-        return <div>{status}</div>;
+        useEffect(() => { nodeRef.current?.[methodName](); }, [isMounted, methodName]);
+        return null;
       }`,
     );
     expect(result.parseErrors).toEqual([]);

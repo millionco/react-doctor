@@ -72,4 +72,21 @@ export const EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS = new Set([
   "PerformanceObserver",
 ]);
 
+export const EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES = new Set([
+  "blur",
+  "focus",
+  "getBoundingClientRect",
+  "getClientRects",
+  "measure",
+  "measureInWindow",
+  "measureLayout",
+  "scroll",
+  "scrollBy",
+  "scrollIntoView",
+  "scrollTo",
+  "select",
+  "setRangeText",
+  "setSelectionRange",
+]);
+
 export const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);

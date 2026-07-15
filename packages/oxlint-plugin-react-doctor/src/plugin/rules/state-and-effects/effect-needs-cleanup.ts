@@ -95,6 +95,25 @@ interface ReactRefEffectUsage {
   doesEffectOwnEveryResult: boolean;
 }
 
+interface ReactRefCallbackDefinition {
+  assignmentNode: EsTreeNodeOfType<"AssignmentExpression">;
+  functionNode:
+    | EsTreeNodeOfType<"ArrowFunctionExpression">
+    | EsTreeNodeOfType<"FunctionExpression">
+    | EsTreeNodeOfType<"FunctionDeclaration">;
+  refSymbol: SymbolDescriptor;
+}
+
+interface ReactRefEffectAnalysis {
+  callbackDefinitionsByRefSymbolId: Map<number, ReactRefCallbackDefinition[]>;
+  usageByRefSymbolId: Map<number, ReactRefEffectUsage>;
+}
+
+const REACT_REF_EFFECT_ANALYSIS_CACHE = new WeakMap<
+  RuleContext,
+  WeakMap<EsTreeNode, ReactRefEffectAnalysis>
+>();
+
 const RESOURCE_NOUN_BY_KIND = {
   subscribe: "subscription",
   timer: "timer",
@@ -2991,10 +3010,10 @@ const findRetainedFunctionLeak = (
   return leak;
 };
 
-const getAssignedReactRefSymbol = (
+const getAssignedReactRefCallbackDefinition = (
   functionNode: EsTreeNode,
   context: RuleContext,
-): SymbolDescriptor | null => {
+): ReactRefCallbackDefinition | null => {
   if (!isFunctionLike(functionNode)) return null;
   if (functionNode.generator) return null;
   const functionRoot = findTransparentExpressionRoot(functionNode);
@@ -3017,23 +3036,14 @@ const getAssignedReactRefSymbol = (
   ) {
     return null;
   }
-  let hasCompetingAssignment = false;
-  walkAst(componentFunction.body, (child: EsTreeNode) => {
-    if (hasCompetingAssignment) return false;
-    if (child !== componentFunction.body && isFunctionLike(child)) return false;
-    if (
-      child !== assignment &&
-      isNodeOfType(child, "AssignmentExpression") &&
-      isNodeReachableWithinFunction(child, context) &&
-      resolveReactRefSymbol(stripParenExpression(child.left), context.scopes)?.id === refSymbol.id
-    ) {
-      hasCompetingAssignment = true;
-      return false;
-    }
-  });
-  if (hasCompetingAssignment) return null;
-  return refSymbol;
+  return { assignmentNode: assignment, functionNode, refSymbol };
 };
+
+const getAssignedReactRefSymbol = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): SymbolDescriptor | null =>
+  getAssignedReactRefCallbackDefinition(functionNode, context)?.refSymbol ?? null;
 
 const isExpressionReturnedFromFunction = (
   expression: EsTreeNode,
@@ -3098,16 +3108,105 @@ const isReactRefCurrentCall = (
   isNodeOfType(node, "CallExpression") &&
   resolveReactRefSymbol(stripParenExpression(node.callee), context.scopes)?.id === refSymbol.id;
 
-const getReactRefEffectUsage = (
-  retainedFunction: EsTreeNode,
+const collectAssignedReactRefCallbacks = (
+  componentFunction: ReactRefCallbackDefinition["functionNode"],
   context: RuleContext,
-): ReactRefEffectUsage | null => {
-  if (!isFunctionLike(retainedFunction)) return null;
-  const refSymbol = getAssignedReactRefSymbol(retainedFunction, context);
-  const componentFunction = findRenderPhaseComponentOrHook(retainedFunction, context.scopes);
-  if (!refSymbol || !isFunctionLike(componentFunction)) return null;
-  let didInvokeRef = false;
-  let doesEffectOwnEveryResult = true;
+): Map<number, ReactRefCallbackDefinition[]> => {
+  const callbackDefinitionsByRefSymbolId = new Map<number, ReactRefCallbackDefinition[]>();
+  walkAst(componentFunction.body, (child: EsTreeNode) => {
+    if (!isFunctionLike(child)) return;
+    const callbackDefinition = getAssignedReactRefCallbackDefinition(child, context);
+    if (callbackDefinition) {
+      const existingDefinitions =
+        callbackDefinitionsByRefSymbolId.get(callbackDefinition.refSymbol.id) ?? [];
+      existingDefinitions.push(callbackDefinition);
+      callbackDefinitionsByRefSymbolId.set(callbackDefinition.refSymbol.id, existingDefinitions);
+    }
+    return false;
+  });
+  for (const [refSymbolId, callbackDefinitions] of callbackDefinitionsByRefSymbolId) {
+    const activeDefinitions = callbackDefinitions.filter(
+      (callbackDefinition) =>
+        !doMatchingNodesCoverEveryPathAfterUsage(
+          callbackDefinition.assignmentNode,
+          callbackDefinitions
+            .filter((otherDefinition) => otherDefinition !== callbackDefinition)
+            .map((otherDefinition) => otherDefinition.assignmentNode),
+          context,
+        ),
+    );
+    if (activeDefinitions.length === 0) {
+      callbackDefinitionsByRefSymbolId.delete(refSymbolId);
+    } else {
+      callbackDefinitionsByRefSymbolId.set(refSymbolId, activeDefinitions);
+    }
+  }
+  return callbackDefinitionsByRefSymbolId;
+};
+
+const collectUndominatedReactRefCalls = (
+  ownerFunction: EsTreeNode,
+  refSymbol: SymbolDescriptor,
+  context: RuleContext,
+): EsTreeNode[] => {
+  if (!isFunctionLike(ownerFunction)) return [];
+  const refWrites: EsTreeNode[] = [];
+  const refCalls: EsTreeNode[] = [];
+  walkAst(ownerFunction.body, (child: EsTreeNode) => {
+    if (child !== ownerFunction.body && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "AssignmentExpression") &&
+      isNodeReachableWithinFunction(child, context) &&
+      resolveReactRefSymbol(stripParenExpression(child.left), context.scopes)?.id === refSymbol.id
+    ) {
+      refWrites.push(child);
+    }
+    if (
+      isReactRefCurrentCall(child, refSymbol, context) &&
+      isNodeReachableWithinFunction(child, context)
+    ) {
+      refCalls.push(child);
+    }
+  });
+  return refCalls.filter(
+    (refCall) =>
+      !doMatchingNodesCoverEveryPathBeforeUsage(refCall, refWrites, ownerFunction, context),
+  );
+};
+
+const mergeReactRefEffectUsage = (
+  usageByRefSymbolId: Map<number, ReactRefEffectUsage>,
+  refSymbolId: number,
+  doesEffectOwnResult: boolean,
+): boolean => {
+  const existingUsage = usageByRefSymbolId.get(refSymbolId);
+  if (!existingUsage) {
+    usageByRefSymbolId.set(refSymbolId, {
+      doesEffectOwnEveryResult: doesEffectOwnResult,
+    });
+    return true;
+  }
+  if (!existingUsage.doesEffectOwnEveryResult || doesEffectOwnResult) return false;
+  existingUsage.doesEffectOwnEveryResult = false;
+  return true;
+};
+
+const collectReactRefEffectAnalysis = (
+  componentFunction: ReactRefCallbackDefinition["functionNode"],
+  context: RuleContext,
+): ReactRefEffectAnalysis => {
+  let analysisByComponent = REACT_REF_EFFECT_ANALYSIS_CACHE.get(context);
+  if (!analysisByComponent) {
+    analysisByComponent = new WeakMap();
+    REACT_REF_EFFECT_ANALYSIS_CACHE.set(context, analysisByComponent);
+  }
+  const cachedAnalysis = analysisByComponent.get(componentFunction);
+  if (cachedAnalysis) return cachedAnalysis;
+  const callbackDefinitionsByRefSymbolId = collectAssignedReactRefCallbacks(
+    componentFunction,
+    context,
+  );
+  const usageByRefSymbolId = new Map<number, ReactRefEffectUsage>();
   walkAst(componentFunction.body, (child: EsTreeNode) => {
     if (child !== componentFunction.body && isFunctionLike(child)) return false;
     if (
@@ -3121,39 +3220,76 @@ const getReactRefEffectUsage = (
     }
     const effectCallback = getEffectCallback(child);
     if (!isFunctionLike(effectCallback)) return;
-    const refWrites: EsTreeNode[] = [];
-    const refCalls: EsTreeNode[] = [];
-    walkAst(effectCallback.body, (effectChild: EsTreeNode) => {
-      if (effectChild !== effectCallback.body && isFunctionLike(effectChild)) return false;
-      if (
-        isNodeOfType(effectChild, "AssignmentExpression") &&
-        isNodeReachableWithinFunction(effectChild, context) &&
-        resolveReactRefSymbol(stripParenExpression(effectChild.left), context.scopes)?.id ===
-          refSymbol.id
-      ) {
-        refWrites.push(effectChild);
-      }
-      if (
-        isReactRefCurrentCall(effectChild, refSymbol, context) &&
-        isNodeReachableWithinFunction(effectChild, context)
-      ) {
-        refCalls.push(effectChild);
-      }
-    });
-    for (const refCall of refCalls) {
-      if (doMatchingNodesCoverEveryPathBeforeUsage(refCall, refWrites, effectCallback, context)) {
-        continue;
-      }
-      didInvokeRef = true;
-      if (
-        effectCallback.async ||
-        !isExpressionReturnedFromFunction(refCall, effectCallback, context)
-      ) {
-        doesEffectOwnEveryResult = false;
+    for (const callbackDefinitions of callbackDefinitionsByRefSymbolId.values()) {
+      const refSymbol = callbackDefinitions[0]?.refSymbol;
+      if (!refSymbol) continue;
+      for (const refCall of collectUndominatedReactRefCalls(effectCallback, refSymbol, context)) {
+        mergeReactRefEffectUsage(
+          usageByRefSymbolId,
+          refSymbol.id,
+          !effectCallback.async &&
+            isExpressionReturnedFromFunction(refCall, effectCallback, context),
+        );
       }
     }
   });
-  return didInvokeRef ? { doesEffectOwnEveryResult } : null;
+
+  let didUsageChange = true;
+  while (didUsageChange) {
+    didUsageChange = false;
+    for (const callbackDefinitions of callbackDefinitionsByRefSymbolId.values()) {
+      const ownerRefSymbol = callbackDefinitions[0]?.refSymbol;
+      if (!ownerRefSymbol) continue;
+      const ownerUsage = usageByRefSymbolId.get(ownerRefSymbol.id);
+      if (!ownerUsage) continue;
+      for (const callbackDefinition of callbackDefinitions) {
+        for (const targetDefinitions of callbackDefinitionsByRefSymbolId.values()) {
+          const targetRefSymbol = targetDefinitions[0]?.refSymbol;
+          if (!targetRefSymbol) continue;
+          for (const refCall of collectUndominatedReactRefCalls(
+            callbackDefinition.functionNode,
+            targetRefSymbol,
+            context,
+          )) {
+            const doesEffectOwnResult =
+              ownerUsage.doesEffectOwnEveryResult &&
+              !callbackDefinition.functionNode.async &&
+              isExpressionReturnedFromFunction(refCall, callbackDefinition.functionNode, context);
+            if (
+              mergeReactRefEffectUsage(usageByRefSymbolId, targetRefSymbol.id, doesEffectOwnResult)
+            ) {
+              didUsageChange = true;
+            }
+          }
+        }
+      }
+    }
+  }
+  const analysis = { callbackDefinitionsByRefSymbolId, usageByRefSymbolId };
+  analysisByComponent.set(componentFunction, analysis);
+  return analysis;
+};
+
+const getReactRefEffectUsage = (
+  retainedFunction: EsTreeNode,
+  context: RuleContext,
+): ReactRefEffectUsage | null => {
+  if (!isFunctionLike(retainedFunction)) return null;
+  const callbackDefinition = getAssignedReactRefCallbackDefinition(retainedFunction, context);
+  const componentFunction = findRenderPhaseComponentOrHook(retainedFunction, context.scopes);
+  if (!callbackDefinition || !isFunctionLike(componentFunction)) return null;
+  const analysis = collectReactRefEffectAnalysis(componentFunction, context);
+  const activeDefinitions = analysis.callbackDefinitionsByRefSymbolId.get(
+    callbackDefinition.refSymbol.id,
+  );
+  if (
+    !activeDefinitions?.some(
+      (activeDefinition) => activeDefinition.functionNode === retainedFunction,
+    )
+  ) {
+    return null;
+  }
+  return analysis.usageByRefSymbolId.get(callbackDefinition.refSymbol.id) ?? null;
 };
 
 const isReactRefCallbackCleanupOwnedByEffect = (

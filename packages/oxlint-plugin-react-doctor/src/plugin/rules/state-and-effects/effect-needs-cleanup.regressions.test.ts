@@ -4928,6 +4928,314 @@ export const PollingValue = ({ poll }) => {
   });
 });
 
+describe("effect-needs-cleanup React ref callback chains", () => {
+  it("flags the pending timeout in the authentic two-hop Victory oracle chain", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const VictoryAnimation = ({ delay, duration, timer }) => {
+  const queue = React.useRef([{}]);
+  const loopID = React.useRef();
+  const runFrameRef = React.useRef(() => {});
+  const traverseQueueRef = React.useRef(() => {});
+  const startRef = React.useRef(() => {});
+  traverseQueueRef.current = () => {
+    if (queue.current.length && delay) {
+      setTimeout(() => {
+        loopID.current = timer.subscribe(
+          (elapsed) => runFrameRef.current(elapsed),
+          duration,
+        );
+      }, delay);
+    }
+  };
+  startRef.current = () => {
+    if (queue.current.length) {
+      traverseQueueRef.current();
+    }
+  };
+  React.useEffect(() => {
+    startRef.current();
+    return () => timer.unsubscribe(loopID.current);
+  }, []);
+  return null;
+};`,
+      { filename: "packages/victory-core/src/victory-animation/victory-animation.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setTimeout");
+  });
+
+  it("follows three synchronous React ref callback hops", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const ChainedSubscription = ({ subscription }) => {
+  const subscribeRef = useRef(() => {});
+  const prepareRef = useRef(() => {});
+  const startRef = useRef(() => {});
+  subscribeRef.current = () => subscription.subscribe();
+  prepareRef.current = () => subscribeRef.current();
+  startRef.current = () => prepareRef.current();
+  useEffect(() => {
+    startRef.current();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("subscribe");
+  });
+
+  it("accepts cleanup ownership returned through every ref callback hop", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const OwnedSubscription = ({ subscription }) => {
+  const subscribeRef = useRef(() => () => {});
+  const startRef = useRef(() => () => {});
+  subscribeRef.current = () => subscription.subscribe();
+  startRef.current = () => subscribeRef.current();
+  useEffect(() => startRef.current(), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports when an intermediate ref callback discards cleanup ownership", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const DiscardedSubscription = ({ subscription }) => {
+  const subscribeRef = useRef(() => () => {});
+  const startRef = useRef(() => {});
+  subscribeRef.current = () => subscription.subscribe();
+  startRef.current = () => {
+    subscribeRef.current();
+  };
+  useEffect(() => startRef.current(), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires intermediate overwrites on every path before invocation", () => {
+    const partialOverwriteResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const PartialOverwrite = ({ enabled, subscription }) => {
+  const subscribeRef = useRef(() => {});
+  const startRef = useRef(() => {});
+  subscribeRef.current = () => subscription.subscribe();
+  startRef.current = () => {
+    if (enabled) subscribeRef.current = () => {};
+    subscribeRef.current();
+  };
+  useEffect(() => startRef.current(), [enabled]);
+  return null;
+};`,
+    );
+    const completeOverwriteResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const CompleteOverwrite = ({ enabled, subscription }) => {
+  const subscribeRef = useRef(() => {});
+  const startRef = useRef(() => {});
+  subscribeRef.current = () => subscription.subscribe();
+  startRef.current = () => {
+    if (enabled) {
+      subscribeRef.current = () => {};
+    } else {
+      subscribeRef.current = () => {};
+    }
+    subscribeRef.current();
+  };
+  useEffect(() => startRef.current(), [enabled]);
+  return null;
+};`,
+    );
+    expect(partialOverwriteResult.parseErrors).toEqual([]);
+    expect(completeOverwriteResult.parseErrors).toEqual([]);
+    expect(partialOverwriteResult.diagnostics).toHaveLength(1);
+    expect(completeOverwriteResult.diagnostics).toHaveLength(0);
+  });
+
+  it("reports a leaking conditional ref definition and accepts all-owned definitions", () => {
+    const leakingDefinitionResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const ConditionalSubscription = ({ enabled, subscription }) => {
+  const subscribeRef = useRef(() => () => {});
+  const startRef = useRef(() => () => {});
+  if (enabled) {
+    subscribeRef.current = () => subscription.subscribe();
+  } else {
+    subscribeRef.current = () => {
+      subscription.subscribe();
+    };
+  }
+  startRef.current = () => subscribeRef.current();
+  useEffect(() => startRef.current(), [enabled, subscription]);
+  return null;
+};`,
+    );
+    const ownedDefinitionsResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const ConditionalSubscription = ({ enabled, primary, secondary }) => {
+  const subscribeRef = useRef(() => () => {});
+  const startRef = useRef(() => () => {});
+  if (enabled) {
+    subscribeRef.current = () => primary.subscribe();
+  } else {
+    subscribeRef.current = () => secondary.subscribe();
+  }
+  startRef.current = () => subscribeRef.current();
+  useEffect(() => startRef.current(), [enabled, primary, secondary]);
+  return null;
+};`,
+    );
+    expect(leakingDefinitionResult.parseErrors).toEqual([]);
+    expect(ownedDefinitionsResult.parseErrors).toEqual([]);
+    expect(leakingDefinitionResult.diagnostics).toHaveLength(1);
+    expect(ownedDefinitionsResult.diagnostics).toHaveLength(0);
+  });
+
+  it("uses only the last unconditional sequential ref definition", () => {
+    const overwrittenLeakResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const OverwrittenSubscription = ({ subscription }) => {
+  const subscribeRef = useRef(() => {});
+  const startRef = useRef(() => {});
+  subscribeRef.current = () => {
+    subscription.subscribe();
+  };
+  subscribeRef.current = () => {};
+  startRef.current = () => subscribeRef.current();
+  useEffect(() => startRef.current(), [subscription]);
+  return null;
+};`,
+    );
+    const finalLeakResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const FinalSubscription = ({ subscription }) => {
+  const subscribeRef = useRef(() => {});
+  const startRef = useRef(() => {});
+  subscribeRef.current = () => {};
+  subscribeRef.current = () => {
+    subscription.subscribe();
+  };
+  startRef.current = () => subscribeRef.current();
+  useEffect(() => startRef.current(), [subscription]);
+  return null;
+};`,
+    );
+    expect(overwrittenLeakResult.parseErrors).toEqual([]);
+    expect(finalLeakResult.parseErrors).toEqual([]);
+    expect(overwrittenLeakResult.diagnostics).toHaveLength(0);
+    expect(finalLeakResult.diagnostics).toHaveLength(1);
+  });
+
+  it("handles many effect-reachable ref callbacks in one component", () => {
+    const callbackCount = 64;
+    const refDeclarations = Array.from(
+      { length: callbackCount },
+      (_, index) => `const callbackRef${index} = useRef(() => {});`,
+    ).join("\n");
+    const callbackAssignments = Array.from(
+      { length: callbackCount },
+      (_, index) => `callbackRef${index}.current = () => { setTimeout(onTick, ${index}); };`,
+    ).join("\n");
+    const callbackCalls = Array.from(
+      { length: callbackCount },
+      (_, index) => `callbackRef${index}.current();`,
+    ).join("\n");
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const ManyCallbacks = ({ onTick }) => {
+  ${refDeclarations}
+  ${callbackAssignments}
+  useEffect(() => {
+    ${callbackCalls}
+  }, [onTick]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(callbackCount);
+  });
+
+  it("ignores ref callback chains invoked only by deferred work or events", () => {
+    const sources = [
+      `import { useEffect, useRef } from "react";
+export const DeferredSubscription = ({ subscription }) => {
+  const subscribeRef = useRef(() => {});
+  const startRef = useRef(() => {});
+  subscribeRef.current = () => subscription.subscribe();
+  startRef.current = () => subscribeRef.current();
+  useEffect(() => {
+    const timeout = setTimeout(() => startRef.current(), 100);
+    return () => clearTimeout(timeout);
+  }, []);
+  return null;
+};`,
+      `import { useRef } from "react";
+export const EventSubscription = ({ subscription }) => {
+  const subscribeRef = useRef(() => {});
+  const startRef = useRef(() => {});
+  subscribeRef.current = () => subscription.subscribe();
+  startRef.current = () => subscribeRef.current();
+  return <button onClick={() => startRef.current()}>start</button>;
+};`,
+    ];
+    for (const source of sources) {
+      const result = runRule(effectNeedsCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("ignores unseeded cycles and shadowed ref chains", () => {
+    const sources = [
+      `import { useRef } from "react";
+export const CyclicSubscription = ({ subscription }) => {
+  const firstRef = useRef(() => {});
+  const secondRef = useRef(() => {});
+  firstRef.current = () => {
+    subscription.subscribe();
+    secondRef.current();
+  };
+  secondRef.current = () => firstRef.current();
+  return null;
+};`,
+      `const useRef = (initialValue) => ({ current: initialValue });
+const useEffect = (callback) => callback();
+export const UserlandSubscription = ({ subscription }) => {
+  const subscribeRef = useRef(() => {});
+  const startRef = useRef(() => {});
+  subscribeRef.current = () => subscription.subscribe();
+  startRef.current = () => subscribeRef.current();
+  useEffect(() => startRef.current(), []);
+  return null;
+};`,
+    ];
+    for (const source of sources) {
+      const result = runRule(effectNeedsCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+});
+
 describe("effect-needs-cleanup useSyncExternalStore subscription cleanup", () => {
   it("accepts the TaskTrove i18next subscription with its matching returned disposer", () => {
     const result = runRule(

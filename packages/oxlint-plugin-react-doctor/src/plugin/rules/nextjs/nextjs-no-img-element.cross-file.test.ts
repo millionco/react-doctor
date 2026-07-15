@@ -1,11 +1,16 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
+import { performance } from "node:perf_hooks";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { nextjsNoImgElement } from "./nextjs-no-img-element.js";
 
 let temporaryDirectory: string;
+const PERFORMANCE_HELPER_COUNT = 80;
+const PERFORMANCE_MODULE_COUNT = 200;
+const PERFORMANCE_BUDGET_MS = 4_000;
+const PERFORMANCE_TEST_TIMEOUT_MS = 10_000;
 
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "nextjs-img-renderer-"));
@@ -357,6 +362,104 @@ describe("nextjs-no-img-element — generated-image consumers", () => {
     expect(runHelperRule(helperPath).diagnostics).toHaveLength(1);
   });
 
+  it("preserves the finding when an opaque declaration wrapper owns the function", () => {
+    const helperPath = writeFixtureFile(
+      "lib/card.tsx",
+      `
+        declare const registerRenderer: <Component>(component: Component) => Component;
+        const Card = registerRenderer(() => <img src="/photo.png" alt="" />);
+        export default Card;
+      `,
+    );
+    writeFixtureFile(
+      "app/api/card/route.tsx",
+      `
+        import { ImageResponse } from "next/og";
+        import Card from "../../../lib/card";
+        export const GET = () => new ImageResponse(<Card />);
+      `,
+    );
+
+    expect(runHelperRule(helperPath).diagnostics).toHaveLength(1);
+  });
+
+  it("preserves the finding when a sequence discards the helper result", () => {
+    const helperPath = writeFunctionHelper();
+    writeFixtureFile(
+      "app/api/card/route.tsx",
+      `
+        import { ImageResponse } from "next/og";
+        import { cardLayout } from "../../../lib/card";
+        export const GET = () => new ImageResponse((cardLayout("/photo.png"), <div />));
+      `,
+    );
+
+    expect(runHelperRule(helperPath).diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes the final sequence operand as renderer input", () => {
+    const helperPath = writeFunctionHelper();
+    writeFixtureFile(
+      "app/api/card/route.tsx",
+      `
+        import { ImageResponse } from "next/og";
+        import { cardLayout } from "../../../lib/card";
+        export const GET = () => new ImageResponse((void 0, cardLayout("/photo.png")));
+      `,
+    );
+
+    expect(runHelperRule(helperPath).diagnostics).toEqual([]);
+  });
+
+  it("preserves the finding when an MDX production consumer may render the helper", () => {
+    const helperPath = writeFunctionHelper();
+    writeFixtureFile(
+      "app/api/card/route.tsx",
+      `
+        import { ImageResponse } from "next/og";
+        import { cardLayout } from "../../../lib/card";
+        export const GET = () => new ImageResponse(cardLayout("/photo.png"));
+      `,
+    );
+    writeFixtureFile(
+      "app/page.mdx",
+      `
+        import { cardLayout } from "../lib/card";
+        {cardLayout("/photo.png")}
+      `,
+    );
+
+    expect(runHelperRule(helperPath).diagnostics).toHaveLength(1);
+  });
+
+  it("preserves the finding for an unresolved workspace package consumer", () => {
+    const helperPath = writeFixtureFile(
+      "packages/ui/src/card.tsx",
+      `export const Card = () => <img src="/photo.png" alt="" />;`,
+    );
+    writeFixtureFile(
+      "packages/ui/package.json",
+      JSON.stringify({ name: "@repo/ui", exports: "./src/card.tsx" }),
+    );
+    writeFixtureFile(
+      "packages/ui/src/route.tsx",
+      `
+        import { ImageResponse } from "next/og";
+        import { Card } from "./card";
+        export const GET = () => new ImageResponse(<Card />);
+      `,
+    );
+    writeFixtureFile(
+      "apps/web/app/page.tsx",
+      `
+        import { Card } from "@repo/ui";
+        export default function Page() { return <Card />; }
+      `,
+    );
+
+    expect(runHelperRule(helperPath).diagnostics).toHaveLength(1);
+  });
+
   it("preserves the finding for a computed namespace access", () => {
     const helperPath = writeFunctionHelper();
     writeFixtureFile(
@@ -410,4 +513,44 @@ describe("nextjs-no-img-element — generated-image consumers", () => {
 
     expect(runHelperRule(helperPath).diagnostics).toEqual([]);
   });
+
+  it(
+    "keeps a project-scale ownership scan bounded across many exported helpers",
+    { timeout: PERFORMANCE_TEST_TIMEOUT_MS },
+    () => {
+      const helperDeclarations = Array.from(
+        { length: PERFORMANCE_HELPER_COUNT },
+        (_unusedValue, helperIndex) =>
+          `export const Card${helperIndex} = () => <img src="/photo-${helperIndex}.png" alt="" />;`,
+      );
+      const helperPath = writeFixtureFile("lib/cards.tsx", helperDeclarations.join("\n"));
+      for (let moduleIndex = 0; moduleIndex < PERFORMANCE_MODULE_COUNT; moduleIndex += 1) {
+        writeFixtureFile(
+          `features/feature-${moduleIndex}.ts`,
+          `export const feature${moduleIndex} = ${moduleIndex};`,
+        );
+      }
+      const helperNames = Array.from(
+        { length: PERFORMANCE_HELPER_COUNT },
+        (_unusedValue, helperIndex) => `Card${helperIndex}`,
+      );
+      writeFixtureFile(
+        "app/api/card/route.tsx",
+        `
+          import { ImageResponse } from "next/og";
+          import { ${helperNames.join(", ")} } from "../../../lib/cards";
+          export const GET = () => new ImageResponse(
+            <div>${helperNames.map((helperName) => `<${helperName} />`).join("")}</div>,
+          );
+        `,
+      );
+
+      const startedAtMs = performance.now();
+      const result = runHelperRule(helperPath);
+      const durationMs = performance.now() - startedAtMs;
+
+      expect(result.diagnostics).toEqual([]);
+      expect(durationMs).toBeLessThan(PERFORMANCE_BUDGET_MS);
+    },
+  );
 });

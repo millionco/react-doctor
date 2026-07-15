@@ -8,7 +8,7 @@ import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js"
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
-import { isExportedJsxOwnedByGeneratedImageRenderers } from "../../utils/is-exported-jsx-owned-by-generated-image-renderers.js";
+import { createExportedJsxGeneratedImageOwnershipAnalyzer } from "../../utils/is-exported-jsx-owned-by-generated-image-renderers.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -169,6 +169,8 @@ export const nextjsNoImgElement = defineRule({
   create: (context: RuleContext): RuleVisitors => {
     if (isGeneratedImageRenderContext(context)) return {};
     const generatedImageOwnershipByFunction = new WeakMap<EsTreeNode, boolean>();
+    const isExportedJsxGeneratedImageOwned =
+      createExportedJsxGeneratedImageOwnershipAnalyzer(context);
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
@@ -179,7 +181,7 @@ export const nextjsNoImgElement = defineRule({
         if (enclosingFunction) {
           let isGeneratedImageOwned = generatedImageOwnershipByFunction.get(enclosingFunction);
           if (isGeneratedImageOwned === undefined) {
-            isGeneratedImageOwned = isExportedJsxOwnedByGeneratedImageRenderers(context, node);
+            isGeneratedImageOwned = isExportedJsxGeneratedImageOwned(node);
             generatedImageOwnershipByFunction.set(enclosingFunction, isGeneratedImageOwned);
           }
           if (isGeneratedImageOwned) return;

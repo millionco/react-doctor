@@ -1,31 +1,24 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { analyzeScopes } from "../semantic/scope-analysis.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
+import {
+  buildGeneratedImageProjectIndex,
+  type GeneratedImageModule,
+  type GeneratedImageProjectIndex,
+} from "./build-generated-image-project-index.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { findExportedValue } from "./find-exported-value.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
-import { getFunctionBindingIdentifier } from "./get-function-binding-name.js";
 import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isFunctionLike } from "./is-function-like.js";
+import { isGeneratedImageRendererCall } from "./is-generated-image-renderer-call.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { isTestlikeFilename } from "./is-testlike-filename.js";
 import { normalizeFilename } from "./normalize-filename.js";
-import { parseSourceFile } from "./parse-source-file.js";
-import { resolveModulePath } from "./resolve-module-path.js";
+import { readNearestPackageManifest } from "./read-nearest-package-manifest.js";
 import type { RuleContext } from "./rule-context.js";
-import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
-
-interface GeneratedImageModule {
-  readonly filePath: string;
-  readonly programNode: EsTreeNodeOfType<"Program">;
-  readonly scopes: ScopeAnalysis;
-}
 
 interface GeneratedImageExportIdentity {
   readonly filePath: string;
@@ -33,56 +26,12 @@ interface GeneratedImageExportIdentity {
 }
 
 interface GeneratedImageOwnershipState {
-  readonly modules: ReadonlyArray<GeneratedImageModule>;
+  readonly projectIndex: GeneratedImageProjectIndex;
   readonly pendingExports: GeneratedImageExportIdentity[];
   readonly visitedExportKeys: Set<string>;
   currentExportWasUsed: boolean;
   didReachRenderer: boolean;
 }
-
-const GENERATED_IMAGE_SOURCE_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
-const GENERATED_IMAGE_DECLARATION_FILE_PATTERN = /\.d\.[cm]?[jt]s$/i;
-const GENERATED_IMAGE_RENDERER_MODULES: ReadonlySet<string> = new Set(["next/og", "@vercel/og"]);
-const GENERATED_IMAGE_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
-  ".angular",
-  ".astro",
-  ".cache",
-  ".contentlayer",
-  ".docusaurus",
-  ".expo",
-  ".git",
-  ".next",
-  ".nuxt",
-  ".output",
-  ".svelte-kit",
-  ".turbo",
-  ".vercel",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-  "out",
-  "storybook-static",
-]);
-const generatedImageScopeCache = new WeakMap<EsTreeNodeOfType<"Program">, ScopeAnalysis>();
-
-const getGeneratedImageModuleScopes = (programNode: EsTreeNodeOfType<"Program">): ScopeAnalysis => {
-  const cachedScopes = generatedImageScopeCache.get(programNode);
-  if (cachedScopes) return cachedScopes;
-  const scopes = analyzeScopes(programNode);
-  generatedImageScopeCache.set(programNode, scopes);
-  return scopes;
-};
-
-const getImportDeclaration = (node: EsTreeNode): EsTreeNodeOfType<"ImportDeclaration"> | null => {
-  let cursor: EsTreeNode | null | undefined = node.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "ImportDeclaration")) return cursor;
-    if (isNodeOfType(cursor, "Program")) return null;
-    cursor = cursor.parent;
-  }
-  return null;
-};
 
 const getExportedSpecifierName = (
   specifier: EsTreeNodeOfType<"ExportSpecifier">,
@@ -112,18 +61,37 @@ const getImportSpecifierName = (specifier: EsTreeNode): string | null => {
     : null;
 };
 
+const getDirectFunctionBindingIdentifier = (
+  functionNode: EsTreeNode,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  if (
+    isNodeOfType(functionNode, "FunctionDeclaration") &&
+    isNodeOfType(functionNode.id, "Identifier")
+  ) {
+    return functionNode.id;
+  }
+  const functionValueRoot = findTransparentExpressionRoot(functionNode);
+  const parent = functionValueRoot.parent;
+  return isNodeOfType(parent, "VariableDeclarator") &&
+    parent.init === functionValueRoot &&
+    isNodeOfType(parent.id, "Identifier")
+    ? parent.id
+    : null;
+};
+
 const getExportNamesForFunction = (
   programNode: EsTreeNodeOfType<"Program">,
   functionNode: EsTreeNode,
 ): ReadonlyArray<string> => {
-  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  const functionValueRoot = findTransparentExpressionRoot(functionNode);
+  const bindingIdentifier = getDirectFunctionBindingIdentifier(functionNode);
   const bindingName = bindingIdentifier?.name ?? null;
   const exportedNames = new Set<string>();
 
   for (const statement of programNode.body) {
     if (isNodeOfType(statement, "ExportDefaultDeclaration")) {
       if (
-        statement.declaration === functionNode ||
+        statement.declaration === functionValueRoot ||
         (bindingName &&
           isNodeOfType(statement.declaration, "Identifier") &&
           statement.declaration.name === bindingName)
@@ -134,10 +102,10 @@ const getExportNamesForFunction = (
     }
     if (!isNodeOfType(statement, "ExportNamedDeclaration")) continue;
     const declaration = statement.declaration;
-    if (declaration === functionNode && bindingName) exportedNames.add(bindingName);
+    if (declaration === functionValueRoot && bindingName) exportedNames.add(bindingName);
     if (declaration && isNodeOfType(declaration, "VariableDeclaration")) {
       for (const declarator of declaration.declarations) {
-        if (declarator.init === functionNode && isNodeOfType(declarator.id, "Identifier")) {
+        if (declarator.init === functionValueRoot && isNodeOfType(declarator.id, "Identifier")) {
           exportedNames.add(declarator.id.name);
         }
       }
@@ -152,130 +120,6 @@ const getExportNamesForFunction = (
   }
 
   return [...exportedNames];
-};
-
-const listProductionSourceFilePaths = (rootDirectory: string): ReadonlyArray<string> | null => {
-  const sourceFilePaths: string[] = [];
-  const pendingDirectories = [rootDirectory];
-
-  while (pendingDirectories.length > 0) {
-    const currentDirectory = pendingDirectories.pop();
-    if (!currentDirectory) continue;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(currentDirectory, { withFileTypes: true });
-    } catch {
-      return null;
-    }
-    for (const entry of entries) {
-      const absolutePath = path.join(currentDirectory, entry.name);
-      const isIgnoredDirectoryName =
-        GENERATED_IMAGE_IGNORED_DIRECTORY_NAMES.has(entry.name) ||
-        (entry.name.startsWith(".") && entry.name !== ".dumi" && entry.name !== ".storybook");
-      if (entry.isSymbolicLink() && isIgnoredDirectoryName) continue;
-      if (entry.isSymbolicLink()) return null;
-      if (entry.isDirectory()) {
-        if (isIgnoredDirectoryName) continue;
-        pendingDirectories.push(absolutePath);
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      if (!GENERATED_IMAGE_SOURCE_FILE_PATTERN.test(entry.name)) continue;
-      if (GENERATED_IMAGE_DECLARATION_FILE_PATTERN.test(entry.name)) continue;
-      if (isTestlikeFilename(absolutePath)) continue;
-      sourceFilePaths.push(normalizeFilename(absolutePath));
-    }
-  }
-
-  return sourceFilePaths;
-};
-
-const buildGeneratedImageModules = (
-  rootDirectory: string,
-  currentFilePath: string,
-  currentProgramNode: EsTreeNodeOfType<"Program">,
-  currentScopes: ScopeAnalysis,
-): ReadonlyArray<GeneratedImageModule> | null => {
-  const sourceFilePaths = listProductionSourceFilePaths(rootDirectory);
-  if (!sourceFilePaths) return null;
-  const modules: GeneratedImageModule[] = [];
-  for (const filePath of sourceFilePaths) {
-    if (filePath === currentFilePath) {
-      modules.push({ filePath, programNode: currentProgramNode, scopes: currentScopes });
-      continue;
-    }
-    const parsedProgram = parseSourceFile(filePath);
-    if (!parsedProgram || !isNodeOfType(parsedProgram, "Program")) return null;
-    modules.push({
-      filePath,
-      programNode: parsedProgram,
-      scopes: getGeneratedImageModuleScopes(parsedProgram),
-    });
-  }
-  return modules;
-};
-
-const getImportSource = (declaration: EsTreeNodeOfType<"ImportDeclaration">): string | null =>
-  typeof declaration.source.value === "string" ? declaration.source.value : null;
-
-const isImportFromModule = (
-  declaration: EsTreeNodeOfType<"ImportDeclaration">,
-  moduleSource: string,
-): boolean => getImportSource(declaration) === moduleSource;
-
-const isNamedRendererImport = (
-  symbol: SymbolDescriptor,
-  importedName: string,
-  moduleSources: ReadonlySet<string>,
-): boolean => {
-  if (symbol.kind !== "import") return false;
-  const declaration = symbol.declarationNode;
-  if (!isNodeOfType(declaration, "ImportSpecifier")) return false;
-  const importDeclaration = getImportDeclaration(declaration);
-  if (!importDeclaration) return false;
-  const source = getImportSource(importDeclaration);
-  if (!source || !moduleSources.has(source)) return false;
-  const imported = declaration.imported;
-  return (
-    (isNodeOfType(imported, "Identifier") && imported.name === importedName) ||
-    (isNodeOfType(imported, "Literal") && imported.value === importedName)
-  );
-};
-
-const isSatoriImport = (symbol: SymbolDescriptor): boolean => {
-  if (symbol.kind !== "import") return false;
-  const declaration = symbol.declarationNode;
-  const importDeclaration = getImportDeclaration(declaration);
-  if (!importDeclaration || !isImportFromModule(importDeclaration, "satori")) return false;
-  if (isNodeOfType(declaration, "ImportDefaultSpecifier")) return true;
-  if (!isNodeOfType(declaration, "ImportSpecifier")) return false;
-  const imported = declaration.imported;
-  return (
-    (isNodeOfType(imported, "Identifier") && imported.name === "satori") ||
-    (isNodeOfType(imported, "Literal") && imported.value === "satori")
-  );
-};
-
-const isGeneratedImageRendererCallee = (callee: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const unwrappedCallee = stripParenExpression(callee);
-  if (isNodeOfType(unwrappedCallee, "Identifier")) {
-    const symbol = scopes.referenceFor(unwrappedCallee)?.resolvedSymbol ?? null;
-    return Boolean(
-      symbol &&
-      (isNamedRendererImport(symbol, "ImageResponse", GENERATED_IMAGE_RENDERER_MODULES) ||
-        isSatoriImport(symbol)),
-    );
-  }
-  if (!isNodeOfType(unwrappedCallee, "MemberExpression")) return false;
-  if (getStaticPropertyName(unwrappedCallee) !== "ImageResponse") return false;
-  if (!isNodeOfType(unwrappedCallee.object, "Identifier")) return false;
-  const symbol = scopes.referenceFor(unwrappedCallee.object)?.resolvedSymbol ?? null;
-  if (!symbol || symbol.kind !== "import") return false;
-  const declaration = symbol.declarationNode;
-  if (!isNodeOfType(declaration, "ImportNamespaceSpecifier")) return false;
-  const importDeclaration = getImportDeclaration(declaration);
-  const source = importDeclaration ? getImportSource(importDeclaration) : null;
-  return Boolean(source && GENERATED_IMAGE_RENDERER_MODULES.has(source));
 };
 
 const isTransparentGeneratedImageValueFlow = (
@@ -297,8 +141,7 @@ const isTransparentGeneratedImageValueFlow = (
         (parent.left === current || parent.right === current)) ||
       (isNodeOfType(parent, "ArrayExpression") &&
         parent.elements.some((element) => element === current)) ||
-      (isNodeOfType(parent, "SequenceExpression") &&
-        parent.expressions.some((sequenceExpression) => sequenceExpression === current)) ||
+      (isNodeOfType(parent, "SequenceExpression") && parent.expressions.at(-1) === current) ||
       (isNodeOfType(parent, "AwaitExpression") && parent.argument === current);
     if (!isTransparentParent) return false;
     current = findTransparentExpressionRoot(parent);
@@ -318,7 +161,7 @@ const isInsideGeneratedImageRendererArgument = (
       if (
         parent.arguments[0] &&
         isTransparentGeneratedImageValueFlow(expression, parent.arguments[0]) &&
-        isGeneratedImageRendererCallee(parent.callee, scopes)
+        isGeneratedImageRendererCall(parent, scopes)
       ) {
         return true;
       }
@@ -466,13 +309,6 @@ const classifyNamespaceImportReferences = (
   return true;
 };
 
-const resolveSourceMatchesExport = (
-  moduleFilePath: string,
-  source: string,
-  exportIdentity: GeneratedImageExportIdentity,
-): boolean =>
-  normalizeFilename(resolveModulePath(moduleFilePath, source) ?? "") === exportIdentity.filePath;
-
 const classifyImportsFromExport = (
   module: GeneratedImageModule,
   exportIdentity: GeneratedImageExportIdentity,
@@ -480,8 +316,9 @@ const classifyImportsFromExport = (
 ): boolean => {
   for (const statement of module.programNode.body) {
     if (isNodeOfType(statement, "ImportDeclaration")) {
-      const source = getImportSource(statement);
-      if (!source || !resolveSourceMatchesExport(module.filePath, source, exportIdentity)) continue;
+      if (state.projectIndex.resolvedSourcePathByNode.get(statement) !== exportIdentity.filePath) {
+        continue;
+      }
       if (statement.importKind === "type") continue;
       for (const specifier of statement.specifiers) {
         if (isNodeOfType(specifier, "ImportSpecifier") && specifier.importKind === "type") continue;
@@ -511,8 +348,7 @@ const classifyImportsFromExport = (
       (isNodeOfType(statement, "ExportNamedDeclaration") ||
         isNodeOfType(statement, "ExportAllDeclaration")) &&
       statement.source &&
-      typeof statement.source.value === "string" &&
-      resolveSourceMatchesExport(module.filePath, statement.source.value, exportIdentity)
+      state.projectIndex.resolvedSourcePathByNode.get(statement) === exportIdentity.filePath
     ) {
       if (isNodeOfType(statement, "ExportAllDeclaration")) {
         if (statement.exported) return false;
@@ -536,17 +372,13 @@ const classifyImportsFromExport = (
 const hasOpaqueDynamicImportOfExport = (
   module: GeneratedImageModule,
   exportIdentity: GeneratedImageExportIdentity,
+  projectIndex: GeneratedImageProjectIndex,
 ): boolean => {
   let isOpaque = false;
   walkAst(module.programNode, (node) => {
     if (isOpaque) return false;
     if (isNodeOfType(node, "ImportExpression")) {
-      const source = node.source;
-      if (
-        isNodeOfType(source, "Literal") &&
-        typeof source.value === "string" &&
-        resolveSourceMatchesExport(module.filePath, source.value, exportIdentity)
-      ) {
+      if (projectIndex.resolvedSourcePathByNode.get(node) === exportIdentity.filePath) {
         isOpaque = true;
         return false;
       }
@@ -557,13 +389,7 @@ const hasOpaqueDynamicImportOfExport = (
       node.callee.name === "require" &&
       node.arguments.length === 1
     ) {
-      const source = node.arguments[0];
-      if (
-        source &&
-        isNodeOfType(source, "Literal") &&
-        typeof source.value === "string" &&
-        resolveSourceMatchesExport(module.filePath, source.value, exportIdentity)
-      ) {
+      if (projectIndex.resolvedSourcePathByNode.get(node) === exportIdentity.filePath) {
         isOpaque = true;
         return false;
       }
@@ -579,60 +405,88 @@ const classifyLocalExportReferences = (
 ): boolean => {
   const exportedValue = findExportedValue(module.programNode, exportIdentity.exportedName);
   if (!exportedValue || !isFunctionLike(exportedValue)) return true;
-  const bindingIdentifier = getFunctionBindingIdentifier(exportedValue);
+  const bindingIdentifier = getDirectFunctionBindingIdentifier(exportedValue);
   if (!bindingIdentifier) return true;
   const symbol = module.scopes.symbolFor(bindingIdentifier);
   return symbol ? classifySymbolReferences(module, symbol, state, new Set()) : false;
 };
 
-export const isExportedJsxOwnedByGeneratedImageRenderers = (
-  context: RuleContext,
-  jsxNode: EsTreeNode,
+const hasOpaqueWorkspacePackageConsumer = (
+  projectIndex: GeneratedImageProjectIndex,
+  exportIdentity: GeneratedImageExportIdentity,
 ): boolean => {
+  const packageName = readNearestPackageManifest(exportIdentity.filePath)?.name;
+  if (typeof packageName !== "string" || packageName.length === 0) return false;
+  for (const unresolvedSource of projectIndex.unresolvedRuntimeSources) {
+    if (unresolvedSource === packageName || unresolvedSource.startsWith(`${packageName}/`)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+export const createExportedJsxGeneratedImageOwnershipAnalyzer = (context: RuleContext) => {
   const filename = context.filename ? normalizeFilename(context.filename) : "";
   const rootDirectorySetting = getReactDoctorStringSetting(context.settings, "rootDirectory");
-  if (!filename || !rootDirectorySetting) return false;
-  const rootDirectory = normalizeFilename(rootDirectorySetting).replace(/\/$/, "");
-  if (filename !== rootDirectory && !filename.startsWith(`${rootDirectory}/`)) return false;
+  const rootDirectory = rootDirectorySetting
+    ? normalizeFilename(rootDirectorySetting).replace(/\/$/, "")
+    : "";
+  const isFileInsideRoot =
+    Boolean(filename && rootDirectory) &&
+    (filename === rootDirectory || filename.startsWith(`${rootDirectory}/`));
+  let projectIndex: GeneratedImageProjectIndex | null | undefined;
 
-  const programNode = findProgramRoot(jsxNode);
-  const enclosingFunction = findEnclosingFunction(jsxNode);
-  if (!programNode || !enclosingFunction) return false;
-  const initialExportNames = getExportNamesForFunction(programNode, enclosingFunction);
-  if (initialExportNames.length === 0) return false;
+  return (jsxNode: EsTreeNode): boolean => {
+    if (!isFileInsideRoot) return false;
+    const programNode = findProgramRoot(jsxNode);
+    const enclosingFunction = findEnclosingFunction(jsxNode);
+    if (!programNode || !enclosingFunction) return false;
+    const initialExportNames = getExportNamesForFunction(programNode, enclosingFunction);
+    if (initialExportNames.length === 0) return false;
 
-  const modules = buildGeneratedImageModules(rootDirectory, filename, programNode, context.scopes);
-  if (!modules) return false;
-  const state: GeneratedImageOwnershipState = {
-    modules,
-    pendingExports: initialExportNames.map((exportedName) => ({
-      filePath: filename,
-      exportedName,
-    })),
-    visitedExportKeys: new Set(),
-    currentExportWasUsed: false,
-    didReachRenderer: false,
+    if (projectIndex === undefined) {
+      projectIndex = buildGeneratedImageProjectIndex(
+        rootDirectory,
+        filename,
+        programNode,
+        context.scopes,
+      );
+    }
+    if (!projectIndex || projectIndex.hasOpaqueMdxConsumerSurface) return false;
+    const state: GeneratedImageOwnershipState = {
+      projectIndex,
+      pendingExports: initialExportNames.map((exportedName) => ({
+        filePath: filename,
+        exportedName,
+      })),
+      visitedExportKeys: new Set(),
+      currentExportWasUsed: false,
+      didReachRenderer: false,
+    };
+
+    while (state.pendingExports.length > 0) {
+      const exportIdentity = state.pendingExports.pop();
+      if (!exportIdentity) continue;
+      const exportKey = `${exportIdentity.filePath}\0${exportIdentity.exportedName}`;
+      if (state.visitedExportKeys.has(exportKey)) continue;
+      state.visitedExportKeys.add(exportKey);
+      state.currentExportWasUsed = false;
+      if (hasOpaqueWorkspacePackageConsumer(projectIndex, exportIdentity)) return false;
+
+      const ownerModule = projectIndex.modulesByFilePath.get(exportIdentity.filePath);
+      if (!ownerModule || !classifyLocalExportReferences(ownerModule, exportIdentity, state)) {
+        return false;
+      }
+      const consumerModules =
+        projectIndex.consumerModulesByFilePath.get(exportIdentity.filePath) ?? [];
+      for (const module of consumerModules) {
+        if (module.filePath === exportIdentity.filePath) continue;
+        if (hasOpaqueDynamicImportOfExport(module, exportIdentity, projectIndex)) return false;
+        if (!classifyImportsFromExport(module, exportIdentity, state)) return false;
+      }
+      if (!state.currentExportWasUsed) return false;
+    }
+
+    return state.didReachRenderer;
   };
-
-  while (state.pendingExports.length > 0) {
-    const exportIdentity = state.pendingExports.pop();
-    if (!exportIdentity) continue;
-    const exportKey = `${exportIdentity.filePath}\0${exportIdentity.exportedName}`;
-    if (state.visitedExportKeys.has(exportKey)) continue;
-    state.visitedExportKeys.add(exportKey);
-    state.currentExportWasUsed = false;
-
-    const ownerModule = modules.find((module) => module.filePath === exportIdentity.filePath);
-    if (!ownerModule || !classifyLocalExportReferences(ownerModule, exportIdentity, state)) {
-      return false;
-    }
-    for (const module of modules) {
-      if (module.filePath === exportIdentity.filePath) continue;
-      if (hasOpaqueDynamicImportOfExport(module, exportIdentity)) return false;
-      if (!classifyImportsFromExport(module, exportIdentity, state)) return false;
-    }
-    if (!state.currentExportWasUsed) return false;
-  }
-
-  return state.didReachRenderer;
 };

@@ -1,11 +1,14 @@
 import { RENDER_FUNCTION_PATTERN } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { executesDuringRender } from "../../utils/executes-during-render.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isComponentFunction } from "../../utils/is-component-function.js";
 import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -14,7 +17,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
 // A `render*` call inside JSX is only a problem when the helper carries
-// REACT-COMPONENT semantics — i.e. its body calls hooks. Such a helper
+// REACT-COMPONENT semantics — i.e. its execution reaches hooks. Such a helper
 // is a component in disguise: invoking it inline splices its hooks into
 // the caller's hook order, so a conditional call (or a changed call
 // count) corrupts hook state. A hook-free render helper is just a
@@ -35,10 +38,10 @@ const isInsideComponentContext = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const functionBodyOf = (node: EsTreeNode): EsTreeNode | null => {
-  if (isFunctionLike(node)) return node.body ?? null;
+const getFunctionFromDeclaration = (node: EsTreeNode): EsTreeNode | null => {
+  if (isFunctionLike(node)) return node;
   if (isNodeOfType(node, "VariableDeclarator") && node.init && isFunctionLike(node.init)) {
-    return node.init.body ?? null;
+    return node.init;
   }
   return null;
 };
@@ -62,27 +65,58 @@ const isHookCallee = (callee: EsTreeNode): boolean => {
   return false;
 };
 
-const containsHookCall = (body: EsTreeNode): boolean => {
-  let found = false;
-  walkAst(body, (child: EsTreeNode) => {
-    if (found) return false;
-    // A component DEFINED inside the helper owns its hooks — they run under
-    // that child's fiber when it renders, not when the helper is invoked
-    // inline — so its subtree must not make the helper itself hook-calling.
-    // Non-component nested functions stay in the walk: a closure that calls
-    // hooks and runs during the helper call still splices into the caller.
-    if (child !== body && isFunctionLike(child) && isComponentFunction(child)) return false;
-    if (!isNodeOfType(child, "CallExpression")) return;
-    if (isHookCallee(child.callee as EsTreeNode)) found = true;
+const containsReachableHookCall = (
+  functionNode: EsTreeNode,
+  rootFunction: EsTreeNode,
+  context: RuleContext,
+  visitedFunctions: Set<EsTreeNode>,
+): boolean => {
+  if (!isFunctionLike(functionNode) || visitedFunctions.has(functionNode)) return false;
+  visitedFunctions.add(functionNode);
+  let didFindReachableHook = false;
+  walkAst(functionNode.body, (child: EsTreeNode) => {
+    if (didFindReachableHook) return false;
+    if (isFunctionLike(child) && !executesDuringRender(child, context.scopes)) return false;
+    if (!isNodeOfType(child, "CallExpression") && !isNodeOfType(child, "NewExpression")) return;
+    if (isNodeOfType(child, "CallExpression")) {
+      if (isHookCallee(child.callee as EsTreeNode)) {
+        didFindReachableHook = true;
+        return false;
+      }
+      const calledFunction = resolveExactLocalFunction(child.callee, context.scopes);
+      if (
+        calledFunction &&
+        isAstDescendant(calledFunction, rootFunction) &&
+        containsReachableHookCall(calledFunction, rootFunction, context, visitedFunctions)
+      ) {
+        didFindReachableHook = true;
+        return false;
+      }
+    }
+    for (const callArgument of child.arguments ?? []) {
+      if (!executesDuringRender(callArgument, context.scopes)) continue;
+      const callbackFunction = resolveExactLocalFunction(callArgument, context.scopes);
+      if (
+        callbackFunction &&
+        isAstDescendant(callbackFunction, rootFunction) &&
+        containsReachableHookCall(callbackFunction, rootFunction, context, visitedFunctions)
+      ) {
+        didFindReachableHook = true;
+        return false;
+      }
+    }
   });
-  return found;
+  return didFindReachableHook;
 };
 
-// Fires only when the callee resolves to a LOCAL function whose body
-// calls hooks. Everything unresolvable — render props, parameters,
+// Fires only when the callee resolves to a LOCAL function whose synchronous
+// execution reaches hooks. Everything unresolvable — render props, parameters,
 // aliases, member calls — is a plain callable with no hook state to
 // corrupt, so it stays silent.
-const isHookCallingRenderHelper = (symbol: SymbolDescriptor | null): boolean => {
+const isHookCallingRenderHelper = (
+  symbol: SymbolDescriptor | null,
+  context: RuleContext,
+): boolean => {
   if (!symbol) return false;
   const declaration = symbol.declarationNode;
   if (
@@ -91,9 +125,9 @@ const isHookCallingRenderHelper = (symbol: SymbolDescriptor | null): boolean => 
   ) {
     return false;
   }
-  const body = functionBodyOf(declaration);
-  if (!body) return false;
-  return containsHookCall(body);
+  const functionNode = getFunctionFromDeclaration(declaration);
+  if (!functionNode) return false;
+  return containsReachableHookCall(functionNode, functionNode, context, new Set());
 };
 
 export const noRenderInRender = defineRule({
@@ -115,7 +149,7 @@ export const noRenderInRender = defineRule({
       const calleeName = expression.callee.name;
       if (!RENDER_FUNCTION_PATTERN.test(calleeName)) return;
       if (!isInsideComponentContext(node)) return;
-      if (!isHookCallingRenderHelper(context.scopes.symbolFor(expression.callee))) return;
+      if (!isHookCallingRenderHelper(context.scopes.symbolFor(expression.callee), context)) return;
 
       context.report({
         node: expression,

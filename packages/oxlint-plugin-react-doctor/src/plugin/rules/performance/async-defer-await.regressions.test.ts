@@ -175,6 +175,177 @@ describe("performance/async-defer-await — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays silent when every branch of a compound guard checks response freshness", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      declare const latestRequest: { current: number };
+      declare const latestReview: { current: number };
+      export const run = async () => {
+        const requestId = latestRequest.current;
+        const reviewVersion = latestReview.current;
+        const rows = await load();
+        if (requestId !== latestRequest.current || reviewVersion !== latestReview.current) {
+          return [];
+        }
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "scalar tokens joined with AND",
+      `requestId !== latestRequestId && reviewVersion !== latestReviewVersion`,
+    ],
+    [
+      "nested ref comparisons",
+      `(requestId !== latestRequest.current || reviewVersion !== latestReview.current) && scanId !== latestScan.current`,
+    ],
+    [
+      "transparent TypeScript wrappers",
+      `((requestId !== (latestRequest.current as number)) || ((reviewVersion !== latestReview.current) satisfies boolean)) as boolean`,
+    ],
+  ])("stays silent on compound freshness guards using %s", (_label, guardTest) => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      declare let latestRequestId: number;
+      declare let latestReviewVersion: number;
+      declare const latestRequest: { current: number };
+      declare const latestReview: { current: number };
+      declare const latestScan: { current: number };
+      export const run = async () => {
+        const requestId = latestRequest.current;
+        const reviewVersion = latestReview.current;
+        const scanId = latestScan.current;
+        const rows = await load();
+        if (${guardTest}) return [];
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["plain invariant branch", `requestId !== latestRequest.current || enabled`],
+    ["literal comparison branch", `requestId !== latestRequest.current || mode === "off"`],
+    [
+      "wrapped literal branch",
+      `requestId !== latestRequest.current && minimumCount !== (0 as number)`,
+    ],
+  ])("still flags a compound guard with an unrelated %s", (_label, guardTest) => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      declare const latestRequest: { current: number };
+      declare const enabled: boolean;
+      declare const mode: string;
+      declare const minimumCount: number;
+      export const run = async () => {
+        const requestId = latestRequest.current;
+        const rows = await load();
+        if (${guardTest}) return [];
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["cancellation flag", `cancelled || enabled`],
+    ["cancellation ref", `cancelledRef.current || enabled`],
+    ["mutable helper", `isCurrent() && enabled`],
+  ])("preserves the existing whole-guard exemption for a %s", (_label, guardTest) => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      declare const enabled: boolean;
+      declare const cancelled: boolean;
+      declare const cancelledRef: { current: boolean };
+      declare const isCurrent: () => boolean;
+      export const run = async () => {
+        const rows = await load();
+        if (${guardTest}) return [];
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves the existing whole-guard exemption for a reassigned local", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      declare const enabled: boolean;
+      export const run = async () => {
+        let failed = false;
+        const rows = await load().catch(() => {
+          failed = true;
+          return [];
+        });
+        if (failed || enabled) return [];
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a compound invariant preflight guard", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      declare const enabled: boolean;
+      declare const minimumCount: number;
+      export const run = async () => {
+        const rows = await load();
+        if (!enabled || minimumCount === 0) return [];
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags compound comparisons between invariant parameters", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      export const run = async (
+        enabled: boolean,
+        expectedEnabled: boolean,
+        mode: string,
+        expectedMode: string,
+      ) => {
+        const rows = await load();
+        if (enabled === expectedEnabled || mode === expectedMode) return [];
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when the guard reads a flag reassigned around the await", () => {
     const result = runRule(
       asyncDeferAwait,

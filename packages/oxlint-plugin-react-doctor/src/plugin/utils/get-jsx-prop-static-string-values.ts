@@ -2,56 +2,98 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { getStaticTemplateLiteralValue } from "./get-static-template-literal-value.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { readStaticBoolean } from "./read-static-boolean.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
-import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 
-// Chains like `const a = "x"; const role = a;` resolve one hop at a
-// time; the cap keeps a pathological alias chain from walking forever.
 const MAX_CONST_RESOLUTION_HOPS = 4;
+
+interface StaticStringWorkItem {
+  expression: EsTreeNode;
+  remainingConstAliases: number | null;
+  resolvingSymbols: Set<SymbolDescriptor>;
+}
 
 const resolveStaticStringValues = (
   rawExpression: EsTreeNode,
   scopes: ScopeAnalysis,
-  remainingHops: number,
+  maximumConstAliases: number | null,
+  shouldFoldStaticConditions: boolean,
 ): ReadonlyArray<string> | null => {
-  const expression = stripParenExpression(rawExpression);
-  if (isNodeOfType(expression, "Literal")) {
-    return typeof expression.value === "string" ? [expression.value] : null;
-  }
-  if (isNodeOfType(expression, "TemplateLiteral")) {
-    const staticValue = getStaticTemplateLiteralValue(expression);
-    return staticValue === null ? null : [staticValue];
-  }
-  if (isNodeOfType(expression, "ConditionalExpression")) {
-    const consequentValues = resolveStaticStringValues(
-      expression.consequent,
-      scopes,
-      remainingHops,
-    );
-    if (consequentValues === null) return null;
-    const alternateValues = resolveStaticStringValues(expression.alternate, scopes, remainingHops);
-    if (alternateValues === null) return null;
-    return [...consequentValues, ...alternateValues];
-  }
-  if (isNodeOfType(expression, "Identifier")) {
-    if (remainingHops === 0) return null;
-    const symbol = scopes.referenceFor(expression)?.resolvedSymbol;
-    // Only `const` bindings are safe to inline — anything reassignable
-    // (or an import/parameter, whose value we can't see) stays dynamic.
-    if (!symbol || symbol.kind !== "const" || !symbol.initializer) return null;
-    // A destructured const (`const { role = "x" } = config`) records the
-    // destructure SOURCE or per-element default as its initializer —
-    // neither is the binding's actual value — so only a plain
-    // `const name = ...` declarator inlines.
-    if (
-      !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
-      symbol.declarationNode.id !== symbol.bindingIdentifier
-    ) {
-      return null;
+  const staticStringValues: string[] = [];
+  const workItems: StaticStringWorkItem[] = [
+    {
+      expression: rawExpression,
+      remainingConstAliases: maximumConstAliases,
+      resolvingSymbols: new Set(),
+    },
+  ];
+
+  while (workItems.length > 0) {
+    const workItem = workItems.pop();
+    if (!workItem) continue;
+    const expression = stripParenExpression(workItem.expression);
+    if (isNodeOfType(expression, "Literal")) {
+      if (typeof expression.value !== "string") return null;
+      staticStringValues.push(expression.value);
+      continue;
     }
-    return resolveStaticStringValues(symbol.initializer, scopes, remainingHops - 1);
+    if (isNodeOfType(expression, "TemplateLiteral")) {
+      const staticValue = getStaticTemplateLiteralValue(expression);
+      if (staticValue === null) return null;
+      staticStringValues.push(staticValue);
+      continue;
+    }
+    if (isNodeOfType(expression, "ConditionalExpression")) {
+      const staticTestValue = shouldFoldStaticConditions
+        ? readStaticBoolean(expression.test)
+        : null;
+      if (staticTestValue !== null) {
+        workItems.push({
+          expression: staticTestValue ? expression.consequent : expression.alternate,
+          remainingConstAliases: workItem.remainingConstAliases,
+          resolvingSymbols: workItem.resolvingSymbols,
+        });
+        continue;
+      }
+      workItems.push({
+        expression: expression.alternate,
+        remainingConstAliases: workItem.remainingConstAliases,
+        resolvingSymbols: new Set(workItem.resolvingSymbols),
+      });
+      workItems.push({
+        expression: expression.consequent,
+        remainingConstAliases: workItem.remainingConstAliases,
+        resolvingSymbols: new Set(workItem.resolvingSymbols),
+      });
+      continue;
+    }
+    if (isNodeOfType(expression, "Identifier")) {
+      const symbol = scopes.referenceFor(expression)?.resolvedSymbol;
+      if (
+        !symbol ||
+        symbol.kind !== "const" ||
+        !symbol.initializer ||
+        !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+        symbol.declarationNode.id !== symbol.bindingIdentifier ||
+        workItem.remainingConstAliases === 0 ||
+        workItem.resolvingSymbols.has(symbol)
+      ) {
+        return null;
+      }
+      workItem.resolvingSymbols.add(symbol);
+      workItems.push({
+        expression: symbol.initializer,
+        remainingConstAliases:
+          workItem.remainingConstAliases === null ? null : workItem.remainingConstAliases - 1,
+        resolvingSymbols: workItem.resolvingSymbols,
+      });
+      continue;
+    }
+    return null;
   }
-  return null;
+
+  return staticStringValues;
 };
 
 // Static-resolution big brother of `getJsxPropStringValue`: returns EVERY
@@ -66,9 +108,11 @@ const resolveStaticStringValues = (
 // report when ANY candidate is invalid (that branch is a bug when taken),
 // a rule whose claim must hold unconditionally should require ALL
 // candidates to violate.
-export const getJsxPropStaticStringValues = (
+const getJsxPropStaticStringValuesWithMode = (
   attribute: EsTreeNodeOfType<"JSXAttribute">,
   scopes: ScopeAnalysis,
+  maximumConstAliases: number | null,
+  shouldFoldStaticConditions: boolean,
 ): ReadonlyArray<string> | null => {
   const value = attribute.value;
   if (!value) return null;
@@ -79,8 +123,21 @@ export const getJsxPropStaticStringValues = (
     return resolveStaticStringValues(
       value.expression as EsTreeNode,
       scopes,
-      MAX_CONST_RESOLUTION_HOPS,
+      maximumConstAliases,
+      shouldFoldStaticConditions,
     );
   }
   return null;
 };
+
+export const getJsxPropStaticStringValues = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<string> | null =>
+  getJsxPropStaticStringValuesWithMode(attribute, scopes, MAX_CONST_RESOLUTION_HOPS, false);
+
+export const getJsxPropExhaustiveStaticStringValues = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<string> | null =>
+  getJsxPropStaticStringValuesWithMode(attribute, scopes, null, true);

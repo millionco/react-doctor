@@ -3,6 +3,156 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noResetAllStateOnPropChange } from "./no-reset-all-state-on-prop-change.js";
 
 describe("no-reset-all-state-on-prop-change — regressions", () => {
+  it("stays silent for an extracted async loading lifecycle helper", () => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `import { useEffect, useState } from "react";
+      const Spline = ({ load, scene }) => {
+        const [isLoading, setIsLoading] = useState(true);
+        const initialize = async () => {
+          await load(scene);
+          setIsLoading(false);
+        };
+        useEffect(() => {
+          setIsLoading(true);
+          void initialize();
+        }, [scene]);
+        return <canvas hidden={isLoading} />;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for the authentic conditionally started loading helper shape", () => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `import { useEffect, useRef, useState } from "react";
+      const Spline = ({ createApplication, onLoad, scene }) => {
+        const canvasRef = useRef(null);
+        const [isLoading, setIsLoading] = useState(true);
+        const initialize = async (application, events) => {
+          await application.load(scene);
+          for (const event of events) application.addEventListener(event.name, event.callback);
+          setIsLoading(false);
+          onLoad?.(application);
+        };
+        useEffect(() => {
+          setIsLoading(true);
+          const events = [{ callback: onLoad, name: "load" }];
+          if (canvasRef.current) {
+            const application = createApplication(canvasRef.current);
+            void initialize(application, events);
+          }
+        }, [scene]);
+        return <canvas ref={canvasRef} hidden={isLoading} />;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a function declaration",
+      `async function initialize() { await load(scene); setIsLoading(false); }
+      useEffect(() => { setIsLoading(true); initialize(); }, [scene]);`,
+    ],
+    [
+      "an immutable helper alias chain",
+      `const initialize = async () => { await load(scene); setIsLoading(false); };
+      const initializeAlias = initialize;
+      const runInitialize = initializeAlias;
+      useEffect(() => { setIsLoading(true); void (runInitialize as typeof initialize)(); }, [scene]);`,
+    ],
+  ])("stays silent through %s", (_label, lifecycle) => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `import { useEffect, useState } from "react";
+      const Spline = ({ load, scene }) => {
+        const [isLoading, setIsLoading] = useState(true);
+        ${lifecycle}
+        return <canvas hidden={isLoading} />;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "the helper is only passed to a timer",
+      `const initialize = async () => { await load(scene); setIsLoading(false); };
+      useEffect(() => { setIsLoading(true); setTimeout(initialize, 0); }, [scene]);`,
+    ],
+    [
+      "the helper is never invoked",
+      `const initialize = async () => { await load(scene); setIsLoading(false); };
+      useEffect(() => { setIsLoading(true); void initialize; }, [scene]);`,
+    ],
+    [
+      "the helper writes before its await",
+      `const initialize = async () => { setIsLoading(false); await load(scene); };
+      useEffect(() => { setIsLoading(true); void initialize(); }, [scene]);`,
+    ],
+    [
+      "the await is conditional",
+      `const initialize = async () => { if (shouldLoad) await load(scene); setIsLoading(false); };
+      useEffect(() => { setIsLoading(true); void initialize(); }, [scene]);`,
+    ],
+    [
+      "the post-await setter belongs to different state",
+      `const initialize = async () => { await load(scene); setResult(scene); };
+      useEffect(() => { setIsLoading(true); void initialize(); }, [scene]);`,
+    ],
+    [
+      "the helper call is itself deferred",
+      `const initialize = async () => { await load(scene); setIsLoading(false); };
+      useEffect(() => { setIsLoading(true); queueMicrotask(() => initialize()); }, [scene]);`,
+    ],
+    [
+      "the post-await setter is trapped in an uninvoked nested function",
+      `const initialize = async () => {
+        await load(scene);
+        const finish = () => setIsLoading(false);
+        void finish;
+      };
+      useEffect(() => { setIsLoading(true); void initialize(); }, [scene]);`,
+    ],
+    [
+      "the helper call is unreachable",
+      `const initialize = async () => { await load(scene); setIsLoading(false); };
+      useEffect(() => { setIsLoading(true); return; initialize(); }, [scene]);`,
+    ],
+    [
+      "the post-await setter is unreachable",
+      `const initialize = async () => { await load(scene); return; setIsLoading(false); };
+      useEffect(() => { setIsLoading(true); void initialize(); }, [scene]);`,
+    ],
+    [
+      "the helper binding is reassigned",
+      `let initialize = async () => { await load(scene); setIsLoading(false); };
+      initialize = async () => load(scene);
+      useEffect(() => { setIsLoading(true); void initialize(); }, [scene]);`,
+    ],
+  ])("still reports when %s", (_label, lifecycle) => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `import { useEffect, useState } from "react";
+      const Spline = ({ load, scene, setResult, shouldLoad }) => {
+        const [isLoading, setIsLoading] = useState(true);
+        ${lifecycle}
+        return <canvas hidden={isLoading} />;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   // excalidraw ToolPopover: the setter only runs inside an event-subscription
   // callback registered by the effect, so state resets when the emitter
   // fires — not when the `app` prop changes.

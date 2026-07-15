@@ -47,6 +47,7 @@ const MUTATING_RECEIVER_METHOD_NAMES = new Set([
 //   4. Mutating method call: `OPTS.push(...)` / `byId.set(...)`.
 const isMutationContext = (referenceIdentifier: EsTreeNode): boolean => {
   let mutationTarget = referenceIdentifier;
+  let receiverMethodName: string | null = null;
 
   while (mutationTarget.parent) {
     const parent = mutationTarget.parent;
@@ -61,6 +62,7 @@ const isMutationContext = (referenceIdentifier: EsTreeNode): boolean => {
     }
 
     if (isNodeOfType(parent, "MemberExpression") && parent.object === mutationTarget) {
+      receiverMethodName = getStaticPropertyName(parent);
       mutationTarget = parent;
       continue;
     }
@@ -84,8 +86,7 @@ const isMutationContext = (referenceIdentifier: EsTreeNode): boolean => {
     return Boolean(
       isNodeOfType(parent, "CallExpression") &&
       parent.callee === mutationTarget &&
-      isNodeOfType(mutationTarget, "MemberExpression") &&
-      MUTATING_RECEIVER_METHOD_NAMES.has(getStaticPropertyName(mutationTarget) ?? ""),
+      MUTATING_RECEIVER_METHOD_NAMES.has(receiverMethodName ?? ""),
     );
   }
 

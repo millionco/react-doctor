@@ -303,6 +303,9 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     "(matrix[0] as number[]).push(1)",
     "matrix['0']['push'](1)",
     "matrix[0]!.sort()",
+    "(matrix.push as (value: number[]) => number)([])",
+    "(matrix[0]!.push as (value: number) => number)(1)",
+    "((matrix['push'] as (value: number[]) => number))([])",
   ])("recognizes a nested receiver mutation through %s", (mutation) => {
     const result = run(`
       function Matrix() {
@@ -330,19 +333,20 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     expect(result.diagnostics).toEqual([]);
   });
 
-  it.each(["matrix.map((row) => row).push([])", "matrix.slice().reverse()"])(
-    "still reports when only a derived array is mutated through %s",
-    (mutation) => {
-      const result = run(`
+  it.each([
+    "matrix.map((row) => row).push([])",
+    "matrix.slice().reverse()",
+    "(matrix.slice().push as (value: number[]) => number)([])",
+  ])("still reports when only a derived array is mutated through %s", (mutation) => {
+    const result = run(`
         function Matrix() {
           const matrix = [[], []];
           ${mutation};
           return <Grid matrix={matrix} />;
         }
       `);
-      expect(result.diagnostics).toHaveLength(1);
-    },
-  );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 
   it("still flags a static array built from a pure module-scope helper named `random`", () => {
     const result = run(`

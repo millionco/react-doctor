@@ -11,6 +11,14 @@ export const TweetColumns = () => {
   return <div>{tweetColumns.map((column) => column.length)}</div>;
 };
 
+export const WrappedTweetColumns = () => {
+  const tweetColumns = [[], []];
+  tweets.forEach((tweet) =>
+    (tweetColumns[0]!.push as (value: (typeof tweets)[number]) => number)(tweet),
+  );
+  return <div>{tweetColumns.map((column) => column.length)}</div>;
+};
+
 export const ReadOnlyColumns = () => {
   const columns = [["first"], ["second"]];
   return <div>{columns.length}</div>;

@@ -368,6 +368,60 @@ describe("architecture/no-render-in-render — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags hooks reached through an inline Promise executor", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          new Promise((resolve) => {
+            const [count] = useState(0);
+            resolve(count);
+          });
+          return <div>panel</div>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags hooks reached through a named Promise executor", () => {
+    const result = run(
+      `const Panel = () => {
+        const renderPanel = () => {
+          const initializePanel = (resolve) => {
+            const [count] = useState(0);
+            resolve(count);
+          };
+          new Promise(initializePanel);
+          return <div>panel</div>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat shadowed Promise constructors as synchronous", () => {
+    const result = run(
+      `class Promise {
+        constructor(executor) {
+          queueMicrotask(executor);
+        }
+      }
+      const Panel = () => {
+        const renderPanel = () => {
+          new Promise(() => {
+            const [count] = useState(0);
+            return count;
+          });
+          return <div>panel</div>;
+        };
+        return <section>{renderPanel()}</section>;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("preserves render-phase hook callback positives", () => {
     const memoResult = run(
       `const Panel = () => {

@@ -1,6 +1,7 @@
 import { RENDER_FUNCTION_PATTERN } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isComponentFunction } from "../../utils/is-component-function.js";
 import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
@@ -64,15 +65,6 @@ const isHookCallee = (callee: EsTreeNode): boolean => {
   return false;
 };
 
-const isNestedWithinFunction = (candidate: EsTreeNode, functionNode: EsTreeNode): boolean => {
-  let ancestor = candidate.parent;
-  while (ancestor) {
-    if (ancestor === functionNode) return true;
-    ancestor = ancestor.parent ?? null;
-  }
-  return false;
-};
-
 const containsReachableHookCall = (
   functionNode: EsTreeNode,
   rootFunction: EsTreeNode,
@@ -85,26 +77,28 @@ const containsReachableHookCall = (
   walkAst(functionNode.body, (child: EsTreeNode) => {
     if (didFindReachableHook) return false;
     if (isFunctionLike(child) && !executesDuringRender(child, context.scopes)) return false;
-    if (!isNodeOfType(child, "CallExpression")) return;
-    if (isHookCallee(child.callee as EsTreeNode)) {
-      didFindReachableHook = true;
-      return false;
-    }
-    const calledFunction = resolveExactLocalFunction(child.callee, context.scopes);
-    if (
-      calledFunction &&
-      isNestedWithinFunction(calledFunction, rootFunction) &&
-      containsReachableHookCall(calledFunction, rootFunction, context, visitedFunctions)
-    ) {
-      didFindReachableHook = true;
-      return false;
+    if (!isNodeOfType(child, "CallExpression") && !isNodeOfType(child, "NewExpression")) return;
+    if (isNodeOfType(child, "CallExpression")) {
+      if (isHookCallee(child.callee as EsTreeNode)) {
+        didFindReachableHook = true;
+        return false;
+      }
+      const calledFunction = resolveExactLocalFunction(child.callee, context.scopes);
+      if (
+        calledFunction &&
+        isAstDescendant(calledFunction, rootFunction) &&
+        containsReachableHookCall(calledFunction, rootFunction, context, visitedFunctions)
+      ) {
+        didFindReachableHook = true;
+        return false;
+      }
     }
     for (const callArgument of child.arguments ?? []) {
       if (!executesDuringRender(callArgument, context.scopes)) continue;
       const callbackFunction = resolveExactLocalFunction(callArgument, context.scopes);
       if (
         callbackFunction &&
-        isNestedWithinFunction(callbackFunction, rootFunction) &&
+        isAstDescendant(callbackFunction, rootFunction) &&
         containsReachableHookCall(callbackFunction, rootFunction, context, visitedFunctions)
       ) {
         didFindReachableHook = true;

@@ -34,19 +34,76 @@ describe("security-scan/artifact-env-leak — regressions", () => {
  * \`\`\`
  */
 export class PrismaClient {
-}
-${"a".repeat(60000)}`,
+}`,
       isGeneratedBundle: true,
     });
     expect(findings).toHaveLength(0);
   });
 
-  it("stays silent on any TypeScript source file marked as generated bundle", () => {
+  it("still flags executable env access in generated TypeScript source", () => {
     const findings = runScanRule(artifactEnvLeak, {
       relativePath: "src/__generated__/schema.tsx",
       content: `export const schema = { dbUrl: process.env.DATABASE_URL };`,
       isGeneratedBundle: true,
     });
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each(["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"])(
+    "ignores env access that exists only in a %s comment",
+    (extension) => {
+      const findings = runScanRule(artifactEnvLeak, {
+        relativePath: `dist/generated/client.${extension}`,
+        content: `const client = {};
+// process.env.DATABASE_URL
+/* import.meta.env.SESSION_SECRET */`,
+        isGeneratedBundle: true,
+      });
+      expect(findings).toHaveLength(0);
+    },
+  );
+
+  it("preserves source offsets when a comment precedes executable env access", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "src/generated/client.ts",
+      content: `/* process.env.DATABASE_URL */
+export const databaseUrl = process.env.DATABASE_URL;`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toEqual([
+      expect.objectContaining({
+        line: 2,
+        column: 40,
+      }),
+    ]);
+  });
+
+  it("does not combine executable context with a secret name that exists only in a comment", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "src/generated/client.ts",
+      content: `const environment = process.env;
+// DATABASE_URL`,
+      isGeneratedBundle: true,
+    });
     expect(findings).toHaveLength(0);
+  });
+
+  it("does not combine a commented context with an executable secret-name string", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "src/generated/client.ts",
+      content: `// process.env
+export const environmentName = "DATABASE_URL";`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("keeps conservative raw matching when generated source cannot be parsed", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/generated/client.ts",
+      content: `process.env.DATABASE_URL ???`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(1);
   });
 });

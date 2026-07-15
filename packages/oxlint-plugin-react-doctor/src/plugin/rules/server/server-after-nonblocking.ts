@@ -44,6 +44,35 @@ const isDeferrableSideEffectCall = (objectName: string, methodName: string): boo
   return false;
 };
 
+const isInsideAfterCallback = (
+  node: EsTreeNode,
+  afterImportNames: Set<string>,
+): boolean => {
+  if (afterImportNames.size === 0) return false;
+  
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  
+  while (cursor) {
+    if (
+      isNodeOfType(cursor, "ArrowFunctionExpression") ||
+      isNodeOfType(cursor, "FunctionExpression")
+    ) {
+      const parentNode = cursor.parent;
+      if (isNodeOfType(parentNode, "CallExpression")) {
+        const callee = stripParenExpression(parentNode.callee);
+        if (isNodeOfType(callee, "Identifier")) {
+          if (afterImportNames.has(callee.name)) {
+            return true;
+          }
+        }
+      }
+    }
+    cursor = cursor.parent ?? null;
+  }
+  
+  return false;
+};
+
 export const serverAfterNonblocking = defineRule({
   id: "server-after-nonblocking",
   title: "Blocking side effect before response",
@@ -54,6 +83,7 @@ export const serverAfterNonblocking = defineRule({
   create: (context: RuleContext) => {
     let fileHasUseServerDirective = false;
     let serverFunctionDepth = 0;
+    const afterImportNames = new Set<string>();
 
     const enterIfServerFunction = (node: EsTreeNode): void => {
       if (hasUseServerDirective(node)) serverFunctionDepth++;
@@ -65,6 +95,22 @@ export const serverAfterNonblocking = defineRule({
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
         fileHasUseServerDirective = hasDirective(programNode, "use server");
+      },
+      ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
+        if (node.source?.value !== "next/server") return;
+        
+        for (const specifier of node.specifiers ?? []) {
+          if (
+            isNodeOfType(specifier, "ImportSpecifier") &&
+            isNodeOfType(specifier.imported, "Identifier") &&
+            (specifier.imported.name === "after" || specifier.imported.name === "unstable_after")
+          ) {
+            const localName = isNodeOfType(specifier.local, "Identifier")
+              ? specifier.local.name
+              : specifier.imported.name;
+            afterImportNames.add(localName);
+          }
+        }
       },
       FunctionDeclaration: enterIfServerFunction,
       "FunctionDeclaration:exit": leaveIfServerFunction,
@@ -83,6 +129,8 @@ export const serverAfterNonblocking = defineRule({
 
         const methodName = node.callee.property.name;
         if (!isDeferrableSideEffectCall(objectName, methodName)) return;
+
+        if (isInsideAfterCallback(node, afterImportNames)) return;
 
         context.report({
           node,

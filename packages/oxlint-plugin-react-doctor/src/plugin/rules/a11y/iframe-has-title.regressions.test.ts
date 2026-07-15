@@ -177,6 +177,36 @@ describe("a11y/iframe-has-title regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each(["Fragment", "React.Fragment"])(
+    "allows a hidden ancestor through the named fragment %s",
+    (fragmentName) => {
+      const result = runRule(
+        iframeHasTitle,
+        `const Preview = () => (
+          <section aria-hidden="true">
+            <${fragmentName}><iframe src="/preview" /></${fragmentName}>
+          </section>
+        );`,
+      );
+
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("does not treat a locally bound Fragment component as transparent", () => {
+    const result = runRule(
+      iframeHasTitle,
+      `const Fragment = ({ children }) => <PortalTarget>{children}</PortalTarget>;
+      const Preview = () => (
+        <section aria-hidden="true">
+          <Fragment><iframe src="/preview" /></Fragment>
+        </section>
+      );`,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows an iframe supplied through an intrinsic children prop", () => {
     const result = runRule(
       iframeHasTitle,

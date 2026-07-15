@@ -9,6 +9,7 @@ import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-st
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { parseJsxValue } from "../../utils/parse-jsx-value.js";
 
@@ -79,6 +80,7 @@ const hasStaticallyDecorativeRole = (
 
 const isInsideStaticallyHiddenJsxSubtree = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (isStaticallyAriaHidden(openingElement)) return true;
 
@@ -90,7 +92,10 @@ const isInsideStaticallyHiddenJsxSubtree = (
       if (!isChildrenAttribute) return false;
     }
 
-    if (isNodeOfType(ancestor, "JSXElement")) {
+    if (
+      isNodeOfType(ancestor, "JSXElement") &&
+      !isJsxFragmentElement(ancestor.openingElement, scopes)
+    ) {
       const ancestorName = ancestor.openingElement.name;
       if (!isNodeOfType(ancestorName, "JSXIdentifier")) return false;
       const firstCharacter = ancestorName.name[0];
@@ -161,7 +166,7 @@ export const iframeHasTitle = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const tag = getElementType(node, context.settings);
       if (tag !== "iframe") return;
-      if (isInsideStaticallyHiddenJsxSubtree(node)) return;
+      if (isInsideStaticallyHiddenJsxSubtree(node, context.scopes)) return;
       if (hasStaticallyNegativeTabIndex(node)) return;
       if (hasStaticallyDecorativeRole(node, context.scopes)) return;
       // Spread attribute → can't statically verify; flag.

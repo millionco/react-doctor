@@ -1,15 +1,14 @@
+import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
-import {
-  getImportedNameFromModule,
-  hasImportFromModules,
-  isDefaultImportFromModule,
-  isNamespaceImportFromModule,
-} from "./find-import-source-for-name.js";
+import { hasImportFromModules } from "./find-import-source-for-name.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { findVariableInitializer } from "./find-variable-initializer.js";
 import { flattenJsxName } from "./flatten-jsx-name.js";
-import { isMemberProperty } from "./is-member-property.js";
+import {
+  GENERATED_IMAGE_RENDERER_MODULES,
+  isGeneratedImageRendererCall,
+} from "./is-generated-image-renderer-call.js";
 import { isNextjsMetadataImageRouteFilename } from "./is-nextjs-metadata-image-route-filename.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { normalizeFilename } from "./normalize-filename.js";
@@ -17,55 +16,12 @@ import type { RuleContext } from "./rule-context.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
-const IMAGE_RESPONSE_MODULES: ReadonlyArray<string> = ["next/og", "@vercel/og"];
-const SATORI_MODULE = "satori";
-const GENERATED_IMAGE_MODULES: ReadonlyArray<string> = [...IMAGE_RESPONSE_MODULES, SATORI_MODULE];
-
 const generatedImageJsxCache = new WeakMap<EsTreeNodeOfType<"Program">, WeakSet<EsTreeNode>>();
-
-type GeneratedImageRendererCall =
-  | EsTreeNodeOfType<"CallExpression">
-  | EsTreeNodeOfType<"NewExpression">;
 
 const isGeneratedImageRenderFilename = (rawFilename: string | undefined): boolean => {
   if (!rawFilename) return false;
   const filename = normalizeFilename(rawFilename);
   return isNextjsMetadataImageRouteFilename(filename);
-};
-
-const isImageResponseCallee = (contextNode: EsTreeNode, callee: EsTreeNode): boolean => {
-  if (isNodeOfType(callee, "Identifier")) {
-    return IMAGE_RESPONSE_MODULES.some(
-      (moduleSource) =>
-        getImportedNameFromModule(contextNode, callee.name, moduleSource) === "ImageResponse",
-    );
-  }
-
-  if (!isMemberProperty(callee, "ImageResponse")) return false;
-  if (!isNodeOfType(callee.object, "Identifier")) return false;
-  const namespaceIdentifierName = callee.object.name;
-
-  return IMAGE_RESPONSE_MODULES.some((moduleSource) =>
-    isNamespaceImportFromModule(contextNode, namespaceIdentifierName, moduleSource),
-  );
-};
-
-const isSatoriCallee = (contextNode: EsTreeNode, callee: EsTreeNode): boolean => {
-  if (!isNodeOfType(callee, "Identifier")) return false;
-  if (getImportedNameFromModule(contextNode, callee.name, SATORI_MODULE) === "satori") return true;
-  return isDefaultImportFromModule(contextNode, callee.name, SATORI_MODULE);
-};
-
-const isGeneratedImageRendererCall = (node: EsTreeNode): node is GeneratedImageRendererCall => {
-  if (!isNodeOfType(node, "CallExpression") && !isNodeOfType(node, "NewExpression")) {
-    return false;
-  }
-
-  if (!isNodeOfType(node.callee, "Identifier") && !isNodeOfType(node.callee, "MemberExpression")) {
-    return false;
-  }
-
-  return isImageResponseCallee(node, node.callee) || isSatoriCallee(node, node.callee);
 };
 
 const isComponentIdentifierName = (name: string): boolean => {
@@ -89,6 +45,7 @@ const isFunctionLike = (
 const markFunctionReturnJsx = (
   functionNode: EsTreeNode,
   programRoot: EsTreeNodeOfType<"Program">,
+  scopes: ScopeAnalysis,
   generatedImageJsxNodes: WeakSet<EsTreeNode>,
   visitedComponentNames: Set<string>,
 ): void => {
@@ -100,6 +57,7 @@ const markFunctionReturnJsx = (
       markGeneratedImageExpression(
         body,
         programRoot,
+        scopes,
         generatedImageJsxNodes,
         visitedComponentNames,
       );
@@ -117,6 +75,7 @@ const markFunctionReturnJsx = (
     markGeneratedImageExpression(
       stripParenExpression(descendantNode.argument),
       programRoot,
+      scopes,
       generatedImageJsxNodes,
       visitedComponentNames,
     );
@@ -142,6 +101,7 @@ const hasNormalJsxUsage = (
 
 const markComponentRenderJsx = (
   programRoot: EsTreeNodeOfType<"Program">,
+  scopes: ScopeAnalysis,
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
   generatedImageJsxNodes: WeakSet<EsTreeNode>,
   visitedComponentNames: Set<string>,
@@ -158,15 +118,19 @@ const markComponentRenderJsx = (
   markGeneratedImageExpression(
     stripParenExpression(binding.initializer),
     programRoot,
+    scopes,
     generatedImageJsxNodes,
     visitedComponentNames,
   );
 };
 
-const isInsideGeneratedImageRendererArgument = (node: EsTreeNode): boolean => {
+const isInsideGeneratedImageRendererArgument = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   let cursor = node.parent;
   while (cursor) {
-    if (isGeneratedImageRendererCall(cursor)) return true;
+    if (isGeneratedImageRendererCall(cursor, scopes)) return true;
     cursor = cursor.parent ?? null;
   }
   return false;
@@ -175,6 +139,7 @@ const isInsideGeneratedImageRendererArgument = (node: EsTreeNode): boolean => {
 const hasNormalFunctionCallUsage = (
   programRoot: EsTreeNodeOfType<"Program">,
   functionName: string,
+  scopes: ScopeAnalysis,
 ): boolean => {
   let hasNormalUsage = false;
   walkAst(programRoot, (descendantNode) => {
@@ -182,7 +147,7 @@ const hasNormalFunctionCallUsage = (
     if (!isNodeOfType(descendantNode, "CallExpression")) return;
     if (!isNodeOfType(descendantNode.callee, "Identifier")) return;
     if (descendantNode.callee.name !== functionName) return;
-    if (isInsideGeneratedImageRendererArgument(descendantNode)) return;
+    if (isInsideGeneratedImageRendererArgument(descendantNode, scopes)) return;
     hasNormalUsage = true;
     return false;
   });
@@ -192,6 +157,7 @@ const hasNormalFunctionCallUsage = (
 const markJsxSubtree = (
   node: EsTreeNode,
   programRoot: EsTreeNodeOfType<"Program">,
+  scopes: ScopeAnalysis,
   generatedImageJsxNodes: WeakSet<EsTreeNode>,
   visitedComponentNames: Set<string>,
 ): void => {
@@ -200,6 +166,7 @@ const markJsxSubtree = (
     generatedImageJsxNodes.add(descendantNode);
     markComponentRenderJsx(
       programRoot,
+      scopes,
       descendantNode,
       generatedImageJsxNodes,
       visitedComponentNames,
@@ -210,6 +177,7 @@ const markJsxSubtree = (
 const markGeneratedImageExpression = (
   expression: EsTreeNode,
   programRoot: EsTreeNodeOfType<"Program">,
+  scopes: ScopeAnalysis,
   generatedImageJsxNodes: WeakSet<EsTreeNode>,
   visitedComponentNames: Set<string>,
 ): void => {
@@ -219,7 +187,13 @@ const markGeneratedImageExpression = (
     isNodeOfType(unwrappedExpression, "JSXElement") ||
     isNodeOfType(unwrappedExpression, "JSXFragment")
   ) {
-    markJsxSubtree(unwrappedExpression, programRoot, generatedImageJsxNodes, visitedComponentNames);
+    markJsxSubtree(
+      unwrappedExpression,
+      programRoot,
+      scopes,
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
     return;
   }
 
@@ -227,6 +201,7 @@ const markGeneratedImageExpression = (
     markFunctionReturnJsx(
       unwrappedExpression,
       programRoot,
+      scopes,
       generatedImageJsxNodes,
       visitedComponentNames,
     );
@@ -237,12 +212,14 @@ const markGeneratedImageExpression = (
     markGeneratedImageExpression(
       unwrappedExpression.consequent,
       programRoot,
+      scopes,
       generatedImageJsxNodes,
       visitedComponentNames,
     );
     markGeneratedImageExpression(
       unwrappedExpression.alternate,
       programRoot,
+      scopes,
       generatedImageJsxNodes,
       visitedComponentNames,
     );
@@ -253,12 +230,14 @@ const markGeneratedImageExpression = (
     markGeneratedImageExpression(
       unwrappedExpression.left,
       programRoot,
+      scopes,
       generatedImageJsxNodes,
       visitedComponentNames,
     );
     markGeneratedImageExpression(
       unwrappedExpression.right,
       programRoot,
+      scopes,
       generatedImageJsxNodes,
       visitedComponentNames,
     );
@@ -268,19 +247,26 @@ const markGeneratedImageExpression = (
   if (isNodeOfType(unwrappedExpression, "CallExpression")) {
     const callee = unwrappedExpression.callee;
     if (isFunctionLike(callee)) {
-      markFunctionReturnJsx(callee, programRoot, generatedImageJsxNodes, visitedComponentNames);
+      markFunctionReturnJsx(
+        callee,
+        programRoot,
+        scopes,
+        generatedImageJsxNodes,
+        visitedComponentNames,
+      );
       return;
     }
     if (!isNodeOfType(callee, "Identifier")) return;
     if (visitedComponentNames.has(callee.name)) return;
     if (hasNormalJsxUsage(programRoot, callee.name, generatedImageJsxNodes)) return;
-    if (hasNormalFunctionCallUsage(programRoot, callee.name)) return;
+    if (hasNormalFunctionCallUsage(programRoot, callee.name, scopes)) return;
     const binding = findVariableInitializer(callee, callee.name);
     if (!binding?.initializer || !isFunctionLike(stripParenExpression(binding.initializer))) return;
     visitedComponentNames.add(callee.name);
     markFunctionReturnJsx(
       stripParenExpression(binding.initializer),
       programRoot,
+      scopes,
       generatedImageJsxNodes,
       visitedComponentNames,
     );
@@ -295,6 +281,7 @@ const markGeneratedImageExpression = (
     markGeneratedImageExpression(
       stripParenExpression(binding.initializer),
       programRoot,
+      scopes,
       generatedImageJsxNodes,
       visitedComponentNames,
     );
@@ -303,6 +290,7 @@ const markGeneratedImageExpression = (
 
 const collectGeneratedImageJsxNodes = (
   programRoot: EsTreeNodeOfType<"Program">,
+  scopes: ScopeAnalysis,
 ): WeakSet<EsTreeNode> => {
   const cached = generatedImageJsxCache.get(programRoot);
   if (cached) return cached;
@@ -310,11 +298,23 @@ const collectGeneratedImageJsxNodes = (
   const generatedImageJsxNodes = new WeakSet<EsTreeNode>();
   // Renderer detection below is import-lookup based, so a module that never
   // imports an image-response library can't produce a match — skip its walk.
-  if (hasImportFromModules(programRoot, GENERATED_IMAGE_MODULES)) {
+  if (hasImportFromModules(programRoot, GENERATED_IMAGE_RENDERER_MODULES)) {
     walkAst(programRoot, (descendantNode) => {
-      if (!isGeneratedImageRendererCall(descendantNode)) return;
+      if (
+        !isNodeOfType(descendantNode, "CallExpression") &&
+        !isNodeOfType(descendantNode, "NewExpression")
+      ) {
+        return;
+      }
+      if (!isGeneratedImageRendererCall(descendantNode, scopes)) return;
       for (const argument of descendantNode.arguments) {
-        markGeneratedImageExpression(argument, programRoot, generatedImageJsxNodes, new Set());
+        markGeneratedImageExpression(
+          argument,
+          programRoot,
+          scopes,
+          generatedImageJsxNodes,
+          new Set(),
+        );
       }
     });
   }
@@ -330,7 +330,7 @@ export const isGeneratedImageRenderContext = (context: RuleContext, node?: EsTre
   const programRoot = findProgramRoot(node);
   if (!programRoot) return false;
 
-  const generatedImageJsxNodes = collectGeneratedImageJsxNodes(programRoot);
+  const generatedImageJsxNodes = collectGeneratedImageJsxNodes(programRoot, context.scopes);
   if (generatedImageJsxNodes.has(node)) return true;
   if (isNodeOfType(node, "JSXElement")) {
     return generatedImageJsxNodes.has(node.openingElement);

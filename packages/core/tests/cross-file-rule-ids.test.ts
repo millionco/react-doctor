@@ -139,6 +139,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "client-passive-event-listeners",
       "exhaustive-deps",
       "nextjs-missing-metadata",
+      "nextjs-no-img-element",
       "nextjs-no-use-search-params-without-suspense",
       "no-adjust-state-on-prop-change",
       "no-barrel-import",

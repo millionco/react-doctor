@@ -18,6 +18,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -112,6 +114,213 @@ const visitSynchronousFunctionBodies = (
   }
 };
 
+interface StaticEffectStateValue {
+  value: boolean | number | string | null | undefined;
+}
+
+interface EffectStateWriteInfo {
+  values: Set<boolean | number | string | null | undefined>;
+  hasUnknownValue: boolean;
+}
+
+const readStaticEffectValue = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  stateSymbolId: number | null,
+  stateValue: StaticEffectStateValue | null,
+  visitedSymbolIds: ReadonlySet<number> = new Set(),
+): StaticEffectStateValue | null => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (isNodeOfType(unwrappedExpression, "Literal")) {
+    const literalValue = unwrappedExpression.value;
+    if (
+      literalValue === null ||
+      typeof literalValue === "boolean" ||
+      typeof literalValue === "number" ||
+      typeof literalValue === "string"
+    ) {
+      return { value: literalValue };
+    }
+    return null;
+  }
+  if (isNodeOfType(unwrappedExpression, "Identifier")) {
+    const symbol = scopes.symbolFor(unwrappedExpression);
+    if (symbol?.id === stateSymbolId) return stateValue;
+    if (unwrappedExpression.name === "undefined" && scopes.isGlobalReference(unwrappedExpression)) {
+      return { value: undefined };
+    }
+    const immutableSymbol = scopes.symbolFor(unwrappedExpression);
+    if (
+      immutableSymbol?.kind !== "const" ||
+      !immutableSymbol.initializer ||
+      !isNodeOfType(immutableSymbol.declarationNode, "VariableDeclarator") ||
+      immutableSymbol.declarationNode.id !== immutableSymbol.bindingIdentifier ||
+      immutableSymbol.declarationNode.init !== immutableSymbol.initializer ||
+      immutableSymbol.references.some((reference) => reference.flag !== "read") ||
+      visitedSymbolIds.has(immutableSymbol.id)
+    ) {
+      return null;
+    }
+    return readStaticEffectValue(
+      immutableSymbol.initializer,
+      scopes,
+      stateSymbolId,
+      stateValue,
+      new Set(visitedSymbolIds).add(immutableSymbol.id),
+    );
+  }
+  if (isNodeOfType(unwrappedExpression, "UnaryExpression")) {
+    if (unwrappedExpression.operator === "void") return { value: undefined };
+    if (unwrappedExpression.operator !== "!") return null;
+    const argumentValue = readStaticEffectValue(
+      unwrappedExpression.argument,
+      scopes,
+      stateSymbolId,
+      stateValue,
+      visitedSymbolIds,
+    );
+    return argumentValue ? { value: !argumentValue.value } : null;
+  }
+  if (isNodeOfType(unwrappedExpression, "CallExpression")) {
+    if (
+      isNodeOfType(unwrappedExpression.callee, "Identifier") &&
+      unwrappedExpression.callee.name === "Boolean" &&
+      scopes.isGlobalReference(unwrappedExpression.callee) &&
+      unwrappedExpression.arguments.length === 1 &&
+      unwrappedExpression.arguments[0] &&
+      !isNodeOfType(unwrappedExpression.arguments[0], "SpreadElement")
+    ) {
+      const argumentValue = readStaticEffectValue(
+        unwrappedExpression.arguments[0],
+        scopes,
+        stateSymbolId,
+        stateValue,
+        visitedSymbolIds,
+      );
+      return argumentValue ? { value: Boolean(argumentValue.value) } : null;
+    }
+    return null;
+  }
+  if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
+    const leftValue = readStaticEffectValue(
+      unwrappedExpression.left,
+      scopes,
+      stateSymbolId,
+      stateValue,
+      visitedSymbolIds,
+    );
+    if (!leftValue) return null;
+    if (unwrappedExpression.operator === "&&" && !leftValue.value) return leftValue;
+    if (unwrappedExpression.operator === "||" && leftValue.value) return leftValue;
+    if (
+      unwrappedExpression.operator === "??" &&
+      leftValue.value !== null &&
+      leftValue.value !== undefined
+    ) {
+      return leftValue;
+    }
+    return readStaticEffectValue(
+      unwrappedExpression.right,
+      scopes,
+      stateSymbolId,
+      stateValue,
+      visitedSymbolIds,
+    );
+  }
+  if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
+    const testValue = readStaticEffectValue(
+      unwrappedExpression.test,
+      scopes,
+      stateSymbolId,
+      stateValue,
+      visitedSymbolIds,
+    );
+    if (!testValue) return null;
+    return readStaticEffectValue(
+      testValue.value ? unwrappedExpression.consequent : unwrappedExpression.alternate,
+      scopes,
+      stateSymbolId,
+      stateValue,
+      visitedSymbolIds,
+    );
+  }
+  if (isNodeOfType(unwrappedExpression, "MemberExpression") && unwrappedExpression.optional) {
+    const objectValue = readStaticEffectValue(
+      unwrappedExpression.object,
+      scopes,
+      stateSymbolId,
+      stateValue,
+      visitedSymbolIds,
+    );
+    if (objectValue?.value === null || objectValue?.value === undefined) {
+      return { value: undefined };
+    }
+    return null;
+  }
+  if (isNodeOfType(unwrappedExpression, "BinaryExpression")) {
+    const leftValue = readStaticEffectValue(
+      unwrappedExpression.left,
+      scopes,
+      stateSymbolId,
+      stateValue,
+      visitedSymbolIds,
+    );
+    const rightValue = readStaticEffectValue(
+      unwrappedExpression.right,
+      scopes,
+      stateSymbolId,
+      stateValue,
+      visitedSymbolIds,
+    );
+    if (!leftValue || !rightValue) return null;
+    if (unwrappedExpression.operator === "===" || unwrappedExpression.operator === "!==") {
+      const areEqual = leftValue.value === rightValue.value;
+      return { value: unwrappedExpression.operator === "===" ? areEqual : !areEqual };
+    }
+    if (unwrappedExpression.operator === "==" || unwrappedExpression.operator === "!=") {
+      const isLeftNullish = leftValue.value === null || leftValue.value === undefined;
+      const isRightNullish = rightValue.value === null || rightValue.value === undefined;
+      if (!isLeftNullish && !isRightNullish && typeof leftValue.value !== typeof rightValue.value) {
+        return null;
+      }
+      const areEqual =
+        isLeftNullish || isRightNullish
+          ? isLeftNullish && isRightNullish
+          : leftValue.value === rightValue.value;
+      return { value: unwrappedExpression.operator === "==" ? areEqual : !areEqual };
+    }
+  }
+  return null;
+};
+
+const readStaticUpdaterReturnValue = (
+  updater: EsTreeNode,
+  scopes: ScopeAnalysis,
+): StaticEffectStateValue | null => {
+  if (!isFunctionLike(updater) || updater.async || updater.generator) return null;
+  if (!isNodeOfType(updater.body, "BlockStatement")) {
+    return readStaticEffectValue(updater.body, scopes, null, null);
+  }
+  if (updater.body.body.length === 0) return { value: undefined };
+  if (updater.body.body.length !== 1) return null;
+  const returnStatement = updater.body.body[0];
+  if (!isNodeOfType(returnStatement, "ReturnStatement")) return null;
+  if (!returnStatement.argument) return { value: undefined };
+  return readStaticEffectValue(returnStatement.argument, scopes, null, null);
+};
+
+const readStaticSetterValue = (
+  setterCall: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): StaticEffectStateValue | null => {
+  const argument = setterCall.arguments[0];
+  if (!argument) return { value: undefined };
+  if (isNodeOfType(argument, "SpreadElement")) return null;
+  const updater = resolveExactLocalFunction(argument, scopes);
+  if (updater) return readStaticUpdaterReturnValue(updater, scopes);
+  return readStaticEffectValue(argument, scopes, null, null);
+};
+
 // HACK: only count setter calls that actually run during the effect's
 // synchronous body. A `setX` inside `setTimeout(() => setX(...))` or
 // `.then(() => setX(...))` is a DEFERRED write — by the time it fires,
@@ -119,18 +328,147 @@ const visitSynchronousFunctionBodies = (
 // only direct (non-nested-function) writes as chain triggers; that
 // stops `noEffectChain` from over-flagging the dominant debounce /
 // async-fetch shape that real codebases use.
-const collectWrittenStateNamesInEffect = (
+const collectStateWritesInEffect = (
   analysisFunctions: ReadonlySet<EsTreeNode>,
   setterToStateName: Map<string, string>,
-): Set<string> => {
-  const writtenStateNames = new Set<string>();
+  scopes: ScopeAnalysis,
+): Map<string, EffectStateWriteInfo> => {
+  const stateWrites = new Map<string, EffectStateWriteInfo>();
   visitSynchronousFunctionBodies(analysisFunctions, (child) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier")) return;
     const stateName = setterToStateName.get(child.callee.name);
-    if (stateName) writtenStateNames.add(stateName);
+    if (!stateName) return;
+    const writeInfo = stateWrites.get(stateName) ?? {
+      values: new Set<boolean | number | string | null | undefined>(),
+      hasUnknownValue: false,
+    };
+    const staticValue = readStaticSetterValue(child, scopes);
+    if (staticValue) writeInfo.values.add(staticValue.value);
+    else writeInfo.hasUnknownValue = true;
+    stateWrites.set(stateName, writeInfo);
   });
-  return writtenStateNames;
+  return stateWrites;
+};
+
+const isGlobalBooleanCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  return (
+    isNodeOfType(node, "CallExpression") &&
+    isNodeOfType(node.callee, "Identifier") &&
+    node.callee.name === "Boolean" &&
+    scopes.isGlobalReference(node.callee)
+  );
+};
+
+const isWorkNodeReachableForStateValue = (
+  workNode: EsTreeNode,
+  stateSymbolId: number,
+  stateValue: StaticEffectStateValue,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let currentNode = workNode;
+  while (currentNode.parent) {
+    const parentNode: EsTreeNode = currentNode.parent;
+    if (isFunctionLike(parentNode)) break;
+    if (isNodeOfType(parentNode, "IfStatement")) {
+      const testValue = readStaticEffectValue(parentNode.test, scopes, stateSymbolId, stateValue);
+      if (testValue) {
+        if (currentNode === parentNode.consequent && !testValue.value) return false;
+        if (currentNode === parentNode.alternate && testValue.value) return false;
+      }
+    }
+    if (isNodeOfType(parentNode, "ConditionalExpression")) {
+      const testValue = readStaticEffectValue(parentNode.test, scopes, stateSymbolId, stateValue);
+      if (testValue) {
+        if (currentNode === parentNode.consequent && !testValue.value) return false;
+        if (currentNode === parentNode.alternate && testValue.value) return false;
+      }
+    }
+    if (isNodeOfType(parentNode, "LogicalExpression") && currentNode === parentNode.right) {
+      const leftValue = readStaticEffectValue(parentNode.left, scopes, stateSymbolId, stateValue);
+      if (leftValue) {
+        if (parentNode.operator === "&&" && !leftValue.value) return false;
+        if (parentNode.operator === "||" && leftValue.value) return false;
+        if (
+          parentNode.operator === "??" &&
+          leftValue.value !== null &&
+          leftValue.value !== undefined
+        ) {
+          return false;
+        }
+      }
+    }
+    if (isNodeOfType(parentNode, "BlockStatement")) {
+      const statementIndex = parentNode.body.findIndex((statement) => statement === currentNode);
+      if (statementIndex >= 0) {
+        for (let index = 0; index < statementIndex; index += 1) {
+          const earlierStatement = parentNode.body[index];
+          if (
+            !isNodeOfType(earlierStatement, "IfStatement") ||
+            earlierStatement.alternate ||
+            !statementAlwaysExits(earlierStatement.consequent)
+          ) {
+            continue;
+          }
+          const testValue = readStaticEffectValue(
+            earlierStatement.test,
+            scopes,
+            stateSymbolId,
+            stateValue,
+          );
+          if (testValue?.value) return false;
+        }
+      }
+    }
+    currentNode = parentNode;
+  }
+  return true;
+};
+
+const isReaderWorkNode = (
+  node: EsTreeNode,
+  analysisFunctions: ReadonlySet<EsTreeNode>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (isNodeOfType(node, "CallExpression")) {
+    if (isGlobalBooleanCall(node, scopes)) return false;
+    const invokedFunction = resolveExactLocalFunction(node.callee, scopes);
+    return !invokedFunction || !analysisFunctions.has(invokedFunction);
+  }
+  return (
+    isNodeOfType(node, "AssignmentExpression") ||
+    isNodeOfType(node, "UpdateExpression") ||
+    isNodeOfType(node, "NewExpression") ||
+    isNodeOfType(node, "TaggedTemplateExpression") ||
+    isNodeOfType(node, "ThrowStatement") ||
+    (isNodeOfType(node, "UnaryExpression") && node.operator === "delete")
+  );
+};
+
+const canStateWriteReachReaderWork = (
+  writeInfo: EffectStateWriteInfo,
+  readerEffect: EffectInfo,
+  stateSymbolId: number | null,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (writeInfo.hasUnknownValue || stateSymbolId === null) return true;
+  for (const writtenValue of writeInfo.values) {
+    const stateValue = { value: writtenValue };
+    let didFindReachableWork = false;
+    visitSynchronousFunctionBodies(readerEffect.analysisFunctions, (child) => {
+      if (
+        didFindReachableWork ||
+        !isReaderWorkNode(child, readerEffect.analysisFunctions, scopes)
+      ) {
+        return;
+      }
+      if (isWorkNodeReachableForStateValue(child, stateSymbolId, stateValue, scopes)) {
+        didFindReachableWork = true;
+      }
+    });
+    if (didFindReachableWork) return true;
+  }
+  return false;
 };
 
 const EMPTY_CLEANUP_NAME_SET = new Set<string>();
@@ -335,7 +673,8 @@ const isExternalSyncEffect = (
 interface EffectInfo {
   node: EsTreeNode;
   depNames: Set<string>;
-  writtenStateNames: Set<string>;
+  stateWrites: Map<string, EffectStateWriteInfo>;
+  analysisFunctions: ReadonlySet<EsTreeNode>;
   isExternalSync: boolean;
 }
 
@@ -353,8 +692,15 @@ export const noEffectChain = defineRule({
       const useStateBindings = collectUseStateBindings(componentBody);
       if (useStateBindings.length === 0) return;
       const setterToStateName = new Map<string, string>();
+      const stateSymbolIds = new Map<string, number>();
       for (const binding of useStateBindings) {
         setterToStateName.set(binding.setterName, binding.valueName);
+        if (!isNodeOfType(binding.declarator.id, "ArrayPattern")) continue;
+        const stateIdentifier = binding.declarator.id.elements[0];
+        if (isNodeOfType(stateIdentifier, "Identifier")) {
+          const stateSymbol = context.scopes.symbolFor(stateIdentifier);
+          if (stateSymbol) stateSymbolIds.set(binding.valueName, stateSymbol.id);
+        }
       }
 
       const storageSetterNames = collectStorageHookSetterNames(componentBody);
@@ -364,14 +710,17 @@ export const noEffectChain = defineRule({
         const callback = getEffectCallback(effectCall, context.scopes);
         if (!callback || !isFunctionLike(callback) || callback.async) continue;
         const analysisFunctions = collectSynchronouslyInvokedFunctions(callback, context.scopes);
-        const writtenStateNames = collectWrittenStateNamesInEffect(
+        const stateWrites = collectStateWritesInEffect(
           analysisFunctions,
           setterToStateName,
+          context.scopes,
         );
+        const writtenStateNames = new Set(stateWrites.keys());
         effectInfos.push({
           node: effectCall,
           depNames: collectDepIdentifierNames(effectCall),
-          writtenStateNames,
+          stateWrites,
+          analysisFunctions,
           isExternalSync:
             isExternalSyncEffect(callback, analysisFunctions, setterToStateName) ||
             callsStorageHookSetter(analysisFunctions, storageSetterNames) ||
@@ -384,18 +733,27 @@ export const noEffectChain = defineRule({
       const reportedNodes = new Set<EsTreeNode>();
       for (const writerEffect of effectInfos) {
         if (writerEffect.isExternalSync) continue;
-        if (writerEffect.writtenStateNames.size === 0) continue;
+        if (writerEffect.stateWrites.size === 0) continue;
         for (const readerEffect of effectInfos) {
           if (readerEffect === writerEffect) continue;
           if (readerEffect.isExternalSync) continue;
           if (readerEffect.depNames.size === 0) continue;
 
           let chainedStateName: string | null = null;
-          for (const writtenName of writerEffect.writtenStateNames) {
-            if (readerEffect.depNames.has(writtenName)) {
-              chainedStateName = writtenName;
-              break;
+          for (const [writtenName, writeInfo] of writerEffect.stateWrites) {
+            if (!readerEffect.depNames.has(writtenName)) continue;
+            if (
+              !canStateWriteReachReaderWork(
+                writeInfo,
+                readerEffect,
+                stateSymbolIds.get(writtenName) ?? null,
+                context.scopes,
+              )
+            ) {
+              continue;
             }
+            chainedStateName = writtenName;
+            break;
           }
           if (!chainedStateName) continue;
           if (reportedNodes.has(readerEffect.node)) continue;

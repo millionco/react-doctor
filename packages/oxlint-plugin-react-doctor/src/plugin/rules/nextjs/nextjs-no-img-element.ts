@@ -2,11 +2,13 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
+import { createExportedJsxGeneratedImageOwnershipAnalyzer } from "../../utils/is-exported-jsx-owned-by-generated-image-renderers.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -166,11 +168,24 @@ export const nextjsNoImgElement = defineRule({
     "Use `next/image` so users get optimized formats, responsive srcsets, and lazy loading instead of oversized image downloads.",
   create: (context: RuleContext): RuleVisitors => {
     if (isGeneratedImageRenderContext(context)) return {};
+    const generatedImageOwnershipByFunction = new WeakMap<EsTreeNode, boolean>();
+    const isExportedJsxGeneratedImageOwned =
+      createExportedJsxGeneratedImageOwnershipAnalyzer(context);
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (resolveJsxElementType(node) !== "img") return;
         if (isGeneratedImageRenderContext(context, node)) return;
+
+        const enclosingFunction = findEnclosingFunction(node);
+        if (enclosingFunction) {
+          let isGeneratedImageOwned = generatedImageOwnershipByFunction.get(enclosingFunction);
+          if (isGeneratedImageOwned === undefined) {
+            isGeneratedImageOwned = isExportedJsxGeneratedImageOwned(node);
+            generatedImageOwnershipByFunction.set(enclosingFunction, isGeneratedImageOwned);
+          }
+          if (isGeneratedImageOwned) return;
+        }
 
         const programRoot = findProgramRoot(node);
         if (programRoot && hasEmailTemplateImport(programRoot)) return;

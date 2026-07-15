@@ -254,13 +254,14 @@ const isUncacheableOptionsMergeUtility = (node: EsTreeNodeOfType<"NewExpression"
   });
 };
 
-const isIntlNewExpression = (node: EsTreeNode): boolean => {
+const isIntlNewExpression = (node: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(node, "NewExpression")) return false;
   const callee = node.callee;
   if (
     isNodeOfType(callee, "MemberExpression") &&
     isNodeOfType(callee.object, "Identifier") &&
     callee.object.name === "Intl" &&
+    context.scopes.isGlobalReference(callee.object) &&
     isNodeOfType(callee.property, "Identifier") &&
     INTL_CLASSES.has(callee.property.name)
   ) {
@@ -278,7 +279,7 @@ export const jsHoistIntl = defineRule({
     "Move `new Intl.NumberFormat(...)` to the top of the file or wrap it in `useMemo`. Building one is slow, so don't redo it on every call",
   create: (context: RuleContext) => ({
     NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
-      if (!isIntlNewExpression(node)) return;
+      if (!isIntlNewExpression(node, context)) return;
       // Walk up: if any enclosing function is a function/arrow, this is in
       // a function body. Module-scope `new Intl.X()` is fine; we only flag
       // when wrapped in a function (likely called per render or per item).

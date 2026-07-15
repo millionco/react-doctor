@@ -532,6 +532,301 @@ describe("no-chain-state-updates — docs-validation FP wave", () => {
 });
 
 describe("no-chain-state-updates — dependency-to-setter causality", () => {
+  it("stays silent when a stable callback dependency only writes state", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useCallback, useEffect, useRef, useState } from "react";
+
+export const Settings = ({ apiKeys }) => {
+  const [serverKeys, setServerKeys] = useState(apiKeys);
+  const [localKeys, setLocalKeys] = useState(new Map());
+  const localKeysRef = useRef(localKeys);
+
+  const commitLocalKeys = useCallback((next) => {
+    localKeysRef.current = next;
+    setLocalKeys(next);
+  }, []);
+
+  useEffect(() => {
+    const nextServerKeys = apiKeys.map((key) => key);
+    setServerKeys(nextServerKeys);
+    if (localKeysRef.current.size > 0) {
+      commitLocalKeys(new Map());
+    }
+  }, [apiKeys, commitLocalKeys]);
+
+  return <output>{serverKeys.length + localKeys.size}</output>;
+};`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for the equivalent inline setter", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useEffect, useRef, useState } from "react";
+
+export const Settings = ({ apiKeys }) => {
+  const [serverKeys, setServerKeys] = useState(apiKeys);
+  const [localKeys, setLocalKeys] = useState(new Map());
+  const localKeysRef = useRef(localKeys);
+
+  useEffect(() => {
+    const nextServerKeys = apiKeys.map((key) => key);
+    setServerKeys(nextServerKeys);
+    if (localKeysRef.current.size > 0) {
+      const nextLocalKeys = new Map();
+      localKeysRef.current = nextLocalKeys;
+      setLocalKeys(nextLocalKeys);
+    }
+  }, [apiKeys]);
+
+  return <output>{serverKeys.length + localKeys.size}</output>;
+};`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports a distinct state update triggered by live state", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useEffect, useState } from "react";
+
+export const Search = () => {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("idle");
+
+  useEffect(() => {
+    if (query) setStatus("ready");
+  }, [query]);
+
+  return <button onClick={() => setQuery("next")}>{status}</button>;
+};`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports when a callback dependency changes with live state", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useCallback, useEffect, useState } from "react";
+
+export const Search = () => {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("idle");
+  const trackQuery = useCallback(() => query.length, [query]);
+
+  useEffect(() => {
+    trackQuery();
+    setStatus("ready");
+  }, [trackQuery]);
+
+  return <button onClick={() => setQuery("next")}>{status}</button>;
+};`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "a const alias of a stable callback",
+      source: `import { useCallback, useEffect, useRef, useState } from "react";
+      const Panel = ({ value }) => {
+        const [label, setLabel] = useState("");
+        const labelRef = useRef(label);
+        const commitLabel = useCallback((next) => { labelRef.current = next; setLabel(next); }, []);
+        const commitAlias = commitLabel;
+        useEffect(() => commitAlias(value), [commitAlias, value]);
+        return <output>{label}</output>;
+      };`,
+    },
+    {
+      name: "a multi-hop alias of a stable callback",
+      source: `import { useCallback, useEffect, useRef, useState } from "react";
+      const Panel = ({ value }) => {
+        const [label, setLabel] = useState("");
+        const labelRef = useRef(label);
+        const commitLabel = useCallback((next) => { labelRef.current = next; setLabel(next); }, []);
+        const firstAlias = commitLabel;
+        const secondAlias = firstAlias;
+        useEffect(() => secondAlias(value), [secondAlias, value]);
+        return <output>{label}</output>;
+      };`,
+    },
+    {
+      name: "a namespace useCallback dependency",
+      source: `import * as React from "react";
+      const Panel = ({ value }) => {
+        const [label, setLabel] = React.useState("");
+        const labelRef = React.useRef(label);
+        const commitLabel = React.useCallback((next) => { labelRef.current = next; setLabel(next); }, []);
+        React.useEffect(() => commitLabel(value), [commitLabel, value]);
+        return <output>{label}</output>;
+      };`,
+    },
+    {
+      name: "a renamed React useCallback dependency through a TypeScript wrapper",
+      source: `import { useCallback as useStableCallback, useEffect, useRef, useState } from "react";
+      const Panel = ({ value }) => {
+        const [label, setLabel] = useState("");
+        const labelRef = useRef(label);
+        const commitLabel = useStableCallback((next) => { labelRef.current = next; setLabel(next); }, []);
+        const wrappedCommit = commitLabel satisfies typeof commitLabel;
+        useEffect(() => wrappedCommit(value), [wrappedCommit, value]);
+        return <output>{label}</output>;
+      };`,
+    },
+    {
+      name: "a callback depending only on a stable state setter",
+      source: `import { useCallback, useEffect, useRef, useState } from "react";
+      const Panel = ({ value }) => {
+        const [label, setLabel] = useState("");
+        const labelRef = useRef(label);
+        const commitLabel = useCallback((next) => { labelRef.current = next; setLabel(next); }, [setLabel]);
+        useEffect(() => commitLabel(value), [commitLabel, value]);
+        return <output>{label}</output>;
+      };`,
+    },
+    {
+      name: "an opaque imported helper dependency",
+      source: `import { commitLabel } from "./label-store";
+      const Panel = ({ value }) => {
+        const [label] = useState("");
+        useEffect(() => commitLabel(value), [commitLabel, value]);
+        return <output>{label}</output>;
+      };`,
+    },
+  ])("stays silent for $name", ({ source }) => {
+    const result = runRule(noChainStateUpdates, source, { forceJsx: true });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports a direct state dependency alongside a setter-only callback", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Panel = () => {
+        const [query, setQuery] = useState("");
+        const [status, setStatus] = useState("idle");
+        const persistStatus = useCallback((next) => saveStatus(next), []);
+        useEffect(() => {
+          persistStatus(query);
+          setStatus("ready");
+        }, [query, persistStatus]);
+        return <button onClick={() => setQuery("next")}>{status}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "a local function dependency with fresh identity",
+      source: `const Panel = ({ value }) => {
+        const [serverValue, setServerValue] = useState(value);
+        const [label, setLabel] = useState("");
+        const labelRef = useRef(label);
+        const commitLabel = (next) => { labelRef.current = next; setLabel(next); };
+        useEffect(() => { setServerValue(value); commitLabel(value); }, [commitLabel, value]);
+        return <output>{serverValue}:{label}</output>;
+      };`,
+    },
+    {
+      name: "a reassigned callback dependency",
+      source: `const Panel = ({ value, replacement }) => {
+        const [serverValue, setServerValue] = useState(value);
+        const [label, setLabel] = useState("");
+        const labelRef = useRef(label);
+        const stableCommit = useCallback((next) => { labelRef.current = next; setLabel(next); }, []);
+        let commitLabel = stableCommit;
+        commitLabel = replacement ?? commitLabel;
+        useEffect(() => { setServerValue(value); commitLabel(value); }, [commitLabel, value]);
+        return <output>{serverValue}:{label}</output>;
+      };`,
+    },
+    {
+      name: "React useCallback with a missing dependency list",
+      source: `import { useCallback, useEffect, useRef, useState } from "react";
+      const Panel = ({ value }) => {
+        const [serverValue, setServerValue] = useState(value);
+        const [label, setLabel] = useState("");
+        const labelRef = useRef(label);
+        const commitLabel = useCallback((next) => { labelRef.current = next; setLabel(next); });
+        useEffect(() => { setServerValue(value); commitLabel(value); }, [commitLabel, value]);
+        return <output>{serverValue}:{label}</output>;
+      };`,
+    },
+    {
+      name: "React useCallback with a dynamic dependency list",
+      source: `import { useCallback, useEffect, useRef, useState } from "react";
+      const Panel = ({ value, dependencies }) => {
+        const [serverValue, setServerValue] = useState(value);
+        const [label, setLabel] = useState("");
+        const labelRef = useRef(label);
+        const commitLabel = useCallback((next) => { labelRef.current = next; setLabel(next); }, dependencies);
+        useEffect(() => { setServerValue(value); commitLabel(value); }, [commitLabel, value]);
+        return <output>{serverValue}:{label}</output>;
+      };`,
+    },
+    {
+      name: "a custom memoizer whose dependency list reads state",
+      source: `const Panel = () => {
+        const [query, setQuery] = useState("");
+        const [status, setStatus] = useState("idle");
+        const trackQuery = customMemo(() => query.length, [query]);
+        useEffect(() => { trackQuery(); setStatus("ready"); }, [trackQuery]);
+        return <button onClick={() => setQuery("next")}>{status}</button>;
+      };`,
+    },
+    {
+      name: "an object-property callback dependency with unknown ownership",
+      source: `const Panel = ({ value }) => {
+        const [serverValue, setServerValue] = useState(value);
+        const [label, setLabel] = useState("");
+        const labelRef = useRef(label);
+        const commitLabel = useCallback((next) => { labelRef.current = next; setLabel(next); }, []);
+        const callbacks = { commitLabel };
+        useEffect(() => { setServerValue(value); callbacks.commitLabel(value); }, [callbacks.commitLabel, value]);
+        return <output>{serverValue}:{label}</output>;
+      };`,
+    },
+  ])("keeps the conservative finding for $name", ({ source }) => {
+    const result = runRule(noChainStateUpdates, source, { forceJsx: true });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps callback identity state when the callback body also writes state", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useCallback, useEffect, useState } from "react";
+      const Panel = () => {
+        const [query, setQuery] = useState("");
+        const [status, setStatus] = useState("idle");
+        const [phase, setPhase] = useState("idle");
+        const updateStatus = useCallback(() => setStatus("ready"), [query]);
+        useEffect(() => {
+          updateStatus();
+          setPhase("synced");
+        }, [updateStatus]);
+        return <button onClick={() => setQuery("next")}>{status}:{phase}</button>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when state-only reruns cannot pass prop snapshot guards", () => {
     const result = runRule(
       noChainStateUpdates,

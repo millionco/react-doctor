@@ -466,12 +466,13 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
 
 /**
  * Cross-file rules whose dependency set CANNOT be soundly bounded — they are
- * excluded from fingerprinting and re-lint every file on every scan. Empty
- * today; a new cross-file rule must be added either here or to
+ * excluded from fingerprinting and re-lint every file on every scan. A new
+ * cross-file rule must be added either here or to
  * `CROSS_FILE_DEPENDENCY_COLLECTORS` (the core guard test enforces the
  * partition), forcing a conscious classification.
  */
 export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
+  "nextjs-no-img-element",
   "only-export-components",
 ]);
 

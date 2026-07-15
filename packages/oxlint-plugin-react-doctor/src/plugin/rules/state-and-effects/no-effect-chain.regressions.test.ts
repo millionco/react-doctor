@@ -3,6 +3,25 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noEffectChain } from "./no-effect-chain.js";
 
 describe("no-effect-chain — regressions", () => {
+  it("stays silent when a clear-only effect cannot satisfy the downstream truthy guard", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ErrorDialog({ isOpen }) {
+        const [error, setError] = useState(null);
+        const [announcement, setAnnouncement] = useState('ready');
+        useEffect(() => {
+          if (!isOpen) setError(null);
+        }, [isOpen]);
+        useEffect(() => {
+          if (error) setAnnouncement(error.message);
+        }, [error]);
+        return announcement;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when an effect callback is received as a custom-hook parameter", () => {
     const result = runRule(
       noEffectChain,

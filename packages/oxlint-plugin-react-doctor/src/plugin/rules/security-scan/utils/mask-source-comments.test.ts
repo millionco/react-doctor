@@ -21,6 +21,16 @@ const template = \`/* import.meta.env.SESSION_SECRET */\`;`;
     expect(maskSourceComments("client.ts", content)).toBe(content);
   });
 
+  it("masks hashbang text while preserving executable source", () => {
+    const content = `#!/usr/bin/env -S node process.env.DATABASE_URL
+export const databaseUrl = process.env.DATABASE_URL;`;
+    const maskedContent = maskSourceComments("client.ts", content);
+
+    expect(maskedContent).toHaveLength(content.length);
+    expect(maskedContent).not.toContain("#!/usr/bin/env");
+    expect(maskedContent).toContain("export const databaseUrl = process.env.DATABASE_URL;");
+  });
+
   it("returns non-source artifacts unchanged", () => {
     const content = `{"source":"/* process.env.DATABASE_URL */"}`;
     expect(maskSourceComments("client.js.map", content)).toBe(content);

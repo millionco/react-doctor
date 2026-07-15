@@ -11,14 +11,19 @@ export const maskSourceComments = (relativePath: string, content: string): strin
       lang: resolveLang(relativePath),
     });
     if (result.errors.some((parseError) => parseError.severity === "Error")) return content;
-    if (result.comments.length === 0) return content;
+    const ignoredRanges = result.program.hashbang
+      ? [result.program.hashbang, ...result.comments]
+      : result.comments;
+    if (ignoredRanges.length === 0) return content;
 
     const contentParts: string[] = [];
     let previousEnd = 0;
-    for (const comment of result.comments) {
-      contentParts.push(content.slice(previousEnd, comment.start));
-      contentParts.push(content.slice(comment.start, comment.end).replace(/[^\r\n]/g, " "));
-      previousEnd = comment.end;
+    for (const ignoredRange of ignoredRanges) {
+      contentParts.push(content.slice(previousEnd, ignoredRange.start));
+      contentParts.push(
+        content.slice(ignoredRange.start, ignoredRange.end).replace(/[^\r\n]/g, " "),
+      );
+      previousEnd = ignoredRange.end;
     }
     contentParts.push(content.slice(previousEnd));
     return contentParts.join("");

@@ -26,7 +26,7 @@ describe("security-scan/artifact-env-leak — regressions", () => {
       relativePath: "src/generated/prisma/internal/class.ts",
       content: `/**
  * ## Example
- * 
+ *
  * \`\`\`ts
  * const prisma = new PrismaClient({
  *   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL })
@@ -105,5 +105,15 @@ export const environmentName = "DATABASE_URL";`,
       isGeneratedBundle: true,
     });
     expect(findings).toHaveLength(1);
+  });
+
+  it("ignores env access that exists only in a hashbang", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/generated/client.js",
+      content: `#!/usr/bin/env -S node process.env.DATABASE_URL
+export const client = {};`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(0);
   });
 });

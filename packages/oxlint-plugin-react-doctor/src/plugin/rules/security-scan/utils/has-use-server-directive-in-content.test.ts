@@ -15,9 +15,7 @@ describe("security-scan/utils/has-use-server-directive-in-content", () => {
   });
 
   it("detects 'use server' after blank lines", () => {
-    expect(hasUseServerDirectiveInContent('\n\n"use server";\n\nexport const foo = 1;')).toBe(
-      true,
-    );
+    expect(hasUseServerDirectiveInContent('\n\n"use server";\n\nexport const foo = 1;')).toBe(true);
   });
 
   it("does not detect 'use server' in the middle of the file", () => {
@@ -27,13 +25,11 @@ describe("security-scan/utils/has-use-server-directive-in-content", () => {
   });
 
   it("does not detect 'use server' in comments", () => {
-    expect(hasUseServerDirectiveInContent('// "use server";\n\nexport const foo = 1;')).toBe(
-      false,
-    );
+    expect(hasUseServerDirectiveInContent('// "use server";\n\nexport const foo = 1;')).toBe(false);
   });
 
   it("does not detect files without 'use server'", () => {
-    expect(hasUseServerDirectiveInContent('export const foo = 1;')).toBe(false);
+    expect(hasUseServerDirectiveInContent("export const foo = 1;")).toBe(false);
   });
 
   it("does not detect 'use client' as 'use server'", () => {

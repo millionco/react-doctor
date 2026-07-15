@@ -136,7 +136,10 @@ export const isProvenFramerMotionJsxElement = (
   scopes: ScopeAnalysis,
 ): boolean => {
   const elementName = openingElement.name;
-  if (isNodeOfType(elementName, "JSXIdentifier")) return isMotionComponent(elementName, scopes);
+  if (isNodeOfType(elementName, "JSXIdentifier")) {
+    if (/^[a-z]/.test(elementName.name)) return false;
+    return isMotionComponent(elementName, scopes);
+  }
   const memberParts = getMemberParts(elementName);
   return Boolean(memberParts && isMotionFactory(memberParts[0], scopes, new Set()));
 };

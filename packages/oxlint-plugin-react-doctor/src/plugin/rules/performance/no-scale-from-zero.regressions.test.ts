@@ -110,6 +110,23 @@ describe("performance/no-scale-from-zero — regressions", () => {
     expect(result.diagnostics).toHaveLength(4);
   });
 
+  it("keeps lowercase JSX tags intrinsic despite colliding tag-namespace imports", () => {
+    const result = run(`
+      import { div, span as section, article as MotionArticle } from "framer-motion/m";
+
+      export const Examples = () => (
+        <>
+          <div initial={{ scale: 0 }} />
+          <section exit={{ scale: 0 }} />
+          <MotionArticle initial={{ scale: 0 }} />
+        </>
+      );
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat animation-only mini entrypoints as tag namespaces", () => {
     const result = run(`
       import * as FramerMini from "framer-motion/mini";

@@ -105,6 +105,7 @@ export const STATE_SNIPPET_POOL = [
   `const id = useId();`,
   `const deferredValue = useDeferredValue(state);`,
   `const [isPending, startTransition] = useTransition();`,
+  `const subscribeHydrationSnapshot = () => () => {}; const useServerReady = () => useSyncExternalStore(subscribeHydrationSnapshot, () => true, () => false); const serverReady = useServerReady(); const hydratedDocumentTitle = serverReady && document.title;`,
   `const [counterState, dispatchCounter] = useReducer((state, action) => { state.count += 1; return state; }, { count: 0 });`,
   `const [persistedCount, setPersistedCount] = useState(0); const incrementPersistedCount = () => setPersistedCount((previousCount) => { localStorage.setItem("count", String(previousCount + 1)); return previousCount + 1; });`,
   `const [parsedItems, setParsedItems] = useState(parseItems(value));`,

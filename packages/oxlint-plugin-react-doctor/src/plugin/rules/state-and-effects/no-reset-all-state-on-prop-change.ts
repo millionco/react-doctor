@@ -6,11 +6,14 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { getRangeStart } from "../../utils/get-range-start.js";
 import { hasEnclosingTypeParameterNamed } from "../../utils/has-enclosing-type-parameter-named.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -799,6 +802,76 @@ const countUseStates = (analysis: ProgramAnalysis, componentNode: EsTreeNode | n
   return stateVariables.size;
 };
 
+const hasUnconditionalAwaitBefore = (
+  functionNode: EsTreeNode,
+  boundaryNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const boundaryStart = getRangeStart(boundaryNode);
+  if (boundaryStart === null) return false;
+  let didFindAwait = false;
+  walkAst(functionNode, (child) => {
+    if (didFindAwait) return false;
+    if (child !== functionNode && isFunctionLike(child)) return false;
+    if (
+      !isNodeOfType(child, "AwaitExpression") ||
+      !isNodeReachableWithinFunction(child, context) ||
+      !context.cfg.isUnconditionalFromEntry(child)
+    ) {
+      return;
+    }
+    const awaitStart = getRangeStart(child);
+    if (awaitStart !== null && awaitStart < boundaryStart) {
+      didFindAwait = true;
+      return false;
+    }
+  });
+  return didFindAwait;
+};
+
+const helperReloadsSetterAfterAwait = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  helperFunction: EsTreeNode,
+  setterReference: Reference,
+): boolean =>
+  getDownstreamRefs(analysis, helperFunction).some((helperReference) => {
+    if (!setterReference.resolved || helperReference.resolved !== setterReference.resolved) {
+      return false;
+    }
+    const helperSetterCall = getCallExpr(helperReference);
+    return Boolean(
+      helperSetterCall &&
+      findEnclosingFunction(helperSetterCall) === helperFunction &&
+      isNodeReachableWithinFunction(helperSetterCall, context) &&
+      hasUnconditionalAwaitBefore(helperFunction, helperSetterCall, context),
+    );
+  });
+
+const effectInvokesAsyncSetterReloadHelper = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  effectReferences: ReadonlyArray<Reference>,
+  effectFunction: EsTreeNode,
+  setterReference: Reference,
+): boolean =>
+  effectReferences.some((effectReference) => {
+    const helperCall = getCallExpr(effectReference);
+    if (
+      !isNodeOfType(helperCall, "CallExpression") ||
+      findEnclosingFunction(helperCall) !== effectFunction ||
+      !isNodeReachableWithinFunction(helperCall, context)
+    ) {
+      return false;
+    }
+    const helperFunction = resolveExactLocalFunction(helperCall.callee, context.scopes);
+    return Boolean(
+      helperFunction &&
+      helperFunction !== effectFunction &&
+      helperReloadsSetterAfterAwait(analysis, context, helperFunction, setterReference),
+    );
+  });
+
 const getStateSymbolForSetter = (
   analysis: ProgramAnalysis,
   context: RuleContext,
@@ -1179,14 +1252,16 @@ const findPropUsedToResetAllState = (
   // state is set again from an async continuation inside this effect (the
   // real value arrives later; cleanup cancels stale requests) — freecut
   // inline-source-preview / inline-composition-preview in the delta audit.
-  const isEveryResetReloadedAsync = stateSetterRefs.every((setterRef) =>
-    effectFnRefs.some(
-      (otherRef) =>
-        otherRef !== setterRef &&
-        otherRef.resolved === setterRef.resolved &&
-        Boolean(getCallExpr(otherRef)) &&
-        !isSyncStateSetterCall(analysis, otherRef, effectFn),
-    ),
+  const isEveryResetReloadedAsync = stateSetterRefs.every(
+    (setterRef) =>
+      effectFnRefs.some(
+        (otherRef) =>
+          otherRef !== setterRef &&
+          otherRef.resolved === setterRef.resolved &&
+          Boolean(getCallExpr(otherRef)) &&
+          !isSyncStateSetterCall(analysis, otherRef, effectFn),
+      ) ||
+      effectInvokesAsyncSetterReloadHelper(analysis, context, effectFnRefs, effectFn, setterRef),
   );
   if (isEveryResetReloadedAsync) return null;
 

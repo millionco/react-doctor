@@ -1,5 +1,6 @@
 import { parseSync } from "oxc-parser";
 import type { StaticImport } from "oxc-parser";
+import { analyzeScopes } from "./semantic/scope-analysis.js";
 import {
   INTERNAL_PAGE_PATH_PATTERN,
   PAGE_FILE_PATTERN,
@@ -10,10 +11,13 @@ import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
+import { attachParentReferences } from "./utils/attach-parent-references.js";
 import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout.js";
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
 import { isBarrelIndexModule } from "./utils/is-barrel-index-module.js";
 import { isLegacyArchReactNativeFile } from "./utils/is-legacy-arch-react-native-file.js";
+import { isNodeOfType } from "./utils/is-node-of-type.js";
+import { isReactApiCall } from "./utils/is-react-api-call.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
 import { resolveLang } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
@@ -24,6 +28,7 @@ import {
 import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
+import { isCreateRefResultWriteOnly } from "./rules/react-builtins/is-create-ref-result-write-only.js";
 
 /**
  * Per-rule cross-file dependency collectors — the foundation of the sidecar
@@ -242,6 +247,27 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
   }
 };
 
+const collectCreateRefDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  program,
+}) => {
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (
+      !isNodeOfType(node, "CallExpression") ||
+      !isReactApiCall(node, "createRef", scopes, {
+        allowGlobalReactNamespace: true,
+        allowUnboundBareCalls: true,
+        resolveNamedAliases: true,
+      })
+    ) {
+      return;
+    }
+    isCreateRefResultWriteOnly(node, absoluteFilePath, scopes);
+  });
+};
+
 // no-mutating-reducer-state only reads another file when a `useReducer`
 // call's reducer argument resolves to an imported binding, and the call must
 // be wired to a react import: either a named `useReducer` import (any alias —
@@ -420,6 +446,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-indeterminate-attribute", collectNearestManifestDependencies],
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
+    ["no-create-ref-in-function-component", collectCreateRefDependencies],
     ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],

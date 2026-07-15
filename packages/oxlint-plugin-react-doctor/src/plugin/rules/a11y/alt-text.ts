@@ -8,6 +8,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
+import { isLocalTestScaffoldJsx } from "../../utils/is-local-test-scaffold-jsx.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { objectHasAccessibleChild } from "../../utils/object-has-accessible-child.js";
 import type { Rule } from "../../utils/rule.js";
@@ -227,6 +228,7 @@ export const altText = defineRule({
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (isLocalTestScaffoldJsx(node, context)) return;
         if (!fileHasJsxA11ySettings && isNodeOfType(node.name, "JSXIdentifier")) {
           const rawName = node.name.name;
           if (

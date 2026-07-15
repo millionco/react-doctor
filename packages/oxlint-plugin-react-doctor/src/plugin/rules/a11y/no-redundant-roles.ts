@@ -5,6 +5,7 @@ import { getElementType } from "../../utils/get-element-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { isLocalTestScaffoldJsx } from "../../utils/is-local-test-scaffold-jsx.js";
 import { getElementImplicitRoles } from "../../constants/aria-element-roles.js";
 import { getImplicitRole } from "../../utils/get-implicit-role.js";
 
@@ -113,6 +114,7 @@ export const noRedundantRoles = defineRule({
     const settings = resolveSettings(context.settings);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (isLocalTestScaffoldJsx(node, context)) return;
         const roleAttr = hasJsxPropIgnoreCase(node.attributes, "role");
         if (!roleAttr) return;
         // react-aria's table pattern (marked by `data-rac`) re-applies

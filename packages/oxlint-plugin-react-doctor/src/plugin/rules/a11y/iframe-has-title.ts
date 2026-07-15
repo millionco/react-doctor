@@ -10,6 +10,7 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
+import { isLocalTestScaffoldJsx } from "../../utils/is-local-test-scaffold-jsx.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { parseJsxValue } from "../../utils/parse-jsx-value.js";
 
@@ -164,6 +165,7 @@ export const iframeHasTitle = defineRule({
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+      if (isLocalTestScaffoldJsx(node, context)) return;
       const tag = getElementType(node, context.settings);
       if (tag !== "iframe") return;
       if (isInsideStaticallyHiddenJsxSubtree(node, context.scopes)) return;

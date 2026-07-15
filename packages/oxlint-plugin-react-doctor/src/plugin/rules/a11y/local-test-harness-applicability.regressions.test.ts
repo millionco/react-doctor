@@ -122,4 +122,205 @@ describe("local unit-test harness accessibility applicability", () => {
       expect(result.diagnostics).toHaveLength(1);
     },
   );
+
+  it("stays silent for an aliased Vitest mock factory", () => {
+    const result = runRule(
+      altText,
+      `import { vi as testRuntime } from "vitest";
+      testRuntime.mock("image", (() => ({ default: () => <img src="/fixture.png" /> })) as () => object);`,
+      { filename: "/repo/src/image.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a Jest mock factory with a computed method", () => {
+    const result = runRule(
+      altText,
+      `jest["mock"]("image", () => ({ default: () => <img src="/fixture.png" /> }));`,
+      { filename: "/repo/src/image.spec.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for an inline fixture in an aliased imported test callback", () => {
+    const result = runRule(
+      altText,
+      `import { test as verify } from "vitest";
+      import { ProductComponent as Subject } from "../product-component";
+      verify.only("forwards media", () => {
+        render(<Subject media={<img src="/fixture.png" />} />);
+      });`,
+      { filename: "/repo/src/fixture.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports when vi is a shadowed userland object", () => {
+    const result = runRule(
+      altText,
+      `const vi = { mock: (_name, factory) => factory() };
+      vi.mock("image", () => ({ default: () => <img src="/subject.png" /> }));`,
+      { filename: "/repo/src/image.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a mock factory reached through an imported userland object", () => {
+    const result = runRule(
+      altText,
+      `import { vi } from "./test-runtime";
+      vi.mock("image", () => ({ default: () => <img src="/subject.png" /> }));`,
+      { filename: "/repo/src/image.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a mock factory with a dynamic module specifier", () => {
+    const result = runRule(
+      altText,
+      `const moduleName = "image";
+      vi.mock(moduleName, () => ({ default: () => <img src="/subject.png" /> }));`,
+      { filename: "/repo/src/image.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports when test is a shadowed userland function", () => {
+    const result = runRule(
+      altText,
+      `import { ProductComponent } from "../product-component";
+      const test = (_name, callback) => callback();
+      test("renders product", () => {
+        render(<ProductComponent media={<img src="/subject.png" />} />);
+      });`,
+      { filename: "/repo/src/product-component.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports direct component-under-test JSX inside a test callback", () => {
+    const result = runRule(
+      altText,
+      `test("renders the subject", () => {
+        render(<img src="/subject.png" />);
+        expect(screen.getByRole("img")).toBeVisible();
+      });`,
+      { filename: "/repo/src/subject.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports direct fixture JSX nested under React Fragment", () => {
+    const result = runRule(
+      altText,
+      `import { Fragment } from "react";
+      test("renders the subject", () => {
+        render(<Fragment><img src="/subject.png" /></Fragment>);
+      });`,
+      { filename: "/repo/src/subject.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports fixture JSX nested under a test-library import", () => {
+    const result = runRule(
+      altText,
+      `import { RenderHarness } from "@testing-library/react";
+      test("renders the subject", () => {
+        render(<RenderHarness fixture={<img src="/subject.png" />} />);
+      });`,
+      { filename: "/repo/src/subject.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a local wrapper component under test", () => {
+    const result = runRule(
+      altText,
+      `import { ProductComponent } from "../product-component";
+      const Subject = () => <ProductComponent media={<img src="/subject.png" />} />;
+      test("renders the subject", () => {
+        render(<Subject />);
+        expect(screen.getByRole("img")).toBeVisible();
+      });`,
+      { filename: "/repo/src/subject.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports an exported component declared in a test file", () => {
+    const result = runRule(altText, `export const Subject = () => <img src="/subject.png" />;`, {
+      filename: "/repo/src/subject.test.tsx",
+    });
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a deferred JSX callback passed to an imported component", () => {
+    const result = runRule(
+      altText,
+      `import { ProductComponent } from "../product-component";
+      test("renders product", () => {
+        render(<ProductComponent renderMedia={() => <img src="/subject.png" />} />);
+      });`,
+      { filename: "/repo/src/product-component.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports an inline fixture passed to a shadowed imported component", () => {
+    const result = runRule(
+      altText,
+      `import { ProductComponent } from "../product-component";
+      test("renders product", () => {
+        const ProductComponent = ({ media }) => media;
+        render(<ProductComponent media={<img src="/subject.png" />} />);
+      });`,
+      { filename: "/repo/src/product-component.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "/repo/src/product-component.stories.tsx",
+    "/repo/src/demo/product-component.tsx",
+    "/repo/src/examples/product-component.tsx",
+  ])("still reports a visual surface at %s", (filename) => {
+    const result = runRule(
+      altText,
+      `import { ProductComponent } from "../product-component";
+      export const Example = () => <ProductComponent media={<img src="/subject.png" />} />;`,
+      { filename },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

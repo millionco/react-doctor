@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { hasJsxProp } from "../../utils/has-jsx-prop.js";
+import { isLocalTestScaffoldJsx } from "../../utils/is-local-test-scaffold-jsx.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const buildMissingFocusMessage = (handler: string): string =>
@@ -52,6 +53,7 @@ export const mouseEventsHaveKeyEvents = defineRule({
     const settings = resolveSettings(context.settings);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (isLocalTestScaffoldJsx(node, context)) return;
         const tag = getElementType(node, context.settings);
         if (!HTML_TAGS.has(tag)) return;
 

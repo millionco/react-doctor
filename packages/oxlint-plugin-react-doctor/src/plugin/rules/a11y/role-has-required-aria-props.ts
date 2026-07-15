@@ -5,6 +5,7 @@ import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { isLocalTestScaffoldJsx } from "../../utils/is-local-test-scaffold-jsx.js";
 
 const buildMessage = (role: string, missingProps: ReadonlyArray<string>): string =>
   `Screen reader users can't tell the state of this \`${role}\` without its required ARIA props, so add \`${missingProps.join(
@@ -78,6 +79,7 @@ export const roleHasRequiredAriaProps = defineRule({
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+      if (isLocalTestScaffoldJsx(node, context)) return;
       const elementType = getElementType(node, context.settings);
       if (!HTML_TAGS.has(elementType)) return;
       const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");

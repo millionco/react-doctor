@@ -753,3 +753,129 @@ describe("rerender-state-only-in-handlers — verified FP regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+describe("rerender-state-only-in-handlers — external location invalidation", () => {
+  it("stays silent when state reconciles a rendered location snapshot after pushState", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `function LocationFilter() {
+        const [refreshCounter, setRefreshCounter] = useState(0);
+        const isSelected = new URLSearchParams(window.location.search).has("selected");
+        const toggle = () => {
+          const next = new URLSearchParams(window.location.search);
+          if (next.has("selected")) next.delete("selected");
+          else next.set("selected", "yes");
+          window.history.pushState({}, "", \`?\${next}\`);
+          setRefreshCounter((previous) => previous + 1);
+        };
+        return <button aria-pressed={isSelected} onClick={toggle}>Toggle</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on the authentic updater and render-helper shape", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `function EditorialHealthPanel() {
+        const [searchParams, setSearchParams] = useState(
+          () => new URLSearchParams(window.location.search),
+        );
+        const filterSet = (parameter) => new Set(
+          (new URLSearchParams(window.location.search).get(parameter) || "").split(","),
+        );
+        const toggleFilter = (parameter, token) => {
+          setSearchParams((previous) => {
+            const next = new URLSearchParams(previous);
+            if (next.has(parameter)) next.delete(parameter);
+            else next.set(parameter, token);
+            window.history.pushState({}, "", \`?\${next}\`);
+            return next;
+          });
+        };
+        const renderRow = (token) => {
+          const isActive = filterSet("filter").has(token);
+          return <button aria-pressed={isActive} onClick={() => toggleFilter("filter", token)}>{token}</button>;
+        };
+        return <div>{["open", "closed"].map(renderRow)}</div>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a popstate listener reconciles a rendered location snapshot", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `function LocationStatus() {
+        const [revision, setRevision] = useState(0);
+        useEffect(() => {
+          const onPopState = () => setRevision((previous) => previous + 1);
+          window.addEventListener("popstate", onPopState);
+          return () => window.removeEventListener("popstate", onPopState);
+        }, []);
+        return <output>{window.location.pathname}</output>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags unrelated write-only state beside a location invalidator", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `function LocationToolbar() {
+        const [revision, setRevision] = useState(0);
+        const [logged, setLogged] = useState(false);
+        const activePath = window.location.pathname;
+        const navigate = () => {
+          window.history.pushState({}, "", "/next");
+          setRevision((previous) => previous + 1);
+        };
+        return <div><button onClick={navigate}>{activePath}</button><button onClick={() => setLogged(true)}>Log</button></div>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("logged");
+  });
+
+  it.each([
+    {
+      name: "the location read is confined to the event handler",
+      source: `function HandlerOnlyLocationRead() {
+        const [logged, setLogged] = useState(false);
+        const handleClick = () => {
+          window.history.pushState({}, "", window.location.pathname);
+          setLogged(true);
+        };
+        return <button onClick={handleClick}>Log</button>;
+      }`,
+    },
+    {
+      name: "the location objects are shadowed userland values",
+      source: `function ShadowedLocation({ window }) {
+        const [logged, setLogged] = useState(false);
+        const currentPath = window.location.pathname;
+        const handleClick = () => {
+          window.history.pushState({}, "", "/next");
+          setLogged(true);
+        };
+        return <button onClick={handleClick}>{currentPath}</button>;
+      }`,
+    },
+    {
+      name: "the setter is unrelated to the rendered location snapshot",
+      source: `function UnrelatedSetter() {
+        const [logged, setLogged] = useState(false);
+        return <button onClick={() => setLogged(true)}>{window.location.pathname}</button>;
+      }`,
+    },
+  ])("still flags write-only state when $name", ({ source }) => {
+    const result = runRule(rerenderStateOnlyInHandlers, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("logged");
+  });
+});

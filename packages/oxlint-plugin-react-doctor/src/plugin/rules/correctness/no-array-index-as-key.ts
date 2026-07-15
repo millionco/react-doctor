@@ -132,6 +132,15 @@ const readStaticKeyBranchValue = (
       return null;
     }
     if (!isConstDeclaredBinding(binding) || !binding.initializer) return null;
+    const declarator = binding.bindingIdentifier.parent;
+    if (
+      !declarator ||
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      declarator.id !== binding.bindingIdentifier ||
+      declarator.init !== binding.initializer
+    ) {
+      return null;
+    }
     return readStaticKeyBranchValue(binding.initializer, depth + 1);
   }
   if (isNodeOfType(node, "CallExpression") && isNodeOfType(node.callee, "Identifier")) {
@@ -285,6 +294,7 @@ const extractCandidateIdentifiers = (
     if (
       isNodeOfType(node.callee, "Identifier") &&
       STRING_COERCION_FUNCTIONS.has(node.callee.name) &&
+      !findVariableInitializer(node.callee, node.callee.name) &&
       node.arguments?.[0]
     ) {
       return extractCandidateIdentifiers(node.arguments[0], depth + 1);

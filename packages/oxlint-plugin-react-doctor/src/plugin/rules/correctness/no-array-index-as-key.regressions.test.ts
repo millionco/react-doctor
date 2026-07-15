@@ -163,6 +163,19 @@ const Rows = ({ rows }: { rows: RowData[] }) => rows.map((row, index) => (
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("keeps a destructuring default dynamic when the source can supply the index branch", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => {
+  const { useIndex = false } = row;
+  return <Row key={useIndex ? index : row.id} row={row} />;
+});
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("stays silent when every reachable branch is stable", () => {
       const stableFallbackResult = runRule(
         noArrayIndexAsKey,
@@ -295,6 +308,19 @@ const Rows = ({ rows }) => rows.map((row, index) => (
       );
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("does not treat a shadowed String call as a coercion of its argument", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const String = () => "stable";
+const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={String(row.id ?? index)} position={index} row={row} />
+));
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
     });
   });
 

@@ -134,7 +134,7 @@ export const noRedundantRoles = defineRule({
           if (findSameFileTableContext(node, context.settings) !== "table") return;
           implicitRoles = [getTableCellPrimaryRole(node, tag)];
         } else if (ATTRIBUTE_DEPENDENT_IMPLICIT_ROLE_TAGS.has(tag)) {
-          implicitRoles = [getImplicitRole(node, tag)].filter(
+          implicitRoles = [getImplicitRole(node, tag, context.scopes)].filter(
             (resolvedRole): resolvedRole is string => resolvedRole !== null,
           );
         } else {

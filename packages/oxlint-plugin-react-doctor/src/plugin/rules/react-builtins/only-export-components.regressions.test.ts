@@ -2,11 +2,111 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { onlyExportComponents } from "./only-export-components.js";
 
-// Issue #539: a missing filename must not crash the rule. When
-// `context.filename` is undefined the rule has to coalesce instead of
-// calling `normalizeFilename(undefined)`, which threw
-// "Cannot read properties of undefined (reading 'replaceAll')".
-const AXIOS_FILE = `
+const settingsForFramework = (
+  framework: "expo" | "nextjs" | "remix" | "tanstack-start" | "vite",
+) => ({ "react-doctor": { framework } });
+
+describe("react-builtins/only-export-components — regressions", () => {
+  it("allows exported custom hooks (#1265)", () => {
+    const hookExportFile = `
+      import { useMemo } from 'react';
+
+      export type CountryOption = {
+        code: string;
+        name: string;
+        searchKey: string;
+      };
+
+      export function useCountryOptions(): CountryOption[] {
+        return useMemo(() => [], []);
+      }
+
+      export function CountryPickerSheet() {
+        const options = useCountryOptions();
+        return <div>{options.length}</div>;
+      }
+    `;
+    const result = runRule(onlyExportComponents, hookExportFile, {
+      filename: "src/components/CountryPickerSheet.tsx",
+      settings: settingsForFramework("vite"),
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    "use",
+    "usecountryOptions",
+    "use_countryOptions",
+    "use0CountryOptions",
+    "createCountryOptions",
+  ])(
+    "still reports function exports outside the documented hook-name boundary: %s",
+    (functionName) => {
+      const result = runRule(
+        onlyExportComponents,
+        `
+          export function ${functionName}() { return []; }
+          export function CountryPickerSheet() { return <div />; }
+        `,
+        {
+          filename: "src/components/CountryPickerSheet.tsx",
+          settings: settingsForFramework("vite"),
+        },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    "export function countryOptions() { return []; }",
+    "export const countryOptions = () => [];",
+  ])("allows configured function and const exports equally: %s", (exportDeclaration) => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+        ${exportDeclaration}
+        export function CountryPickerSheet() { return <div />; }
+      `,
+      {
+        filename: "src/components/CountryPickerSheet.tsx",
+        settings: {
+          "react-doctor": {
+            framework: "vite",
+            onlyExportComponents: { allowExportNames: ["countryOptions"] },
+          },
+        },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each(["export function loader() { return null; }", "export const loader = () => null;"])(
+    "allows route-contract function and const exports equally: %s",
+    (exportDeclaration) => {
+      const result = runRule(
+        onlyExportComponents,
+        `
+        ${exportDeclaration}
+        export function CountryPickerSheet() { return <div />; }
+      `,
+        {
+          filename: "src/components/CountryPickerSheet.tsx",
+          settings: settingsForFramework("remix"),
+        },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
+  // Issue #539: a missing filename must not crash the rule. When
+  // `context.filename` is undefined the rule has to coalesce instead of
+  // calling `normalizeFilename(undefined)`, which threw
+  // "Cannot read properties of undefined (reading 'replaceAll')".
+  const AXIOS_FILE = `
 import axios from 'axios'
 
 export const api = axios.create({
@@ -17,12 +117,6 @@ export const api = axios.create({
   },
 })
 `;
-
-const settingsForFramework = (
-  framework: "expo" | "nextjs" | "remix" | "tanstack-start" | "vite",
-) => ({ "react-doctor": { framework } });
-
-describe("react-builtins/only-export-components — regressions", () => {
   it("does not crash when the filename is unavailable (#539)", () => {
     expect(() => runRule(onlyExportComponents, AXIOS_FILE, { filename: undefined })).not.toThrow();
   });

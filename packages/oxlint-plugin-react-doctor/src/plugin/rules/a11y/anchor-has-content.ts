@@ -1,8 +1,10 @@
+import { VALID_ARIA_ROLES } from "../../constants/aria-roles.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -11,6 +13,12 @@ import { objectHasAccessibleChild } from "../../utils/object-has-accessible-chil
 
 const MESSAGE =
   "Blind users can't follow this link because screen readers announce nothing, so add visible text, `aria-label`, or `aria-labelledby`.";
+
+const hasLinkRole = (roleValue: string): boolean =>
+  roleValue
+    .trim()
+    .split(/\s+/)
+    .find((roleToken) => VALID_ARIA_ROLES.has(roleToken)) === "link";
 
 // An empty anchor passed as a prop of react-i18next's `<Trans>`
 // (`components={{ link: <a … /> }}`) is a template: Trans clones it and
@@ -37,7 +45,7 @@ export const anchorHasContent = defineRule({
   title: "Anchor has no content",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Put readable text inside every `<a>`.",
+  recommendation: "Put readable text inside every link.",
   category: "Accessibility",
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);
@@ -47,6 +55,14 @@ export const anchorHasContent = defineRule({
         const opening = node.openingElement;
         const tag = getElementType(opening, context.settings);
         if (tag !== "a") return;
+        const hrefAttribute = hasJsxPropIgnoreCase(opening.attributes, "href");
+        const roleAttribute = hasJsxPropIgnoreCase(opening.attributes, "role");
+        const roleValues = roleAttribute
+          ? getJsxPropStaticStringValues(roleAttribute, context.scopes)
+          : [];
+        const canHaveLinkRole =
+          roleValues === null || roleValues.some((roleValue) => hasLinkRole(roleValue));
+        if (!hrefAttribute && !canHaveLinkRole) return;
         if (isHiddenFromScreenReader(opening, context.settings)) return;
         if (objectHasAccessibleChild(node, context.settings)) return;
         for (const attribute of ["title", "aria-label", "aria-labelledby"]) {

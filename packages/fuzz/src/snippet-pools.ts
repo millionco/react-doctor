@@ -403,6 +403,7 @@ export const JSX_ATTRIBUTE_POOL = [
 export const JSX_LEAF_POOL = [
   `{state}`,
   `{items.map((item, index) => <li key={index}>{item}</li>)}`,
+  `{items.map((item, index) => <Row key={item.id ?? index} item={item} />)}`,
   `{items.map((item) => <li key={item.id}>{item.name}</li>)}`,
   `{Array.from({ length: 4 }).map((_, index) => <div key={index}>{index}</div>)}`,
   `{Array(3).fill(null).map((cell) => <td key={cell}>{cell}</td>)}`,

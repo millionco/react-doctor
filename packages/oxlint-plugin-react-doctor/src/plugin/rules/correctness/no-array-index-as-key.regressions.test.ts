@@ -74,6 +74,70 @@ const Rows = ({ rows }: { rows: RowData[] }) => rows.map((row, index) => (
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("flags fallbacks nested inside string coercions and templates", () => {
+      const stringResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={String(row.id ?? index)} row={row} />
+));
+`,
+      );
+      const templateResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={\`row-\${row.id ?? index}\`} row={row} />
+));
+`,
+      );
+      const methodResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={(row.id ?? index).toString()} row={row} />
+));
+`,
+      );
+      expect(stringResult.parseErrors).toEqual([]);
+      expect(templateResult.parseErrors).toEqual([]);
+      expect(methodResult.parseErrors).toEqual([]);
+      expect(stringResult.diagnostics).toHaveLength(1);
+      expect(templateResult.diagnostics).toHaveLength(1);
+      expect(methodResult.diagnostics).toHaveLength(1);
+    });
+
+    it("flags reachable arithmetic and sequence-expression fallbacks", () => {
+      const arithmeticResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={row.id ?? index + 1} row={row} />
+));
+`,
+      );
+      const sequenceResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows, observe }) => rows.map((row, index) => {
+  const key = (observe(row), row.id ?? index);
+  return <Row key={key} row={row} />;
+});
+`,
+      );
+      expect(arithmeticResult.parseErrors).toEqual([]);
+      expect(sequenceResult.parseErrors).toEqual([]);
+      expect(arithmeticResult.diagnostics).toHaveLength(1);
+      expect(sequenceResult.diagnostics).toHaveLength(1);
+    });
+
+    it("does not treat an index used only as a condition as the resulting key", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={index ? row.id : row.slug} position={index} row={row} />
+));
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("flags a destructured item key falling back to the index", () => {
       const result = runRule(
         noArrayIndexAsKey,
@@ -121,12 +185,116 @@ const Rows = ({ rows }: { rows: RowData[] }) => rows.map((row, index) => (
 ));
 `,
       );
+      const staticallyStableNullishResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => {
+  const stableKey = "always-stable";
+  return <Row key={stableKey ?? index} position={index} row={row} />;
+});
+`,
+      );
+      const staticallyFalsyAndResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={false && index} position={index} row={row} />
+));
+`,
+      );
+      const nonNullishBinaryResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={(row.rank + 1) ?? index} position={index} row={row} />
+));
+`,
+      );
+      const truthyObjectResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={[] || index} position={index} row={row} />
+));
+`,
+      );
+      const nonNullishTemplateResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={\`\${row.id}\` ?? index} position={index} row={row} />
+));
+`,
+      );
+      const nestedLogicalResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={(row.id || "always-stable") || index} position={index} row={row} />
+));
+`,
+      );
+      const nestedNullishResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={(row.id ?? 0) ?? index} position={index} row={row} />
+));
+`,
+      );
+      const nestedConditionalResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows, condition }) => rows.map((row, index) => (
+  <Row key={(condition ? "first" : "second") ?? index} position={index} row={row} />
+));
+`,
+      );
+      const coercedValueResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={String(row.id) ?? index} position={index} row={row} />
+));
+`,
+      );
+      const globalNumberResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={NaN ?? index} position={index} row={row} />
+));
+`,
+      );
       expect(stableFallbackResult.parseErrors).toEqual([]);
       expect(unreachableLogicalResult.parseErrors).toEqual([]);
       expect(unreachableConditionalResult.parseErrors).toEqual([]);
+      expect(staticallyStableNullishResult.parseErrors).toEqual([]);
+      expect(staticallyFalsyAndResult.parseErrors).toEqual([]);
+      expect(nonNullishBinaryResult.parseErrors).toEqual([]);
+      expect(truthyObjectResult.parseErrors).toEqual([]);
+      expect(nonNullishTemplateResult.parseErrors).toEqual([]);
+      expect(nestedLogicalResult.parseErrors).toEqual([]);
+      expect(nestedNullishResult.parseErrors).toEqual([]);
+      expect(nestedConditionalResult.parseErrors).toEqual([]);
+      expect(coercedValueResult.parseErrors).toEqual([]);
+      expect(globalNumberResult.parseErrors).toEqual([]);
       expect(stableFallbackResult.diagnostics).toEqual([]);
       expect(unreachableLogicalResult.diagnostics).toEqual([]);
       expect(unreachableConditionalResult.diagnostics).toEqual([]);
+      expect(staticallyStableNullishResult.diagnostics).toEqual([]);
+      expect(staticallyFalsyAndResult.diagnostics).toEqual([]);
+      expect(nonNullishBinaryResult.diagnostics).toEqual([]);
+      expect(truthyObjectResult.diagnostics).toEqual([]);
+      expect(nonNullishTemplateResult.diagnostics).toEqual([]);
+      expect(nestedLogicalResult.diagnostics).toEqual([]);
+      expect(nestedNullishResult.diagnostics).toEqual([]);
+      expect(nestedConditionalResult.diagnostics).toEqual([]);
+      expect(coercedValueResult.diagnostics).toEqual([]);
+      expect(globalNumberResult.diagnostics).toEqual([]);
+    });
+
+    it("keeps a shadowed String fallback reachable", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const String = () => undefined;
+const Rows = ({ rows }) => rows.map((row, index) => (
+  <Row key={String(row.id) ?? index} position={index} row={row} />
+));
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
     });
   });
 

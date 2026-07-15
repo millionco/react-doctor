@@ -610,4 +610,60 @@ describe("no-effect-chain — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("stays silent when the downstream effect focuses a node mounted after expansion", () => {
+    const result = runRule(
+      noEffectChain,
+      `function AccessibleNavTree({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(new Map());
+        useEffect(() => {
+          setExpanded(findAncestorPath(activeId));
+        }, [activeId]);
+        useEffect(() => {
+          itemRefs.current.get(activeId)?.focus();
+        }, [activeId, expanded]);
+        return expanded.has(activeId) ? <button ref={node => itemRefs.current.set(activeId, node)} /> : null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["focus", "scrollIntoView", "select", "getBoundingClientRect"])(
+    "treats committed DOM %s calls as external synchronization",
+    (methodName) => {
+      const result = runRule(
+        noEffectChain,
+        `function CommittedDomSync({ activeId }) {
+          const [isMounted, setIsMounted] = useState(false);
+          const nodeRef = useRef(null);
+          useEffect(() => { setIsMounted(true); }, [activeId]);
+          useEffect(() => { nodeRef.current?.${methodName}(); }, [isMounted]);
+          return isMounted ? <input ref={nodeRef} /> : null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("still reports when the downstream effect also computes React state", () => {
+    const result = runRule(
+      noEffectChain,
+      `function MixedChain() {
+        const [isMounted, setIsMounted] = useState(false);
+        const [status, setStatus] = useState('idle');
+        const nodeRef = useRef(null);
+        useEffect(() => { setIsMounted(true); }, []);
+        useEffect(() => {
+          nodeRef.current?.focus();
+          setStatus(isMounted ? 'ready' : 'idle');
+        }, [isMounted]);
+        return <div>{status}</div>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

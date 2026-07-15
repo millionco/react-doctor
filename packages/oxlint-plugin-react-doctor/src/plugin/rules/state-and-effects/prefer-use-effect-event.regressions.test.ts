@@ -304,6 +304,23 @@ describe("prefer-use-effect-event — callback stability regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not count a shadowed callback parameter as a dependency read", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Listener = ({ active, onClose }) => {
+        useEffect(() => {
+          const close = (onClose) => onClose();
+          setTimeout(close, 100, fallbackClose);
+        }, [active, onClose]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent for the authentic empty-dependency useCallback false positive", () => {
     const result = runPreferUseEffectEvent(`
       import { useCallback, useEffect, useRef, useState } from "react";

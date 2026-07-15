@@ -324,17 +324,19 @@ interface CallableReadClassification {
 }
 
 const classifyCallableReadsInsideEffect = (
-  callableName: string,
+  callableIdentifier: EsTreeNodeOfType<"Identifier">,
   effectCallback: EsTreeNode,
   context: RuleContext,
 ): CallableReadClassification => {
   let hasAnyRead = false;
   let allReadsAreInSubHandlers = true;
   let firstSubHandlerName: string | null = null;
+  const callableSymbol = context.scopes.symbolFor(callableIdentifier);
+  if (!callableSymbol) return { hasAnyRead, allReadsAreInSubHandlers, firstSubHandlerName };
 
   walkAst(effectCallback, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "Identifier")) return;
-    if (child.name !== callableName) return;
+    if (context.scopes.symbolFor(child)?.id !== callableSymbol.id) return;
     const parent = child.parent;
     if (isNodeOfType(parent, "ArrayExpression")) return;
     if (isNodeOfType(parent, "MemberExpression") && !parent.computed && parent.property === child) {
@@ -417,7 +419,7 @@ export const preferUseEffectEvent = defineRule({
           const isFunctionTypedLocalDep = potentiallyChangingCallbackBindings.has(depName);
           if (!isFunctionTypedPropDep && !isFunctionTypedLocalDep) continue;
 
-          const classification = classifyCallableReadsInsideEffect(depName, callback, context);
+          const classification = classifyCallableReadsInsideEffect(depElement, callback, context);
           if (!classification.hasAnyRead) continue;
           if (!classification.allReadsAreInSubHandlers) continue;
 

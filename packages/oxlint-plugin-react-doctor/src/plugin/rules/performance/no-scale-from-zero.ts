@@ -3,28 +3,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isProvenFramerMotionJsxElement } from "../../utils/is-proven-framer-motion-jsx-element.js";
-
-const isAuthoritativeAttribute = (node: EsTreeNodeOfType<"JSXAttribute">): boolean => {
-  const openingElement = node.parent;
-  if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement")) return false;
-  const nodeIndex = openingElement.attributes.findIndex((attribute) => Object.is(attribute, node));
-  for (
-    let attributeIndex = nodeIndex + 1;
-    attributeIndex < openingElement.attributes.length;
-    attributeIndex += 1
-  ) {
-    const attribute = openingElement.attributes[attributeIndex];
-    if (!attribute || isNodeOfType(attribute, "JSXSpreadAttribute")) return false;
-    if (
-      isNodeOfType(attribute, "JSXAttribute") &&
-      isNodeOfType(attribute.name, "JSXIdentifier") &&
-      attribute.name.name === node.name.name
-    ) {
-      return false;
-    }
-  }
-  return true;
-};
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 
 export const noScaleFromZero = defineRule({
   id: "no-scale-from-zero",
@@ -37,11 +16,11 @@ export const noScaleFromZero = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
       if (node.name.name !== "initial" && node.name.name !== "exit") return;
-      if (!isAuthoritativeAttribute(node)) return;
       const openingElement = node.parent;
       if (
         !openingElement ||
         !isNodeOfType(openingElement, "JSXOpeningElement") ||
+        !Object.is(getAuthoritativeJsxAttribute(openingElement.attributes, node.name.name), node) ||
         !isProvenFramerMotionJsxElement(openingElement, context.scopes)
       ) {
         return;

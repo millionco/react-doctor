@@ -12,6 +12,7 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 
 const TEST_CALLBACK_EXPORT_NAMES: ReadonlySet<string> = new Set(["it", "test"]);
 const TEST_CALLBACK_MEMBER_NAMES: ReadonlySet<string> = new Set(["concurrent", "only", "skip"]);
+const TEST_CALLBACK_TABLE_MEMBER_NAME = "each";
 const TEST_MOCK_METHOD_NAMES: ReadonlySet<string> = new Set([
   "doMock",
   "mock",
@@ -81,11 +82,16 @@ const getTestCallbackBaseIdentifier = (
 ): EsTreeNodeOfType<"Identifier"> | null => {
   const unwrappedCallee = stripParenExpression(callee);
   if (isNodeOfType(unwrappedCallee, "Identifier")) return unwrappedCallee;
-  if (!isNodeOfType(unwrappedCallee, "MemberExpression")) return null;
-  const memberName = getStaticPropertyName(unwrappedCallee);
-  if (!memberName || !TEST_CALLBACK_MEMBER_NAMES.has(memberName)) return null;
-  const object = stripParenExpression(unwrappedCallee.object);
-  return isNodeOfType(object, "Identifier") ? object : null;
+  if (isNodeOfType(unwrappedCallee, "MemberExpression")) {
+    const memberName = getStaticPropertyName(unwrappedCallee);
+    if (!memberName || !TEST_CALLBACK_MEMBER_NAMES.has(memberName)) return null;
+    return getTestCallbackBaseIdentifier(unwrappedCallee.object);
+  }
+  if (!isNodeOfType(unwrappedCallee, "CallExpression")) return null;
+  const tableBuilderCallee = stripParenExpression(unwrappedCallee.callee);
+  if (!isNodeOfType(tableBuilderCallee, "MemberExpression")) return null;
+  if (getStaticPropertyName(tableBuilderCallee) !== TEST_CALLBACK_TABLE_MEMBER_NAME) return null;
+  return getTestCallbackBaseIdentifier(tableBuilderCallee.object);
 };
 
 const isDirectTestCallback = (functionNode: EsTreeNode, context: RuleContext): boolean => {
@@ -144,6 +150,9 @@ const hasImportedProductComponentAncestor = (
   context: RuleContext,
 ): boolean => {
   let current: EsTreeNode | null | undefined = node.parent;
+  if (current && isNodeOfType(current, "JSXElement") && current.openingElement === node) {
+    current = current.parent;
+  }
   while (current && current !== enclosingFunction) {
     if (isFunctionLike(current)) return false;
     if (isNodeOfType(current, "JSXElement")) {

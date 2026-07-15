@@ -161,6 +161,67 @@ describe("local unit-test harness accessibility applicability", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent for an inline fixture in a table-driven test callback", () => {
+    const result = runRule(
+      altText,
+      `import { test as verify } from "vitest";
+      import { ProductComponent } from "../product-component";
+      verify.each([["portrait"], ["landscape"]])("forwards %s media", () => {
+        render(<ProductComponent media={<img src="/fixture.png" />} />);
+      });`,
+      { filename: "/repo/src/fixture.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for an inline fixture in a modified table-driven test callback", () => {
+    const result = runRule(
+      altText,
+      `import { ProductComponent } from "../product-component";
+      test.only.each([["portrait"]])("forwards %s media", () => {
+        render(<ProductComponent media={<img src="/fixture.png" />} />);
+      });`,
+      { filename: "/repo/src/product-component.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports an imported component's own mapped accessibility violation", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `import { ProductComponent } from "../product-component";
+      test("renders the subject", () => {
+        render(<ProductComponent role="button" onClick={onActivate} />);
+      });`,
+      {
+        filename: "/repo/src/product-component.test.tsx",
+        settings: { "jsx-a11y": { components: { ProductComponent: "div" } } },
+      },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a table callback reached through a shadowed userland function", () => {
+    const result = runRule(
+      altText,
+      `import { ProductComponent } from "../product-component";
+      const test = { each: () => (_name, callback) => callback() };
+      test.each([["portrait"]])("forwards media", () => {
+        render(<ProductComponent media={<img src="/subject.png" />} />);
+      });`,
+      { filename: "/repo/src/product-component.test.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still reports when vi is a shadowed userland object", () => {
     const result = runRule(
       altText,

@@ -649,6 +649,34 @@ describe("no-prop-callback-in-render", () => {
       1,
     ],
     [
+      "a memo-wrapped hookless null component proven by JSX use",
+      `import { memo } from "react";
+       interface NullComponentProps {
+         onRender: () => void;
+       }
+       const NullComponent = memo(({ onRender }: NullComponentProps) => {
+         onRender();
+         return null;
+       });
+       const node = <NullComponent onRender={() => undefined} />;`,
+      1,
+    ],
+    [
+      "a forwardRef-wrapped hookless null component proven by JSX use",
+      `import * as React from "react";
+       interface NullComponentProps {
+         onRender: () => void;
+       }
+       const NullComponent = React.forwardRef<unknown, NullComponentProps>(
+         ({ onRender }, forwardedRef) => {
+           onRender();
+           return null;
+         },
+       );
+       const node = <NullComponent onRender={() => undefined} />;`,
+      1,
+    ],
+    [
       "a hookless null component proven by React createElement use",
       `import { createElement } from "react";
        interface NullComponentProps {

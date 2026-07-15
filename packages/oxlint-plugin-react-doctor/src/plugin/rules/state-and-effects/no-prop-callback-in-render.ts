@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionHasReactComponentEvidence } from "../../utils/function-has-react-component-evidence.js";
 import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -13,6 +14,7 @@ import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { unwrapReactHocFunction } from "../../utils/unwrap-react-hoc-function.js";
 import { getDownstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isPropCallbackInvocationRef } from "./utils/effect/react.js";
@@ -25,15 +27,19 @@ const functionBindingSymbols = (
   if (isNodeOfType(functionNode, "FunctionDeclaration") && functionNode.id) {
     bindingIdentifier = functionNode.id;
   } else {
-    let functionExpression = functionNode;
-    let parent = functionExpression.parent;
-    while (parent && stripParenExpression(parent) === functionExpression) {
-      functionExpression = parent;
-      parent = functionExpression.parent;
+    let bindingExpression = findTransparentExpressionRoot(functionNode);
+    let parent = bindingExpression.parent;
+    while (
+      isNodeOfType(parent, "CallExpression") &&
+      parent.arguments[0] === bindingExpression &&
+      unwrapReactHocFunction(parent, scopes) === functionNode
+    ) {
+      bindingExpression = findTransparentExpressionRoot(parent);
+      parent = bindingExpression.parent;
     }
     if (
       isNodeOfType(parent, "VariableDeclarator") &&
-      parent.init === functionExpression &&
+      parent.init === bindingExpression &&
       isNodeOfType(parent.id, "Identifier")
     ) {
       bindingIdentifier = parent.id;

@@ -468,6 +468,8 @@ export const JSX_LEAF_POOL = [
   `<input value={state} onChange={(event) => setState(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") handle(); }} />`,
   `<input value="frozen" onChange={handleChange} />`,
   `<input type="checkbox" checked={isChecked} onChange={(event) => setState(event.target.checked)} />`,
+  `<><Label htmlFor="fuzz-department">Department</Label><select id="fuzz-department"><option>All</option></select></>`,
+  `<><FormLabel htmlFor="fuzz-department">Department</FormLabel><select id="fuzz-department"><option>All</option></select></>`,
   `<input type="checkbox" indeterminate />`,
   `<input type="radio" value="a" checked={state === "a"} onChange={() => setState("a")} />`,
   `<input type="radio" name="group" value="b" defaultChecked />`,

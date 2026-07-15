@@ -897,23 +897,18 @@ export const controlHasAssociatedLabel = defineRule({
         // all and decide at Program:exit. Labels inside JSX-attribute
         // callbacks (render props) may never render, so they don't
         // register.
-        const htmlForAttribute = hasJsxPropIgnoreCase(opening.attributes, HTML_FOR_ATTRIBUTE);
-        const hasHtmlFor = Boolean(htmlForAttribute);
-        if (
-          hasHtmlFor &&
-          hasAccessibleLabelText(node, checkContext) &&
-          !isInsideJsxAttribute(node)
-        ) {
-          for (const htmlForKey of getAttributeMatchKeys(htmlForAttribute)) {
-            labelHtmlForKeys.add(htmlForKey);
-          }
-        }
         if (
           rendersLabelElement(tagName, opening) &&
           hasAccessibleLabelText(node, checkContext) &&
           !isInsideJsxAttribute(node)
         ) {
-          collectLabelEmbeddedNames(node, 1, checkContext, labelEmbeddedNames);
+          const htmlForAttribute = hasJsxPropIgnoreCase(opening.attributes, HTML_FOR_ATTRIBUTE);
+          for (const htmlForKey of getAttributeMatchKeys(htmlForAttribute)) {
+            labelHtmlForKeys.add(htmlForKey);
+          }
+          if (tagName === LABEL_ELEMENT) {
+            collectLabelEmbeddedNames(node, 1, checkContext, labelEmbeddedNames);
+          }
         }
 
         if (DEFAULT_IGNORE_ELEMENTS.includes(tagName)) return;

@@ -1036,11 +1036,11 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("accepts FormLabel component with htmlFor matching control id", () => {
+  it("does not trust htmlFor on a component that does not render a label", () => {
     const result = runRule(
       controlHasAssociatedLabel,
       `
-        import { FormLabel } from '@/components/form';
+        const FormLabel = ({ children }) => <span>{children}</span>;
 
         const Demo = () => (
           <div>
@@ -1051,6 +1051,6 @@ describe("a11y/control-has-associated-label regressions", () => {
       `,
     );
 
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

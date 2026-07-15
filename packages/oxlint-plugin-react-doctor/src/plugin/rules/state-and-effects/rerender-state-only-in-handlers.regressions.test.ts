@@ -1008,4 +1008,351 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("logged");
   });
+
+  it.each([
+    {
+      name: "a conditional mutation can precede the setter on the same path",
+      source: `function ConditionalNavigation({ shouldNavigate }) {
+        const [revision, setRevision] = useState(0);
+        const handleClick = () => {
+          if (shouldNavigate) history.pushState({}, "", "/next");
+          setRevision((previous) => previous + 1);
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a setter helper follows a sibling mutation helper",
+      source: `function SetterHelperNavigation() {
+        const [revision, setRevision] = useState(0);
+        const invalidate = () => setRevision((previous) => previous + 1);
+        const navigate = () => history.pushState({}, "", "/next");
+        const handleClick = () => {
+          navigate();
+          invalidate();
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a registered listener delegates to a setter helper",
+      source: `function DelegatedPopState() {
+        const [revision, setRevision] = useState(0);
+        const invalidate = () => setRevision((previous) => previous + 1);
+        const onPopState = () => invalidate();
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState);
+          return () => window.removeEventListener("popstate", onPopState);
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "an inline registered listener delegates to a setter helper",
+      source: `function InlineDelegatedPopState() {
+        const [revision, setRevision] = useState(0);
+        const invalidate = () => setRevision((previous) => previous + 1);
+        useEffect(() => {
+          window.addEventListener("popstate", () => invalidate());
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a synchronous iterator callback mutates location before the setter",
+      source: `function IteratorNavigation() {
+        const [revision, setRevision] = useState(0);
+        const navigate = () => ["/next"].forEach((nextPath) => {
+          history.pushState({}, "", nextPath);
+        });
+        const handleClick = () => {
+          navigate();
+          setRevision((previous) => previous + 1);
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a Promise executor mutates location synchronously before the setter",
+      source: `function PromiseExecutorNavigation() {
+        const [revision, setRevision] = useState(0);
+        const navigate = () => new Promise((resolve) => {
+          history.pushState({}, "", "/next");
+          resolve(undefined);
+        });
+        const handleClick = () => {
+          void navigate();
+          setRevision((previous) => previous + 1);
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "an async helper mutates location before its first suspension",
+      source: `function AsyncPrefixNavigation() {
+        const [revision, setRevision] = useState(0);
+        const navigate = async () => {
+          history.pushState({}, "", "/next");
+          await Promise.resolve();
+        };
+        const handleClick = () => {
+          void navigate();
+          setRevision((previous) => previous + 1);
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a mounted effect invokes a listener registration helper",
+      source: `function RegistrationHelper() {
+        const [revision, setRevision] = useState(0);
+        const onPopState = () => setRevision((previous) => previous + 1);
+        const register = () => window.addEventListener("popstate", onPopState);
+        useEffect(() => {
+          register();
+          return () => window.removeEventListener("popstate", onPopState);
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a React event batches the setter before the location mutation",
+      source: `function BatchedEventNavigation() {
+        const [revision, setRevision] = useState(0);
+        const handleClick = () => {
+          setRevision((previous) => previous + 1);
+          history.pushState({}, "", "/next");
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "an inline React event batches the setter before the location mutation",
+      source: `function InlineBatchedEventNavigation() {
+        const [revision, setRevision] = useState(0);
+        return <button onClick={() => {
+          setRevision((previous) => previous + 1);
+          history.pushState({}, "", "/next");
+        }}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a mismatched capture removal leaves the location listener active",
+      source: `function CapturePopStateListener() {
+        const [revision, setRevision] = useState(0);
+        const onPopState = () => setRevision((previous) => previous + 1);
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState, true);
+          window.removeEventListener("popstate", onPopState, false);
+          return () => window.removeEventListener("popstate", onPopState, true);
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+  ])("stays silent when $name", ({ source }) => {
+    const result = runRule(rerenderStateOnlyInHandlers, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    {
+      name: "history mutation and setter occupy mutually exclusive branches",
+      source: `function ExclusiveNavigation({ shouldNavigate }) {
+        const [logged, setLogged] = useState(false);
+        const handleClick = () => {
+          if (shouldNavigate) history.pushState({}, "", "/next");
+          else setLogged(true);
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "an early return separates the setter from the history mutation",
+      source: `function EarlyReturnNavigation({ shouldNavigate }) {
+        const [logged, setLogged] = useState(false);
+        const handleClick = () => {
+          if (!shouldNavigate) {
+            setLogged(true);
+            return;
+          }
+          history.pushState({}, "", "/next");
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a conditional expression separates the mutation and setter",
+      source: `function ConditionalExpressionNavigation({ shouldNavigate }) {
+        const [logged, setLogged] = useState(false);
+        const handleClick = () => shouldNavigate
+          ? history.pushState({}, "", "/next")
+          : setLogged(true);
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "an async handler mutates history after the setter and suspension",
+      source: `function SuspendedHandlerNavigation() {
+        const [logged, setLogged] = useState(false);
+        const handleClick = async () => {
+          setLogged(true);
+          await Promise.resolve();
+          history.pushState({}, "", "/next");
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a listener registration helper is never invoked",
+      source: `function UnusedRegistration() {
+        const [logged, setLogged] = useState(false);
+        const onPopState = () => setLogged(true);
+        const register = () => window.addEventListener("popstate", onPopState);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a listener registration is statically unreachable",
+      source: `function UnreachableRegistration() {
+        const [logged, setLogged] = useState(false);
+        const onPopState = () => setLogged(true);
+        useEffect(() => {
+          if (false) window.addEventListener("popstate", onPopState);
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a listener is registered only from effect cleanup",
+      source: `function CleanupRegistration() {
+        const [logged, setLogged] = useState(false);
+        const onPopState = () => setLogged(true);
+        useEffect(() => () => {
+          window.addEventListener("popstate", onPopState);
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a userland function named useEffect receives the listener callback",
+      source: `function ShadowedEffect({ useEffect }) {
+        const [logged, setLogged] = useState(false);
+        const onPopState = () => setLogged(true);
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState);
+        });
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "an async helper mutates history only after suspension",
+      source: `function AsyncSuffixNavigation() {
+        const [logged, setLogged] = useState(false);
+        const navigate = async () => {
+          await Promise.resolve();
+          history.pushState({}, "", "/next");
+        };
+        const handleClick = () => {
+          void navigate();
+          setLogged(true);
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a Promise continuation mutates history after the setter call",
+      source: `function PromiseContinuationNavigation() {
+        const [logged, setLogged] = useState(false);
+        const navigate = () => Promise.resolve().then(() => {
+          history.pushState({}, "", "/next");
+        });
+        const handleClick = () => {
+          void navigate();
+          setLogged(true);
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "flushSync commits the setter before the location mutation",
+      source: `import { flushSync } from "react-dom";
+      function FlushedNavigation() {
+        const [logged, setLogged] = useState(false);
+        const handleClick = () => {
+          flushSync(() => setLogged(true));
+          history.pushState({}, "", "/next");
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a timer callback may flush the setter before the location mutation",
+      source: `function TimerNavigation() {
+        const [logged, setLogged] = useState(false);
+        useEffect(() => {
+          const timer = setTimeout(() => {
+            setLogged(true);
+            history.pushState({}, "", "/next");
+          }, 0);
+          return () => clearTimeout(timer);
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "the mounted effect removes its listener before returning",
+      source: `function RemovedPopStateListener() {
+        const [logged, setLogged] = useState(false);
+        const onPopState = () => setLogged(true);
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState);
+          window.removeEventListener("popstate", onPopState);
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "the mounted effect removes a helper-registered listener before returning",
+      source: `function RemovedHelperPopStateListener() {
+        const [logged, setLogged] = useState(false);
+        const onPopState = () => setLogged(true);
+        const register = () => window.addEventListener("popstate", onPopState);
+        useEffect(() => {
+          register();
+          window.removeEventListener("popstate", onPopState);
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "the mounted effect invokes a listener removal helper before returning",
+      source: `function RemovalHelperPopStateListener() {
+        const [logged, setLogged] = useState(false);
+        const onPopState = () => setLogged(true);
+        const unregister = () => window.removeEventListener("popstate", onPopState);
+        useEffect(() => {
+          window.addEventListener("popstate", onPopState);
+          unregister();
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a custom component callback is not a proven batched React event",
+      source: `function CustomCallbackNavigation() {
+        const [logged, setLogged] = useState(false);
+        const handleNavigate = () => {
+          setLogged(true);
+          history.pushState({}, "", "/next");
+        };
+        return <NavigationTrigger onNavigate={handleNavigate}>{location.pathname}</NavigationTrigger>;
+      }`,
+    },
+  ])("still flags write-only state when $name", ({ source }) => {
+    const result = runRule(rerenderStateOnlyInHandlers, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("logged");
+  });
 });

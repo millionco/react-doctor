@@ -20,3 +20,15 @@ export const ExternalLocationFilter = () => {
     </button>
   );
 };
+
+export const BatchedExternalLocationFilter = () => {
+  const [revision, setRevision] = useState(0);
+  const currentPath = window.location.pathname;
+
+  const navigate = () => {
+    setRevision((previous) => previous + 1);
+    window.history.pushState({}, "", "/next");
+  };
+
+  return <button onClick={navigate}>{currentPath}</button>;
+};

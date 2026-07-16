@@ -488,6 +488,7 @@ export const getSymbolMutationInspector = (scopes: ScopeAnalysis): SymbolMutatio
     relevantPropertyName: string | null,
   ): boolean => {
     const usageOwner = getExecutionOwner(usageNode);
+    const usageStartIndex = getNodeStartIndex(usageNode);
     return (eventsBySymbolId.get(symbol.id) ?? []).some((event) => {
       if (
         relevantPropertyName !== null &&
@@ -498,8 +499,9 @@ export const getSymbolMutationInspector = (scopes: ScopeAnalysis): SymbolMutatio
       }
       if (event.owner === usageOwner) {
         return (
-          isFunctionLike(usageOwner) ||
-          nodesShareRepeatedControlFlow(event.node, usageNode, usageOwner)
+          getNodeStartIndex(event.node) >= usageStartIndex &&
+          (isFunctionLike(usageOwner) ||
+            nodesShareRepeatedControlFlow(event.node, usageNode, usageOwner))
         );
       }
       if (isNodeOfType(event.owner, "Program")) {

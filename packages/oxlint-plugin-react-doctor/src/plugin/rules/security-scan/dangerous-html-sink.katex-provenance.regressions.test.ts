@@ -303,6 +303,18 @@ describe("security-scan/dangerous-html-sink — KaTeX provenance", () => {
     ).toHaveLength(1);
   });
 
+  it("rejects a KaTeX renderer mutated before use in the same function", () => {
+    const findings = scan(`
+      import katex from "katex";
+      export const MathNode = ({ value }: Props) => {
+        katex.renderToString = (rawValue: string) => rawValue;
+        return <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value) }} />;
+      };
+    `);
+
+    expect(findings).toHaveLength(1);
+  });
+
   it.each([
     "katex.renderToString(value).trim()",
     'katex.renderToString(value).replaceAll("&nbsp;", " ")',

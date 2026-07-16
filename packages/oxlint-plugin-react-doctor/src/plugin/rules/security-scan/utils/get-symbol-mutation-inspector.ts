@@ -199,6 +199,10 @@ export const getSymbolMutationInspector = (scopes: ScopeAnalysis): SymbolMutatio
         if (assignedProperties.some((properties) => properties === null)) return null;
         return new Set(assignedProperties.flatMap((properties) => [...(properties ?? [])]));
       }
+      if (methodName === "defineProperties") {
+        const propertyDescriptors = parent.arguments[1];
+        return propertyDescriptors ? getObjectExpressionPropertyNames(propertyDescriptors) : null;
+      }
       const propertyKey = parent.arguments[1];
       return propertyKey &&
         isNodeOfType(propertyKey, "Literal") &&

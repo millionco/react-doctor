@@ -224,6 +224,9 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
     "katex.renderToString = (value: string) => value",
     "alias.renderToString = (value: string) => value",
     "Object.assign(katex, { renderToString: (value: string) => value })",
+    "Object.defineProperties(katex, { renderToString: { value: (value: string) => value } })",
+    "Object.defineProperties(katex, { version: { value: '1' }, renderToString: { value: (value: string) => value } })",
+    "Object.defineProperties(katex, namespaceDescriptors)",
   ])("rejects a mutated KaTeX renderer: %s", (mutation) => {
     const findings = scan(`
       import katex from "katex";
@@ -240,6 +243,8 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
     'katex.version = "1"',
     "katex.render = () => null",
     'Object.assign(katex, { version: "1" })',
+    'Object.defineProperties(katex, { version: { value: "1" } })',
+    'Object.defineProperties(katex, { version: { value: "1" }, render: { value: () => null } })',
   ])("keeps unrelated KaTeX namespace mutations safe: %s", (mutation) => {
     const findings = scan(`
       import katex from "katex";

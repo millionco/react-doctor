@@ -925,6 +925,7 @@ const EXTERNAL_SUBSCRIPTION_HOOK_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 const EXTERNAL_SUBSCRIPTION_PRIMITIVE_RESULT_HOOK_NAMES: ReadonlySet<string> = new Set([
+  "useMatchMedia",
   "useMediaQuery",
 ]);
 
@@ -1049,8 +1050,8 @@ const hasUnsafeExternalSubscriptionBindingUse = (
 const hasOnlySafeExternalSubscriptionResultBindings = (
   analysis: ProgramAnalysis,
   declarator: EsTreeNodeOfType<"VariableDeclarator">,
+  variables = getVariablesDefinedByDeclarator(analysis, declarator),
 ): boolean => {
-  const variables = getVariablesDefinedByDeclarator(analysis, declarator);
   return (
     variables.length > 0 &&
     variables.every((variable) => {
@@ -1071,6 +1072,7 @@ const hasOnlySafeExternalSubscriptionResultBindings = (
 const isImmutableImportedExternalSubscriptionHookCallee = (
   analysis: ProgramAnalysis,
   rawCallee: EsTreeNode,
+  relatedRefs: Reference[],
 ): boolean => {
   const hookName = getImportedExternalSubscriptionHookName(analysis, rawCallee);
   if (!hookName) return false;
@@ -1094,9 +1096,16 @@ const isImmutableImportedExternalSubscriptionHookCallee = (
   ) {
     return false;
   }
+  const relatedVariables = getVariablesDefinedByDeclarator(analysis, declarator).filter(
+    (variable) => relatedRefs.some((relatedRef) => relatedRef.resolved === variable),
+  );
+  if (relatedVariables.length === 0) return false;
   return isNodeOfType(declarator.id, "Identifier")
-    ? EXTERNAL_SUBSCRIPTION_PRIMITIVE_RESULT_HOOK_NAMES.has(hookName)
-    : hasOnlySafeExternalSubscriptionResultBindings(analysis, declarator);
+    ? EXTERNAL_SUBSCRIPTION_PRIMITIVE_RESULT_HOOK_NAMES.has(hookName) &&
+        relatedVariables.every(
+          (variable) => !hasUnsafeExternalSubscriptionBindingUse(analysis, variable),
+        )
+    : hasOnlySafeExternalSubscriptionResultBindings(analysis, declarator, relatedVariables);
 };
 
 const isExternalSubscriptionHookResultRef = (analysis: ProgramAnalysis, ref: Reference): boolean =>
@@ -1121,7 +1130,8 @@ const isExternalSubscriptionHookResultRef = (analysis: ProgramAnalysis, ref: Ref
       if (isNodeOfType(declarator.id, "Identifier")) {
         return (
           EXTERNAL_SUBSCRIPTION_PRIMITIVE_RESULT_HOOK_NAMES.has(hookName) &&
-          !hasMutableBindingWrite(ref)
+          ref.resolved &&
+          !hasUnsafeExternalSubscriptionBindingUse(analysis, ref.resolved)
         );
       }
       const bindingIdentifier = def.name as unknown as EsTreeNode;
@@ -1363,25 +1373,39 @@ export const noPassDataToParent = defineRule({
               }
               return getDownstreamRefs(analysis, argument as EsTreeNode);
             })
-            .flatMap((argumentRef) =>
-              isExternallyDrivenState(analysis, argumentRef)
-                ? []
-                : getUpstreamRefs(analysis, argumentRef),
-            )
-            .filter(isLeafRef);
+            .flatMap((argumentRef) => {
+              if (isExternallyDrivenState(analysis, argumentRef)) return [];
+              const upstreamRefs = getUpstreamRefs(analysis, argumentRef);
+              return upstreamRefs.filter((upstreamRef) => {
+                if (!isLeafRef(upstreamRef)) return false;
+                return !isImmutableImportedExternalSubscriptionHookCallee(
+                  analysis,
+                  upstreamRef.identifier as unknown as EsTreeNode,
+                  upstreamRefs,
+                );
+              });
+            });
           // A wrapper-hook callee hides the hand-off in its wrapped body, so
           // its data refs live on the eventual call chain, not the direct
           // call's arguments.
           if (calleeNode === identifier && isWrapperHookCallbackRef(analysis, ref)) {
-            argsUpstreamRefs.push(...getArgsUpstreamRefs(analysis, ref).filter(isLeafRef));
+            const wrapperUpstreamRefs = getArgsUpstreamRefs(analysis, ref);
+            argsUpstreamRefs.push(
+              ...wrapperUpstreamRefs.filter(
+                (upstreamRef) =>
+                  isLeafRef(upstreamRef) &&
+                  !isImmutableImportedExternalSubscriptionHookCallee(
+                    analysis,
+                    upstreamRef.identifier as unknown as EsTreeNode,
+                    wrapperUpstreamRefs,
+                  ),
+              ),
+            );
           }
 
           const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
             const argIdentifier = argRef.identifier as unknown as EsTreeNode;
             if (isUseStateIdentifier(argIdentifier)) return false;
-            if (isImmutableImportedExternalSubscriptionHookCallee(analysis, argIdentifier)) {
-              return false;
-            }
             if (isProp(analysis, argRef)) return false;
             if (isUseRefIdentifier(argIdentifier)) return false;
             if (isRefCurrent(argRef)) return false;

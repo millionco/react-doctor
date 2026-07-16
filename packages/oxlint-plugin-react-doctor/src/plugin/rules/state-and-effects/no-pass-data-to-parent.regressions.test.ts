@@ -110,6 +110,42 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("stays silent for a direct imported match-media result", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useMatchMedia } from "../hooks/use-match-media";
+
+        const Sidebar = ({ onBreakPoint }) => {
+          const broken = useMatchMedia("(max-width: 768px)");
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a reassigned alias of a primitive media-query result", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useMediaQuery } from "../hooks/use-media-query";
+
+        const Sidebar = ({ onBreakPoint }) => {
+          const broken = useMediaQuery("(max-width: 768px)");
+          let reportedValue = broken;
+          reportedValue = readUserPreference();
+          useEffect(() => {
+            onBreakPoint(reportedValue);
+          }, [reportedValue, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it.each([
       [
         "named",
@@ -384,6 +420,44 @@ describe("no-pass-data-to-parent — regressions", () => {
       );
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for a derived leaf when an unrelated sibling is mutated", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useResizeObserver } from "~/lib/hooks/useResizeObserver";
+
+        const Panel = ({ onLayout }) => {
+          const { height, metadata } = useResizeObserver();
+          metadata.current = readUserPreference();
+          const totalHeight = height + 1;
+          useEffect(() => {
+            onLayout(totalHeight);
+          }, [totalHeight, onLayout]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a derived value that includes a mutated result leaf", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useResizeObserver } from "~/lib/hooks/useResizeObserver";
+
+        const Panel = ({ onLayout }) => {
+          const { bounds, height } = useResizeObserver();
+          bounds.width = readUserPreference();
+          const totalHeight = height + bounds.width;
+          useEffect(() => {
+            onLayout(totalHeight);
+          }, [totalHeight, onLayout]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
     });
 
     it.each([

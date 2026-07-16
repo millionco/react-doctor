@@ -871,7 +871,12 @@ export const dangerousHtmlSink = defineRule({
       // React state, so no direct serializer assignment is visible); a present-
       // tense `highlight*` value is trusted only when the file uses a highlighter
       // library. (`highlight*()` calls are handled by the serializer-call check.)
-      if (isTrustedHighlighterValue(valueExpression, file.content, sinkIndex)) continue;
+      if (
+        !hasUnsafeKatexProof &&
+        isTrustedHighlighterValue(valueExpression, file.content, sinkIndex)
+      ) {
+        continue;
+      }
       // Value is a bare identifier, member/index access, or identifier with a
       // literal fallback: exempt only when that identifier is assigned from a
       // serializer or a sanitizer in the file. `[:=]` accepts property-style

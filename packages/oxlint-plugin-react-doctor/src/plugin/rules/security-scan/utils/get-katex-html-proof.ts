@@ -566,6 +566,9 @@ export const getKatexHtmlProof = (
       getKatexHtmlProof(node.alternate, scopes, new Set(visitedSymbolIds), parameterProofs),
     ]);
   }
+  if (isNodeOfType(node, "LogicalExpression") && node.operator === "&&") {
+    return getKatexHtmlProof(node.right, scopes, visitedSymbolIds, parameterProofs);
+  }
   if (
     (isNodeOfType(node, "BinaryExpression") && node.operator === "+") ||
     isNodeOfType(node, "LogicalExpression")

@@ -186,6 +186,49 @@ describe("security-scan/dangerous-html-sink — KaTeX provenance", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("does not let highlighter-shaped assignment provenance hide an unsafe KaTeX proof", () => {
+    const findings = scan(`
+      import katex from "katex";
+
+      const renderHighlightedHtml = (value: string) => {
+        try {
+          return katex.renderToString(value, { throwOnError: true });
+        } catch {
+          return value;
+        }
+      };
+
+      export const MathNode = ({ value }: { value: string }) => {
+        const highlightedHtml = renderHighlightedHtml(value);
+        return <span dangerouslySetInnerHTML={{ __html: highlightedHtml }} />;
+      };
+    `);
+
+    expect(findings).toHaveLength(1);
+  });
+
+  it("accepts a safe KaTeX value behind an unknown logical condition", () => {
+    const findings = scan(`
+      import katex from "katex";
+
+      const renderMathHtml = (value: string): string | null => {
+        try {
+          return katex.renderToString(value, { throwOnError: true });
+        } catch {
+          return null;
+        }
+      };
+
+      export const MathNode = ({ enabled, value }: { enabled: boolean; value: string }) => {
+        const safeKatexHtml = renderMathHtml(value);
+        const html = enabled && safeKatexHtml;
+        return <span dangerouslySetInnerHTML={{ __html: html }} />;
+      };
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
   it("reports a local KaTeX lookalike", () => {
     const findings = scan(`
       const katex = {

@@ -998,6 +998,49 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent for the authentic lazy DOM ref Map focus sequence", () => {
+    const result = runRule(
+      noEffectChain,
+      `function AccessibleNavTree({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef<Map<string, HTMLButtonElement | null> | null>(null);
+        itemRefs.current ??= new Map();
+        useEffect(() => {
+          setExpanded(findAncestorPath(activeId));
+        }, [activeId]);
+        useEffect(() => {
+          itemRefs.current?.get(activeId)?.focus();
+        }, [activeId, expanded]);
+        return expanded.has(activeId) ? (
+          <button
+            ref={node => {
+              if (node) itemRefs.current?.set(activeId, node);
+              else itemRefs.current?.delete(activeId);
+            }}
+          />
+        ) : null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a lazily initialized Map seeded with a controller conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ImperativeControllerChain({ controller }) {
+        const [source, setSource] = useState(0);
+        const controllerRefs = useRef(null);
+        controllerRefs.current ??= new Map([["primary", controller]]);
+        useEffect(() => { setSource(1); }, []);
+        useEffect(() => { controllerRefs.current.get("primary")?.focus(); }, [source]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("follows transparent wrappers around a ref-backed DOM map", () => {
     const result = runRule(
       noEffectChain,

@@ -127,6 +127,102 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("stays silent for a direct imported visibility result", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useVisibility } from "../hooks/use-visibility";
+
+        const Panel = ({ onVisibilityChange }) => {
+          const isVisible = useVisibility();
+          useEffect(() => {
+            onVisibilityChange(isVisible);
+          }, [isVisible, onVisibilityChange]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
+      ["local", `const useVisibility = () => readUserPreference();`],
+      [
+        "shadowed",
+        `import { useVisibility as importedUseVisibility } from "../hooks/use-visibility";
+        const useVisibility = () => readUserPreference();`,
+      ],
+    ])("still flags a %s visibility hook lookalike", (_variant, setup) => {
+      const result = runRule(
+        noPassDataToParent,
+        `${setup}
+        const Panel = ({ onVisibilityChange }) => {
+          const isVisible = useVisibility();
+          useEffect(() => {
+            onVisibilityChange(isVisible);
+          }, [isVisible, onVisibilityChange]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a reassigned imported visibility result", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useVisibility } from "../hooks/use-visibility";
+
+        const Panel = ({ onVisibilityChange }) => {
+          let isVisible = useVisibility();
+          isVisible = readUserPreference();
+          useEffect(() => {
+            onVisibilityChange(isVisible);
+          }, [isVisible, onVisibilityChange]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it.each([
+      [
+        "whole object window-size result",
+        "useWindowSize",
+        "const value: { width: number; height: number } = useWindowSize();",
+      ],
+      [
+        "whole tuple window-size result",
+        "useWindowSize",
+        "const value: readonly [number, number] = useWindowSize();",
+      ],
+      [
+        "window-size property read through a whole result",
+        "useWindowSize",
+        "const size = useWindowSize(); const value = size.width;",
+      ],
+      [
+        "whole intersection-observer result",
+        "useIntersectionObserver",
+        "const value = useIntersectionObserver();",
+      ],
+    ])("still flags an ambiguous imported %s", (_variant, hookName, declaration) => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { ${hookName} } from "../hooks/external-subscription";
+
+        const Panel = ({ onValue }) => {
+          ${declaration}
+          useEffect(() => {
+            onValue(value);
+          }, [value, onValue]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags a reassigned alias of a primitive media-query result", () => {
       const result = runRule(
         noPassDataToParent,

@@ -927,6 +927,7 @@ const EXTERNAL_SUBSCRIPTION_HOOK_NAMES: ReadonlySet<string> = new Set([
 const EXTERNAL_SUBSCRIPTION_PRIMITIVE_RESULT_HOOK_NAMES: ReadonlySet<string> = new Set([
   "useMatchMedia",
   "useMediaQuery",
+  "useVisibility",
 ]);
 
 const isImportBindingRef = (ref: Reference): boolean =>

@@ -592,6 +592,9 @@ export const getKatexHtmlProof = (
 ): KatexHtmlProof => {
   const node = stripParenExpression(rawNode);
   if (isNodeOfType(node, "Literal")) return SAFE_STATIC_HTML_PROOF;
+  if (isNodeOfType(node, "UnaryExpression") && node.operator === "void") {
+    return SAFE_STATIC_HTML_PROOF;
+  }
   if (isNodeOfType(node, "Identifier")) {
     if ((node.name === "undefined" || node.name === "NaN") && scopes.isGlobalReference(node)) {
       return SAFE_STATIC_HTML_PROOF;

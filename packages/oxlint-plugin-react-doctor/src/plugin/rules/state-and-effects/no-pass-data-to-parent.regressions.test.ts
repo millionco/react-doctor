@@ -39,6 +39,28 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("stays silent when a ref-held parent callback receives a media-query hook transition", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const Sidebar = ({ onBreakPoint }) => {
+          const onBreakPointRef = useRef(onBreakPoint);
+          onBreakPointRef.current = onBreakPoint;
+          const broken = useMediaQuery("(max-width: 768px)");
+          const reportedBrokenRef = useRef(null);
+          useEffect(() => {
+            if (reportedBrokenRef.current === broken) return;
+            const isInitialReport = reportedBrokenRef.current === null;
+            reportedBrokenRef.current = broken;
+            if (isInitialReport && !broken) return;
+            onBreakPointRef.current?.(broken);
+          }, [broken]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("stays silent when notifying a parent of state driven only by matchMedia", () => {
       const result = runRule(
         noPassDataToParent,
@@ -69,6 +91,23 @@ describe("no-pass-data-to-parent — regressions", () => {
           useEffect(() => {
             onChange(value);
           }, [value, onChange]);
+          return <input value={value} />;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags ref-held parent callbacks receiving ordinary child-owned data", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const Form = ({ onChange }) => {
+          const onChangeRef = useRef(onChange);
+          onChangeRef.current = onChange;
+          const value = useFormValue();
+          useEffect(() => {
+            onChangeRef.current?.(value);
+          }, [value]);
           return <input value={value} />;
         };`,
       );

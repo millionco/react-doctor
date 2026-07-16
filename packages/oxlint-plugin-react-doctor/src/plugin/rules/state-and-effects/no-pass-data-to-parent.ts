@@ -1162,7 +1162,8 @@ export const noPassDataToParent = defineRule({
               return getDownstreamRefs(analysis, argument as EsTreeNode);
             })
             .flatMap((argumentRef) =>
-              isExternallyDrivenState(analysis, argumentRef)
+              isExternallyDrivenState(analysis, argumentRef) ||
+              isExternalSubscriptionHookRef(argumentRef)
                 ? []
                 : getUpstreamRefs(analysis, argumentRef),
             )

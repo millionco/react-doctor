@@ -875,6 +875,34 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
 
   it.each([
     {
+      name: "removal capture",
+      registrationOptions: "{ capture: true }",
+      removalOptions: "{ capture: shouldCapture }",
+    },
+    {
+      name: "registration capture",
+      registrationOptions: "{ capture: shouldCapture }",
+      removalOptions: "{ capture: true }",
+    },
+  ])("stays silent when the $name is indeterminate", ({ registrationOptions, removalOptions }) => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `function IndeterminateCapturePopStateListener({ shouldCapture }) {
+        const [revision, setRevision] = useState(0);
+        useEffect(() => {
+          const onPopState = () => setRevision((previous) => previous + 1);
+          window.addEventListener("popstate", onPopState, ${registrationOptions});
+          window.removeEventListener("popstate", onPopState, ${removalOptions});
+        }, [shouldCapture]);
+        return <output>{location.pathname}</output>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    {
       name: "global aliases and transparent TypeScript wrappers",
       source: `import { useState } from "react";
         function AliasedLocation() {

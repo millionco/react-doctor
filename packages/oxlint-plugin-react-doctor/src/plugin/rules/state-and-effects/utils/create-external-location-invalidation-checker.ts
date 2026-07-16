@@ -560,15 +560,15 @@ const collectLocationMutationExecutions = (
   return mutationExecutions;
 };
 
-const isPossiblyMatchingLocationListenerRemoval = (
+const isDefinitelyMatchingLocationListenerRemoval = (
   registration: LocationListenerRegistration,
   removal: LocationListenerRegistration,
 ): boolean =>
   registration.eventName === removal.eventName &&
   registration.listenerFunction === removal.listenerFunction &&
-  (registration.capture === null ||
-    removal.capture === null ||
-    registration.capture === removal.capture);
+  registration.capture !== null &&
+  removal.capture !== null &&
+  registration.capture === removal.capture;
 
 const functionMustSynchronouslyRemoveLocationListener = (
   functionNode: EsTreeNode,
@@ -582,7 +582,7 @@ const functionMustSynchronouslyRemoveLocationListener = (
   nextVisitingFunctions.add(functionNode);
   const removalExecutions: EsTreeNode[] = [];
   for (const removal of index.listenerRemovals) {
-    if (!isPossiblyMatchingLocationListenerRemoval(registration, removal)) continue;
+    if (!isDefinitelyMatchingLocationListenerRemoval(registration, removal)) continue;
     if (index.context.cfg.enclosingFunction(removal.callExpression) !== functionNode) continue;
     if (canExecuteBeforeAsyncSuspension(removal.callExpression, functionNode, index)) {
       removalExecutions.push(removal.callExpression);
@@ -614,7 +614,7 @@ const collectPotentialLocationListenerRemovalExecutions = (
   const removalExecutions = new Set<EsTreeNode>();
   for (const removal of index.listenerRemovals) {
     if (
-      isPossiblyMatchingLocationListenerRemoval(registration, removal) &&
+      isDefinitelyMatchingLocationListenerRemoval(registration, removal) &&
       index.context.cfg.enclosingFunction(removal.callExpression) === functionNode
     ) {
       removalExecutions.add(removal.callExpression);

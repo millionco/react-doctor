@@ -1183,9 +1183,15 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
 
     // Re-score with the displayed top errors removed so the score bar can
     // show the payoff as a ghost gain segment.
+    const scoreDiagnostics = filterDiagnosticsForSurface([...diagnostics], "score", userConfig);
+    const displayedScoreDiagnostics = filterDiagnosticsForSurface(
+      [...printedDiagnostics],
+      "score",
+      userConfig,
+    );
     const potentialScore = score
       ? yield* Effect.promise(() =>
-          computeProjectedScore([...printedDiagnostics], [...surfaceDiagnostics], score),
+          computeProjectedScore(displayedScoreDiagnostics, scoreDiagnostics, score),
         )
       : null;
 

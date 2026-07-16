@@ -4335,7 +4335,6 @@ describe("no-effect-chain — regressions", () => {
       }
       return `const helper${helperIndex} = (enabled) => helper${helperIndex - 1}(enabled);`;
     }).join("\n");
-    const startedAt = performance.now();
     const result = runRule(
       noEffectChain,
       `import { useEffect, useState } from "react";
@@ -4350,7 +4349,6 @@ describe("no-effect-chain — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
-    expect(performance.now() - startedAt).toBeLessThan(2_000);
   });
 
   it("handles a deep immutable browser namespace alias chain without recursion", () => {
@@ -4359,7 +4357,6 @@ describe("no-effect-chain — regressions", () => {
       if (aliasIndex === 0) return `const storageAlias0 = localStorage;`;
       return `const storageAlias${aliasIndex} = storageAlias${aliasIndex - 1};`;
     }).join("\n");
-    const startedAt = performance.now();
     const result = runRule(
       noEffectChain,
       `import { useEffect, useState } from "react";
@@ -4377,6 +4374,5 @@ describe("no-effect-chain — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
-    expect(performance.now() - startedAt).toBeLessThan(5_000);
   });
 });

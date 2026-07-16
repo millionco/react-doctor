@@ -176,12 +176,16 @@ const isConditionallyExecuted = (node: EsTreeNode, owner: EsTreeNode): boolean =
       if (parent.operator === "&&" && !parent.left.value) return true;
       if (parent.operator === "||" && Boolean(parent.left.value)) return true;
     }
+    if (isNodeOfType(parent, "DoWhileStatement")) {
+      const isSingleIterationBody =
+        parent.body === current && isNodeOfType(parent.test, "Literal") && !parent.test.value;
+      if (!isSingleIterationBody) return true;
+    }
     if (
       isNodeOfType(parent, "ForStatement") ||
       isNodeOfType(parent, "ForInStatement") ||
       isNodeOfType(parent, "ForOfStatement") ||
       isNodeOfType(parent, "WhileStatement") ||
-      isNodeOfType(parent, "DoWhileStatement") ||
       isNodeOfType(parent, "SwitchCase") ||
       isNodeOfType(parent, "CatchClause")
     ) {

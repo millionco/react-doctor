@@ -215,6 +215,21 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("rejects trusted KaTeX options mutated in a single-iteration do-while loop", () => {
+    const findings = scan(`
+      import katex from "katex";
+      const options = { trust: false };
+      do {
+        options.trust = true;
+      } while (false);
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(1);
+  });
+
   it.each([
     "if (condition) options.trust = false",
     "condition && (options.trust = false)",

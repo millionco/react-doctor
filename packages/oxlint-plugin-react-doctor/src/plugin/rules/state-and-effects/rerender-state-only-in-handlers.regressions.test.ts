@@ -1297,6 +1297,39 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
       }`,
     },
     {
+      name: "a direct listener removal follows suspension",
+      source: `function AsyncDirectRemoval() {
+        const [revision, setRevision] = useState(0);
+        const onPopState = () => setRevision((previous) => previous + 1);
+        const registerTemporarily = async () => {
+          window.addEventListener("popstate", onPopState);
+          await Promise.resolve();
+          window.removeEventListener("popstate", onPopState);
+        };
+        useEffect(() => {
+          void registerTemporarily();
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
+      name: "a listener removal helper is called after suspension",
+      source: `function AsyncRemovalHelperCall() {
+        const [revision, setRevision] = useState(0);
+        const onPopState = () => setRevision((previous) => previous + 1);
+        const unregister = () => window.removeEventListener("popstate", onPopState);
+        const registerTemporarily = async () => {
+          window.addEventListener("popstate", onPopState);
+          await Promise.resolve();
+          unregister();
+        };
+        useEffect(() => {
+          void registerTemporarily();
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    },
+    {
       name: "a listener removal callback may execute zero times",
       source: `function OptionalIteratorRemovalHelper({ removals }) {
         const [revision, setRevision] = useState(0);

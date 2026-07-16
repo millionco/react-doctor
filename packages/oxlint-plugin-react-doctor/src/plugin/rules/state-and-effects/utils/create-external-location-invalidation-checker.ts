@@ -606,7 +606,7 @@ const functionMustSynchronouslyRemoveLocationListener = (
   return doNodesCoverEveryPathFromFunctionEntry(functionNode, removalExecutions, index.context);
 };
 
-const collectPotentialLocationListenerRemovalExecutions = (
+const collectSynchronousLocationListenerRemovalExecutions = (
   functionNode: EsTreeNode,
   registration: LocationListenerRegistration,
   index: LocationInvalidationIndex,
@@ -615,7 +615,8 @@ const collectPotentialLocationListenerRemovalExecutions = (
   for (const removal of index.listenerRemovals) {
     if (
       isDefinitelyMatchingLocationListenerRemoval(registration, removal) &&
-      index.context.cfg.enclosingFunction(removal.callExpression) === functionNode
+      index.context.cfg.enclosingFunction(removal.callExpression) === functionNode &&
+      canExecuteBeforeAsyncSuspension(removal.callExpression, functionNode, index)
     ) {
       removalExecutions.add(removal.callExpression);
     }
@@ -624,6 +625,7 @@ const collectPotentialLocationListenerRemovalExecutions = (
     const calledFunction = index.calledFunctionByExpression.get(expression);
     if (
       calledFunction &&
+      canExecuteBeforeAsyncSuspension(expression, functionNode, index) &&
       functionMustSynchronouslyRemoveLocationListener(
         calledFunction,
         registration,
@@ -649,7 +651,7 @@ const canExecutionReachFunctionExitWithoutListenerRemoval = (
   const sourceBlock = functionCfg?.blockOf(executionNode);
   if (!functionCfg || !sourceBlock) return false;
   const matchingRemovalsByBlock = new Map<typeof sourceBlock, EsTreeNode[]>();
-  for (const removalExecution of collectPotentialLocationListenerRemovalExecutions(
+  for (const removalExecution of collectSynchronousLocationListenerRemovalExecutions(
     owner,
     registration,
     index,

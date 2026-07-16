@@ -99,9 +99,9 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
 
     const surfaceDiagnostics = filterScansForSurface(completedScans, "cli");
     const displayDiagnostics = filterDiagnosticsByCategories(surfaceDiagnostics, categoryFilters);
-    const displayedScoreDiagnostics = filterDiagnosticsByCategories(
-      filterScansForSurface(completedScans, "score"),
-      categoryFilters,
+    const scoreDiagnostics = new Set(filterScansForSurface(completedScans, "score"));
+    const displayedScoreDiagnostics = displayDiagnostics.filter((diagnostic) =>
+      scoreDiagnostics.has(diagnostic),
     );
 
     // Each diagnostic's `filePath` is relative to its own project root,

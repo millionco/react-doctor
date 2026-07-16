@@ -173,4 +173,20 @@ describe("printMultiProjectSummary score projection", () => {
       lowDesignDiagnostic,
     ]);
   });
+
+  it("does not project a score-eligible rule excluded from the CLI", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await renderSummary({
+      surfaces: {
+        cli: { excludeRules: ["react-doctor/no-low-production"] },
+        score: { includeRules: ["react-doctor/no-low-production"] },
+      },
+    });
+
+    expect(mockedComputeProjectedScore).toHaveBeenCalledTimes(1);
+    const [topErrorSource, rescoreSource] = mockedComputeProjectedScore.mock.calls[0];
+    expect(topErrorSource).toEqual([highProductionDiagnostic]);
+    expect(rescoreSource).toEqual([lowProductionDiagnostic]);
+  });
 });

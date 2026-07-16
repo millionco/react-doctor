@@ -255,6 +255,50 @@ describe("inspect — score surface filter", () => {
     },
   );
 
+  it(
+    "does not project a score-eligible rule excluded from the CLI",
+    { timeout: 60_000 },
+    async () => {
+      const temporaryDirectory = fs.mkdtempSync(
+        path.join(os.tmpdir(), "rd-score-projection-cli-excluded-"),
+      );
+      const projectDirectory = setupReactProject(temporaryDirectory, "app", {
+        files: { "src/List.tsx": INDEX_KEY_LIST_SOURCE },
+      });
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      stubScoreFetchAndCapture();
+      vi.stubEnv("REACT_DOCTOR_NO_CACHE", "1");
+
+      try {
+        const configOverride: ReactDoctorConfig = {
+          surfaces: {
+            cli: { excludeRules: ["react-doctor/no-array-index-as-key"] },
+            score: { includeRules: ["react-doctor/no-array-index-as-key"] },
+          },
+        };
+        await inspect(projectDirectory, {
+          lint: true,
+          deadCode: false,
+          noScore: false,
+          warnings: true,
+          configOverride,
+        });
+
+        expect(mockedComputeProjectedScore).toHaveBeenCalledTimes(1);
+        const [topErrorSource, rescoreSource] = mockedComputeProjectedScore.mock.calls[0];
+        expect(
+          topErrorSource.some((diagnostic) => diagnostic.rule === "no-array-index-as-key"),
+        ).toBe(false);
+        expect(
+          rescoreSource.some((diagnostic) => diagnostic.rule === "no-array-index-as-key"),
+        ).toBe(true);
+      } finally {
+        consoleSpy.mockRestore();
+        fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+      }
+    },
+  );
+
   // Regression for the Bugbot finding on #271: the `cli` outputSurface
   // used to short-circuit to the raw diagnostic list, which silently
   // dropped any user-configured `surfaces.cli.exclude*` controls before

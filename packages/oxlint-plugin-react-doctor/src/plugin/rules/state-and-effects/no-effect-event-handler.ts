@@ -9,6 +9,7 @@ import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-str
 import { walkAst } from "../../utils/walk-ast.js";
 import { findTriggeredSideEffectCalleeName } from "./utils/find-triggered-side-effect-callee-name.js";
 import { hasDocumentClassListMutation } from "./utils/has-document-class-list-mutation.js";
+import { unwrapChainExpression } from "./utils/unwrap-chain-expression.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { hasCleanup } from "./utils/effect/react.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -27,12 +28,6 @@ interface GuardExpression {
 
 const hasEventLikeNode = (node: EsTreeNode): boolean =>
   findTriggeredSideEffectCalleeName(node) !== null || hasDocumentClassListMutation(node);
-
-const unwrapChainExpression = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
-  if (!node) return null;
-  if (isNodeOfType(node, "ChainExpression")) return node.expression;
-  return node;
-};
 
 const collectGuardExpressions = (
   node: EsTreeNode | null | undefined,

@@ -82,6 +82,49 @@ describe("discoverProject", () => {
     expect(projectInfo.tailwindVersion).toBe("^3.4.1");
   });
 
+  it("detects an i18n library from any dependency group", () => {
+    const projectDirectory = path.join(tempDirectory, "i18n-app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "i18n-app",
+        dependencies: { react: "^19.0.0", "react-i18next": "^15.0.0" },
+      }),
+    );
+
+    expect(discoverProject(projectDirectory).hasI18nLibrary).toBe(true);
+  });
+
+  it("reports no i18n library when none is declared", () => {
+    const projectDirectory = path.join(tempDirectory, "single-locale-app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "single-locale-app",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+
+    expect(discoverProject(projectDirectory).hasI18nLibrary).toBe(false);
+  });
+
+  it("prefers the runtime styled-components spec over a dev-only pin", () => {
+    const projectDirectory = path.join(tempDirectory, "styled-dev-pin");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "styled-dev-pin",
+        dependencies: { react: "^19.0.0", "styled-components": "^6.1.0" },
+        devDependencies: { "styled-components": "^5.3.11" },
+      }),
+    );
+
+    expect(discoverProject(projectDirectory).styledComponentsVersion).toBe("^6.1.0");
+  });
+
   it("prefers runtime React dependencies over conflicting devDependencies", () => {
     const projectDirectory = path.join(tempDirectory, "react-runtime-over-dev-deps");
     fs.mkdirSync(projectDirectory, { recursive: true });
@@ -888,6 +931,38 @@ describe("listWorkspacePackages", () => {
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.framework, "vite is matched before expo").toBe("vite");
     expect(projectInfo.expoVersion, "expo dependency still flags the project").toBe("~51.0.0");
+  });
+
+  it("classifies a Remix app that ships Vite as `remix`, not `vite`", () => {
+    const projectDirectory = path.join(tempDirectory, "remix-with-vite");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "remix-with-vite",
+        dependencies: { "@remix-run/react": "^2.9.0", react: "^18.2.0" },
+        devDependencies: { vite: "^5.1.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework, "the framework package outranks its bundler").toBe("remix");
+  });
+
+  it("classifies a Gatsby app that also lists Vite as `gatsby`, not `vite`", () => {
+    const projectDirectory = path.join(tempDirectory, "gatsby-with-vite");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "gatsby-with-vite",
+        dependencies: { gatsby: "^5.13.0", react: "^18.2.0" },
+        devDependencies: { vite: "^5.1.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework, "the framework package outranks its bundler").toBe("gatsby");
   });
 
   it("flags a web-rooted monorepo with an Expo workspace as an Expo project", () => {

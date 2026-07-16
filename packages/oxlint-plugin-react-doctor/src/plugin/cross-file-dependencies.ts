@@ -473,7 +473,10 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
  */
 export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "nextjs-no-img-element",
+  "no-loading-flag-reset-outside-finally",
+  "no-unguarded-browser-global-at-module-scope",
   "only-export-components",
+  "window-open-without-noopener",
 ]);
 
 /**

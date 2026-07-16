@@ -30,6 +30,10 @@ import {
 } from "./collect-project-facts.js";
 import { resolveInstalledReactVersion } from "./resolve-installed-react-version.js";
 import { readPackageJson } from "./package-json.js";
+import { getMobxVersion } from "./get-mobx-version.js";
+import { getStyledComponentsVersion } from "./get-styled-components-version.js";
+import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
+import { hasI18nDependency } from "./has-i18n-dependency.js";
 import {
   getLowestDependencyMajor,
   parseReactMajor,
@@ -100,6 +104,10 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     hasReactCompiler: false,
     hasReactCompilerLintPlugin: false,
     hasTanStackQuery: false,
+    hasI18nLibrary: false,
+    tanstackQueryVersion: null,
+    mobxVersion: null,
+    styledComponentsVersion: null,
     hasSsrDependency: false,
     preactVersion: null,
     preactMajorVersion: null,
@@ -280,6 +288,10 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasReactCompiler: detectReactCompiler(directory, packageJson),
     hasReactCompilerLintPlugin: detectReactCompilerLintPlugin(directory, packageJson),
     hasTanStackQuery: hasTanStackQuery(packageJson),
+    hasI18nLibrary: hasI18nDependency(packageJson),
+    tanstackQueryVersion: getTanStackQueryVersion(packageJson),
+    mobxVersion: getMobxVersion(packageJson),
+    styledComponentsVersion: getStyledComponentsVersion(packageJson),
     hasSsrDependency: workspaceFacts.hasSsrDependency,
     preactVersion,
     preactMajorVersion: parseReactMajor(preactVersion),

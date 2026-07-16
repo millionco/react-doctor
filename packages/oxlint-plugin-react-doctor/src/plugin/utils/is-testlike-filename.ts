@@ -64,8 +64,9 @@ const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
 ];
 
 // True iff `filename` looks like test / spec / Storybook / Cypress /
-// benchmark / e2e code — by suffix (`.test.tsx`, `.spec.ts`, `.cy.tsx`,
-// `.stories.tsx`, `.bench.ts`, `.e2e.ts`, `.story.ts`) or by sitting
+// benchmark / e2e / docs-demo code — by suffix (`.test.tsx`, `.spec.ts`,
+// `.cy.tsx`, `.stories.tsx`, `.bench.ts`, `.e2e.ts`, `.story.ts`,
+// `.demo.tsx`) or by sitting
 // inside a recognized test/fixture directory. Used by rules whose
 // findings are unactionable in non-production code (a11y rules, perf
 // rules, Fast-Refresh-only-export rules) to skip those files entirely
@@ -76,12 +77,15 @@ const NON_PRODUCTION_FILENAME_SUFFIXES: ReadonlyArray<string> = [
   ".cy.",
   ".stories.",
   ".story.",
+  ".demo.",
+  ".demos.",
   ".bench.",
   ".benchmark.",
   ".e2e.",
   ".integration-spec.",
   ".int-spec.",
   ".mock.",
+  ".mocks.",
   ".fixture.",
 ];
 

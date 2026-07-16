@@ -23,7 +23,9 @@ export default defineConfig({
         // binding" (same class of bug as react-doctor issue #404). Keep
         // oxc-parser external so its loader runs from its own node_modules
         // tree, where the binding is installed as an optional dependency.
-        neverBundle: ["oxc-parser"],
+        // oxc-resolver ships the same @oxc-resolver/binding-<platform>
+        // NAPI loader chain, so it must stay external for the same reason.
+        neverBundle: ["oxc-parser", "oxc-resolver"],
       },
       dts: true,
       target: "node20",

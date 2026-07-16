@@ -18,6 +18,10 @@ const baseProject: ProjectInfo = {
   hasTypeScript: true,
   hasReactCompiler: false,
   hasTanStackQuery: false,
+  hasI18nLibrary: false,
+  tanstackQueryVersion: null,
+  mobxVersion: null,
+  styledComponentsVersion: null,
   hasSsrDependency: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
@@ -47,6 +51,7 @@ describe("buildCapabilities", () => {
       nextjsMajorVersion: 15,
       hasReactCompiler: true,
       hasTanStackQuery: true,
+      tanstackQueryVersion: "^5.66.0",
       hasTypeScript: true,
     });
     expect([...capabilities].sort()).toEqual([

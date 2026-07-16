@@ -18,6 +18,16 @@ describe("isTestlikeFilename", () => {
     expect(isTestlikeFilename("/repo/components/config-provider/demo/direction.tsx")).toBe(true);
   });
 
+  it("recognizes docs-site demo file suffixes", () => {
+    expect(isTestlikeFilename("/repo/src/hooks/useHover/useHover.demo.tsx")).toBe(true);
+    expect(isTestlikeFilename("/repo/src/components/Button/Button.demos.tsx")).toBe(true);
+  });
+
+  it("recognizes test-utility directories below a source root", () => {
+    expect(isTestlikeFilename("/repo/src/connector/testUtils/mockGremlinFetch.ts")).toBe(true);
+    expect(isTestlikeFilename("/repo/src/shared/test-utils/render.tsx")).toBe(true);
+  });
+
   it("treats regular source files as production", () => {
     expect(isTestlikeFilename("/repo/src/components/Button.tsx")).toBe(false);
   });

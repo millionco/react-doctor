@@ -1387,4 +1387,180 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "zod-v4-prefer-top-level-string-formats": {
     code: '\n      import { z } from "zod";\n      const schema = z.string().email();\n    ',
   },
+
+  "class-component-missing-component-will-unmount-teardown": {
+    code: "\n      class Clock extends React.PureComponent {\n        componentDidMount() {\n          setInterval(() => this.tick(), 1000);\n        }\n        render() { return null; }\n      }\n      ",
+  },
+  "context-provider-value-from-unmemoized-local-literal": {
+    code: '\n      import { createContext } from "react";\n      const CbContext = createContext(null);\n      function App() {\n        const value = () => {};\n        return <CbContext.Provider value={value} />;\n      }\n    ',
+  },
+  "debounce-no-cleanup": {
+    code: "import { debounce } from 'lodash';\n       function Title({ title }) {\n         const apply = useMemo(() => debounce((value) => {\n           document.title = value;\n         }, 300), []);\n         useEffect(() => {\n           apply(title);\n         }, [title, apply]);\n       }",
+  },
+  "effect-listener-cleanup-reference-mismatch": {
+    code: "\n      useEffect(() => {\n        appEvent.subscribe((e) => handle(e));\n        return () => appEvent.unsubscribe((e) => handle(e));\n      }, []);\n      ",
+  },
+  "effect-observer-needs-disconnect": {
+    code: "\n      useEffect(() => {\n        const observer = new ResizeObserver(() => measure());\n        observer.observe(el);\n      }, []);\n      ",
+  },
+  "effect-raf-loop-needs-cancel": {
+    code: "\n      function Clock() {\n        useEffect(() => {\n          requestAnimationFrame(function tick() {\n            update();\n            requestAnimationFrame(tick);\n          });\n        }, []);\n        return null;\n      }\n      ",
+  },
+  "effect-remove-listener-inline-handler": {
+    code: "emitter.off('data', (d) => process(d));",
+  },
+  "hook-import-rename-loses-use-prefix": {
+    code: 'import { useEffect as runEffect } from "react";\n       const App = () => {\n         runEffect(() => {}, []);\n         return null;\n       };',
+  },
+  "jsx-numeric-and-leaked-render": {
+    code: "const C = ({ count }) => <div>{(count - 1) && <More />}</div>;",
+  },
+  "mobx-reaction-disposer-discarded": {
+    code: '\n      import { autorun } from "mobx";\n      class ViewState {\n        start() {\n          autorun(this.loadImages);\n        }\n      }\n      ',
+  },
+  "nextjs-async-dynamic-api-not-awaited": {
+    code: "import { headers } from 'next/headers';\n       function f() { return headers().get('x-request-id'); }",
+  },
+  "no-arithmetic-on-optional-chained-operand": {
+    code: "if (config?.limit * factor < threshold) {}",
+  },
+  "no-array-find-result-member-access-without-guard": {
+    code: "const first = values.find(Boolean).id;",
+  },
+  "no-array-index-deref-without-bounds-or-empty-guard": {
+    code: "const version = /v(\\d+)/.exec(input)[1].trim();",
+  },
+  "no-async-event-handler-without-reentry-guard": {
+    code: "const Form = () => (\n        <form onSubmit={async () => {\n          await fetch('/api/reset', { method: 'PATCH', body });\n          setDone(true);\n        }} />\n      );",
+  },
+  "no-boolean-toggle-without-functional-update": {
+    code: "const Poller = () => {\n         const [on, setOn] = useState(false);\n         useEffect(() => {\n           setTimeout(() => setOn(!on), 500);\n         }, [on]);\n       };",
+  },
+  "no-collapsed-literal-or-chain-as-value": {
+    code: 'foo.includes("a" || "b");',
+  },
+  "no-controlled-input-value-without-state-update": {
+    code: "const C = () => <input value={123} onChange={handleChange} />;",
+  },
+  "no-create-object-url-without-revoke": {
+    code: "function make(blob) { return URL.createObjectURL(blob); }",
+  },
+  "no-deprecated-keyboard-event-keycode-which": {
+    code: "const Row = () => <div onKeyDown={(e) => { if (e.keyCode === 75) focusSearch(); }} />;",
+  },
+  "no-eager-new-in-use-state-initializer": {
+    code: '\n      import { useState } from "react";\n      function Component() {\n        const [controller] = useState(new AbortController());\n      }\n    ',
+  },
+  "no-effect-wrapper-discards-callback-cleanup-return": {
+    code: "const useWrapped = (effect: EffectCallback, deps: DependencyList) => {\n         useEffect(() => {\n           effect();\n         }, deps);\n       };",
+  },
+  "no-enter-submit-without-ime-composition-guard": {
+    code: "const Field = () => (\n         <input onKeyDown={(e) => { e.key === 'Enter' && onSave(); }} />\n       );",
+  },
+  "no-fetch-response-used-without-status-check": {
+    code: "function warmCache(url) {\n         fetch(url).then((response) => response.blob());\n       }",
+  },
+  "no-fill-map-element-as-key": {
+    code: "const Rows = () => Array(3).fill('a').map((letter) => <Row key={letter} />);",
+  },
+  "no-floating-then-in-jsx-handler": {
+    code: "const el = <input onChange={() => api.update(x).then(refetch)} />;",
+  },
+  "no-impure-call-at-module-scope": {
+    code: "const RENDERED = Date.now();",
+  },
+  "no-inline-hoc-on-component": {
+    code: "const Card = withTheme((props) => <div>{useColor(props.theme)}</div>) as React.FC;",
+  },
+  "no-loading-flag-reset-outside-finally": {
+    code: "const onSubmit = async () => {\n        setSubmitting(true);\n        await savePlugin(values);\n        onClose();\n        setSubmitting(false);\n      };",
+  },
+  "no-mutate-queried-dom-node-in-component": {
+    code: "function Row({ order }) {\n        document.getElementById('row-1').style.zIndex = '1';\n        return <div id=\"row-1\" style={{ zIndex: order }} />;\n      }",
+  },
+  "no-mutate-then-set-or-return-same-reference": {
+    code: "const Table = () => {\n        const [rows, setRows] = useState(data);\n        rows.sort(byName);\n        setRows(rows);\n      };",
+  },
+  "no-mutating-array-method-on-prop-or-hook-result": {
+    code: "\n      function List({ items }) {\n        items.splice(0, 1);\n        return null;\n      }\n      ",
+  },
+  "no-non-literal-selector-query-without-try-catch": {
+    code: "el.matches(location.hash);",
+  },
+  "no-non-null-assertion-on-maybe-undefined-result": {
+    code: "const first = input.match(/(\\d+)/)![1];",
+  },
+  "no-nondeterministic-id-value-in-render-body": {
+    code: 'import { uniqueId } from "lodash";\n      const useBundleChartData = () => {\n        const chartId = useMemo(() => uniqueId(), []);\n        return { chartId };\n      };',
+  },
+  "no-nullish-coalescing-arithmetic-precedence": {
+    code: "const r = x ?? 0 / y;",
+  },
+  "no-object-keys-values-entries-on-maybe-undefined": {
+    code: "const list = Object.keys(response?.data);",
+  },
+  "no-object-or-array-coerced-to-string-in-template-literal": {
+    code: "function f() { return `pair: ${[1, 2]}`; }",
+  },
+  "no-predicate-function-reference-in-boolean-position": {
+    code: "\n      function isReady() { return true; }\n      isReady && start();\n      ",
+  },
+  "no-promise-then-side-effect-in-effect-without-catch": {
+    code: "useEffect(() => { fetch(url).then((response) => response.json()).then(setUser); }, [url]);",
+  },
+  "no-repeated-layout-read-same-element": {
+    code: "\n      function size(el, useRect) {\n        return useRect && el.getBoundingClientRect().width + el.getBoundingClientRect().height;\n      }\n    ",
+  },
+  "no-set-state-after-await-in-effect": {
+    code: "\n      const C = ({ id }) => {\n        const [user, setUser] = useState(null);\n        useEffect(() => {\n          (async () => {\n            setUser(await load(id));\n          })();\n        }, [id]);\n      };\n      ",
+  },
+  "no-side-effect-in-state-updater-function": {
+    code: 'setCount((prev) => {\n         trackEvent("increment", prev);\n         return prev + 1;\n       });',
+  },
+  "no-spread-accumulator-in-reduce": {
+    code: "const out = items.reduce((acc, x) => [...acc, x], []);",
+  },
+  "no-spread-props-over-defaults-clobbers-with-undefined": {
+    code: "const Widget = (incoming: WidgetProps) => {\n        const merged = { ...defaultProps, ...incoming };\n        return <div>{Math.round(merged.ratio)}</div>;\n      };",
+  },
+  "no-unescaped-dynamic-string-in-regexp": {
+    code: "const re = RegExp(highlight, 'gi');",
+  },
+  "no-unguarded-browser-global-at-module-scope": {
+    code: "const lang = navigator.language;",
+    filePath: "src/lib/foo.ts",
+  },
+  "no-unguarded-numeric-input-parse": {
+    code: "const F = () => <input onChange={(e) => setX(Number(e.target.value))} />;",
+  },
+  "no-unguarded-throwing-parse-call": {
+    code: "function Swatch(props) {\n        return chroma(props.color).hex();\n      }",
+  },
+  "no-unsafe-json-parse": {
+    code: "const m = JSON.parse(raw).foo;",
+  },
+  "no-whole-object-default-losing-per-key-defaults": {
+    code: "function f({ a, b } = { a: 1 } as Options) {}",
+  },
+  "no-whole-object-dep-with-member-reads": {
+    code: "function FullName(props) {\n        const fullName = useMemo(() => `${props.first} ${props.last}`, [props]);\n        return fullName;\n      }",
+  },
+  "query-floating-mutate-async": {
+    code: "mutation.mutateAsync(payload);",
+  },
+  "query-no-mutation-in-effect-as-read": {
+    code: "function C() {\n         const { mutateAsync, data } = useSWRLocales();\n         useEffect(() => { mutateAsync(payload); }, [dep]);\n         return <div>{data.available_locales}</div>;\n       }",
+  },
+  "radio-input-missing-name": {
+    code: '<input type="radio" value="yes" />;',
+  },
+  "styled-components-duplicate-css-property-in-block": {
+    code: "const shared = css`opacity: ${p => p.$a ? 1 : 0}; opacity: ${p => p.$b ? 1 : 0.5};`;",
+  },
+  "styled-components-non-transient-custom-prop-on-intrinsic-element": {
+    code: "const D = styled.div<{ selected: boolean }>`color: red;`;",
+  },
+  "window-open-without-noopener": {
+    code: "window.open(url);",
+  },
 };

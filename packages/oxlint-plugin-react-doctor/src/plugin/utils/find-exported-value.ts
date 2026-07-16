@@ -51,6 +51,7 @@ export const findExportedValue = (
         localBindings.set(declaration.id.name, declaration);
         namedExports.set(declaration.id.name, declaration.id.name);
       }
+      if (statement.source) continue;
       for (const specifier of statement.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ExportSpecifier") || specifier.exportKind === "type") {
           continue;

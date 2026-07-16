@@ -1,3 +1,4 @@
+import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -40,10 +41,6 @@ const DETOX_ELEMENT_ACTIONS = new Set<string>([
   "performAccessibilityAction",
   "adjustSliderToPosition",
 ]);
-
-// Terminal `.then`/`.catch`/`.finally` means the promise is already being
-// handled — not a missing await.
-const PROMISE_SETTLE_METHODS = new Set<string>(["then", "catch", "finally"]);
 
 interface ChainRoot {
   readonly calleeName: string;

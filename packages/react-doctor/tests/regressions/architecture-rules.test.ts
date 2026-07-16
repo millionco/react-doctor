@@ -135,6 +135,7 @@ export const Widget = memo(({ items, onSelect }: WidgetProps) => {
 
     const hits = await collectRuleHits(projectDir, "react-compiler-no-manual-memoization", {
       hasReactCompiler: true,
+      hasI18nLibrary: false,
     });
     const messages = hits.map((hit) => hit.message);
     expect(messages).toHaveLength(3);
@@ -163,6 +164,7 @@ export const Counter = React.memo(({ initial }: CounterProps) => {
 
     const hits = await collectRuleHits(projectDir, "react-compiler-no-manual-memoization", {
       hasReactCompiler: true,
+      hasI18nLibrary: false,
     });
     expect(hits).toHaveLength(3);
   });
@@ -182,6 +184,7 @@ export const Widget = ({ items }: { items: ReadonlyArray<string> }) => {
 
     const hits = await collectRuleHits(projectDir, "react-compiler-no-manual-memoization", {
       hasReactCompiler: false,
+      hasI18nLibrary: false,
     });
     expect(hits).toHaveLength(0);
   });
@@ -206,6 +209,7 @@ export const Widget = memo(() => {
 
     const hits = await collectRuleHits(projectDir, "react-compiler-no-manual-memoization", {
       hasReactCompiler: true,
+      hasI18nLibrary: false,
     });
     expect(hits).toHaveLength(0);
   });

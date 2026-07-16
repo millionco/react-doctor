@@ -265,6 +265,7 @@ export const App = () => <div><Button /></div>;
     const diagnostics = await scan(projectDir, {
       perFileLintCacheEnabled: true,
       hasReactCompiler: true,
+      hasI18nLibrary: false,
       onCacheStats: () => {
         cacheStatsCalled = true;
       },

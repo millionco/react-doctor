@@ -45,6 +45,45 @@ const externalPluginDiagnostic: Diagnostic = {
   category: "Security",
 };
 
+const docusaurusTestDiagnostic: Diagnostic = {
+  filePath: "packages/docusaurus-theme-classic/src/theme/Tabs/__tests__/index.test.tsx",
+  plugin: "react-compiler",
+  rule: "globals",
+  severity: "error",
+  message: "InvalidReact: Unexpected reassignment of a variable",
+  help: "",
+  line: 32,
+  column: 5,
+  category: "Correctness",
+  fileContext: "test",
+};
+
+const radixTestDiagnostic: Diagnostic = {
+  filePath: "packages/react/context-menu/src/context-menu-controlled.test.tsx",
+  plugin: "eslint",
+  rule: "no-unused-vars",
+  severity: "error",
+  message: "'trigger' is assigned a value but never used.",
+  help: "",
+  line: 48,
+  column: 9,
+  category: "Correctness",
+  fileContext: "test",
+};
+
+const storyDiagnostic: Diagnostic = {
+  filePath: "packages/components/src/Button.stories.tsx",
+  plugin: "react-doctor",
+  rule: "design-no-redundant-size-axes",
+  severity: "warning",
+  message: "w-5 h-5 → use the shorthand size-5 (Tailwind v3.4+)",
+  help: "",
+  line: 12,
+  column: 4,
+  category: "Architecture",
+  fileContext: "story",
+};
+
 describe("filterDiagnosticsForSurface defaults", () => {
   it("strips `design`-tagged rules from PR comment, score, and CI failure surfaces by default", () => {
     const diagnostics = [designDiagnostic, correctnessDiagnostic];
@@ -70,6 +109,14 @@ describe("filterDiagnosticsForSurface defaults", () => {
     for (const surface of DIAGNOSTIC_SURFACES) {
       expect(filterDiagnosticsForSurface(diagnostics, surface, null)).toEqual(diagnostics);
     }
+  });
+
+  it("keeps test and story diagnostics visible on CLI while excluding them from production health", () => {
+    const diagnostics = [docusaurusTestDiagnostic, radixTestDiagnostic, storyDiagnostic];
+
+    expect(filterDiagnosticsForSurface(diagnostics, "cli", null)).toEqual(diagnostics);
+    expect(filterDiagnosticsForSurface(diagnostics, "score", null)).toEqual([]);
+    expect(filterDiagnosticsForSurface(diagnostics, "ciFailure", null)).toEqual([]);
   });
 });
 
@@ -117,6 +164,32 @@ describe("filterDiagnosticsForSurface — user overrides", () => {
       },
     };
     expect(isDiagnosticOnSurface(designDiagnostic, "prComment", config)).toBe(true);
+  });
+
+  it("explicit includes restore non-production diagnostics to production-health surfaces", () => {
+    const ruleConfig: ReactDoctorConfig = {
+      surfaces: { score: { includeRules: ["react-compiler/globals"] } },
+    };
+    const categoryConfig: ReactDoctorConfig = {
+      surfaces: { ciFailure: { includeCategories: ["Correctness"] } },
+    };
+    const tagConfig: ReactDoctorConfig = {
+      surfaces: { score: { includeTags: ["design"] } },
+    };
+
+    expect(filterDiagnosticsForSurface([docusaurusTestDiagnostic], "score", ruleConfig)).toEqual([
+      docusaurusTestDiagnostic,
+    ]);
+    expect(
+      filterDiagnosticsForSurface(
+        [docusaurusTestDiagnostic, radixTestDiagnostic],
+        "ciFailure",
+        categoryConfig,
+      ),
+    ).toEqual([docusaurusTestDiagnostic, radixTestDiagnostic]);
+    expect(filterDiagnosticsForSurface([storyDiagnostic], "score", tagConfig)).toEqual([
+      storyDiagnostic,
+    ]);
   });
 });
 

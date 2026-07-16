@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { InspectResult } from "@react-doctor/core";
+import type { InspectResult, ReactDoctorConfig } from "@react-doctor/core";
 import { inspectAction } from "../src/cli/commands/inspect.js";
 import type { InspectFlags } from "../src/cli/utils/inspect-flags.js";
 import { buildDiagnostic, buildTestProject } from "./regressions/_helpers.js";
@@ -10,6 +10,7 @@ import { buildDiagnostic, buildTestProject } from "./regressions/_helpers.js";
 const mockState = vi.hoisted(() => ({
   projectDirectories: [] as string[],
   result: undefined as InspectResult | undefined,
+  userConfig: undefined as ReactDoctorConfig | null | undefined,
 }));
 
 vi.mock("ora", () => ({
@@ -33,11 +34,11 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
     resolveScanTarget: vi.fn(async (requestedDirectory: string) => ({
       resolvedDirectory: requestedDirectory,
       requestedDirectory,
-      userConfig: null,
+      userConfig: mockState.userConfig ?? null,
       configSourceDirectory: null,
       didRedirectViaRootDir: false,
     })),
-    filterDiagnosticsForSurface: vi.fn((diagnostics) => diagnostics),
+    filterDiagnosticsForSurface: actual.filterDiagnosticsForSurface,
   };
 });
 
@@ -99,6 +100,7 @@ describe("inspectAction exit-code gate", () => {
     process.exitCode = savedExitCode;
     mockState.result = undefined;
     mockState.projectDirectories = [];
+    mockState.userConfig = undefined;
     fs.rmSync(projectDirectory, { recursive: true, force: true });
     vi.clearAllMocks();
   });
@@ -154,6 +156,43 @@ describe("inspectAction exit-code gate", () => {
 
   it("still exits 1 when a complete scan has a blocking finding", async () => {
     await runInspectAction({ diagnostics: [buildDiagnostic({ severity: "error" })] });
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("does not fail CI for an error in a Radix test file by default", async () => {
+    await runInspectAction({
+      diagnostics: [
+        buildDiagnostic({
+          filePath: "packages/react/context-menu/src/context-menu-controlled.test.tsx",
+          plugin: "eslint",
+          rule: "no-unused-vars",
+          severity: "error",
+          category: "Correctness",
+          fileContext: "test",
+        }),
+      ],
+    });
+
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("fails CI when the Radix test diagnostic is explicitly included", async () => {
+    mockState.userConfig = {
+      surfaces: { ciFailure: { includeRules: ["eslint/no-unused-vars"] } },
+    };
+    await runInspectAction({
+      diagnostics: [
+        buildDiagnostic({
+          filePath: "packages/react/context-menu/src/context-menu-controlled.test.tsx",
+          plugin: "eslint",
+          rule: "no-unused-vars",
+          severity: "error",
+          category: "Correctness",
+          fileContext: "test",
+        }),
+      ],
+    });
+
     expect(process.exitCode).toBe(1);
   });
 

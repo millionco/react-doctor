@@ -177,6 +177,40 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
     ).toHaveLength(1);
   });
 
+  it.each(["const options = { ...source }", "const options = {}; Object.assign(options, source)"])(
+    "preserves unsafe trust copied before a safe source mutation: %s",
+    (copyStatement) => {
+      const findings = scan(`
+      import katex from "katex";
+      const source = { trust: true };
+      ${copyStatement};
+      source.trust = false;
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+      );
+    `);
+
+      expect(findings).toHaveLength(1);
+    },
+  );
+
+  it.each(["const options = { ...source }", "const options = {}; Object.assign(options, source)"])(
+    "preserves safe trust copied before an unsafe source mutation: %s",
+    (copyStatement) => {
+      const findings = scan(`
+      import katex from "katex";
+      const source = { trust: false };
+      ${copyStatement};
+      source.trust = true;
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+      );
+    `);
+
+      expect(findings).toHaveLength(0);
+    },
+  );
+
   it("distinguishes called, uncalled, and unreachable options mutators", () => {
     expect(
       scan(`

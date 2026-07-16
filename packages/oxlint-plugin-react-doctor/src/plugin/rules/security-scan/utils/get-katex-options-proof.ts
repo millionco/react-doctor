@@ -74,7 +74,6 @@ const getTrustStateAfterPropertyDescriptor = (
 const applyTrustMutation = (
   currentState: KatexTrustState,
   eventNode: EsTreeNode,
-  usageNode: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
 ): KatexTrustState => {
@@ -118,7 +117,7 @@ const applyTrustMutation = (
       for (const source of parent.arguments.slice(1)) {
         const sourceState = getKatexOptionsTrustState(
           source,
-          usageNode,
+          source,
           scopes,
           new Set(visitedSymbolIds),
         );
@@ -211,7 +210,6 @@ const getKatexOptionsTrustState = (
       const nextTrustState = applyTrustMutation(
         trustState,
         replayedEvent.node,
-        usageNode,
         scopes,
         nextVisitedSymbolIds,
       );
@@ -230,7 +228,7 @@ const getKatexOptionsTrustState = (
     if (isNodeOfType(property, "SpreadElement")) {
       const spreadState = getKatexOptionsTrustState(
         property.argument,
-        usageNode,
+        property.argument,
         scopes,
         new Set(visitedSymbolIds),
       );

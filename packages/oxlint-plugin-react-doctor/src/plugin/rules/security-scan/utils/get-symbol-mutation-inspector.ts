@@ -77,10 +77,65 @@ const getExecutionOwner = (node: EsTreeNode): EsTreeNode => {
   return node;
 };
 
-const isInsideStaticallyUnreachableBranch = (node: EsTreeNode, owner: EsTreeNode): boolean => {
+const isAbruptCompletionStatement = (node: EsTreeNode, includesContinue: boolean): boolean => {
+  if (
+    isNodeOfType(node, "ReturnStatement") ||
+    isNodeOfType(node, "ThrowStatement") ||
+    isNodeOfType(node, "BreakStatement") ||
+    (includesContinue && isNodeOfType(node, "ContinueStatement"))
+  ) {
+    return true;
+  }
+  if (isNodeOfType(node, "BlockStatement")) {
+    return node.body.some((statement) => isAbruptCompletionStatement(statement, includesContinue));
+  }
+  if (!isNodeOfType(node, "IfStatement")) return false;
+  if (isNodeOfType(node.test, "Literal")) {
+    const reachableBranch = node.test.value ? node.consequent : node.alternate;
+    return reachableBranch ? isAbruptCompletionStatement(reachableBranch, includesContinue) : false;
+  }
+  return Boolean(
+    node.alternate &&
+    isAbruptCompletionStatement(node.consequent, includesContinue) &&
+    isAbruptCompletionStatement(node.alternate, includesContinue),
+  );
+};
+
+const isTerminalStatement = (node: EsTreeNode): boolean => isAbruptCompletionStatement(node, true);
+
+const isAfterTerminalStatement = (node: EsTreeNode, statements: readonly EsTreeNode[]): boolean => {
+  const statementIndex = statements.indexOf(node);
+  return statementIndex > 0 && statements.slice(0, statementIndex).some(isTerminalStatement);
+};
+
+const isStaticallyUnreachable = (node: EsTreeNode, owner: EsTreeNode): boolean => {
   let current = node;
   while (current.parent && current !== owner) {
     const parent = current.parent;
+    if (
+      (isNodeOfType(parent, "BlockStatement") || isNodeOfType(parent, "Program")) &&
+      isAfterTerminalStatement(current, parent.body)
+    ) {
+      return true;
+    }
+    if (
+      ((isNodeOfType(parent, "WhileStatement") &&
+        isNodeOfType(parent.test, "Literal") &&
+        !parent.test.value) ||
+        (isNodeOfType(parent, "ForStatement") &&
+          parent.test &&
+          isNodeOfType(parent.test, "Literal") &&
+          !parent.test.value)) &&
+      parent.body === current
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(parent, "SwitchCase") &&
+      isAfterTerminalStatement(current, parent.consequent)
+    ) {
+      return true;
+    }
     if (isNodeOfType(parent, "IfStatement") && isNodeOfType(parent.test, "Literal")) {
       if (parent.test.value === false && parent.consequent === current) return true;
       if (parent.test.value === true && parent.alternate === current) return true;
@@ -241,7 +296,7 @@ export const getSymbolMutationInspector = (scopes: ScopeAnalysis): SymbolMutatio
     if (isNodeOfType(node, "CallExpression")) {
       const owner = getExecutionOwner(node);
       const targetOwner = getLocalCallTarget(node);
-      if (targetOwner && !isInsideStaticallyUnreachableBranch(node, owner)) {
+      if (targetOwner && !isStaticallyUnreachable(node, owner)) {
         calls.push({ call: node, owner, targetOwner });
       }
     }
@@ -251,7 +306,7 @@ export const getSymbolMutationInspector = (scopes: ScopeAnalysis): SymbolMutatio
     const symbol = resolveConstIdentifierAlias(node, scopes);
     if (!symbol) return;
     const owner = getExecutionOwner(node);
-    if (isInsideStaticallyUnreachableBranch(node, owner)) return;
+    if (isStaticallyUnreachable(node, owner)) return;
     const events = eventsBySymbolId.get(symbol.id) ?? [];
     events.push({ node, owner, propertyNames });
     eventsBySymbolId.set(symbol.id, events);
@@ -283,28 +338,145 @@ export const getSymbolMutationInspector = (scopes: ScopeAnalysis): SymbolMutatio
     return directProgramCall ? getNodeStartIndex(directProgramCall.call) : Number.POSITIVE_INFINITY;
   };
 
-  const canOwnerReach = (
+  const callsByOwner = new Map<EsTreeNode, LocalCallEvent[]>();
+  for (const call of calls) {
+    const ownerCalls = callsByOwner.get(call.owner) ?? [];
+    ownerCalls.push(call);
+    callsByOwner.set(call.owner, ownerCalls);
+  }
+  const ownerReachabilityCache = new WeakMap<EsTreeNode, WeakMap<EsTreeNode, boolean>>();
+  const canOwnerReach = (owner: EsTreeNode, targetOwner: EsTreeNode): boolean => {
+    const cachedResult = ownerReachabilityCache.get(owner)?.get(targetOwner);
+    if (cachedResult !== undefined) return cachedResult;
+    const pendingOwners = [owner];
+    const visitedOwners = new Set<EsTreeNode>();
+    let canReach = false;
+    while (pendingOwners.length > 0) {
+      const currentOwner = pendingOwners.pop();
+      if (!currentOwner || visitedOwners.has(currentOwner)) continue;
+      if (currentOwner === targetOwner) {
+        canReach = true;
+        break;
+      }
+      visitedOwners.add(currentOwner);
+      for (const call of callsByOwner.get(currentOwner) ?? []) {
+        pendingOwners.push(call.targetOwner);
+      }
+    }
+    const cachedTargets = ownerReachabilityCache.get(owner) ?? new WeakMap<EsTreeNode, boolean>();
+    cachedTargets.set(targetOwner, canReach);
+    ownerReachabilityCache.set(owner, cachedTargets);
+    return canReach;
+  };
+
+  const getRepeatedControlFlowAncestors = (
+    node: EsTreeNode,
     owner: EsTreeNode,
-    targetOwner: EsTreeNode,
-    visitedOwners: ReadonlySet<EsTreeNode>,
+  ): Set<EsTreeNode> => {
+    const ancestors = new Set<EsTreeNode>();
+    let current: EsTreeNode | null | undefined = node;
+    while (current?.parent && current !== owner) {
+      const parent: EsTreeNode = current.parent;
+      const isSingleIterationDoWhile =
+        isNodeOfType(parent, "DoWhileStatement") &&
+        isNodeOfType(parent.test, "Literal") &&
+        !parent.test.value;
+      const loopBody =
+        isNodeOfType(parent, "ForStatement") ||
+        isNodeOfType(parent, "ForInStatement") ||
+        isNodeOfType(parent, "ForOfStatement") ||
+        isNodeOfType(parent, "WhileStatement") ||
+        isNodeOfType(parent, "DoWhileStatement")
+          ? parent.body
+          : null;
+      let bodyStatement: EsTreeNode | null = node;
+      while (
+        loopBody &&
+        isNodeOfType(loopBody, "BlockStatement") &&
+        bodyStatement &&
+        bodyStatement.parent !== loopBody
+      ) {
+        bodyStatement = bodyStatement.parent ?? null;
+      }
+      const bodyStatementIndex =
+        loopBody && isNodeOfType(loopBody, "BlockStatement") && bodyStatement
+          ? loopBody.body.findIndex((statement) => statement === bodyStatement)
+          : -1;
+      const hasFollowingLoopExit = Boolean(
+        loopBody &&
+        isNodeOfType(loopBody, "BlockStatement") &&
+        bodyStatementIndex >= 0 &&
+        loopBody.body
+          .slice(bodyStatementIndex + 1)
+          .some((statement) => isAbruptCompletionStatement(statement, false)),
+      );
+      if (loopBody && !isSingleIterationDoWhile && !hasFollowingLoopExit) {
+        ancestors.add(parent);
+      }
+      current = parent;
+    }
+    return ancestors;
+  };
+
+  const nodesShareRepeatedControlFlow = (
+    leftNode: EsTreeNode,
+    rightNode: EsTreeNode,
+    owner: EsTreeNode,
   ): boolean => {
-    if (owner === targetOwner) return true;
-    if (visitedOwners.has(owner)) return false;
-    const nextVisitedOwners = new Set(visitedOwners);
-    nextVisitedOwners.add(owner);
-    return calls.some(
-      (call) =>
-        call.owner === owner && canOwnerReach(call.targetOwner, targetOwner, nextVisitedOwners),
+    const leftAncestors = getRepeatedControlFlowAncestors(leftNode, owner);
+    if (leftAncestors.size === 0) return false;
+    return [...getRepeatedControlFlowAncestors(rightNode, owner)].some((ancestor) =>
+      leftAncestors.has(ancestor),
     );
+  };
+
+  const callsReachingOwnerCache = new WeakMap<EsTreeNode, Map<EsTreeNode, LocalCallEvent[]>>();
+  const getCallsReachingOwnerByCaller = (
+    targetOwner: EsTreeNode,
+  ): Map<EsTreeNode, LocalCallEvent[]> => {
+    const cachedCalls = callsReachingOwnerCache.get(targetOwner);
+    if (cachedCalls) return cachedCalls;
+    const reachingCalls = new Map<EsTreeNode, LocalCallEvent[]>();
+    for (const call of calls) {
+      if (!canOwnerReach(call.targetOwner, targetOwner)) continue;
+      const ownerCalls = reachingCalls.get(call.owner) ?? [];
+      ownerCalls.push(call);
+      reachingCalls.set(call.owner, ownerCalls);
+    }
+    callsReachingOwnerCache.set(targetOwner, reachingCalls);
+    return reachingCalls;
+  };
+
+  const canMutationReachUsageAcrossCalls = (
+    mutationOwner: EsTreeNode,
+    usageOwner: EsTreeNode,
+  ): boolean => {
+    const mutationCallsByOwner = getCallsReachingOwnerByCaller(mutationOwner);
+    const usageCallsByOwner = getCallsReachingOwnerByCaller(usageOwner);
+    for (const [owner, mutationCalls] of mutationCallsByOwner) {
+      const usageCalls = usageCallsByOwner.get(owner);
+      if (!usageCalls) continue;
+      for (const mutationCall of mutationCalls) {
+        for (const usageCall of usageCalls) {
+          if (mutationCall === usageCall) continue;
+          if (
+            getNodeStartIndex(mutationCall.call) < getNodeStartIndex(usageCall.call) ||
+            isFunctionLike(owner) ||
+            nodesShareRepeatedControlFlow(mutationCall.call, usageCall.call, owner)
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   };
 
   const isExecutionOrderAmbiguous = (usageNode: EsTreeNode): boolean => {
     const usageOwner = getExecutionOwner(usageNode);
     if (isNodeOfType(usageOwner, "Program")) return false;
     const reachingProgramCalls = calls.filter(
-      (call) =>
-        isNodeOfType(call.owner, "Program") &&
-        canOwnerReach(call.targetOwner, usageOwner, new Set()),
+      (call) => isNodeOfType(call.owner, "Program") && canOwnerReach(call.targetOwner, usageOwner),
     );
     if (reachingProgramCalls.length === 0) return false;
     return reachingProgramCalls.length !== 1 || reachingProgramCalls[0]?.targetOwner !== usageOwner;
@@ -318,15 +490,28 @@ export const getSymbolMutationInspector = (scopes: ScopeAnalysis): SymbolMutatio
     const usageOwner = getExecutionOwner(usageNode);
     return (eventsBySymbolId.get(symbol.id) ?? []).some((event) => {
       if (
-        event.owner === usageOwner ||
-        isNodeOfType(event.owner, "Program") ||
-        (relevantPropertyName !== null &&
-          event.propertyNames !== null &&
-          !event.propertyNames.has(relevantPropertyName))
+        relevantPropertyName !== null &&
+        event.propertyNames !== null &&
+        !event.propertyNames.has(relevantPropertyName)
       ) {
         return false;
       }
-      return canOwnerReach(event.owner, usageOwner, new Set());
+      if (event.owner === usageOwner) {
+        return (
+          isFunctionLike(usageOwner) ||
+          nodesShareRepeatedControlFlow(event.node, usageNode, usageOwner)
+        );
+      }
+      if (isNodeOfType(event.owner, "Program")) {
+        const usageCalls = getCallsReachingOwnerByCaller(usageOwner).get(event.owner) ?? [];
+        return usageCalls.some((usageCall) =>
+          nodesShareRepeatedControlFlow(event.node, usageCall.call, event.owner),
+        );
+      }
+      return (
+        canOwnerReach(event.owner, usageOwner) ||
+        canMutationReachUsageAcrossCalls(event.owner, usageOwner)
+      );
     });
   };
 

@@ -190,14 +190,14 @@ const getSanitizerProof = (
   const callee = stripParenExpression(node.callee);
   if (isNodeOfType(callee, "MemberExpression") && getStaticPropertyName(callee) === "sanitize") {
     if (
-      getModuleNamespaceSymbol(callee.object, "dompurify", node, scopes) ||
-      getModuleNamespaceSymbol(callee.object, "isomorphic-dompurify", node, scopes)
+      getModuleNamespaceSymbol(callee.object, "dompurify", "sanitize", node, scopes) ||
+      getModuleNamespaceSymbol(callee.object, "isomorphic-dompurify", "sanitize", node, scopes)
     ) {
       return SAFE_HTML_FRAGMENT_PROOF;
     }
   }
   if (isNodeOfType(callee, "MemberExpression") && getStaticPropertyName(callee) === "escape") {
-    if (getModuleNamespaceSymbol(callee.object, "html-escaper", node, scopes)) {
+    if (getModuleNamespaceSymbol(callee.object, "html-escaper", "escape", node, scopes)) {
       return SAFE_STATIC_HTML_PROOF;
     }
   }

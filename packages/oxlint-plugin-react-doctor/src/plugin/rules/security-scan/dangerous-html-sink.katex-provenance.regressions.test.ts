@@ -346,6 +346,318 @@ describe("security-scan/dangerous-html-sink — KaTeX provenance", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it.each([
+    [
+      'import DOMPurify from "dompurify";',
+      "DOMPurify.sanitize = (value: string) => value;",
+      "DOMPurify.sanitize(value)",
+    ],
+    [
+      'const DOMPurify = require("dompurify");',
+      "Object.assign(DOMPurify, { sanitize: (value: string) => value });",
+      "DOMPurify.sanitize(value)",
+    ],
+    [
+      'import DOMPurify from "isomorphic-dompurify";',
+      'Object.defineProperty(DOMPurify, "sanitize", { value: (value: string) => value });',
+      "DOMPurify.sanitize(value)",
+    ],
+    [
+      'const htmlEscaper = require("html-escaper");',
+      'Reflect.set(htmlEscaper, "escape", (value: string) => value);',
+      "htmlEscaper.escape(value)",
+    ],
+    [
+      'const htmlEscaper = require("html-escaper");',
+      "Object.defineProperties(htmlEscaper, { escape: { value: (value: string) => value } });",
+      "htmlEscaper.escape(value)",
+    ],
+    [
+      'import DOMPurify from "dompurify";',
+      "const purifierAlias = DOMPurify; purifierAlias.sanitize = (value: string) => value;",
+      "DOMPurify.sanitize(value)",
+    ],
+    [
+      'import DOMPurify from "dompurify";',
+      'const methodName = "sanitize"; DOMPurify[methodName] = (value: string) => value;',
+      "DOMPurify.sanitize(value)",
+    ],
+    [
+      'import DOMPurify from "dompurify";',
+      "if (shouldReplaceSanitizer) DOMPurify.sanitize = (value: string) => value;",
+      "DOMPurify.sanitize(value)",
+    ],
+  ])("rejects a mutated exact sanitizer fallback: %s", (importSource, mutation, fallback) => {
+    const findings = scan(`
+      import katex from "katex";
+      ${importSource}
+      ${mutation}
+      const renderMath = (value: string) => {
+        try { return katex.renderToString(value); }
+        catch { return ${fallback}; }
+      };
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />
+      );
+    `);
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      'import DOMPurify from "dompurify";',
+      "DOMPurify.renderToString = (value: string) => value;",
+      "DOMPurify.sanitize(value)",
+    ],
+    [
+      'const htmlEscaper = require("html-escaper");',
+      'Reflect.set(htmlEscaper, "version", "1");',
+      "htmlEscaper.escape(value)",
+    ],
+  ])(
+    "accepts an exact sanitizer after an unrelated namespace mutation: %s",
+    (importSource, mutation, fallback) => {
+      const findings = scan(`
+      import katex from "katex";
+      ${importSource}
+      ${mutation}
+      const renderMath = (value: string) => {
+        try { return katex.renderToString(value); }
+        catch { return ${fallback}; }
+      };
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />
+      );
+    `);
+      expect(findings).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ["replaceSanitizer();", 1],
+    ["", 0],
+    ["if (false) replaceSanitizer();", 0],
+  ])("tracks sanitizer mutations through reachable local calls: %s", (invocation, count) => {
+    const findings = scan(`
+      import katex from "katex";
+      import DOMPurify from "dompurify";
+      const replaceSanitizer = () => {
+        DOMPurify.sanitize = (value: string) => value;
+      };
+      ${invocation}
+      const renderMath = (value: string) => {
+        try { return katex.renderToString(value); }
+        catch { return DOMPurify.sanitize(value); }
+      };
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />
+      );
+    `);
+    expect(findings).toHaveLength(count);
+  });
+
+  it.each(["replaceSanitizer();", "invokeSanitizerReplacement();"])(
+    "rejects a sibling sanitizer mutation before the render helper: %s",
+    (invocation) => {
+      const findings = scan(`
+        import katex from "katex";
+        import DOMPurify from "dompurify";
+        const replaceSanitizer = () => {
+          DOMPurify.sanitize = (value: string) => value;
+        };
+        const invokeSanitizerReplacement = () => replaceSanitizer();
+        const renderMath = (value: string) => {
+          try { return katex.renderToString(value); }
+          catch { return DOMPurify.sanitize(value); }
+        };
+        export const MathNode = ({ value }: Props) => {
+          ${invocation}
+          return <span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />;
+        };
+      `);
+      expect(findings).toHaveLength(1);
+    },
+  );
+
+  it("rejects a sibling sanitizer mutation after the render helper can persist", () => {
+    const findings = scan(`
+      import katex from "katex";
+      import DOMPurify from "dompurify";
+      const replaceSanitizer = () => {
+        DOMPurify.sanitize = (value: string) => value;
+      };
+      const renderMath = (value: string) => {
+        try { return katex.renderToString(value); }
+        catch { return DOMPurify.sanitize(value); }
+      };
+      export const MathNode = ({ value }: Props) => {
+        const html = renderMath(value);
+        replaceSanitizer();
+        return <span dangerouslySetInnerHTML={{ __html: html }} />;
+      };
+    `);
+    expect(findings).toHaveLength(1);
+  });
+
+  it("rejects a same-helper sanitizer mutation that persists into later calls", () => {
+    const findings = scan(`
+      import katex from "katex";
+      import DOMPurify from "dompurify";
+      const renderMath = (value: string) => {
+        try { return katex.renderToString(value); }
+        catch {
+          const html = DOMPurify.sanitize(value);
+          DOMPurify.sanitize = (nextValue: string) => nextValue;
+          return html;
+        }
+      };
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />
+      );
+    `);
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each([
+    `
+      const node = <span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />;
+      return node;
+      replaceSanitizer();
+    `,
+    `
+      if (shouldAbort) {
+        throw new Error();
+        replaceSanitizer();
+      }
+      return <span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />;
+    `,
+  ])("accepts a statically unreachable sibling sanitizer mutation", (componentBody) => {
+    const findings = scan(`
+      import katex from "katex";
+      import DOMPurify from "dompurify";
+      const replaceSanitizer = () => {
+        DOMPurify.sanitize = (value: string) => value;
+      };
+      const renderMath = (value: string) => {
+        try { return katex.renderToString(value); }
+        catch { return DOMPurify.sanitize(value); }
+      };
+      export const MathNode = ({ value }: Props) => {
+        ${componentBody}
+      };
+    `);
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each(["return", "throw new Error()", "break", "continue"])(
+    "accepts a sibling sanitizer mutation after a nested terminal: %s",
+    (terminalStatement) => {
+      const findings = scan(`
+        import katex from "katex";
+        import DOMPurify from "dompurify";
+        const replaceSanitizer = () => {
+          DOMPurify.sanitize = (value: string) => value;
+        };
+        const renderMath = (value: string) => {
+          try { return katex.renderToString(value); }
+          catch { return DOMPurify.sanitize(value); }
+        };
+        export const MathNode = ({ value }: Props) => {
+          for (const item of [value]) {
+            consume(<span dangerouslySetInnerHTML={{ __html: renderMath(item) }} />);
+            { ${terminalStatement}; }
+            replaceSanitizer();
+          }
+          return null;
+        };
+      `);
+      expect(findings).toHaveLength(0);
+    },
+  );
+
+  it("accepts a sanitizer mutation after a one-shot program evaluation", () => {
+    const findings = scan(`
+      import katex from "katex";
+      import DOMPurify from "dompurify";
+      const renderMath = (value: string) => {
+        try { return katex.renderToString(value); }
+        catch { return DOMPurify.sanitize(value); }
+      };
+      const html = renderMath(window.location.hash);
+      DOMPurify.sanitize = (value: string) => value;
+      export const MathNode = () => <span dangerouslySetInnerHTML={{ __html: html }} />;
+    `);
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each(["replaceSanitizer();", "DOMPurify.sanitize = (nextValue: string) => nextValue;"])(
+    "rejects a sanitizer mutation that persists across top-level loop iterations: %s",
+    (mutation) => {
+      const findings = scan(`
+        import katex from "katex";
+        import DOMPurify from "dompurify";
+        const replaceSanitizer = () => {
+          DOMPurify.sanitize = (value: string) => value;
+        };
+        const renderMath = (value: string) => {
+          try { return katex.renderToString(value); }
+          catch { return DOMPurify.sanitize(value); }
+        };
+        for (const value of values) {
+          consume(<span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />);
+          ${mutation}
+        }
+      `);
+      expect(findings).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    [
+      "while false",
+      `while (false) {
+      consume(<span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />);
+      DOMPurify.sanitize = (nextValue: string) => nextValue;
+    }`,
+    ],
+    [
+      "for false",
+      `for (; false; ) {
+      consume(<span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />);
+      DOMPurify.sanitize = (nextValue: string) => nextValue;
+    }`,
+    ],
+    [
+      "do while false",
+      `do {
+      consume(<span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />);
+      DOMPurify.sanitize = (nextValue: string) => nextValue;
+    } while (false);`,
+    ],
+    [
+      "trailing break",
+      `for (const nextValue of values) {
+      consume(<span dangerouslySetInnerHTML={{ __html: renderMath(nextValue) }} />);
+      DOMPurify.sanitize = (value: string) => value;
+      break;
+    }`,
+    ],
+  ])(
+    "accepts a sanitizer mutation in a statically zero-or-one-iteration loop: %s",
+    (_label, loop) => {
+      const findings = scan(`
+        import katex from "katex";
+        import DOMPurify from "dompurify";
+        const renderMath = (value: string) => {
+          try { return katex.renderToString(value); }
+          catch { return DOMPurify.sanitize(value); }
+        };
+        ${loop}
+      `);
+      expect(findings).toHaveLength(0);
+    },
+  );
+
   it("rejects a sanitizer lookalike fallback", () => {
     const findings = scan(`
       import katex from "katex";

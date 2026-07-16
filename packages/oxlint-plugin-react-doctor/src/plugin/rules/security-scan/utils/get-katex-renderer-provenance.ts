@@ -64,6 +64,7 @@ const isAwaitedImportFromModule = (node: EsTreeNode, moduleName: string): boolea
 export const getModuleNamespaceSymbol = (
   node: EsTreeNode,
   moduleName: string,
+  namespacePropertyName: string,
   usageNode: EsTreeNode,
   scopes: ScopeAnalysis,
 ): SymbolDescriptor | null => {
@@ -72,8 +73,8 @@ export const getModuleNamespaceSymbol = (
   if (
     !symbol ||
     mutationInspector.isExecutionOrderAmbiguous(usageNode) ||
-    mutationInspector.isMutationOrderAmbiguous(symbol, usageNode, "renderToString") ||
-    mutationInspector.isMutatedBefore(symbol, usageNode, "renderToString")
+    mutationInspector.isMutationOrderAmbiguous(symbol, usageNode, namespacePropertyName) ||
+    mutationInspector.isMutatedBefore(symbol, usageNode, namespacePropertyName)
   ) {
     return null;
   }
@@ -133,7 +134,7 @@ export const isKatexNamespace = (
   usageNode: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean =>
-  getModuleNamespaceSymbol(node, "katex", usageNode, scopes) !== null ||
+  getModuleNamespaceSymbol(node, "katex", "renderToString", usageNode, scopes) !== null ||
   isGlobalRequireCall(node, "katex", scopes);
 
 export const isKatexNamedRenderer = (

@@ -285,7 +285,6 @@ import { noRefCurrentInRender } from "./rules/state-and-effects/no-ref-current-i
 import { noRenderInRender } from "./rules/architecture/no-render-in-render.js";
 import { noRenderPropChildren } from "./rules/architecture/no-render-prop-children.js";
 import { noRenderReturnValue } from "./rules/react-builtins/no-render-return-value.js";
-import { noRepeatedLayoutReadSameElement } from "./rules/performance/no-repeated-layout-read-same-element.js";
 import { noResetAllStateOnPropChange } from "./rules/state-and-effects/no-reset-all-state-on-prop-change.js";
 import { noScaleFromZero } from "./rules/performance/no-scale-from-zero.js";
 import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-code.js";
@@ -3772,20 +3771,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noRenderReturnValue.requires ?? [])])],
-    },
-  },
-  {
-    key: "react-doctor/no-repeated-layout-read-same-element",
-    id: "no-repeated-layout-read-same-element",
-    source: "react-doctor",
-    originallyExternal: false,
-    rule: {
-      ...noRepeatedLayoutReadSameElement,
-      framework: "global",
-      category: "Performance",
-      requires: [
-        ...new Set<Capability>(["react", ...(noRepeatedLayoutReadSameElement.requires ?? [])]),
-      ],
     },
   },
   {

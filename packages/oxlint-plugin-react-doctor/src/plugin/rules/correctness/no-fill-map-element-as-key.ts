@@ -65,19 +65,22 @@ const extractKeyIdentifierName = (node: EsTreeNode): string | null => {
 // `Array(n)` or `new Array(n)` — returns the length argument node so the
 // caller can suppress the harmless single-element case (`Array(1)`).
 const getArrayConstructorLengthArgument = (node: EsTreeNode): EsTreeNode | null => {
+  const unwrappedNode = stripParenExpression(node);
   const isArrayConstructor =
-    (isNodeOfType(node, "CallExpression") || isNodeOfType(node, "NewExpression")) &&
-    isNodeOfType(node.callee, "Identifier") &&
-    node.callee.name === "Array";
+    (isNodeOfType(unwrappedNode, "CallExpression") ||
+      isNodeOfType(unwrappedNode, "NewExpression")) &&
+    isNodeOfType(unwrappedNode.callee, "Identifier") &&
+    unwrappedNode.callee.name === "Array";
   if (!isArrayConstructor) return null;
-  return node.arguments?.[0] ?? null;
+  return unwrappedNode.arguments?.[0] ?? null;
 };
 
 // Length argument of the `Array(n).fill(...)` / `new Array(n).fill(...)`
 // receiver, or null when the receiver is not that shape.
 const getFillReceiverLengthArgument = (receiver: EsTreeNode): EsTreeNode | null => {
-  if (!isNodeOfType(receiver, "CallExpression")) return null;
-  const callee = receiver.callee;
+  const unwrappedReceiver = stripParenExpression(receiver);
+  if (!isNodeOfType(unwrappedReceiver, "CallExpression")) return null;
+  const callee = stripParenExpression(unwrappedReceiver.callee);
   if (
     !isNodeOfType(callee, "MemberExpression") ||
     !isNodeOfType(callee.property, "Identifier") ||
@@ -85,7 +88,7 @@ const getFillReceiverLengthArgument = (receiver: EsTreeNode): EsTreeNode | null 
   ) {
     return null;
   }
-  return getArrayConstructorLengthArgument(callee.object);
+  return getArrayConstructorLengthArgument(stripParenExpression(callee.object));
 };
 
 const doesPatternBindName = (pattern: EsTreeNode | null | undefined, name: string): boolean => {
@@ -235,12 +238,12 @@ const findEnclosingMapCall = (
       const parent = current.parent;
       if (
         isNodeOfType(parent, "CallExpression") &&
-        parent.arguments.includes(current as never) &&
+        parent.arguments.some((argument) => argument === current) &&
         isNodeOfType(parent.callee, "MemberExpression") &&
         isNodeOfType(parent.callee.property, "Identifier") &&
         parent.callee.property.name === "map"
       ) {
-        return { callback: current, receiver: parent.callee.object };
+        return { callback: current, receiver: stripParenExpression(parent.callee.object) };
       }
       return null;
     }

@@ -2,6 +2,7 @@ import { EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS } from "../../constants/dom.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -24,7 +25,8 @@ const recordObserverUsage = (
   identifier: EsTreeNodeOfType<"Identifier">,
   tracked: TrackedObserver,
 ): void => {
-  const parent = identifier.parent;
+  const referenceRoot = findTransparentExpressionRoot(identifier);
+  const parent = referenceRoot.parent;
   if (isNodeOfType(parent, "VariableDeclarator") && parent.id === identifier) return;
   if (
     isNodeOfType(parent, "MemberExpression") &&
@@ -40,7 +42,7 @@ const recordObserverUsage = (
   ) {
     return;
   }
-  if (isNodeOfType(parent, "MemberExpression") && parent.object === identifier) {
+  if (isNodeOfType(parent, "MemberExpression") && parent.object === referenceRoot) {
     if (parent.computed) {
       tracked.didEscape = true;
       return;

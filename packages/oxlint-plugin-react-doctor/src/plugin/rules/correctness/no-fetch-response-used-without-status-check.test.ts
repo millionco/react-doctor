@@ -597,14 +597,14 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet in docs-site .demo. files", () => {
+  it("checks rendered docs-site .demo. files", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `const fetchPokemon = async (name) =>
          fetch(\`https://pokeapi.co/api/v2/pokemon/\${name}\`).then((response) => response.json());`,
       { filename: "src/hooks/useHover/useHover.demo.tsx" },
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet in testUtils directories (mock fetch helpers)", () => {

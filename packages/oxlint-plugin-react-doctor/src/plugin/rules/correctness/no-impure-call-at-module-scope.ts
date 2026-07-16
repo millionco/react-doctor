@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -84,15 +85,16 @@ const impureBuiltinLabel = (node: EsTreeNode): string | null => {
     return null;
   }
   if (!isNodeOfType(node, "CallExpression")) return null;
-  const callee = node.callee;
+  const callee = stripParenExpression(node.callee);
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
-  if (!isNodeOfType(callee.object, "Identifier")) return null;
+  const receiver = stripParenExpression(callee.object);
+  if (!isNodeOfType(receiver, "Identifier")) return null;
   if (!isNodeOfType(callee.property, "Identifier")) return null;
-  const allowedMethods = IMPURE_MEMBER_CALLS.get(callee.object.name);
+  const allowedMethods = IMPURE_MEMBER_CALLS.get(receiver.name);
   if (!allowedMethods?.has(callee.property.name)) return null;
   // A same-file binding named `Math`/`Date`/`performance` shadows the global.
-  if (findVariableInitializer(callee.object, callee.object.name)) return null;
-  return `${callee.object.name}.${callee.property.name}()`;
+  if (findVariableInitializer(receiver, receiver.name)) return null;
+  return `${receiver.name}.${callee.property.name}()`;
 };
 
 const testChecksTypeofWindow = (test: EsTreeNode): boolean => {

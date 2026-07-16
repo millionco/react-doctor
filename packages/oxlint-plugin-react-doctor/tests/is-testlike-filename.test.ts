@@ -18,9 +18,9 @@ describe("isTestlikeFilename", () => {
     expect(isTestlikeFilename("/repo/components/config-provider/demo/direction.tsx")).toBe(true);
   });
 
-  it("recognizes docs-site demo file suffixes", () => {
-    expect(isTestlikeFilename("/repo/src/hooks/useHover/useHover.demo.tsx")).toBe(true);
-    expect(isTestlikeFilename("/repo/src/components/Button/Button.demos.tsx")).toBe(true);
+  it("does not suppress source files solely because their basename marks a demo", () => {
+    expect(isTestlikeFilename("/repo/src/hooks/useHover/useHover.demo.tsx")).toBe(false);
+    expect(isTestlikeFilename("/repo/src/components/Button/Button.demos.tsx")).toBe(false);
   });
 
   it("recognizes test-utility directories below a source root", () => {

@@ -15,14 +15,20 @@ const MESSAGE =
 
 // `JSON.<method>(...)` with a non-computed `JSON` member callee. Computed
 // access (`JSON["parse"]`) is a v1 non-goal (vanishingly rare).
+const isJsonMethodCallee = (calleeNode: EsTreeNode, method: string): boolean => {
+  const callee = stripParenExpression(calleeNode);
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  const receiver = stripParenExpression(callee.object);
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "JSON" &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === method
+  );
+};
+
 const isJsonMethodCall = (node: EsTreeNode, method: string): boolean =>
-  isNodeOfType(node, "CallExpression") &&
-  isNodeOfType(node.callee, "MemberExpression") &&
-  !node.callee.computed &&
-  isNodeOfType(node.callee.object, "Identifier") &&
-  node.callee.object.name === "JSON" &&
-  isNodeOfType(node.callee.property, "Identifier") &&
-  node.callee.property.name === method;
+  isNodeOfType(node, "CallExpression") && isJsonMethodCallee(node.callee, method);
 
 // oxc surfaces redundant parens as a `ParenthesizedExpression` wrapper,
 // which TSESTree's node-type union doesn't model — compare `type` as a
@@ -310,13 +316,11 @@ export const noUnsafeJsonParse = defineRule({
         if (fileIsNodeBuiltinRequireScript) return;
         if (!isJsonMethodCall(node as EsTreeNode, "parse")) return;
         // A same-file binding named `JSON` shadows the global — bail out.
-        const callee = node.callee;
-        if (
-          isNodeOfType(callee, "MemberExpression") &&
-          isNodeOfType(callee.object, "Identifier") &&
-          findVariableInitializer(callee.object, "JSON")
-        )
-          return;
+        const callee = stripParenExpression(node.callee);
+        if (!isNodeOfType(callee, "MemberExpression")) return;
+        const receiver = stripParenExpression(callee.object);
+        if (!isNodeOfType(receiver, "Identifier")) return;
+        if (findVariableInitializer(receiver, "JSON")) return;
         const firstArgument = node.arguments?.[0];
         if (firstArgument) {
           const unwrappedArgument = stripParenExpression(firstArgument);

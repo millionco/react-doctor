@@ -3,10 +3,12 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getMeaningfulParent } from "../../utils/get-meaningful-parent.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -24,6 +26,9 @@ const BUILD_SCRIPT_BASENAME_PATTERN = /^gatsby-(?:node|config|ssr|browser)\.|\.c
 
 const MESSAGE =
   "`fetch()` resolves (does not reject) on HTTP 4xx/5xx, so consuming this Response without checking `response.ok`/`response.status` parses an error body as success or crashes on a truthiness guard that is always true. Check `if (!response.ok) throw ...` before reading `.json()`/`.text()`/`.blob()`.";
+
+const getTransparentExpressionParent = (node: EsTreeNode): EsTreeNode | null =>
+  findTransparentExpressionRoot(node).parent ?? null;
 
 const isGlobalFetchCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callee = node.callee;
@@ -195,12 +200,15 @@ const walkScopeSkippingShadows = (
 
 const isBodyConsumeCall = (node: EsTreeNode, responseName: string): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
-  const callee = node.callee;
+  const callee = stripParenExpression(node.callee);
+  const receiver = isNodeOfType(callee, "MemberExpression")
+    ? stripParenExpression(callee.object)
+    : null;
   return (
     isNodeOfType(callee, "MemberExpression") &&
     !callee.computed &&
-    isNodeOfType(callee.object, "Identifier") &&
-    callee.object.name === responseName &&
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === responseName &&
     isNodeOfType(callee.property, "Identifier") &&
     BODY_CONSUMER_METHODS.has(callee.property.name)
   );
@@ -410,18 +418,24 @@ const isErrorMaterializingHandler = (handlerExpression: EsTreeNode): boolean => 
 const chainMaterializesRejection = (fetchCall: EsTreeNode): boolean => {
   let chainLink: EsTreeNode = fetchCall;
   while (true) {
-    const member = getMeaningfulParent(chainLink);
+    const member = getTransparentExpressionParent(chainLink);
+    const methodName =
+      member &&
+      isNodeOfType(member, "MemberExpression") &&
+      isNodeOfType(member.property, "Identifier")
+        ? member.property.name
+        : null;
     if (
       !member ||
       !isNodeOfType(member, "MemberExpression") ||
-      stripGroupingParens(member.object as EsTreeNode) !== chainLink ||
+      stripParenExpression(member.object as EsTreeNode) !== chainLink ||
       member.computed ||
-      !isNodeOfType(member.property, "Identifier") ||
-      !PROMISE_CHAIN_METHODS.has(member.property.name)
+      methodName === null ||
+      !PROMISE_CHAIN_METHODS.has(methodName)
     ) {
       return false;
     }
-    const chainCall = getMeaningfulParent(member);
+    const chainCall = getTransparentExpressionParent(member);
     if (
       !chainCall ||
       !isNodeOfType(chainCall, "CallExpression") ||
@@ -431,14 +445,14 @@ const chainMaterializesRejection = (fetchCall: EsTreeNode): boolean => {
     }
     const chainArguments = chainCall.arguments ?? [];
     if (
-      member.property.name === "catch" &&
+      methodName === "catch" &&
       chainArguments[0] &&
       isErrorMaterializingHandler(chainArguments[0] as EsTreeNode)
     ) {
       return true;
     }
     if (
-      member.property.name === "then" &&
+      methodName === "then" &&
       chainArguments[1] &&
       isErrorMaterializingHandler(chainArguments[1] as EsTreeNode)
     ) {
@@ -451,18 +465,18 @@ const chainMaterializesRejection = (fetchCall: EsTreeNode): boolean => {
 const outermostPromiseChainCall = (fetchCall: EsTreeNode): EsTreeNode => {
   let chainLink: EsTreeNode = fetchCall;
   while (true) {
-    const member = getMeaningfulParent(chainLink);
+    const member = getTransparentExpressionParent(chainLink);
     if (
       !member ||
       !isNodeOfType(member, "MemberExpression") ||
-      stripGroupingParens(member.object as EsTreeNode) !== chainLink ||
+      stripParenExpression(member.object as EsTreeNode) !== chainLink ||
       member.computed ||
       !isNodeOfType(member.property, "Identifier") ||
       !PROMISE_CHAIN_METHODS.has(member.property.name)
     ) {
       return chainLink;
     }
-    const chainCall = getMeaningfulParent(member);
+    const chainCall = getTransparentExpressionParent(member);
     if (
       !chainCall ||
       !isNodeOfType(chainCall, "CallExpression") ||
@@ -602,13 +616,19 @@ const isDiscardedChainWithRejectionHandler = (fetchCall: EsTreeNode): boolean =>
   let chainLink: EsTreeNode = fetchCall;
   while (true) {
     const member = getMeaningfulParent(chainLink);
+    const methodName =
+      member &&
+      isNodeOfType(member, "MemberExpression") &&
+      isNodeOfType(member.property, "Identifier")
+        ? member.property.name
+        : null;
     if (
       !member ||
       !isNodeOfType(member, "MemberExpression") ||
       stripGroupingParens(member.object as EsTreeNode) !== chainLink ||
       member.computed ||
-      !isNodeOfType(member.property, "Identifier") ||
-      !PROMISE_CHAIN_METHODS.has(member.property.name)
+      methodName === null ||
+      !PROMISE_CHAIN_METHODS.has(methodName)
     ) {
       return sawRejectionHandler;
     }
@@ -621,13 +641,13 @@ const isDiscardedChainWithRejectionHandler = (fetchCall: EsTreeNode): boolean =>
       return sawRejectionHandler;
     }
     const chainArguments = chainCall.arguments ?? [];
-    if (member.property.name === "then") {
+    if (methodName === "then") {
       if (chainArguments[0] && !isPureDrainHandler(chainArguments[0] as EsTreeNode)) {
         return false;
       }
       if (chainArguments[1]) sawRejectionHandler = true;
     }
-    if (member.property.name === "catch" && chainArguments[0]) sawRejectionHandler = true;
+    if (methodName === "catch" && chainArguments[0]) sawRejectionHandler = true;
     chainLink = chainCall;
   }
 };
@@ -688,13 +708,14 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isGlobalFetchCall(node)) return;
         if (fetchesInertUrlScheme(node)) return;
-        const parent = getMeaningfulParent(node as EsTreeNode);
+        const fetchExpression = findTransparentExpressionRoot(node as EsTreeNode);
+        const parent = getMeaningfulParent(fetchExpression);
         if (!parent) return;
 
         // Shape: fetch(...).then((response) => ...consume...)
         if (
           isNodeOfType(parent, "MemberExpression") &&
-          parent.object === (node as EsTreeNode) &&
+          parent.object === fetchExpression &&
           !parent.computed &&
           isNodeOfType(parent.property, "Identifier") &&
           parent.property.name === "then"
@@ -724,7 +745,7 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
         // Shape: fetch(...).json() — immediate consume, no status possible.
         if (
           isNodeOfType(parent, "MemberExpression") &&
-          parent.object === (node as EsTreeNode) &&
+          parent.object === fetchExpression &&
           !parent.computed &&
           isNodeOfType(parent.property, "Identifier") &&
           BODY_CONSUMER_METHODS.has(parent.property.name)

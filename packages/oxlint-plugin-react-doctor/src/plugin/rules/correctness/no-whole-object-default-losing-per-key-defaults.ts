@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -99,8 +100,166 @@ const isUndefinedValue = (value: EsTreeNode): boolean => {
   return isNodeOfType(innerValue, "UnaryExpression") && innerValue.operator === "void";
 };
 
-const isDroppedFallbackObservable = (fallback: DroppedFallback): boolean =>
-  !isFalseLiteral(fallback.value) && !isUndefinedValue(fallback.value);
+const getPatternBindingForKey = (
+  objectPattern: EsTreeNodeOfType<"ObjectPattern">,
+  key: string,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  for (const property of objectPattern.properties ?? []) {
+    if (!isNodeOfType(property, "Property") || getStaticPropertyKey(property) !== key) continue;
+    if (isNodeOfType(property.value, "Identifier")) return property.value;
+  }
+  return null;
+};
+
+const isNoOpFunctionValue = (value: EsTreeNode): boolean => {
+  const unwrappedValue = stripParenExpression(value);
+  if (!isFunctionLike(unwrappedValue)) return false;
+  if (!isNodeOfType(unwrappedValue.body, "BlockStatement")) {
+    return Boolean(unwrappedValue.body && isUndefinedValue(unwrappedValue.body));
+  }
+  return unwrappedValue.body.body.every(
+    (statement) =>
+      isNodeOfType(statement, "EmptyStatement") ||
+      (isNodeOfType(statement, "ReturnStatement") && !statement.argument),
+  );
+};
+
+const bindingIsOnlyOptionallyCalled = (
+  binding: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const symbol = context.scopes.symbolFor(binding);
+  if (!symbol) return false;
+  return symbol.references.every((reference) => {
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const parent = referenceRoot.parent;
+    return Boolean(
+      parent &&
+      isNodeOfType(parent, "CallExpression") &&
+      parent.callee === referenceRoot &&
+      parent.optional === true,
+    );
+  });
+};
+
+const isNoOpOptionalCallbackFallback = (
+  fallback: DroppedFallback,
+  objectPattern: EsTreeNodeOfType<"ObjectPattern">,
+  context: RuleContext,
+): boolean => {
+  if (!isNoOpFunctionValue(fallback.value)) return false;
+  const binding = getPatternBindingForKey(objectPattern, fallback.key);
+  return binding !== null && bindingIsOnlyOptionallyCalled(binding, context);
+};
+
+const getTypeMemberKey = (member: EsTreeNode): string | null => {
+  if (!isNodeOfType(member, "TSPropertySignature") && !isNodeOfType(member, "TSMethodSignature")) {
+    return null;
+  }
+  if (member.computed) return null;
+  if (isNodeOfType(member.key, "Identifier")) return member.key.name;
+  if (isNodeOfType(member.key, "Literal")) return String(member.key.value);
+  return null;
+};
+
+const isRequiredTypeMember = (member: EsTreeNode, propertyName: string): boolean => {
+  if (!isNodeOfType(member, "TSPropertySignature") && !isNodeOfType(member, "TSMethodSignature")) {
+    return false;
+  }
+  return getTypeMemberKey(member) === propertyName && member.optional !== true;
+};
+
+const findSameFileTypeDeclaration = (
+  referenceNode: EsTreeNode,
+  typeName: string,
+): EsTreeNode | null => {
+  const programRoot = findProgramRoot(referenceNode);
+  if (!programRoot) return null;
+  const declarations: EsTreeNode[] = [];
+  walkAst(programRoot, (candidate: EsTreeNode) => {
+    if (
+      (isNodeOfType(candidate, "TSInterfaceDeclaration") ||
+        isNodeOfType(candidate, "TSTypeAliasDeclaration")) &&
+      candidate.id.name === typeName
+    ) {
+      declarations.push(candidate);
+      return false;
+    }
+  });
+  return declarations.length === 1 ? declarations[0] : null;
+};
+
+const typeProvesRequiredProperty = (
+  typeNode: EsTreeNode,
+  propertyName: string,
+  referenceNode: EsTreeNode,
+  visitedDeclarations: Set<EsTreeNode>,
+): boolean => {
+  if (isNodeOfType(typeNode, "TSTypeAnnotation")) {
+    return typeProvesRequiredProperty(
+      typeNode.typeAnnotation,
+      propertyName,
+      referenceNode,
+      visitedDeclarations,
+    );
+  }
+  if (isNodeOfType(typeNode, "TSTypeLiteral")) {
+    return typeNode.members.some((member) => isRequiredTypeMember(member, propertyName));
+  }
+  if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) {
+    return typeNode.body.body.some((member) => isRequiredTypeMember(member, propertyName));
+  }
+  if (isNodeOfType(typeNode, "TSIntersectionType")) {
+    return typeNode.types.some((intersectionMember) =>
+      typeProvesRequiredProperty(
+        intersectionMember,
+        propertyName,
+        referenceNode,
+        visitedDeclarations,
+      ),
+    );
+  }
+  if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
+    if (visitedDeclarations.has(typeNode)) return false;
+    visitedDeclarations.add(typeNode);
+    const isRequired = typeProvesRequiredProperty(
+      typeNode.typeAnnotation,
+      propertyName,
+      referenceNode,
+      visitedDeclarations,
+    );
+    visitedDeclarations.delete(typeNode);
+    return isRequired;
+  }
+  if (
+    !isNodeOfType(typeNode, "TSTypeReference") ||
+    !isNodeOfType(typeNode.typeName, "Identifier")
+  ) {
+    return false;
+  }
+  const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
+  if (!declaration || visitedDeclarations.has(declaration)) return false;
+  visitedDeclarations.add(declaration);
+  const isRequired = typeProvesRequiredProperty(
+    declaration,
+    propertyName,
+    referenceNode,
+    visitedDeclarations,
+  );
+  visitedDeclarations.delete(declaration);
+  return isRequired;
+};
+
+const patternTypeRequiresEveryFallback = (
+  objectPattern: EsTreeNodeOfType<"ObjectPattern">,
+  fallbacks: ReadonlyArray<DroppedFallback>,
+): boolean => {
+  const annotation = objectPattern.typeAnnotation;
+  if (!annotation) return false;
+  return fallbacks.every((fallback) =>
+    typeProvesRequiredProperty(annotation, fallback.key, objectPattern, new Set()),
+  );
+};
 
 // True when the AssignmentPattern is a direct parameter of a function
 // (not a nested destructuring default inside another pattern).
@@ -220,13 +379,20 @@ export const noWholeObjectDefaultLosingPerKeyDefaults = defineRule({
       if (undefaultedBindingKeys.size === 0) return;
       const droppedFallbacks = collectDroppedFallbacks(defaultValue, undefaultedBindingKeys);
       if (droppedFallbacks.length === 0) return;
-      if (!droppedFallbacks.some(isDroppedFallbackObservable)) return;
+      const observableDroppedFallbacks = droppedFallbacks.filter(
+        (fallback) =>
+          !isFalseLiteral(fallback.value) &&
+          !isUndefinedValue(fallback.value) &&
+          !isNoOpOptionalCallbackFallback(fallback, pattern, context),
+      );
+      if (observableDroppedFallbacks.length === 0) return;
+      if (patternTypeRequiresEveryFallback(pattern, observableDroppedFallbacks)) return;
       const enclosingFunction = node.parent;
       if (enclosingFunction && isFunctionLike(enclosingFunction)) {
         const parameterIndex = (enclosingFunction.params ?? []).findIndex(
           (parameter) => parameter === node,
         );
-        const atRiskKeys = new Set(droppedFallbacks.map((fallback) => fallback.key));
+        const atRiskKeys = new Set(observableDroppedFallbacks.map((fallback) => fallback.key));
         if (
           parameterIndex >= 0 &&
           everyCallSitePassesAtRiskKeys(enclosingFunction, parameterIndex, atRiskKeys)

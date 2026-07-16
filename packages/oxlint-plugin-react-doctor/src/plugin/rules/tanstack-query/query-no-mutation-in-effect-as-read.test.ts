@@ -20,10 +20,10 @@ describe("query-no-mutation-in-effect-as-read", () => {
     const result = runRule(
       queryNoMutationInEffectAsRead,
       `function C() {
-         const { mutateAsync } = useMutation(opts);
+         const { mutateAsync: fetchLogs } = useMutation(opts);
          useEffect(() => {
            (async () => {
-             const response = await mutateAsync(params);
+             const response = await fetchLogs(params);
              setLogs(response.logs);
            })();
          }, [id]);
@@ -75,9 +75,9 @@ describe("query-no-mutation-in-effect-as-read", () => {
     const result = runRule(
       queryNoMutationInEffectAsRead,
       `function C() {
-         const { mutateAsync } = useMutation(opts);
+         const { mutateAsync: fetchLogs } = useMutation(opts);
          useEffect(() => {
-           mutateAsync(params).then((response) => setLogs(response.logs));
+           fetchLogs(params).then((response) => setLogs(response.logs));
          }, [id]);
          return null;
        }`,
@@ -89,10 +89,10 @@ describe("query-no-mutation-in-effect-as-read", () => {
     const result = runRule(
       queryNoMutationInEffectAsRead,
       `function C() {
-         const { mutateAsync } = useMutation(opts);
+         const { mutateAsync: fetchLogs } = useMutation(opts);
          useEffect(() => {
            (async () => {
-             const { logs } = await mutateAsync(params);
+             const { logs } = await fetchLogs(params);
              setLogs(logs);
            })();
          }, [id]);
@@ -214,9 +214,9 @@ describe("query-no-mutation-in-effect-as-read", () => {
     const result = runRule(
       queryNoMutationInEffectAsRead,
       `function C() {
-         const { mutate, data } = useMutation(opts);
+         const { mutate: fetchItems, data } = useMutation(opts);
          useEffect(() => {
-           const run = () => { mutate(ids); };
+           const run = () => { fetchItems(ids); };
            run();
          }, [ids]);
          return <div>{data.items}</div>;
@@ -229,8 +229,8 @@ describe("query-no-mutation-in-effect-as-read", () => {
     const result = runRule(
       queryNoMutationInEffectAsRead,
       `function C() {
-         const { mutate, data } = useMutation(opts);
-         function load() { mutate(id); }
+         const { mutate: fetchItems, data } = useMutation(opts);
+         function load() { fetchItems(id); }
          useEffect(() => { load(); }, [id]);
          return <div>{data.items}</div>;
        }`,
@@ -256,9 +256,9 @@ describe("query-no-mutation-in-effect-as-read", () => {
   it("flags a useSWR-named alias of a useMutation import", () => {
     const result = runRule(
       queryNoMutationInEffectAsRead,
-      `import { useMutation as useSWRLocales } from '@tanstack/react-query';
+      `import { useMutation as useSWRGetLocales } from '@tanstack/react-query';
        function C() {
-         const { mutate, data } = useSWRLocales(opts);
+         const { mutate, data } = useSWRGetLocales(opts);
          useEffect(() => { mutate(payload); }, [dep]);
          return <div>{data.available_locales}</div>;
        }`,
@@ -270,7 +270,7 @@ describe("query-no-mutation-in-effect-as-read", () => {
     const result = runRule(
       queryNoMutationInEffectAsRead,
       `function C() {
-         const { mutateAsync, data } = useSWRLocales();
+         const { mutateAsync, data } = useSWRGetLocales();
          useEffect(() => { mutateAsync(payload); }, [dep]);
          return <div>{data.available_locales}</div>;
        }`,
@@ -392,5 +392,38 @@ describe("query-no-mutation-in-effect-as-read", () => {
       { filename: "profile.tsx" },
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an intentional create workflow whose response supplies the created id", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `const ClaimCreationRoute = () => {
+        const { mutateAsync: createClaim } = useCreateClaim();
+        useEffect(() => {
+          const run = async () => {
+            const { claim } = await createClaim();
+            setClaimId(claim.id);
+          };
+          void run();
+        }, [createClaim]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not classify an unnamed generic mutation as a read", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `const Route = () => {
+        const { mutateAsync } = useMutation(options);
+        useEffect(() => {
+          void mutateAsync(payload).then((response) => setEntity(response.entity));
+        }, [payload]);
+        return null;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 });

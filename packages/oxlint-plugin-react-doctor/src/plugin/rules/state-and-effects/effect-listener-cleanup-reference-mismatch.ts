@@ -84,6 +84,12 @@ const REGISTER_METHOD_PAIRINGS = new Map<string, ListenerMethodPairing>(
   [...RELEASE_METHOD_PAIRINGS.values()].map((pairing) => [pairing.registerMethod, pairing]),
 );
 
+const RELEASE_METHODS_COVERED_BY_INLINE_HANDLER_RULE = new Set([
+  "off",
+  "removeEventListener",
+  "removeListener",
+]);
+
 const isFunctionLiteral = (node: EsTreeNode | null | undefined): boolean =>
   Boolean(node && isInlineFunctionExpression(stripParenExpression(node)));
 
@@ -91,12 +97,13 @@ const isFunctionLiteral = (node: EsTreeNode | null | undefined): boolean =>
 // analysis) so `window`/`window`, `el`/`el`, `this.emitter`/`this.emitter`
 // match, and `a`/`b` do not. Returns null for shapes we can't compare.
 const serializeReferenceKey = (node: EsTreeNode): string | null => {
-  if (isNodeOfType(node, "Identifier")) return node.name;
-  if (isNodeOfType(node, "ThisExpression")) return "this";
-  if (isNodeOfType(node, "MemberExpression") && !node.computed) {
-    const object = serializeReferenceKey(node.object);
-    if (object === null || !isNodeOfType(node.property, "Identifier")) return null;
-    return `${object}.${node.property.name}`;
+  const unwrappedNode = stripParenExpression(node);
+  if (isNodeOfType(unwrappedNode, "Identifier")) return unwrappedNode.name;
+  if (isNodeOfType(unwrappedNode, "ThisExpression")) return "this";
+  if (isNodeOfType(unwrappedNode, "MemberExpression") && !unwrappedNode.computed) {
+    const object = serializeReferenceKey(unwrappedNode.object);
+    if (object === null || !isNodeOfType(unwrappedNode.property, "Identifier")) return null;
+    return `${object}.${unwrappedNode.property.name}`;
   }
   return null;
 };
@@ -177,7 +184,7 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
 
       walkAst(callback, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "CallExpression")) return;
-        const callee = child.callee;
+        const callee = stripParenExpression(child.callee);
         if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
         if (!isNodeOfType(callee.property, "Identifier")) return;
         const method = callee.property.name;
@@ -186,6 +193,7 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
 
         const releasePairing = RELEASE_METHOD_PAIRINGS.get(method);
         if (releasePairing) {
+          if (RELEASE_METHODS_COVERED_BY_INLINE_HANDLER_RULE.has(method)) return;
           const usage = readListenerUsage(child, releasePairing, method, receiverKey);
           if (usage) releaseUsages.push(usage);
           return;

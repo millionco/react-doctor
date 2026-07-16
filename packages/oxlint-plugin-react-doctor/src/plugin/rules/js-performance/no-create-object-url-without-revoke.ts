@@ -5,6 +5,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import {
   PARENTHESIZED_EXPRESSION_TYPE,
   stripGroupingParens,
@@ -24,9 +25,9 @@ const meaningfulParent = (node: EsTreeNode): EsTreeNode | null => {
 };
 
 const isCreateObjectUrlCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
-  const callee = node.callee;
+  const callee = stripParenExpression(node.callee);
   if (!isMemberProperty(callee, "createObjectURL") || callee.computed) return false;
-  const object = callee.object;
+  const object = stripParenExpression(callee.object);
   if (isNodeOfType(object, "Identifier")) {
     if (object.name !== "URL") return false;
     // A same-file binding named `URL` (import or local class) is not the

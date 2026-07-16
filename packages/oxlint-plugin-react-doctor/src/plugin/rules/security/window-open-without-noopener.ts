@@ -19,14 +19,21 @@ const NAVIGATING_TARGETS = new Set(["_self", "_top", "_parent"]);
 // `Identifier` callee) and `foo.postMessage`/`webview.open` are not the
 // window global and never match.
 const isWindowOpenCallee = (callee: EsTreeNode): boolean => {
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
-  if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "open") return false;
-  const object = callee.object;
+  const unwrappedCallee = stripParenExpression(callee);
+  if (!isNodeOfType(unwrappedCallee, "MemberExpression") || unwrappedCallee.computed) return false;
+  if (
+    !isNodeOfType(unwrappedCallee.property, "Identifier") ||
+    unwrappedCallee.property.name !== "open"
+  ) {
+    return false;
+  }
+  const object = stripParenExpression(unwrappedCallee.object);
   if (isNodeOfType(object, "Identifier")) return object.name === "window";
   if (isNodeOfType(object, "MemberExpression") && !object.computed) {
+    const receiver = stripParenExpression(object.object);
     return (
-      isNodeOfType(object.object, "Identifier") &&
-      object.object.name === "globalThis" &&
+      isNodeOfType(receiver, "Identifier") &&
+      receiver.name === "globalThis" &&
       isNodeOfType(object.property, "Identifier") &&
       object.property.name === "window"
     );
@@ -1346,6 +1353,12 @@ const isArrowReturnDiscarded = (arrow: EsTreeNode): boolean => {
   return false;
 };
 
+const isReturnedHandleDiscarded = (returnStatement: EsTreeNode): boolean => {
+  let functionNode = returnStatement.parent ?? null;
+  while (functionNode && !isFunctionLike(functionNode)) functionNode = functionNode.parent ?? null;
+  return functionNode !== null && isArrowReturnDiscarded(functionNode);
+};
+
 // The window handle is discarded (so `noopener`'s null return breaks
 // nothing) when the call is a bare statement, a `void` operand, the
 // branch of a guard-shaped logical/ternary that is itself discarded, a
@@ -1361,6 +1374,9 @@ const isDiscardedWindowHandle = (callNode: EsTreeNode): boolean => {
   if (isNodeOfType(parent, "ExpressionStatement")) return true;
   if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "void") return true;
   if (isNodeOfType(parent, "AwaitExpression")) return isDiscardedWindowHandle(parent);
+  if (isNodeOfType(parent, "ReturnStatement") && parent.argument === callNode) {
+    return isReturnedHandleDiscarded(parent);
+  }
   if (isNodeOfType(parent, "LogicalExpression") && parent.right === callNode) {
     return isDiscardedWindowHandle(parent);
   }

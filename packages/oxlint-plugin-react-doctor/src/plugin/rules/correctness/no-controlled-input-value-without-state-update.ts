@@ -17,6 +17,14 @@ const VALUE_BYPASS_INPUT_TYPES = new Set(["hidden", "checkbox", "radio"]);
 
 const READONLY_ATTRIBUTES = ["readOnly", "disabled"];
 
+const isNoOpChangeHandler = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
+  if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) return false;
+  const handler = stripParenExpression(attribute.value.expression);
+  if (!isFunctionLike(handler)) return false;
+  if (!isNodeOfType(handler.body, "BlockStatement")) return false;
+  return handler.body.body.length === 0;
+};
+
 // True when the `value` JSXAttribute is a bare string/number literal —
 // `value="x"` or `value={123}`. Identifier references (state, props, consts)
 // are deliberately excluded: telling them apart needs scope analysis, and the
@@ -136,7 +144,8 @@ export const noControlledInputValueWithoutStateUpdate = defineRule({
       const valueAttribute = findJsxAttribute(attributes, "value");
       if (!valueAttribute || !isLiteralValueAttribute(valueAttribute)) return;
 
-      if (!findJsxAttribute(attributes, "onChange")) return;
+      const onChangeAttribute = findJsxAttribute(attributes, "onChange");
+      if (!onChangeAttribute || isNoOpChangeHandler(onChangeAttribute)) return;
       if (READONLY_ATTRIBUTES.some((name) => findJsxAttribute(attributes, name))) return;
 
       if (tagName === "input") {

@@ -78,6 +78,14 @@ describe("no-controlled-input-value-without-state-update", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not infer editability from an explicitly empty presentation-only handler", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const ToolbarDemo = () => <input value="Search..." onChange={() => {}} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a radio whose literal value is the submission token", () => {
     const result = runRule(
       noControlledInputValueWithoutStateUpdate,
@@ -223,6 +231,6 @@ const C = () => <input value="" onChange={(e) => setQuery(e.currentTarget.value)
          </div>
        );`,
     );
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

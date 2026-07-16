@@ -135,12 +135,12 @@ describe("no-floating-then-in-jsx-handler", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a returned promise chain", () => {
+  it("flags a promise chain returned from a block handler", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const el = <button onClick={() => { return save().then(refetch); }} />;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a handler with no .then token", () => {

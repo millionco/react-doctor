@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { effectListenerCleanupReferenceMismatch } from "./effect-listener-cleanup-reference-mismatch.js";
 
 describe("effect-listener-cleanup-reference-mismatch", () => {
-  it("flags addEventListener + removeEventListener with two distinct arrows", () => {
+  it("defers removeEventListener to effect-remove-listener-inline-handler", () => {
     const result = runRule(
       effectListenerCleanupReferenceMismatch,
       `
@@ -16,10 +16,10 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
       `,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags distinct function expressions on both sides", () => {
+  it("defers function-expression removeEventListener to the broader rule", () => {
     const result = runRule(
       effectListenerCleanupReferenceMismatch,
       `
@@ -29,10 +29,10 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
       }, []);
       `,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags EventEmitter on/off with mismatched literals", () => {
+  it("defers EventEmitter off to the broader rule", () => {
     const result = runRule(
       effectListenerCleanupReferenceMismatch,
       `
@@ -42,7 +42,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
       }, []);
       `,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags subscribe/unsubscribe with handler-only literals", () => {
@@ -58,7 +58,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags textually-identical literals since they are still distinct references", () => {
+  it("defers textually-identical removeEventListener literals to the broader rule", () => {
     const result = runRule(
       effectListenerCleanupReferenceMismatch,
       `
@@ -68,7 +68,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
       }, [close]);
       `,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag the same named handler on both sides", () => {
@@ -152,7 +152,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags the legacy MediaQueryList handler-only addListener/removeListener form", () => {
+  it("defers the legacy MediaQueryList removeListener form to the broader rule", () => {
     const result = runRule(
       effectListenerCleanupReferenceMismatch,
       `
@@ -164,10 +164,10 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
       `,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags inline handlers when the event name is a shared identifier constant", () => {
+  it("defers identifier-event removeEventListener calls to the broader rule", () => {
     const result = runRule(
       effectListenerCleanupReferenceMismatch,
       `
@@ -179,10 +179,10 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
       `,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags inline handlers when the event name is a shared enum-style member expression", () => {
+  it("defers enum-event off calls to the broader rule", () => {
     const result = runRule(
       effectListenerCleanupReferenceMismatch,
       `
@@ -192,10 +192,10 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
       }, []);
       `,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags inline handlers when the event name is an expressionless template literal", () => {
+  it("defers template-event removeEventListener calls to the broader rule", () => {
     const result = runRule(
       effectListenerCleanupReferenceMismatch,
       `
@@ -205,7 +205,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
       }, []);
       `,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag the MediaQueryList handler-only form with one shared named handler", () => {

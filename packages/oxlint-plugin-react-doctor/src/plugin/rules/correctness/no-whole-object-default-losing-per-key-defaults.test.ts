@@ -239,4 +239,62 @@ describe("no-whole-object-default-losing-per-key-defaults", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("stays quiet when the at-risk property is required by an inline annotation", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `const Trigger = (
+        { renderTrigger }: { renderTrigger: () => React.ReactNode } = {
+          renderTrigger: () => <button type="button">Open</button>,
+        }
+      ) => renderTrigger();`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when a same-file interface requires every observable fallback", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `interface BillingOptions {
+        onSuccess: (redirectUrl: string) => void;
+        onError: () => void;
+      }
+      export const useSubscribe = (
+        { onSuccess, onError }: BillingOptions = {
+          onSuccess: () => {},
+          onError: () => {},
+        }
+      ) => use(onSuccess, onError);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when optional callback defaults are no-ops and every call is optional", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `interface Options { onSuccess?: () => void; onError?: () => void }
+      export const useCreate = (
+        { onSuccess, onError }: Options = {
+          onSuccess: () => { return; },
+          onError: () => { return; },
+        }
+      ) => {
+        onSuccess?.();
+        onError?.();
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags an optional callback fallback when code calls it unconditionally", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `interface Options { onSuccess?: () => void }
+      export const useCreate = (
+        { onSuccess }: Options = { onSuccess: () => {} }
+      ) => onSuccess();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -198,9 +198,10 @@ const parseSelectorTarget = (selector: string): QueryTarget | null => {
 const queryCallTarget = (node: EsTreeNode): QueryTarget | null => {
   const stripped = stripParenExpression(node);
   if (!isNodeOfType(stripped, "CallExpression")) return null;
-  const callee = stripped.callee;
+  const callee = stripParenExpression(stripped.callee);
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
-  if (!isNodeOfType(callee.object, "Identifier") || callee.object.name !== "document") return null;
+  const receiver = stripParenExpression(callee.object);
+  if (!isNodeOfType(receiver, "Identifier") || receiver.name !== "document") return null;
   if (
     !isNodeOfType(callee.property, "Identifier") ||
     !DOM_QUERY_METHODS.has(callee.property.name)

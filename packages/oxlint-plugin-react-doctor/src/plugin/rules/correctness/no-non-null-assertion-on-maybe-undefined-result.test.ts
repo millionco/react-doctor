@@ -406,6 +406,14 @@ describe("no-non-null-assertion-on-maybe-undefined-result", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag match! with an end-anchored pattern that accepts the empty suffix", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const lastLine = value.match(/[^\\n]*$/)![0];`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag match! re-run after a boolean-coerced predicate match with the same regex (findUpUntil shape)", () => {
     const result = runRule(
       noNonNullAssertionOnMaybeUndefinedResult,

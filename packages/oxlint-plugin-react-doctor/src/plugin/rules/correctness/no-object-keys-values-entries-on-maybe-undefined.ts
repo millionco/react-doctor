@@ -44,13 +44,14 @@ const MESSAGE =
   "`Object.keys/values/entries` throws `Cannot convert undefined or null to object` when this value is missing — add a `?? {}` fallback or a null check so the call always receives an object.";
 
 const isObjectIterationCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
-  const callee = node.callee;
+  const callee = stripParenExpression(node.callee);
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
-  if (!isNodeOfType(callee.object, "Identifier") || callee.object.name !== "Object") return false;
+  const receiver = stripParenExpression(callee.object);
+  if (!isNodeOfType(receiver, "Identifier") || receiver.name !== "Object") return false;
   if (!isNodeOfType(callee.property, "Identifier")) return false;
   if (!OBJECT_ITERATION_METHODS.has(callee.property.name)) return false;
   // A same-file binding named `Object` shadows the global — bail out.
-  if (findVariableInitializer(callee.object, "Object")) return false;
+  if (findVariableInitializer(receiver, "Object")) return false;
   return true;
 };
 
@@ -142,7 +143,7 @@ const isInsideCatchTerminatedPromiseChain = (callNode: EsTreeNode): boolean => {
         isNodeOfType(callbackHolder.callee.property, "Identifier") &&
         (callbackHolder.callee.property.name === "then" ||
           callbackHolder.callee.property.name === "catch") &&
-        (callbackHolder.arguments ?? []).includes(cursor as never)
+        (callbackHolder.arguments ?? []).some((argument) => argument === cursor)
       ) {
         let chainLink: EsTreeNode = callbackHolder;
         while (

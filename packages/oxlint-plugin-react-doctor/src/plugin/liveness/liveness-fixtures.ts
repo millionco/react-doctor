@@ -1508,9 +1508,6 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-promise-then-side-effect-in-effect-without-catch": {
     code: "useEffect(() => { fetch(url).then((response) => response.json()).then(setUser); }, [url]);",
   },
-  "no-repeated-layout-read-same-element": {
-    code: "\n      function size(el, useRect) {\n        return useRect && el.getBoundingClientRect().width + el.getBoundingClientRect().height;\n      }\n    ",
-  },
   "no-set-state-after-await-in-effect": {
     code: "\n      const C = ({ id }) => {\n        const [user, setUser] = useState(null);\n        useEffect(() => {\n          (async () => {\n            setUser(await load(id));\n          })();\n        }, [id]);\n      };\n      ",
   },
@@ -1549,7 +1546,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "mutation.mutateAsync(payload);",
   },
   "query-no-mutation-in-effect-as-read": {
-    code: "function C() {\n         const { mutateAsync, data } = useSWRLocales();\n         useEffect(() => { mutateAsync(payload); }, [dep]);\n         return <div>{data.available_locales}</div>;\n       }",
+    code: "function C() {\n         const { mutateAsync, data } = useSWRGetLocales();\n         useEffect(() => { mutateAsync(payload); }, [dep]);\n         return <div>{data.available_locales}</div>;\n       }",
   },
   "radio-input-missing-name": {
     code: '<input type="radio" value="yes" />;',

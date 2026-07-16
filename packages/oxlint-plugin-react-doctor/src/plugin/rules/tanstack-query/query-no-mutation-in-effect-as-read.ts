@@ -33,6 +33,31 @@ const SWR_MODULE_SOURCE_PATTERN = /^swr(\/|$)/;
 
 const NULLISH_COMPARISON_OPERATORS = new Set(["==", "!=", "===", "!=="]);
 
+const READ_INTENT_NAME_WORDS = new Set([
+  "check",
+  "fetch",
+  "find",
+  "get",
+  "list",
+  "load",
+  "lookup",
+  "query",
+  "read",
+  "retrieve",
+  "search",
+]);
+
+const hasReadIntentName = (name: string | null): boolean =>
+  Boolean(
+    name &&
+    name
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .toLowerCase()
+      .split(/[_-]+/)
+      .some((word) => READ_INTENT_NAME_WORDS.has(word)),
+  );
+
 const findPatternPropertyBinding = (
   pattern: EsTreeNode,
   keyPredicate: (name: string) => boolean,
@@ -375,6 +400,12 @@ export const queryNoMutationInEffectAsRead = defineRule({
         findPatternPropertyBinding(node.id, (name) => name === "mutateAsync"),
       );
       if (!hasMutateAsyncKey && isSwrHookResult(node.init)) return;
+      const mutateBindingName = isNodeOfType(mutateBinding, "Identifier")
+        ? mutateBinding.name
+        : null;
+      if (!hasReadIntentName(getCalleeName(node.init)) && !hasReadIntentName(mutateBindingName)) {
+        return;
+      }
       const mutateSymbol = context.scopes.symbolFor(mutateBinding);
       if (!mutateSymbol) return;
 

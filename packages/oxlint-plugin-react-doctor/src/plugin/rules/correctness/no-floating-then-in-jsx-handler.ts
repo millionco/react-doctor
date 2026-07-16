@@ -183,6 +183,10 @@ const collectStatementFloatingThenCalls = (
   statement: EsTreeNode,
   found: EsTreeNodeOfType<"CallExpression">[],
 ): void => {
+  if (isNodeOfType(statement, "ReturnStatement") && statement.argument) {
+    collectExpressionFloatingThenCalls(statement.argument, found);
+    return;
+  }
   if (isNodeOfType(statement, "ExpressionStatement")) {
     collectExpressionFloatingThenCalls(statement.expression as EsTreeNode, found);
     return;

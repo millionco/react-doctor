@@ -438,6 +438,14 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when an always-matching regex is anchored at the end", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const lastLinePrefixLength = value.match(/[^\\n]*$/)![0].length;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet on String(value) under the same opaque predicate trusted for .toString()", () => {
     const result = runRule(
       noArrayIndexDerefWithoutBoundsOrEmptyGuard,

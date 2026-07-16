@@ -63,6 +63,7 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
     "options.throwOnError = false",
     "delete options.displayMode",
     "Object.assign(options, { displayMode: false })",
+    "Object.defineProperties(options, { displayMode: { value: false } })",
   ])("keeps unrelated options mutations safe: %s", (mutation) => {
     const findings = scan(`
       import katex from "katex";
@@ -83,6 +84,8 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
     "delete options.trust",
     "Object.assign(options, { trust: false })",
     "Object.defineProperty(options, 'trust', { value: false })",
+    "Object.defineProperties(options, { trust: { value: false } })",
+    "Reflect.defineProperty(options, 'trust', { value: false })",
     "Reflect.set(options, 'trust', false)",
   ])("accepts a final statically untrusted options write: %s", (finalWrite) => {
     const findings = scan(`
@@ -101,11 +104,50 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
     "options.trust = dynamicTrust",
     "options[dynamicKey] = false",
     "Object.assign(options, { trust: true })",
+    "Object.defineProperty(options, 'trust', { value: true })",
+    "Object.defineProperty(options, 'trust', { get: () => dynamicTrust })",
+    "Object.defineProperties(options, { trust: { value: true } })",
+    "Object.defineProperties(options, { trust: { get: () => dynamicTrust } })",
+    "Object.defineProperties(options, descriptors)",
+    "Reflect.defineProperty(options, 'trust', { value: true })",
+    "Reflect.defineProperty(options, 'trust', { get: () => dynamicTrust })",
   ])("rejects a final trusted or unknown options write: %s", (finalWrite) => {
     const findings = scan(`
       import katex from "katex";
       const options = { trust: false };
       ${finalWrite};
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+      );
+    `);
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each([
+    "Object.defineProperty(options, 'trust', { configurable: true })",
+    "Object.defineProperties(options, { trust: { configurable: true } })",
+    "Reflect.defineProperty(options, 'trust', { configurable: true })",
+  ])("preserves a safe trust value across an attribute-only descriptor: %s", (write) => {
+    const findings = scan(`
+      import katex from "katex";
+      const options = { trust: false };
+      ${write};
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+      );
+    `);
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each([
+    "Object.defineProperty(options, 'trust', { configurable: true })",
+    "Object.defineProperties(options, { trust: { configurable: true } })",
+    "Reflect.defineProperty(options, 'trust', { configurable: true })",
+  ])("preserves an unsafe trust value across an attribute-only descriptor: %s", (write) => {
+    const findings = scan(`
+      import katex from "katex";
+      const options = { trust: true };
+      ${write};
       export const MathNode = ({ value }: Props) => (
         <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
       );

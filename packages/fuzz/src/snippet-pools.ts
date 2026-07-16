@@ -302,6 +302,7 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `const FuzzPolyfillScript = () => <script src="https://polyfill.io/v3/polyfill.min.js" />;`,
   `import FuzzRawMarkdown from "react-markdown"; import fuzzRawPlugin from "rehype-raw"; export const FuzzRawMarkdownPreview = ({ value }) => <FuzzRawMarkdown rehypePlugins={[fuzzRawPlugin]}>{String(value)}</FuzzRawMarkdown>;`,
   `import fuzzKatex from "katex"; const renderFuzzMathToHtml = (value) => { try { return fuzzKatex.renderToString(value, { throwOnError: false }); } catch { return value; } }; export const FuzzMathPreview = ({ value }) => <span dangerouslySetInnerHTML={{ __html: renderFuzzMathToHtml(value) }} />;`,
+  `import fuzzKatexDescriptor from "katex"; const fuzzKatexOptions = { trust: true }; Reflect.defineProperty(fuzzKatexOptions, "trust", { value: false }); export const FuzzSafeMathPreview = ({ value }) => <span dangerouslySetInnerHTML={{ __html: fuzzKatexDescriptor.renderToString(value, fuzzKatexOptions) }} />;`,
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [

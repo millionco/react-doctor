@@ -31,18 +31,44 @@ const isStaticallyDisabledTrustValue = (node: EsTreeNode, scopes: ScopeAnalysis)
   return isNodeOfType(expression, "Literal") && !expression.value;
 };
 
-const getPropertyDescriptorValue = (node: EsTreeNode): EsTreeNode | null => {
+const getStaticObjectPropertyValue = (
+  node: EsTreeNode,
+  expectedPropertyName: string,
+): EsTreeNode | null | undefined => {
+  const expression = stripParenExpression(node);
+  if (!isNodeOfType(expression, "ObjectExpression")) return null;
+  let propertyValue: EsTreeNode | undefined;
+  for (const property of expression.properties) {
+    if (!isNodeOfType(property, "Property")) return null;
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (propertyName === null) return null;
+    if (propertyName !== expectedPropertyName) continue;
+    if (property.kind !== "init") return null;
+    propertyValue = property.value;
+  }
+  return propertyValue;
+};
+
+const getPropertyDescriptorValue = (node: EsTreeNode): EsTreeNode | null | undefined => {
   const expression = stripParenExpression(node);
   if (!isNodeOfType(expression, "ObjectExpression")) return null;
   for (const property of expression.properties) {
-    if (
-      isNodeOfType(property, "Property") &&
-      getStaticPropertyKeyName(property, { allowComputedString: true }) === "value"
-    ) {
-      return property.value;
-    }
+    if (!isNodeOfType(property, "Property")) return null;
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (propertyName === null || propertyName === "get" || propertyName === "set") return null;
   }
-  return null;
+  return getStaticObjectPropertyValue(expression, "value");
+};
+
+const getTrustStateAfterPropertyDescriptor = (
+  currentState: KatexTrustState,
+  propertyDescriptor: EsTreeNode,
+  scopes: ScopeAnalysis,
+): KatexTrustState => {
+  const propertyValue = getPropertyDescriptorValue(propertyDescriptor);
+  if (propertyValue === null) return "trusted";
+  if (propertyValue === undefined) return currentState;
+  return isStaticallyDisabledTrustValue(propertyValue, scopes) ? "untrusted" : "trusted";
 };
 
 const applyTrustMutation = (
@@ -100,6 +126,14 @@ const applyTrustMutation = (
       }
       return nextState;
     }
+    if (methodName === "defineProperties") {
+      const propertyDescriptors = parent.arguments[1];
+      if (!propertyDescriptors) return "unsupported";
+      const trustDescriptor = getStaticObjectPropertyValue(propertyDescriptors, "trust");
+      if (trustDescriptor === null) return "trusted";
+      if (trustDescriptor === undefined) return currentState;
+      return getTrustStateAfterPropertyDescriptor(currentState, trustDescriptor, scopes);
+    }
     const propertyKey = parent.arguments[1];
     if (
       !propertyKey ||
@@ -111,10 +145,7 @@ const applyTrustMutation = (
     if (propertyKey.value !== "trust") return currentState;
     const propertyDescriptor = parent.arguments[2];
     if (!propertyDescriptor) return "unsupported";
-    const propertyValue = getPropertyDescriptorValue(propertyDescriptor);
-    return propertyValue === null || isStaticallyDisabledTrustValue(propertyValue, scopes)
-      ? "untrusted"
-      : "trusted";
+    return getTrustStateAfterPropertyDescriptor(currentState, propertyDescriptor, scopes);
   }
   if (
     mutationInspector.isGlobalNamespaceMethod(
@@ -123,6 +154,9 @@ const applyTrustMutation = (
       REFLECT_PROPERTY_MUTATION_METHOD_NAMES,
     )
   ) {
+    const callee = stripParenExpression(parent.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return "unsupported";
+    const methodName = getStaticPropertyName(callee);
     const propertyKey = parent.arguments[1];
     if (
       !propertyKey ||
@@ -133,9 +167,11 @@ const applyTrustMutation = (
     }
     if (propertyKey.value !== "trust") return currentState;
     const propertyValue = parent.arguments[2];
-    return propertyValue && isStaticallyDisabledTrustValue(propertyValue, scopes)
-      ? "untrusted"
-      : "trusted";
+    if (!propertyValue) return "unsupported";
+    if (methodName === "defineProperty") {
+      return getTrustStateAfterPropertyDescriptor(currentState, propertyValue, scopes);
+    }
+    return isStaticallyDisabledTrustValue(propertyValue, scopes) ? "untrusted" : "trusted";
   }
   return "unsupported";
 };

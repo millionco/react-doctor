@@ -352,6 +352,43 @@ describe("buildRunEventAttributes", () => {
     expect(excluded["outcome.exitCode"]).toBe(0);
   });
 
+  it("counts non-production findings excluded from the CI gate", () => {
+    const result = buildResult({
+      diagnostics: [
+        buildDiagnostic({
+          filePath: "src/App.test.tsx",
+          rule: "no-foo",
+          fileContext: "test",
+        }),
+        buildDiagnostic({
+          filePath: "src/App.stories.tsx",
+          rule: "no-bar",
+          fileContext: "story",
+        }),
+        buildDiagnostic({ filePath: "src/App.tsx", rule: "no-baz" }),
+      ],
+    });
+
+    const defaultAttributes = buildRunEventAttributes(baseInput({ result }));
+    expect(defaultAttributes["diag.nonProductionGateExcluded"]).toBe(2);
+
+    const ruleIncludedAttributes = buildRunEventAttributes(
+      baseInput({
+        result,
+        userConfig: { surfaces: { ciFailure: { includeRules: ["react-doctor/no-foo"] } } },
+      }),
+    );
+    expect(ruleIncludedAttributes["diag.nonProductionGateExcluded"]).toBe(1);
+
+    const categoryIncludedAttributes = buildRunEventAttributes(
+      baseInput({
+        result,
+        userConfig: { surfaces: { ciFailure: { includeCategories: ["Correctness"] } } },
+      }),
+    );
+    expect(categoryIncludedAttributes["diag.nonProductionGateExcluded"]).toBe(0);
+  });
+
   it("never reports a blocked run in score-only mode (matches the CLI exit guard)", () => {
     process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking] = "error";
     const result = buildResult({ diagnostics: [buildDiagnostic({ severity: "error" })] });

@@ -246,6 +246,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     "ciFailure",
     input.userConfig,
   );
+  const gateDiagnosticSet = new Set(gateDiagnostics);
   const complete = isInspectResultComplete(result);
   // `scoreOnly` runs never raise a non-zero exit for ordinary findings, and a
   // degraded baseline run (`gateExempt`) skips the finding gate. A hard lint
@@ -287,6 +288,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
 
   let diagnosticsInTestFiles = 0;
   let diagnosticsInStoryFiles = 0;
+  let nonProductionGateExcluded = 0;
   const diagnosticSiteCounts = new Map<string, number>();
   // Root-cause grouping rollup: how many distinct fix groups, and how many
   // findings they cover. `fixGroupedFindings - fixGroups` is the number of
@@ -296,6 +298,9 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   for (const diagnostic of result.diagnostics) {
     if (diagnostic.fileContext === "test") diagnosticsInTestFiles += 1;
     if (diagnostic.fileContext === "story") diagnosticsInStoryFiles += 1;
+    if (diagnostic.fileContext !== undefined && !gateDiagnosticSet.has(diagnostic)) {
+      nonProductionGateExcluded += 1;
+    }
     const diagnosticSite = JSON.stringify([
       diagnostic.filePath,
       diagnostic.line,
@@ -362,6 +367,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
       affectedFiles: summary.affectedFileCount,
       inTestFiles: diagnosticsInTestFiles,
       inStoryFiles: diagnosticsInStoryFiles,
+      nonProductionGateExcluded,
       distinctRules: countByRule.size,
       topRule,
       sameSiteOccurrences,

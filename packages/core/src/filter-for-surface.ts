@@ -57,6 +57,10 @@ export const isDiagnosticOnSurface = (
   if (resolved.includeCategories.has(category)) return true;
   if (intersects(tags, resolved.includeTags)) return true;
 
+  if (diagnostic.fileContext !== undefined && (surface === "score" || surface === "ciFailure")) {
+    return false;
+  }
+
   if (resolved.excludeRuleKeys.has(ruleKey)) return false;
   if (resolved.excludeCategories.has(category)) return false;
   if (intersects(tags, resolved.excludeTags)) return false;

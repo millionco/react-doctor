@@ -77,8 +77,10 @@ interface ReactDoctorIgnoreConfig {
  *
  * Defaults: design rules (tag `"design"`) are excluded from `prComment`,
  * `score`, and `ciFailure` so style cleanup doesn't dilute meaningful
- * React findings. They remain in `cli` so locally-running developers
- * still see the suggestion when they touch the file.
+ * React findings. Diagnostics stamped with `fileContext: "test" | "story"`
+ * are excluded from `score` and `ciFailure`. Both remain in `cli`, and an
+ * explicit rule, category, or tag include promotes a diagnostic back onto
+ * the selected surface.
  */
 export type DiagnosticSurface = "cli" | "prComment" | "score" | "ciFailure";
 
@@ -388,6 +390,8 @@ export interface ReactDoctorConfig {
    * - `prComment` excludes tag `"design"`
    * - `score` excludes tag `"design"`
    * - `ciFailure` excludes tag `"design"`
+   * - `score` and `ciFailure` exclude test/story file contexts unless an
+   *   existing include control explicitly promotes the diagnostic
    *
    * Pass any controls block (even an empty `{}`) to keep the default
    * exclusions; the user's include/exclude entries layer on top.

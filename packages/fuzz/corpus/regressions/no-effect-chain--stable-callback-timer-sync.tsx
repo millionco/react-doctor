@@ -34,39 +34,14 @@ export const Slideshow = ({ currentIndex, disabled }: SlideshowProps) => {
   return playing;
 };
 
-export const RedundantChain = ({ source }: RedundantChainProps) => {
-  const [intermediate, setIntermediate] = React.useState(source);
-  const [target, setTarget] = React.useState(source);
-  const copyIntermediate = React.useCallback(() => setIntermediate(source), [source]);
-
-  React.useEffect(() => copyIntermediate(), [copyIntermediate]);
-  React.useEffect(() => setTarget(intermediate), [intermediate]);
-
-  return target;
-};
-
-export const ReturnedNonCleanupChain = ({ source }: RedundantChainProps) => {
-  const [intermediate, setIntermediate] = React.useState(source);
-  const [target, setTarget] = React.useState(source);
-  const copyIntermediate = React.useCallback(() => {
-    setIntermediate(source);
-    return null;
-  }, [source]);
-
-  React.useEffect(() => copyIntermediate(), [copyIntermediate]);
-  React.useEffect(() => setTarget(intermediate), [intermediate]);
-
-  return target;
-};
-
 export const ConciseCleanupSynchronization = ({ source }: RedundantChainProps) => {
   const [intermediate, setIntermediate] = React.useState(source);
   const [target, setTarget] = React.useState(source);
-  const subscribeAndCopy = React.useCallback(() => {
+  const subscribeAndCopy = () => {
     setIntermediate(source);
     const unsubscribe = subscribe(source);
     return () => unsubscribe();
-  }, [source]);
+  };
 
   React.useEffect(() => subscribeAndCopy(), [subscribeAndCopy]);
   React.useEffect(() => setTarget(intermediate), [intermediate]);

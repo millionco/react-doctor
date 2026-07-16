@@ -110,6 +110,439 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it.each([
+      [
+        "named",
+        `import { useMediaQueryState } from "../hooks/useMediaQuery";`,
+        "useMediaQueryState",
+      ],
+      [
+        "renamed",
+        `import { useMediaQueryState as useViewportState } from "../hooks/useMediaQuery";`,
+        "useViewportState",
+      ],
+      [
+        "namespace",
+        `import * as mediaQueryHooks from "../hooks/useMediaQuery";`,
+        "mediaQueryHooks.useMediaQueryState",
+      ],
+    ])("stays silent for a %s-imported media-query state hook", (_variant, setup, hookCallee) => {
+      const result = runRule(
+        noPassDataToParent,
+        `${setup}
+        const Sidebar = ({ onBreakPoint }) => {
+          const { matches: broken, resolved } = ${hookCallee}("(max-width: 768px)");
+          useEffect(() => {
+            if (resolved) onBreakPoint(broken);
+          }, [broken, resolved, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
+      ["unbound", ""],
+      ["local", `const useMediaQueryState = () => readMediaQueryState();`],
+      [
+        "shadowed",
+        `import { useMediaQueryState as importedMediaQueryState } from "../hooks/useMediaQuery";
+        const useMediaQueryState = () => readMediaQueryState();`,
+      ],
+    ])("still flags a %s media-query state hook lookalike", (_variant, setup) => {
+      const result = runRule(
+        noPassDataToParent,
+        `${setup}
+        const Sidebar = ({ onBreakPoint }) => {
+          const { matches: broken } = useMediaQueryState("(max-width: 768px)");
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent for the object-pattern React Pro Sidebar media-query state result", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import React from "react";
+        import { useMediaQueryState } from "../hooks/useMediaQuery";
+
+        const Sidebar = React.forwardRef(({ onBreakPoint }, ref) => {
+          const { matches: broken, resolved: isBreakpointResolved } = useMediaQueryState(
+            "(max-width: 768px)",
+          );
+          const lastReportedBrokenRef = React.useRef(false);
+          React.useEffect(() => {
+            if (isBreakpointResolved && broken !== lastReportedBrokenRef.current) {
+              onBreakPoint?.(broken);
+              lastReportedBrokenRef.current = broken;
+            }
+          }, [broken, isBreakpointResolved, onBreakPoint]);
+          return null;
+        });`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a reassigned object-pattern media-query state result", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useMediaQueryState } from "../hooks/useMediaQuery";
+
+        const Sidebar = ({ onBreakPoint }) => {
+          let { matches: broken } = useMediaQueryState("(max-width: 768px)");
+          broken = readUserPreference();
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent for a default-imported media-query hook with its known name", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import useMediaQuery from "../hooks/use-media-query";
+
+        const Sidebar = ({ onBreakPoint }) => {
+          const broken = useMediaQuery("(max-width: 768px)");
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a renamed default import without proven hook identity", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import queryViewport from "../hooks/use-media-query";
+
+        const Sidebar = ({ onBreakPoint }) => {
+          const broken = queryViewport("(max-width: 768px)");
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags an unbound media-query hook lookalike", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const Sidebar = ({ onBreakPoint }) => {
+          const broken = useMediaQuery("(max-width: 768px)");
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a locally defined media-query hook lookalike", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useMediaQuery = () => readUserPreference();
+
+        const Sidebar = ({ onBreakPoint }) => {
+          const broken = useMediaQuery();
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a shadowed imported media-query hook", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useMediaQuery } from "../hooks/use-media-query";
+
+        const Sidebar = ({ onBreakPoint }) => {
+          const useMediaQuery = () => readUserPreference();
+          const broken = useMediaQuery();
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent for layout data from a default-imported resize observer", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import useResizeObserver from "use-resize-observer";
+
+        const PlayerInspectorListItem = ({ onLayout }) => {
+          const { width, height } = useResizeObserver({});
+          const totalHeight = height ? height + 8 : height;
+          useEffect(() => {
+            if (!onLayout || !width || !totalHeight) return;
+            onLayout({ width, height: totalHeight });
+          }, [totalHeight]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for a callback derived from a named resize-observer import", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useResizeObserver } from "~/lib/hooks/useResizeObserver";
+
+        const CalendarHeatMap = ({ thresholdFontSize }) => {
+          const { ref: elementRef, width } = useResizeObserver();
+          const [fontSize, setFontSize] = useState(13);
+          const updateSize = useCallback(() => {
+            if (!elementRef || !width) return;
+            if (thresholdFontSize) setFontSize(thresholdFontSize(width));
+          }, [elementRef, width, thresholdFontSize]);
+          useEffect(() => {
+            const element = elementRef;
+            if (!element) return;
+            updateSize();
+          }, [elementRef, updateSize]);
+          return fontSize;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for layout data derived from a namespace resize-observer import", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import * as observerHooks from "use-resize-observer";
+
+        const PlayerInspectorListItem = ({ onLayout }) => {
+          const { width } = observerHooks.useResizeObserver();
+          useEffect(() => {
+            if (width) onLayout(width);
+          }, [width, onLayout]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for a nested primitive resize-observer property", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useResizeObserver } from "~/lib/hooks/useResizeObserver";
+
+        const Panel = ({ onLayout }) => {
+          const { size: { width } } = useResizeObserver();
+          useEffect(() => {
+            onLayout(width);
+          }, [width, onLayout]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for primitive window-size tuple leaves", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useWindowSize } from "~/lib/hooks/useWindowSize";
+
+        const Panel = ({ onLayout }) => {
+          const [width, height] = useWindowSize();
+          useEffect(() => {
+            onLayout({ width, height });
+          }, [width, height, onLayout]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
+      [
+        "direct DOM query",
+        `const { element } = useResizeObserver();
+        const width = element.getBoundingClientRect().width;`,
+      ],
+      [
+        "multi-hop DOM query alias",
+        `const { element } = useResizeObserver();
+        const firstAlias = element;
+        const secondAlias = firstAlias;
+        const width = secondAlias.getBoundingClientRect().width;`,
+      ],
+      [
+        "iterator query alias",
+        `const { measurements } = useResizeObserver();
+        const measurementAlias = measurements;
+        const width = [...measurementAlias.keys()].length;`,
+      ],
+      [
+        "primitive formatter",
+        `const { width: rawWidth } = useResizeObserver();
+        const width = rawWidth.toFixed(0);`,
+      ],
+      [
+        "userland set method",
+        `const { registry } = useResizeObserver();
+        const width = registry.set("width", 100);`,
+      ],
+      [
+        "aliased userland delete method",
+        `const { registry } = useResizeObserver();
+        const registryAlias = registry;
+        const width = registryAlias.delete("width");`,
+      ],
+    ])("stays silent for a read-only %s", (_variant, declaration) => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useResizeObserver } from "~/lib/hooks/useResizeObserver";
+
+        const Panel = ({ onLayout }) => {
+          ${declaration}
+          useEffect(() => {
+            onLayout(width);
+          }, [width, onLayout]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
+      ["property default", `const { width = readUserPreference() } = useResizeObserver();`],
+      [
+        "nested property default",
+        `const { size: { width = readUserPreference() } } = useResizeObserver();`,
+      ],
+      ["object rest", `const { width: measuredWidth, ...width } = useResizeObserver();`],
+    ])("still flags a resize-observer %s", (_variant, declaration) => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useResizeObserver } from "~/lib/hooks/useResizeObserver";
+
+        const Panel = ({ onLayout }) => {
+          ${declaration}
+          useEffect(() => {
+            onLayout(width);
+          }, [width, onLayout]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it.each([
+      ["default", `const [width = readUserPreference()] = useWindowSize();`],
+      ["rest", `const [measuredWidth, ...width] = useWindowSize();`],
+    ])("still flags a window-size tuple %s", (_variant, declaration) => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useWindowSize } from "~/lib/hooks/useWindowSize";
+
+        const Panel = ({ onLayout }) => {
+          ${declaration}
+          useEffect(() => {
+            onLayout(width);
+          }, [width, onLayout]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a whole resize-observer result", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useResizeObserver } from "~/lib/hooks/useResizeObserver";
+
+        const Panel = ({ onLayout }) => {
+          const layout = useResizeObserver();
+          useEffect(() => {
+            onLayout(layout);
+          }, [layout, onLayout]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it.each([
+      ["before direct mutation", `bounds.width = readUserPreference();`, ""],
+      ["after direct mutation", "", `bounds.width = readUserPreference();`],
+      [
+        "after alias mutation",
+        "",
+        `const mutableBounds = bounds; mutableBounds.width = readUserPreference();`,
+      ],
+    ])("still flags an object-valued result with %s", (_variant, beforeEffect, afterEffect) => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useResizeObserver } from "~/lib/hooks/useResizeObserver";
+
+        const Panel = ({ onLayout }) => {
+          const { bounds } = useResizeObserver();
+          ${beforeEffect}
+          useEffect(() => {
+            onLayout(bounds);
+          }, [bounds, onLayout]);
+          ${afterEffect}
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags layout data from a local resize-observer lookalike", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useResizeObserver = () => ({ width: readWidth(), height: readHeight() });
+
+        const PlayerInspectorListItem = ({ onLayout }) => {
+          const { width, height } = useResizeObserver();
+          useEffect(() => {
+            onLayout({ width, height });
+          }, [width, height, onLayout]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("stays silent when notifying a parent of state driven only by matchMedia", () => {
       const result = runRule(
         noPassDataToParent,

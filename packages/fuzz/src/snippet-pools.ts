@@ -49,6 +49,7 @@ export const EFFECT_SNIPPET_POOL = [
   `useEffect(() => { setState(value); }, [value]);`,
   `useEffect(() => { if (value) { handle(value); } }, [value]);`,
   `const CallbackRefChild = ({ onSelect }) => { const callbackRef = useRef(onSelect); callbackRef.current = onSelect; const childData = buildPhoneData(); useEffect(() => { callbackRef.current(childData); }, [childData]); return null; };`,
+  `const useFuzzMediaQuery = () => readUserPreference(); const FuzzMediaQueryLookalike = ({ onBreakPoint }) => { const broken = useFuzzMediaQuery(); useEffect(() => { onBreakPoint(broken); }, [broken, onBreakPoint]); return null; };`,
   `const fuzzDelayedCallbackRef = useRef(() => {}); fuzzDelayedCallbackRef.current = () => { setTimeout(() => store.subscribe(handle), 100); }; useEffect(() => fuzzDelayedCallbackRef.current(), [value]);`,
   `const fuzzChainedSubscriptionRef = useRef(() => {}); const fuzzStartSubscriptionRef = useRef(() => {}); fuzzChainedSubscriptionRef.current = () => { setTimeout(() => store.subscribe(handle), 100); }; fuzzStartSubscriptionRef.current = () => fuzzChainedSubscriptionRef.current(); useEffect(() => fuzzStartSubscriptionRef.current(), [value]);`,
   `const EffectRefreshedCallbackChild = ({ onSelect }) => { const callbackRef = useRef(onSelect); const childData = buildPhoneData(); useEffect(() => { callbackRef.current = onSelect; }, [onSelect]); useEffect(() => { callbackRef.current(childData); }, [childData]); return null; };`,

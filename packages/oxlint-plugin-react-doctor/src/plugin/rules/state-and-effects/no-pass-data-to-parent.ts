@@ -918,31 +918,41 @@ const EXTERNAL_SUBSCRIPTION_HOOK_NAMES: ReadonlySet<string> = new Set([
   "useIntersectionObserver",
   "useMatchMedia",
   "useMediaQuery",
+  "useMediaQueryState",
   "useResizeObserver",
   "useVisibility",
   "useWindowSize",
 ]);
 
+const EXTERNAL_SUBSCRIPTION_PRIMITIVE_RESULT_HOOK_NAMES: ReadonlySet<string> = new Set([
+  "useMediaQuery",
+]);
+
 const isImportBindingRef = (ref: Reference): boolean =>
   Boolean(ref.resolved?.defs.some((def) => def.type === "ImportBinding"));
 
-const isImportedExternalSubscriptionHookCallee = (
+const getImportedExternalSubscriptionHookName = (
   analysis: ProgramAnalysis,
   rawCallee: EsTreeNode,
-): boolean => {
+): string | null => {
   const callee = stripParenExpression(rawCallee);
   if (isNodeOfType(callee, "Identifier")) {
     const calleeRef = getRef(analysis, callee);
-    if (!calleeRef || !isImportBindingRef(calleeRef)) return false;
+    if (!calleeRef || !isImportBindingRef(calleeRef)) return null;
     const importBinding = getImportBindingForName(callee, callee.name);
-    return Boolean(
-      importBinding &&
-      !importBinding.isNamespace &&
+    if (!importBinding || importBinding.isNamespace) return null;
+    if (
       importBinding.exportedName &&
-      EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(importBinding.exportedName),
-    );
+      EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(importBinding.exportedName)
+    ) {
+      return importBinding.exportedName;
+    }
+    return importBinding.exportedName === "default" &&
+      EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(callee.name)
+      ? callee.name
+      : null;
   }
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  if (!isNodeOfType(callee, "MemberExpression")) return null;
   const hookName = getStaticMemberPropertyName(callee);
   const namespaceIdentifier = stripParenExpression(callee.object);
   if (
@@ -950,13 +960,143 @@ const isImportedExternalSubscriptionHookCallee = (
     !EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(hookName) ||
     !isNodeOfType(namespaceIdentifier, "Identifier")
   ) {
-    return false;
+    return null;
   }
   const namespaceRef = getRef(analysis, namespaceIdentifier);
-  if (!namespaceRef || !isImportBindingRef(namespaceRef)) return false;
-  return Boolean(
-    getImportBindingForName(namespaceIdentifier, namespaceIdentifier.name)?.isNamespace,
+  if (!namespaceRef || !isImportBindingRef(namespaceRef)) return null;
+  return getImportBindingForName(namespaceIdentifier, namespaceIdentifier.name)?.isNamespace
+    ? hookName
+    : null;
+};
+
+const isSafeExternalSubscriptionResultBinding = (
+  bindingIdentifier: EsTreeNode,
+  bindingPattern: EsTreeNode,
+): boolean => {
+  let current = bindingIdentifier;
+  let didCrossDestructuringBoundary = false;
+  while (current !== bindingPattern) {
+    const parent = current.parent;
+    if (
+      !parent ||
+      isNodeOfType(parent, "AssignmentPattern") ||
+      isNodeOfType(parent, "RestElement")
+    ) {
+      return false;
+    }
+    if (isNodeOfType(parent, "Property")) {
+      if (parent.value !== current) return false;
+      didCrossDestructuringBoundary = true;
+    }
+    if (isNodeOfType(parent, "ArrayPattern")) didCrossDestructuringBoundary = true;
+    current = parent;
+  }
+  return didCrossDestructuringBoundary;
+};
+
+const getVariablesDefinedByDeclarator = (
+  analysis: ProgramAnalysis,
+  declarator: EsTreeNodeOfType<"VariableDeclarator">,
+): Array<NonNullable<Reference["resolved"]>> =>
+  analysis.scopeManager.scopes
+    .flatMap((scope) => scope.variables)
+    .filter((variable) =>
+      variable.defs.some((definition) => (definition.node as unknown) === (declarator as unknown)),
+    );
+
+const hasUnsafeExternalSubscriptionBindingUse = (
+  analysis: ProgramAnalysis,
+  variable: NonNullable<Reference["resolved"]>,
+  visitedVariables: Set<NonNullable<Reference["resolved"]>> = new Set(),
+): boolean => {
+  if (visitedVariables.has(variable)) return false;
+  visitedVariables.add(variable);
+  return variable.references.some((candidateReference) => {
+    if (candidateReference.init) return false;
+    if (candidateReference.isWrite()) return true;
+    let usageRoot = findTransparentExpressionRoot(
+      candidateReference.identifier as unknown as EsTreeNode,
+    );
+    if (
+      isNodeOfType(usageRoot.parent, "VariableDeclarator") &&
+      usageRoot.parent.init === usageRoot
+    ) {
+      const aliasVariables = getVariablesDefinedByDeclarator(analysis, usageRoot.parent);
+      return (
+        aliasVariables.length === 0 ||
+        aliasVariables.some((aliasVariable) =>
+          hasUnsafeExternalSubscriptionBindingUse(analysis, aliasVariable, visitedVariables),
+        )
+      );
+    }
+    while (
+      isNodeOfType(usageRoot.parent, "MemberExpression") &&
+      usageRoot.parent.object === usageRoot
+    ) {
+      usageRoot = findTransparentExpressionRoot(usageRoot.parent);
+    }
+    const parent = usageRoot.parent;
+    return Boolean(
+      (isNodeOfType(parent, "AssignmentExpression") && parent.left === usageRoot) ||
+      (isNodeOfType(parent, "UpdateExpression") && parent.argument === usageRoot) ||
+      (isNodeOfType(parent, "UnaryExpression") &&
+        parent.operator === "delete" &&
+        parent.argument === usageRoot),
+    );
+  });
+};
+
+const hasOnlySafeExternalSubscriptionResultBindings = (
+  analysis: ProgramAnalysis,
+  declarator: EsTreeNodeOfType<"VariableDeclarator">,
+): boolean => {
+  const variables = getVariablesDefinedByDeclarator(analysis, declarator);
+  return (
+    variables.length > 0 &&
+    variables.every((variable) => {
+      const definition = variable.defs.find(
+        (candidateDefinition) => (candidateDefinition.node as unknown) === (declarator as unknown),
+      );
+      const bindingIdentifier = definition?.name as unknown as EsTreeNode | undefined;
+      return Boolean(
+        bindingIdentifier &&
+        isNodeOfType(bindingIdentifier, "Identifier") &&
+        isSafeExternalSubscriptionResultBinding(bindingIdentifier, declarator.id as EsTreeNode) &&
+        !hasUnsafeExternalSubscriptionBindingUse(analysis, variable),
+      );
+    })
   );
+};
+
+const isImmutableImportedExternalSubscriptionHookCallee = (
+  analysis: ProgramAnalysis,
+  rawCallee: EsTreeNode,
+): boolean => {
+  const hookName = getImportedExternalSubscriptionHookName(analysis, rawCallee);
+  if (!hookName) return false;
+  const callee = stripParenExpression(rawCallee);
+  const callExpression = callee.parent;
+  if (
+    !callExpression ||
+    !isNodeOfType(callExpression, "CallExpression") ||
+    callExpression.callee !== callee
+  ) {
+    return false;
+  }
+  const initializer = findTransparentExpressionRoot(callExpression);
+  const declarator = initializer.parent;
+  if (
+    !declarator ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== initializer ||
+    !isNodeOfType(declarator.parent, "VariableDeclaration") ||
+    declarator.parent.kind !== "const"
+  ) {
+    return false;
+  }
+  return isNodeOfType(declarator.id, "Identifier")
+    ? EXTERNAL_SUBSCRIPTION_PRIMITIVE_RESULT_HOOK_NAMES.has(hookName)
+    : hasOnlySafeExternalSubscriptionResultBindings(analysis, declarator);
 };
 
 const isExternalSubscriptionHookResultRef = (analysis: ProgramAnalysis, ref: Reference): boolean =>
@@ -966,16 +1106,30 @@ const isExternalSubscriptionHookResultRef = (analysis: ProgramAnalysis, ref: Ref
       if (
         !isNodeOfType(declarator, "VariableDeclarator") ||
         !declarator.init ||
-        !isNodeOfType(declarator.id, "Identifier") ||
         !isNodeOfType(declarator.parent, "VariableDeclaration") ||
         declarator.parent.kind !== "const"
       ) {
         return false;
       }
       const initializer = stripParenExpression(declarator.init as EsTreeNode);
+      if (!isNodeOfType(initializer, "CallExpression")) return false;
+      const hookName = getImportedExternalSubscriptionHookName(
+        analysis,
+        initializer.callee as EsTreeNode,
+      );
+      if (!hookName) return false;
+      if (isNodeOfType(declarator.id, "Identifier")) {
+        return (
+          EXTERNAL_SUBSCRIPTION_PRIMITIVE_RESULT_HOOK_NAMES.has(hookName) &&
+          !hasMutableBindingWrite(ref)
+        );
+      }
+      const bindingIdentifier = def.name as unknown as EsTreeNode;
       return (
-        isNodeOfType(initializer, "CallExpression") &&
-        isImportedExternalSubscriptionHookCallee(analysis, initializer.callee as EsTreeNode)
+        isNodeOfType(bindingIdentifier, "Identifier") &&
+        isSafeExternalSubscriptionResultBinding(bindingIdentifier, declarator.id as EsTreeNode) &&
+        ref.resolved &&
+        !hasUnsafeExternalSubscriptionBindingUse(analysis, ref.resolved)
       );
     }),
   );
@@ -1223,9 +1377,13 @@ export const noPassDataToParent = defineRule({
           }
 
           const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
-            if (isUseStateIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
+            const argIdentifier = argRef.identifier as unknown as EsTreeNode;
+            if (isUseStateIdentifier(argIdentifier)) return false;
+            if (isImmutableImportedExternalSubscriptionHookCallee(analysis, argIdentifier)) {
+              return false;
+            }
             if (isProp(analysis, argRef)) return false;
-            if (isUseRefIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
+            if (isUseRefIdentifier(argIdentifier)) return false;
             if (isRefCurrent(argRef)) return false;
             if (isConstant(argRef)) return false;
             // A leaf sourced from a parent-wired hook stays hook-owned even
@@ -1243,7 +1401,6 @@ export const noPassDataToParent = defineRule({
             // An imported binding in argument (not callee) position is
             // static module config (`subscribe(EVENT_NAME, handler)`),
             // not component-derived data.
-            const argIdentifier = argRef.identifier as unknown as EsTreeNode;
             if (isImportBindingRef(argRef) && !isCalleePosition(argIdentifier)) return false;
             // `props.onReset(undefined)` is an imperative clear, not data
             // lifted to a parent. `undefined` is a global identifier with no

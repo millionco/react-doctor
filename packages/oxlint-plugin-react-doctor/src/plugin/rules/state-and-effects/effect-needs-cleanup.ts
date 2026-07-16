@@ -20,6 +20,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getFinalSequenceExpressionValue } from "../../utils/get-final-sequence-expression-value.js";
 import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
@@ -43,6 +44,7 @@ import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capt
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
@@ -809,28 +811,6 @@ const findContainingCollectionKey = (
     parentNode = currentNode.parent;
   }
   return null;
-};
-
-const isWithinAssignmentTarget = (identifier: EsTreeNode): boolean => {
-  let currentNode = identifier;
-  let parentNode = currentNode.parent;
-  while (parentNode) {
-    if (isNodeOfType(parentNode, "AssignmentExpression")) {
-      return parentNode.left === currentNode;
-    }
-    if (
-      isNodeOfType(parentNode, "UpdateExpression") ||
-      (isNodeOfType(parentNode, "UnaryExpression") && parentNode.operator === "delete")
-    ) {
-      return parentNode.argument === currentNode;
-    }
-    if (isNodeOfType(parentNode, "ForInStatement") || isNodeOfType(parentNode, "ForOfStatement")) {
-      return parentNode.left === currentNode;
-    }
-    currentNode = parentNode;
-    parentNode = currentNode.parent;
-  }
-  return false;
 };
 
 const resolveStableValue = (
@@ -2796,16 +2776,6 @@ const findUnconditionalReturnStatement = (
     findEnclosingFunction(returnStatement) === ownerFunction
     ? returnStatement
     : null;
-};
-
-const getFinalSequenceExpressionValue = (expression: EsTreeNode): EsTreeNode => {
-  let finalExpression = stripParenExpression(expression);
-  while (isNodeOfType(finalExpression, "SequenceExpression")) {
-    const sequenceResult = finalExpression.expressions.at(-1);
-    if (!sequenceResult) break;
-    finalExpression = stripParenExpression(sequenceResult);
-  }
-  return finalExpression;
 };
 
 const doesResourceResultEscape = (

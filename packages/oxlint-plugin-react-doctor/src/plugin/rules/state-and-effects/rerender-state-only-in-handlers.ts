@@ -281,8 +281,8 @@ export const rerenderStateOnlyInHandlers = defineRule({
             componentBody,
             componentFunction,
             context,
+            directRenderNames,
             renderReachableExpressions,
-            renderReachableNames,
           })
         : () => false;
       const calledSetterNames = new Set<string>();

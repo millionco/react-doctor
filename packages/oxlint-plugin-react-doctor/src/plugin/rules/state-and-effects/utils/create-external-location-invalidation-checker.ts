@@ -1,8 +1,14 @@
+import { MUTATING_ARRAY_METHODS, MUTATING_COLLECTION_METHODS } from "../../../constants/js.js";
 import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
-import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
+import { collectExpressionPathCoverageNodes } from "../../../utils/collect-expression-path-coverage-nodes.js";
 import { executesDuringRender } from "../../../utils/executes-during-render.js";
 import { doNodesCoverEveryPathFromFunctionEntry } from "../../../utils/do-nodes-cover-every-path-from-function-entry.js";
+import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
+import { getDirectConstInitializer } from "../../../utils/get-direct-const-initializer.js";
+import { getDirectUnreassignedInitializer } from "../../../utils/get-direct-unreassigned-initializer.js";
 import { getEffectCallback } from "../../../utils/get-effect-callback.js";
+import { getFinalSequenceExpressionValue } from "../../../utils/get-final-sequence-expression-value.js";
 import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
@@ -11,11 +17,14 @@ import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isJsxAttributeOnIntrinsicHtmlElement } from "../../../utils/is-on-intrinsic-html-element.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../../utils/is-node-reachable-within-function.js";
+import { isWithinAssignmentTarget } from "../../../utils/is-within-assignment-target.js";
 import {
   isProvenGlobalNamespaceReference,
   isProvenGlobalObjectReference,
 } from "../../../utils/is-proven-global-namespace-reference.js";
 import { isReactApiCall } from "../../../utils/is-react-api-call.js";
+import { readStaticBoolean } from "../../../utils/read-static-boolean.js";
+import { resolveConstIdentifierAlias } from "../../../utils/resolve-const-identifier-alias.js";
 import { resolveExactLocalFunction } from "../../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
@@ -28,12 +37,16 @@ interface ExternalLocationInvalidationCheckerOptions {
   componentBody: EsTreeNodeOfType<"BlockStatement">;
   componentFunction: EsTreeNode;
   context: RuleContext;
+  directRenderNames: ReadonlySet<string>;
   renderReachableExpressions: EsTreeNode[];
-  renderReachableNames: ReadonlySet<string>;
 }
 
 interface ExternalLocationInvalidationChecker {
   (setterBindingIdentifier: EsTreeNode): boolean;
+}
+
+interface ReadonlyValueEscapeOptions {
+  rejectKnownMutations?: boolean;
 }
 
 interface LocationListenerRegistration {
@@ -60,6 +73,7 @@ interface LocationInvalidationIndex {
   synchronousInvocationsByFunction: Map<EsTreeNode, Set<EsTreeNode>>;
   synchronousCallbacksByExpression: Map<EsTreeNode, Set<EsTreeNode>>;
   callsByCalleeSymbolId: Map<number, Set<EsTreeNode>>;
+  identifierCalls: Set<EsTreeNode>;
   listenerRegistrations: LocationListenerRegistration[];
   listenerRemovals: LocationListenerRegistration[];
   mountedListenerFunctions: Set<EsTreeNode>;
@@ -71,13 +85,36 @@ const HISTORY_LOCATION_MUTATION_METHOD_NAMES: ReadonlySet<string> = new Set([
   "pushState",
   "replaceState",
 ]);
+
+const AGGREGATE_MUTATION_METHOD_NAMES: ReadonlySet<string> = new Set([
+  ...MUTATING_ARRAY_METHODS,
+  ...MUTATING_COLLECTION_METHODS,
+]);
+
+const OBJECT_AGGREGATE_MUTATION_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "assign",
+  "defineProperties",
+  "defineProperty",
+  "setPrototypeOf",
+]);
+
+const REFLECT_AGGREGATE_MUTATION_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "defineProperty",
+  "deleteProperty",
+  "set",
+  "setPrototypeOf",
+]);
 const LOCATION_CHANGE_EVENT_NAMES: ReadonlySet<string> = new Set(["hashchange", "popstate"]);
 
 const containsGlobalLocationSnapshotRead = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let didFindLocationSnapshotRead = false;
   walkAst(node, (child: EsTreeNode): boolean | void => {
     if (didFindLocationSnapshotRead) return false;
-    if (child !== node && isFunctionLike(child) && !executesDuringRender(child, scopes)) {
+    if (
+      child !== node &&
+      isFunctionLike(child) &&
+      !executesDuringRender(findTransparentExpressionRoot(child), scopes)
+    ) {
       return false;
     }
     if (!isProvenGlobalNamespaceReference(child, "location", scopes)) return;
@@ -87,10 +124,85 @@ const containsGlobalLocationSnapshotRead = (node: EsTreeNode, scopes: ScopeAnaly
   return didFindLocationSnapshotRead;
 };
 
+const resolveExactLocalOrReactCallbackFunction = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  const localFunction = resolveExactLocalFunction(expression, scopes);
+  if (isFunctionLike(localFunction)) return localFunction;
+
+  const unwrappedExpression = stripParenExpression(expression);
+  let callbackSource = unwrappedExpression;
+  if (isNodeOfType(unwrappedExpression, "Identifier")) {
+    const callbackSymbol = resolveConstIdentifierAlias(unwrappedExpression, scopes);
+    if (callbackSymbol?.kind !== "const" || !callbackSymbol.initializer) return null;
+    callbackSource = callbackSymbol.initializer;
+  }
+  const unwrappedCallbackSource = stripParenExpression(callbackSource);
+  if (
+    !isNodeOfType(unwrappedCallbackSource, "CallExpression") ||
+    !isReactApiCall(unwrappedCallbackSource, "useCallback", scopes, {
+      resolveNamedAliases: true,
+    })
+  ) {
+    return null;
+  }
+  const callback = unwrappedCallbackSource.arguments?.[0];
+  if (!callback || isNodeOfType(callback, "SpreadElement")) return null;
+  return resolveExactLocalFunction(stripParenExpression(callback), scopes);
+};
+
+const bindingReadsExactGlobalLocationSnapshot = (
+  bindingIdentifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
+  const symbol = scopes.symbolFor(bindingIdentifier);
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+  const bindingScope =
+    symbol.kind === "function" ? scopes.scopeFor(symbol.declarationNode) : symbol.scope;
+  if (
+    bindingScope.symbols.some(
+      (candidateSymbol) =>
+        candidateSymbol.name === symbol.name &&
+        candidateSymbol.references.some((reference) => reference.flag !== "read"),
+    )
+  ) {
+    return false;
+  }
+  const resolvedFunction = resolveExactLocalOrReactCallbackFunction(bindingIdentifier, scopes);
+  const initializer = isFunctionLike(resolvedFunction)
+    ? resolvedFunction.body
+    : getDirectUnreassignedInitializer(symbol);
+  if (!initializer) return false;
+
+  const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+  nextVisitedSymbolIds.add(symbol.id);
+  if (containsGlobalLocationSnapshotRead(initializer, scopes)) return true;
+
+  let didFindAliasedLocationSnapshotRead = false;
+  walkAst(initializer, (child: EsTreeNode): boolean | void => {
+    if (didFindAliasedLocationSnapshotRead) return false;
+    if (
+      child !== initializer &&
+      isFunctionLike(child) &&
+      !executesDuringRender(findTransparentExpressionRoot(child), scopes)
+    ) {
+      return false;
+    }
+    if (!isNodeOfType(child, "Identifier")) return;
+    if (bindingReadsExactGlobalLocationSnapshot(child, scopes, nextVisitedSymbolIds)) {
+      didFindAliasedLocationSnapshotRead = true;
+      return false;
+    }
+  });
+  return didFindAliasedLocationSnapshotRead;
+};
+
 const hasRenderReachableLocationSnapshotRead = (
   componentBody: EsTreeNodeOfType<"BlockStatement">,
   renderReachableExpressions: EsTreeNode[],
-  renderReachableNames: ReadonlySet<string>,
+  directRenderNames: ReadonlySet<string>,
   scopes: ScopeAnalysis,
 ): boolean => {
   if (
@@ -104,8 +216,8 @@ const hasRenderReachableLocationSnapshotRead = (
   for (const statement of componentBody.body ?? []) {
     if (isNodeOfType(statement, "FunctionDeclaration") && statement.id) {
       if (
-        renderReachableNames.has(statement.id.name) &&
-        containsGlobalLocationSnapshotRead(statement.body, scopes)
+        directRenderNames.has(statement.id.name) &&
+        bindingReadsExactGlobalLocationSnapshot(statement.id, scopes)
       ) {
         return true;
       }
@@ -114,20 +226,8 @@ const hasRenderReachableLocationSnapshotRead = (
     if (!isNodeOfType(statement, "VariableDeclaration")) continue;
     for (const declarator of statement.declarations ?? []) {
       if (!isNodeOfType(declarator.id, "Identifier") || !declarator.init) continue;
-      if (!renderReachableNames.has(declarator.id.name)) continue;
-      let renderReachableValue = isFunctionLike(declarator.init)
-        ? declarator.init.body
-        : declarator.init;
-      if (
-        isNodeOfType(declarator.init, "CallExpression") &&
-        isReactApiCall(declarator.init, "useCallback", scopes)
-      ) {
-        const callback = declarator.init.arguments?.[0];
-        if (callback && !isNodeOfType(callback, "SpreadElement") && isFunctionLike(callback)) {
-          renderReachableValue = callback.body;
-        }
-      }
-      if (containsGlobalLocationSnapshotRead(renderReachableValue, scopes)) return true;
+      if (!directRenderNames.has(declarator.id.name)) continue;
+      if (bindingReadsExactGlobalLocationSnapshot(declarator.id, scopes)) return true;
     }
   }
   return false;
@@ -164,8 +264,9 @@ const getSynchronousInvocationExpression = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
 ): EsTreeNode | null => {
-  if (!executesDuringRender(functionNode, scopes)) return null;
-  const parent = functionNode.parent;
+  const functionExpressionRoot = findTransparentExpressionRoot(functionNode);
+  if (!executesDuringRender(functionExpressionRoot, scopes)) return null;
+  const parent = functionExpressionRoot.parent;
   return isNodeOfType(parent, "CallExpression") || isNodeOfType(parent, "NewExpression")
     ? parent
     : null;
@@ -191,7 +292,7 @@ const getLocationListenerOperation = (
   if (!eventName) return null;
   const listenerExpression = callExpression.arguments?.[1];
   if (!listenerExpression || isNodeOfType(listenerExpression, "SpreadElement")) return null;
-  const listenerFunction = resolveExactLocalFunction(listenerExpression, scopes);
+  const listenerFunction = resolveExactLocalOrReactCallbackFunction(listenerExpression, scopes);
   if (!isFunctionLike(listenerFunction)) return null;
   const captureArgument = callExpression.arguments?.[2];
   const capture = isNodeOfType(captureArgument, "SpreadElement")
@@ -223,6 +324,7 @@ const buildLocationInvalidationIndex = (
     synchronousInvocationsByFunction: new Map(),
     synchronousCallbacksByExpression: new Map(),
     callsByCalleeSymbolId: new Map(),
+    identifierCalls: new Set(),
     listenerRegistrations: [],
     listenerRemovals: [],
     mountedListenerFunctions: new Set(),
@@ -257,10 +359,9 @@ const buildLocationInvalidationIndex = (
       }
       const callee = stripParenExpression(child.callee);
       if (isNodeOfType(callee, "Identifier")) {
-        const calleeSymbol = context.scopes.symbolFor(callee);
-        if (calleeSymbol) addToSetIndex(index.callsByCalleeSymbolId, calleeSymbol.id, child);
+        index.identifierCalls.add(child);
       }
-      const calledFunction = resolveExactLocalFunction(child.callee, context.scopes);
+      const calledFunction = resolveExactLocalOrReactCallbackFunction(child.callee, context.scopes);
       if (isFunctionLike(calledFunction)) {
         addToSetIndex(index.callSitesByFunction, calledFunction, child);
         index.calledFunctionByExpression.set(child, calledFunction);
@@ -332,6 +433,86 @@ const areInMutuallyExclusiveConditionalBranches = (
   return false;
 };
 
+const collectStableBooleanGuardConstraints = (
+  node: EsTreeNode,
+  functionBoundary: EsTreeNode,
+  scopes: ScopeAnalysis,
+): Map<number, boolean | null> => {
+  const constraintsBySymbolId = new Map<number, boolean | null>();
+  const recordConstraint = (test: EsTreeNode, requiredTestValue: boolean): void => {
+    let expression = stripParenExpression(test);
+    let requiredValue = requiredTestValue;
+    while (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+      requiredValue = !requiredValue;
+      expression = stripParenExpression(expression.argument);
+    }
+    if (!isNodeOfType(expression, "Identifier")) return;
+    const symbol = scopes.symbolFor(expression);
+    if (!symbol || symbol.references.some((reference) => reference.flag !== "read")) return;
+    const existingConstraint = constraintsBySymbolId.get(symbol.id);
+    constraintsBySymbolId.set(
+      symbol.id,
+      existingConstraint === undefined || existingConstraint === requiredValue
+        ? requiredValue
+        : null,
+    );
+  };
+
+  let current: EsTreeNode | null | undefined = node;
+  while (current?.parent && current !== functionBoundary) {
+    const parent: EsTreeNode = current.parent;
+    if (isNodeOfType(parent, "IfStatement")) {
+      if (parent.consequent === current) recordConstraint(parent.test, true);
+      if (parent.alternate === current) recordConstraint(parent.test, false);
+    } else if (isNodeOfType(parent, "ConditionalExpression")) {
+      if (parent.consequent === current) recordConstraint(parent.test, true);
+      if (parent.alternate === current) recordConstraint(parent.test, false);
+    } else if (isNodeOfType(parent, "LogicalExpression") && parent.right === current) {
+      if (parent.operator === "&&") recordConstraint(parent.left, true);
+      if (parent.operator === "||") recordConstraint(parent.left, false);
+    }
+    if (current !== node && isFunctionLike(current)) break;
+    current = parent;
+  }
+  return constraintsBySymbolId;
+};
+
+const haveContradictoryStableBooleanGuards = (
+  firstNode: EsTreeNode,
+  secondNode: EsTreeNode,
+  functionBoundary: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const firstConstraints = collectStableBooleanGuardConstraints(
+    firstNode,
+    functionBoundary,
+    scopes,
+  );
+  const secondConstraints = collectStableBooleanGuardConstraints(
+    secondNode,
+    functionBoundary,
+    scopes,
+  );
+  for (const requiredValue of firstConstraints.values()) {
+    if (requiredValue === null) return true;
+  }
+  for (const requiredValue of secondConstraints.values()) {
+    if (requiredValue === null) return true;
+  }
+  for (const [symbolId, firstRequiredValue] of firstConstraints) {
+    const secondRequiredValue = secondConstraints.get(symbolId);
+    if (
+      firstRequiredValue !== null &&
+      secondRequiredValue !== undefined &&
+      secondRequiredValue !== null &&
+      firstRequiredValue !== secondRequiredValue
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const isInsideIntrinsicReactEventHandlerAttribute = (
   node: EsTreeNode,
   functionBoundary: EsTreeNode | null,
@@ -346,11 +527,56 @@ const isInsideIntrinsicReactEventHandlerAttribute = (
   return false;
 };
 
+const getTransparentExpressionBindingIdentifier = (
+  expression: EsTreeNode,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  const expressionRoot = findTransparentExpressionRoot(expression);
+  const parent = expressionRoot.parent;
+  if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
+    return parent.id;
+  }
+  if (
+    isNodeOfType(parent, "AssignmentExpression") &&
+    parent.right === expressionRoot &&
+    isNodeOfType(parent.left, "Identifier")
+  ) {
+    return parent.left;
+  }
+  return null;
+};
+
+const getIntrinsicReactEventHandlerBindingIdentifier = (
+  functionNode: EsTreeNode,
+  index: LocationInvalidationIndex,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  if (
+    isNodeOfType(functionNode, "FunctionDeclaration") &&
+    isNodeOfType(functionNode.id, "Identifier")
+  ) {
+    return functionNode.id;
+  }
+  const functionExpressionRoot = findTransparentExpressionRoot(functionNode);
+  const directTransparentBindingIdentifier =
+    getTransparentExpressionBindingIdentifier(functionExpressionRoot);
+  if (directTransparentBindingIdentifier) return directTransparentBindingIdentifier;
+  const callbackCall = functionExpressionRoot.parent;
+  if (
+    !isNodeOfType(callbackCall, "CallExpression") ||
+    callbackCall.arguments?.[0] !== functionExpressionRoot ||
+    !isReactApiCall(callbackCall, "useCallback", index.context.scopes, {
+      resolveNamedAliases: true,
+    })
+  ) {
+    return null;
+  }
+  return getTransparentExpressionBindingIdentifier(callbackCall);
+};
+
 const isExclusiveIntrinsicReactEventHandler = (
   functionNode: EsTreeNode,
   index: LocationInvalidationIndex,
 ): boolean => {
-  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  const bindingIdentifier = getIntrinsicReactEventHandlerBindingIdentifier(functionNode, index);
   if (!bindingIdentifier) {
     return isInsideIntrinsicReactEventHandlerAttribute(functionNode, index.componentFunction);
   }
@@ -376,6 +602,10 @@ const canNodeReachNode = (
   const targetOwner = context.cfg.enclosingFunction(targetNode);
   if (!sourceOwner || sourceOwner !== targetOwner) return false;
   if (areInMutuallyExclusiveConditionalBranches(sourceNode, targetNode)) return false;
+  if (haveContradictoryStableBooleanGuards(sourceNode, targetNode, sourceOwner, context.scopes)) {
+    return false;
+  }
+  if (isDescendantWithoutFunctionBoundary(targetNode, sourceNode)) return false;
   if (isDescendantWithoutFunctionBoundary(sourceNode, targetNode)) return true;
   const functionCfg = context.cfg.cfgFor(sourceOwner);
   const sourceBlock = functionCfg?.blockOf(sourceNode);
@@ -400,6 +630,370 @@ const canNodeReachNode = (
     }
   }
   return false;
+};
+
+const getInlineIntrinsicHandlerJsxElement = (functionNode: EsTreeNode): EsTreeNode | null => {
+  let currentNode: EsTreeNode | null | undefined = functionNode;
+  while (currentNode) {
+    if (
+      isNodeOfType(currentNode, "JSXAttribute") &&
+      isEventHandlerAttribute(currentNode) &&
+      isJsxAttributeOnIntrinsicHtmlElement(currentNode)
+    ) {
+      const openingElement = currentNode.parent;
+      return isNodeOfType(openingElement?.parent, "JSXElement") ? openingElement.parent : null;
+    }
+    if (currentNode !== functionNode && isFunctionLike(currentNode)) return null;
+    currentNode = currentNode.parent;
+  }
+  return null;
+};
+
+const isProvenNonEscapingVoidRead = (identifier: EsTreeNode): boolean => {
+  const expressionRoot = findTransparentExpressionRoot(identifier);
+  return (
+    isNodeOfType(expressionRoot.parent, "UnaryExpression") &&
+    expressionRoot.parent.operator === "void" &&
+    expressionRoot.parent.argument === expressionRoot
+  );
+};
+
+const getDirectReadonlyValueAliasSymbol = (
+  referenceIdentifier: EsTreeNode,
+  sourceSymbol: SymbolDescriptor,
+  index: LocationInvalidationIndex,
+): SymbolDescriptor | null => {
+  const referenceRoot = findTransparentExpressionRoot(referenceIdentifier);
+  const parent = referenceRoot.parent;
+  if (
+    isNodeOfType(parent, "VariableDeclarator") &&
+    parent.init === referenceRoot &&
+    isNodeOfType(parent.id, "Identifier")
+  ) {
+    const aliasSymbol = index.context.scopes.symbolFor(parent.id);
+    const aliasInitializer = aliasSymbol ? getDirectConstInitializer(aliasSymbol) : null;
+    const unwrappedInitializer = aliasInitializer ? stripParenExpression(aliasInitializer) : null;
+    return aliasSymbol &&
+      isNodeOfType(unwrappedInitializer, "Identifier") &&
+      index.context.scopes.symbolFor(unwrappedInitializer) === sourceSymbol
+      ? aliasSymbol
+      : null;
+  }
+  if (
+    !isNodeOfType(parent, "CallExpression") ||
+    parent.arguments?.[0] !== referenceRoot ||
+    !isReactApiCall(parent, "useCallback", index.context.scopes, {
+      resolveNamedAliases: true,
+    })
+  ) {
+    return null;
+  }
+  const callbackResultRoot = findTransparentExpressionRoot(parent);
+  const resultParent = callbackResultRoot.parent;
+  if (
+    !isNodeOfType(resultParent, "VariableDeclarator") ||
+    resultParent.init !== callbackResultRoot ||
+    !isNodeOfType(resultParent.id, "Identifier")
+  ) {
+    return null;
+  }
+  const callbackResultSymbol = index.context.scopes.symbolFor(resultParent.id);
+  return callbackResultSymbol &&
+    getDirectConstInitializer(callbackResultSymbol) === callbackResultRoot
+    ? callbackResultSymbol
+    : null;
+};
+
+const isKnownAggregateMutationReference = (
+  referenceIdentifier: EsTreeNode,
+  index: LocationInvalidationIndex,
+): boolean => {
+  const referenceRoot = findTransparentExpressionRoot(referenceIdentifier);
+  const parent = referenceRoot.parent;
+  if (isNodeOfType(parent, "MemberExpression") && parent.object === referenceRoot) {
+    const memberRoot = findTransparentExpressionRoot(parent);
+    const callExpression = memberRoot.parent;
+    const methodName = getStaticPropertyName(parent);
+    if (
+      isNodeOfType(callExpression, "CallExpression") &&
+      callExpression.callee === memberRoot &&
+      methodName !== null &&
+      AGGREGATE_MUTATION_METHOD_NAMES.has(methodName)
+    ) {
+      return true;
+    }
+  }
+  if (!isNodeOfType(parent, "CallExpression") || parent.arguments?.[0] !== referenceRoot) {
+    return false;
+  }
+  const callee = stripParenExpression(parent.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const methodName = getStaticPropertyName(callee);
+  if (methodName === null) return false;
+  return (
+    (OBJECT_AGGREGATE_MUTATION_METHOD_NAMES.has(methodName) &&
+      isProvenGlobalNamespaceReference(callee.object, "Object", index.context.scopes)) ||
+    (REFLECT_AGGREGATE_MUTATION_METHOD_NAMES.has(methodName) &&
+      isProvenGlobalNamespaceReference(callee.object, "Reflect", index.context.scopes))
+  );
+};
+
+const collectExactReadonlyValueEscapeAnchors = (
+  symbol: SymbolDescriptor,
+  index: LocationInvalidationIndex,
+  valueFunctionNode: EsTreeNode | null,
+  options: ReadonlyValueEscapeOptions = {},
+  visitedSymbolIds = new Set<number>(),
+): EsTreeNode[] | null => {
+  if (visitedSymbolIds.has(symbol.id)) return null;
+  if (
+    symbol.references.some(
+      (reference) =>
+        reference.flag !== "read" ||
+        isWithinAssignmentTarget(reference.identifier) ||
+        (options.rejectKnownMutations &&
+          isKnownAggregateMutationReference(reference.identifier, index)),
+    )
+  ) {
+    return null;
+  }
+  const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+  nextVisitedSymbolIds.add(symbol.id);
+  const escapeAnchors: EsTreeNode[] = [];
+  for (const reference of symbol.references) {
+    if (
+      (valueFunctionNode &&
+        index.context.cfg.enclosingFunction(reference.identifier) === valueFunctionNode) ||
+      isProvenNonEscapingVoidRead(reference.identifier)
+    ) {
+      continue;
+    }
+    const aliasSymbol = getDirectReadonlyValueAliasSymbol(reference.identifier, symbol, index);
+    if (!aliasSymbol) {
+      escapeAnchors.push(reference.identifier);
+      continue;
+    }
+    const aliasEscapeAnchors = collectExactReadonlyValueEscapeAnchors(
+      aliasSymbol,
+      index,
+      valueFunctionNode,
+      options,
+      nextVisitedSymbolIds,
+    );
+    if (!aliasEscapeAnchors) return null;
+    escapeAnchors.push(...aliasEscapeAnchors);
+  }
+  return escapeAnchors.length > 0 ? escapeAnchors : null;
+};
+
+const findReadonlyJsxAggregateRoot = (jsxElement: EsTreeNode): EsTreeNode => {
+  let aggregateRoot = findTransparentExpressionRoot(jsxElement);
+  while (aggregateRoot.parent) {
+    const parent = aggregateRoot.parent;
+    if (
+      (isNodeOfType(parent, "JSXElement") || isNodeOfType(parent, "JSXFragment")) &&
+      parent.children?.some((child) => child === aggregateRoot)
+    ) {
+      aggregateRoot = parent;
+      continue;
+    }
+    if (
+      isNodeOfType(parent, "ArrayExpression") &&
+      parent.elements?.some((element) => element === aggregateRoot)
+    ) {
+      aggregateRoot = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    if (
+      isNodeOfType(parent, "Property") &&
+      parent.value === aggregateRoot &&
+      parent.kind === "init" &&
+      !parent.computed &&
+      isNodeOfType(parent.parent, "ObjectExpression")
+    ) {
+      aggregateRoot = findTransparentExpressionRoot(parent.parent);
+      continue;
+    }
+    if (
+      isNodeOfType(parent, "ConditionalExpression") &&
+      (parent.consequent === aggregateRoot || parent.alternate === aggregateRoot)
+    ) {
+      aggregateRoot = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    if (
+      isNodeOfType(parent, "LogicalExpression") &&
+      (parent.right === aggregateRoot ||
+        (parent.left === aggregateRoot && parent.operator !== "&&"))
+    ) {
+      aggregateRoot = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    if (
+      isNodeOfType(parent, "SequenceExpression") &&
+      getFinalSequenceExpressionValue(parent) === getFinalSequenceExpressionValue(aggregateRoot)
+    ) {
+      aggregateRoot = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    break;
+  }
+  return aggregateRoot;
+};
+
+const getReadonlyJsxValueEscapeAnchors = (
+  jsxElement: EsTreeNode,
+  index: LocationInvalidationIndex,
+): EsTreeNode[] | null => {
+  const jsxValueRoot = findReadonlyJsxAggregateRoot(jsxElement);
+  const parent = jsxValueRoot.parent;
+  if (!isNodeOfType(parent, "VariableDeclarator") || parent.init !== jsxValueRoot) {
+    return [jsxValueRoot];
+  }
+  if (!isNodeOfType(parent.id, "Identifier")) return null;
+  const bindingSymbol = index.context.scopes.symbolFor(parent.id);
+  if (!bindingSymbol || getDirectConstInitializer(bindingSymbol) !== jsxValueRoot) return null;
+  return collectExactReadonlyValueEscapeAnchors(bindingSymbol, index, null, {
+    rejectKnownMutations: true,
+  });
+};
+
+const getExclusiveIntrinsicReactEventHandlerAnchors = (
+  functionNode: EsTreeNode,
+  index: LocationInvalidationIndex,
+): EsTreeNode[] | null => {
+  if (!isExclusiveIntrinsicReactEventHandler(functionNode, index)) return null;
+  const bindingIdentifier = getIntrinsicReactEventHandlerBindingIdentifier(functionNode, index);
+  if (!bindingIdentifier) {
+    const jsxElement = getInlineIntrinsicHandlerJsxElement(functionNode);
+    return jsxElement ? getReadonlyJsxValueEscapeAnchors(jsxElement, index) : null;
+  }
+  const bindingSymbol = index.context.scopes.symbolFor(bindingIdentifier);
+  return bindingSymbol?.references.map((reference) => reference.identifier) ?? null;
+};
+
+const getReadonlyFunctionEscapeAnchors = (
+  functionNode: EsTreeNode,
+  index: LocationInvalidationIndex,
+): EsTreeNode[] | null => {
+  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  if (!bindingIdentifier) return null;
+  const bindingSymbol = index.context.scopes.symbolFor(bindingIdentifier);
+  if (
+    !bindingSymbol ||
+    resolveExactLocalFunction(bindingIdentifier, index.context.scopes) !== functionNode
+  ) {
+    return null;
+  }
+  return collectExactReadonlyValueEscapeAnchors(bindingSymbol, index, functionNode);
+};
+
+const isAliasInitializedBeforeExecution = (
+  aliasDeclaration: EsTreeNode,
+  executionNode: EsTreeNode,
+  index: LocationInvalidationIndex,
+  visitedFunctionNodes = new Set<EsTreeNode>(),
+): boolean => {
+  if (!isNodeReachableWithinFunction(aliasDeclaration, index.context)) return false;
+  const aliasOwner = index.context.cfg.enclosingFunction(aliasDeclaration);
+  const executionOwner = index.context.cfg.enclosingFunction(executionNode);
+  if (!aliasOwner || !executionOwner) return false;
+  if (aliasOwner === executionOwner) {
+    return canNodeReachNode(aliasDeclaration, executionNode, index);
+  }
+  if (visitedFunctionNodes.has(executionOwner)) return false;
+  const nextVisitedFunctionNodes = new Set(visitedFunctionNodes);
+  nextVisitedFunctionNodes.add(executionOwner);
+  if (
+    aliasOwner === index.componentFunction &&
+    (index.effectCallbacks.has(executionOwner) ||
+      index.mountedListenerFunctions.has(executionOwner))
+  ) {
+    return doNodesCoverEveryPathFromFunctionEntry(
+      index.componentFunction,
+      [aliasDeclaration],
+      index.context,
+      { ignoreThrowEdges: true },
+    );
+  }
+  const invocations = new Set([
+    ...(index.callSitesByFunction.get(executionOwner) ?? []),
+    ...(index.synchronousInvocationsByFunction.get(executionOwner) ?? []),
+  ]);
+  if (invocations.size > 0) {
+    return [...invocations].every((invocation) =>
+      isAliasInitializedBeforeExecution(
+        aliasDeclaration,
+        invocation,
+        index,
+        nextVisitedFunctionNodes,
+      ),
+    );
+  }
+  const deferredExecutionAnchors = getExclusiveIntrinsicReactEventHandlerAnchors(
+    executionOwner,
+    index,
+  );
+  if (deferredExecutionAnchors) {
+    return deferredExecutionAnchors.every((anchor) =>
+      isAliasInitializedBeforeExecution(aliasDeclaration, anchor, index, nextVisitedFunctionNodes),
+    );
+  }
+  const functionEscapeAnchors = getReadonlyFunctionEscapeAnchors(executionOwner, index);
+  return Boolean(
+    functionEscapeAnchors?.every((anchor) =>
+      isAliasInitializedBeforeExecution(aliasDeclaration, anchor, index, nextVisitedFunctionNodes),
+    ),
+  );
+};
+
+const resolveExactReadonlyCalleeSymbolId = (
+  callExpression: EsTreeNode,
+  index: LocationInvalidationIndex,
+): number | null => {
+  if (!isNodeOfType(callExpression, "CallExpression")) return null;
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "Identifier")) return null;
+  const visitedSymbolIds = new Set<number>();
+  let symbol = index.context.scopes.symbolFor(callee);
+  while (symbol) {
+    if (visitedSymbolIds.has(symbol.id)) return null;
+    visitedSymbolIds.add(symbol.id);
+    const initializer = getDirectConstInitializer(symbol);
+    if (!initializer) return symbol.id;
+    if (
+      symbol.references.some(
+        (reference) => reference.flag !== "read" || isWithinAssignmentTarget(reference.identifier),
+      ) ||
+      !isAliasInitializedBeforeExecution(symbol.declarationNode, callExpression, index)
+    ) {
+      return null;
+    }
+    const unwrappedInitializer = stripParenExpression(initializer);
+    if (!isNodeOfType(unwrappedInitializer, "Identifier")) return symbol.id;
+    const initializerSymbol = index.context.scopes.symbolFor(unwrappedInitializer);
+    if (
+      !initializerSymbol ||
+      !isAliasInitializedBeforeExecution(
+        initializerSymbol.declarationNode,
+        symbol.declarationNode,
+        index,
+      )
+    ) {
+      return null;
+    }
+    symbol = initializerSymbol;
+  }
+  return null;
+};
+
+const collectExactReadonlyCalleeCalls = (index: LocationInvalidationIndex): void => {
+  for (const callExpression of index.identifierCalls) {
+    const calleeSymbolId = resolveExactReadonlyCalleeSymbolId(callExpression, index);
+    if (calleeSymbolId !== null) {
+      addToSetIndex(index.callsByCalleeSymbolId, calleeSymbolId, callExpression);
+    }
+  }
 };
 
 const canNodeReachNormalFunctionExit = (
@@ -460,6 +1054,7 @@ const canExecuteBeforeAsyncSuspension = (
         ) {
           return false;
         }
+        if (isDescendantWithoutFunctionBoundary(awaitExpression, node)) return true;
         const awaitStart = getRangeStart(awaitExpression);
         return awaitStart !== null && targetStart !== null && awaitStart < targetStart;
       });
@@ -479,8 +1074,8 @@ const canReactEventBatchMutationAfterExecution = (
   index: LocationInvalidationIndex,
 ): boolean =>
   isExclusiveIntrinsicReactEventHandler(owner, index) &&
-  (index.awaitExpressionsByOwner.get(owner)?.size ?? 0) === 0 &&
   canNodeReachNode(executionNode, mutationNode, index) &&
+  canExecuteBeforeAsyncSuspension(mutationNode, owner, index) &&
   canNodeReachNormalFunctionExit(mutationNode, owner, index);
 
 const functionMaySynchronouslyMutateLocation = (
@@ -639,6 +1234,52 @@ const collectSynchronousLocationListenerRemovalExecutions = (
   return removalExecutions;
 };
 
+const collectImpliedExpressionExecutionBoundaries = (
+  node: EsTreeNode,
+  owner: EsTreeNode,
+): EsTreeNode[] => {
+  const expressionBoundaries: EsTreeNode[] = [];
+  let currentChild = node;
+  let currentParent = currentChild.parent ?? null;
+  while (currentParent && currentParent !== owner) {
+    if (
+      isNodeOfType(currentParent, "ConditionalExpression") &&
+      currentParent.test === currentChild
+    ) {
+      const staticTestValue = readStaticBoolean(
+        getFinalSequenceExpressionValue(currentParent.test),
+      );
+      if (staticTestValue !== null) {
+        expressionBoundaries.push(
+          staticTestValue ? currentParent.consequent : currentParent.alternate,
+        );
+      }
+    }
+    if (isNodeOfType(currentParent, "LogicalExpression") && currentParent.left === currentChild) {
+      const staticLeftValue = readStaticBoolean(
+        getFinalSequenceExpressionValue(currentParent.left),
+      );
+      if (
+        (currentParent.operator === "&&" && staticLeftValue === true) ||
+        (currentParent.operator === "||" && staticLeftValue === false)
+      ) {
+        expressionBoundaries.push(currentParent.right);
+      }
+    }
+    if (
+      (isNodeOfType(currentParent, "ConditionalExpression") &&
+        (currentParent.consequent === currentChild || currentParent.alternate === currentChild)) ||
+      (isNodeOfType(currentParent, "LogicalExpression") && currentParent.right === currentChild) ||
+      (isNodeOfType(currentParent, "AssignmentPattern") && currentParent.right === currentChild)
+    ) {
+      expressionBoundaries.push(currentChild);
+    }
+    currentChild = currentParent;
+    currentParent = currentChild.parent ?? null;
+  }
+  return expressionBoundaries;
+};
+
 const canExecutionReachFunctionExitWithoutListenerRemoval = (
   executionNode: EsTreeNode,
   registration: LocationListenerRegistration,
@@ -650,6 +1291,7 @@ const canExecutionReachFunctionExitWithoutListenerRemoval = (
   const functionCfg = index.context.cfg.cfgFor(owner);
   const sourceBlock = functionCfg?.blockOf(executionNode);
   if (!functionCfg || !sourceBlock) return false;
+  const expressionBoundaries = collectImpliedExpressionExecutionBoundaries(executionNode, owner);
   const matchingRemovalsByBlock = new Map<typeof sourceBlock, EsTreeNode[]>();
   for (const removalExecution of collectSynchronousLocationListenerRemovalExecutions(
     owner,
@@ -664,12 +1306,20 @@ const canExecutionReachFunctionExitWithoutListenerRemoval = (
   }
   const sourceStart = getRangeStart(executionNode);
   const hasRemovalAfterExecution = (block: typeof sourceBlock): boolean => {
-    const removals = matchingRemovalsByBlock.get(block) ?? [];
-    if (block !== sourceBlock) return removals.length > 0;
-    return removals.some((removal) => {
+    const removals = (matchingRemovalsByBlock.get(block) ?? []).filter((removal) => {
+      if (block !== sourceBlock) return true;
       const removalStart = getRangeStart(removal);
       return sourceStart !== null && removalStart !== null && sourceStart < removalStart;
     });
+    if (collectExpressionPathCoverageNodes(owner, removals, index.context).size > 0) {
+      return true;
+    }
+    if (block !== sourceBlock) return false;
+    return expressionBoundaries.some(
+      (expressionBoundary) =>
+        collectExpressionPathCoverageNodes(owner, removals, index.context, expressionBoundary)
+          .size > 0,
+    );
   };
   const visitedBlocks = new Set<typeof sourceBlock>();
   const pendingBlocks = [sourceBlock];
@@ -789,14 +1439,14 @@ export const createExternalLocationInvalidationChecker = ({
   componentBody,
   componentFunction,
   context,
+  directRenderNames,
   renderReachableExpressions,
-  renderReachableNames,
 }: ExternalLocationInvalidationCheckerOptions): ExternalLocationInvalidationChecker => {
   if (
     !hasRenderReachableLocationSnapshotRead(
       componentBody,
       renderReachableExpressions,
-      renderReachableNames,
+      directRenderNames,
       context.scopes,
     )
   ) {
@@ -808,6 +1458,7 @@ export const createExternalLocationInvalidationChecker = ({
     context,
   );
   collectMountedListenerFunctions(locationInvalidationIndex);
+  collectExactReadonlyCalleeCalls(locationInvalidationIndex);
   return (setterBindingIdentifier) =>
     setterInvalidatesGlobalLocationSnapshot(setterBindingIdentifier, locationInvalidationIndex);
 };

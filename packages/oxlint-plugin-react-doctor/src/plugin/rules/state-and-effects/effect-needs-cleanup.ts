@@ -19,6 +19,7 @@ import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-co
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
@@ -26,6 +27,7 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { getProvenDomEventTargetPrototypeOwnerNames } from "../../utils/is-proven-browser-api-receiver.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
@@ -211,6 +213,63 @@ const findAssignedResourceKey = (resourceNode: EsTreeNode, context: RuleContext)
   return null;
 };
 
+const resolveStableMediaQueryListenerIdentityKey = (
+  expression: EsTreeNode | null | undefined,
+  context: RuleContext,
+  visitedSymbolIds: Set<number> = new Set(),
+): string | null => {
+  if (!expression) return null;
+  const unwrappedExpression = stripParenExpression(expression);
+  if (isNodeOfType(unwrappedExpression, "Identifier")) {
+    const symbol = context.scopes.symbolFor(unwrappedExpression);
+    if (
+      !symbol ||
+      visitedSymbolIds.has(symbol.id) ||
+      !symbol.references.every(
+        (reference) => reference.flag === "read" && !isWithinAssignmentTarget(reference.identifier),
+      )
+    ) {
+      return null;
+    }
+    const initializer = getDirectUnreassignedInitializer(symbol);
+    if (!initializer) return `symbol:${symbol.id}`;
+    const unwrappedInitializer = stripParenExpression(initializer);
+    if (!isNodeOfType(unwrappedInitializer, "Identifier")) return `symbol:${symbol.id}`;
+    const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+    nextVisitedSymbolIds.add(symbol.id);
+    return (
+      resolveStableMediaQueryListenerIdentityKey(
+        unwrappedInitializer,
+        context,
+        nextVisitedSymbolIds,
+      ) ?? `symbol:${symbol.id}`
+    );
+  }
+  if (isFunctionLike(unwrappedExpression)) {
+    const rangeStart = getRangeStart(unwrappedExpression);
+    return rangeStart === null ? null : `function:${rangeStart}`;
+  }
+  return null;
+};
+
+const isProvenLegacyMediaQueryListMethodCall = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  methodName: "addListener" | "removeListener",
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(callNode.callee);
+  return (
+    callNode.arguments?.length === 1 &&
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === methodName &&
+    getProvenDomEventTargetPrototypeOwnerNames(callee.object, context.scopes).includes(
+      "MediaQueryList",
+    )
+  );
+};
+
 const getCallRegistrationDetails = (
   callNode: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -226,6 +285,14 @@ const getCallRegistrationDetails = (
       registrationVerbName: null,
       eventKey: null,
       handlerKey: null,
+    };
+  }
+  if (isProvenLegacyMediaQueryListMethodCall(callNode, "addListener", context)) {
+    return {
+      receiverKey: resolveStableMediaQueryListenerIdentityKey(callee.object, context),
+      registrationVerbName: callee.property.name,
+      eventKey: null,
+      handlerKey: resolveStableMediaQueryListenerIdentityKey(callNode.arguments?.[0], context),
     };
   }
   return {
@@ -2141,6 +2208,21 @@ const doesReleaseCallMatchUsage = (
     releaseReceiverKey === getListenerAbortControllerKey(usage, context)
   ) {
     return true;
+  }
+  if (
+    usage.registrationVerbName === "addListener" &&
+    isNodeOfType(usage.node, "CallExpression") &&
+    isProvenLegacyMediaQueryListMethodCall(usage.node, "addListener", context)
+  ) {
+    return (
+      releaseVerbName === "removeListener" &&
+      isProvenLegacyMediaQueryListMethodCall(callNode, "removeListener", context) &&
+      usage.receiverKey !== null &&
+      resolveStableMediaQueryListenerIdentityKey(callee.object, context) === usage.receiverKey &&
+      usage.handlerKey !== null &&
+      resolveStableMediaQueryListenerIdentityKey(callNode.arguments?.[0], context) ===
+        usage.handlerKey
+    );
   }
   if (usage.receiverKey === null || releaseReceiverKey !== usage.receiverKey) return false;
   const pairedVerbNames = usage.registrationVerbName

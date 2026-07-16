@@ -230,6 +230,7 @@ export const GUARD_SNIPPET_POOL = [
 export const LIBRARY_SNIPPET_POOL = [
   `const zodSchema = z.object({ value: z.string() }).strict();`,
   `const subscribeStore = useCallback((onStoreChange) => { store.on("change", onStoreChange); return () => store.off("change", onStoreChange); }, [store]); const snapshot = useSyncExternalStore(subscribeStore, getSnapshot);`,
+  `const subscribeMediaQuery = useCallback((notify) => { const media = window.matchMedia("(prefers-color-scheme: dark)"); media.addListener(notify); return () => media.removeListener(notify); }, []); const mediaQuerySnapshot = useSyncExternalStore(subscribeMediaQuery, () => window.matchMedia("(prefers-color-scheme: dark)").matches);`,
   `const { data: queryData, isPending } = useQuery({ queryKey: ["items", value], queryFn: () => fetch(url).then((response) => response.json()) });`,
   `const queryResult = useQuery({ queryKey: ["items", value], queryFn: () => fetch(url).then((response) => response.json()) }); useEffect(() => { queryResult["refetch"](); }, [queryResult]);`,
   `const wrappedQueryResult = (ReactQuery as typeof ReactQuery)[\`useQuery\`]({ queryKey: ["wrapped", value] }); useEffect(() => { wrappedQueryResult.refetch(); }, [wrappedQueryResult]);`,

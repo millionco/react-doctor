@@ -52,6 +52,27 @@ describe("security-scan/dangerous-html-sink — KaTeX provenance", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it("accepts a safe local helper whose name contains KaTeX", () => {
+    const findings = scan(`
+      import katex from "katex";
+
+      function renderKaTeX(value: string): string | null {
+        try {
+          return katex.renderToString(value, { throwOnError: true });
+        } catch {
+          return null;
+        }
+      }
+
+      export const MathNode = ({ value }: { value: string }) => {
+        const html = renderKaTeX(value);
+        return html ? <span dangerouslySetInnerHTML={{ __html: html }} /> : <code>{value}</code>;
+      };
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
   it("accepts an escaped fallback from a named KaTeX import", () => {
     const findings = scan(`
       import { renderToString as renderKatex } from "katex";
@@ -116,6 +137,48 @@ describe("security-scan/dangerous-html-sink — KaTeX provenance", () => {
           }
         }, [value]);
 
+        return <span dangerouslySetInnerHTML={{ __html: html }} />;
+      };
+    `);
+
+    expect(findings).toHaveLength(1);
+  });
+
+  it("does not let a sanitizer-shaped value name hide an unsafe KaTeX proof", () => {
+    const findings = scan(`
+      import katex from "katex";
+
+      const renderMathHtml = (value: string) => {
+        try {
+          return katex.renderToString(value, { throwOnError: true });
+        } catch {
+          return value;
+        }
+      };
+
+      export const MathNode = ({ value }: { value: string }) => {
+        const safeKatexHtml = renderMathHtml(value);
+        return <span dangerouslySetInnerHTML={{ __html: safeKatexHtml }} />;
+      };
+    `);
+
+    expect(findings).toHaveLength(1);
+  });
+
+  it("does not let sanitizer-shaped assignment provenance hide an unsafe KaTeX proof", () => {
+    const findings = scan(`
+      import katex from "katex";
+
+      const sanitizeMathHtml = (value: string) => {
+        try {
+          return katex.renderToString(value, { throwOnError: true });
+        } catch {
+          return value;
+        }
+      };
+
+      export const MathNode = ({ value }: { value: string }) => {
+        const html = sanitizeMathHtml(value);
         return <span dangerouslySetInnerHTML={{ __html: html }} />;
       };
     `);

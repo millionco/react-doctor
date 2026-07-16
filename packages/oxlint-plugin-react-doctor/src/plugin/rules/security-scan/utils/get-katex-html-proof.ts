@@ -427,6 +427,44 @@ const getKatexCallProof = (
   }
   const crossFileFunctionProof = getCrossFileFunctionProof(node, scopes);
   if (crossFileFunctionProof?.containsKatex) return crossFileFunctionProof;
+  const localFunction = getLocalFunctionNode(callee, scopes);
+  if (localFunction && !visitedSymbolIds.has(localFunction.symbol.id)) {
+    const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+    nextVisitedSymbolIds.add(localFunction.symbol.id);
+    const argumentProofs = node.arguments.map((argument) => {
+      const argumentNode = stripParenExpression(argument);
+      return isFunctionLike(argumentNode)
+        ? getFunctionHtmlProof(argumentNode, scopes, new Set(visitedSymbolIds), parameterProofs)
+        : getKatexHtmlProof(argumentNode, scopes, new Set(visitedSymbolIds), parameterProofs);
+    });
+    const localParameterProofs = new Map<number, KatexHtmlProof>();
+    let hasWrittenKatexParameter = false;
+    if (isFunctionLike(localFunction.functionNode)) {
+      for (const [parameterIndex, parameter] of localFunction.functionNode.params.entries()) {
+        if (!isNodeOfType(parameter, "Identifier")) continue;
+        const parameterSymbol = scopes.symbolFor(parameter);
+        const argumentProof = argumentProofs[parameterIndex];
+        const isParameterReadOnly = parameterSymbol?.references.every(
+          (reference) => reference.flag === "read",
+        );
+        if (parameterSymbol && argumentProof && isParameterReadOnly) {
+          localParameterProofs.set(parameterSymbol.id, argumentProof);
+        }
+        if (argumentProof?.containsKatex && parameterSymbol && !isParameterReadOnly) {
+          hasWrittenKatexParameter = true;
+        }
+      }
+    }
+    const localFunctionProof = getFunctionHtmlProof(
+      localFunction.functionNode,
+      scopes,
+      nextVisitedSymbolIds,
+      localParameterProofs,
+    );
+    const containsKatexArgument = argumentProofs.some((proof) => proof.containsKatex);
+    if (!containsKatexArgument || localFunctionProof.containsKatex) return localFunctionProof;
+    return hasWrittenKatexParameter ? UNSUPPORTED_KATEX_PROOF : UNSAFE_KATEX_PROOF;
+  }
   if (isUnprovenKatexShapedRenderer(callee, scopes)) {
     return {
       containsKatex: true,
@@ -478,44 +516,6 @@ const getKatexCallProof = (
     );
   }
 
-  const localFunction = getLocalFunctionNode(callee, scopes);
-  if (localFunction && !visitedSymbolIds.has(localFunction.symbol.id)) {
-    const nextVisitedSymbolIds = new Set(visitedSymbolIds);
-    nextVisitedSymbolIds.add(localFunction.symbol.id);
-    const argumentProofs = node.arguments.map((argument) => {
-      const argumentNode = stripParenExpression(argument);
-      return isFunctionLike(argumentNode)
-        ? getFunctionHtmlProof(argumentNode, scopes, new Set(visitedSymbolIds), parameterProofs)
-        : getKatexHtmlProof(argumentNode, scopes, new Set(visitedSymbolIds), parameterProofs);
-    });
-    const localParameterProofs = new Map<number, KatexHtmlProof>();
-    let hasWrittenKatexParameter = false;
-    if (isFunctionLike(localFunction.functionNode)) {
-      for (const [parameterIndex, parameter] of localFunction.functionNode.params.entries()) {
-        if (!isNodeOfType(parameter, "Identifier")) continue;
-        const parameterSymbol = scopes.symbolFor(parameter);
-        const argumentProof = argumentProofs[parameterIndex];
-        const isParameterReadOnly = parameterSymbol?.references.every(
-          (reference) => reference.flag === "read",
-        );
-        if (parameterSymbol && argumentProof && isParameterReadOnly) {
-          localParameterProofs.set(parameterSymbol.id, argumentProof);
-        }
-        if (argumentProof?.containsKatex && parameterSymbol && !isParameterReadOnly) {
-          hasWrittenKatexParameter = true;
-        }
-      }
-    }
-    const localFunctionProof = getFunctionHtmlProof(
-      localFunction.functionNode,
-      scopes,
-      nextVisitedSymbolIds,
-      localParameterProofs,
-    );
-    const containsKatexArgument = argumentProofs.some((proof) => proof.containsKatex);
-    if (!containsKatexArgument || localFunctionProof.containsKatex) return localFunctionProof;
-    return hasWrittenKatexParameter ? UNSUPPORTED_KATEX_PROOF : UNSAFE_KATEX_PROOF;
-  }
   const containsKatexArgument = node.arguments.some((argument) => {
     const argumentNode = stripParenExpression(argument);
     return (

@@ -848,7 +848,13 @@ export const dangerousHtmlSink = defineRule({
         splitTopLevelByPlus(judgedExpression).length > 1 ||
         (templateInterpolations?.match(/\$\{/g)?.length ?? 0) > 1;
 
-      if (!doesJudgedExpressionCombineValues && SANITIZER_PATTERN.test(judgedExpression)) continue;
+      if (
+        !hasUnsafeKatexProof &&
+        !doesJudgedExpressionCombineValues &&
+        SANITIZER_PATTERN.test(judgedExpression)
+      ) {
+        continue;
+      }
       if (!doesJudgedExpressionCombineValues && ENV_CONFIG_VALUE_PATTERN.test(judgedExpression)) {
         continue;
       }
@@ -902,11 +908,12 @@ export const dangerousHtmlSink = defineRule({
             "i",
           );
           if (
-            visibleInitializer === undefined
+            !hasUnsafeKatexProof &&
+            (visibleInitializer === undefined
               ? fromSanitizer.test(file.content)
               : visibleDeclaration !== null &&
                 isDeclarationStable(valueIdentifier, visibleDeclaration, sinkIndex, file.content) &&
-                SANITIZED_ASSIGNMENT_PATTERN.test(`=${visibleInitializer}`)
+                SANITIZED_ASSIGNMENT_PATTERN.test(`=${visibleInitializer}`))
           ) {
             continue;
           }

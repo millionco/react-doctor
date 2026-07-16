@@ -938,6 +938,29 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
         return <button onClick={handleClick}>{location.pathname}</button>;
       }`,
     },
+    {
+      name: "a cyclic helper reaches a synchronous mutation through its cyclic callee after an earlier traversal",
+      source: `function CyclicHelperNavigation() {
+        const [primingRevision, setPrimingRevision] = useState(0);
+        const [revision, setRevision] = useState(0);
+        const mutateLocation = (shouldReenter) => {
+          if (shouldReenter) callCycle(false);
+          history.pushState({}, "", "/next");
+        };
+        const callCycle = (shouldReenter) => mutateLocation(shouldReenter);
+        const primeAnalysis = () => {
+          setPrimingRevision((previous) => {
+            mutateLocation(true);
+            return previous + 1;
+          });
+        };
+        const handleClick = () => {
+          callCycle(false);
+          setRevision((previous) => previous + 1);
+        };
+        return <><button onClick={primeAnalysis}>Prime</button><button onClick={handleClick}>{location.pathname}</button></>;
+      }`,
+    },
   ])("stays silent for $name", ({ source }) => {
     const result = runRule(rerenderStateOnlyInHandlers, source);
     expect(result.parseErrors).toEqual([]);
@@ -1048,6 +1071,22 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
         const navigate = () => setTimeout(() => history.pushState({}, "", "/next"), 0);
         const handleClick = () => {
           navigate();
+          setLogged(true);
+        };
+        return <button onClick={handleClick}>{location.pathname}</button>;
+      }`,
+    },
+    {
+      name: "a cyclic helper only reaches a deferred location mutation",
+      source: `function CyclicDeferredNavigation() {
+        const [logged, setLogged] = useState(false);
+        const scheduleLocation = (shouldReenter) => {
+          if (shouldReenter) callCycle(false);
+          setTimeout(() => history.pushState({}, "", "/next"), 0);
+        };
+        const callCycle = (shouldReenter) => scheduleLocation(shouldReenter);
+        const handleClick = () => {
+          callCycle(false);
           setLogged(true);
         };
         return <button onClick={handleClick}>{location.pathname}</button>;

@@ -6,7 +6,9 @@ import { getEffectCallback } from "../../../utils/get-effect-callback.js";
 import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
+import { isEventHandlerAttribute } from "../../../utils/is-event-handler-attribute.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
+import { isJsxAttributeOnIntrinsicHtmlElement } from "../../../utils/is-on-intrinsic-html-element.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../../utils/is-node-reachable-within-function.js";
 import {
@@ -330,29 +332,15 @@ const areInMutuallyExclusiveConditionalBranches = (
   return false;
 };
 
-const isIntrinsicReactEventHandlerAttribute = (node: EsTreeNode): boolean => {
-  if (
-    !isNodeOfType(node, "JSXAttribute") ||
-    !isNodeOfType(node.name, "JSXIdentifier") ||
-    !/^on[A-Z]/.test(node.name.name)
-  ) {
-    return false;
-  }
-  const openingElement = node.parent;
-  return Boolean(
-    isNodeOfType(openingElement, "JSXOpeningElement") &&
-    isNodeOfType(openingElement.name, "JSXIdentifier") &&
-    /^[a-z]/.test(openingElement.name.name),
-  );
-};
-
 const isInsideIntrinsicReactEventHandlerAttribute = (
   node: EsTreeNode,
   functionBoundary: EsTreeNode | null,
 ): boolean => {
   let current: EsTreeNode | null | undefined = node;
   while (current && current !== functionBoundary) {
-    if (isIntrinsicReactEventHandlerAttribute(current)) return true;
+    if (isEventHandlerAttribute(current) && isJsxAttributeOnIntrinsicHtmlElement(current)) {
+      return true;
+    }
     current = current.parent;
   }
   return false;
@@ -499,16 +487,25 @@ const functionMaySynchronouslyMutateLocation = (
   functionNode: EsTreeNode,
   index: LocationInvalidationIndex,
   visitingFunctions: Set<EsTreeNode>,
+  cycleAffectedFunctions: Set<EsTreeNode>,
 ): boolean => {
   const cachedResult = index.synchronousMutationResultByFunction.get(functionNode);
   if (cachedResult !== undefined) return cachedResult;
   if (!isFunctionLike(functionNode) || functionNode.generator) return false;
-  if (visitingFunctions.has(functionNode)) return false;
+  if (visitingFunctions.has(functionNode)) {
+    let didReachCycleEntry = false;
+    for (const visitingFunction of visitingFunctions) {
+      if (visitingFunction === functionNode) didReachCycleEntry = true;
+      if (didReachCycleEntry) cycleAffectedFunctions.add(visitingFunction);
+    }
+    return false;
+  }
   visitingFunctions.add(functionNode);
   const mutationExecutions = collectLocationMutationExecutions(
     functionNode,
     index,
     visitingFunctions,
+    cycleAffectedFunctions,
   );
   const doesMutateSynchronously = [...mutationExecutions].some(
     (mutationExecution) =>
@@ -516,7 +513,9 @@ const functionMaySynchronouslyMutateLocation = (
       canNodeReachNormalFunctionExit(mutationExecution, functionNode, index),
   );
   visitingFunctions.delete(functionNode);
-  index.synchronousMutationResultByFunction.set(functionNode, doesMutateSynchronously);
+  if (doesMutateSynchronously || !cycleAffectedFunctions.has(functionNode)) {
+    index.synchronousMutationResultByFunction.set(functionNode, doesMutateSynchronously);
+  }
   return doesMutateSynchronously;
 };
 
@@ -524,6 +523,7 @@ const collectLocationMutationExecutions = (
   functionNode: EsTreeNode,
   index: LocationInvalidationIndex,
   visitingFunctions = new Set<EsTreeNode>(),
+  cycleAffectedFunctions = new Set<EsTreeNode>(),
 ): Set<EsTreeNode> => {
   const cachedExecutions = index.mutationExecutionsByOwner.get(functionNode);
   if (cachedExecutions) return cachedExecutions;
@@ -532,17 +532,31 @@ const collectLocationMutationExecutions = (
     const calledFunction = index.calledFunctionByExpression.get(expression);
     if (
       calledFunction &&
-      functionMaySynchronouslyMutateLocation(calledFunction, index, visitingFunctions)
+      functionMaySynchronouslyMutateLocation(
+        calledFunction,
+        index,
+        visitingFunctions,
+        cycleAffectedFunctions,
+      )
     ) {
       mutationExecutions.add(expression);
     }
     for (const callbackFunction of index.synchronousCallbacksByExpression.get(expression) ?? []) {
-      if (functionMaySynchronouslyMutateLocation(callbackFunction, index, visitingFunctions)) {
+      if (
+        functionMaySynchronouslyMutateLocation(
+          callbackFunction,
+          index,
+          visitingFunctions,
+          cycleAffectedFunctions,
+        )
+      ) {
         mutationExecutions.add(expression);
       }
     }
   }
-  index.mutationExecutionsByOwner.set(functionNode, mutationExecutions);
+  if (!cycleAffectedFunctions.has(functionNode)) {
+    index.mutationExecutionsByOwner.set(functionNode, mutationExecutions);
+  }
   return mutationExecutions;
 };
 
@@ -717,7 +731,7 @@ const setterArgumentMutatesLocation = (
     const updaterFunction = resolveExactLocalFunction(argument, index.context.scopes);
     return Boolean(
       isFunctionLike(updaterFunction) &&
-      functionMaySynchronouslyMutateLocation(updaterFunction, index, new Set()),
+      functionMaySynchronouslyMutateLocation(updaterFunction, index, new Set(), new Set()),
     );
   });
 };

@@ -71,6 +71,16 @@ const getTrustStateAfterPropertyDescriptor = (
   return isStaticallyDisabledTrustValue(propertyValue, scopes) ? "untrusted" : "trusted";
 };
 
+const mergeConditionalTrustStates = (
+  currentState: KatexTrustState,
+  conditionalState: KatexTrustState,
+): KatexTrustState => {
+  if (currentState === conditionalState) return currentState;
+  if (currentState === "trusted" || conditionalState === "trusted") return "trusted";
+  if (currentState === "unsupported" || conditionalState === "unsupported") return "unsupported";
+  return "untrusted";
+};
+
 const applyTrustMutation = (
   currentState: KatexTrustState,
   eventNode: EsTreeNode,
@@ -214,7 +224,7 @@ const getKatexOptionsTrustState = (
         nextVisitedSymbolIds,
       );
       if (replayedEvent.isConditional) {
-        if (nextTrustState !== trustState) trustState = "unsupported";
+        trustState = mergeConditionalTrustStates(trustState, nextTrustState);
       } else {
         trustState = nextTrustState;
       }

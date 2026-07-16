@@ -181,6 +181,7 @@ const isConditionallyExecuted = (node: EsTreeNode, owner: EsTreeNode): boolean =
         parent.body === current && isNodeOfType(parent.test, "Literal") && !parent.test.value;
       if (!isSingleIterationBody) return true;
     }
+    if (isNodeOfType(parent, "TryStatement") && parent.block === current) return true;
     if (
       isNodeOfType(parent, "ForStatement") ||
       isNodeOfType(parent, "ForInStatement") ||

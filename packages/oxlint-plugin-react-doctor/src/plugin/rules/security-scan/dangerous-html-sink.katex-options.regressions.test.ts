@@ -264,12 +264,45 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("does not trust a safe options mutation after a potentially throwing statement", () => {
+    const findings = scan(`
+      import katex from "katex";
+      const options = { trust: true };
+      try {
+        mightThrow();
+        options.trust = false;
+      } catch {}
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(1);
+  });
+
+  it("accepts a final statically safe options write in a finally block", () => {
+    const findings = scan(`
+      import katex from "katex";
+      const options = { trust: true };
+      try {
+        mightThrow();
+      } catch {} finally {
+        options.trust = false;
+      }
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
   it.each([
     "if (condition) options.trust = false",
     "condition && (options.trust = false)",
     "for (const item of items) options.trust = false",
     "if (condition) makeSafe()",
-  ])("preserves the legacy verdict for conditional trust refinement: %s", (refinement) => {
+  ])("rejects potentially trusted options after conditional trust refinement: %s", (refinement) => {
     const findings = scan(`
       import katex from "katex";
       const options = { trust: true };
@@ -279,6 +312,19 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
         <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
       );
     `);
+    expect(findings).toHaveLength(1);
+  });
+
+  it("accepts options that remain safe across a conditional trust refinement", () => {
+    const findings = scan(`
+      import katex from "katex";
+      const options = { displayMode: true };
+      if (condition) options.trust = false;
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+      );
+    `);
+
     expect(findings).toHaveLength(0);
   });
 

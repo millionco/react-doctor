@@ -822,6 +822,57 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when wrapped listener literals leave a location listener mounted", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `function WrappedCapturePopStateListener() {
+        const [revision, setRevision] = useState(0);
+        useEffect(() => {
+          const onPopState = () => setRevision((previous) => previous + 1);
+          window.addEventListener(
+            "popstate" as const,
+            onPopState,
+            ({ capture: true as const } satisfies AddEventListenerOptions),
+          );
+          window.removeEventListener(
+            "popstate" as const,
+            onPopState,
+            ({ capture: false as const } satisfies EventListenerOptions),
+          );
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a wrapped location listener removed before mount exit", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `function RemovedWrappedPopStateListener() {
+        const [revision, setRevision] = useState(0);
+        useEffect(() => {
+          const onPopState = () => setRevision((previous) => previous + 1);
+          window.addEventListener(
+            "popstate" as const,
+            onPopState,
+            ({ capture: true as const } satisfies AddEventListenerOptions),
+          );
+          window.removeEventListener(
+            "popstate" as const,
+            onPopState,
+            ({ capture: true as const } satisfies EventListenerOptions),
+          );
+        }, []);
+        return <output>{location.pathname}</output>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("revision");
+  });
+
   it.each([
     {
       name: "global aliases and transparent TypeScript wrappers",

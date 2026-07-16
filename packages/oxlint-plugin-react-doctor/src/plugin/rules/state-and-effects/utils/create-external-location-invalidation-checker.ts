@@ -17,6 +17,7 @@ import { isReactApiCall } from "../../../utils/is-react-api-call.js";
 import { resolveExactLocalFunction } from "../../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
+import { resolveEventListenerCapture } from "./resolve-event-listener-capture.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
@@ -143,29 +144,12 @@ const isGlobalHistoryLocationMutation = (node: EsTreeNode, scopes: ScopeAnalysis
 };
 
 const getStaticLocationChangeEvent = (node: EsTreeNode | null | undefined): string | null => {
-  if (!node || !isNodeOfType(node, "Literal") || typeof node.value !== "string") return null;
-  return LOCATION_CHANGE_EVENT_NAMES.has(node.value) ? node.value : null;
-};
-
-const getStaticEventListenerCapture = (node: EsTreeNode | null | undefined): boolean | null => {
-  if (!node) return false;
-  if (isNodeOfType(node, "Literal") && typeof node.value === "boolean") return node.value;
-  if (!isNodeOfType(node, "ObjectExpression")) return null;
-  for (const property of [...(node.properties ?? [])].reverse()) {
-    if (isNodeOfType(property, "SpreadElement")) return null;
-    if (!isNodeOfType(property, "Property")) continue;
-    const propertyName =
-      !property.computed && isNodeOfType(property.key, "Identifier")
-        ? property.key.name
-        : isNodeOfType(property.key, "Literal") && typeof property.key.value === "string"
-          ? property.key.value
-          : null;
-    if (propertyName !== "capture") continue;
-    return isNodeOfType(property.value, "Literal") && typeof property.value.value === "boolean"
-      ? property.value.value
-      : null;
+  if (!node) return null;
+  const eventNameNode = stripParenExpression(node);
+  if (!isNodeOfType(eventNameNode, "Literal") || typeof eventNameNode.value !== "string") {
+    return null;
   }
-  return false;
+  return LOCATION_CHANGE_EVENT_NAMES.has(eventNameNode.value) ? eventNameNode.value : null;
 };
 
 const addToSetIndex = <Key, Value>(index: Map<Key, Set<Value>>, key: Key, value: Value): void => {
@@ -210,7 +194,10 @@ const getLocationListenerOperation = (
   const captureArgument = callExpression.arguments?.[2];
   const capture = isNodeOfType(captureArgument, "SpreadElement")
     ? null
-    : getStaticEventListenerCapture(captureArgument);
+    : resolveEventListenerCapture(captureArgument, {
+        allowComputedString: true,
+        allowIndeterminateEntries: true,
+      });
   return {
     operation: methodName === "addEventListener" ? "add" : "remove",
     registration: { callExpression, listenerFunction, capture, eventName },

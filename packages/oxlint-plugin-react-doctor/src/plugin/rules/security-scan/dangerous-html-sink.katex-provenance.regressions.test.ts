@@ -73,6 +73,44 @@ describe("security-scan/dangerous-html-sink — KaTeX provenance", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it.each([
+    "if (false) return value; return katex.renderToString(value);",
+    `try { return katex.renderToString(value); }
+     catch { return null; }
+     return value;`,
+  ])("ignores a statically unreachable raw helper return: %s", (helperBody) => {
+    const findings = scan(`
+      import katex from "katex";
+
+      const renderMath = (value: string) => {
+        ${helperBody}
+      };
+
+      export const MathNode = ({ value }: { value: string }) => (
+        <span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it("keeps a reachable raw helper return unsafe", () => {
+    const findings = scan(`
+      import katex from "katex";
+
+      const renderMath = (value: string, useKatex: boolean) => {
+        if (useKatex) return katex.renderToString(value);
+        return value;
+      };
+
+      export const MathNode = ({ value, useKatex }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: renderMath(value, useKatex) }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(1);
+  });
+
   it("accepts an escaped fallback from a named KaTeX import", () => {
     const findings = scan(`
       import { renderToString as renderKatex } from "katex";

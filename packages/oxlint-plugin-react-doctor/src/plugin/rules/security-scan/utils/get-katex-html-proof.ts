@@ -11,6 +11,7 @@ import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../../utils/resolve-const-identifier-alias.js";
 import { resolveCrossFileFunctionExportWithFilePath } from "../../../utils/resolve-cross-file-function-export.js";
+import { statementAlwaysExits } from "../../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import {
@@ -303,6 +304,60 @@ const getTemplateLiteralProof = (
   };
 };
 
+const isReturnStatementStaticallyUnreachable = (
+  returnStatement: EsTreeNodeOfType<"ReturnStatement">,
+  functionBody: EsTreeNodeOfType<"BlockStatement">,
+): boolean => {
+  let current: EsTreeNode = returnStatement;
+  while (current.parent && current !== functionBody) {
+    const parent: EsTreeNode = current.parent;
+    if (isNodeOfType(parent, "BlockStatement")) {
+      const statementIndex = parent.body.findIndex((statement) => statement === current);
+      if (
+        statementIndex > 0 &&
+        parent.body.slice(0, statementIndex).some((statement) => statementAlwaysExits(statement))
+      ) {
+        return true;
+      }
+    }
+    if (isNodeOfType(parent, "SwitchCase")) {
+      const statementIndex = parent.consequent.findIndex((statement) => statement === current);
+      if (
+        statementIndex > 0 &&
+        parent.consequent
+          .slice(0, statementIndex)
+          .some((statement) => statementAlwaysExits(statement))
+      ) {
+        return true;
+      }
+    }
+    if (isNodeOfType(parent, "IfStatement") && isNodeOfType(parent.test, "Literal")) {
+      const ifStatementAlternate: EsTreeNode | null = parent.alternate;
+      const ifStatementConsequent: EsTreeNode = parent.consequent;
+      const ifStatementTest: EsTreeNodeOfType<"Literal"> = parent.test;
+      const isTruthyTest = Boolean(ifStatementTest.value);
+      if (!isTruthyTest && ifStatementConsequent === current) return true;
+      if (isTruthyTest && ifStatementAlternate === current) return true;
+    }
+    if (isNodeOfType(parent, "WhileStatement") && parent.body === current) {
+      const whileStatementTest: EsTreeNode = parent.test;
+      if (isNodeOfType(whileStatementTest, "Literal") && !whileStatementTest.value) return true;
+    }
+    if (isNodeOfType(parent, "ForStatement") && parent.body === current) {
+      const forStatementTest: EsTreeNode | null = parent.test;
+      if (
+        forStatementTest &&
+        isNodeOfType(forStatementTest, "Literal") &&
+        !forStatementTest.value
+      ) {
+        return true;
+      }
+    }
+    current = parent;
+  }
+  return false;
+};
+
 const getFunctionHtmlProof = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -314,10 +369,12 @@ const getFunctionHtmlProof = (
     return getKatexHtmlProof(functionNode.body, scopes, visitedSymbolIds, parameterProofs);
   }
 
+  const functionBody = functionNode.body;
   const returnProofs: KatexHtmlProof[] = [];
-  walkAst(functionNode.body, (child) => {
-    if (child !== functionNode.body && isFunctionLike(child)) return false;
+  walkAst(functionBody, (child) => {
+    if (child !== functionBody && isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "ReturnStatement")) return;
+    if (isReturnStatementStaticallyUnreachable(child, functionBody)) return false;
     returnProofs.push(
       child.argument
         ? getKatexHtmlProof(child.argument, scopes, new Set(visitedSymbolIds), parameterProofs)

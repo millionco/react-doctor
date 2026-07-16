@@ -6,11 +6,20 @@ export const statementAlwaysExits = (statement: EsTreeNode): boolean => {
     return true;
   }
   if (isNodeOfType(statement, "IfStatement")) {
+    if (isNodeOfType(statement.test, "Literal")) {
+      const reachableBranch = statement.test.value ? statement.consequent : statement.alternate;
+      return reachableBranch ? statementAlwaysExits(reachableBranch) : false;
+    }
     return Boolean(
       statement.alternate &&
       statementAlwaysExits(statement.consequent) &&
       statementAlwaysExits(statement.alternate),
     );
+  }
+  if (isNodeOfType(statement, "TryStatement")) {
+    if (statement.finalizer && statementAlwaysExits(statement.finalizer)) return true;
+    if (!statementAlwaysExits(statement.block)) return false;
+    return statement.handler ? statementAlwaysExits(statement.handler.body) : true;
   }
   if (!isNodeOfType(statement, "BlockStatement")) return false;
   return statement.body.some((childStatement) => statementAlwaysExits(childStatement));

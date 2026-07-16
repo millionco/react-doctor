@@ -625,13 +625,17 @@ const callsOpaqueExternalSetter = (
   return didFindOpaqueSetterCall;
 };
 
-const isReactRefCall = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+const isReactUseRefCall = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean =>
   isNodeOfType(expression, "CallExpression") &&
-  (isReactApiCall(expression, "useRef", scopes, {
+  isReactApiCall(expression, "useRef", scopes, {
     allowGlobalReactNamespace: true,
     allowUnboundBareCalls: true,
     resolveNamedAliases: true,
-  }) ||
+  });
+
+const isReactRefCall = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  isReactUseRefCall(expression, scopes) ||
+  (isNodeOfType(expression, "CallExpression") &&
     isReactApiCall(expression, "createRef", scopes, {
       allowGlobalReactNamespace: true,
       allowUnboundBareCalls: true,
@@ -721,7 +725,28 @@ const isIntrinsicRefCallbackParameter = (
     ? rawFirstParameter.left
     : rawFirstParameter;
   const symbol = scopes.symbolFor(identifier);
-  return Boolean(firstParameter && symbol?.bindingIdentifier === firstParameter);
+  return Boolean(
+    firstParameter &&
+    symbol?.bindingIdentifier === firstParameter &&
+    symbol.references.every((reference) => {
+      if (reference.flag !== "read") return false;
+      let referenceRoot = reference.identifier;
+      while (referenceRoot.parent) {
+        const parent = referenceRoot.parent;
+        if (isNodeOfType(parent, "AssignmentExpression")) {
+          return parent.left !== referenceRoot;
+        }
+        if (isNodeOfType(parent, "UpdateExpression")) {
+          return parent.argument !== referenceRoot;
+        }
+        if (isNodeOfType(parent, "ForInStatement") || isNodeOfType(parent, "ForOfStatement")) {
+          return parent.left !== referenceRoot;
+        }
+        referenceRoot = parent;
+      }
+      return true;
+    }),
+  );
 };
 
 const getDirectReactRefCall = (
@@ -736,24 +761,71 @@ const getDirectReactRefCall = (
     : null;
 };
 
+const isEmptyGlobalMapConstruction = (
+  rawExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const expression = stripParenExpression(rawExpression);
+  return (
+    isNodeOfType(expression, "NewExpression") &&
+    isNodeOfType(expression.callee, "Identifier") &&
+    expression.callee.name === "Map" &&
+    scopes.isGlobalReference(expression.callee) &&
+    expression.arguments.length === 0
+  );
+};
+
+const hasEmptyRefSentinelInitializer = (
+  refCall: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isReactUseRefCall(refCall, scopes) || refCall.arguments.length > 1) return false;
+  const [initialValue] = refCall.arguments;
+  return (
+    !initialValue ||
+    (isNodeOfType(initialValue, "Literal") && initialValue.value === null) ||
+    (isNodeOfType(initialValue, "Identifier") &&
+      initialValue.name === "undefined" &&
+      scopes.isGlobalReference(initialValue))
+  );
+};
+
+const isDirectLazyEmptyMapInitialization = (
+  currentExpression: EsTreeNode,
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const assignment = currentExpression.parent;
+  if (
+    !isNodeOfType(assignment, "AssignmentExpression") ||
+    assignment.left !== currentExpression ||
+    assignment.operator !== "??=" ||
+    !isEmptyGlobalMapConstruction(assignment.right, scopes)
+  ) {
+    return false;
+  }
+  const refOwner = findEnclosingFunction(symbol.bindingIdentifier);
+  return refOwner !== null && findEnclosingFunction(assignment) === refOwner;
+};
+
 const storesOnlyIntrinsicRefCallbackValues = (
   symbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
 ): boolean => {
   const refCall = getDirectReactRefCall(symbol, scopes);
-  const initialValue = refCall?.arguments?.[0];
-  if (
-    !initialValue ||
-    !isNodeOfType(initialValue, "NewExpression") ||
-    !isNodeOfType(initialValue.callee, "Identifier") ||
-    initialValue.callee.name !== "Map" ||
-    !scopes.isGlobalReference(initialValue.callee) ||
-    initialValue.arguments.length !== 0
-  ) {
+  const initialValue = refCall?.arguments[0];
+  const hasDirectEmptyMapInitializer = Boolean(
+    initialValue && isEmptyGlobalMapConstruction(initialValue, scopes),
+  );
+  const hasLazyEmptyMapInitializer = Boolean(
+    refCall && hasEmptyRefSentinelInitializer(refCall, scopes),
+  );
+  if (!hasDirectEmptyMapInitializer && !hasLazyEmptyMapInitializer) {
     return false;
   }
 
   let intrinsicValueWriteCount = 0;
+  let lazyEmptyMapInitializationCount = 0;
   for (const reference of symbol.references) {
     const identifier = findTransparentExpressionRoot(reference.identifier);
     const currentMember = identifier.parent;
@@ -765,6 +837,13 @@ const storesOnlyIntrinsicRefCallbackValues = (
       return false;
     }
     const currentExpression = findTransparentExpressionRoot(currentMember);
+    if (
+      hasLazyEmptyMapInitializer &&
+      isDirectLazyEmptyMapInitialization(currentExpression, symbol, scopes)
+    ) {
+      lazyEmptyMapInitializationCount += 1;
+      continue;
+    }
     const methodMember = currentExpression.parent;
     if (
       !isNodeOfType(methodMember, "MemberExpression") ||
@@ -788,7 +867,10 @@ const storesOnlyIntrinsicRefCallbackValues = (
     }
     intrinsicValueWriteCount += 1;
   }
-  return intrinsicValueWriteCount > 0;
+  return (
+    intrinsicValueWriteCount > 0 &&
+    (hasDirectEmptyMapInitializer || lazyEmptyMapInitializationCount === 1)
+  );
 };
 
 const isDerivedFromProvenDomRefCurrent = (

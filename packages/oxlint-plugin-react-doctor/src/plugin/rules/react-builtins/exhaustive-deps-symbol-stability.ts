@@ -291,7 +291,8 @@ const symbolHasStableRefLazyInitialization = (
   const refSymbol = resolveReactRefSymbol(unwrapExpression(initializer.left), scopes);
   if (!refSymbol) return false;
   return refSymbol.references.every((reference) => {
-    const memberExpression = reference.identifier.parent;
+    const identifierRoot = findTransparentExpressionRoot(reference.identifier);
+    const memberExpression = identifierRoot.parent;
     if (
       !isNodeOfType(memberExpression, "MemberExpression") ||
       unwrapExpression(memberExpression.object) !== reference.identifier ||

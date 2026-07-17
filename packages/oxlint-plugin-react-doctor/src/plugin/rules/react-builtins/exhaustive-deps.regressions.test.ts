@@ -1641,6 +1641,26 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     });
 
     it.each([
+      [
+        "an asserted ref",
+        "(registryRef as React.MutableRefObject<Set<string> | undefined>).current",
+      ],
+      ["a non-null ref", "(registryRef!).current"],
+    ])("accepts a registry initialized through %s", (_name, refCurrentExpression) => {
+      const code = `
+        import React, { useCallback, useRef } from "react";
+        function Accordion() {
+          const registryRef = useRef<Set<string>>();
+          const registry = (${refCurrentExpression} ??= new Set<string>());
+          return useCallback((key) => registry.add(key), [registry]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
       ["a fresh local collection", "const registry = new Set();"],
       [
         "plain ref assignment",

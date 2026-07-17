@@ -72,6 +72,54 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("tracks transparent wrappers in bound observer disconnect cleanups", () => {
+    const castMethod = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         observer.observe(target);
+         return (observer.disconnect as any).bind(observer);
+       }, []);`,
+    );
+    const assertedMethod = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         observer.observe(target);
+         return observer.disconnect!.bind(observer);
+       }, []);`,
+    );
+    const wrongMethod = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         observer.observe(target);
+         return (observer.unobserve as any).bind(observer);
+       }, []);`,
+    );
+    const wrongTarget = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         observer.observe(target);
+         return (other.disconnect as any).bind(other);
+       }, []);`,
+    );
+    const wrongReceiver = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         observer.observe(target);
+         return (observer.disconnect as any).bind(other);
+       }, []);`,
+    );
+    expect(castMethod.diagnostics).toHaveLength(0);
+    expect(assertedMethod.diagnostics).toHaveLength(0);
+    expect(wrongMethod.diagnostics).toHaveLength(1);
+    expect(wrongTarget.diagnostics).toHaveLength(1);
+    expect(wrongReceiver.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag when the cleanup return unobserves", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,

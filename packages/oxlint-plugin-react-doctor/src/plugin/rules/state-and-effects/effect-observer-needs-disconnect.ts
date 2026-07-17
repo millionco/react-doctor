@@ -90,6 +90,23 @@ const recordObserverUsage = (
     }
     return;
   }
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    parent.arguments.some((argument) => argument === referenceRoot)
+  ) {
+    const bindCallee = stripParenExpression(parent.callee);
+    const boundMethod = isNodeOfType(bindCallee, "MemberExpression")
+      ? stripParenExpression(bindCallee.object)
+      : null;
+    if (
+      isNodeOfType(bindCallee, "MemberExpression") &&
+      getStaticPropertyName(bindCallee) === "bind" &&
+      isNodeOfType(boundMethod, "MemberExpression") &&
+      isTrackedObserverReference(boundMethod.object, tracked.bindingIdentifier)
+    ) {
+      return;
+    }
+  }
   tracked.didEscape = true;
 };
 
@@ -155,19 +172,25 @@ const isBoundObserverDisconnect = (
       ? isBoundObserverDisconnect(initializer, bindingIdentifier, visitedExpressions)
       : false;
   }
+  const callee = isNodeOfType(expression, "CallExpression")
+    ? stripParenExpression(expression.callee)
+    : null;
+  const boundMethod = isNodeOfType(callee, "MemberExpression")
+    ? stripParenExpression(callee.object)
+    : null;
   if (
     !isNodeOfType(expression, "CallExpression") ||
-    !isNodeOfType(expression.callee, "MemberExpression") ||
-    getStaticPropertyName(expression.callee) !== "bind" ||
-    !isNodeOfType(expression.callee.object, "MemberExpression") ||
-    getStaticPropertyName(expression.callee.object) !== "disconnect"
+    !isNodeOfType(callee, "MemberExpression") ||
+    getStaticPropertyName(callee) !== "bind" ||
+    !isNodeOfType(boundMethod, "MemberExpression") ||
+    getStaticPropertyName(boundMethod) !== "disconnect"
   ) {
     return false;
   }
   const boundReceiver = expression.arguments?.[0];
   return Boolean(
     boundReceiver &&
-    isTrackedObserverReference(expression.callee.object.object, bindingIdentifier) &&
+    isTrackedObserverReference(boundMethod.object, bindingIdentifier) &&
     isTrackedObserverReference(boundReceiver, bindingIdentifier),
   );
 };

@@ -155,6 +155,30 @@ describe("no-low-contrast-inline-style", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags low-contrast opaque hsl colors", () => {
+    const code = `const A = () => <span style={{ color: "hsl(220 9% 65%)", backgroundColor: "hsl(0 0% 100%)", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag accessible opaque hsl colors", () => {
+    const code = `const A = () => <span style={{ color: "hsl(215, 28%, 17%)", backgroundColor: "hsl(0, 0%, 100%)", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag hsl colors carrying alpha", () => {
+    const code = `const A = () => <span style={{ color: "hsl(220 9% 65% / 40%)", backgroundColor: "hsl(0 0% 100%)", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag legacy hsla colors", () => {
+    const code = `const A = () => <span style={{ color: "hsla(220, 9%, 65%, 0.4)", backgroundColor: "hsl(0, 0%, 100%)", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag when the style object has a spread (could override colors)", () => {
     const code = `const A = (rest) => <span style={{ color: "#9ca3af", backgroundColor: "#fff", ...rest }}>x</span>;`;
     const result = runRule(noLowContrastInlineStyle, code);

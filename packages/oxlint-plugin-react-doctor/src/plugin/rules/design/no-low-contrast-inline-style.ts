@@ -28,7 +28,7 @@ const UNRESOLVABLE = new Set([
 ]);
 
 // Resolve a style color string to an OPAQUE rgb, or null when it can't be
-// soundly resolved (alpha, keywords, CSS variables, hsl/oklch). We only
+// soundly resolved (alpha, keywords, CSS variables, oklch). We only
 // flag pairs we can compute with certainty.
 const resolveOpaqueColor = (raw: string): ParsedRgb | null => {
   const value = raw.trim().toLowerCase();
@@ -38,10 +38,10 @@ const resolveOpaqueColor = (raw: string): ParsedRgb | null => {
   if (value.startsWith("var(")) return null;
   // Colors carrying alpha can't be judged without compositing — skip.
   if (/^#(?:[0-9a-f]{4}|[0-9a-f]{8})$/.test(value)) return null;
-  if (value.startsWith("hsl") || value.startsWith("oklch")) return null;
-  // `rgb()`/`rgba()` with an alpha channel — the slash form (`rgb(0 0 0 / 50%)`)
-  // or a 4th comma component (`rgb(0,0,0,0.5)` / `rgba(0,0,0,0.5)`).
-  if (value.startsWith("rgb")) {
+  if (value.startsWith("oklch")) return null;
+  // `rgb()`/`hsl()` with an alpha channel — the slash form or a 4th comma component.
+  if (value.startsWith("rgba(") || value.startsWith("hsla(")) return null;
+  if (value.startsWith("rgb(") || value.startsWith("hsl(")) {
     const inner = value.slice(value.indexOf("(") + 1, value.lastIndexOf(")"));
     if (inner.includes("/") || inner.split(",").length >= 4) return null;
   }

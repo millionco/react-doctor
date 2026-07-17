@@ -424,6 +424,45 @@ export const ObserverGroup = ({ nodes }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts matching unobserve cleanup through an observer collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const ObserverGroup = ({ target }) => {
+  useEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(target, { attributes: true });
+    observers.push(observer);
+    return () => observers.forEach((retainedObserver) => retainedObserver.unobserve(target));
+  }, [target]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects unobserving a different target through an observer collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const ObserverGroup = ({ target, otherTarget }) => {
+  useEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(target, { attributes: true });
+    observers.push(observer);
+    return () =>
+      observers.forEach((retainedObserver) => retainedObserver.unobserve(otherTarget));
+  }, [target, otherTarget]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("rejects mutating an observer collection after retaining the resource", () => {
     const result = runRule(
       effectNeedsCleanup,

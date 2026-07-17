@@ -2555,6 +2555,7 @@ const doesReleaseCallMatchUsage = (
     return false;
   }
   const releaseReceiverKey = resolveExpressionKey(callee.object, context);
+  const releaseEventKey = resolveExpressionKey(callNode.arguments?.[0], context);
   const pairedReleaseVerbNames = usage.registrationVerbName
     ? PAIRED_RELEASE_VERB_NAMES_BY_REGISTRATION_VERB.get(usage.registrationVerbName)
     : null;
@@ -2570,7 +2571,9 @@ const doesReleaseCallMatchUsage = (
     pairedReleaseVerbNames &&
     matchesPairedReleaseVerb(releaseVerbName, pairedReleaseVerbNames) &&
     pushedResourceCollectionKey !== null &&
-    pushedResourceCollectionKey === releaseReceiverCollectionKey
+    pushedResourceCollectionKey === releaseReceiverCollectionKey &&
+    (releaseVerbName !== "unobserve" ||
+      (usage.eventKey !== null && releaseEventKey === usage.eventKey))
   ) {
     return true;
   }
@@ -2622,7 +2625,6 @@ const doesReleaseCallMatchUsage = (
     : null;
   if (!pairedVerbNames || !matchesPairedReleaseVerb(releaseVerbName, pairedVerbNames)) return false;
 
-  const releaseEventKey = resolveExpressionKey(callNode.arguments?.[0], context);
   const usageEventArgument = isNodeOfType(usage.node, "CallExpression")
     ? usage.node.arguments?.[0]
     : null;

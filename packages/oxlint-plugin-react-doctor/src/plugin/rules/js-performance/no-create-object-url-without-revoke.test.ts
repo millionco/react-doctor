@@ -104,6 +104,32 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("flags nested object URLs through returned value-flow wrappers", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `function makeConditional(blob, enabled) {
+         return enabled ? { src: URL.createObjectURL(blob) } : null;
+       }
+       function makeLogical(blob, enabled) {
+         return enabled && [URL.createObjectURL(blob)];
+       }
+       function makeSequence(blob) {
+         return (log(blob), { src: URL.createObjectURL(blob) });
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("ignores nested object URLs in discarded sequence operands", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `function make(blob) {
+         return ({ src: URL.createObjectURL(blob) }, null);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet when the module revokes elsewhere", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

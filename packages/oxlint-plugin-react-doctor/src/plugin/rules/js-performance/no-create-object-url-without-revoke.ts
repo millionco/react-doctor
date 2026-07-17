@@ -471,6 +471,11 @@ const isDirectIfBranchStatement = (assignment: EsTreeNode): boolean => {
 const isNestedInReturnedValue = (node: EsTreeNode): boolean => {
   let current = findTransparentExpressionRoot(node);
   while (current.parent) {
+    const resultExpression = findCallResultExpression(current);
+    if (resultExpression !== current) {
+      current = resultExpression;
+      continue;
+    }
     const parent = current.parent;
     if (isNodeOfType(parent, "ReturnStatement") && parent.argument === current) return true;
     if (
@@ -490,6 +495,10 @@ const isNestedInReturnedValue = (node: EsTreeNode): boolean => {
         parent.elements.some((element) => element === current)) ||
       (isNodeOfType(parent, "SpreadElement") && parent.argument === current)
     ) {
+      current = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    if (isExpressionBranchOf(parent, current)) {
       current = findTransparentExpressionRoot(parent);
       continue;
     }

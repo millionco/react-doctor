@@ -82,6 +82,20 @@ describe("no-hydration-branch-on-browser-global — helper provenance", () => {
         );
       `,
     ],
+    [
+      "combined local helpers and useMemo wrappers",
+      `
+        "use client";
+        import { useMemo } from "react";
+        const hasWindow = () => typeof window !== "undefined";
+        const hasDocument = () => typeof document !== "undefined";
+        export const Page = () => {
+          const canUseWindow = useMemo(hasWindow, []);
+          const canUseDocument = useMemo(hasDocument, []);
+          return canUseWindow && canUseDocument ? <Client /> : <Server />;
+        };
+      `,
+    ],
   ])("reports browser-global provenance through %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -234,6 +248,20 @@ describe("no-hydration-branch-on-browser-global — helper provenance", () => {
           let browser = isBrowser();
           browser = false;
           return browser ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "combined complementary helper predicates",
+      `
+        "use client";
+        import { useMemo } from "react";
+        const isBrowser = () => typeof window !== "undefined";
+        const isServer = () => typeof window === "undefined";
+        export const Page = () => {
+          const browser = useMemo(isBrowser, []);
+          const server = useMemo(isServer, []);
+          return browser && server ? <Client /> : <Server />;
         };
       `,
     ],

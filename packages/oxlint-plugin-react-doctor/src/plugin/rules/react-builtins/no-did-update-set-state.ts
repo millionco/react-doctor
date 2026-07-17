@@ -313,8 +313,12 @@ const getCallbackRefAssignedFields = (
 ): ReadonlySet<string> => {
   const parameters = (callback as { params?: EsTreeNode[] }).params ?? [];
   const firstParameter = parameters[0];
-  if (!firstParameter || !isNodeOfType(firstParameter, "Identifier")) return new Set();
-  const parameterSymbolId = scopes.symbolFor(firstParameter)?.id;
+  if (!firstParameter) return new Set();
+  const parameterIdentifier = isNodeOfType(firstParameter, "AssignmentPattern")
+    ? firstParameter.left
+    : firstParameter;
+  if (!isNodeOfType(parameterIdentifier, "Identifier")) return new Set();
+  const parameterSymbolId = scopes.symbolFor(parameterIdentifier)?.id;
   if (parameterSymbolId === undefined) return new Set();
   const body = (callback as { body?: EsTreeNode }).body;
   if (!body) return new Set();
@@ -545,21 +549,22 @@ const isConvergentPostMountGuard = (
 ): boolean => {
   const expression = stripParenExpression(test);
   if (isNodeOfType(expression, "LogicalExpression")) {
-    return (
-      expression.operator === "&&" &&
-      (isConvergentPostMountGuard(
-        expression.left as EsTreeNode,
-        setStateCall,
-        localInitializers,
-        callbackRefFieldNames,
-      ) ||
-        isConvergentPostMountGuard(
-          expression.right as EsTreeNode,
-          setStateCall,
-          localInitializers,
-          callbackRefFieldNames,
-        ))
+    if (expression.operator !== "&&" && expression.operator !== "||") return false;
+    const leftIsConvergent = isConvergentPostMountGuard(
+      expression.left as EsTreeNode,
+      setStateCall,
+      localInitializers,
+      callbackRefFieldNames,
     );
+    const rightIsConvergent = isConvergentPostMountGuard(
+      expression.right as EsTreeNode,
+      setStateCall,
+      localInitializers,
+      callbackRefFieldNames,
+    );
+    return expression.operator === "||"
+      ? leftIsConvergent && rightIsConvergent
+      : leftIsConvergent || rightIsConvergent;
   }
   if (
     !isNodeOfType(expression, "BinaryExpression") ||

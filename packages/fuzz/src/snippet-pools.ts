@@ -574,6 +574,8 @@ export const EDGE_CASE_STATEMENT_POOL = [
   `class EventShield extends React.Component { handleClick(event) { event.stopPropagation(); } render() { return <div onClick={this.handleClick} />; } }`,
   `class PrivateCallbackRefComponent extends React.Component { #node; #setNode = (node) => { this.#node = node ?? undefined; }; componentDidUpdate() { if (this.state.node !== this.#node) this.setState({ node: this.#node }); } render() { return <div ref={this.#setNode} />; } }`,
   `class PrivatePublicRefCollision extends React.Component { #node; #setNode = (node) => { this.#node = node; }; componentDidUpdate() { if (this.state.node !== this.node) this.setState({ node: this.node }); } render() { return <div ref={this.#setNode} />; } }`,
+  `class DefaultParameterCallbackRef extends React.Component { setNode = (node = null) => { this.node = node ?? undefined; }; componentDidUpdate() { if (this.state.node !== this.node) this.setState({ node: this.node }); } render() { return <div ref={this.setNode} />; } }`,
+  `class MultiBranchCallbackRef extends React.Component { componentDidUpdate() { if (this.state.primary !== this.primary || this.state.secondary !== this.secondary) this.setState({ primary: this.primary, secondary: this.secondary }); } render() { return <div ref={(node) => { this.primary = node; this.secondary = node; }} />; } }`,
   `const globalCount = (globalThis as any).__count = ((globalThis as any).__count ?? 0) + 1;`,
   `const emDash = \`\${value} — \${state}\`;`,
   `const composed = event.composedPath()[0];`,

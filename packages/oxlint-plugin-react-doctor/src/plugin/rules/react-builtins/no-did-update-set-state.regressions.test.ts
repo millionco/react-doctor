@@ -653,6 +653,66 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("stays silent when every callback-ref OR branch converges", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (
+            this.state.primaryContainer !== this.primaryContainer ||
+            this.state.secondaryContainer !== this.secondaryContainer
+          ) {
+            this.setState({
+              primaryContainer: this.primaryContainer,
+              secondaryContainer: this.secondaryContainer,
+            });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => {
+            this.primaryContainer = node;
+            this.secondaryContainer = node;
+          }} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ["inline", "(node = null) => { this.monthContainer = node ?? undefined; }"],
+    ["named", "this.setMonthContainer"],
+  ])("stays silent on a %s callback ref with a default parameter", (_kind, refExpression) => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        setMonthContainer = (node = null) => {
+          this.monthContainer = node ?? undefined;
+        };
+
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={${refExpression}} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a named callback-ref convergence guard", () => {
     const result = runRule(
       noDidUpdateSetState,

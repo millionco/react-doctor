@@ -50,4 +50,28 @@ describe("no-placeholder-only-field", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not apply to brace-wrapped non-text controls", () => {
+    const result = runRule(
+      noPlaceholderOnlyField,
+      `const Example = () => <input type={'checkbox'} placeholder="Ignored" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("skips inputs whose type cannot be resolved", () => {
+    const result = runRule(
+      noPlaceholderOnlyField,
+      `const Example = ({ type }) => <input type={type} placeholder="Maybe a text field" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags brace-wrapped text input types", () => {
+    const result = runRule(
+      noPlaceholderOnlyField,
+      `const Example = () => <input type={'email'} placeholder="Email address" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

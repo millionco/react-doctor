@@ -1,7 +1,7 @@
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { walkAst } from "./walk-ast.js";
+import { forEachChildNode, walkAst } from "./walk-ast.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 
 const SYNCHRONOUS_CALLBACK_METHOD_NAMES = new Set([
@@ -36,14 +36,12 @@ export const walkSynchronousCallbackFlow = (
   functionBody: EsTreeNode,
   visit: (node: EsTreeNode) => void,
 ): void => {
-  const walkedBodies = new Set<EsTreeNode>();
+  const activeBodies = new Set<EsTreeNode>();
   const walkBody = (body: EsTreeNode, helpersInScope: Map<string, EsTreeNode>): void => {
-    if (walkedBodies.has(body)) return;
-    walkedBodies.add(body);
+    if (activeBodies.has(body)) return;
+    activeBodies.add(body);
     const helperBodies = new Map(helpersInScope);
     const helperAliases = new Map<string, string>();
-    const invokedHelperNames = new Set<string>();
-    const inlineCallbackBodies = new Set<EsTreeNode>();
     walkAst(body, (child: EsTreeNode) => {
       if (child !== body && isFunctionLike(child)) {
         const helperName = getConstLocalHelperName(child);
@@ -61,23 +59,6 @@ export const walkSynchronousCallbackFlow = (
       ) {
         helperAliases.set(child.id.name, child.init.name);
       }
-      if (isNodeOfType(child, "CallExpression")) {
-        if (isNodeOfType(child.callee, "Identifier")) {
-          invokedHelperNames.add(child.callee.name);
-        } else if (
-          isNodeOfType(child.callee, "MemberExpression") &&
-          SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(child.callee) ?? "")
-        ) {
-          for (const argument of child.arguments ?? []) {
-            if (isFunctionLike(argument)) {
-              if (argument.body) inlineCallbackBodies.add(argument.body);
-            } else if (isNodeOfType(argument, "Identifier")) {
-              invokedHelperNames.add(argument.name);
-            }
-          }
-        }
-      }
-      visit(child);
     });
     for (const [aliasName, targetName] of helperAliases) {
       let resolvedName = targetName;
@@ -89,11 +70,33 @@ export const walkSynchronousCallbackFlow = (
       const helperBody = helperBodies.get(resolvedName);
       if (helperBody) helperBodies.set(aliasName, helperBody);
     }
-    for (const invokedName of invokedHelperNames) {
-      const helperBody = helperBodies.get(invokedName);
-      if (helperBody) walkBody(helperBody, helperBodies);
-    }
-    for (const callbackBody of inlineCallbackBodies) walkBody(callbackBody, helperBodies);
+    const walkNode = (node: EsTreeNode, isRoot = false): void => {
+      if (!isRoot && isFunctionLike(node)) return;
+      visit(node);
+      forEachChildNode(node, (child) => walkNode(child));
+      if (!isNodeOfType(node, "CallExpression")) return;
+      if (isNodeOfType(node.callee, "Identifier")) {
+        const helperBody = helperBodies.get(node.callee.name);
+        if (helperBody) walkBody(helperBody, helperBodies);
+        return;
+      }
+      if (
+        !isNodeOfType(node.callee, "MemberExpression") ||
+        !SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(node.callee) ?? "")
+      ) {
+        return;
+      }
+      for (const argument of node.arguments ?? []) {
+        if (isFunctionLike(argument)) {
+          if (argument.body) walkBody(argument.body, helperBodies);
+        } else if (isNodeOfType(argument, "Identifier")) {
+          const helperBody = helperBodies.get(argument.name);
+          if (helperBody) walkBody(helperBody, helperBodies);
+        }
+      }
+    };
+    walkNode(body, true);
+    activeBodies.delete(body);
   };
   walkBody(functionBody, new Map());
 };

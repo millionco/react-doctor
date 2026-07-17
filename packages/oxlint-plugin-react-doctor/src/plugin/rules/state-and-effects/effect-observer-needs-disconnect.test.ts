@@ -131,6 +131,73 @@ describe("effect-observer-needs-disconnect", () => {
     expect(releasedResult.diagnostics).toHaveLength(0);
   });
 
+  it("preserves observer acquisition and release order across synchronous callbacks", () => {
+    const iteratorAcquireBeforeRelease = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         [first, second].forEach((target) => observer.observe(target));
+         observer.disconnect();
+       }, []);`,
+    );
+    const iteratorReleaseBeforeAcquire = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         observer.disconnect();
+         [first, second].forEach((target) => observer.observe(target));
+       }, []);`,
+    );
+    const helperAcquireBeforeRelease = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         const start = () => observer.observe(target);
+         start();
+         observer.disconnect();
+       }, []);`,
+    );
+    const helperReleaseBeforeAcquire = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         const start = () => observer.observe(target);
+         observer.disconnect();
+         start();
+       }, []);`,
+    );
+    const nestedAcquireBeforeRelease = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         [target]
+           .map((currentTarget) => {
+             observer.observe(currentTarget);
+             return currentTarget;
+           })
+           .forEach(() => observer.disconnect());
+       }, []);`,
+    );
+    const nestedReleaseBeforeAcquire = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         [target]
+           .map((currentTarget) => {
+             observer.disconnect();
+             return currentTarget;
+           })
+           .forEach((currentTarget) => observer.observe(currentTarget));
+       }, []);`,
+    );
+    expect(iteratorAcquireBeforeRelease.diagnostics).toHaveLength(0);
+    expect(iteratorReleaseBeforeAcquire.diagnostics).toHaveLength(1);
+    expect(helperAcquireBeforeRelease.diagnostics).toHaveLength(0);
+    expect(helperReleaseBeforeAcquire.diagnostics).toHaveLength(1);
+    expect(nestedAcquireBeforeRelease.diagnostics).toHaveLength(0);
+    expect(nestedReleaseBeforeAcquire.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag when every active observation is released after restarting", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,

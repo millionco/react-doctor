@@ -151,6 +151,15 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags growth returned through sequence and logical expressions", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const sequenced = items.reduce((acc, item) => (track(item), [...acc, item]), []);
+       const logical = items.reduce((acc, item) => item && [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("ignores unreachable accumulator passthrough returns", () => {
     const falseBranch = runRule(
       noSpreadAccumulatorInReduce,
@@ -471,6 +480,14 @@ describe("no-spread-accumulator-in-reduce", () => {
       "const out = Array.from(Array(4)).reduce((acc, item) => [...acc, item], []);",
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a multi-argument Array construction as fixed length", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      "const out = Array(4, ...items).reduce((acc, item) => [...acc, item], []);",
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a non-growing method on a fixed-length Array construction", () => {

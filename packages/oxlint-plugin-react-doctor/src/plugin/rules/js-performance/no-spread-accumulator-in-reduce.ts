@@ -132,6 +132,7 @@ const isFixedLengthArrayConstruction = (expression: EsTreeNode, scopes: ScopeAna
   }
   const lengthArgument = stripped.arguments[0];
   return Boolean(
+    stripped.arguments.length === 1 &&
     isAstNode(lengthArgument) &&
     isNodeOfType(lengthArgument, "Literal") &&
     typeof lengthArgument.value === "number",
@@ -307,6 +308,15 @@ const analyzeReducerReturns = (
     if (isNodeOfType(stripped, "ConditionalExpression")) {
       recordReturnedExpression(stripped.consequent);
       recordReturnedExpression(stripped.alternate);
+      return;
+    }
+    if (isNodeOfType(stripped, "SequenceExpression")) {
+      recordReturnedExpression(stripped.expressions.at(-1));
+      return;
+    }
+    if (isNodeOfType(stripped, "LogicalExpression")) {
+      recordReturnedExpression(stripped.left);
+      recordReturnedExpression(stripped.right);
       return;
     }
     if (isNodeOfType(stripped, "ObjectExpression") || isNodeOfType(stripped, "ArrayExpression")) {

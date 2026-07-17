@@ -4,6 +4,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingDeclarator } from "../../utils/find-enclosing-declarator.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -23,8 +25,10 @@ const DECODE_CALLEE_NAMES = new Set(["decodeURIComponent", "decodeURI"]);
 const COLOR_CALLEE_NAMES = new Set(["readableColor", "parseToRgb", "chroma"]);
 
 // A prop/param named after a URL/route field, or a well-known route source.
-const URL_ROUTE_FIELD_NAMES = new Set(["url", "path", "ref", "branch", "query"]);
+const URL_ROUTE_FIELD_NAMES = new Set(["url", "href", "path", "ref", "branch", "query"]);
 const URL_ROUTE_SOURCE_ROOTS = new Set(["searchParams", "params", "location"]);
+const URL_ROUTE_STRING_METHOD_NAMES = new Set(["slice", "split"]);
+const URL_ROUTE_ALIAS_BINDING_KINDS = new Set(["const", "let", "var"]);
 
 // Roots whose values are runtime URL/route input: route params, query strings,
 // location fields, and framework request objects. The `new URL(x)` arm only
@@ -190,37 +194,30 @@ const isSearchParamsSerialization = (node: EsTreeNode, traceDepth: number): bool
   return false;
 };
 
-const argumentTracesToUrlRouteSource = (argument: EsTreeNode): boolean => {
-  const inner = stripParenExpression(argument);
-  if (isSearchParamsSerialization(inner, 0)) return false;
-  const rootName = getRootIdentifierName(inner);
-  if (rootName && URL_ROUTE_SOURCE_ROOTS.has(rootName)) return true;
-  if (isNodeOfType(inner, "Identifier") && URL_ROUTE_FIELD_NAMES.has(inner.name)) return true;
-  if (
-    isNodeOfType(inner, "MemberExpression") &&
-    isNodeOfType(inner.property, "Identifier") &&
-    URL_ROUTE_FIELD_NAMES.has(inner.property.name)
-  ) {
-    return true;
+const isStaticIndexedMemberExpression = (
+  node: EsTreeNode,
+): node is EsTreeNodeOfType<"MemberExpression"> => {
+  if (!isNodeOfType(node, "MemberExpression") || !node.computed) return false;
+  const property = stripParenExpression(node.property as EsTreeNode);
+  if (!isNodeOfType(property, "Literal")) return false;
+  if (typeof property.value === "number") {
+    return Number.isInteger(property.value) && property.value >= 0;
   }
-  if (subtreeReferencesIdentifierName(inner, URL_ROUTE_SOURCE_ROOTS)) return true;
-  if (isNodeOfType(inner, "Identifier")) {
-    const binding = findVariableInitializer(inner, inner.name);
-    const declarator = binding ? findEnclosingDeclarator(binding.bindingIdentifier) : null;
-    if (declarator && declarator.init) {
-      return argumentTracesToUrlRouteSource(declarator.init as EsTreeNode);
-    }
-  }
-  return false;
+  return typeof property.value === "string" && /^\d+$/.test(property.value);
 };
 
-// Design-token theme objects (antd-style/emotion `useTheme()`, antd
-// `theme.useToken()`) hold concrete computed color values, never `var(--x)`
-// CSS custom properties — a color parse of `theme.<token>` cannot throw.
-const THEME_TOKEN_ROOT_NAMES = new Set(["theme", "token", "tokens"]);
-const THEME_HOOK_NAMES = new Set(["useTheme", "useToken"]);
-const COMPUTED_STYLE_READ_NAMES = new Set(["getComputedStyle", "getPropertyValue"]);
-const CSS_CUSTOM_PROPERTY_PATTERN = /var\(/;
+const isUrlRouteStringMethodCall = (
+  node: EsTreeNode,
+): node is EsTreeNodeOfType<"CallExpression"> => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = stripParenExpression(node.callee as EsTreeNode);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const methodName = getStaticPropertyName(callee);
+  if (!methodName || !URL_ROUTE_STRING_METHOD_NAMES.has(methodName)) return false;
+  if (methodName !== "split") return true;
+  const separator = node.arguments[0];
+  return Boolean(separator && isNodeOfType(separator, "Literal") && separator.value === "/");
+};
 
 const findRootIdentifier = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
   let cursor: EsTreeNode | null = stripParenExpression(node);
@@ -233,10 +230,82 @@ const findRootIdentifier = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | 
       cursor = cursor.object;
       continue;
     }
+    if (isNodeOfType(cursor, "CallExpression")) {
+      cursor = cursor.callee as EsTreeNode;
+      continue;
+    }
     break;
   }
   return cursor && isNodeOfType(cursor, "Identifier") ? cursor : null;
 };
+
+const hasRuntimeUrlRouteRoot = (node: EsTreeNode, context: RuleContext): boolean => {
+  const rootIdentifier = findRootIdentifier(node);
+  if (!rootIdentifier) return false;
+  const symbol = context.scopes.referenceFor(rootIdentifier)?.resolvedSymbol ?? null;
+  if (!symbol) return true;
+  return (
+    symbol.kind === "parameter" && !hasSymbolWriteBefore(symbol, rootIdentifier, context.scopes)
+  );
+};
+
+const argumentTracesToUrlRouteSource = (
+  argument: EsTreeNode,
+  context: RuleContext,
+  traceDepth = 0,
+): boolean => {
+  if (traceDepth > MAX_INITIALIZER_TRACE_DEPTH) return false;
+  const inner = stripParenExpression(argument);
+  if (isSearchParamsSerialization(inner, 0)) return false;
+  if (isNodeOfType(inner, "Identifier")) {
+    if (URL_ROUTE_SOURCE_ROOTS.has(inner.name)) return true;
+    const symbol = context.scopes.referenceFor(inner)?.resolvedSymbol ?? null;
+    if (symbol) {
+      if (hasSymbolWriteBefore(symbol, inner, context.scopes)) return false;
+      if (
+        URL_ROUTE_ALIAS_BINDING_KINDS.has(symbol.kind) &&
+        isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+        symbol.declarationNode.id === symbol.bindingIdentifier &&
+        symbol.initializer
+      ) {
+        return argumentTracesToUrlRouteSource(symbol.initializer, context, traceDepth + 1);
+      }
+      return (
+        symbol.kind === "parameter" &&
+        (URL_ROUTE_FIELD_NAMES.has(inner.name) || URL_ROUTE_SOURCE_ROOTS.has(inner.name))
+      );
+    }
+    return URL_ROUTE_FIELD_NAMES.has(inner.name) || URL_ROUTE_SOURCE_ROOTS.has(inner.name);
+  }
+  const rootName = getRootIdentifierName(inner);
+  const hasKnownUrlRouteSource =
+    Boolean(rootName && URL_ROUTE_SOURCE_ROOTS.has(rootName)) ||
+    subtreeReferencesIdentifierName(inner, URL_ROUTE_SOURCE_ROOTS);
+  if (hasKnownUrlRouteSource) return true;
+  const hasUrlRouteField =
+    isNodeOfType(inner, "MemberExpression") &&
+    isNodeOfType(inner.property, "Identifier") &&
+    URL_ROUTE_FIELD_NAMES.has(inner.property.name);
+  if (hasUrlRouteField && hasRuntimeUrlRouteRoot(inner, context)) return true;
+  if (isStaticIndexedMemberExpression(inner)) {
+    return argumentTracesToUrlRouteSource(inner.object as EsTreeNode, context, traceDepth + 1);
+  }
+  if (isUrlRouteStringMethodCall(inner)) {
+    const callee = stripParenExpression(inner.callee as EsTreeNode);
+    if (isNodeOfType(callee, "MemberExpression")) {
+      return argumentTracesToUrlRouteSource(callee.object as EsTreeNode, context, traceDepth + 1);
+    }
+  }
+  return false;
+};
+
+// Design-token theme objects (antd-style/emotion `useTheme()`, antd
+// `theme.useToken()`) hold concrete computed color values, never `var(--x)`
+// CSS custom properties — a color parse of `theme.<token>` cannot throw.
+const THEME_TOKEN_ROOT_NAMES = new Set(["theme", "token", "tokens"]);
+const THEME_HOOK_NAMES = new Set(["useTheme", "useToken"]);
+const COMPUTED_STYLE_READ_NAMES = new Set(["getComputedStyle", "getPropertyValue"]);
+const CSS_CUSTOM_PROPERTY_PATTERN = /var\(/;
 
 const isThemeTokenReference = (rootIdentifier: EsTreeNodeOfType<"Identifier">): boolean => {
   if (THEME_TOKEN_ROOT_NAMES.has(rootIdentifier.name)) return true;
@@ -659,7 +728,7 @@ export const noUnguardedThrowingParseCall = defineRule({
         if (isRoutedThroughSafeHelper(node as EsTreeNode)) return;
 
         if (isDecode) {
-          if (!argumentTracesToUrlRouteSource(argument as EsTreeNode)) return;
+          if (!argumentTracesToUrlRouteSource(argument as EsTreeNode, context)) return;
           context.report({ node: node as EsTreeNode, message: DECODE_MESSAGE });
           return;
         }

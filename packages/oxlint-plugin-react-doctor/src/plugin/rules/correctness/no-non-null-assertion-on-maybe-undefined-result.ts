@@ -1,7 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingDeclarator } from "../../utils/find-enclosing-declarator.js";
+import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isAlwaysMatchingRegexPattern } from "../../utils/is-always-matching-regex-pattern.js";
@@ -11,6 +13,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isObjectOfMemberAccess } from "../../utils/is-object-of-member-access.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { singleExpressionPredicateBody } from "../../utils/single-expression-predicate-body.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -284,6 +287,387 @@ const scopeProvesMatchTested = (assertion: EsTreeNode, regexKey: string): boolea
     }
   });
   return proven;
+};
+
+const SINGLE_REQUIRED_LITERAL_PATTERN = /^\^([^\\.^$*+?()[\]{}|])\+$/;
+
+const isMatchingCharacterIndexGuard = (
+  test: EsTreeNode,
+  sliceReceiver: EsTreeNode,
+  sliceStart: EsTreeNode,
+  requiredCharacter: string,
+  comparisonOperator: "===" | "!==",
+): boolean => {
+  const target = stripParenExpression(test);
+  if (!isNodeOfType(target, "BinaryExpression") || target.operator !== comparisonOperator) {
+    return false;
+  }
+  const operandPairs = [
+    [target.left, target.right],
+    [target.right, target.left],
+  ];
+  return operandPairs.some(([candidateIndexRead, candidateCharacter]) => {
+    const indexRead = stripParenExpression(candidateIndexRead as EsTreeNode);
+    const character = stripParenExpression(candidateCharacter as EsTreeNode);
+    return (
+      isNodeOfType(indexRead, "MemberExpression") &&
+      indexRead.computed &&
+      areNodesLooselyEqual(indexRead.object, sliceReceiver) &&
+      areNodesLooselyEqual(indexRead.property, sliceStart) &&
+      isNodeOfType(character, "Literal") &&
+      character.value === requiredCharacter
+    );
+  });
+};
+
+const isFirstStatementOnBranch = (assertion: EsTreeNode, branch: EsTreeNode): boolean => {
+  if (!isNodeOfType(branch, "BlockStatement")) return branch === assertion;
+  const firstStatement = branch.body[0];
+  if (!firstStatement) return false;
+  let ancestor: EsTreeNode | null = assertion;
+  while (ancestor && ancestor !== branch) {
+    if (ancestor === firstStatement) return true;
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
+const getAssertedResultAccess = (
+  assertion: EsTreeNode,
+): EsTreeNodeOfType<"MemberExpression"> | null => {
+  const parent = assertion.parent;
+  return parent && isNodeOfType(parent, "MemberExpression") && parent.object === assertion
+    ? parent
+    : null;
+};
+
+const isDirectCharacterMatchStatement = (assertion: EsTreeNode): boolean => {
+  const resultAccess = getAssertedResultAccess(assertion);
+  const resultConsumer = resultAccess?.parent;
+  if (!resultAccess || !resultConsumer) return false;
+  if (isNodeOfType(resultConsumer, "ReturnStatement")) {
+    return resultConsumer.argument === resultAccess;
+  }
+  if (!isNodeOfType(resultConsumer, "VariableDeclarator") || resultConsumer.init !== resultAccess) {
+    return false;
+  }
+  const declaration = resultConsumer.parent;
+  return (
+    Boolean(declaration) &&
+    isNodeOfType(declaration, "VariableDeclaration") &&
+    declaration.declarations.length === 1
+  );
+};
+
+const isGuardedAnchoredCharacterMatch = (
+  assertion: EsTreeNode,
+  matchReceiver: EsTreeNode,
+  pattern: EsTreeNode,
+): boolean => {
+  if (!isNodeOfType(pattern, "Literal") || !("regex" in pattern)) return false;
+  const requiredCharacterMatch = SINGLE_REQUIRED_LITERAL_PATTERN.exec(pattern.regex?.pattern ?? "");
+  const requiredCharacter = requiredCharacterMatch?.[1];
+  if (!requiredCharacter) return false;
+  if (!isDirectCharacterMatchStatement(assertion)) return false;
+  const slicedValue = stripParenExpression(matchReceiver);
+  if (!isNodeOfType(slicedValue, "CallExpression")) return false;
+  const sliceCallee = stripParenExpression(slicedValue.callee as EsTreeNode);
+  if (
+    !isNodeOfType(sliceCallee, "MemberExpression") ||
+    getPropertyName(sliceCallee) !== "slice" ||
+    slicedValue.arguments.length !== 1 ||
+    !slicedValue.arguments[0]
+  ) {
+    return false;
+  }
+  const sliceReceiver = stripParenExpression(sliceCallee.object as EsTreeNode);
+  const sliceStart = stripParenExpression(slicedValue.arguments[0] as EsTreeNode);
+  if (
+    !isNodeOfType(sliceReceiver, "Identifier") ||
+    (!isNodeOfType(sliceStart, "Identifier") && !isNodeOfType(sliceStart, "Literal"))
+  ) {
+    return false;
+  }
+  let child: EsTreeNode = assertion;
+  let ancestor = assertion.parent ?? null;
+  while (ancestor && !isFunctionLike(ancestor)) {
+    if (
+      isNodeOfType(ancestor, "IfStatement") &&
+      ancestor.consequent === child &&
+      isFirstStatementOnBranch(assertion, child) &&
+      isMatchingCharacterIndexGuard(
+        ancestor.test,
+        sliceReceiver,
+        sliceStart,
+        requiredCharacter,
+        "===",
+      )
+    ) {
+      return true;
+    }
+    if (isNodeOfType(ancestor, "BlockStatement")) {
+      const assertionStatementIndex = ancestor.body.findIndex((statement) => statement === child);
+      const precedingStatement = ancestor.body[assertionStatementIndex - 1];
+      if (
+        assertionStatementIndex > 0 &&
+        isNodeOfType(precedingStatement, "IfStatement") &&
+        !precedingStatement.alternate &&
+        isEarlyExitStatement(precedingStatement.consequent) &&
+        isMatchingCharacterIndexGuard(
+          precedingStatement.test,
+          sliceReceiver,
+          sliceStart,
+          requiredCharacter,
+          "!==",
+        )
+      ) {
+        return true;
+      }
+    }
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
+const getRootIdentifier = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
+  let target = stripParenExpression(node);
+  while (isNodeOfType(target, "MemberExpression")) {
+    if (target.computed || !isNodeOfType(target.property, "Identifier")) return null;
+    target = stripParenExpression(target.object as EsTreeNode);
+  }
+  return isNodeOfType(target, "Identifier") ? target : null;
+};
+
+const CLOUDSCAPE_DOM_MODULE = "@cloudscape-design/component-toolkit/dom";
+
+const stableRegexKey = (pattern: EsTreeNode, context: RuleContext): string | null => {
+  const target = stripParenExpression(pattern);
+  if (isNodeOfType(target, "Literal") && "regex" in target && target.regex) {
+    return /[gy]/.test(target.regex.flags ?? "") ? null : regexComparableKey(target);
+  }
+  if (!isNodeOfType(target, "Identifier")) return null;
+  const symbol = context.scopes.symbolFor(target);
+  const initializer = symbol?.initializer ? stripParenExpression(symbol.initializer) : null;
+  if (
+    symbol?.kind !== "const" ||
+    symbol.references.some((reference) => reference.flag !== "read") ||
+    !initializer ||
+    !isNodeOfType(initializer, "Literal") ||
+    !("regex" in initializer) ||
+    !initializer.regex ||
+    /[gy]/.test(initializer.regex.flags ?? "")
+  ) {
+    return null;
+  }
+  return regexComparableKey(initializer);
+};
+
+const areRegexPatternsEquivalent = (
+  first: EsTreeNode,
+  second: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const firstKey = stableRegexKey(first, context);
+  const secondKey = stableRegexKey(second, context);
+  if (!firstKey || firstKey !== secondKey) return false;
+  const firstPattern = stripParenExpression(first);
+  const secondPattern = stripParenExpression(second);
+  if (!isNodeOfType(firstPattern, "Identifier") || !isNodeOfType(secondPattern, "Identifier")) {
+    return true;
+  }
+  const firstSymbol = context.scopes.symbolFor(firstPattern);
+  return Boolean(firstSymbol && firstSymbol === context.scopes.symbolFor(secondPattern));
+};
+
+const doesPredicateTruthRequireMatch = (
+  matchCall: EsTreeNode,
+  predicateFunction: EsTreeNode,
+): boolean => {
+  if (!isFunctionLike(predicateFunction)) return false;
+  if (
+    isNodeOfType(predicateFunction.body, "BlockStatement") &&
+    (predicateFunction.body.body.length !== 1 ||
+      !isNodeOfType(predicateFunction.body.body[0], "ReturnStatement"))
+  ) {
+    return false;
+  }
+  let isNegated = false;
+  let child = matchCall;
+  let parent = matchCall.parent ?? null;
+  while (parent && parent !== predicateFunction) {
+    if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") {
+      isNegated = !isNegated;
+      child = parent;
+      parent = parent.parent ?? null;
+      continue;
+    }
+    if (
+      isNodeOfType(parent, "LogicalExpression") &&
+      parent.operator === "&&" &&
+      parent.right === child
+    ) {
+      child = parent;
+      parent = parent.parent ?? null;
+      continue;
+    }
+    if (
+      TRANSPARENT_TEST_WRAPPER_TYPES.has(parent.type) ||
+      isNodeOfType(parent, "ChainExpression")
+    ) {
+      child = parent;
+      parent = parent.parent ?? null;
+      continue;
+    }
+    if (isNodeOfType(parent, "ReturnStatement") && parent.argument === child) {
+      return !isNegated && parent.parent === predicateFunction.body;
+    }
+    return false;
+  }
+  return !isNegated && predicateFunction.body === child;
+};
+
+const isStringTypeofGuardForPath = (test: EsTreeNode, expectedPath: string): boolean => {
+  const target = stripParenExpression(test);
+  if (!isNodeOfType(target, "BinaryExpression") || target.operator !== "===") return false;
+  const operandPairs = [
+    [target.left, target.right],
+    [target.right, target.left],
+  ];
+  return operandPairs.some(([candidateTypeof, candidateString]) => {
+    const typeofExpression = stripParenExpression(candidateTypeof as EsTreeNode);
+    const stringLiteral = stripParenExpression(candidateString as EsTreeNode);
+    return (
+      isNodeOfType(typeofExpression, "UnaryExpression") &&
+      typeofExpression.operator === "typeof" &&
+      receiverPathKey(typeofExpression.argument as EsTreeNode) === expectedPath &&
+      isNodeOfType(stringLiteral, "Literal") &&
+      stringLiteral.value === "string"
+    );
+  });
+};
+
+const isImmediatelyGuardedFinderResult = (
+  assertion: EsTreeNode,
+  resultSymbol: SymbolDescriptor,
+  resultPath: string,
+  context: RuleContext,
+): boolean => {
+  const declarator = resultSymbol.declarationNode;
+  const declaration = declarator.parent;
+  const declarationBlock = declaration?.parent;
+  if (
+    !declaration ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.declarations.length !== 1 ||
+    !declarationBlock ||
+    !isNodeOfType(declarationBlock, "BlockStatement")
+  ) {
+    return false;
+  }
+  const declarationIndex = declarationBlock.body.findIndex(
+    (statement) => statement === declaration,
+  );
+  const guardingStatement = declarationBlock.body[declarationIndex + 1];
+  if (
+    declarationIndex < 0 ||
+    !isNodeOfType(guardingStatement, "IfStatement") ||
+    !isFirstStatementOnBranch(assertion, guardingStatement.consequent)
+  ) {
+    return false;
+  }
+  const guardTest = stripParenExpression(guardingStatement.test);
+  if (!isNodeOfType(guardTest, "LogicalExpression") || guardTest.operator !== "&&") return false;
+  const guardedResult = stripParenExpression(guardTest.left as EsTreeNode);
+  return (
+    isNodeOfType(guardedResult, "Identifier") &&
+    context.scopes.symbolFor(guardedResult) === resultSymbol &&
+    isStringTypeofGuardForPath(guardTest.right as EsTreeNode, resultPath)
+  );
+};
+
+const isDirectFinderMatchReturn = (assertion: EsTreeNode): boolean => {
+  const resultAccess = getAssertedResultAccess(assertion);
+  if (!resultAccess) return false;
+  const consumer = resultAccess.parent;
+  if (isNodeOfType(consumer, "ReturnStatement")) return consumer.argument === resultAccess;
+  return Boolean(
+    consumer &&
+    isNodeOfType(consumer, "LogicalExpression") &&
+    consumer.operator === "??" &&
+    consumer.left === resultAccess &&
+    isNodeOfType(consumer.parent, "ReturnStatement") &&
+    consumer.parent.argument === consumer,
+  );
+};
+
+const isMatchProvenByFindUpUntilPredicate = (
+  assertion: EsTreeNode,
+  matchReceiver: EsTreeNode,
+  assertedPattern: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const resultIdentifier = getRootIdentifier(matchReceiver);
+  const resultPath = receiverPathKey(matchReceiver);
+  if (!resultIdentifier || !resultPath) return false;
+  if (!isDirectFinderMatchReturn(assertion)) return false;
+  const resultSymbol = context.scopes.symbolFor(resultIdentifier);
+  const initializer = resultSymbol?.initializer
+    ? stripParenExpression(resultSymbol.initializer)
+    : null;
+  if (
+    resultSymbol?.kind !== "const" ||
+    !initializer ||
+    !isNodeOfType(initializer, "CallExpression")
+  ) {
+    return false;
+  }
+  if (!isImmediatelyGuardedFinderResult(assertion, resultSymbol, resultPath, context)) return false;
+  const finderCallee = stripParenExpression(initializer.callee as EsTreeNode);
+  if (
+    !isNodeOfType(finderCallee, "Identifier") ||
+    context.scopes.symbolFor(finderCallee)?.kind !== "import" ||
+    getImportedNameFromModule(assertion, finderCallee.name, CLOUDSCAPE_DOM_MODULE) !== "findUpUntil"
+  ) {
+    return false;
+  }
+  const predicateArgument = initializer.arguments[1];
+  if (!predicateArgument) return false;
+  const predicateFunction = resolveExactLocalFunction(
+    predicateArgument as EsTreeNode,
+    context.scopes,
+  );
+  if (!predicateFunction || !isFunctionLike(predicateFunction)) return false;
+  if (predicateFunction.async || predicateFunction.generator) return false;
+  const predicateParameter = predicateFunction.params?.[0];
+  if (!isNodeOfType(predicateParameter, "Identifier")) return false;
+  const resultRelativePath = resultPath.slice(resultIdentifier.name.length);
+  let didProveMatch = false;
+  walkAst(predicateFunction.body as EsTreeNode, (child) => {
+    if (didProveMatch || isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = stripParenExpression(child.callee as EsTreeNode);
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      getPropertyName(callee) !== "match" ||
+      !child.arguments[0] ||
+      !areRegexPatternsEquivalent(child.arguments[0] as EsTreeNode, assertedPattern, context) ||
+      !doesPredicateTruthRequireMatch(child, predicateFunction)
+    ) {
+      return;
+    }
+    const predicateReceiver = stripParenExpression(callee.object as EsTreeNode);
+    const predicateRoot = getRootIdentifier(predicateReceiver);
+    const predicatePath = receiverPathKey(predicateReceiver);
+    if (
+      predicateRoot?.name === predicateParameter.name &&
+      predicatePath?.slice(predicateParameter.name.length) === resultRelativePath
+    ) {
+      didProveMatch = true;
+      return false;
+    }
+  });
+  return didProveMatch;
 };
 
 // The scope proves the asserted `.find(pred)!` cannot miss: a
@@ -564,7 +948,8 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
           }
         }
         if (methodName === "match") {
-          if (isOwnStringProjectionReceiver(callee.object as EsTreeNode)) return;
+          const matchReceiver = callee.object as EsTreeNode;
+          if (isOwnStringProjectionReceiver(matchReceiver)) return;
           const pattern = args[0] ? stripParenExpression(args[0]) : null;
           if (
             pattern &&
@@ -575,6 +960,19 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
             return;
           }
           const regexKey = pattern ? regexComparableKey(pattern) : null;
+          if (
+            pattern &&
+            isGuardedAnchoredCharacterMatch(node as EsTreeNode, matchReceiver, pattern)
+          ) {
+            return;
+          }
+          if (
+            pattern &&
+            regexKey &&
+            isMatchProvenByFindUpUntilPredicate(node as EsTreeNode, matchReceiver, pattern, context)
+          ) {
+            return;
+          }
           if (regexKey && scopeProvesMatchTested(node as EsTreeNode, regexKey)) return;
         }
         if (methodName === "get") {

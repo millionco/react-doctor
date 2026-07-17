@@ -58,6 +58,164 @@ describe("no-unguarded-throwing-parse-call", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags decoded static segments from a custom citation href", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function parseCitationHref(href) {
+        if (!href.startsWith(\`\${CITATION_URL_SCHEME}://\`)) return null;
+        const rest = href.slice(\`\${CITATION_URL_SCHEME}://\`.length);
+        const parts = rest.split("/");
+        const title = parts[3] ? decodeURIComponent(parts[3]) : "";
+        const quote = parts[4] ? decodeURIComponent(parts[4]) : undefined;
+        return { title, quote };
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("stays quiet for a decoded static segment from an arbitrary token", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function parseToken(token) {
+        const parts = token.slice(4).split("/");
+        return decodeURIComponent(parts[3]);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a dynamically selected segment from an href", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function parseHref(href, index) {
+        const parts = href.slice(4).split("/");
+        return decodeURIComponent(parts[index]);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when an unknown helper produces href segments", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function parseHref(href) {
+        const parts = tokenize(href);
+        return decodeURIComponent(parts[3]);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for decoded segments from a compile-time href", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function parseFixedHref() {
+        const href = "app://fixed";
+        const parts = href.split("/");
+        return decodeURIComponent(parts[3]);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for decoded segments from a local config href", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function parseFixedHref() {
+        const config = { href: "app://fixed" };
+        const parts = config.href.split("/");
+        return decodeURIComponent(parts[3]);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet after a URL-derived alias is reassigned", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function parseHref(href) {
+        let rest = href.slice(6);
+        rest = "good";
+        const parts = rest.split("/");
+        return decodeURIComponent(parts[3]);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet after an href parameter is reassigned to encoded input", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function parseHref(href) {
+        href = encodeURIComponent(href);
+        const parts = href.split("/");
+        return decodeURIComponent(parts[3]);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves captured href provenance across later writes", () => {
+    const parameterWrittenAfterDecode = runRule(
+      noUnguardedThrowingParseCall,
+      `function parseHref(href) {
+        const parts = href.split("/");
+        const title = decodeURIComponent(parts[3]);
+        href = "safe";
+        return title;
+      }`,
+    );
+    const parameterWrittenAfterCapture = runRule(
+      noUnguardedThrowingParseCall,
+      `function parseHref(href) {
+        const parts = href.split("/");
+        href = "safe";
+        return decodeURIComponent(parts[3]);
+      }`,
+    );
+    const aliasWrittenAfterDecode = runRule(
+      noUnguardedThrowingParseCall,
+      `function parseHref(href) {
+        let rest = href.slice(6);
+        const parts = rest.split("/");
+        const title = decodeURIComponent(parts[3]);
+        rest = "safe";
+        return title;
+      }`,
+    );
+    expect(parameterWrittenAfterDecode.diagnostics).toHaveLength(1);
+    expect(parameterWrittenAfterCapture.diagnostics).toHaveLength(1);
+    expect(aliasWrittenAfterDecode.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves established route-hook source roots", () => {
+    const paramsResult = runRule(
+      noUnguardedThrowingParseCall,
+      `function Page() {
+        const params = useParams();
+        return decodeURIComponent(params.path);
+      }`,
+    );
+    const searchParamsResult = runRule(
+      noUnguardedThrowingParseCall,
+      `function Page() {
+        const searchParams = useSearchParams();
+        return decodeURIComponent(searchParams.get("next"));
+      }`,
+    );
+    const locationResult = runRule(
+      noUnguardedThrowingParseCall,
+      `function Page() {
+        const location = useLocation();
+        return decodeURIComponent(location.hash);
+      }`,
+    );
+    expect(paramsResult.diagnostics).toHaveLength(1);
+    expect(searchParamsResult.diagnostics).toHaveLength(1);
+    expect(locationResult.diagnostics).toHaveLength(1);
+  });
+
   it("flags readableColor of a runtime theme color in a hook", () => {
     const result = runRule(
       noUnguardedThrowingParseCall,

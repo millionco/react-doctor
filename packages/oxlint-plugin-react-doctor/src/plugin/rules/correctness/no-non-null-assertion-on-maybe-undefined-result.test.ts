@@ -431,6 +431,370 @@ describe("no-non-null-assertion-on-maybe-undefined-result", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag an anchored repeated-character match inside the matching character branch", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `function protectedRanges(text: string) {
+        let index = 0;
+        if (text[index] === "\`") {
+          const run = text.slice(index).match(/^\`+/)![0];
+          return run;
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags an anchored repeated-character match after the guarded index changes", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `function protectedRanges(text: string) {
+        let index = 0;
+        if (text[index] === "\`") {
+          index += 1;
+          return text.slice(index).match(/^\`+/)![0];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an anchored match when the guarded character does not satisfy the regex", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `function protectedRanges(text: string, index: number) {
+        if (text[index] === "~") {
+          return text.slice(index).match(/^\`+/)![0];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an anchored repeated-character match after an immediate mismatch exit", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `function readBacktickRun(text: string, index: number) {
+        if (text[index] !== "\`") return null;
+        return text.slice(index).match(/^\`+/)![0];
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags an anchored match when the receiver is evaluated separately by the guard and match", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `function readBacktickRun(index: number) {
+        if (getText()[index] === "\`") {
+          return getText().slice(index).match(/^\`+/)![0];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an anchored match when slice has an end argument", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `function readBacktickRun(text: string, index: number) {
+        if (text[index] === "\`") {
+          return text.slice(index, index).match(/^\`+/)![0];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an anchored match through a repeatable member getter", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `function readBacktickRun(source: { text: string }, index: number) {
+        if (source.text[index] === "\`") {
+          return source.text.slice(index).match(/^\`+/)![0];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an anchored match after an earlier declarator mutates the index", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `function readBacktickRun(text: string, index: number) {
+        if (text[index] === "\`") {
+          const ignored = index++, run = text.slice(index).match(/^\`+/)![0];
+          return run;
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an anchored match after a same-expression index mutation", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `function readBacktickRun(text: string, index: number) {
+        if (text[index] === "\`") {
+          return (index++, text.slice(index).match(/^\`+/)![0]);
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a match proven by the local predicate passed to imported findUpUntil", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      function hasVisualContextClass(node: Element) {
+        return typeof node.className === 'string' && !!node.className.match(contextMatch);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        if (contextParent && typeof contextParent.className === 'string') {
+          return contextParent.className.match(contextMatch)![1] ?? '';
+        }
+        return '';
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a match after a same-shaped local finder with unknown semantics", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const contextMatch = /awsui-context-([\\w-]+)/;
+      function findUpUntil(node, predicate) { return node.parentElement; }
+      function hasVisualContextClass(node: Element) {
+        return typeof node.className === 'string' && !!node.className.match(contextMatch);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        return contextParent.className.match(contextMatch)![1];
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a match when the findUpUntil predicate validates a different regex", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      const otherMatch = /awsui-other-([\\w-]+)/;
+      function hasVisualContextClass(node: Element) {
+        return !!node.className.match(otherMatch);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        return contextParent.className.match(contextMatch)![1];
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a findUpUntil result mutated before the asserted match", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      function hasVisualContextClass(node: Element) {
+        return !!node.className.match(contextMatch);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        contextParent.className = 'unrelated';
+        return contextParent.className.match(contextMatch)![1];
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags findUpUntil when the predicate shadows the asserted regex binding", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      function hasVisualContextClass(node: Element, contextMatch = /unrelated/) {
+        return !!node.className.match(contextMatch);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        if (contextParent) {
+          return contextParent.className.match(contextMatch)![1];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags findUpUntil when the predicate can succeed without the regex match", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      function hasVisualContextClass(node: Element) {
+        return !!node.className.match(contextMatch) || true;
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        if (contextParent) {
+          return contextParent.className.match(contextMatch)![1];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags findUpUntil when a later predicate conjunct mutates the matched property", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      function hasVisualContextClass(node: Element) {
+        return !!node.className.match(contextMatch) && ((node.className = 'unrelated'), true);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        if (contextParent) {
+          return contextParent.className.match(contextMatch)![1];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags findUpUntil when the result guard can mutate the matched property", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      function hasVisualContextClass(node: Element) {
+        return !!node.className.match(contextMatch);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        if (contextParent && mutate(contextParent)) {
+          return contextParent.className.match(contextMatch)![1];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a shadowed findUpUntil call despite a module import with the same name", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      function hasVisualContextClass(node: Element) {
+        return !!node.className.match(contextMatch);
+      }
+      function detectVisualContext(node: HTMLElement, findUpUntil: Function) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        if (contextParent && typeof contextParent.className === 'string') {
+          return contextParent.className.match(contextMatch)![1];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags findUpUntil when the shared regex is sticky", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/y;
+      function hasVisualContextClass(node: Element) {
+        return !!node.className.match(contextMatch);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        if (contextParent && typeof contextParent.className === 'string') {
+          return contextParent.className.match(contextMatch)![1];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags findUpUntil when the assertion expression mutates the matched property first", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      function hasVisualContextClass(node: Element) {
+        return !!node.className.match(contextMatch);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        if (contextParent && typeof contextParent.className === 'string') {
+          return (contextParent.className = 'unrelated', contextParent.className.match(contextMatch)![1]);
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags findUpUntil when another result declarator mutates the matched property", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      function hasVisualContextClass(node: Element) {
+        return !!node.className.match(contextMatch);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass), ignored = (contextParent.className = 'unrelated');
+        if (contextParent && typeof contextParent.className === 'string') {
+          return contextParent.className.match(contextMatch)![1];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags findUpUntil when its predicate is async", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      async function hasVisualContextClass(node: Element) {
+        return !!node.className.match(contextMatch);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        if (contextParent && typeof contextParent.className === 'string') {
+          return contextParent.className.match(contextMatch)![1];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags findUpUntil when another predicate return can succeed without a match", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `import { findUpUntil } from '@cloudscape-design/component-toolkit/dom';
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      function hasVisualContextClass(node: Element) {
+        if (fallback) return true;
+        return typeof node.className === 'string' && !!node.className.match(contextMatch);
+      }
+      function detectVisualContext(node: HTMLElement) {
+        const contextParent = findUpUntil(node, hasVisualContextClass);
+        if (contextParent && typeof contextParent.className === 'string') {
+          return contextParent.className.match(contextMatch)![1];
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag find! guarded by findIndex !== -1 with the identical predicate", () => {
     const result = runRule(
       noNonNullAssertionOnMaybeUndefinedResult,

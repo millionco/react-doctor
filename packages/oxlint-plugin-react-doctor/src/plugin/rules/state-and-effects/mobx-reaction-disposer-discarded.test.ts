@@ -360,6 +360,34 @@ export const registerReactions = (stores: StoreMapping) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each(["startTracking", "installTracking", "setupTracking", "registerTracker"])(
+    "flags an ordinary module-scoped %s helper",
+    (helperName) => {
+      const result = runRule(
+        mobxReactionDisposerDiscarded,
+        `import { autorun } from "mobx";
+export const ${helperName} = () => {
+  autorun(() => sync());
+};`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each(["initStores", "setupAutoruns", "bootstrapApp"])(
+    "stays quiet for explicit app-lifetime %s wiring",
+    (helperName) => {
+      const result = runRule(
+        mobxReactionDisposerDiscarded,
+        `import { autorun } from "mobx";
+export const ${helperName} = () => {
+  autorun(() => sync());
+};`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
   it("stays quiet: Module-level singleton store whose constructor reaction lives as long as the app", () => {
     const result = runRule(
       mobxReactionDisposerDiscarded,

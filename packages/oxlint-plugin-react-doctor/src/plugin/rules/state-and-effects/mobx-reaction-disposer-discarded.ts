@@ -83,7 +83,8 @@ const isEvaluatedAtModuleScope = (node: EsTreeNode): boolean => {
 // App-bootstrap wiring functions (`registerReactions`, `initStores`,
 // `setupAutoruns`) exist to be called once for the process lifetime — the
 // same no-teardown-moment argument as bare module scope.
-const PROCESS_LIFETIME_WIRING_NAME_PATTERN = /^(?:register|init|setup|bootstrap|start|install)/i;
+const PROCESS_LIFETIME_WIRING_NAME_PATTERN =
+  /^(?:register.*(?:reactions?|autoruns?)|init.*(?:stores?|reactions?|autoruns?)|setup.*(?:stores?|reactions?|autoruns?)|bootstrap(?:app(?:lication)?|stores?|reactions?|autoruns?)?)$/i;
 
 const enclosingFunctionNameOf = (functionNode: EsTreeNode): string | null => {
   if (

@@ -1,8 +1,10 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import { highlighter, SCORE_GOOD_THRESHOLD, SCORE_OK_THRESHOLD } from "@react-doctor/core";
+import { highlighter } from "@react-doctor/core";
 import type { Diagnostic, InspectResult, ScoreResult } from "@react-doctor/core";
 import { colorizeByScore } from "./colorize-by-score.js";
+import { countUniqueScannedFiles } from "./count-unique-scanned-files.js";
+import { scoreBandLabel } from "./score-band-label.js";
 import { filterScansForSurface } from "./filter-scans-for-surface.js";
 import type { SurfaceFilterableScan } from "./filter-scans-for-surface.js";
 import { computeProjectedScore } from "./compute-score-projection.js";
@@ -21,12 +23,6 @@ interface ProjectScanEntry {
   readonly errorCount: number;
 }
 
-const getScoreLabel = (score: number): string => {
-  if (score >= SCORE_GOOD_THRESHOLD) return "Great";
-  if (score >= SCORE_OK_THRESHOLD) return "OK";
-  return "Needs work";
-};
-
 const buildSummaryLine = (entry: ProjectScanEntry, longestProjectNameLength: number): string => {
   const paddedName = entry.projectName.padEnd(longestProjectNameLength);
   const nameRendering =
@@ -38,7 +34,7 @@ const buildSummaryLine = (entry: ProjectScanEntry, longestProjectNameLength: num
   }
 
   const scoreRendering = colorizeByScore(String(entry.score).padStart(3), entry.score);
-  const label = colorizeByScore(getScoreLabel(entry.score), entry.score);
+  const label = colorizeByScore(scoreBandLabel(entry.score), entry.score);
 
   const issuesParts: string[] = [];
   if (entry.errorCount > 0) {
@@ -121,25 +117,9 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
     // through a bounded concurrent pool, so the caller passes the
     // wall-clock total rather than summing per-project durations.
     //
-    // Count UNIQUE scanned files by absolute path: nested workspace
-    // packages (a parent whose tree contains a child package) scan the
-    // shared files in BOTH projects, so naively summing per-project
-    // counts overstates the real total. A scan that reported no file
-    // paths can't be deduped, so it contributes its own reported count
-    // (this fallback is per-scan, not all-or-nothing — the other
-    // projects still dedupe against each other).
-    const uniqueScannedFilePaths = new Set<string>();
-    let fileCountFromScansWithoutPaths = 0;
-    for (const scan of completedScans) {
-      const scannedFilePaths = scan.result.scannedFilePaths;
-      if (scannedFilePaths && scannedFilePaths.length > 0) {
-        for (const filePath of scannedFilePaths) uniqueScannedFilePaths.add(filePath);
-      } else {
-        fileCountFromScansWithoutPaths +=
-          scan.result.scannedFileCount ?? scan.result.project.sourceFileCount;
-      }
-    }
-    const totalScannedFileCount = uniqueScannedFilePaths.size + fileCountFromScansWithoutPaths;
+    const totalScannedFileCount = countUniqueScannedFiles(
+      completedScans.map((scan) => scan.result),
+    );
     yield* Console.log(
       `${highlighter.success("✔")} Scanned ${totalScannedFileCount} ${totalScannedFileCount === 1 ? "file" : "files"} in ${formatElapsedTime(totalElapsedMilliseconds)}`,
     );

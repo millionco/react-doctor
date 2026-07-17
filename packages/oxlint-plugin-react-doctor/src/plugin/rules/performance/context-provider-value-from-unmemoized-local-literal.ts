@@ -15,6 +15,7 @@ import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
@@ -88,12 +89,14 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
   recommendation:
     "Wrap the context value in useMemo/useCallback so consumers do not redraw every render, or move it outside the component if it never changes.",
   create: (context: RuleContext) => {
+    const isTestlikeFile = isTestlikeFilename(context.filename);
     let contextBindings: ReadonlySet<string> = new Set<string>();
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         contextBindings = collectContextBindings(node, context.scopes);
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (isTestlikeFile) return;
         if (!isContextProviderJsxName(node.name, contextBindings, context.scopes)) return;
         const renderFunction = findEnclosingFunction(node);
         if (!renderFunction) return;

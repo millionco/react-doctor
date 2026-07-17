@@ -532,6 +532,20 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not flag render helpers in testlike files", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function TestProvider() {
+         const value = {};
+         return <ThemeContext.Provider value={value} />;
+       }`,
+      { filename: "/repo/src/__tests__/theme-provider.test.tsx" },
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("is disabled on React Compiler projects", () => {
     expect(contextProviderValueFromUnmemoizedLocalLiteral.disabledWhen).toContain("react-compiler");
   });

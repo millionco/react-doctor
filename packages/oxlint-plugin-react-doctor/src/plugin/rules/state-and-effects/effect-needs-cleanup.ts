@@ -28,7 +28,7 @@ import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { readStaticBoolean } from "../../utils/read-static-boolean.js";
-import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
+import { hasReactRefCurrentOrigin, resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
@@ -2059,6 +2059,69 @@ const getReleaseVerbName = (node: EsTreeNode): string | null => {
   return null;
 };
 
+const isRetainedAbortControllerRefRelease = (
+  releaseReceiver: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  const releaseFunction = findEnclosingFunction(releaseReceiver);
+  const usageFunction = findEnclosingFunction(usage.node);
+  if (
+    !releaseFunction ||
+    !usageFunction ||
+    !isFunctionLike(usageFunction) ||
+    !isReturnedEffectCleanupFunction(releaseFunction) ||
+    !hasReactRefCurrentOrigin(releaseReceiver, context.scopes)
+  ) {
+    return false;
+  }
+  const controllerKey = getListenerAbortControllerKey(usage, context);
+  const refCurrentKey = resolveExpressionKey(releaseReceiver, context);
+  if (controllerKey === null || refCurrentKey === null) return false;
+
+  const usageFunctionBody = usageFunction.body;
+  const previousAbortCalls: EsTreeNode[] = [];
+  const ownershipAssignments: EsTreeNode[] = [];
+  walkAst(usageFunctionBody, (child: EsTreeNode) => {
+    if (child !== usageFunctionBody && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "AssignmentExpression") &&
+      resolveExpressionKey(child.left, context) === refCurrentKey &&
+      resolveExpressionKey(child.right, context) === controllerKey
+    ) {
+      ownershipAssignments.push(child);
+      return;
+    }
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const childCallee = isNodeOfType(child.callee, "ChainExpression")
+      ? child.callee.expression
+      : stripParenExpression(child.callee);
+    if (
+      isNodeOfType(childCallee, "MemberExpression") &&
+      !childCallee.computed &&
+      isNodeOfType(childCallee.property, "Identifier") &&
+      childCallee.property.name === "abort" &&
+      resolveExpressionKey(childCallee.object, context) === refCurrentKey
+    ) {
+      previousAbortCalls.push(child);
+    }
+  });
+  const safeOwnershipAssignments = ownershipAssignments.filter((assignment) =>
+    doMatchingNodesCoverEveryPathBeforeUsage(
+      assignment,
+      previousAbortCalls,
+      usageFunction,
+      context,
+    ),
+  );
+  return doMatchingNodesCoverEveryPathBeforeUsage(
+    usage.node,
+    safeOwnershipAssignments,
+    usageFunction,
+    context,
+  );
+};
+
 const doesReleaseCallMatchUsage = (
   node: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -2139,6 +2202,12 @@ const doesReleaseCallMatchUsage = (
   if (
     releaseVerbName === "abort" &&
     releaseReceiverKey === getListenerAbortControllerKey(usage, context)
+  ) {
+    return true;
+  }
+  if (
+    releaseVerbName === "abort" &&
+    isRetainedAbortControllerRefRelease(callee.object, usage, context)
   ) {
     return true;
   }
@@ -2262,10 +2331,12 @@ const isReturnedEffectCleanupFunction = (functionNode: EsTreeNode): boolean => {
     currentNode = parentNode;
     parentNode = currentNode.parent;
   }
-  if (!isNodeOfType(parentNode, "ReturnStatement") || parentNode.argument !== currentNode) {
-    return false;
-  }
-  const effectCallback = findEnclosingFunction(parentNode);
+  const effectCallback =
+    isNodeOfType(parentNode, "ReturnStatement") && parentNode.argument === currentNode
+      ? findEnclosingFunction(parentNode)
+      : isNodeOfType(parentNode, "ArrowFunctionExpression") && parentNode.body === currentNode
+        ? parentNode
+        : null;
   const effectCall = effectCallback?.parent;
   return Boolean(
     effectCallback &&

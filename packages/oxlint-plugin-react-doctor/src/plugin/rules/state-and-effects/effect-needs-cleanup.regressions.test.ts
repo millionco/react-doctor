@@ -3226,6 +3226,105 @@ export const Feed = ({ url, shouldClose }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts a replaced AbortController retained through a ref and aborted on unmount", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const Listener = () => {
+  const controllerRef = useRef(null);
+  const listen = useCallback(() => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    const { signal } = controller;
+    window.addEventListener("resize", update, { signal });
+  }, []);
+  useEffect(() => () => controllerRef.current?.abort(), []);
+  return <button onClick={listen}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a retained AbortController ref without replacement cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const Listener = () => {
+  const controllerRef = useRef(null);
+  const listen = useCallback(() => {
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    window.addEventListener("resize", update, { signal: controller.signal });
+  }, []);
+  useEffect(() => () => controllerRef.current?.abort(), []);
+  return <button onClick={listen}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a retained AbortController ref with conditional replacement cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const Listener = ({ shouldAbort }) => {
+  const controllerRef = useRef(null);
+  const listen = useCallback(() => {
+    if (shouldAbort) controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    window.addEventListener("resize", update, { signal: controller.signal });
+  }, [shouldAbort]);
+  useEffect(() => () => controllerRef.current?.abort(), []);
+  return <button onClick={listen}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a retained AbortController ref without unmount cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Listener = () => {
+  const controllerRef = useRef(null);
+  const listen = useCallback(() => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    window.addEventListener("resize", update, { signal: controller.signal });
+  }, []);
+  return <button onClick={listen}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects retaining an AbortController only after listener registration", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const Listener = () => {
+  const controllerRef = useRef(null);
+  const listen = useCallback(() => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    window.addEventListener("resize", update, { signal: controller.signal });
+    controllerRef.current = controller;
+  }, []);
+  useEffect(() => () => controllerRef.current?.abort(), []);
+  return <button onClick={listen}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("ignores a resource acquisition inside an uncalled nested function", () => {
     const result = runRule(
       effectNeedsCleanup,

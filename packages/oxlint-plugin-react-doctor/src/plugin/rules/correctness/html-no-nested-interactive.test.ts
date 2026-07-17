@@ -49,7 +49,7 @@ describe("html-no-nested-interactive", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag `<button>` inside an unrelated `<a>` (different interactive type)", () => {
+  it("does not flag a button inside an anchor because anchor descendants remain semantic", () => {
     const result = runRule(
       htmlNoNestedInteractive,
       `
@@ -62,6 +62,51 @@ describe("html-no-nested-interactive", () => {
     );
 
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a focusable link inside a button", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const Menu = () => <button type="button"><a href="/details">Details</a></button>;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a native control inside an explicit ARIA button", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const Menu = () => <div role="button" tabIndex={0}><input /></div>;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not infer a presentational-child role from a dynamic override", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const Menu = ({ role }) => <button role={role}><a href="/details">Details</a></button>;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a custom component's role prop as rendered DOM", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const Menu = () => <Control role="button"><a href="/details">Details</a></Control>;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a native control with negative tabindex inside a button", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const Menu = () => <button type="button"><a href="/details" tabIndex={-1}>Details</a></button>;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag adjacent siblings", () => {

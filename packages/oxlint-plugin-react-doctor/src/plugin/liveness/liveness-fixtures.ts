@@ -1848,6 +1848,21 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-excessive-card-surfaces": {
     code: 'const Page = () => <main><section className="rounded-xl border p-6">A</section><section className="rounded-xl border p-6">B</section><section className="rounded-xl border p-6">C</section><section className="rounded-xl border p-6">D</section><section className="rounded-xl border p-6">E</section><section className="rounded-xl border p-6">F</section></main>;',
   },
+  "no-empty-card-shell": {
+    code: 'const Empty = () => <section className="rounded-xl border bg-white p-6" />;',
+  },
+  "no-mixed-icon-libraries": {
+    code: 'import { Search } from "lucide-react"; import { HomeIcon } from "@heroicons/react/24/outline"; const Toolbar = () => <><Search /><HomeIcon /></>;',
+  },
+  "no-pill-navigation-count": {
+    code: 'const Sidebar = () => <nav><span className="rounded-full bg-gray-200 px-2">12</span></nav>;',
+  },
+  "no-redundant-title-tooltip": {
+    code: 'const Save = () => <button title="Save changes">Save changes</button>;',
+  },
+  "no-symmetric-text-button-padding": {
+    code: 'const Save = () => <button className="rounded-md bg-blue-600 p-3">Save changes</button>;',
+  },
   "no-pure-black-shadow": {
     code: 'const Card = () => <div style={{ boxShadow: "0 10px 30px #000" }} />;',
   },
@@ -1859,6 +1874,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-uppercase-mono-label": {
     code: 'const Label = () => <span className="font-mono uppercase tracking-widest">System online</span>;',
+  },
+  "no-uppercase-tracked-navigation-label": {
+    code: 'const Sidebar = () => <aside><span className="uppercase tracking-widest">Workspace</span></aside>;',
+  },
+  "require-scale-reveal-transform-origin": {
+    code: 'import { motion } from "motion/react"; const Menu = () => <motion.div role="menu" initial={{ scale: 0.96 }} />;',
   },
   "no-decorative-pulse": {
     code: 'const Hero = () => <span className="animate-pulse">New feature</span>;',
@@ -1889,6 +1910,36 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "require-autoplay-video-poster": {
     code: 'const Hero = () => <video autoPlay muted src="/demo.mp4" />;',
+  },
+  "aria-braille-equivalent": {
+    code: 'const Save = () => <button aria-braillelabel="sv" />;',
+  },
+  "empty-table-header": {
+    code: "const Table = () => <table><tbody><tr><th /></tr></tbody></table>;",
+  },
+  "html-xml-lang-mismatch": {
+    code: 'const Page = () => <html lang="en" xml:lang="fr" />;',
+  },
+  "iframe-title-unique": {
+    code: 'const View = () => <><iframe title="Map" /><iframe title="Map" /></>;',
+  },
+  "no-aria-hidden-on-body": {
+    code: 'const Page = () => <body aria-hidden="true" />;',
+  },
+  "no-duplicate-static-id-reference": {
+    code: 'const Form = () => <><label htmlFor="email">Email</label><input id="email" /><input id="email" /></>;',
+  },
+  "no-focusable-content-in-role-text": {
+    code: 'const View = () => <span role="text"><button>Open</button></span>;',
+  },
+  "no-multiple-labels-for-control": {
+    code: 'const Form = () => <><label htmlFor="name">Name</label><label htmlFor="name">Required</label><input id="name" /></>;',
+  },
+  "no-server-side-image-map": {
+    code: 'const Map = () => <img alt="Campus" src="map.png" isMap />;',
+  },
+  "no-presentation-role-conflict": {
+    code: 'const Control = () => <div role="presentation" tabIndex={0} />;',
   },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',

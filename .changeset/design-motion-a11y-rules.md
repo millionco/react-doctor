@@ -51,6 +51,17 @@ Add deterministic design-quality lint rules spanning motion performance, accessi
 - **`form-control-requires-name`**: opt-in detection for native form controls that cannot contribute a name to form submission.
 - **`no-ungated-tailwind-animation`**: opt-in detection for continuous Tailwind animations without a reduced-motion gate.
 - **`no-transitioned-focus-ring`** — detects Tailwind focus rings or outlines whose box-shadow/outline transition delays visible keyboard focus; color-only hover transitions remain valid.
+- **`aria-braille-equivalent`** — opt-in detection for nonempty braille labels or role descriptions without a provable non-braille accessible equivalent.
+- **`no-aria-hidden-on-body`** — opt-in detection for a statically true `aria-hidden` on the document body.
+- **`no-focusable-content-in-role-text`** — opt-in detection for intrinsic focusable controls whose semantics are flattened by a static `role="text"` ancestor.
+- **`empty-table-header`** — opt-in detection for native or ARIA table headers with no accessible content or explicit name.
+- **`html-xml-lang-mismatch`** — opt-in detection for conflicting static base languages in root `lang` and `xml:lang` declarations.
+- **`no-duplicate-static-id-reference`** — opt-in static-tree detection for duplicated literal IDs used by labels or ARIA ID references.
+- **`no-multiple-labels-for-control`** — opt-in static-tree detection for multiple explicit labels pointing to the same literal control ID.
+- **`iframe-title-unique`** — opt-in static-tree detection for frames whose normalized literal titles are duplicated.
+- **`no-server-side-image-map`** — opt-in detection for statically enabled server-side image maps.
+- **`no-presentation-role-conflict`** — opt-in detection for presentational elements that remain focusable or expose global ARIA state.
+- **`html-no-nested-interactive`** (extended) — now catches statically focusable descendants inside roles whose children become presentational, including controls with a negative `tabIndex`.
 
 **Design / Tailwind hygiene**
 
@@ -107,6 +118,13 @@ Add deterministic design-quality lint rules spanning motion performance, accessi
 - **`no-tight-all-caps-heading`** — opt-in detection for long all-caps headings with a statically proven line-height below 1.0.
 - **`prefer-tabular-numeric-data`** — opt-in detection for dynamically formatted numeric table cells without inherited tabular or monospace figures.
 - **`require-autoplay-video-poster`** — opt-in detection for statically autoplaying intrinsic videos without a poster frame.
+- **`no-empty-card-shell`** — opt-in detection for empty elements styled as complete card surfaces.
+- **`no-mixed-icon-libraries`** — opt-in file-level detection for JSX that mixes imports from multiple icon-system families.
+- **`no-pill-navigation-count`** — opt-in detection for bare numeric navigation counts styled as generic pills instead of semantic badges.
+- **`no-redundant-title-tooltip`** — opt-in detection for `title` text that merely repeats an element's visible static label.
+- **`no-symmetric-text-button-padding`** — opt-in detection for text buttons whose static Tailwind padding is symmetric on both axes.
+- **`no-uppercase-tracked-navigation-label`** — opt-in detection for static navigation labels combining uppercase and expanded tracking.
+- **`require-scale-reveal-transform-origin`** — opt-in detection for proven Motion reveal elements that animate scale without a static transform origin.
 - **`no-gradient-text`** (extended) — now recognizes Tailwind v4 linear, radial, conic, numeric-angle, and arbitrary gradient background utilities without combining utilities across variants.
 
 **HTML and component contracts**

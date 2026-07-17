@@ -12,7 +12,7 @@ const collectStaticJsxOpeningElements = (
 };
 
 export const getStaticJsxOpeningElements = (
-  node: EsTreeNodeOfType<"JSXElement">,
+  node: EsTreeNodeOfType<"JSXElement"> | EsTreeNodeOfType<"JSXFragment">,
 ): Array<EsTreeNodeOfType<"JSXOpeningElement">> => {
   const openingElements: Array<EsTreeNodeOfType<"JSXOpeningElement">> = [];
   collectStaticJsxOpeningElements(node, openingElements);

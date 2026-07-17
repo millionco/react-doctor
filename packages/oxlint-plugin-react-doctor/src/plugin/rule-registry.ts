@@ -18,6 +18,7 @@ import { anchorAmbiguousText } from "./rules/a11y/anchor-ambiguous-text.js";
 import { anchorHasContent } from "./rules/a11y/anchor-has-content.js";
 import { anchorIsValid } from "./rules/a11y/anchor-is-valid.js";
 import { ariaActivedescendantHasTabindex } from "./rules/a11y/aria-activedescendant-has-tabindex.js";
+import { ariaBrailleEquivalent } from "./rules/a11y/aria-braille-equivalent.js";
 import { ariaProps } from "./rules/a11y/aria-props.js";
 import { ariaProptypes } from "./rules/a11y/aria-proptypes.js";
 import { ariaRole } from "./rules/a11y/aria-role.js";
@@ -60,6 +61,7 @@ import { effectNeedsCleanup } from "./rules/state-and-effects/effect-needs-clean
 import { effectObserverNeedsDisconnect } from "./rules/state-and-effects/effect-observer-needs-disconnect.js";
 import { effectRafLoopNeedsCancel } from "./rules/state-and-effects/effect-raf-loop-needs-cancel.js";
 import { effectRemoveListenerInlineHandler } from "./rules/state-and-effects/effect-remove-listener-inline-handler.js";
+import { emptyTableHeader } from "./rules/a11y/empty-table-header.js";
 import { exhaustiveDeps } from "./rules/react-builtins/exhaustive-deps.js";
 import { expoNoNonInlinedEnv } from "./rules/react-native/expo-no-non-inlined-env.js";
 import { fieldsetRequiresLegend } from "./rules/a11y/fieldset-requires-legend.js";
@@ -82,8 +84,10 @@ import { htmlNoInvalidParagraphChild } from "./rules/correctness/html-no-invalid
 import { htmlNoInvalidTableNesting } from "./rules/correctness/html-no-invalid-table-nesting.js";
 import { htmlNoNestedForm } from "./rules/correctness/html-no-nested-form.js";
 import { htmlNoNestedInteractive } from "./rules/correctness/html-no-nested-interactive.js";
+import { htmlXmlLangMismatch } from "./rules/a11y/html-xml-lang-mismatch.js";
 import { iframeHasTitle } from "./rules/a11y/iframe-has-title.js";
 import { iframeMissingSandbox } from "./rules/react-builtins/iframe-missing-sandbox.js";
+import { iframeTitleUnique } from "./rules/a11y/iframe-title-unique.js";
 import { imgRedundantAlt } from "./rules/a11y/img-redundant-alt.js";
 import { importMetadataExecutionRisk } from "./rules/security-scan/import-metadata-execution-risk.js";
 import { insecureCryptoRisk } from "./rules/security-scan/insecure-crypto-risk.js";
@@ -170,6 +174,7 @@ import { noAccessKey } from "./rules/a11y/no-access-key.js";
 import { noAdjustStateOnPropChange } from "./rules/state-and-effects/no-adjust-state-on-prop-change.js";
 import { noAllCapsBodyText } from "./rules/design/no-all-caps-body-text.js";
 import { noArbitraryPxFontSize } from "./rules/design/no-arbitrary-px-font-size.js";
+import { noAriaHiddenOnBody } from "./rules/a11y/no-aria-hidden-on-body.js";
 import { noAriaHiddenOnFocusable } from "./rules/a11y/no-aria-hidden-on-focusable.js";
 import { noAriaInvalidWithoutDescription } from "./rules/a11y/no-aria-invalid-without-description.js";
 import { noArithmeticOnOptionalChainedOperand } from "./rules/correctness/no-arithmetic-on-optional-chained-operand.js";
@@ -224,6 +229,7 @@ import { noDisabledZoom } from "./rules/design/no-disabled-zoom.js";
 import { noDistractingElements } from "./rules/a11y/no-distracting-elements.js";
 import { noDocumentStartViewTransition } from "./rules/view-transitions/no-document-start-view-transition.js";
 import { noDocumentWrite } from "./rules/js-performance/no-document-write.js";
+import { noDuplicateStaticIdReference } from "./rules/a11y/no-duplicate-static-id-reference.js";
 import { noDynamicImportPath } from "./rules/bundle-size/no-dynamic-import-path.js";
 import { noEagerNewInUseStateInitializer } from "./rules/performance/no-eager-new-in-use-state-initializer.js";
 import { noEaseInMotion } from "./rules/design/no-ease-in-motion.js";
@@ -232,6 +238,7 @@ import { noEffectEventHandler } from "./rules/state-and-effects/no-effect-event-
 import { noEffectEventInDeps } from "./rules/state-and-effects/no-effect-event-in-deps.js";
 import { noEffectWithFreshDeps } from "./rules/state-and-effects/no-effect-with-fresh-deps.js";
 import { noEffectWrapperDiscardsCallbackCleanupReturn } from "./rules/state-and-effects/no-effect-wrapper-discards-callback-cleanup-return.js";
+import { noEmptyCardShell } from "./rules/design/no-empty-card-shell.js";
 import { noEnterSubmitWithoutImeCompositionGuard } from "./rules/correctness/no-enter-submit-without-ime-composition-guard.js";
 import { noEval } from "./rules/security/no-eval.js";
 import { noEventHandler } from "./rules/state-and-effects/no-event-handler.js";
@@ -251,6 +258,7 @@ import { noFlatPageTypeScale } from "./rules/design/no-flat-page-type-scale.js";
 import { noFloatingThenInJsxHandler } from "./rules/correctness/no-floating-then-in-jsx-handler.js";
 import { noFlushSync } from "./rules/view-transitions/no-flush-sync.js";
 import { noFocusableContentInAriaHidden } from "./rules/a11y/no-focusable-content-in-aria-hidden.js";
+import { noFocusableContentInRoleText } from "./rules/a11y/no-focusable-content-in-role-text.js";
 import { noFullLodashImport } from "./rules/bundle-size/no-full-lodash-import.js";
 import { noFullViewportCenteredHero } from "./rules/design/no-full-viewport-centered-hero.js";
 import { noFullViewportWidth } from "./rules/design/no-full-viewport-width.js";
@@ -297,10 +305,12 @@ import { noManufacturedContrastCopy } from "./rules/design/no-manufactured-contr
 import { noManyBooleanProps } from "./rules/architecture/no-many-boolean-props.js";
 import { noMatchMediaInStateInitializer } from "./rules/performance/no-match-media-in-state-initializer.js";
 import { noMirrorPropEffect } from "./rules/state-and-effects/no-mirror-prop-effect.js";
+import { noMixedIconLibraries } from "./rules/design/no-mixed-icon-libraries.js";
 import { noMixedSrcsetDescriptors } from "./rules/correctness/no-mixed-srcset-descriptors.js";
 import { noMoment } from "./rules/bundle-size/no-moment.js";
 import { noMonotonousPageSpacing } from "./rules/design/no-monotonous-page-spacing.js";
 import { noMultiComp } from "./rules/react-builtins/no-multi-comp.js";
+import { noMultipleLabelsForControl } from "./rules/a11y/no-multiple-labels-for-control.js";
 import { noMultipleMainLandmarks } from "./rules/a11y/no-multiple-main-landmarks.js";
 import { noMultipleUnlabeledNavigationLandmarks } from "./rules/a11y/no-multiple-unlabeled-navigation-landmarks.js";
 import { noMutableInDeps } from "./rules/state-and-effects/no-mutable-in-deps.js";
@@ -329,10 +339,12 @@ import { noOverwideTextMeasure } from "./rules/design/no-overwide-text-measure.j
 import { noPassDataToParent } from "./rules/state-and-effects/no-pass-data-to-parent.js";
 import { noPassLiveStateToParent } from "./rules/state-and-effects/no-pass-live-state-to-parent.js";
 import { noPermanentWillChange } from "./rules/performance/no-permanent-will-change.js";
+import { noPillNavigationCount } from "./rules/design/no-pill-navigation-count.js";
 import { noPlaceholderOnlyField } from "./rules/a11y/no-placeholder-only-field.js";
 import { noPlaceholderPersonaCopy } from "./rules/design/no-placeholder-persona-copy.js";
 import { noPolymorphicChildren } from "./rules/correctness/no-polymorphic-children.js";
 import { noPredicateFunctionReferenceInBooleanPosition } from "./rules/correctness/no-predicate-function-reference-in-boolean-position.js";
+import { noPresentationRoleConflict } from "./rules/a11y/no-presentation-role-conflict.js";
 import { noPreventDefault } from "./rules/correctness/no-prevent-default.js";
 import { noPromiseThenSideEffectInEffectWithoutCatch } from "./rules/state-and-effects/no-promise-then-side-effect-in-effect-without-catch.js";
 import { noPropCallbackInEffect } from "./rules/state-and-effects/no-prop-callback-in-effect.js";
@@ -347,6 +359,7 @@ import { noReact19DeprecatedApis } from "./rules/architecture/no-react19-depreca
 import { noRedundantDisplayClass } from "./rules/design/no-redundant-display-class.js";
 import { noRedundantRoles } from "./rules/a11y/no-redundant-roles.js";
 import { noRedundantShouldComponentUpdate } from "./rules/react-builtins/no-redundant-should-component-update.js";
+import { noRedundantTitleTooltip } from "./rules/design/no-redundant-title-tooltip.js";
 import { noRefCallbackCleanupBeforeReact19 } from "./rules/correctness/no-ref-callback-cleanup-before-react-19.js";
 import { noRefCurrentInRender } from "./rules/state-and-effects/no-ref-current-in-render.js";
 import { noRenderInRender } from "./rules/architecture/no-render-in-render.js";
@@ -362,6 +375,7 @@ import { noResetAllStateOnPropChange } from "./rules/state-and-effects/no-reset-
 import { noScaleFromZero } from "./rules/performance/no-scale-from-zero.js";
 import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-code.js";
 import { noSelfUpdatingEffect } from "./rules/state-and-effects/no-self-updating-effect.js";
+import { noServerSideImageMap } from "./rules/a11y/no-server-side-image-map.js";
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
 import { noSetStateAfterAwaitInEffect } from "./rules/state-and-effects/no-set-state-after-await-in-effect.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
@@ -379,6 +393,7 @@ import { noStaticMotionConfigNever } from "./rules/a11y/no-static-motion-config-
 import { noStringFalseOnBooleanAttribute } from "./rules/react-builtins/no-string-false-on-boolean-attribute.js";
 import { noStringRefs } from "./rules/react-builtins/no-string-refs.js";
 import { noSvgCurrentcolorWithFillClass } from "./rules/design/no-svg-currentcolor-with-fill-class.js";
+import { noSymmetricTextButtonPadding } from "./rules/design/no-symmetric-text-button-padding.js";
 import { noSyncXhr } from "./rules/js-performance/no-sync-xhr.js";
 import { noTailwindLayoutTransition } from "./rules/design/no-tailwind-layout-transition.js";
 import { noThisInSfc } from "./rules/react-builtins/no-this-in-sfc.js";
@@ -407,6 +422,7 @@ import { noUnsafeJsonParse } from "./rules/correctness/no-unsafe-json-parse.js";
 import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-nested-components.js";
 import { noUnthrottledScrollMutation } from "./rules/performance/no-unthrottled-scroll-mutation.js";
 import { noUppercaseMonoLabel } from "./rules/design/no-uppercase-mono-label.js";
+import { noUppercaseTrackedNavigationLabel } from "./rules/design/no-uppercase-tracked-navigation-label.js";
 import { noUsememoSimpleExpression } from "./rules/performance/no-usememo-simple-expression.js";
 import { noWholeObjectDefaultLosingPerKeyDefaults } from "./rules/correctness/no-whole-object-default-losing-per-key-defaults.js";
 import { noWholeObjectDepWithMemberReads } from "./rules/state-and-effects/no-whole-object-dep-with-member-reads.js";
@@ -480,6 +496,7 @@ import { repositorySecretFile } from "./rules/security-scan/repository-secret-fi
 import { requestBodyMassAssignment } from "./rules/security-scan/request-body-mass-assignment.js";
 import { requireAutoplayVideoPoster } from "./rules/design/require-autoplay-video-poster.js";
 import { requireRenderReturn } from "./rules/react-builtins/require-render-return.js";
+import { requireScaleRevealTransformOrigin } from "./rules/design/require-scale-reveal-transform-origin.js";
 import { rerenderDeferReadsHook } from "./rules/state-and-effects/rerender-defer-reads-hook.js";
 import { rerenderDependencies } from "./rules/state-and-effects/rerender-dependencies.js";
 import { rerenderDerivedStateFromHook } from "./rules/performance/rerender-derived-state-from-hook.js";
@@ -692,6 +709,18 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(ariaActivedescendantHasTabindex.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/aria-braille-equivalent",
+    id: "aria-braille-equivalent",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...ariaBrailleEquivalent,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(ariaBrailleEquivalent.requires ?? [])])],
     },
   },
   {
@@ -1225,6 +1254,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/empty-table-header",
+    id: "empty-table-header",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...emptyTableHeader,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(emptyTableHeader.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/exhaustive-deps",
     id: "exhaustive-deps",
     source: "react-doctor",
@@ -1482,7 +1523,19 @@ export const reactDoctorRules = [
     rule: {
       ...htmlNoNestedInteractive,
       framework: "global",
-      category: "Bugs",
+      category: "Accessibility",
+    },
+  },
+  {
+    key: "react-doctor/html-xml-lang-mismatch",
+    id: "html-xml-lang-mismatch",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...htmlXmlLangMismatch,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(htmlXmlLangMismatch.requires ?? [])])],
     },
   },
   {
@@ -1507,6 +1560,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       requires: [...new Set<Capability>(["react", ...(iframeMissingSandbox.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/iframe-title-unique",
+    id: "iframe-title-unique",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...iframeTitleUnique,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(iframeTitleUnique.requires ?? [])])],
     },
   },
   {
@@ -2501,6 +2566,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-aria-hidden-on-body",
+    id: "no-aria-hidden-on-body",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...noAriaHiddenOnBody,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(noAriaHiddenOnBody.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-aria-hidden-on-focusable",
     id: "no-aria-hidden-on-focusable",
     source: "react-doctor",
@@ -3142,6 +3219,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-duplicate-static-id-reference",
+    id: "no-duplicate-static-id-reference",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...noDuplicateStaticIdReference,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(noDuplicateStaticIdReference.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-dynamic-import-path",
     id: "no-dynamic-import-path",
     source: "react-doctor",
@@ -3240,6 +3331,17 @@ export const reactDoctorRules = [
           ...(noEffectWrapperDiscardsCallbackCleanupReturn.requires ?? []),
         ]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-empty-card-shell",
+    id: "no-empty-card-shell",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noEmptyCardShell,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {
@@ -3457,6 +3559,20 @@ export const reactDoctorRules = [
       category: "Accessibility",
       requires: [
         ...new Set<Capability>(["react", ...(noFocusableContentInAriaHidden.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/no-focusable-content-in-role-text",
+    id: "no-focusable-content-in-role-text",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...noFocusableContentInRoleText,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(noFocusableContentInRoleText.requires ?? [])]),
       ],
     },
   },
@@ -3998,6 +4114,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-mixed-icon-libraries",
+    id: "no-mixed-icon-libraries",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noMixedIconLibraries,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-mixed-srcset-descriptors",
     id: "no-mixed-srcset-descriptors",
     source: "react-doctor",
@@ -4040,6 +4167,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set<Capability>(["react", ...(noMultiComp.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-multiple-labels-for-control",
+    id: "no-multiple-labels-for-control",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...noMultipleLabelsForControl,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(noMultipleLabelsForControl.requires ?? [])])],
     },
   },
   {
@@ -4378,6 +4517,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-pill-navigation-count",
+    id: "no-pill-navigation-count",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPillNavigationCount,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-placeholder-only-field",
     id: "no-placeholder-only-field",
     source: "react-doctor",
@@ -4420,6 +4570,18 @@ export const reactDoctorRules = [
       ...noPredicateFunctionReferenceInBooleanPosition,
       framework: "global",
       category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-presentation-role-conflict",
+    id: "no-presentation-role-conflict",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...noPresentationRoleConflict,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(noPresentationRoleConflict.requires ?? [])])],
     },
   },
   {
@@ -4587,6 +4749,17 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noRedundantShouldComponentUpdate.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-redundant-title-tooltip",
+    id: "no-redundant-title-tooltip",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRedundantTitleTooltip,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {
@@ -4759,6 +4932,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noSelfUpdatingEffect.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-server-side-image-map",
+    id: "no-server-side-image-map",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...noServerSideImageMap,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(noServerSideImageMap.requires ?? [])])],
     },
   },
   {
@@ -4969,6 +5154,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...noSvgCurrentcolorWithFillClass,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-symmetric-text-button-padding",
+    id: "no-symmetric-text-button-padding",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSymmetricTextButtonPadding,
       framework: "global",
       category: "Maintainability",
     },
@@ -5297,6 +5493,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...noUppercaseMonoLabel,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-uppercase-tracked-navigation-label",
+    id: "no-uppercase-tracked-navigation-label",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUppercaseTrackedNavigationLabel,
       framework: "global",
       category: "Maintainability",
     },
@@ -6149,6 +6356,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(requireRenderReturn.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/require-scale-reveal-transform-origin",
+    id: "require-scale-reveal-transform-origin",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...requireScaleRevealTransformOrigin,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {

@@ -105,14 +105,16 @@ const hasHidingClassName = (openingElement: EsTreeNodeOfType<"JSXOpeningElement"
 export const isFocusableJsxOpeningElement = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
   tagName: string,
+  includeNegativeTabIndex = false,
 ): boolean => {
   const tabIndexAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "tabIndex");
   const tabIndexValue = tabIndexAttribute ? parseJsxValue(tabIndexAttribute.value ?? null) : null;
-  if (tabIndexValue !== null && tabIndexValue < 0) return false;
+  if (tabIndexValue !== null && tabIndexValue < 0 && !includeNegativeTabIndex) return false;
   if (hasJsxPropIgnoreCase(openingElement.attributes, "hidden")) return false;
   if (hasStaticHidingInlineStyle(openingElement) || hasHidingClassName(openingElement))
     return false;
   return Boolean(
-    (tabIndexValue !== null && tabIndexValue >= 0) || isNativelyFocusable(tagName, openingElement),
+    (tabIndexValue !== null && (tabIndexValue >= 0 || includeNegativeTabIndex)) ||
+    isNativelyFocusable(tagName, openingElement),
   );
 };

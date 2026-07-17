@@ -15,7 +15,7 @@ export const objectHasAccessibleChild = (
 ): boolean => {
   for (const child of jsxElement.children) {
     if (isNodeOfType(child as EsTreeNode, "JSXText")) {
-      if ((child as EsTreeNodeOfType<"JSXText">).value.length > 0) return true;
+      if ((child as EsTreeNodeOfType<"JSXText">).value.trim().length > 0) return true;
       continue;
     }
     if (isNodeOfType(child as EsTreeNode, "JSXElement")) {

@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getIconLibraryFamily } from "../../utils/get-icon-library-family.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
@@ -70,33 +71,6 @@ const PLACEHOLDER_NAMEABLE_INPUT_TYPES: ReadonlySet<string> = new Set([
   "password",
   "number",
 ]);
-
-// Packages whose exports are pictographic icon components: a
-// self-closing `<Trash2 />` inside a button renders no text, so it
-// must not satisfy the "component child might render a label"
-// assumption the way an unknown component does.
-const ICON_PACKAGE_SOURCES: ReadonlyArray<string> = [
-  "lucide-react",
-  "lucide-react-native",
-  "react-icons",
-  "react-feather",
-  "phosphor-react",
-  "iconoir-react",
-  "react-bootstrap-icons",
-  "@heroicons/react",
-  "@tabler/icons-react",
-  "@phosphor-icons/react",
-  "@radix-ui/react-icons",
-  "@mui/icons-material",
-  "@ant-design/icons",
-  "@primer/octicons-react",
-  "@fortawesome/react-fontawesome",
-];
-
-const isIconPackageSource = (source: string): boolean =>
-  ICON_PACKAGE_SOURCES.some(
-    (packageName) => source === packageName || source.startsWith(`${packageName}/`),
-  );
 
 // Only Tailwind's `hidden` (display: none) qualifies: it removes the
 // input from the accessibility tree AND the tab order, so the only way
@@ -229,7 +203,11 @@ const isProgrammaticHiddenFileInput = (
 };
 
 const DEFAULT_IGNORE_ELEMENTS: ReadonlyArray<string> = ["link", "canvas"];
-const DEFAULT_LABELLING_PROPS: ReadonlyArray<string> = ["alt", "aria-label", "aria-labelledby"];
+const DEFAULT_LABELLING_PROPS: ReadonlySet<string> = new Set([
+  "alt",
+  "aria-label",
+  "aria-labelledby",
+]);
 const ID_ATTRIBUTE = "id";
 const HTML_FOR_ATTRIBUTE = "htmlFor";
 const LABEL_ELEMENT = "label";
@@ -286,14 +264,14 @@ const hasLabellingProp = (
   attributes: ReadonlyArray<EsTreeNode>,
   customAttributes: ReadonlyArray<string>,
 ): boolean => {
+  const customAttributeNames = new Set(customAttributes);
   for (const attribute of attributes) {
     if (isNodeOfType(attribute, "JSXSpreadAttribute")) return true;
     if (!isNodeOfType(attribute, "JSXAttribute")) continue;
     if (!isNodeOfType(attribute.name as EsTreeNode, "JSXIdentifier")) continue;
     const propName = getJsxAttributeName(attribute.name as EsTreeNodeOfType<"JSXIdentifier">);
     if (!propName) continue;
-    const isLabelling =
-      DEFAULT_LABELLING_PROPS.includes(propName) || customAttributes.includes(propName);
+    const isLabelling = DEFAULT_LABELLING_PROPS.has(propName) || customAttributeNames.has(propName);
     if (!isLabelling) continue;
     if (!attribute.value) return false; // present but valueless
     if (isNodeOfType(attribute.value, "Literal") && typeof attribute.value.value === "string") {
@@ -876,7 +854,7 @@ export const controlHasAssociatedLabel = defineRule({
     return {
       ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
         const source = node.source?.value;
-        if (typeof source !== "string" || !isIconPackageSource(source)) return;
+        if (typeof source !== "string" || !getIconLibraryFamily(source)) return;
         for (const specifier of node.specifiers ?? []) {
           if (!isNodeOfType(specifier.local as EsTreeNode, "Identifier")) continue;
           const localName = (specifier.local as EsTreeNodeOfType<"Identifier">).name;

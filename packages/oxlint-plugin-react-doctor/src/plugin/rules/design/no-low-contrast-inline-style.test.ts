@@ -95,6 +95,36 @@ describe("no-low-contrast-inline-style", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a dynamic backgroundColor overridden by a later static backgroundColor", () => {
+    const code = `const A = ({ surfaceColor }) => <span style={{ color: "#9ca3af", backgroundColor: surfaceColor, backgroundColor: "#fff", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a dynamic background overridden by a later static background", () => {
+    const code = `const A = ({ surface }) => <span style={{ color: "#9ca3af", background: surface, background: "#fff", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag an unknown font weight in the bold-large size band", () => {
+    const code = `const A = ({ fontWeight }) => <span style={{ color: "#808080", backgroundColor: "#fff", fontSize: 20, fontWeight }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags explicit regular text in the bold-large size band", () => {
+    const code = `const A = () => <span style={{ color: "#808080", backgroundColor: "#fff", fontSize: 20, fontWeight: "normal" }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still evaluates contrast when backgroundImage is explicitly none", () => {
+    const code = `const A = () => <span style={{ color: "#9ca3af", backgroundColor: "#fff", backgroundImage: "none", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag large + string `fontWeight: '700'` (Bugbot: string weight ignored)", () => {
     const code = `const A = () => <span style={{ color: "#808080", backgroundColor: "#fff", fontSize: 20, fontWeight: "700" }}>x</span>;`;
     const result = runRule(noLowContrastInlineStyle, code);

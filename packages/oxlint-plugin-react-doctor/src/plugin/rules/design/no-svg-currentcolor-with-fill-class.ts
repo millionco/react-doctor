@@ -1,8 +1,10 @@
+import { SVG_TAGS } from "../../constants/svg-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -46,6 +48,14 @@ export const noSvgCurrentcolorWithFillClass = defineRule({
     'Pick one source of truth: drop the `fill="currentColor"` attribute and keep the `fill-*` class, or use `fill-current` to inherit the text color. Having both means the class silently wins.',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+      if (
+        !isNodeOfType(node.name, "JSXIdentifier") ||
+        node.name.name === "a" ||
+        !SVG_TAGS.has(node.name.name)
+      ) {
+        return;
+      }
+
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
 

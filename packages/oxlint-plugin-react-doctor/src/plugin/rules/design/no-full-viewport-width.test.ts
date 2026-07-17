@@ -27,6 +27,12 @@ describe("no-full-viewport-width", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags hyphenated variants and important modifiers", () => {
+    const code = `const A = () => <div className="group-hover:w-screen max-sm:!min-w-screen" />;`;
+    const result = runRule(noFullViewportWidth, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag variant-prefixed `md:max-w-screen` (still a defensive cap)", () => {
     const code = `const A = () => <div className="md:max-w-screen" />;`;
     const result = runRule(noFullViewportWidth, code);

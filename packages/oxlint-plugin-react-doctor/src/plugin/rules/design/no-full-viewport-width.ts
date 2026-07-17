@@ -1,16 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
+import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// `w-screen`, `min-w-screen`, or arbitrary `w-[100vw]`, including behind a
-// variant prefix (`md:w-screen`) — the overflow happens at every breakpoint.
-// Mirrors the sibling `prefer-dvh-over-vh` pattern. `max-w-*` is excluded —
-// `max-width: 100vw` is a defensive cap, not the overflow footgun.
-const FULL_VIEWPORT_WIDTH_CLASS = /(?:^|\s)(?:\w+:)*(?:min-)?w-(?:screen|\[100vw\])(?=$|[\s])/;
+const FULL_VIEWPORT_WIDTH_CLASS = /^(?:min-)?w-(?:screen|\[100vw\])$/;
 const WIDTH_KEYS = new Set(["width", "minWidth"]);
 
 const MESSAGE =
@@ -39,7 +36,9 @@ export const noFullViewportWidth = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
-      if (FULL_VIEWPORT_WIDTH_CLASS.test(classNameValue)) {
+      if (
+        getClassNameTokens(classNameValue).some((token) => FULL_VIEWPORT_WIDTH_CLASS.test(token))
+      ) {
         context.report({ node, message: MESSAGE });
       }
     },

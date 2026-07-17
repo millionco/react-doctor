@@ -29,6 +29,12 @@ describe("no-deprecated-tailwind-class", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an important deprecated class behind a hyphenated variant", () => {
+    const code = `const A = () => <div className="group-hover:!flex-shrink-0" />;`;
+    const result = runRule(noDeprecatedTailwindClass, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag the canonical replacements", () => {
     const code = `const A = () => <div className="bg-linear-to-r shrink-0 grow text-ellipsis" />;`;
     const result = runRule(noDeprecatedTailwindClass, code);

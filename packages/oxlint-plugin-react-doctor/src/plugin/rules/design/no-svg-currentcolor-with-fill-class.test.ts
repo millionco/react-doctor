@@ -15,6 +15,12 @@ describe("no-svg-currentcolor-with-fill-class", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags braced currentColor string literals", () => {
+    const code = `const A = () => <svg fill={'currentColor'} className="fill-zinc-400" />;`;
+    const result = runRule(noSvgCurrentcolorWithFillClass, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag stroke-width utilities like `stroke-2` (Bugbot: width is not color)", () => {
     const code = `const A = () => <svg stroke="currentColor" className="stroke-2" />;`;
     const result = runRule(noSvgCurrentcolorWithFillClass, code);
@@ -23,6 +29,17 @@ describe("no-svg-currentcolor-with-fill-class", () => {
 
   it("does NOT flag arbitrary stroke width `stroke-[1.5]`", () => {
     const code = `const A = () => <svg stroke="currentColor" className="stroke-[1.5]" />;`;
+    const result = runRule(noSvgCurrentcolorWithFillClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag non-color fill and stroke utilities", () => {
+    const code = `const A = () => (
+      <>
+        <svg fill="currentColor" className="fill-none fill-rule-evenodd fill-opacity-50" />
+        <svg stroke="currentColor" className="stroke-none stroke-linecap-round stroke-linejoin-round stroke-opacity-50" />
+      </>
+    );`;
     const result = runRule(noSvgCurrentcolorWithFillClass, code);
     expect(result.diagnostics).toHaveLength(0);
   });

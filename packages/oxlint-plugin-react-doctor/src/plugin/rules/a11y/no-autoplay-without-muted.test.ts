@@ -21,6 +21,12 @@ describe("no-autoplay-without-muted", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it('flags quoted `autoPlay="false"` without muted', () => {
+    const code = `const A = () => <video autoPlay="false" src="x.mp4" />;`;
+    const result = runRule(noAutoplayWithoutMuted, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag `<video autoPlay muted>`", () => {
     const code = `const A = () => <video autoPlay muted loop playsInline src="hero.mp4" />;`;
     const result = runRule(noAutoplayWithoutMuted, code);
@@ -29,6 +35,12 @@ describe("no-autoplay-without-muted", () => {
 
   it("does NOT flag `<video autoPlay muted={true}>`", () => {
     const code = `const A = () => <video autoPlay muted={true} src="hero.mp4" />;`;
+    const result = runRule(noAutoplayWithoutMuted, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it('does NOT flag quoted `muted="false"` because the attribute is enabled', () => {
+    const code = `const A = () => <video autoPlay muted="false" src="hero.mp4" />;`;
     const result = runRule(noAutoplayWithoutMuted, code);
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -8,16 +8,14 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 const MESSAGE =
   "Autoplaying media with sound is hostile to your users (and browsers block it). Add `muted` (with `playsInline`) to the autoplaying `<video>` / `<audio>`, or drop `autoPlay`.";
 
-// Resolve a boolean JSX attribute to its static value, or null when it's
-// dynamic: a bare attr (`autoPlay`) is true; `={true}`/`="true"` is true;
-// `={false}`/`="false"` is false; anything else (`={shouldPlay}`) is null.
 const resolveStaticBoolean = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean | null => {
   const value = attribute.value as EsTreeNode | null;
   if (!value) return true;
   const literal = isNodeOfType(value, "JSXExpressionContainer") ? value.expression : value;
   if (isNodeOfType(literal, "Literal")) {
-    if (literal.value === true || literal.value === "true") return true;
-    if (literal.value === false || literal.value === "false") return false;
+    if (typeof literal.value === "string") return true;
+    if (literal.value === true) return true;
+    if (literal.value === false) return false;
   }
   return null;
 };

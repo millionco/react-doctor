@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
@@ -6,10 +7,7 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// `h-screen`, `min-h-screen`, or arbitrary `h-[100vh]` — height only
-// (`w-screen` is handled by `no-full-viewport-width`). `max-h-*` is excluded:
-// `max-height: 100vh` is a common, valid cap (e.g. a scrollable modal).
-const FULL_VIEWPORT_HEIGHT_CLASS = /(?:^|\s)(?:\w+:)*(?:min-)?h-(?:screen|\[100vh\])(?=$|[\s])/;
+const FULL_VIEWPORT_HEIGHT_CLASS = /^(?:min-)?h-(?:screen|\[100vh\])$/;
 const HEIGHT_KEYS = new Set(["height", "minHeight"]);
 
 const MESSAGE =
@@ -39,7 +37,9 @@ export const preferDvhOverVh = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
-      if (FULL_VIEWPORT_HEIGHT_CLASS.test(classNameValue)) {
+      if (
+        getClassNameTokens(classNameValue).some((token) => FULL_VIEWPORT_HEIGHT_CLASS.test(token))
+      ) {
         context.report({ node, message: MESSAGE });
       }
     },

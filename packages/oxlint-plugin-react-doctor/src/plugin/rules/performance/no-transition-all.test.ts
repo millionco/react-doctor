@@ -28,6 +28,12 @@ describe("no-transition-all", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags important `transition-all` utilities", () => {
+    const code = `const A = () => <div className="md:!transition-all" />;`;
+    const result = runRule(noTransitionAll, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag a compound token containing `transition-all` (Bugbot: substring match)", () => {
     const code = `const A = () => <div className="transition-all-custom" />;`;
     const result = runRule(noTransitionAll, code);

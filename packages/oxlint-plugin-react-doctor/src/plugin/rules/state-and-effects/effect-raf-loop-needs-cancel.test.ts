@@ -612,6 +612,28 @@ describe("effect-raf-loop-needs-cancel", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("follows wrapped helpers and iterator callees that start RAF loops", () => {
+    const wrappedHelper = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+         const loop = () => requestAnimationFrame(loop);
+         const start = () => requestAnimationFrame(loop);
+         (start as typeof start)();
+       }, []);`,
+    );
+    const wrappedIterator = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+         const loop = () => requestAnimationFrame(loop);
+         ([null].forEach as typeof Array.prototype.forEach)(
+           () => requestAnimationFrame(loop),
+         );
+       }, []);`,
+    );
+    expect(wrappedHelper.diagnostics).toHaveLength(1);
+    expect(wrappedIterator.diagnostics).toHaveLength(1);
+  });
+
   it("tracks static computed animation-frame lifecycle methods", () => {
     const acquireOnly = runRule(
       effectRafLoopNeedsCancel,

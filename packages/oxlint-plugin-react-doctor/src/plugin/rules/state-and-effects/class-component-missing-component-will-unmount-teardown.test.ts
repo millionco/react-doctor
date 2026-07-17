@@ -737,6 +737,44 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("follows wrapped mount helpers, aliases, and iterator callees", () => {
+    const wrappedHelper = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class C extends React.Component {
+         componentDidMount() {
+           const attach = () => window.addEventListener("resize", this.onResize);
+           (attach as typeof attach)();
+         }
+         render() { return null; }
+       }`,
+    );
+    const wrappedAlias = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class C extends React.Component {
+         componentDidMount() {
+           const attach = () => window.addEventListener("resize", this.onResize);
+           const alias = attach as typeof attach;
+           alias();
+         }
+         render() { return null; }
+       }`,
+    );
+    const wrappedIterator = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class C extends React.Component {
+         componentDidMount() {
+           ([window].forEach as typeof Array.prototype.forEach)(
+             (target) => target.addEventListener("resize", this.onResize),
+           );
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(wrappedHelper.diagnostics).toHaveLength(1);
+    expect(wrappedAlias.diagnostics).toHaveLength(1);
+    expect(wrappedIterator.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a mount-local helper that is only stored for later, never invoked at mount", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

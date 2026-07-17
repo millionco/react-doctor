@@ -246,6 +246,51 @@ describe("effect-observer-needs-disconnect", () => {
     expect(nestedReleaseBeforeAcquire.diagnostics).toHaveLength(1);
   });
 
+  it("follows wrapped helper and synchronous callback entry points", () => {
+    const wrappedHelperBeforeRelease = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         const start = () => observer.observe(target);
+         (start as typeof start)();
+         observer.disconnect();
+       }, []);`,
+    );
+    const releaseBeforeWrappedHelper = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         const start = () => observer.observe(target);
+         observer.disconnect();
+         (start as typeof start)();
+       }, []);`,
+    );
+    const wrappedIteratorBeforeRelease = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         ([target].forEach as typeof Array.prototype.forEach)(
+           (currentTarget) => observer.observe(currentTarget),
+         );
+         observer.disconnect();
+       }, []);`,
+    );
+    const wrappedCallbackBeforeRelease = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         [target].forEach(
+           ((currentTarget) => observer.observe(currentTarget)) as (target: Element) => void,
+         );
+         observer.disconnect();
+       }, []);`,
+    );
+    expect(wrappedHelperBeforeRelease.diagnostics).toHaveLength(0);
+    expect(releaseBeforeWrappedHelper.diagnostics).toHaveLength(1);
+    expect(wrappedIteratorBeforeRelease.diagnostics).toHaveLength(0);
+    expect(wrappedCallbackBeforeRelease.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag when every active observation is released after restarting", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,

@@ -702,6 +702,216 @@ export const DevServer = ({ app }) => {
   });
 });
 
+describe("effect-needs-cleanup retained disposer refs", () => {
+  it.each([
+    {
+      name: "98wDqG6 direct unmount cleanup",
+      source: `import { useCallback, useEffect, useRef } from "react";
+export const useMouseDrag = () => {
+  const dragCleanupRef = useRef(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+  const handleMouseDown = useCallback(() => {
+    dragCleanupRef.current?.();
+    const handleMove = () => undefined;
+    const handleUp = () => dragCleanupRef.current?.();
+    dragCleanupRef.current = () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      dragCleanupRef.current = null;
+    };
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+  }, []);
+  return { handleMouseDown };
+};`,
+    },
+    {
+      name: "3eK8hRx branch-specific disposer",
+      source: `import { useCallback, useEffect, useRef } from "react";
+export const useDrag = () => {
+  const detachRef = useRef(null);
+  useEffect(() => () => detachRef.current?.(), []);
+  const beginDrag = useCallback((pointer) => {
+    const handleMove = () => undefined;
+    const handleEnd = () => detachRef.current?.();
+    if (pointer) {
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleEnd);
+      detachRef.current = () => {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleEnd);
+      };
+    } else {
+      window.addEventListener("mousemove", handleMove);
+      window.addEventListener("mouseup", handleEnd);
+      detachRef.current = () => {
+        window.removeEventListener("mousemove", handleMove);
+        window.removeEventListener("mouseup", handleEnd);
+      };
+    }
+  }, []);
+  return { beginDrag };
+};`,
+    },
+    {
+      name: "qpcGDXC named disposer",
+      source: `import { useCallback, useEffect, useRef } from "react";
+export const useMouseDrag = () => {
+  const cleanupRef = useRef(null);
+  useEffect(() => () => cleanupRef.current?.(), []);
+  const handleMouseDown = useCallback(() => {
+    function handleMove() {}
+    function cleanup() {
+      window.removeEventListener("mousemove", handleMove);
+      cleanupRef.current = null;
+    }
+    cleanupRef.current = cleanup;
+    window.addEventListener("mousemove", handleMove);
+  }, []);
+  return { handleMouseDown };
+};`,
+    },
+    {
+      name: "EtLZbea callback-ref disposer with effect fallback",
+      source: `import { useCallback, useEffect, useRef } from "react";
+export const useWheelTarget = () => {
+  const detachRef = useRef(null);
+  const buttonRef = useCallback((node) => {
+    detachRef.current?.();
+    detachRef.current = null;
+    if (!node) return;
+    const handleWheel = () => undefined;
+    node.addEventListener("wheel", handleWheel);
+    detachRef.current = () => node.removeEventListener("wheel", handleWheel);
+  }, []);
+  useEffect(() => () => detachRef.current?.(), []);
+  return { buttonRef };
+};`,
+    },
+    {
+      name: "nnYUFLa returned callback ref cleanup",
+      source: `import { useCallback, useRef } from "react";
+export const useViewport = () => {
+  const detachRef = useRef(null);
+  const setViewportRef = useCallback((node) => {
+    detachRef.current?.();
+    detachRef.current = null;
+    if (!node) return;
+    const onWheel = () => undefined;
+    const onMove = () => undefined;
+    node.addEventListener("wheel", onWheel);
+    node.addEventListener("pointermove", onMove);
+    detachRef.current = () => {
+      node.removeEventListener("wheel", onWheel);
+      node.removeEventListener("pointermove", onMove);
+    };
+  }, []);
+  return { setViewportRef };
+};`,
+    },
+    {
+      name: "fy5ENpL callback ref forwarded through a prop",
+      source: `import { useCallback, useRef } from "react";
+const Viewport = ({ buttonRef }) => <button ref={buttonRef} />;
+const usePhotoZoom = () => {
+  const detachRef = useRef(null);
+  const setViewportNode = useCallback((node) => {
+    detachRef.current?.();
+    detachRef.current = null;
+    if (!node) return;
+    const handleWheel = () => undefined;
+    node.addEventListener("wheel", handleWheel);
+    detachRef.current = () => node.removeEventListener("wheel", handleWheel);
+  }, []);
+  return { setViewportNode };
+};
+export const Gallery = () => {
+  const zoom = usePhotoZoom();
+  return <Viewport buttonRef={zoom.setViewportNode} />;
+};`,
+    },
+    {
+      name: "5ggdJBZ stable callback returned as cleanup",
+      source: `import { useCallback, useEffect, useRef } from "react";
+export const useWindowPan = () => {
+  const detachRef = useRef(null);
+  const detachWindowListeners = useCallback(() => {
+    detachRef.current?.();
+    detachRef.current = null;
+  }, []);
+  const attachWindowListeners = useCallback(() => {
+    const handleMove = () => undefined;
+    const handleEnd = () => detachWindowListeners();
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleEnd);
+    detachRef.current = () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleEnd);
+    };
+  }, [detachWindowListeners]);
+  useEffect(() => detachWindowListeners, [detachWindowListeners]);
+  return { attachWindowListeners };
+};`,
+    },
+  ])("accepts $name", ({ source }) => {
+    const result = runRule(effectNeedsCleanup, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "cleanup effect calls a different ref",
+      cleanup: `useEffect(() => () => otherRef.current?.(), []);`,
+      registration: `cleanupRef.current = () => window.removeEventListener("mousemove", handleMove);
+    window.addEventListener("mousemove", handleMove);`,
+    },
+    {
+      name: "stored disposer removes a different handler",
+      cleanup: `useEffect(() => () => cleanupRef.current?.(), []);`,
+      registration: `cleanupRef.current = () => window.removeEventListener("mousemove", otherHandler);
+    window.addEventListener("mousemove", handleMove);`,
+    },
+    {
+      name: "disposer storage is conditional",
+      cleanup: `useEffect(() => () => cleanupRef.current?.(), []);`,
+      registration: `if (enabled) cleanupRef.current = () => window.removeEventListener("mousemove", handleMove);
+    window.addEventListener("mousemove", handleMove);`,
+    },
+    {
+      name: "cleanup ref is overwritten",
+      cleanup: `useEffect(() => () => cleanupRef.current?.(), []);`,
+      registration: `cleanupRef.current = () => window.removeEventListener("mousemove", handleMove);
+    window.addEventListener("mousemove", handleMove);
+    cleanupRef.current = null;`,
+    },
+    {
+      name: "cleanup ref is conditionally overwritten",
+      cleanup: `useEffect(() => () => cleanupRef.current?.(), []);`,
+      registration: `cleanupRef.current = () => window.removeEventListener("mousemove", handleMove);
+    window.addEventListener("mousemove", handleMove);
+    if (enabled) cleanupRef.current = null;`,
+    },
+  ])("reports when $name", ({ cleanup, registration }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const useMouseDrag = ({ enabled, otherHandler }) => {
+  const cleanupRef = useRef(null);
+  const otherRef = useRef(null);
+  ${cleanup}
+  const handleMouseDown = useCallback(() => {
+    const handleMove = () => undefined;
+    ${registration}
+  }, [enabled, otherHandler]);
+  return { handleMouseDown };
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
 describe("effect-needs-cleanup self-releasing gesture listeners", () => {
   it("accepts the react-bnb mouseup-owned release protocol", () => {
     const result = runRule(

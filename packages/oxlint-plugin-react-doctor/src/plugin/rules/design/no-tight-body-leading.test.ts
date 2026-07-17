@@ -65,6 +65,14 @@ describe("no-tight-body-leading", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat responsive tight leading as always active", () => {
+    const result = runRule(
+      noTightBodyLeading,
+      `const Example = () => <p className="lg:leading-tight">${LONG_TEXT}</p>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag short labels or headings", () => {
     const result = runRule(
       noTightBodyLeading,

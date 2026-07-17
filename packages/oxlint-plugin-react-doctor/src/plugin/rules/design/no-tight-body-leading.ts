@@ -4,8 +4,8 @@ import {
   TIGHT_LINE_HEIGHT_RATIO,
 } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
+import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -56,7 +56,9 @@ export const noTightBodyLeading = defineRule({
       const classNameValue = getStringFromClassNameAttr(openingElement);
       if (
         classNameValue &&
-        getClassNameTokens(classNameValue).some((token) => TIGHT_LEADING_CLASS_NAMES.has(token))
+        getUnvariantClassNameTokens(classNameValue).some((token) =>
+          TIGHT_LEADING_CLASS_NAMES.has(token),
+        )
       ) {
         context.report({
           node: openingElement,

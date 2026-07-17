@@ -42,4 +42,12 @@ describe("no-all-caps-body-text", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not treat responsive uppercase utilities as always active", () => {
+    const result = runRule(
+      noAllCapsBodyText,
+      `const Example = () => <p className="md:uppercase">This paragraph contains enough readable copy to remain sentence case at the base breakpoint.</p>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

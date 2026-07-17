@@ -1,7 +1,7 @@
 import { LONG_BODY_TEXT_MIN_CHARACTERS } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
+import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -16,7 +16,9 @@ const LOWERCASE_LETTER_PATTERN = /\p{Ll}/u;
 
 const hasUppercaseStyle = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   const classNameValue = getStringFromClassNameAttr(node);
-  if (classNameValue && getClassNameTokens(classNameValue).includes("uppercase")) return true;
+  if (classNameValue && getUnvariantClassNameTokens(classNameValue).includes("uppercase")) {
+    return true;
+  }
   for (const attribute of node.attributes ?? []) {
     if (!isNodeOfType(attribute, "JSXAttribute")) continue;
     const styleExpression = getInlineStyleExpression(attribute);

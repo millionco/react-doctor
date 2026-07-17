@@ -227,9 +227,17 @@ const findStorageHelperSinks = (functionNode: EsTreeNode): readonly StorageHelpe
     storageHelperSinkCache.set(functionNode, []);
     return [];
   }
-  const parameterNames = functionNode.params.map((parameter) =>
-    isNodeOfType(parameter, "Identifier") ? parameter.name : null,
-  );
+  const parameterNames = functionNode.params.map((parameter) => {
+    const strippedParameter = stripParenExpression(parameter);
+    if (isNodeOfType(strippedParameter, "Identifier")) return strippedParameter.name;
+    if (
+      isNodeOfType(strippedParameter, "AssignmentPattern") &&
+      isNodeOfType(strippedParameter.left, "Identifier")
+    ) {
+      return strippedParameter.left.name;
+    }
+    return null;
+  });
   const helperSinks: StorageHelperSink[] = [];
   walkAst(functionNode.body, (child) => {
     if (child !== functionNode.body && isFunctionLike(child)) return false;
@@ -265,7 +273,7 @@ export const authTokenInWebStorage = defineRule({
   create: skipNonProductionFiles((context) => ({
     // `localStorage.setItem("authToken", t)`
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const callee = node.callee;
+      const callee = stripParenExpression(node.callee);
       const keyArguments: EsTreeNode[] = [];
       if (
         isNodeOfType(callee, "MemberExpression") &&

@@ -293,6 +293,33 @@ describe("security/auth-token-in-web-storage — regressions", () => {
     expect(diagnostics).toHaveLength(1);
   });
 
+  it("flags credential arguments forwarded through default parameters", () => {
+    const { diagnostics, parseErrors } = runRule(
+      authTokenInWebStorage,
+      `const persist = (key = "cache", value = "") => {
+        localStorage.setItem(key, value);
+      };
+      persist("authToken", token);`,
+    );
+
+    expect(parseErrors).toEqual([]);
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("flags credential arguments passed to a TypeScript-wrapped helper", () => {
+    const { diagnostics, parseErrors } = runRule(
+      authTokenInWebStorage,
+      `const persist = (key: string, value: string) => {
+        sessionStorage.setItem(key, value);
+      };
+      (persist as (key: string, value: string) => void)("accessToken", token);`,
+      { filename: "storage.ts" },
+    );
+
+    expect(parseErrors).toEqual([]);
+    expect(diagnostics).toHaveLength(1);
+  });
+
   it("flags a storage factory with a void nullish return branch", () => {
     const { diagnostics } = runRule(
       authTokenInWebStorage,

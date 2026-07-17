@@ -184,7 +184,7 @@ const findCallResultExpression = (call: EsTreeNode): EsTreeNode => {
 };
 
 const findBoundCallResult = (call: EsTreeNode): EsTreeNode | null => {
-  const resultExpression = findCallResultExpression(call);
+  const resultExpression = analyzeContainingExpression(call).expressionRoot;
   const consumer = resultExpression.parent;
   if (!consumer) return null;
   if (
@@ -403,7 +403,8 @@ const moduleDisposesEveryReturnedResult = (
       continue;
     }
     didFindCall = true;
-    const resultExpression = findBoundCallResult(child) ?? findCallResultExpression(child);
+    const resultExpression =
+      findBoundCallResult(child) ?? analyzeContainingExpression(child).expressionRoot;
     let didDisposeResult = false;
     const executionBoundary = context.cfg.enclosingFunction(child);
     const resultCandidate = stripParenExpression(resultExpression);

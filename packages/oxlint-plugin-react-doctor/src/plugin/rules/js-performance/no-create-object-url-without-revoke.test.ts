@@ -360,6 +360,20 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("correlates helper results through call-site value-flow wrappers", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const renderPreview = (blob) => URL.createObjectURL(blob);
+       const cachePreview = (blob, id) => {
+         previewCache.set(id, blob && renderPreview(blob));
+         const url = blob ? renderPreview(blob) : null;
+         if (url) URL.revokeObjectURL(url);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet for a truthy result guard inside the helper call's loop iteration", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

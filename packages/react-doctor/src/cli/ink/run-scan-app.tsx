@@ -491,7 +491,7 @@ const runMultiProjectScan = async (
 };
 
 export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResult> => {
-  const scanTarget = await resolveScanTarget(input.directory);
+  const scanTarget = await resolveScanTarget(input.directory, { allowAmbiguous: true });
   const rootDirectory = scanTarget.resolvedDirectory;
   const deadlineEpochMs =
     input.options?.deadlineEpochMs ??

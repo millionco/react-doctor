@@ -161,6 +161,7 @@ export const ProjectSelect = ({ packages, rootDirectory, onSubmit }: ProjectSele
       return;
     }
     if (input === "a") {
+      if (matches.length === 0) return;
       setChecked((current) =>
         matches.every((match) => current.has(match.workspacePackage.directory))
           ? new Set()

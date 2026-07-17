@@ -184,6 +184,9 @@ describe("runScanApp", () => {
       skipPrompts: true,
     });
 
+    expect(resolveScanTarget).toHaveBeenCalledWith(rootDirectory, {
+      allowAmbiguous: true,
+    });
     expect(resolveScanTarget).toHaveBeenCalledWith(requestedWebDirectory, {
       allowAmbiguous: true,
     });

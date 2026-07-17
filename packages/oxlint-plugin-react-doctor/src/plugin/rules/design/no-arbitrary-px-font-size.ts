@@ -1,13 +1,11 @@
 import { ROOT_FONT_SIZE_PX } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// `text-[13px]` / `text-[13.5px]`, optionally with a `/line-height` suffix
-// (`text-[13px]/5`). Only `text-[...]` — `px` stays correct for `border-*` /
-// `outline-*`, which use pixels natively.
-const ARBITRARY_PX_FONT_SIZE = /(?:^|\s)(?:\w+:)*text-\[(\d+(?:\.\d+)?)px\]/g;
+const ARBITRARY_PX_FONT_SIZE = /^text-\[(\d+(?:\.\d+)?)px\](?:\/.+)?$/;
 
 export const noArbitraryPxFontSize = defineRule({
   id: "no-arbitrary-px-font-size",
@@ -21,7 +19,9 @@ export const noArbitraryPxFontSize = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
-      for (const match of classNameValue.matchAll(ARBITRARY_PX_FONT_SIZE)) {
+      for (const token of getClassNameTokens(classNameValue)) {
+        const match = token.match(ARBITRARY_PX_FONT_SIZE);
+        if (!match) continue;
         const pixels = parseFloat(match[1]);
         const rem = pixels / ROOT_FONT_SIZE_PX;
         context.report({

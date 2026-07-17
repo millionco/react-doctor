@@ -15,6 +15,12 @@ describe("prefer-dvh-over-vh", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags `h-screen` behind a hyphenated variant", () => {
+    const code = `const A = () => <div className="group-hover:h-screen" />;`;
+    const result = runRule(preferDvhOverVh, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags arbitrary `h-[100vh]`", () => {
     const code = `const A = () => <div className="h-[100vh]" />;`;
     const result = runRule(preferDvhOverVh, code);

@@ -1,11 +1,24 @@
-// Split a `className` string into its whitespace-separated classes, each
-// reduced to its base utility — the segment after any variant prefixes
-// (`hover:`, `md:`, `group-data-open:`). So `md:hover:transition-all` → the
-// base `transition-all`, while `transition-all-custom` stays distinct. This is
-// the token-accurate way to test for a specific Tailwind utility (vs a regex
-// that can match a substring inside a larger class name).
 export const getClassNameTokens = (classNameValue: string): string[] =>
   classNameValue
     .split(/\s+/)
     .filter((token) => token.length > 0)
-    .map((token) => token.split(":").pop() ?? token);
+    .map((token) => {
+      let arbitraryValueDepth = 0;
+      let variantSeparatorIndex = -1;
+
+      for (let characterIndex = 0; characterIndex < token.length; characterIndex += 1) {
+        const character = token[characterIndex];
+        const isEscaped = token[characterIndex - 1] === "\\";
+        if (isEscaped) continue;
+        if (character === "[") arbitraryValueDepth += 1;
+        if (character === "]") arbitraryValueDepth = Math.max(0, arbitraryValueDepth - 1);
+        if (character === ":" && arbitraryValueDepth === 0) {
+          variantSeparatorIndex = characterIndex;
+        }
+      }
+
+      let utility = token.slice(variantSeparatorIndex + 1);
+      if (utility.startsWith("!")) utility = utility.slice(1);
+      if (utility.endsWith("!")) utility = utility.slice(0, -1);
+      return utility;
+    });

@@ -22,6 +22,12 @@ describe("no-arbitrary-px-font-size", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a hyphenated variant with an important modifier", () => {
+    const code = `const A = () => <p className="max-lg:!text-[13px]">x</p>;`;
+    const result = runRule(noArbitraryPxFontSize, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag `text-[0.8125rem]`", () => {
     const code = `const A = () => <p className="text-[0.8125rem]">x</p>;`;
     const result = runRule(noArbitraryPxFontSize, code);

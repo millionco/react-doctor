@@ -10,6 +10,16 @@ import { isNodeOfType } from "./is-node-of-type.js";
 // bailout, so the jsx-no-new-*-as-prop premise does not hold there.
 const MEMO_CALLEE_NAMES: ReadonlySet<string> = new Set(["memo", "React.memo"]);
 
+// `shallowEqual` still compares each prop with Object.is, so a fresh
+// reference per render defeats it exactly like the default comparator;
+// `memo(Component, undefined)` falls back to the default comparator.
+const isIdentitySensitiveComparator = (comparatorNode: EsTreeNode): boolean => {
+  if (isNodeOfType(comparatorNode, "Identifier")) {
+    return comparatorNode.name === "shallowEqual" || comparatorNode.name === "undefined";
+  }
+  return flattenCalleeName(comparatorNode)?.endsWith(".shallowEqual") ?? false;
+};
+
 export const hasCustomMemoComparator = (openingName: EsTreeNode | null): boolean => {
   if (!openingName || !isNodeOfType(openingName, "JSXIdentifier")) return false;
   const binding = findVariableInitializer(openingName, openingName.name);
@@ -18,5 +28,7 @@ export const hasCustomMemoComparator = (openingName: EsTreeNode | null): boolean
   if (!isNodeOfType(initializer, "CallExpression")) return false;
   const calleeName = flattenCalleeName(initializer.callee as EsTreeNode);
   if (calleeName === null || !MEMO_CALLEE_NAMES.has(calleeName)) return false;
-  return (initializer.arguments ?? []).length >= 2;
+  const comparatorNode = (initializer.arguments ?? [])[1];
+  if (!comparatorNode) return false;
+  return !isIdentitySensitiveComparator(comparatorNode as EsTreeNode);
 };

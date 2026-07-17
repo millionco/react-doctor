@@ -85,6 +85,23 @@ describe("react-builtins/jsx-no-new-object-as-prop — regressions", () => {
     );
   });
 
+  it("still flags a memo consumer using shallowEqual (identity-sensitive comparator)", () => {
+    expectFail(
+      `import { memo } from "react";
+      import { shallowEqual } from "react-redux";
+      const Item = memo((props) => props.children, shallowEqual);
+      const Foo = ({ base }) => <Item foo={{ ...base }} />;`,
+    );
+  });
+
+  it("still flags a memo consumer with an explicit undefined comparator", () => {
+    expectFail(
+      `import { memo } from "react";
+      const Item = memo((props) => props.children, undefined);
+      const Foo = ({ base }) => <Item foo={{ ...base }} />;`,
+    );
+  });
+
   it("still flags a memo consumer without a comparator", () => {
     expectFail(memoised(`const Foo = ({ base }) => <Item foo={{ ...base }} />;`));
   });

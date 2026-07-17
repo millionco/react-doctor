@@ -89,6 +89,23 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag an observer released inside a reduce callback", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new IntersectionObserver((entries, currentObserver) => {
+           entries.reduce((didDisconnect, entry) => {
+             if (entry.isIntersecting) currentObserver.disconnect();
+             return didDisconnect || entry.isIntersecting;
+           }, false);
+         });
+         observer.observe(node);
+       }, []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag an observer created at module scope", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,

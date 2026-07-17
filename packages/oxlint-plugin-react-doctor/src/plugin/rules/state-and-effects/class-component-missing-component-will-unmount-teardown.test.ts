@@ -163,6 +163,29 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("recognizes quoted and computed lifecycle method names", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class QuotedCleanup extends React.Component {
+         "componentDidMount"() {
+           window.addEventListener("resize", this.handleResize);
+         }
+         ["componentWillUnmount"]() {
+           window.removeEventListener("resize", this.handleResize);
+         }
+         render() { return null; }
+       }
+       class ComputedMount extends React.Component {
+         ["componentDidMount"] = () => {
+           window.addEventListener("scroll", this.handleScroll);
+         };
+         render() { return null; }
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag when the class uses disposeOnUnmount", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
@@ -588,6 +611,18 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
          show = () => this.reveal();
          reveal = () => this.setState({ visible: true });
          componentDidMount() { setTimeout(() => this.show(), 3000); }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a setTimeout bound to an instance method that sets state", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Banner extends React.Component {
+         tick() { this.setState({ visible: true }); }
+         componentDidMount() { setTimeout(this.tick.bind(this), 3000); }
          render() { return null; }
        }`,
     );

@@ -3,6 +3,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { defineRule } from "../../utils/define-rule.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -69,6 +70,13 @@ const getTimerCalleeName = (node: EsTreeNode): string | null => {
   return null;
 };
 
+const getClassMemberName = (member: EsTreeNode): string | null => {
+  if (isNodeOfType(member, "MethodDefinition") && member.kind === "constructor") {
+    return "constructor";
+  }
+  return getStaticPropertyKeyName(member, { allowComputedString: true });
+};
+
 // A `setTimeout` is a hazard only when its callback actually mutates the
 // component — `this.setState(...)`, `runInAction(...)`, or any direct
 // `this.<action>(...)` call. A one-shot field write (`this.x = true`) or a
@@ -83,9 +91,7 @@ const classMemberFunction = (
     if (
       (isNodeOfType(candidate, "MethodDefinition") ||
         isNodeOfType(candidate, "PropertyDefinition")) &&
-      !candidate.computed &&
-      isNodeOfType(candidate.key, "Identifier") &&
-      candidate.key.name === memberName &&
+      getClassMemberName(candidate) === memberName &&
       candidate.value &&
       isFunctionLike(candidate.value as EsTreeNode)
     ) {
@@ -144,12 +150,21 @@ const timeoutCallbackMutatesComponent = (
   callback: EsTreeNode,
   classBody: EsTreeNode | null,
 ): boolean => {
-  const resolvedCallback =
-    isNodeOfType(callback, "MemberExpression") &&
-    isNodeOfType(callback.object, "ThisExpression") &&
-    getStaticPropertyName(callback)
-      ? classMemberFunction(classBody, getStaticPropertyName(callback) ?? "")
-      : callback;
+  const expression = stripParenExpression(callback);
+  const boundTarget =
+    isNodeOfType(expression, "CallExpression") &&
+    isNodeOfType(expression.callee, "MemberExpression") &&
+    getStaticPropertyName(expression.callee) === "bind" &&
+    isNodeOfType(expression.arguments?.[0], "ThisExpression")
+      ? stripParenExpression(expression.callee.object as EsTreeNode)
+      : null;
+  const methodReference = boundTarget ?? expression;
+  const memberName =
+    isNodeOfType(methodReference, "MemberExpression") &&
+    isNodeOfType(methodReference.object, "ThisExpression")
+      ? getStaticPropertyName(methodReference)
+      : null;
+  const resolvedCallback = memberName ? classMemberFunction(classBody, memberName) : expression;
   if (!isFunctionLike(resolvedCallback)) return false;
   const body = resolvedCallback.body;
   if (!body) return false;
@@ -375,16 +390,6 @@ const getMemberFunctionBody = (member: EsTreeNode): EsTreeNode | null => {
   const isRelevantMember =
     isNodeOfType(member, "MethodDefinition") || isNodeOfType(member, "PropertyDefinition");
   return isRelevantMember && isFunctionLike(member.value) ? (member.value.body ?? null) : null;
-};
-
-const getClassMemberName = (member: EsTreeNode): string | null => {
-  if (isNodeOfType(member, "MethodDefinition") && member.kind === "constructor") {
-    return "constructor";
-  }
-  if (!isNodeOfType(member, "MethodDefinition") && !isNodeOfType(member, "PropertyDefinition")) {
-    return null;
-  }
-  return isNodeOfType(member.key, "Identifier") ? member.key.name : null;
 };
 
 // MobX auto-manages teardown when `disposeOnUnmount` is used anywhere in the

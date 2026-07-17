@@ -10,6 +10,7 @@ import { isProvenEffectHookCall } from "../../utils/is-proven-effect-hook-call.j
 import { walkAst } from "../../utils/walk-ast.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callback-flow.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -17,29 +18,6 @@ import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
 
 const OBSERVER_RELEASE_METHOD_NAMES = new Set(["disconnect", "unobserve"]);
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "self"]);
-const SYNCHRONOUS_CALLBACK_METHOD_NAMES = new Set([
-  "every",
-  "filter",
-  "find",
-  "forEach",
-  "map",
-  "some",
-]);
-
-const isSynchronouslyInvokedCallback = (functionNode: EsTreeNode): boolean => {
-  const call = functionNode.parent;
-  if (
-    !isNodeOfType(call, "CallExpression") ||
-    !call.arguments.some((argument) => argument === functionNode)
-  ) {
-    return false;
-  }
-  const callee = stripParenExpression(call.callee);
-  return (
-    isNodeOfType(callee, "MemberExpression") &&
-    SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")
-  );
-};
 
 interface TrackedObserver {
   construction: EsTreeNodeOfType<"NewExpression">;
@@ -137,22 +115,14 @@ const callbackReleasesViaObserverParameter = (
   }
   const parameterName = (observerParameter as EsTreeNodeOfType<"Identifier">).name;
   let didRelease = false;
-  walkAst(callbackFunction, (child: EsTreeNode) => {
-    if (didRelease) return false;
-    if (
-      child !== callbackFunction &&
-      isFunctionLike(child) &&
-      !isSynchronouslyInvokedCallback(child)
-    ) {
-      return false;
-    }
+  walkSynchronousCallbackFlow(callbackFunction, (child: EsTreeNode) => {
+    if (didRelease) return;
     if (!isNodeOfType(child, "MemberExpression")) return;
     const receiver = stripParenExpression(child.object as EsTreeNode);
     if (!isNodeOfType(receiver, "Identifier") || receiver.name !== parameterName) return;
     if (!OBSERVER_RELEASE_METHOD_NAMES.has(getStaticPropertyName(child) ?? "")) return;
     if (!isNodeOfType(child.parent, "CallExpression") || child.parent.callee !== child) return;
     didRelease = true;
-    return false;
   });
   return didRelease;
 };

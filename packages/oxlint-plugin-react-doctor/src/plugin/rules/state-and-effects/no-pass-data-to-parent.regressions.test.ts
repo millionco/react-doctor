@@ -61,6 +61,97 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("stays silent when notifying through a callback ref of a media-query hook transition", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const Sidebar = ({ onBreakPoint }) => {
+          const onBreakPointRef = useRef(onBreakPoint);
+          onBreakPointRef.current = onBreakPoint;
+          const broken = useMediaQuery("(max-width: 768px)");
+          const lastReportedBrokenRef = useRef(false);
+          useEffect(() => {
+            if (broken !== lastReportedBrokenRef.current) {
+              lastReportedBrokenRef.current = broken;
+              onBreakPointRef.current?.(broken);
+            }
+          }, [broken]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when destructured media-query state is externally owned", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const Sidebar = ({ onBreakPoint }) => {
+          const { matches: broken, resolved } = useMediaQueryState("(max-width: 768px)");
+          const lastReportedBrokenRef = useRef(false);
+          useEffect(() => {
+            if (resolved && broken !== lastReportedBrokenRef.current) {
+              onBreakPoint?.(broken);
+              lastReportedBrokenRef.current = broken;
+            }
+          }, [broken, resolved, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when a local custom hook returns exclusively external state", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useSidebarMediaState = () => {
+          const [broken, setBroken] = useState(false);
+          useEffect(() => {
+            const query = window.matchMedia("(max-width: 768px)");
+            const update = (event) => setBroken(event.matches);
+            query.addEventListener("change", update);
+            return () => query.removeEventListener("change", update);
+          }, []);
+          return { matches: broken };
+        };
+        const Sidebar = ({ onBreakPoint }) => {
+          const { matches: broken } = useSidebarMediaState();
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags media-query state that a user handler can also update", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useMediaQueryState = () => {
+          const [broken, setBroken] = useState(false);
+          useEffect(() => {
+            const query = window.matchMedia("(max-width: 768px)");
+            const update = (event) => setBroken(event.matches);
+            query.addEventListener("change", update);
+            return () => query.removeEventListener("change", update);
+          }, []);
+          const reset = () => setBroken(false);
+          return { broken, reset };
+        };
+        const Sidebar = ({ onBreakPoint }) => {
+          const { broken, reset } = useMediaQueryState();
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return <button onClick={reset}>Reset</button>;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags ordinary child-owned form state passed to a parent", () => {
       const result = runRule(
         noPassDataToParent,

@@ -164,6 +164,9 @@ const findUseStateDeclarator = (ref: Reference): EsTreeNode | null => {
   return null;
 };
 
+export const isReactStateReference = (ref: Reference): boolean =>
+  findUseStateDeclarator(ref) !== null;
+
 // The answer depends only on the state's declaration, so cache it per
 // declarator — the effect-family rules query the same state from many refs.
 const declaratorToExternallyDriven = new WeakMap<EsTreeNode, boolean>();

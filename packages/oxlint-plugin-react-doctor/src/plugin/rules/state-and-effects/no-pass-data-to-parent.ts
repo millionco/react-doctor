@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import {
@@ -41,7 +42,7 @@ import {
 } from "./utils/effect/react.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { isExternallyDrivenState } from "./utils/effect/external-state.js";
+import { isExternallyDrivenState, isReactStateReference } from "./utils/effect/external-state.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`, narrowed to
@@ -917,6 +918,7 @@ const EXTERNAL_SUBSCRIPTION_HOOK_NAMES: ReadonlySet<string> = new Set([
   "useIntersectionObserver",
   "useMatchMedia",
   "useMediaQuery",
+  "useMediaQueryState",
   "useResizeObserver",
   "useVisibility",
   "useWindowSize",
@@ -982,9 +984,46 @@ const isParentWiredHookCalleeRef = (analysis: ProgramAnalysis, ref: Reference): 
   );
 };
 
-const isExternalSubscriptionHookRef = (ref: Reference): boolean => {
+const getLocalHookExternalStateProof = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+): boolean | null => {
+  let hookFunction = resolveToFunction(ref);
+  if (!hookFunction) {
+    for (const definition of ref.resolved?.defs ?? []) {
+      const definitionNode = definition.node as unknown as EsTreeNode;
+      if (!isNodeOfType(definitionNode, "VariableDeclarator") || !definitionNode.init) continue;
+      const initializer = stripParenExpression(definitionNode.init as EsTreeNode);
+      if (!isNodeOfType(initializer, "CallExpression")) continue;
+      const callee = stripParenExpression(initializer.callee as EsTreeNode);
+      if (!isNodeOfType(callee, "Identifier")) continue;
+      const calleeReference = getRef(analysis, callee);
+      if (!calleeReference) continue;
+      hookFunction = resolveToFunction(calleeReference);
+      if (hookFunction) break;
+    }
+  }
+  if (!hookFunction) return null;
+  const returnedStateReferences = collectFunctionReturnStatements(hookFunction)
+    .flatMap((returnStatement) =>
+      returnStatement.argument
+        ? getDownstreamRefs(analysis, returnStatement.argument as EsTreeNode)
+        : [],
+    )
+    .filter(isReactStateReference);
+  return (
+    returnedStateReferences.length > 0 &&
+    returnedStateReferences.every((stateReference) =>
+      isExternallyDrivenState(analysis, stateReference),
+    )
+  );
+};
+
+const isExternalSubscriptionHookRef = (analysis: ProgramAnalysis, ref: Reference): boolean => {
   const identifier = ref.identifier as unknown as EsTreeNode;
   if (!isNodeOfType(identifier, "Identifier")) return false;
+  const localHookProof = getLocalHookExternalStateProof(analysis, ref);
+  if (localHookProof !== null) return localHookProof;
   if (EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(identifier.name) && isCalleePosition(identifier)) {
     return true;
   }
@@ -1162,7 +1201,8 @@ export const noPassDataToParent = defineRule({
               return getDownstreamRefs(analysis, argument as EsTreeNode);
             })
             .flatMap((argumentRef) =>
-              isExternallyDrivenState(analysis, argumentRef)
+              isExternallyDrivenState(analysis, argumentRef) ||
+              isExternalSubscriptionHookRef(analysis, argumentRef)
                 ? []
                 : getUpstreamRefs(analysis, argumentRef),
             )
@@ -1176,7 +1216,7 @@ export const noPassDataToParent = defineRule({
 
           const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
             if (isUseStateIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
-            if (isExternalSubscriptionHookRef(argRef)) return false;
+            if (isExternalSubscriptionHookRef(analysis, argRef)) return false;
             if (isProp(analysis, argRef)) return false;
             if (isUseRefIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
             if (isRefCurrent(argRef)) return false;

@@ -11,6 +11,7 @@ import { COMPILER_CLEANUP_BUCKET, COMPILER_CLEANUP_RULE_KEYS } from "../../const
 import { getCapabilities, shouldEnableRule } from "../../project-info/capabilities.js";
 import { filterRulesToAvailable, resolveReactHooksJsPlugin } from "./plugin-resolution.js";
 import type { JsPluginEntry, ResolvedUserPlugin } from "./plugin-resolution.js";
+import { shouldEnableRuleByDefaultStatus } from "../../utils/should-enable-rule-by-default-status.js";
 
 export interface OxlintConfigOptions {
   pluginPath: string;
@@ -202,9 +203,12 @@ export const createOxlintConfig = ({
       severityControls,
     );
     if (
-      rule.defaultEnabled === false &&
-      explicitRuleOverride === undefined &&
-      (!includeTagDefaults || !hasIncludedTags)
+      !shouldEnableRuleByDefaultStatus({
+        defaultEnabled: rule.defaultEnabled,
+        includeTagDefaults,
+        hasIncludedTags,
+        hasExplicitOverride: explicitRuleOverride !== undefined,
+      })
     )
       continue;
     const explicitSeverity = resolveRuleSeverityOverride(

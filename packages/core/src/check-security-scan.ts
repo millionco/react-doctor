@@ -7,6 +7,7 @@ import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
 import { getCapabilities, shouldEnableRule } from "./project-info/capabilities.js";
 import type { Diagnostic, ProjectInfo } from "./types/index.js";
 import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
+import { shouldEnableRuleByDefaultStatus } from "./utils/should-enable-rule-by-default-status.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 import type { Capability } from "oxlint-plugin-react-doctor";
 
@@ -51,7 +52,14 @@ const createSecurityScanSession = (
     const rule = entry.rule;
     const scan = rule.scan;
     if (typeof scan !== "function") return [];
-    if (rule.defaultEnabled === false && !options.includeTagDefaults) return [];
+    if (
+      !shouldEnableRuleByDefaultStatus({
+        defaultEnabled: rule.defaultEnabled,
+        includeTagDefaults: options.includeTagDefaults === true,
+        hasIncludedTags: includedTags.size > 0,
+      })
+    )
+      return [];
     if (
       !shouldEnableRule(
         rule.requires,

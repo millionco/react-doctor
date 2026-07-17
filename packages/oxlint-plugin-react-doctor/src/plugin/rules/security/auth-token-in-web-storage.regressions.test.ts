@@ -233,6 +233,56 @@ describe("security/auth-token-in-web-storage — regressions", () => {
     expect(diagnostics).toHaveLength(1);
   });
 
+  it("flags storage factories and helpers through immutable alias chains", () => {
+    const { diagnostics } = runRule(
+      authTokenInWebStorage,
+      `const getSessionStorage = () => window.sessionStorage;
+      const resolveStorage = getSessionStorage;
+      const storageFactory = resolveStorage;
+      const writeStorage = (key, value) => {
+        storageFactory().setItem(key, value);
+      };
+      const persistCredential = writeStorage;
+      const saveCredential = persistCredential;
+      saveCredential("mailing.settings.localApiKeys", JSON.stringify(records));`,
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("flags conditional and logical guarded storage factory results", () => {
+    const conditional = runRule(
+      authTokenInWebStorage,
+      `const getStorage = () =>
+        typeof window === "undefined" ? void 0 : window.sessionStorage;
+      const storage = getStorage();
+      if (storage) storage.setItem("authToken", token);`,
+    );
+    const logical = runRule(
+      authTokenInWebStorage,
+      `const getStorage = () =>
+        typeof window !== "undefined" && window.localStorage;
+      const storage = getStorage();
+      if (storage) storage.setItem("authToken", token);`,
+    );
+
+    expect(conditional.diagnostics).toHaveLength(1);
+    expect(logical.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a storage factory with a void nullish return branch", () => {
+    const { diagnostics } = runRule(
+      authTokenInWebStorage,
+      `function getStorage() {
+        if (typeof window === "undefined") return void 0;
+        return window.sessionStorage;
+      }
+      const storage = getStorage();
+      if (storage) storage.setItem("authToken", token);`,
+    );
+
+    expect(diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for mutable receiver aliases and unrelated helper sinks", () => {
     const { diagnostics } = runRule(
       authTokenInWebStorage,

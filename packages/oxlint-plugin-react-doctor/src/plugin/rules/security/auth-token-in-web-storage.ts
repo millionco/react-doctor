@@ -1,9 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNullishExpression } from "../../utils/is-nullish-expression.js";
+import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
@@ -57,7 +59,12 @@ const isDirectWebStorageObject = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const immutableInitializer = (identifier: EsTreeNodeOfType<"Identifier">): EsTreeNode | null => {
+const immutableInitializer = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  visitedIdentifiers = new Set<EsTreeNode>(),
+): EsTreeNode | null => {
+  if (visitedIdentifiers.has(identifier)) return null;
+  visitedIdentifiers.add(identifier);
   const binding = findVariableInitializer(identifier, identifier.name);
   if (!binding?.initializer) return null;
   if (isNodeOfType(binding.initializer, "FunctionDeclaration")) return binding.initializer;
@@ -65,17 +72,40 @@ const immutableInitializer = (identifier: EsTreeNodeOfType<"Identifier">): EsTre
   if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return null;
   const declaration = declarator.parent;
   if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return null;
-  return declaration.kind === "const" ? binding.initializer : null;
+  if (declaration.kind !== "const") return null;
+  const initializer = stripParenExpression(binding.initializer);
+  if (!isNodeOfType(initializer, "Identifier")) return initializer;
+  return immutableInitializer(initializer, visitedIdentifiers) ?? initializer;
 };
 
-const isFunctionNode = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "FunctionDeclaration") ||
-  isNodeOfType(node, "FunctionExpression") ||
-  isNodeOfType(node, "ArrowFunctionExpression");
-
-const isNullishExpression = (node: EsTreeNode): boolean =>
-  (isNodeOfType(node, "Literal") && node.value === null) ||
-  (isNodeOfType(node, "Identifier") && node.name === "undefined");
+const isWebStorageFactoryResult = (
+  node: EsTreeNode,
+  visitedNodes: ReadonlySet<EsTreeNode>,
+): boolean => {
+  const expression = stripParenExpression(node);
+  if (isWebStorageObject(expression, new Set(visitedNodes))) return true;
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    const consequent = stripParenExpression(expression.consequent);
+    const alternate = stripParenExpression(expression.alternate);
+    return (
+      (isNullishExpression(consequent) || isWebStorageFactoryResult(consequent, visitedNodes)) &&
+      (isNullishExpression(alternate) || isWebStorageFactoryResult(alternate, visitedNodes)) &&
+      (!isNullishExpression(consequent) || !isNullishExpression(alternate))
+    );
+  }
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    if (expression.operator === "&&") {
+      return isWebStorageFactoryResult(expression.right, visitedNodes);
+    }
+    const left = stripParenExpression(expression.left);
+    const right = stripParenExpression(expression.right);
+    return (
+      (isWebStorageFactoryResult(left, visitedNodes) && isNullishExpression(right)) ||
+      (isNullishExpression(left) && isWebStorageFactoryResult(right, visitedNodes))
+    );
+  }
+  return false;
+};
 
 const isWebStorageObject = (node: EsTreeNode, visitedNodes = new Set<EsTreeNode>()): boolean => {
   const expression = stripParenExpression(node);
@@ -90,23 +120,16 @@ const isWebStorageObject = (node: EsTreeNode, visitedNodes = new Set<EsTreeNode>
   const callee = stripParenExpression(expression.callee);
   if (!isNodeOfType(callee, "Identifier")) return false;
   const factory = immutableInitializer(callee);
-  if (!factory || !isFunctionNode(factory)) return false;
+  if (!isFunctionLike(factory)) return false;
   if (
     isNodeOfType(factory, "ArrowFunctionExpression") &&
     !isNodeOfType(factory.body, "BlockStatement")
   ) {
-    return isWebStorageObject(factory.body, new Set(visitedNodes));
-  }
-  if (
-    !isNodeOfType(factory, "FunctionDeclaration") &&
-    !isNodeOfType(factory, "FunctionExpression") &&
-    !isNodeOfType(factory, "ArrowFunctionExpression")
-  ) {
-    return false;
+    return isWebStorageFactoryResult(factory.body, visitedNodes);
   }
   const returnedExpressions: EsTreeNode[] = [];
   walkAst(factory.body, (child) => {
-    if (child !== factory.body && isFunctionNode(child)) return false;
+    if (child !== factory.body && isFunctionLike(child)) return false;
     if (isNodeOfType(child, "ReturnStatement") && child.argument) {
       returnedExpressions.push(child.argument);
     }
@@ -115,7 +138,7 @@ const isWebStorageObject = (node: EsTreeNode, visitedNodes = new Set<EsTreeNode>
   for (const returnedExpression of returnedExpressions) {
     const strippedReturn = stripParenExpression(returnedExpression);
     if (isNullishExpression(strippedReturn)) continue;
-    if (!isWebStorageObject(strippedReturn, new Set(visitedNodes))) return false;
+    if (!isWebStorageFactoryResult(strippedReturn, visitedNodes)) return false;
     didReturnWebStorage = true;
   }
   return didReturnWebStorage;
@@ -206,7 +229,7 @@ const findStorageHelperSink = (functionNode: EsTreeNode): StorageHelperSink | nu
   );
   let helperSink: StorageHelperSink | null = null;
   walkAst(functionNode.body, (child) => {
-    if (child !== functionNode.body && isFunctionNode(child)) return false;
+    if (child !== functionNode.body && isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = stripParenExpression(child.callee);
     if (

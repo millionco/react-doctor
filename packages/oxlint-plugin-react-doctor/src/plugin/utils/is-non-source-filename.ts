@@ -13,6 +13,8 @@ const NON_SOURCE_FILENAME_MARKERS = [
   "/public/",
 ];
 
-export const isNonSourceFilename = (filename: string | undefined): boolean =>
-  Boolean(filename) &&
-  NON_SOURCE_FILENAME_MARKERS.some((marker) => (filename ?? "").includes(marker));
+export const isNonSourceFilename = (filename: string | undefined): boolean => {
+  if (!filename) return false;
+  const normalizedFilename = `/${filename.replaceAll("\\", "/")}`;
+  return NON_SOURCE_FILENAME_MARKERS.some((marker) => normalizedFilename.includes(marker));
+};

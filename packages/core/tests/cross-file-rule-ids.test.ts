@@ -41,7 +41,6 @@ const CROSS_FILE_PRIMITIVE_FILES = [
   "utils/has-ancestor-layout-matching.ts",
   "utils/resolve-cross-file-function-export.ts",
   "utils/resolve-cross-file-export.ts",
-  "utils/resolve-import-with-oxc.ts",
   "utils/resolve-relative-import-path.ts",
   "utils/resolve-module-path.ts",
   "utils/resolve-barrel-export-file-path.ts",

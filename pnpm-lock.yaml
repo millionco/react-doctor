@@ -217,9 +217,6 @@ importers:
       oxc-parser:
         specifier: ^0.138.0
         version: 0.138.0
-      oxc-resolver:
-        specifier: ^11.19.1
-        version: 11.23.0
     devDependencies:
       '@types/node':
         specifier: ^25.6.0

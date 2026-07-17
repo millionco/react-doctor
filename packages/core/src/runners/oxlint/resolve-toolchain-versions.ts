@@ -1,8 +1,7 @@
 import { execFileSync } from "node:child_process";
-import crypto from "node:crypto";
-import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import { NODE_VERSION_PROBE_TIMEOUT_MS, PLUGIN_FINGERPRINT_LENGTH_CHARS } from "../../constants.js";
+import { fingerprintFileContents } from "../../utils/fingerprint-file-contents.js";
 
 const bundledRequire = createRequire(import.meta.url);
 
@@ -46,31 +45,21 @@ interface PackageVersionView {
   readonly version?: unknown;
 }
 
-let cachedPluginFingerprint: string | null = null;
-
 // Content fingerprint of the rule plugin's resolved entry file. The package
 // VERSION alone cannot bust the cache for a locally rebuilt workspace plugin
 // (a dev rebuild keeps the version but changes rule behavior), which silently
 // replays stale diagnostics. Hashing the entry's bytes is still portable
 // across machines — identical published content hashes identically — while a
-// rebuilt dev bundle mints a fresh ruleset bucket. Computed once per process
-// (~2.9 MB SHA-256, single-digit ms); a failed resolve contributes a stable
-// marker so the hash stays deterministic.
+// rebuilt dev bundle mints a fresh ruleset bucket. The mtime/size cache avoids
+// re-hashing unchanged bytes while still detecting a rebuild in a long-lived
+// API process.
 const resolvePluginFingerprint = (): string => {
-  if (cachedPluginFingerprint !== null) return cachedPluginFingerprint;
-  let fingerprint: string;
   try {
     const pluginEntryPath = bundledRequire.resolve("oxlint-plugin-react-doctor");
-    fingerprint = crypto
-      .createHash("sha256")
-      .update(fs.readFileSync(pluginEntryPath))
-      .digest("hex")
-      .slice(0, PLUGIN_FINGERPRINT_LENGTH_CHARS);
+    return fingerprintFileContents(pluginEntryPath, PLUGIN_FINGERPRINT_LENGTH_CHARS);
   } catch {
-    fingerprint = "unresolved";
+    return "unresolved";
   }
-  cachedPluginFingerprint = fingerprint;
-  return fingerprint;
 };
 
 // Resolved `<package>=<version>` strings (plus the Node version the oxlint

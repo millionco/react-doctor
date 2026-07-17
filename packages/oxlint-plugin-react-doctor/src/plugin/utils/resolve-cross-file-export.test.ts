@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "../constants/thresholds.js";
 import { __clearParseSourceFileCacheForTests } from "./parse-source-file.js";
 import { resolveCrossFileExport } from "./resolve-cross-file-export.js";
-import { __clearResolveImportWithOxcCacheForTests } from "./resolve-import-with-oxc.js";
 
 let temporaryDirectory: string;
 
@@ -15,7 +14,6 @@ beforeEach(() => {
   temporaryDirectory = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "cross-file-export-")),
   );
-  __clearResolveImportWithOxcCacheForTests();
   __clearParseSourceFileCacheForTests();
 });
 
@@ -132,6 +130,18 @@ describe("resolveCrossFileExport", () => {
     const resolved = resolveCrossFileExport(entryFile, "@/lib/format", "format");
     expect(resolved?.filePath).toBe(target);
     expect(resolved?.kind).toBe("function");
+  });
+
+  it("resolves an alias from a monorepo root tsconfig across a nested package boundary", () => {
+    writeFile(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./shared/*"] } } }),
+    );
+    writeFile("apps/web/package.json", JSON.stringify({ name: "web", type: "module" }));
+    const target = writeFile("shared/format.ts", "export const format = (value) => `${value}`;");
+    const entryFile = writeFile("apps/web/src/app.tsx", "export const App = () => null;");
+
+    expect(resolveCrossFileExport(entryFile, "@/format", "format")?.filePath).toBe(target);
   });
 
   it("resolves a ./x.js re-export hop landing on x.ts (extensionAlias)", () => {

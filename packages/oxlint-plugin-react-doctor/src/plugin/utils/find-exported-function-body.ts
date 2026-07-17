@@ -35,11 +35,6 @@ export const findExportedFunctionBody = (
   return isFunctionLike(exportedValue) ? exportedValue : null;
 };
 
-export const findExportedConstInitializer = (
-  programRoot: EsTreeNode,
-  exportedName: string,
-): EsTreeNode | null => findExportedValue(programRoot, exportedName);
-
 // Convenience: returns the source-side identifier name for an
 // import specifier. Handles both `import { foo } from "..."` and
 // `import { foo as localBar } from "..."` — returning "foo" in both

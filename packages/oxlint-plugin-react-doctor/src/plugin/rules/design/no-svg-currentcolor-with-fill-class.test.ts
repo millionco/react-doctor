@@ -33,6 +33,12 @@ describe("no-svg-currentcolor-with-fill-class", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does NOT flag leading-dot stroke width `stroke-[.5]`", () => {
+    const code = `const A = () => <svg stroke="currentColor" className="stroke-[.5]" />;`;
+    const result = runRule(noSvgCurrentcolorWithFillClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag non-color fill and stroke utilities", () => {
     const code = `const A = () => (
       <>

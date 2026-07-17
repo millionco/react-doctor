@@ -1,11 +1,13 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+import { walkAst } from "./walk-ast.js";
 
 const equivalentSymbolsByAnalysis = new WeakMap<ScopeAnalysis, Map<number, SymbolDescriptor[]>>();
 const potentiallyAliasedSymbolsByAnalysis = new WeakMap<
@@ -184,7 +186,7 @@ const findExecutionBoundary = (node: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
-const isOnUnconditionalPath = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
+export const isNodeOnUnconditionalPath = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
   let current = node.parent ?? null;
   while (current && current !== boundary) {
     if (CONDITIONAL_EXECUTION_NODE_TYPES.has(current.type)) return false;
@@ -219,16 +221,42 @@ const findDirectCall = (identifier: EsTreeNode): EsTreeNode | null => {
     : null;
 };
 
+const firstAwaitOffsetByFunction = new WeakMap<EsTreeNode, number | null>();
+
+const isBeforeFirstAwait = (node: EsTreeNode, functionNode: EsTreeNode): boolean => {
+  let firstAwaitOffset = firstAwaitOffsetByFunction.get(functionNode);
+  if (firstAwaitOffset === undefined) {
+    let discoveredFirstAwaitOffset: number | null = null;
+    walkAst(functionNode, (candidate) => {
+      if (
+        isNodeOfType(candidate, "AwaitExpression") &&
+        findEnclosingFunction(candidate) === functionNode &&
+        (discoveredFirstAwaitOffset === null || candidate.range[0] < discoveredFirstAwaitOffset)
+      ) {
+        discoveredFirstAwaitOffset = candidate.range[0];
+      }
+    });
+    firstAwaitOffset = discoveredFirstAwaitOffset;
+    firstAwaitOffsetByFunction.set(functionNode, firstAwaitOffset);
+  }
+  return firstAwaitOffset === null || node.range[0] < firstAwaitOffset;
+};
+
 export const isFunctionSynchronouslyInvokedBefore = (
   functionNode: EsTreeNode,
   referenceNode: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedFunctionNodes = new Set<EsTreeNode>(),
+  synchronousNode: EsTreeNode | null = null,
 ): boolean => {
   if (
     visitedFunctionNodes.has(functionNode) ||
     !isFunctionLike(functionNode) ||
-    functionNode.generator
+    functionNode.generator ||
+    (synchronousNode !== null && !isNodeOnUnconditionalPath(synchronousNode, functionNode)) ||
+    (synchronousNode !== null &&
+      functionNode.async &&
+      !isBeforeFirstAwait(synchronousNode, functionNode))
   ) {
     return false;
   }
@@ -252,6 +280,7 @@ export const isFunctionSynchronouslyInvokedBefore = (
     if (call.range[0] >= referenceNode.range[0]) return false;
     const callBoundary = findExecutionBoundary(call);
     if (!callBoundary) return false;
+    if (synchronousNode !== null && !isNodeOnUnconditionalPath(call, callBoundary)) return false;
     if (callBoundary === referenceBoundary) return true;
     if (!isFunctionLike(callBoundary)) return false;
     return isFunctionSynchronouslyInvokedBefore(
@@ -259,6 +288,7 @@ export const isFunctionSynchronouslyInvokedBefore = (
       referenceNode,
       scopes,
       new Set(visitedFunctionNodes),
+      synchronousNode === null ? null : call,
     );
   });
 };
@@ -316,7 +346,7 @@ const symbolHasStaticPropertyWriteBefore = (
     if (
       !writeBoundary ||
       !referenceBoundary ||
-      !isOnUnconditionalPath(writeTarget, writeBoundary)
+      !isNodeOnUnconditionalPath(writeTarget, writeBoundary)
     ) {
       return false;
     }

@@ -7,20 +7,24 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { isNodeOnUnconditionalPath } from "../../utils/has-static-property-write-before.js";
 import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const MESSAGE =
   "Every consumer of this context redraws on each render because its `value` is a fresh object/array/function rebuilt each render — wrap it in useMemo/useCallback (or move it out of the component).";
+const REACT_COMPONENT_WRAPPER_NAMES: ReadonlySet<string> = new Set(["forwardRef", "memo"]);
 
 const isFreshLiteralInitializer = (expression: EsTreeNode): boolean => {
   const stripped = stripParenExpression(expression);
@@ -35,12 +39,17 @@ const isFreshLiteralInitializer = (expression: EsTreeNode): boolean => {
 
 // Parameter and destructuring defaults are conditional, so require the
 // literal to be the direct declaration initializer.
-const isDirectDeclarationInitializer = (binding: BindingInfo): boolean => {
+const isDirectDeclarationInitializer = (
+  binding: BindingInfo,
+  referenceNode: EsTreeNode,
+): boolean => {
   const declarationNode = binding.bindingIdentifier.parent;
   if (
     declarationNode &&
     isNodeOfType(declarationNode, "VariableDeclarator") &&
-    declarationNode.init === binding.initializer
+    declarationNode.init === binding.initializer &&
+    binding.bindingIdentifier.range[0] < referenceNode.range[0] &&
+    isNodeOnUnconditionalPath(declarationNode, binding.scopeOwner)
   ) {
     return true;
   }
@@ -77,6 +86,25 @@ const isNamedInlineCallback = (functionNode: EsTreeNode): boolean => {
   );
 };
 
+const isCallbackOnlyFunctionBinding = (functionNode: EsTreeNode, context: RuleContext): boolean => {
+  const symbols = getFunctionBindingSymbols(functionNode, context.scopes);
+  const references = symbols.flatMap((symbol) => symbol.references);
+  if (references.length === 0) return false;
+  return references.every((reference) => {
+    const argument = findTransparentExpressionRoot(reference.identifier);
+    const call = argument.parent;
+    if (!call || !isNodeOfType(call, "CallExpression")) return false;
+    if (!call.arguments.some((candidate) => candidate === argument)) return false;
+    return !(
+      call.arguments[0] === argument &&
+      isReactApiCall(call, REACT_COMPONENT_WRAPPER_NAMES, context.scopes, {
+        allowGlobalReactNamespace: true,
+        resolveNamedAliases: true,
+      })
+    );
+  });
+};
+
 // `jsx-no-constructed-context-values` owns inline literals. This rule
 // handles one-hop identifiers bound in the same render scope.
 export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
@@ -90,7 +118,7 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
     "Wrap the context value in useMemo/useCallback so consumers do not redraw every render, or move it outside the component if it never changes.",
   create: (context: RuleContext) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);
-    let contextBindings: ReadonlySet<string> = new Set<string>();
+    let contextBindings: ReadonlySet<number> = new Set<number>();
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         contextBindings = collectContextBindings(node, context.scopes);
@@ -100,7 +128,12 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
         if (!isContextProviderJsxName(node.name, contextBindings, context.scopes)) return;
         const renderFunction = findEnclosingFunction(node);
         if (!renderFunction) return;
-        if (isNamedInlineCallback(renderFunction)) return;
+        if (
+          isNamedInlineCallback(renderFunction) ||
+          isCallbackOnlyFunctionBinding(renderFunction, context)
+        ) {
+          return;
+        }
         if (
           componentOrHookDisplayNameForFunction(renderFunction) === null &&
           !isDefaultExportedFunction(renderFunction)
@@ -115,12 +148,19 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
         const inner = stripParenExpression(attributeValue.expression);
         if (!isNodeOfType(inner, "Identifier")) return;
         const symbol = context.scopes.symbolFor(inner);
-        if (!symbol || hasSymbolWriteBefore(symbol, inner, context.scopes)) return;
+        if (
+          !symbol ||
+          hasSymbolWriteBefore(symbol, inner, context.scopes, { requireSynchronousWrite: true })
+        ) {
+          return;
+        }
 
-        const binding = findVariableInitializer(inner, inner.name);
+        const binding = findVariableInitializer(inner, inner.name, {
+          preferInitializerBeforeReference: true,
+        });
         if (!binding || !binding.initializer) return;
         if (binding.scopeOwner.type === "Program") return;
-        if (!isDirectDeclarationInitializer(binding)) return;
+        if (!isDirectDeclarationInitializer(binding, inner)) return;
         if (owningFunctionOfBinding(binding) !== renderFunction) return;
         if (!isFreshLiteralInitializer(binding.initializer)) return;
 

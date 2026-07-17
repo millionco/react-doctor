@@ -11,8 +11,8 @@ import { isNodeOfType } from "./is-node-of-type.js";
 export const collectContextBindings = (
   programRoot: EsTreeNode,
   scopes: ScopeAnalysis,
-): Set<string> => {
-  const bindings = new Set<string>();
+): Set<number> => {
+  const bindings = new Set<number>();
   if (!isNodeOfType(programRoot, "Program")) return bindings;
   for (const topLevel of programRoot.body ?? []) {
     let declaration: EsTreeNode | null = topLevel;
@@ -28,7 +28,7 @@ export const collectContextBindings = (
       if (!isCreateContextCall(declarator.init, scopes)) continue;
       const symbol = scopes.symbolFor(declarator.id);
       if (!symbol || symbol.references.some((reference) => reference.flag !== "read")) continue;
-      bindings.add(declarator.id.name);
+      bindings.add(symbol.id);
     }
   }
   return bindings;

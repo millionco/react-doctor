@@ -56,7 +56,7 @@ export const jsxNoConstructedContextValues = defineRule({
   category: "Performance",
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);
-    let contextBindings: ReadonlySet<string> = new Set<string>();
+    let contextBindings: ReadonlySet<number> = new Set<number>();
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         contextBindings = collectContextBindings(node, context.scopes);

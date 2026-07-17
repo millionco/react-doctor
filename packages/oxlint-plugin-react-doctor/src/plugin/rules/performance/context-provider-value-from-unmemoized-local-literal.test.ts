@@ -303,6 +303,49 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    [
+      "useMemo",
+      `const Build = () => {
+         const value = { theme };
+         return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+       };
+       return useMemo(Build, []);`,
+    ],
+    [
+      "map",
+      `function Item(item) {
+         const value = { item };
+         return <ThemeContext.Provider value={value}>{item.label}</ThemeContext.Provider>;
+       }
+       return items.map(Item);`,
+    ],
+  ])("does not treat a hoisted %s callback as a component", (_name, body) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext, useMemo } from "react";
+       const ThemeContext = createContext(null);
+       function App({ theme, children, items }) {
+         ${body}
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a component binding passed to React memo", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext, memo } from "react";
+       const ThemeContext = createContext(null);
+       const App = () => {
+         const value = {};
+         return <ThemeContext.Provider value={value} />;
+       };
+       export default memo(App);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a block-scoped literal declared inside the component's own if-block", () => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,
@@ -335,6 +378,23 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a catch-parameter shadow of a context binding", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         try {
+           throw FakeContext;
+         } catch (ThemeContext) {
+           const value = {};
+           return <ThemeContext value={value} />;
+         }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a local value reassigned before the provider reads it", () => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,
@@ -361,6 +421,132 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
          const provider = <ThemeContext.Provider value={value} />;
          value = STABLE_VALUE;
          return provider;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a fresh var value after a no-op redeclaration", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         var value = {};
+         var value;
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("uses the last initializer that executes before the provider read", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = {};
+       function App() {
+         var value = {};
+         const provider = <ThemeContext.Provider value={value} />;
+         var value = STABLE_VALUE;
+         return provider;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not use an initializer that executes after the provider read", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         var value;
+         const provider = <ThemeContext.Provider value={value} />;
+         var value = {};
+         return provider;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a conditional var initializer as a proven fresh value", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = {};
+       function App({ shouldUseFreshValue }) {
+         var value = STABLE_VALUE;
+         if (shouldUseFreshValue) var value = {};
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat writes after await as synchronous render-time writes", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = {};
+       function App() {
+         let value = {};
+         async function update() {
+           await ping();
+           value = STABLE_VALUE;
+         }
+         update();
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does treat an unconditional write before await as synchronous", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = {};
+       function App() {
+         let value = {};
+         async function update() {
+           value = STABLE_VALUE;
+           await ping();
+         }
+         update();
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "conditional invocation",
+      `function update() { value = STABLE_VALUE; }
+       if (shouldUpdate) update();`,
+    ],
+    [
+      "conditional write",
+      `function update() { if (shouldUpdate) value = STABLE_VALUE; }
+       update();`,
+    ],
+    ["direct conditional write", `if (shouldUpdate) value = STABLE_VALUE;`],
+  ])("does not treat a %s as a proven write", (_name, updateCode) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = {};
+       function App({ shouldUpdate }) {
+         let value = {};
+         ${updateCode}
+         return <ThemeContext.Provider value={value} />;
        }`,
     );
     expect(result.diagnostics).toHaveLength(1);

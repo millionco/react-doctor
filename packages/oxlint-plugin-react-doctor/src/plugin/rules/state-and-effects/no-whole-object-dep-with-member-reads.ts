@@ -104,44 +104,97 @@ const collectPropsMemberBindingSymbolIds = (
   context: RuleContext,
 ): ReadonlySet<number> => {
   const symbolIds = new Set<number>();
-  for (const reference of propsSymbol.references) {
-    const identifier = reference.identifier;
-    const parent = identifier.parent;
-    if (parent && isNodeOfType(parent, "MemberExpression") && parent.object === identifier) {
-      if (getStaticPropertyName(parent) === null || isMemberMutation(parent)) continue;
-      const expressionRoot = findTransparentExpressionRoot(parent);
-      const declarator = expressionRoot.parent;
-      if (
-        isNodeOfType(declarator, "VariableDeclarator") &&
-        declarator.init === expressionRoot &&
-        isNodeOfType(declarator.id, "Identifier")
-      ) {
-        const bindingSymbol = context.scopes.symbolFor(declarator.id);
-        if (bindingSymbol) symbolIds.add(bindingSymbol.id);
-      }
-      continue;
-    }
-    if (!isNodeOfType(parent, "VariableDeclarator") || parent.init !== identifier) continue;
-    if (!isNodeOfType(parent.id, "ObjectPattern")) continue;
-    for (const property of parent.id.properties) {
-      if (!isNodeOfType(property, "Property") || property.computed) continue;
-      const binding = isNodeOfType(property.value, "AssignmentPattern")
-        ? property.value.left
-        : property.value;
-      if (!isNodeOfType(binding, "Identifier")) continue;
-      const bindingSymbol = context.scopes.symbolFor(binding);
+  const collectPatternBindings = (pattern: EsTreeNode): void => {
+    if (isNodeOfType(pattern, "Identifier")) {
+      const bindingSymbol = context.scopes.symbolFor(pattern);
       if (bindingSymbol) symbolIds.add(bindingSymbol.id);
+      return;
+    }
+    if (isNodeOfType(pattern, "AssignmentPattern")) {
+      collectPatternBindings(pattern.left);
+      return;
+    }
+    if (isNodeOfType(pattern, "RestElement")) {
+      return;
+    }
+    if (isNodeOfType(pattern, "ObjectPattern")) {
+      for (const property of pattern.properties) {
+        if (isNodeOfType(property, "Property") && !property.computed) {
+          collectPatternBindings(property.value);
+        }
+      }
+      return;
+    }
+    if (isNodeOfType(pattern, "ArrayPattern")) {
+      for (const element of pattern.elements) {
+        if (element) collectPatternBindings(element);
+      }
+    }
+  };
+  const pendingSymbols = [propsSymbol];
+  const visitedSymbolIds = new Set<number>();
+  while (pendingSymbols.length > 0) {
+    const sourceSymbol = pendingSymbols.pop();
+    if (!sourceSymbol || visitedSymbolIds.has(sourceSymbol.id)) continue;
+    visitedSymbolIds.add(sourceSymbol.id);
+    for (const reference of sourceSymbol.references) {
+      const identifier = reference.identifier;
+      const parent = identifier.parent;
+      if (parent && isNodeOfType(parent, "MemberExpression") && parent.object === identifier) {
+        if (getStaticPropertyName(parent) === null || isMemberMutation(parent)) continue;
+        const expressionRoot = findTransparentExpressionRoot(parent);
+        const declarator = expressionRoot.parent;
+        if (isNodeOfType(declarator, "VariableDeclarator") && declarator.init === expressionRoot) {
+          collectPatternBindings(declarator.id);
+        }
+        continue;
+      }
+      if (!isNodeOfType(parent, "VariableDeclarator") || parent.init !== identifier) continue;
+      if (isNodeOfType(parent.id, "Identifier")) {
+        const aliasSymbol = context.scopes.symbolFor(parent.id);
+        if (
+          aliasSymbol &&
+          resolveConstIdentifierAlias(parent.id, context.scopes)?.id === propsSymbol.id
+        ) {
+          pendingSymbols.push(aliasSymbol);
+        }
+        continue;
+      }
+      collectPatternBindings(parent.id);
     }
   }
   return symbolIds;
 };
 
 const countStaticDestructureReads = (pattern: EsTreeNode): number | null => {
-  if (!isNodeOfType(pattern, "ObjectPattern") || pattern.properties.length === 0) return null;
-  for (const property of pattern.properties) {
-    if (!isNodeOfType(property, "Property") || property.computed) return null;
+  if (isNodeOfType(pattern, "Identifier")) return 1;
+  if (isNodeOfType(pattern, "AssignmentPattern")) {
+    return countStaticDestructureReads(pattern.left);
   }
-  return pattern.properties.length;
+  if (isNodeOfType(pattern, "RestElement")) {
+    return null;
+  }
+  if (isNodeOfType(pattern, "ArrayPattern")) {
+    if (pattern.elements.length === 0) return null;
+    let count = 0;
+    for (const element of pattern.elements) {
+      if (!element) continue;
+      const nestedCount = countStaticDestructureReads(element);
+      if (nestedCount === null) return null;
+      count += nestedCount;
+    }
+    return count > 0 ? count : null;
+  }
+  if (!isNodeOfType(pattern, "ObjectPattern") || pattern.properties.length === 0) return null;
+  let count = 0;
+  for (const property of pattern.properties) {
+    if (isNodeOfType(property, "RestElement")) return null;
+    if (!isNodeOfType(property, "Property") || property.computed) return null;
+    const nestedCount = countStaticDestructureReads(property.value);
+    if (nestedCount === null) return null;
+    count += nestedCount;
+  }
+  return count > 0 ? count : null;
 };
 
 const analyzePropsUsage = (

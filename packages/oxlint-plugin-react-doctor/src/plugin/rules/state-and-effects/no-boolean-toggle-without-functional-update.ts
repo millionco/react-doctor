@@ -7,10 +7,12 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { nodesCanCoExecute } from "../../utils/nodes-can-co-execute.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveConstIdentifierRootSymbol } from "../../utils/resolve-const-identifier-root-symbol.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
+import type { ReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -25,6 +27,12 @@ const TIMER_CALLBACK_INDEX_BY_NAME = new Map([
 ]);
 
 const EFFECT_HOOK_NAMES = new Set(["useEffect", "useInsertionEffect", "useLayoutEffect"]);
+
+interface AwaitReachabilityProof {
+  readonly node: EsTreeNode;
+  readonly sourceBlockId: number;
+  readonly reachableBlockIds: ReadonlySet<number>;
+}
 
 const resolveFunctionExpression = (
   expression: EsTreeNode | null | undefined,
@@ -155,49 +163,53 @@ const collectDeferredFunctions = (
   return deferredFunctions;
 };
 
-const nodeCanReach = (
-  sourceNode: EsTreeNode,
-  targetNode: EsTreeNode,
+const collectAwaitReachabilityProofs = (
+  functionNode: EsTreeNode,
   functionCfg: FunctionCfg,
-): boolean => {
-  const sourceBlock = functionCfg.blockOf(sourceNode);
-  const targetBlock = functionCfg.blockOf(targetNode);
-  if (!sourceBlock || !targetBlock) return false;
-  if (sourceBlock === targetBlock) {
-    return (sourceNode.range?.[0] ?? 0) < (targetNode.range?.[0] ?? 0);
-  }
-  const visitedBlockIds = new Set([sourceBlock.id]);
-  const pendingBlocks = [sourceBlock];
-  while (pendingBlocks.length > 0) {
-    const currentBlock = pendingBlocks.pop();
-    if (!currentBlock) break;
-    for (const edge of currentBlock.successors) {
-      if (edge.to === targetBlock) return true;
-      if (visitedBlockIds.has(edge.to.id)) continue;
-      visitedBlockIds.add(edge.to.id);
-      pendingBlocks.push(edge.to);
+): AwaitReachabilityProof[] => {
+  const proofs: AwaitReachabilityProof[] = [];
+  walkAst(functionNode, (child: EsTreeNode) => {
+    if (child !== functionNode && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "AwaitExpression")) return;
+    const sourceBlock = functionCfg.blockOf(child);
+    if (!sourceBlock) return;
+    const reachableBlockIds = new Set<number>();
+    const pendingBlocks = sourceBlock.successors.map((edge) => edge.to);
+    while (pendingBlocks.length > 0) {
+      const currentBlock = pendingBlocks.pop();
+      if (!currentBlock || reachableBlockIds.has(currentBlock.id)) continue;
+      reachableBlockIds.add(currentBlock.id);
+      pendingBlocks.push(...currentBlock.successors.map((edge) => edge.to));
     }
-  }
-  return false;
+    proofs.push({ node: child, sourceBlockId: sourceBlock.id, reachableBlockIds });
+  });
+  return proofs;
 };
 
-const asyncFunctionHasAwaitBefore = (node: EsTreeNode, context: RuleContext): boolean => {
+const asyncFunctionHasAwaitBefore = (
+  node: EsTreeNode,
+  context: RuleContext,
+  awaitProofsByFunction: WeakMap<EsTreeNode, AwaitReachabilityProof[]>,
+): boolean => {
   const enclosingFunction = context.cfg.enclosingFunction(node);
   if (!enclosingFunction || !isFunctionLike(enclosingFunction) || !enclosingFunction.async) {
     return false;
   }
   const functionCfg = context.cfg.cfgFor(enclosingFunction);
   if (!functionCfg) return false;
-  let didFindReachableAwait = false;
-  walkAst(enclosingFunction.body, (child: EsTreeNode) => {
-    if (didFindReachableAwait) return false;
-    if (child !== enclosingFunction.body && isFunctionLike(child)) return false;
-    if (isNodeOfType(child, "AwaitExpression") && nodeCanReach(child, node, functionCfg)) {
-      didFindReachableAwait = true;
-      return false;
+  const targetBlock = functionCfg.blockOf(node);
+  if (!targetBlock) return false;
+  const awaitProofs =
+    awaitProofsByFunction.get(enclosingFunction) ??
+    collectAwaitReachabilityProofs(enclosingFunction, functionCfg);
+  awaitProofsByFunction.set(enclosingFunction, awaitProofs);
+  return awaitProofs.some((proof) => {
+    if (!nodesCanCoExecute(proof.node, node, context)) return false;
+    if (proof.sourceBlockId === targetBlock.id) {
+      return (proof.node.range?.[0] ?? 0) < (node.range?.[0] ?? 0);
     }
+    return proof.reachableBlockIds.has(targetBlock.id);
   });
-  return didFindReachableAwait;
 };
 
 const isInsideDeferredFunction = (
@@ -325,23 +337,63 @@ const registrationHasCleanup = (
   if (isNodeOfType(callee, "Identifier")) return false;
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const methodName = getStaticPropertyName(callee);
-  if (methodName !== "addEventListener") return false;
-  const options = stripParenExpression(registrationCall.arguments?.[2]);
-  if (!isNodeOfType(options, "ObjectExpression")) return false;
-  for (const property of options.properties) {
-    if (
-      !isNodeOfType(property, "Property") ||
-      getStaticPropertyKeyName(property, { allowComputedString: true }) !== "signal"
-    ) {
-      continue;
+  if (methodName === "subscribe") {
+    const subscriptionKey = registrationResultKey(registrationCall, context);
+    return Boolean(
+      subscriptionKey &&
+      cleanupCallsMethodOnKey(effectCallback, "unsubscribe", subscriptionKey, context),
+    );
+  }
+  if (methodName === "addEventListener") {
+    const receiverKey = resolveExpressionKey(callee.object, context);
+    const eventKey = resolveExpressionKey(registrationCall.arguments?.[0], context);
+    const callbackKey = resolveExpressionKey(registrationCall.arguments?.[1], context);
+    let didFindMatchingRemoval = false;
+    if (receiverKey && eventKey && callbackKey) {
+      walkAst(effectCallback, (child: EsTreeNode) => {
+        if (didFindMatchingRemoval) return false;
+        if (
+          !isNodeOfType(child, "CallExpression") ||
+          !isReturnedCleanupFunction(child, effectCallback)
+        ) {
+          return;
+        }
+        const cleanupCallee = stripParenExpression(child.callee);
+        if (
+          isNodeOfType(cleanupCallee, "MemberExpression") &&
+          getStaticPropertyName(cleanupCallee) === "removeEventListener" &&
+          resolveExpressionKey(cleanupCallee.object, context) === receiverKey &&
+          resolveExpressionKey(child.arguments?.[0], context) === eventKey &&
+          resolveExpressionKey(child.arguments?.[1], context) === callbackKey
+        ) {
+          didFindMatchingRemoval = true;
+          return false;
+        }
+      });
     }
-    const signal = stripParenExpression(property.value);
-    if (!isNodeOfType(signal, "MemberExpression") || getStaticPropertyName(signal) !== "signal") {
-      continue;
-    }
-    const controllerKey = resolveExpressionKey(signal.object, context);
-    if (controllerKey && cleanupCallsMethodOnKey(effectCallback, "abort", controllerKey, context)) {
-      return true;
+    if (didFindMatchingRemoval) return true;
+    const optionsArgument = registrationCall.arguments?.[2];
+    if (!optionsArgument) return false;
+    const options = stripParenExpression(optionsArgument);
+    if (!isNodeOfType(options, "ObjectExpression")) return false;
+    for (const property of options.properties) {
+      if (
+        !isNodeOfType(property, "Property") ||
+        getStaticPropertyKeyName(property, { allowComputedString: true }) !== "signal"
+      ) {
+        continue;
+      }
+      const signal = stripParenExpression(property.value);
+      if (!isNodeOfType(signal, "MemberExpression") || getStaticPropertyName(signal) !== "signal") {
+        continue;
+      }
+      const controllerKey = resolveExpressionKey(signal.object, context);
+      if (
+        controllerKey &&
+        cleanupCallsMethodOnKey(effectCallback, "abort", controllerKey, context)
+      ) {
+        return true;
+      }
     }
   }
   return false;
@@ -484,6 +536,7 @@ const hasLatestRefEqualityGuard = (
   node: EsTreeNode,
   stateSymbolId: number,
   context: RuleContext,
+  earlyGuardCandidatesByBlock: WeakMap<EsTreeNode, EsTreeNode[]>,
 ): boolean => {
   let current: EsTreeNode | null | undefined = node;
   while (current) {
@@ -528,11 +581,18 @@ const hasLatestRefEqualityGuard = (
   while (containingStatement.parent && containingStatement.parent !== block) {
     containingStatement = containingStatement.parent;
   }
-  for (const statement of block.body) {
-    if (statement === containingStatement) break;
-    if (!isNodeOfType(statement, "IfStatement") || !statementTerminates(statement.consequent)) {
-      continue;
-    }
+  let earlyGuardCandidates = earlyGuardCandidatesByBlock.get(block);
+  if (!earlyGuardCandidates) {
+    earlyGuardCandidates = block.body.filter(
+      (statement) =>
+        isNodeOfType(statement, "IfStatement") && statementTerminates(statement.consequent),
+    );
+    earlyGuardCandidatesByBlock.set(block, earlyGuardCandidates);
+  }
+  const containingStatementStart = containingStatement.range?.[0] ?? 0;
+  for (const statement of earlyGuardCandidates) {
+    if (!isNodeOfType(statement, "IfStatement")) continue;
+    if ((statement.range?.[0] ?? 0) >= containingStatementStart) break;
     const test = stripParenExpression(statement.test);
     if (
       !isNodeOfType(test, "BinaryExpression") ||
@@ -573,6 +633,9 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
   create: (context: RuleContext) => {
     let deferredFunctions: ReadonlySet<EsTreeNode> = new Set();
     const registrationCallsByCallback = new Map<EsTreeNode, EsTreeNodeOfType<"CallExpression">[]>();
+    const awaitProofsByFunction = new WeakMap<EsTreeNode, AwaitReachabilityProof[]>();
+    const useStatePairByCalleeSymbolId = new Map<number, ReactUseStatePair | null>();
+    const earlyGuardCandidatesByBlock = new WeakMap<EsTreeNode, EsTreeNode[]>();
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         deferredFunctions = collectDeferredFunctions(node, context, registrationCallsByCallback);
@@ -586,7 +649,17 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
         }
         const operand = stripParenExpression(argument.argument);
         if (!isNodeOfType(operand, "Identifier")) return;
-        const pair = resolveReactUseStatePair(callee, context.scopes);
+        const calleeSymbol = context.scopes.symbolFor(callee);
+        const cachedPair = calleeSymbol
+          ? useStatePairByCalleeSymbolId.get(calleeSymbol.id)
+          : undefined;
+        const pair =
+          calleeSymbol && useStatePairByCalleeSymbolId.has(calleeSymbol.id)
+            ? (cachedPair ?? null)
+            : resolveReactUseStatePair(callee, context.scopes);
+        if (calleeSymbol && cachedPair === undefined) {
+          useStatePairByCalleeSymbolId.set(calleeSymbol.id, pair);
+        }
         if (
           !pair ||
           !pair.stateSymbol ||
@@ -596,7 +669,7 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
         }
         if (
           !isInsideDeferredFunction(node, deferredFunctions) &&
-          !asyncFunctionHasAwaitBefore(node, context)
+          !asyncFunctionHasAwaitBefore(node, context, awaitProofsByFunction)
         ) {
           return;
         }
@@ -609,7 +682,7 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
             context,
           ) ||
           hasPromiseCommandNegation(node, pair.stateSymbol.id, deferredFunctions, context) ||
-          hasLatestRefEqualityGuard(node, pair.stateSymbol.id, context)
+          hasLatestRefEqualityGuard(node, pair.stateSymbol.id, context, earlyGuardCandidatesByBlock)
         ) {
           return;
         }

@@ -477,4 +477,30 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not combine mutations and same-reference results from correlated exclusive paths", () => {
+    const updater = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=({flag})=>{const[,setRows]=useState([]);setRows(previous=>{if(flag)previous.push(1);return flag?[...previous]:previous})}",
+    );
+    const direct = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=({flag})=>{const[rows,setRows]=useState([]);if(flag)rows.push(1);if(flag)return null;setRows(rows)}",
+    );
+    expect(updater.diagnostics).toHaveLength(0);
+    expect(direct.diagnostics).toHaveLength(0);
+  });
+
+  it("uses explicit useState array types when the initializer comes from props", () => {
+    const direct = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=({initialRows}:{initialRows:Row[]})=>{const[rows,setRows]=useState<Row[]>(initialRows);rows.push(nextRow);setRows(rows)}",
+    );
+    const updater = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=({initialRows}:{initialRows:Row[]})=>{const[,setRows]=useState<Row[]>(initialRows);setRows(previous=>{previous.push(nextRow);return previous})}",
+    );
+    expect(direct.diagnostics).toHaveLength(1);
+    expect(updater.diagnostics).toHaveLength(1);
+  });
 });

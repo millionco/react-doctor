@@ -9,6 +9,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
+import { nodesCanCoExecute } from "../../utils/nodes-can-co-execute.js";
 import { resolveConstIdentifierRootSymbol } from "../../utils/resolve-const-identifier-root-symbol.js";
 import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -38,7 +39,9 @@ const nodePrecedesOnReachablePath = (
   sourceNode: EsTreeNode,
   targetNode: EsTreeNode,
   functionCfg: FunctionCfg,
+  context: RuleContext,
 ): boolean => {
+  if (!nodesCanCoExecute(sourceNode, targetNode, context)) return false;
   const sourceBlock = functionCfg.blockOf(sourceNode);
   const targetBlock = functionCfg.blockOf(targetNode);
   if (!sourceBlock || !targetBlock) return false;
@@ -89,6 +92,29 @@ const stateCollectionKind = (
   context: RuleContext,
 ): string | null => {
   if (!isNodeOfType(declarator.init, "CallExpression")) return null;
+  const stateType = declarator.init.typeArguments?.params[0];
+  if (stateType) {
+    const unwrappedStateType = stripParenExpression(stateType);
+    if (
+      isNodeOfType(unwrappedStateType, "TSArrayType") ||
+      isNodeOfType(unwrappedStateType, "TSTupleType")
+    ) {
+      return "array";
+    }
+    if (
+      isNodeOfType(unwrappedStateType, "TSTypeReference") &&
+      isNodeOfType(unwrappedStateType.typeName, "Identifier")
+    ) {
+      if (
+        unwrappedStateType.typeName.name === "Array" ||
+        unwrappedStateType.typeName.name === "ReadonlyArray"
+      ) {
+        return "array";
+      }
+      if (unwrappedStateType.typeName.name === "Map") return "map";
+      if (unwrappedStateType.typeName.name === "Set") return "set";
+    }
+  }
   const initializerArgument = declarator.init.arguments?.[0];
   if (!initializerArgument) return null;
   let initializer = stripParenExpression(initializerArgument);
@@ -237,6 +263,67 @@ const expressionReturnsSymbol = (
   return false;
 };
 
+const collectSameReferenceResultExpressions = (
+  expression: EsTreeNode,
+  expectedSymbol: SymbolDescriptor,
+  collectionKind: string | null,
+  context: RuleContext,
+): EsTreeNode[] => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (
+    (isNodeOfType(unwrappedExpression, "Identifier") &&
+      resolveConstIdentifierRootSymbol(unwrappedExpression, context.scopes)?.id ===
+        expectedSymbol.id) ||
+    isSelfReturningMutationCall(unwrappedExpression, expectedSymbol, collectionKind, context)
+  ) {
+    return [unwrappedExpression];
+  }
+  if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
+    return [
+      ...collectSameReferenceResultExpressions(
+        unwrappedExpression.consequent,
+        expectedSymbol,
+        collectionKind,
+        context,
+      ),
+      ...collectSameReferenceResultExpressions(
+        unwrappedExpression.alternate,
+        expectedSymbol,
+        collectionKind,
+        context,
+      ),
+    ];
+  }
+  if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
+    return [
+      ...collectSameReferenceResultExpressions(
+        unwrappedExpression.left,
+        expectedSymbol,
+        collectionKind,
+        context,
+      ),
+      ...collectSameReferenceResultExpressions(
+        unwrappedExpression.right,
+        expectedSymbol,
+        collectionKind,
+        context,
+      ),
+    ];
+  }
+  if (isNodeOfType(unwrappedExpression, "SequenceExpression")) {
+    const lastExpression = unwrappedExpression.expressions.at(-1);
+    return lastExpression
+      ? collectSameReferenceResultExpressions(
+          lastExpression,
+          expectedSymbol,
+          collectionKind,
+          context,
+        )
+      : [];
+  }
+  return [];
+};
+
 const hasFreshReassignmentBefore = (
   functionNode: EsTreeNode,
   expectedSymbol: SymbolDescriptor,
@@ -274,7 +361,7 @@ const hasFreshReassignmentBefore = (
         }
         return false;
       })() ||
-      !nodePrecedesOnReachablePath(child, targetNode, functionCfg)
+      !nodePrecedesOnReachablePath(child, targetNode, functionCfg, context)
     ) {
       return;
     }
@@ -314,27 +401,36 @@ const updaterMutatesThenReturnsSameReference = (
   let didFindPath = false;
   walkAst(updaterFunction.body, (child: EsTreeNode) => {
     if (didFindPath || (child !== updaterFunction.body && isFunctionLike(child))) return false;
-    if (
-      !isNodeOfType(child, "ReturnStatement") ||
-      !child.argument ||
-      !expressionReturnsSymbol(child.argument, parameterSymbol, collectionKind, context)
-    ) {
+    if (!isNodeOfType(child, "ReturnStatement") || !child.argument) {
       return;
     }
-    for (const mutationFact of mutationFacts) {
-      if (
-        (mutationFact.node === child.argument ||
-          nodePrecedesOnReachablePath(mutationFact.node, child, functionCfg)) &&
-        !hasFreshReassignmentBefore(
-          updaterFunction,
-          parameterSymbol,
-          mutationFact.node,
-          functionCfg,
-          context,
-        )
-      ) {
-        didFindPath = true;
-        return false;
+    const sameReferenceResults = collectSameReferenceResultExpressions(
+      child.argument,
+      parameterSymbol,
+      collectionKind,
+      context,
+    );
+    for (const sameReferenceResult of sameReferenceResults) {
+      for (const mutationFact of mutationFacts) {
+        if (
+          (mutationFact.node === sameReferenceResult ||
+            nodePrecedesOnReachablePath(
+              mutationFact.node,
+              sameReferenceResult,
+              functionCfg,
+              context,
+            )) &&
+          !hasFreshReassignmentBefore(
+            updaterFunction,
+            parameterSymbol,
+            mutationFact.node,
+            functionCfg,
+            context,
+          )
+        ) {
+          didFindPath = true;
+          return false;
+        }
       }
     }
   });
@@ -431,7 +527,7 @@ export const noMutateThenSetOrReturnSameReference = defineRule({
             if (
               mutationFacts.some(
                 (mutationFact) =>
-                  nodePrecedesOnReachablePath(mutationFact.node, node, functionCfg) &&
+                  nodePrecedesOnReachablePath(mutationFact.node, node, functionCfg, context) &&
                   !mutationHasFreshReassignment(
                     enclosingFunction,
                     stateSymbol,

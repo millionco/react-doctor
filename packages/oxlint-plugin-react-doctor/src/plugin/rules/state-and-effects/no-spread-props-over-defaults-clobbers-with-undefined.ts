@@ -453,6 +453,27 @@ const nullishComparisonPolarity = (
   return null;
 };
 
+const branchGuaranteesMemberDefined = (
+  testExpression: EsTreeNode,
+  isTruthyBranch: boolean,
+  symbol: SymbolDescriptor,
+  keyName: string,
+  context: RuleContext,
+): boolean => {
+  const nullishPolarity = nullishComparisonPolarity(testExpression, symbol, keyName, context);
+  if (nullishPolarity) {
+    return isTruthyBranch ? nullishPolarity === "defined" : nullishPolarity === "undefined";
+  }
+  const test = stripParenExpression(testExpression);
+  if (expressionMatchesMember(test, symbol, keyName, context)) return isTruthyBranch;
+  return Boolean(
+    isNodeOfType(test, "UnaryExpression") &&
+    test.operator === "!" &&
+    expressionMatchesMember(test.argument, symbol, keyName, context) &&
+    !isTruthyBranch,
+  );
+};
+
 const statementTerminates = (statement: EsTreeNode): boolean => {
   if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
     return true;
@@ -467,24 +488,34 @@ const memberUseIsGuarded = (
   symbol: SymbolDescriptor,
   keyName: string,
   context: RuleContext,
+  priorWrite: RepairWrite | null,
 ): boolean => {
   let current: EsTreeNode | null | undefined = member;
   while (current) {
     const parent: EsTreeNode | null | undefined = current.parent;
     if (parent && isNodeOfType(parent, "ConditionalExpression")) {
-      const polarity = nullishComparisonPolarity(parent.test, symbol, keyName, context);
+      const guardPrecedesUnsafeWrite =
+        !priorWrite || priorWrite.isSafe || priorWrite.start < getNodeStart(parent.test);
       if (
-        (polarity === "defined" && nodeIsInside(member, parent.consequent)) ||
-        (polarity === "undefined" && nodeIsInside(member, parent.alternate))
+        guardPrecedesUnsafeWrite &&
+        ((branchGuaranteesMemberDefined(parent.test, true, symbol, keyName, context) &&
+          nodeIsInside(member, parent.consequent)) ||
+          (branchGuaranteesMemberDefined(parent.test, false, symbol, keyName, context) &&
+            nodeIsInside(member, parent.alternate)))
       ) {
         return true;
       }
     }
     if (parent && isNodeOfType(parent, "IfStatement")) {
-      const polarity = nullishComparisonPolarity(parent.test, symbol, keyName, context);
+      const guardPrecedesUnsafeWrite =
+        !priorWrite || priorWrite.isSafe || priorWrite.start < getNodeStart(parent.test);
       if (
-        (polarity === "defined" && nodeIsInside(member, parent.consequent)) ||
-        (polarity === "undefined" && parent.alternate && nodeIsInside(member, parent.alternate))
+        guardPrecedesUnsafeWrite &&
+        ((branchGuaranteesMemberDefined(parent.test, true, symbol, keyName, context) &&
+          nodeIsInside(member, parent.consequent)) ||
+          (branchGuaranteesMemberDefined(parent.test, false, symbol, keyName, context) &&
+            parent.alternate &&
+            nodeIsInside(member, parent.alternate)))
       ) {
         return true;
       }
@@ -502,22 +533,27 @@ const memberUseIsGuarded = (
     if (!isNodeOfType(statement, "IfStatement") || !statementTerminates(statement.consequent)) {
       continue;
     }
-    if (nullishComparisonPolarity(statement.test, symbol, keyName, context) === "undefined") {
+    const guardPrecedesUnsafeWrite =
+      !priorWrite || priorWrite.isSafe || priorWrite.start < getNodeStart(statement.test);
+    if (
+      guardPrecedesUnsafeWrite &&
+      branchGuaranteesMemberDefined(statement.test, false, symbol, keyName, context)
+    ) {
       return true;
     }
   }
   return false;
 };
 
-const memberHasPriorRepair = (
+const getMemberPriorWrite = (
   member: EsTreeNodeOfType<"MemberExpression">,
   symbol: SymbolDescriptor,
   context: RuleContext,
   repairStartsBySymbolAndBlock: Map<number, WeakMap<EsTreeNode, Map<string, RepairWrite[]>>>,
-): boolean => {
+): RepairWrite | null => {
   const keyName = getStaticPropertyName(member);
   const useBlock = containingBlock(member);
-  if (!keyName || !useBlock) return false;
+  if (!keyName || !useBlock) return null;
   let repairStartsByBlock = repairStartsBySymbolAndBlock.get(symbol.id);
   if (!repairStartsByBlock) {
     repairStartsByBlock = new WeakMap();
@@ -559,7 +595,7 @@ const memberHasPriorRepair = (
     if (repairWrite.start >= getNodeStart(member)) continue;
     if (!lastWrite || repairWrite.start > lastWrite.start) lastWrite = repairWrite;
   }
-  return Boolean(lastWrite?.isSafe);
+  return lastWrite;
 };
 
 const scalarSymbolFeedsComputation = (
@@ -611,12 +647,13 @@ const objectSymbolFeedsComputation = (
     const parent = identifier.parent;
     if (isNodeOfType(parent, "MemberExpression") && parent.object === identifier) {
       const keyName = getStaticPropertyName(parent);
+      const priorWrite = getMemberPriorWrite(parent, symbol, context, repairStartsBySymbolAndBlock);
       if (
         keyName &&
         (candidateKeys === null || candidateKeys.has(keyName)) &&
         typeAllowsUndefinedForKey(parameterType, keyName, context) &&
-        !memberHasPriorRepair(parent, symbol, context, repairStartsBySymbolAndBlock) &&
-        !memberUseIsGuarded(parent, symbol, keyName, context) &&
+        !priorWrite?.isSafe &&
+        !memberUseIsGuarded(parent, symbol, keyName, context, priorWrite) &&
         referenceFeedsComputation(parent, context)
       ) {
         return true;
@@ -756,52 +793,65 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
           isNodeOfType(property, "SpreadElement"),
         );
         if (spreadProperties.length < 2) return;
-        const firstSpread = spreadProperties[0];
-        const lastSpread = spreadProperties.at(-1);
-        if (!firstSpread || !lastSpread) return;
-        const defaultsSource = stripParenExpression(firstSpread.argument);
-        if (!isDefaultsSource(defaultsSource)) return;
-        const propsSource = stripParenExpression(lastSpread.argument);
-        if (!isNodeOfType(propsSource, "Identifier")) return;
         const enclosingFunction = findEnclosingFunction(node);
         if (!enclosingFunction || !componentOrHookDisplayNameForFunction(enclosingFunction)) return;
-        const parameterSymbolId = resolveParameterSourceSymbol(propsSource, context);
-        if (parameterSymbolId === null) return;
-        const parameterType = getFunctionParameterType(
-          enclosingFunction,
-          parameterSymbolId,
-          context,
-        );
-        const defaultedKeys = getVisibleDefaultedKeys(defaultsSource, context, defaultsKeyCache);
-        const repairedKeys = new Set<string>();
-        const lastSpreadStart = getNodeStart(lastSpread);
-        for (const property of node.properties) {
-          if (!isNodeOfType(property, "Property") || getNodeStart(property) <= lastSpreadStart) {
-            continue;
+        for (let propsIndex = 1; propsIndex < spreadProperties.length; propsIndex += 1) {
+          const propsSpread = spreadProperties[propsIndex];
+          if (!propsSpread) continue;
+          const propsSource = stripParenExpression(propsSpread.argument);
+          if (!isNodeOfType(propsSource, "Identifier")) continue;
+          const parameterSymbolId = resolveParameterSourceSymbol(propsSource, context);
+          if (parameterSymbolId === null) continue;
+          const defaultedKeys = new Set<string>();
+          for (const possibleDefaultsSpread of spreadProperties.slice(0, propsIndex)) {
+            const defaultsSource = stripParenExpression(possibleDefaultsSpread.argument);
+            if (!isDefaultsSource(defaultsSource)) continue;
+            const visibleDefaultedKeys = getVisibleDefaultedKeys(
+              defaultsSource,
+              context,
+              defaultsKeyCache,
+            );
+            if (!visibleDefaultedKeys) continue;
+            for (const keyName of visibleDefaultedKeys) defaultedKeys.add(keyName);
           }
-          const keyName = getStaticPropertyKeyName(property, { allowComputedString: true });
-          if (keyName && expressionIsDefinitelyNonUndefined(property.value, context)) {
-            repairedKeys.add(keyName);
+          if (defaultedKeys.size === 0) continue;
+          const lastExplicitWriteByKey = new Map<string, boolean>();
+          const propsSpreadStart = getNodeStart(propsSpread);
+          for (const property of node.properties) {
+            if (!isNodeOfType(property, "Property") || getNodeStart(property) <= propsSpreadStart) {
+              continue;
+            }
+            const keyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+            if (keyName) {
+              lastExplicitWriteByKey.set(
+                keyName,
+                expressionIsDefinitelyNonUndefined(property.value, context),
+              );
+            }
           }
-        }
-        if (defaultedKeys === null) return;
-        const candidateKeys = new Set(
-          [...defaultedKeys].filter((keyName) => !repairedKeys.has(keyName)),
-        );
-        if (candidateKeys.size === 0) return;
-        if (
-          !objectExpressionFeedsComputation(
-            node,
-            candidateKeys,
-            parameterType,
+          const candidateKeys = new Set(
+            [...defaultedKeys].filter((keyName) => lastExplicitWriteByKey.get(keyName) !== true),
+          );
+          if (candidateKeys.size === 0) continue;
+          const parameterType = getFunctionParameterType(
+            enclosingFunction,
+            parameterSymbolId,
             context,
-            symbolById,
-            repairStartsBySymbolAndBlock,
-          )
-        ) {
-          return;
+          );
+          if (
+            objectExpressionFeedsComputation(
+              node,
+              candidateKeys,
+              parameterType,
+              context,
+              symbolById,
+              repairStartsBySymbolAndBlock,
+            )
+          ) {
+            context.report({ node, message: MESSAGE });
+            return;
+          }
         }
-        context.report({ node, message: MESSAGE });
       },
     };
   },

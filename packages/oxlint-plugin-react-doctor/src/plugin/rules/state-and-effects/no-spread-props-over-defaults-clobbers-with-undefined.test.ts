@@ -184,4 +184,43 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
     expect(duplicateDefault.diagnostics).toHaveLength(0);
     expect(invalidatedRepair.diagnostics).toHaveLength(1);
   });
+
+  it("accepts truthiness guards in conditional and branch forms", () => {
+    const conditional = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:100};const Panel=(props:Props)=>{const merged={...defaults,...props};return merged.width?merged.width*2:0}",
+    );
+    const branch = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:100};const Panel=(props:Props)=>{const merged={...defaults,...props};if(!merged.width)return 0;return merged.width*2}",
+    );
+    expect(conditional.diagnostics).toHaveLength(0);
+    expect(branch.diagnostics).toHaveLength(0);
+  });
+
+  it("finds defaults and props spreads with unrelated spreads around them", () => {
+    const leading = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:100};const Panel=(props:Props)=>{const merged={...theme,...defaults,...props};return merged.width*2}",
+    );
+    const intervening = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:100};const Panel=(props:Props)=>{const merged={...defaults,...theme,...props};return merged.width*2}",
+    );
+    const trailing = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:100};const Panel=(props:Props)=>{const merged={...defaults,...props,...theme};return merged.width*2}",
+    );
+    expect(leading.diagnostics).toHaveLength(1);
+    expect(intervening.diagnostics).toHaveLength(1);
+    expect(trailing.diagnostics).toHaveLength(1);
+  });
+
+  it("invalidates an earlier guard after a later unsafe write", () => {
+    const result = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:100};const Panel=(props:Props)=>{const merged={...defaults,...props};if(merged.width){merged.width=undefined;return merged.width*2}return 0}",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -77,6 +77,27 @@ const resolveLocalFunction = (expression: EsTreeNode, context: RuleContext): EsT
     visitedSymbolIds.add(symbol.id);
     current = stripParenExpression(symbol.initializer);
   }
+  if (isNodeOfType(current, "MemberExpression")) {
+    const methodName = getStaticPropertyName(current);
+    const receiver = stripParenExpression(current.object);
+    if (!methodName || !isNodeOfType(receiver, "Identifier")) return null;
+    const receiverSymbol = context.scopes.symbolFor(receiver);
+    const initializer = receiverSymbol?.initializer
+      ? stripParenExpression(receiverSymbol.initializer)
+      : null;
+    if (!isNodeOfType(initializer, "ObjectExpression")) return null;
+    for (const property of initializer.properties) {
+      if (
+        !isNodeOfType(property, "Property") ||
+        getStaticPropertyKeyName(property, { allowComputedString: true }) !== methodName
+      ) {
+        continue;
+      }
+      const value = stripParenExpression(property.value);
+      return isFunctionLike(value) ? value : null;
+    }
+    return null;
+  }
   return isFunctionLike(current) ? current : null;
 };
 
@@ -179,6 +200,55 @@ const identifierIsCallbackParameter = (identifier: EsTreeNode, context: RuleCont
   );
 };
 
+const identifierLooksSideEffecting = (identifier: EsTreeNode, context: RuleContext): boolean =>
+  isNodeOfType(identifier, "Identifier") &&
+  (SIDE_EFFECT_CALL_NAME_PATTERN.test(identifier.name) ||
+    identifierIsCallbackParameter(identifier, context));
+
+const freshObjectMethodIsExternalCallback = (
+  callee: EsTreeNodeOfType<"MemberExpression">,
+  context: RuleContext,
+): boolean => {
+  const methodName = getStaticPropertyName(callee);
+  const receiver = stripParenExpression(callee.object);
+  if (!methodName || !isNodeOfType(receiver, "Identifier")) return false;
+  const receiverSymbol = context.scopes.symbolFor(receiver);
+  const initializer = receiverSymbol?.initializer
+    ? stripParenExpression(receiverSymbol.initializer)
+    : null;
+  if (!isNodeOfType(initializer, "ObjectExpression")) return false;
+  for (const property of initializer.properties) {
+    if (
+      !isNodeOfType(property, "Property") ||
+      getStaticPropertyKeyName(property, { allowComputedString: true }) !== methodName
+    ) {
+      continue;
+    }
+    return identifierLooksSideEffecting(stripParenExpression(property.value), context);
+  }
+  return false;
+};
+
+const callHasImmediateSideEffectCallback = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(call.callee);
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    !SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") ||
+    resolveLocalFunction(callee, context)
+  ) {
+    return false;
+  }
+  const callbackArgument = call.arguments?.[0];
+  return Boolean(
+    callbackArgument &&
+    !isNodeOfType(callbackArgument, "SpreadElement") &&
+    identifierLooksSideEffecting(stripParenExpression(callbackArgument), context),
+  );
+};
+
 const callHasSideEffectName = (
   call: EsTreeNodeOfType<"CallExpression">,
   executedFunctions: ReadonlySet<EsTreeNode>,
@@ -210,6 +280,12 @@ const callHasSideEffectName = (
     context.scopes.isGlobalReference(baseIdentifier)
   ) {
     return false;
+  }
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    freshObjectMethodIsExternalCallback(callee, context)
+  ) {
+    return true;
   }
   return !receiverIsUpdaterLocal(receiver, executedFunctions, context);
 };
@@ -304,7 +380,8 @@ const collectExecutedFunctions = (
       }
       if (
         !isNodeOfType(callee, "MemberExpression") ||
-        !SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")
+        !SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") ||
+        directFunction
       ) {
         return;
       }
@@ -356,6 +433,13 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
             }
             const resolvedFunction = resolveLocalFunction(child.callee, context);
             if (resolvedFunction && executedFunctions.has(resolvedFunction)) return;
+            if (callHasImmediateSideEffectCallback(child, context)) {
+              if (!reportedSideEffectNodes.has(child)) {
+                reportedSideEffectNodes.add(child);
+                context.report({ node: child, message: MESSAGE });
+              }
+              return;
+            }
             if (!callHasSideEffectName(child, executedFunctions, context)) return;
             if (reportedSideEffectNodes.has(child)) return;
             reportedSideEffectNodes.add(child);

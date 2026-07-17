@@ -154,4 +154,28 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(unreachable.diagnostics).toHaveLength(0);
     expect(mapThisArg.diagnostics).toHaveLength(0);
   });
+
+  it("does not assume a locally defined custom map method invokes its callback synchronously", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({onVisit})=>{const[,setRows]=useState([]);const queue={map(callback){setTimeout(callback,0);return []}};setRows(rows=>queue.map(row=>{onVisit(row);return row}))}",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags external callbacks passed directly to synchronous collection methods", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({onVisit})=>{const[,setRows]=useState([]);setRows(rows=>{rows.forEach(onVisit);return rows})}",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an external callback stored in a fresh local object and then invoked", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({onVisit})=>{const[,setRows]=useState([]);setRows(rows=>{const callbacks={onVisit};callbacks.onVisit(rows[0]);return rows})}",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

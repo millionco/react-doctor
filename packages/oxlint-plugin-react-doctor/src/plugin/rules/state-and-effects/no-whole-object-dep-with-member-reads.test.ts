@@ -271,4 +271,22 @@ describe("no-whole-object-dep-with-member-reads", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("tracks nested, aliased, and array destructuring of props members", () => {
+    const nested = runRule(
+      noWholeObjectDepWithMemberReads,
+      'import{useMemo}from"react";function Panel(props){const{user:{name}}=props;return useMemo(()=>name,[props])}',
+    );
+    const aliased = runRule(
+      noWholeObjectDepWithMemberReads,
+      'import{useMemo}from"react";function Panel(props){const alias=props;const{value}=alias;return useMemo(()=>value,[props])}',
+    );
+    const array = runRule(
+      noWholeObjectDepWithMemberReads,
+      'import{useMemo}from"react";function Panel(props){const[first]=props.items;return useMemo(()=>first,[props])}',
+    );
+    expect(nested.diagnostics).toHaveLength(1);
+    expect(aliased.diagnostics).toHaveLength(1);
+    expect(array.diagnostics).toHaveLength(1);
+  });
 });

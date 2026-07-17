@@ -399,4 +399,52 @@ describe("no-boolean-toggle-without-functional-update", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("handles ordinary two-argument event listeners without crashing", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      'const C=()=>{const[open,setOpen]=useState(false);useEffect(()=>{document.addEventListener("click",()=>setOpen(!open))},[])}',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts matching event and subscription cleanup when state resubscribes", () => {
+    const eventListener = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      'const C=()=>{const[open,setOpen]=useState(false);useEffect(()=>{const toggle=()=>setOpen(!open);document.addEventListener("click",toggle);return()=>document.removeEventListener("click",toggle)},[open])}',
+    );
+    const subscription = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);useEffect(()=>{const subscription=source.subscribe(()=>setOpen(!open));return()=>subscription.unsubscribe()},[open])}",
+    );
+    expect(eventListener.diagnostics).toHaveLength(0);
+    expect(subscription.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat mutually exclusive correlated await paths as stale", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=({flag})=>{const[open,setOpen]=useState(false);const run=async()=>{if(flag)await load();if(flag)return;setOpen(!open)};return run}",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("caches await reachability across many setters", () => {
+    const buildSource = (setterCount: number): string =>
+      `const C=()=>{const[open,setOpen]=useState(false);const run=async()=>{await load();${"setOpen(!open);".repeat(setterCount)}}}`;
+    runRule(noBooleanToggleWithoutFunctionalUpdate, buildSource(100));
+    const measureFastestDuration = (setterCount: number): number => {
+      let fastestDuration = Number.POSITIVE_INFINITY;
+      for (let repetition = 0; repetition < 3; repetition += 1) {
+        const start = performance.now();
+        const result = runRule(noBooleanToggleWithoutFunctionalUpdate, buildSource(setterCount));
+        fastestDuration = Math.min(fastestDuration, performance.now() - start);
+        expect(result.diagnostics).toHaveLength(setterCount);
+      }
+      return fastestDuration;
+    };
+    const smallDuration = measureFastestDuration(4_000);
+    const largeDuration = measureFastestDuration(8_000);
+    expect(largeDuration).toBeLessThan(smallDuration * 2.5);
+  });
 });

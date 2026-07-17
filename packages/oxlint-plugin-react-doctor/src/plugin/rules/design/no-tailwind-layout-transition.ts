@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -7,7 +8,7 @@ import { isSvgLayoutTransitionExemptElementName } from "./utils/is-svg-layout-tr
 
 // Tailwind arbitrary transition-property utilities: `transition-[height]`,
 // `transition-[width,opacity]`, `transition-[margin-top]`, etc.
-const ARBITRARY_TRANSITION_PROPERTY = /transition-\[([^\]]+)\]/g;
+const ARBITRARY_TRANSITION_PROPERTY = /^transition-\[([^\]]+)\]$/;
 
 // Layout-triggering properties: animating any of these forces the browser to
 // recompute geometry every frame. Matched as EXACT property names (not
@@ -64,7 +65,9 @@ export const noTailwindLayoutTransition = defineRule({
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
 
-      for (const transitionMatch of classNameValue.matchAll(ARBITRARY_TRANSITION_PROPERTY)) {
+      for (const token of getClassNameTokens(classNameValue)) {
+        const transitionMatch = token.match(ARBITRARY_TRANSITION_PROPERTY);
+        if (!transitionMatch) continue;
         const animatedProperties = transitionMatch[1];
         const layoutProperty = animatedProperties
           .split(",")

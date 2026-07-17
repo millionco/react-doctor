@@ -4,6 +4,7 @@ const SVG_LAYOUT_TRANSITION_EXEMPT_ELEMENT_NAMES = new Set([
   "rect",
   "circle",
   "ellipse",
+  "image",
   "line",
   "path",
   "polygon",

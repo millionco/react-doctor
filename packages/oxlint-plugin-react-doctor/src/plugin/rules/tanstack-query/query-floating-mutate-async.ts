@@ -2,6 +2,7 @@ import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
@@ -123,15 +124,6 @@ const isPossibleCallable = (
   return isPossibleCallable(symbol.initializer, context, visitedSymbols);
 };
 
-const getEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
-  let current = node.parent;
-  while (current) {
-    if (isFunctionLike(current)) return current;
-    current = current.parent ?? null;
-  }
-  return null;
-};
-
 const isFunctionReturnDiscarded = (
   functionNode: EsTreeNode,
   context: RuleContext,
@@ -197,7 +189,7 @@ const isFloatingPromiseUse = (
     }
     if (isNodeOfType(parent, "ExpressionStatement")) return true;
     if (isNodeOfType(parent, "ReturnStatement") && parent.argument === current) {
-      const enclosingFunction = getEnclosingFunction(parent);
+      const enclosingFunction = findEnclosingFunction(parent);
       return Boolean(
         enclosingFunction &&
         isFunctionReturnDiscarded(enclosingFunction, context, visitedFunctions),

@@ -3,6 +3,7 @@ import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
@@ -98,15 +99,6 @@ const resolveLocalFunction = (expression: EsTreeNode, context: RuleContext): EsT
   return isFunctionLike(initializer) ? initializer : null;
 };
 
-const findNearestFunction = (node: EsTreeNode): EsTreeNode | null => {
-  let current = node.parent;
-  while (current) {
-    if (isFunctionLike(current)) return current;
-    current = current.parent ?? null;
-  }
-  return null;
-};
-
 const isEffectCallbackReference = (identifier: EsTreeNode): boolean => {
   const callExpression = identifier.parent;
   return Boolean(
@@ -121,7 +113,7 @@ const collectEffectInvocations = (
   context: RuleContext,
   visitedFunctions: Set<EsTreeNode> = new Set(),
 ): EffectInvocation[] => {
-  const functionNode = findNearestFunction(node);
+  const functionNode = findEnclosingFunction(node);
   if (!functionNode || visitedFunctions.has(functionNode)) return [];
   visitedFunctions.add(functionNode);
 
@@ -247,6 +239,7 @@ const responseExpressionIsConsumed = (
   if (isInEffectDependencyArray(expression) || isGuardOnlyReference(expression)) return false;
   const expressionRoot = findTransparentExpressionRoot(expression);
   const parent = expressionRoot.parent;
+  if (isNodeOfType(parent, "ExpressionStatement")) return false;
   if (isNodeOfType(parent, "MemberExpression") && parent.object === expressionRoot) {
     const propertyName = getStaticPropertyName(parent);
     return propertyName === null || !ACKNOWLEDGEMENT_FIELD_NAMES.has(propertyName);
@@ -334,15 +327,12 @@ const getMutationCalls = (
   return calls;
 };
 
-const getAwaitedBinding = (
+const getAwaitedExpression = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
 ): EsTreeNode | null => {
   const callRoot = findTransparentExpressionRoot(callExpression);
   const awaitExpression = callRoot.parent;
-  if (!isNodeOfType(awaitExpression, "AwaitExpression")) return null;
-  const awaitRoot = findTransparentExpressionRoot(awaitExpression);
-  const declarator = awaitRoot.parent;
-  return isNodeOfType(declarator, "VariableDeclarator") ? declarator.id : null;
+  return isNodeOfType(awaitExpression, "AwaitExpression") ? awaitExpression : null;
 };
 
 const handlerConsumesResponse = (handlerExpression: EsTreeNode, context: RuleContext): boolean => {
@@ -581,18 +571,9 @@ const mutationResultIsConsumedInCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
-  const awaitedBinding = getAwaitedBinding(callExpression);
-  if (awaitedBinding) {
-    if (isNodeOfType(awaitedBinding, "Identifier")) {
-      const symbol = context.scopes.symbolFor(awaitedBinding);
-      if (symbol && symbolHasConsumerRead(symbol, context)) return true;
-    }
-    if (
-      isNodeOfType(awaitedBinding, "ObjectPattern") &&
-      objectPatternConsumesResponse(awaitedBinding)
-    ) {
-      return true;
-    }
+  const awaitedExpression = getAwaitedExpression(callExpression);
+  if (awaitedExpression) {
+    return responseExpressionIsConsumed(awaitedExpression, context, new Set());
   }
   return thenHandlerConsumesResponse(callExpression, context);
 };

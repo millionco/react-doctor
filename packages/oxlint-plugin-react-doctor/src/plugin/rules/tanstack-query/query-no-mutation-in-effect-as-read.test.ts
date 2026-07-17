@@ -48,6 +48,42 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an awaited result passed directly to a consumer", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser } = useMutation(options);
+         useEffect(() => {
+           void (async () => setUser(await fetchUser(params)))();
+         }, [params]);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a member read directly from an awaited result", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser } = useMutation(options);
+         useEffect(() => {
+           void (async () => setUser((await fetchUser(params)).user))();
+         }, [params]);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an awaited result that is discarded", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: updateUser } = useMutation(options);
+         useEffect(() => {
+           void (async () => { await updateUser(params); })();
+         }, [params]);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a named then handler that consumes the response", () => {
     const result = runMutationReadRule(
       `function Component() {

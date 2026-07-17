@@ -63,6 +63,10 @@ export const noInlinePropOnMemoComponent = defineRule({
   title: "Inline prop defeats memo()",
   tags: ["test-noise"],
   severity: "warn",
+  // React Compiler memoizes inline prop allocations, so they keep their
+  // identity between renders and no longer defeat `memo()`. Mirrors the
+  // `jsx-no-new-*-as-prop` rules, which gate on the same capability.
+  disabledWhen: ["react-compiler"],
   recommendation:
     "Move the inline `() => ...` / `[]` / `{}` to a stable value with useMemo, useCallback, or module scope, so the memoized child stops redrawing on every parent render",
   create: (context: RuleContext) => {

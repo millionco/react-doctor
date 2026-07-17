@@ -130,6 +130,10 @@ export const noEffectWithFreshDeps = defineRule({
   title: "Effect dependency recreated every render",
   severity: "error",
   category: "State & Effects",
+  // React Compiler memoizes values built during a compiled hook's render,
+  // so a forwarded dependency keeps its identity and the effect no longer
+  // re-runs every render. Mirrors the `jsx-no-new-*-as-prop` gates.
+  disabledWhen: ["react-compiler"],
   recommendation:
     "Move the value inside the hook body and depend on its simple inputs instead, or wrap it in useMemo / useCallback so it stays the same between renders.",
   create: (context: RuleContext) => ({

@@ -120,6 +120,22 @@ describe("no-ref-callback-cleanup-before-react-19", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not report statically unreachable conditional cleanup branches", () => {
+    const result = runRuleForCode(`
+      const safeRef = (node) => { node?.focus(); };
+      const Component = ({ remove }) => (
+        <>
+          <div ref={false ? ((node) => () => remove(node)) : safeRef} />
+          <span ref={true ? safeRef : ((node) => () => remove(node))} />
+          <button ref={0 ? ((node) => () => remove(node)) : safeRef} />
+        </>
+      );
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent for unknown, mutable, async, and non-ref callbacks", () => {
     const result = runRuleForCode(`
       import { importedRef } from "./refs";

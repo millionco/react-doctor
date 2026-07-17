@@ -20,6 +20,13 @@ const resolveFunctionExpressions = (
     return expression.async || expression.generator ? [] : [expression];
   }
   if (isNodeOfType(expression, "ConditionalExpression")) {
+    if (isNodeOfType(expression.test, "Literal")) {
+      return resolveFunctionExpressions(
+        expression.test.value ? expression.consequent : expression.alternate,
+        scopes,
+        visitedSymbolIds,
+      );
+    }
     return [
       ...resolveFunctionExpressions(expression.consequent, scopes, visitedSymbolIds),
       ...resolveFunctionExpressions(expression.alternate, scopes, visitedSymbolIds),

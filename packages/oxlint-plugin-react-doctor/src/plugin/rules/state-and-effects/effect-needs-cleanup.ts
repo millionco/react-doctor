@@ -27,6 +27,7 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import { hasReactRefCurrentOrigin, resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
@@ -2408,9 +2409,32 @@ const isFunctionUsedAsReactRef = (functionNode: EsTreeNode, context: RuleContext
     }
     const ownerFunction = findEnclosingFunction(returnStatement);
     return Boolean(
-      ownerFunction && getFunctionBindingIdentifier(ownerFunction)?.name.startsWith("use"),
+      ownerFunction && isReactHookName(getFunctionBindingIdentifier(ownerFunction)?.name ?? ""),
     );
   });
+};
+
+const findRefPresenceGuardForRelease = (
+  releaseCall: EsTreeNode,
+  owner: EsTreeNode,
+  refCurrentKey: string,
+  context: RuleContext,
+): EsTreeNodeOfType<"IfStatement"> | null => {
+  let ancestor = releaseCall.parent;
+  while (ancestor && ancestor !== owner) {
+    if (isNodeOfType(ancestor, "IfStatement")) {
+      if (
+        ancestor.alternate !== null ||
+        resolveExpressionKey(ancestor.test, context) !== refCurrentKey ||
+        !doMatchingNodesCoverEveryPathAfterUsage(ancestor.consequent, [releaseCall], context)
+      ) {
+        return null;
+      }
+      return ancestor;
+    }
+    ancestor = ancestor.parent;
+  }
+  return null;
 };
 
 const isReactRefListenerReplacementRelease = (
@@ -2489,9 +2513,15 @@ const isReactRefListenerReplacementRelease = (
       matchingOwnershipAssignments.push(child);
     }
   });
+  const releaseAnchor =
+    findRefPresenceGuardForRelease(releaseCall, usageFunction, releaseReceiverKey, context) ??
+    releaseCall;
+  const safeOwnershipAssignments = matchingOwnershipAssignments.filter((assignment) =>
+    doMatchingNodesCoverEveryPathBeforeUsage(assignment, [releaseAnchor], usageFunction, context),
+  );
   return doMatchingNodesCoverEveryPathBeforeUsage(
     usage.node,
-    matchingOwnershipAssignments,
+    safeOwnershipAssignments,
     usageFunction,
     context,
   );

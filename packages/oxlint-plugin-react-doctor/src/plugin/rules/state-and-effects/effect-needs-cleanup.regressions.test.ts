@@ -7269,6 +7269,25 @@ export const useViewport = ({ onWheel }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("rejects listener replacement exposed by a non-hook function", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const userViewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const attachViewportListeners = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return { viewportRef: attachViewportListeners };
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it.each([
     {
       name: "a different event",
@@ -7332,6 +7351,27 @@ export const Viewport = ({ onWheel }) => {
     if (current) current.removeEventListener("wheel", onWheel);
     if (node) node.addEventListener("wheel", onWheel, { passive: false });
   }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects callback-ref replacement that conditionally skips release", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel, shouldRelease }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (shouldRelease && previous) {
+      previous.removeEventListener("wheel", onWheel);
+    }
+    viewportNodeRef.current = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel, shouldRelease]);
   return <button ref={viewportRef} />;
 };`,
     );

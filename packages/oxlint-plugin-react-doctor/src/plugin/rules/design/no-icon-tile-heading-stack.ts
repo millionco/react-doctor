@@ -5,6 +5,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
+import { hasVisibleTailwindFillOrEdge } from "./utils/has-visible-tailwind-fill-or-edge.js";
 import { isTailwindCardSurface } from "./utils/is-tailwind-card-surface.js";
 
 const CARD_HEADING_PATTERN = /^h[2-4]$/;
@@ -32,9 +33,7 @@ const isIconTile = (node: EsTreeNodeOfType<"JSXElement">): boolean => {
   const hasRoundedShape = tokens.some(
     (token) => token === "rounded" || (token.startsWith("rounded-") && token !== "rounded-none"),
   );
-  const hasSurface = tokens.some(
-    (token) => token.startsWith("bg-") || token === "border" || token.startsWith("border-"),
-  );
+  const hasSurface = hasVisibleTailwindFillOrEdge(tokens);
   return hasTileSize && hasRoundedShape && hasSurface;
 };
 

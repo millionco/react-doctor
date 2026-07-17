@@ -7,6 +7,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
+import { hasVisibleTailwindFillOrEdge } from "./utils/has-visible-tailwind-fill-or-edge.js";
 
 const HERO_HEADING_SIZE_CLASSES = new Set([
   "text-5xl",
@@ -15,6 +16,13 @@ const HERO_HEADING_SIZE_CLASSES = new Set([
   "text-8xl",
   "text-9xl",
 ]);
+
+const hasPositivePillPadding = (token: string): boolean => {
+  const spacingMatch = token.match(/^p(?:x)?-(px|[\d.]+)$/);
+  if (spacingMatch) return spacingMatch[1] === "px" || parseFloat(spacingMatch[1]) > 0;
+  const arbitraryMatch = token.match(/^p(?:x)?-\[([\d.]+)(?:px|rem)\]$/);
+  return Boolean(arbitraryMatch && parseFloat(arbitraryMatch[1]) > 0);
+};
 
 export const noHeroEyebrowChip = defineRule({
   id: "no-hero-eyebrow-chip",
@@ -34,7 +42,10 @@ export const noHeroEyebrowChip = defineRule({
       const isTrackedLabel =
         labelTokens.has("uppercase") &&
         [...labelTokens].some((token) => token.startsWith("tracking-"));
-      const isPillLabel = labelTokens.has("rounded-full");
+      const isPillLabel =
+        labelTokens.has("rounded-full") &&
+        hasVisibleTailwindFillOrEdge([...labelTokens]) &&
+        [...labelTokens].some(hasPositivePillPadding);
       if (!isTrackedLabel && !isPillLabel) return;
 
       const heading = getNextStaticJsxElementSibling(node);

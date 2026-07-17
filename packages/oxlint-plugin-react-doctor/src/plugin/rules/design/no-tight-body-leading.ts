@@ -32,9 +32,7 @@ const getPixelValue = (property: EsTreeNode): number | null => {
 
 const getUnitlessLineHeight = (property: EsTreeNode): number | null => {
   const numberValue = getStylePropertyNumberValue(property);
-  if (numberValue !== null && numberValue > 0 && numberValue < ROOT_FONT_SIZE_PX) {
-    return numberValue;
-  }
+  if (numberValue !== null) return numberValue;
   const stringValue = getStylePropertyStringValue(property)?.trim();
   if (!stringValue || !/^[\d.]+$/.test(stringValue)) return null;
   return parseFloat(stringValue);

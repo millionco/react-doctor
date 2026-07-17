@@ -11,20 +11,28 @@ import { getStylePropertyNumberValue } from "./utils/get-style-property-number-v
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
 const WIDE_SHADOW_CLASS_NAMES = new Set(["shadow-xl", "shadow-2xl"]);
+const HAIRLINE_BORDER_CLASS_NAMES = new Set(["border", "border-1", "border-px"]);
 
-const hasOnePixelBorder = (properties: EsTreeNode[]): boolean =>
-  properties.some((property) => {
+const hasOnePixelBorder = (properties: EsTreeNode[]): boolean => {
+  const hasVisibleBorderStyle = properties.some(
+    (property) =>
+      getStylePropertyKey(property) === "borderStyle" &&
+      /^(?:dashed|dotted|double|solid)$/.test(getStylePropertyStringValue(property)?.trim() ?? ""),
+  );
+  return properties.some((property) => {
     const propertyName = getStylePropertyKey(property);
     if (propertyName === "borderWidth") {
       const numberValue = getStylePropertyNumberValue(property);
       const stringValue = getStylePropertyStringValue(property)?.trim();
-      return numberValue === 1 || stringValue === "1px";
+      return hasVisibleBorderStyle && (numberValue === 1 || stringValue === "1px");
     }
     if (propertyName !== "border") return false;
-    return /^1px\s+(?:solid|dashed|dotted)\b/.test(
-      getStylePropertyStringValue(property)?.trim() ?? "",
+    const borderValue = getStylePropertyStringValue(property)?.trim() ?? "";
+    return (
+      !/\btransparent\b/.test(borderValue) && /^1px\s+(?:solid|dashed|dotted)\b/.test(borderValue)
     );
   });
+};
 
 const getShadowBlurPx = (value: string): number | null => {
   const shadowGeometry = value.split(/(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color)\(|#/i)[0];
@@ -48,7 +56,8 @@ export const noHairlineBorderWideShadow = defineRule({
       for (const property of styleExpression.properties ?? []) {
         if (getStylePropertyKey(property) !== "boxShadow") continue;
         const shadowValue = getStylePropertyStringValue(property);
-        const shadowBlurPx = shadowValue ? getShadowBlurPx(shadowValue) : null;
+        if (!shadowValue || /\btransparent\b/.test(shadowValue)) continue;
+        const shadowBlurPx = getShadowBlurPx(shadowValue);
         if (shadowBlurPx === null || shadowBlurPx < WIDE_SHADOW_BLUR_MIN_PX) continue;
         context.report({
           node: property,
@@ -61,7 +70,15 @@ export const noHairlineBorderWideShadow = defineRule({
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
       const tokens = new Set(getUnvariantClassNameTokens(classNameValue));
-      if (!tokens.has("border") && !tokens.has("border-1")) return;
+      if (
+        tokens.has("border-0") ||
+        tokens.has("border-none") ||
+        tokens.has("border-transparent") ||
+        ![...HAIRLINE_BORDER_CLASS_NAMES].some((token) => tokens.has(token))
+      ) {
+        return;
+      }
+      if (tokens.has("shadow-none") || tokens.has("shadow-transparent")) return;
       if (![...WIDE_SHADOW_CLASS_NAMES].some((token) => tokens.has(token))) return;
       context.report({
         node,

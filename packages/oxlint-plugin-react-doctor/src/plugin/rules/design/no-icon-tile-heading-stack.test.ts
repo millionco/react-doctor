@@ -27,11 +27,27 @@ describe("no-icon-tile-heading-stack", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts icon wrappers with invisible surface utilities", () => {
+    const result = runRule(
+      noIconTileHeadingStack,
+      `const Feature = () => <article className="rounded-xl border p-6"><div className="size-12 rounded-lg border-0 bg-transparent"><SparklesIcon /></div><h3>Automations</h3></article>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not assemble an icon tile from conditional utilities", () => {
     const result = runRule(
       noIconTileHeadingStack,
       `const Feature = () => <article className="rounded-xl border p-6"><div className="size-12 rounded-lg dark:bg-blue-100"><SparklesIcon /></div><h3>Automations</h3></article>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes a parent card with physical padding", () => {
+    const result = runRule(
+      noIconTileHeadingStack,
+      `const Feature = () => <article className="rounded-xl border pt-6"><div className="size-12 rounded-lg bg-blue-100"><SparklesIcon /></div><h3>Automations</h3></article>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

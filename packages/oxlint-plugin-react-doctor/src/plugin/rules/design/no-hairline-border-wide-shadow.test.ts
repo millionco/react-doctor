@@ -42,4 +42,18 @@ describe("no-hairline-border-wide-shadow", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("ignores explicitly invisible borders and shadows", () => {
+    const result = runRule(
+      noHairlineBorderWideShadow,
+      `const Cards = () => <>
+        <div className="border border-transparent shadow-2xl" />
+        <div className="border shadow-2xl shadow-none" />
+        <div style={{ border: "1px solid transparent", boxShadow: "0 8px 24px #0002" }} />
+        <div style={{ border: "1px solid #ddd", boxShadow: "0 8px 24px transparent" }} />
+        <div style={{ borderWidth: 1, boxShadow: "0 8px 24px #0002" }} />
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

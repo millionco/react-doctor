@@ -38,6 +38,14 @@ describe("no-tight-body-leading", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("treats every numeric line height as a unitless multiplier", () => {
+    const result = runRule(
+      noTightBodyLeading,
+      `const Example = () => <><p style={{ fontSize: 16, lineHeight: 18 }}>${LONG_TEXT}</p><p style={{ fontSize: 16, lineHeight: "18" }}>${LONG_TEXT}</p></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag short labels or headings", () => {
     const result = runRule(
       noTightBodyLeading,

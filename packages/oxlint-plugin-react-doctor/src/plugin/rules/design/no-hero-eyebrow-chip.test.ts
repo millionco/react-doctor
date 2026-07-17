@@ -14,7 +14,7 @@ describe("no-hero-eyebrow-chip", () => {
   it("flags a pill chip above a display h1", () => {
     const result = runRule(
       noHeroEyebrowChip,
-      `const Hero = () => <header><span className="rounded-full px-3 py-1">New release</span><h1 className="text-6xl">Work together</h1></header>;`,
+      `const Hero = () => <header><span className="rounded-full bg-blue-100 px-3 py-1">New release</span><h1 className="text-6xl">Work together</h1></header>;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -23,6 +23,14 @@ describe("no-hero-eyebrow-chip", () => {
     const result = runRule(
       noHeroEyebrowChip,
       `const Hero = () => <header><nav>Home / Product</nav><h1 className="text-7xl">Work together</h1></header>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts rounded labels without a visible chip surface", () => {
+    const result = runRule(
+      noHeroEyebrowChip,
+      `const Hero = () => <header><span className="rounded-full px-3 py-1">Release notes</span><h1 className="text-6xl">Work together</h1></header>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

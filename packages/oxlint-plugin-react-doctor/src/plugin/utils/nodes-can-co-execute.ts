@@ -13,7 +13,12 @@ interface ExitingPredicate {
 
 interface PredicateConstraints {
   readonly isImpossible: boolean;
-  readonly values: ReadonlyMap<number, boolean>;
+  readonly values: ReadonlyMap<number, PredicateValueConstraint>;
+}
+
+interface PredicateValueConstraint {
+  readonly excludedValueKeys: ReadonlySet<string>;
+  readonly requiredValueKey: string | null;
 }
 
 const exitingPredicatesByBlock = new WeakMap<EsTreeNode, ExitingPredicate[]>();
@@ -39,11 +44,31 @@ const getExitingPredicates = (block: EsTreeNode): ExitingPredicate[] => {
   return predicates;
 };
 
+interface PredicateConstraint {
+  readonly isEquality: boolean;
+  readonly symbolId: number;
+  readonly valueKey: string;
+}
+
+const literalValueKey = (expression: EsTreeNode): string | null => {
+  const literal = stripParenExpression(expression);
+  if (!isNodeOfType(literal, "Literal")) return null;
+  if (
+    typeof literal.value !== "boolean" &&
+    typeof literal.value !== "number" &&
+    typeof literal.value !== "string" &&
+    literal.value !== null
+  ) {
+    return null;
+  }
+  return `${typeof literal.value}:${String(literal.value)}`;
+};
+
 const predicateConstraint = (
   expression: EsTreeNode,
   isTruthy: boolean,
   context: RuleContext,
-): readonly [number, boolean] | null => {
+): PredicateConstraint | null => {
   let current = stripParenExpression(expression);
   let expectedValue = isTruthy;
   while (isNodeOfType(current, "UnaryExpression") && current.operator === "!") {
@@ -51,6 +76,8 @@ const predicateConstraint = (
     current = stripParenExpression(current.argument);
   }
   let identifier: EsTreeNode | null = null;
+  let valueKey = "boolean:true";
+  let comparisonIsEquality = true;
   if (isNodeOfType(current, "Identifier")) {
     identifier = current;
   } else if (
@@ -58,41 +85,68 @@ const predicateConstraint = (
     ["===", "!==", "==", "!="].includes(current.operator)
   ) {
     const operands = [
-      { boolean: current.right, identifier: current.left },
-      { boolean: current.left, identifier: current.right },
+      { identifier: current.left, literal: current.right },
+      { identifier: current.right, literal: current.left },
     ];
     for (const operandsPair of operands) {
-      const booleanExpression = stripParenExpression(operandsPair.boolean);
       const identifierExpression = stripParenExpression(operandsPair.identifier);
-      if (
-        isNodeOfType(booleanExpression, "Literal") &&
-        typeof booleanExpression.value === "boolean" &&
-        isNodeOfType(identifierExpression, "Identifier")
-      ) {
+      const candidateValueKey = literalValueKey(operandsPair.literal);
+      if (candidateValueKey !== null && isNodeOfType(identifierExpression, "Identifier")) {
+        if (
+          (current.operator === "==" || current.operator === "!=") &&
+          !candidateValueKey.startsWith("boolean:")
+        ) {
+          continue;
+        }
         identifier = identifierExpression;
-        const comparisonIsEquality = current.operator === "===" || current.operator === "==";
-        expectedValue =
-          booleanExpression.value === comparisonIsEquality ? expectedValue : !expectedValue;
+        valueKey = candidateValueKey;
+        comparisonIsEquality = current.operator === "===" || current.operator === "==";
         break;
       }
     }
   }
   if (!identifier) return null;
   const symbol = resolveConstIdentifierRootSymbol(identifier, context.scopes);
-  return symbol ? [symbol.id, expectedValue] : null;
+  return symbol
+    ? {
+        isEquality: comparisonIsEquality === expectedValue,
+        symbolId: symbol.id,
+        valueKey,
+      }
+    : null;
 };
 
 const addPredicateConstraint = (
-  constraints: Map<number, boolean>,
+  constraints: Map<number, PredicateValueConstraint>,
   expression: EsTreeNode,
   isTruthy: boolean,
   context: RuleContext,
 ): boolean => {
   const constraint = predicateConstraint(expression, isTruthy, context);
   if (!constraint) return false;
-  const previousValue = constraints.get(constraint[0]);
-  if (previousValue !== undefined && previousValue !== constraint[1]) return true;
-  constraints.set(constraint[0], constraint[1]);
+  const previousValue = constraints.get(constraint.symbolId) ?? {
+    excludedValueKeys: new Set<string>(),
+    requiredValueKey: null,
+  };
+  if (constraint.isEquality) {
+    if (
+      (previousValue.requiredValueKey !== null &&
+        previousValue.requiredValueKey !== constraint.valueKey) ||
+      previousValue.excludedValueKeys.has(constraint.valueKey)
+    ) {
+      return true;
+    }
+    constraints.set(constraint.symbolId, {
+      excludedValueKeys: previousValue.excludedValueKeys,
+      requiredValueKey: constraint.valueKey,
+    });
+    return false;
+  }
+  if (previousValue.requiredValueKey === constraint.valueKey) return true;
+  constraints.set(constraint.symbolId, {
+    excludedValueKeys: new Set([...previousValue.excludedValueKeys, constraint.valueKey]),
+    requiredValueKey: previousValue.requiredValueKey,
+  });
   return false;
 };
 
@@ -102,7 +156,7 @@ const collectNodePredicateConstraints = (
 ): PredicateConstraints => {
   const cached = predicateConstraintsByNode.get(node);
   if (cached) return cached;
-  const constraints = new Map<number, boolean>();
+  const constraints = new Map<number, PredicateValueConstraint>();
   let isImpossible = false;
   let child: EsTreeNode = node;
   let parent = node.parent;
@@ -166,7 +220,18 @@ export const nodesCanCoExecute = (
   if (leftConstraints.isImpossible || rightConstraints.isImpossible) return false;
   for (const [symbolId, leftValue] of leftConstraints.values) {
     const rightValue = rightConstraints.values.get(symbolId);
-    if (rightValue !== undefined && rightValue !== leftValue) return false;
+    if (!rightValue) continue;
+    if (
+      (leftValue.requiredValueKey !== null &&
+        rightValue.requiredValueKey !== null &&
+        leftValue.requiredValueKey !== rightValue.requiredValueKey) ||
+      (leftValue.requiredValueKey !== null &&
+        rightValue.excludedValueKeys.has(leftValue.requiredValueKey)) ||
+      (rightValue.requiredValueKey !== null &&
+        leftValue.excludedValueKeys.has(rightValue.requiredValueKey))
+    ) {
+      return false;
+    }
   }
   return true;
 };

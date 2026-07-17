@@ -189,7 +189,6 @@ const collectDeferredFunctions = (
       addDeferredFunction(secondCallback, child);
       return;
     }
-    if (!findEnclosingReactEffectRegistration(child, context)) return;
     if (methodName === "addEventListener") {
       const callback = resolveFunctionExpression(child.arguments?.[1], context);
       addDeferredFunction(callback, child);
@@ -478,8 +477,10 @@ const effectResubscribesWithCleanup = (
   );
   return (
     registrationCalls.length > 0 &&
-    registrationCalls.every((registrationCall) =>
-      registrationHasCleanup(registrationCall, effectCallback, context),
+    registrationCalls.every(
+      (registrationCall) =>
+        context.cfg.enclosingFunction(registrationCall) === effectCallback &&
+        registrationHasCleanup(registrationCall, effectCallback, context),
     )
   );
 };
@@ -545,22 +546,30 @@ const refMemberIsFreshStateMirror = (
     return false;
   }
   const componentFunction = context.cfg.enclosingFunction(declarator);
-  return refSymbol.references.some((reference) => {
+  let latestMirrorAssignment: EsTreeNodeOfType<"AssignmentExpression"> | null = null;
+  for (const reference of refSymbol.references) {
     const member = reference.identifier.parent;
     const assignment = member?.parent;
-    return Boolean(
+    if (
       isNodeOfType(member, "MemberExpression") &&
       member.object === reference.identifier &&
       getStaticPropertyName(member) === "current" &&
       isNodeOfType(assignment, "AssignmentExpression") &&
       assignment.left === member &&
-      isNodeOfType(stripParenExpression(assignment.right), "Identifier") &&
-      resolveConstIdentifierRootSymbol(stripParenExpression(assignment.right), context.scopes)
-        ?.id === stateSymbolId &&
       context.cfg.enclosingFunction(assignment) === componentFunction &&
-      context.cfg.isUnconditionalFromEntry(assignment),
-    );
-  });
+      context.cfg.isUnconditionalFromEntry(assignment) &&
+      (!latestMirrorAssignment ||
+        (assignment.range?.[0] ?? 0) > (latestMirrorAssignment.range?.[0] ?? 0))
+    ) {
+      latestMirrorAssignment = assignment;
+    }
+  }
+  if (!latestMirrorAssignment) return false;
+  const assignedValue = stripParenExpression(latestMirrorAssignment.right);
+  return Boolean(
+    isNodeOfType(assignedValue, "Identifier") &&
+    resolveConstIdentifierRootSymbol(assignedValue, context.scopes)?.id === stateSymbolId,
+  );
 };
 
 const containingBlock = (node: EsTreeNode): EsTreeNodeOfType<"BlockStatement"> | null => {

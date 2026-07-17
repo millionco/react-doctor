@@ -6,7 +6,7 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
+import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
@@ -14,7 +14,6 @@ import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 const MESSAGE =
   "This side-effecting call runs inside a state updater, which React may invoke more than once. Move it outside the setter after computing the next state.";
 
-const STATE_HOOK_NAMES = new Set(["useState"]);
 const SYNCHRONOUS_CALLBACK_METHOD_NAMES = new Set([
   "every",
   "filter",
@@ -53,13 +52,64 @@ const SIDE_EFFECT_METHOD_NAMES = new Set([
   "replaceChild",
   "setItem",
 ]);
+const GLOBAL_SCHEDULER_CALL_NAMES = new Set([
+  "queueMicrotask",
+  "requestAnimationFrame",
+  "requestIdleCallback",
+  "setImmediate",
+  "setInterval",
+  "setTimeout",
+]);
+const GLOBAL_SIDE_EFFECT_CALL_NAMES = new Set(["fetch"]);
 
 const isReactStateSetterCall = (
   node: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean =>
   isNodeOfType(node.callee, "Identifier") &&
-  isReactHookResultReference(node.callee, STATE_HOOK_NAMES, 1, context.scopes);
+  Boolean(resolveReactUseStatePair(node.callee, context.scopes));
+
+const stateValueIsArray = (
+  setterCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(setterCall.callee);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const pair = resolveReactUseStatePair(callee, context.scopes);
+  if (!pair || !isNodeOfType(pair.declarator.init, "CallExpression")) return false;
+  const stateType = pair.declarator.init.typeArguments?.params[0];
+  const unwrappedStateType = stateType ? stripParenExpression(stateType) : null;
+  if (
+    unwrappedStateType &&
+    (isNodeOfType(unwrappedStateType, "TSArrayType") ||
+      isNodeOfType(unwrappedStateType, "TSTupleType"))
+  ) {
+    return true;
+  }
+  if (
+    unwrappedStateType &&
+    isNodeOfType(unwrappedStateType, "TSTypeReference") &&
+    isNodeOfType(unwrappedStateType.typeName, "Identifier") &&
+    (unwrappedStateType.typeName.name === "Array" ||
+      unwrappedStateType.typeName.name === "ReadonlyArray")
+  ) {
+    return true;
+  }
+  const initializerArgument = pair.declarator.init.arguments?.[0];
+  if (!initializerArgument) return false;
+  let initializer = stripParenExpression(initializerArgument);
+  if (isFunctionLike(initializer) && !isNodeOfType(initializer.body, "BlockStatement")) {
+    initializer = stripParenExpression(initializer.body);
+  }
+  if (isNodeOfType(initializer, "ArrayExpression")) return true;
+  if (!isNodeOfType(initializer, "NewExpression")) return false;
+  const constructor = stripParenExpression(initializer.callee);
+  return Boolean(
+    isNodeOfType(constructor, "Identifier") &&
+    constructor.name === "Array" &&
+    context.scopes.isGlobalReference(constructor),
+  );
+};
 
 const resolveLocalFunction = (expression: EsTreeNode, context: RuleContext): EsTreeNode | null => {
   let current = stripParenExpression(expression);
@@ -86,7 +136,7 @@ const resolveLocalFunction = (expression: EsTreeNode, context: RuleContext): EsT
       ? stripParenExpression(receiverSymbol.initializer)
       : null;
     if (!isNodeOfType(initializer, "ObjectExpression")) return null;
-    for (const property of initializer.properties) {
+    for (const property of initializer.properties.toReversed()) {
       if (
         !isNodeOfType(property, "Property") ||
         getStaticPropertyKeyName(property, { allowComputedString: true }) !== methodName
@@ -142,12 +192,17 @@ const memberReceiverIsUpdaterLocal = (
     }
     const value = stripParenExpression(property.value);
     if (
-      isNodeOfType(value, "CallExpression") ||
       isNodeOfType(value, "NewExpression") ||
       isNodeOfType(value, "ObjectExpression") ||
       isNodeOfType(value, "ArrayExpression")
     ) {
       return true;
+    }
+    if (isNodeOfType(value, "CallExpression")) {
+      const callee = stripParenExpression(value.callee);
+      return Boolean(
+        isNodeOfType(callee, "Identifier") && /^(?:create|make)Local[A-Z_]/.test(callee.name),
+      );
     }
     if (!isNodeOfType(value, "Identifier")) return false;
     return receiverIsUpdaterLocal(
@@ -280,7 +335,7 @@ const freshObjectMethodIsExternalCallback = (
     ? stripParenExpression(receiverSymbol.initializer)
     : null;
   if (!isNodeOfType(initializer, "ObjectExpression")) return false;
-  for (const property of initializer.properties) {
+  for (const property of initializer.properties.toReversed()) {
     if (
       !isNodeOfType(property, "Property") ||
       getStaticPropertyKeyName(property, { allowComputedString: true }) !== methodName
@@ -295,13 +350,34 @@ const freshObjectMethodIsExternalCallback = (
 const callHasImmediateSideEffectCallback = (
   call: EsTreeNodeOfType<"CallExpression">,
   updaterFunction: EsTreeNode,
+  updaterParameterIsArray: boolean,
   context: RuleContext,
 ): boolean => {
   const callee = stripParenExpression(call.callee);
+  if (isNodeOfType(callee, "MemberExpression")) {
+    const receiver = stripParenExpression(callee.object);
+    const mapperArgument = call.arguments?.[1];
+    if (
+      getStaticPropertyName(callee) === "from" &&
+      isNodeOfType(receiver, "Identifier") &&
+      receiver.name === "Array" &&
+      context.scopes.isGlobalReference(receiver) &&
+      mapperArgument &&
+      !isNodeOfType(mapperArgument, "SpreadElement") &&
+      expressionLooksLikeExternalCallback(mapperArgument, context)
+    ) {
+      return true;
+    }
+  }
   if (
     !isNodeOfType(callee, "MemberExpression") ||
     !SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") ||
-    !receiverIsKnownSynchronousCollection(callee.object, updaterFunction, context) ||
+    !receiverIsKnownSynchronousCollection(
+      callee.object,
+      updaterFunction,
+      updaterParameterIsArray,
+      context,
+    ) ||
     resolveLocalFunction(callee, context)
   ) {
     return false;
@@ -310,13 +386,14 @@ const callHasImmediateSideEffectCallback = (
   return Boolean(
     callbackArgument &&
     !isNodeOfType(callbackArgument, "SpreadElement") &&
-    identifierLooksSideEffecting(stripParenExpression(callbackArgument), context),
+    expressionLooksLikeExternalCallback(stripParenExpression(callbackArgument), context),
   );
 };
 
 const receiverIsKnownSynchronousCollection = (
   expression: EsTreeNode,
   updaterFunction: EsTreeNode,
+  updaterParameterIsArray: boolean,
   context: RuleContext,
 ): boolean => {
   const receiver = stripParenExpression(expression);
@@ -327,7 +404,8 @@ const receiverIsKnownSynchronousCollection = (
   const firstParameter = isFunctionLike(updaterFunction) ? updaterFunction.params?.[0] : null;
   if (
     isNodeOfType(firstParameter, "Identifier") &&
-    context.scopes.symbolFor(firstParameter)?.id === symbol.id
+    context.scopes.symbolFor(firstParameter)?.id === symbol.id &&
+    updaterParameterIsArray
   ) {
     return true;
   }
@@ -345,15 +423,35 @@ const receiverIsKnownSynchronousCollection = (
 const callHasSideEffectName = (
   call: EsTreeNodeOfType<"CallExpression">,
   executedFunctions: ReadonlySet<EsTreeNode>,
+  allowGlobalScheduler: boolean,
   context: RuleContext,
 ): boolean => {
   const callName = getCallName(call);
   if (!callName) return false;
   const callee = stripParenExpression(call.callee);
   if (
+    allowGlobalScheduler &&
+    GLOBAL_SCHEDULER_CALL_NAMES.has(callName) &&
+    isNodeOfType(callee, "MemberExpression")
+  ) {
+    const schedulerReceiver = baseReceiverIdentifier(callee.object);
+    if (
+      schedulerReceiver?.name === "window" &&
+      context.scopes.isGlobalReference(schedulerReceiver)
+    ) {
+      return true;
+    }
+  }
+  if (
     isNodeOfType(callee, "Identifier") &&
     !SIDE_EFFECT_CALL_NAME_PATTERN.test(callName) &&
-    !identifierIsCallbackParameter(callee, context)
+    !identifierIsCallbackParameter(callee, context) &&
+    !(GLOBAL_SIDE_EFFECT_CALL_NAMES.has(callName) && context.scopes.isGlobalReference(callee)) &&
+    !(
+      allowGlobalScheduler &&
+      GLOBAL_SCHEDULER_CALL_NAMES.has(callName) &&
+      context.scopes.isGlobalReference(callee)
+    )
   ) {
     return false;
   }
@@ -409,6 +507,7 @@ const nodeIsReachable = (
 
 const collectExecutedFunctions = (
   updaterFunction: EsTreeNode,
+  updaterParameterIsArray: boolean,
   context: RuleContext,
 ): Set<EsTreeNode> => {
   const executedFunctions = new Set<EsTreeNode>([updaterFunction]);
@@ -474,7 +573,12 @@ const collectExecutedFunctions = (
       if (
         !isNodeOfType(callee, "MemberExpression") ||
         !SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") ||
-        !receiverIsKnownSynchronousCollection(callee.object, updaterFunction, context) ||
+        !receiverIsKnownSynchronousCollection(
+          callee.object,
+          updaterFunction,
+          updaterParameterIsArray,
+          context,
+        ) ||
         directFunction
       ) {
         return;
@@ -498,7 +602,7 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
   recommendation:
     "React may replay a state updater, so callbacks, analytics, and persistence inside it can run more than once. Compute state purely, then perform the side effect outside the setter.",
   create: (context: RuleContext) => {
-    const executedFunctionsByUpdater = new WeakMap<EsTreeNode, Set<EsTreeNode>>();
+    const executedFunctionsByUpdater = new WeakMap<EsTreeNode, Map<boolean, Set<EsTreeNode>>>();
     const reachableBlockIdsByCfg = new WeakMap<FunctionCfg, ReadonlySet<number>>();
     const reportedSideEffectNodes = new WeakSet<EsTreeNode>();
     return {
@@ -508,10 +612,14 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
         if (!updaterArgument || isNodeOfType(updaterArgument, "SpreadElement")) return;
         const updaterFunction = resolveLocalFunction(updaterArgument, context);
         if (!updaterFunction) return;
+        const updaterParameterIsArray = stateValueIsArray(node, context);
+        const executedFunctionsByArrayState =
+          executedFunctionsByUpdater.get(updaterFunction) ?? new Map();
         const executedFunctions =
-          executedFunctionsByUpdater.get(updaterFunction) ??
-          collectExecutedFunctions(updaterFunction, context);
-        executedFunctionsByUpdater.set(updaterFunction, executedFunctions);
+          executedFunctionsByArrayState.get(updaterParameterIsArray) ??
+          collectExecutedFunctions(updaterFunction, updaterParameterIsArray, context);
+        executedFunctionsByArrayState.set(updaterParameterIsArray, executedFunctions);
+        executedFunctionsByUpdater.set(updaterFunction, executedFunctionsByArrayState);
         for (const executedFunction of executedFunctions) {
           const functionCfg = context.cfg.cfgFor(executedFunction);
           walkOwnFunctionScope(executedFunction, (child: EsTreeNode) => {
@@ -527,14 +635,30 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
             }
             const resolvedFunction = resolveLocalFunction(child.callee, context);
             if (resolvedFunction && executedFunctions.has(resolvedFunction)) return;
-            if (callHasImmediateSideEffectCallback(child, updaterFunction, context)) {
+            if (
+              callHasImmediateSideEffectCallback(
+                child,
+                updaterFunction,
+                updaterParameterIsArray,
+                context,
+              )
+            ) {
               if (!reportedSideEffectNodes.has(child)) {
                 reportedSideEffectNodes.add(child);
                 context.report({ node: child, message: MESSAGE });
               }
               return;
             }
-            if (!callHasSideEffectName(child, executedFunctions, context)) return;
+            if (
+              !callHasSideEffectName(
+                child,
+                executedFunctions,
+                executedFunction === updaterFunction,
+                context,
+              )
+            ) {
+              return;
+            }
             if (reportedSideEffectNodes.has(child)) return;
             reportedSideEffectNodes.add(child);
             context.report({ node: child, message: MESSAGE });

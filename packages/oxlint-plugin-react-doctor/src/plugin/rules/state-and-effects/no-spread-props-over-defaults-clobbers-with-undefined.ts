@@ -70,11 +70,11 @@ const expressionIsDefinitelyNonUndefined = (
   return false;
 };
 
-const getVisibleDefaultedKeys = (
+const getVisiblePropertyWrites = (
   source: EsTreeNode,
   context: RuleContext,
-  cache: Map<number, ReadonlySet<string> | null>,
-): ReadonlySet<string> | null => {
+  cache: Map<number, ReadonlyMap<string, boolean> | null>,
+): ReadonlyMap<string, boolean> | null => {
   const inner = stripParenExpression(source);
   if (!isNodeOfType(inner, "Identifier")) return null;
   const symbol = context.scopes.symbolFor(inner);
@@ -86,7 +86,7 @@ const getVisibleDefaultedKeys = (
     cache.set(symbol.id, null);
     return null;
   }
-  const keys = new Set<string>();
+  const propertyWrites = new Map<string, boolean>();
   for (const property of initializer.properties) {
     if (!isNodeOfType(property, "Property")) {
       cache.set(symbol.id, null);
@@ -97,11 +97,10 @@ const getVisibleDefaultedKeys = (
       cache.set(symbol.id, null);
       return null;
     }
-    if (expressionIsDefinitelyNonUndefined(property.value, context)) keys.add(keyName);
-    else keys.delete(keyName);
+    propertyWrites.set(keyName, expressionIsDefinitelyNonUndefined(property.value, context));
   }
-  cache.set(symbol.id, keys);
-  return keys;
+  cache.set(symbol.id, propertyWrites);
+  return propertyWrites;
 };
 
 const isDefaultsSource = (source: EsTreeNode): boolean => {
@@ -562,7 +561,8 @@ const memberUseIsGuarded = (
     if (statement === containingStatement) break;
     if (
       isNodeOfType(statement, "IfStatement") &&
-      precedingIfRepairsMember(statement, symbol, keyName, context)
+      precedingIfRepairsMember(statement, symbol, keyName, context) &&
+      (!priorWrite || priorWrite.isSafe || priorWrite.start < getNodeStart(statement.test))
     ) {
       return true;
     }
@@ -814,7 +814,7 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
   recommendation:
     "An explicit undefined prop can overwrite a default. Reapply defaults with ?? at the merge or use site, or remove undefined keys before spreading props.",
   create: (context: RuleContext) => {
-    const defaultsKeyCache = new Map<number, ReadonlySet<string> | null>();
+    const propertyWriteCache = new Map<number, ReadonlyMap<string, boolean> | null>();
     const repairStartsBySymbolAndBlock = new Map<
       number,
       WeakMap<EsTreeNode, Map<string, RepairWrite[]>>
@@ -846,13 +846,15 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
           for (const possibleDefaultsSpread of spreadProperties.slice(0, propsIndex)) {
             const defaultsSource = stripParenExpression(possibleDefaultsSpread.argument);
             if (!isDefaultsSource(defaultsSource)) continue;
-            const visibleDefaultedKeys = getVisibleDefaultedKeys(
+            const visiblePropertyWrites = getVisiblePropertyWrites(
               defaultsSource,
               context,
-              defaultsKeyCache,
+              propertyWriteCache,
             );
-            if (!visibleDefaultedKeys) continue;
-            for (const keyName of visibleDefaultedKeys) defaultedKeys.add(keyName);
+            if (!visiblePropertyWrites) continue;
+            for (const [keyName, isSafe] of visiblePropertyWrites) {
+              if (isSafe) defaultedKeys.add(keyName);
+            }
           }
           if (defaultedKeys.size === 0) continue;
           const lastExplicitWriteByKey = new Map<string, boolean>();
@@ -871,13 +873,17 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
             }
             if (!isNodeOfType(property, "SpreadElement")) continue;
             const spreadSource = stripParenExpression(property.argument);
-            if (!isDefaultsSource(spreadSource)) {
+            const visiblePropertyWrites = getVisiblePropertyWrites(
+              spreadSource,
+              context,
+              propertyWriteCache,
+            );
+            if (!visiblePropertyWrites) {
               for (const keyName of defaultedKeys) lastExplicitWriteByKey.set(keyName, false);
               continue;
             }
-            const visibleKeys = getVisibleDefaultedKeys(spreadSource, context, defaultsKeyCache);
-            for (const keyName of visibleKeys ?? []) {
-              if (defaultedKeys.has(keyName)) lastExplicitWriteByKey.set(keyName, true);
+            for (const [keyName, isSafe] of visiblePropertyWrites) {
+              if (defaultedKeys.has(keyName)) lastExplicitWriteByKey.set(keyName, isSafe);
             }
           }
           const candidateKeys = new Set(

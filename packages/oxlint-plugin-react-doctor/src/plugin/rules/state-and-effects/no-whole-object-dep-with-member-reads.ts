@@ -4,6 +4,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -34,11 +35,38 @@ const SYNCHRONOUS_CALLBACK_METHOD_NAMES = new Set([
   "sort",
   "toSorted",
 ]);
+const CALLBACK_CONSUMER_NAMES = new Set([
+  ...SYNCHRONOUS_CALLBACK_METHOD_NAMES,
+  "addEventListener",
+  "addListener",
+  "catch",
+  "finally",
+  "once",
+  "queueMicrotask",
+  "register",
+  "requestAnimationFrame",
+  "requestIdleCallback",
+  "setImmediate",
+  "setInterval",
+  "setTimeout",
+  "subscribe",
+  "then",
+]);
 
 interface DependencyUsage {
   hasBareUse: boolean;
   hasMemberRead: boolean;
 }
+
+const callConsumesOrEscapesCallback = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
+  const callee = stripParenExpression(call.callee);
+  if (isFunctionLike(callee)) return true;
+  if (isNodeOfType(callee, "Identifier")) return CALLBACK_CONSUMER_NAMES.has(callee.name);
+  return Boolean(
+    isNodeOfType(callee, "MemberExpression") &&
+    CALLBACK_CONSUMER_NAMES.has(getStaticPropertyName(callee) ?? ""),
+  );
+};
 
 const getPropsObjectSymbol = (
   componentFunction: EsTreeNode,
@@ -238,9 +266,8 @@ const analyzePropsUsage = (
         const executesImmediately = Boolean(
           (isNodeOfType(parent, "CallExpression") &&
             (parentCallee === child ||
-              (isNodeOfType(parentCallee, "MemberExpression") &&
-                SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(parentCallee) ?? "") &&
-                parent.arguments?.[0] === child))) ||
+              (callConsumesOrEscapesCallback(parent) &&
+                parent.arguments.some((argument) => argument === child)))) ||
           (isNodeOfType(parent, "NewExpression") &&
             isNodeOfType(parentCallee, "Identifier") &&
             parentCallee.name === "Promise" &&
@@ -258,15 +285,11 @@ const analyzePropsUsage = (
         const calledFunction = resolveCallback(child.callee, context);
         if (calledFunction && calledFunction !== currentFunction)
           pendingFunctions.push(calledFunction);
-        const callCallee = stripParenExpression(child.callee);
-        if (
-          isNodeOfType(callCallee, "MemberExpression") &&
-          SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(callCallee) ?? "")
-        ) {
-          const callbackArgument = child.arguments?.[0];
-          if (callbackArgument && !isNodeOfType(callbackArgument, "SpreadElement")) {
-            const callbackFunction = resolveCallback(callbackArgument, context);
-            if (callbackFunction) pendingFunctions.push(callbackFunction);
+        if (callConsumesOrEscapesCallback(child)) {
+          for (const argument of child.arguments) {
+            if (isNodeOfType(argument, "SpreadElement")) continue;
+            const argumentFunction = resolveCallback(argument, context);
+            if (argumentFunction) pendingFunctions.push(argumentFunction);
           }
         }
       }
@@ -346,6 +369,27 @@ const resolveCallback = (
 ): EsTreeNode | null => {
   const callback = stripParenExpression(callbackExpression);
   if (isFunctionLike(callback)) return callback;
+  if (isNodeOfType(callback, "MemberExpression")) {
+    const methodName = getStaticPropertyName(callback);
+    const receiver = stripParenExpression(callback.object);
+    if (!methodName || !isNodeOfType(receiver, "Identifier")) return null;
+    const receiverSymbol = context.scopes.symbolFor(receiver);
+    const initializer = receiverSymbol?.initializer
+      ? stripParenExpression(receiverSymbol.initializer)
+      : null;
+    if (!isNodeOfType(initializer, "ObjectExpression")) return null;
+    for (const property of initializer.properties.toReversed()) {
+      if (
+        !isNodeOfType(property, "Property") ||
+        getStaticPropertyKeyName(property, { allowComputedString: true }) !== methodName
+      ) {
+        continue;
+      }
+      const value = stripParenExpression(property.value);
+      return isFunctionLike(value) ? value : null;
+    }
+    return null;
+  }
   if (!isNodeOfType(callback, "Identifier")) return null;
   const callbackSymbol = resolveConstIdentifierAlias(callback, context.scopes);
   if (!callbackSymbol?.initializer) return null;

@@ -30,6 +30,21 @@ const SELF_RETURNING_METHOD_KIND = new Map([
   ["copyWithin", "array"],
 ]);
 
+const FRESH_ARRAY_METHOD_NAMES = new Set([
+  "concat",
+  "filter",
+  "flat",
+  "flatMap",
+  "map",
+  "slice",
+  "toReversed",
+  "toSorted",
+  "toSpliced",
+  "with",
+]);
+
+const reachableBlockIdsByCfg = new WeakMap<FunctionCfg, Map<number, ReadonlySet<number>>>();
+
 interface MutationFact {
   readonly node: EsTreeNode;
   readonly call: EsTreeNodeOfType<"CallExpression"> | null;
@@ -48,19 +63,105 @@ const nodePrecedesOnReachablePath = (
   if (sourceBlock === targetBlock) {
     return (sourceNode.range?.[0] ?? 0) < (targetNode.range?.[0] ?? 0);
   }
+  const reachableBlockIdsBySource = reachableBlockIdsByCfg.get(functionCfg) ?? new Map();
+  reachableBlockIdsByCfg.set(functionCfg, reachableBlockIdsBySource);
+  const cachedReachableBlockIds = reachableBlockIdsBySource.get(sourceBlock.id);
+  if (cachedReachableBlockIds) return cachedReachableBlockIds.has(targetBlock.id);
   const pendingBlocks = [sourceBlock];
   const visitedBlockIds = new Set([sourceBlock.id]);
   while (pendingBlocks.length > 0) {
     const block = pendingBlocks.pop();
     if (!block) break;
     for (const edge of block.successors) {
-      if (edge.to === targetBlock) return true;
       if (visitedBlockIds.has(edge.to.id)) continue;
       visitedBlockIds.add(edge.to.id);
       pendingBlocks.push(edge.to);
     }
   }
-  return false;
+  reachableBlockIdsBySource.set(sourceBlock.id, visitedBlockIds);
+  return visitedBlockIds.has(targetBlock.id);
+};
+
+const expressionIsDefinitelyFreshReference = (
+  expression: EsTreeNode,
+  expectedSymbol: SymbolDescriptor,
+  collectionKind: string | null,
+  context: RuleContext,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const value = stripParenExpression(expression);
+  if (isNodeOfType(value, "ArrayExpression") || isNodeOfType(value, "ObjectExpression")) {
+    return true;
+  }
+  if (isNodeOfType(value, "NewExpression")) {
+    const constructor = stripParenExpression(value.callee);
+    return Boolean(
+      isNodeOfType(constructor, "Identifier") &&
+      ["Array", "Map", "Set", "WeakMap", "WeakSet"].includes(constructor.name) &&
+      context.scopes.isGlobalReference(constructor),
+    );
+  }
+  if (isNodeOfType(value, "Identifier")) {
+    const symbol = context.scopes.symbolFor(value);
+    if (
+      !symbol ||
+      symbol.kind !== "const" ||
+      !symbol.initializer ||
+      visitedSymbolIds.has(symbol.id)
+    ) {
+      return false;
+    }
+    return expressionIsDefinitelyFreshReference(
+      symbol.initializer,
+      expectedSymbol,
+      collectionKind,
+      context,
+      new Set([...visitedSymbolIds, symbol.id]),
+    );
+  }
+  if (isNodeOfType(value, "ConditionalExpression")) {
+    return (
+      expressionIsDefinitelyFreshReference(
+        value.consequent,
+        expectedSymbol,
+        collectionKind,
+        context,
+        new Set(visitedSymbolIds),
+      ) &&
+      expressionIsDefinitelyFreshReference(
+        value.alternate,
+        expectedSymbol,
+        collectionKind,
+        context,
+        new Set(visitedSymbolIds),
+      )
+    );
+  }
+  if (!isNodeOfType(value, "CallExpression")) return false;
+  const callee = stripParenExpression(value.callee);
+  if (isNodeOfType(callee, "Identifier")) {
+    return (
+      (callee.name === "structuredClone" || callee.name === "Array") &&
+      context.scopes.isGlobalReference(callee)
+    );
+  }
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const methodName = getStaticPropertyName(callee);
+  if (
+    collectionKind === "array" &&
+    methodName &&
+    FRESH_ARRAY_METHOD_NAMES.has(methodName) &&
+    expressionRootSymbol(callee.object, context)?.id === expectedSymbol.id
+  ) {
+    return true;
+  }
+  const receiver = stripParenExpression(callee.object);
+  return Boolean(
+    methodName === "from" &&
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "Array" &&
+    context.scopes.isGlobalReference(receiver),
+  );
 };
 
 const resolveLocalFunction = (expression: EsTreeNode, context: RuleContext): EsTreeNode | null => {
@@ -215,54 +316,6 @@ const collectMutationFacts = (
   return facts;
 };
 
-const expressionReturnsSymbol = (
-  expression: EsTreeNode,
-  expectedSymbol: SymbolDescriptor,
-  collectionKind: string | null,
-  context: RuleContext,
-): boolean => {
-  const unwrappedExpression = stripParenExpression(expression);
-  if (
-    isNodeOfType(unwrappedExpression, "Identifier") &&
-    resolveConstIdentifierRootSymbol(unwrappedExpression, context.scopes)?.id === expectedSymbol.id
-  ) {
-    return true;
-  }
-  if (isSelfReturningMutationCall(unwrappedExpression, expectedSymbol, collectionKind, context)) {
-    return true;
-  }
-  if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
-    return (
-      expressionReturnsSymbol(
-        unwrappedExpression.consequent,
-        expectedSymbol,
-        collectionKind,
-        context,
-      ) ||
-      expressionReturnsSymbol(
-        unwrappedExpression.alternate,
-        expectedSymbol,
-        collectionKind,
-        context,
-      )
-    );
-  }
-  if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
-    return (
-      expressionReturnsSymbol(unwrappedExpression.left, expectedSymbol, collectionKind, context) ||
-      expressionReturnsSymbol(unwrappedExpression.right, expectedSymbol, collectionKind, context)
-    );
-  }
-  if (isNodeOfType(unwrappedExpression, "SequenceExpression")) {
-    const lastExpression = unwrappedExpression.expressions.at(-1);
-    return Boolean(
-      lastExpression &&
-      expressionReturnsSymbol(lastExpression, expectedSymbol, collectionKind, context),
-    );
-  }
-  return false;
-};
-
 const collectSameReferenceResultExpressions = (
   expression: EsTreeNode,
   expectedSymbol: SymbolDescriptor,
@@ -333,13 +386,14 @@ const nodeIsInside = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
   return false;
 };
 
-const hasFreshReassignmentBefore = (
+const lastUnconditionalReassignmentBefore = (
   functionNode: EsTreeNode,
   expectedSymbol: SymbolDescriptor,
   targetNode: EsTreeNode,
   functionCfg: FunctionCfg,
   context: RuleContext,
-): boolean => {
+  lowerBoundNode: EsTreeNode | null = null,
+): EsTreeNode | null => {
   let lastReassignmentRight: EsTreeNode | null = null;
   let lastReassignmentStart = Number.NEGATIVE_INFINITY;
   walkAst(functionNode, (child: EsTreeNode) => {
@@ -370,6 +424,8 @@ const hasFreshReassignmentBefore = (
         }
         return false;
       })() ||
+      (lowerBoundNode !== null &&
+        !nodePrecedesOnReachablePath(lowerBoundNode, child, functionCfg, context)) ||
       !nodePrecedesOnReachablePath(child, targetNode, functionCfg, context)
     ) {
       return;
@@ -380,9 +436,50 @@ const hasFreshReassignmentBefore = (
       lastReassignmentStart = assignmentStart;
     }
   });
+  return lastReassignmentRight;
+};
+
+const hasFreshReassignmentBefore = (
+  functionNode: EsTreeNode,
+  expectedSymbol: SymbolDescriptor,
+  targetNode: EsTreeNode,
+  functionCfg: FunctionCfg,
+  collectionKind: string | null,
+  context: RuleContext,
+): boolean => {
+  const reassignment = lastUnconditionalReassignmentBefore(
+    functionNode,
+    expectedSymbol,
+    targetNode,
+    functionCfg,
+    context,
+  );
   return Boolean(
-    lastReassignmentRight &&
-    !expressionReturnsSymbol(lastReassignmentRight, expectedSymbol, null, context),
+    reassignment &&
+    expressionIsDefinitelyFreshReference(reassignment, expectedSymbol, collectionKind, context),
+  );
+};
+
+const hasFreshReassignmentBetween = (
+  functionNode: EsTreeNode,
+  expectedSymbol: SymbolDescriptor,
+  sourceNode: EsTreeNode,
+  targetNode: EsTreeNode,
+  functionCfg: FunctionCfg,
+  collectionKind: string | null,
+  context: RuleContext,
+): boolean => {
+  const reassignment = lastUnconditionalReassignmentBefore(
+    functionNode,
+    expectedSymbol,
+    targetNode,
+    functionCfg,
+    context,
+    sourceNode,
+  );
+  return Boolean(
+    reassignment &&
+    expressionIsDefinitelyFreshReference(reassignment, expectedSymbol, collectionKind, context),
   );
 };
 
@@ -436,14 +533,6 @@ const updaterMutatesThenReturnsSameReference = (
   if (!isNodeOfType(firstParameter, "Identifier")) return false;
   const parameterSymbol = context.scopes.symbolFor(firstParameter);
   if (!parameterSymbol) return false;
-  if (!isNodeOfType(updaterFunction.body, "BlockStatement")) {
-    return isSelfReturningMutationCall(
-      updaterFunction.body,
-      parameterSymbol,
-      collectionKind,
-      context,
-    );
-  }
   const functionCfg = context.cfg.cfgFor(updaterFunction);
   if (!functionCfg) return false;
   const mutationFacts = deduplicateMutationFactsByBlockWhenParameterIsStable(
@@ -454,20 +543,26 @@ const updaterMutatesThenReturnsSameReference = (
     context,
   );
   if (mutationFacts.length === 0) return false;
-  let didFindPath = false;
+  const resultExpressions: EsTreeNode[] = [];
+  if (!isNodeOfType(updaterFunction.body, "BlockStatement")) {
+    resultExpressions.push(updaterFunction.body);
+  }
   walkAst(updaterFunction.body, (child: EsTreeNode) => {
-    if (didFindPath || (child !== updaterFunction.body && isFunctionLike(child))) return false;
+    if (child !== updaterFunction.body && isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "ReturnStatement") || !child.argument) {
       return;
     }
+    resultExpressions.push(child.argument);
+  });
+  for (const resultExpression of resultExpressions) {
     const reachableMutationFacts = mutationFacts.filter(
       (mutationFact) =>
-        nodeIsInside(mutationFact.node, child) ||
-        nodePrecedesOnReachablePath(mutationFact.node, child, functionCfg, context),
+        nodeIsInside(mutationFact.node, resultExpression) ||
+        nodePrecedesOnReachablePath(mutationFact.node, resultExpression, functionCfg, context),
     );
-    if (reachableMutationFacts.length === 0) return;
+    if (reachableMutationFacts.length === 0) continue;
     const sameReferenceResults = collectSameReferenceResultExpressions(
-      child.argument,
+      resultExpression,
       parameterSymbol,
       collectionKind,
       context,
@@ -487,16 +582,25 @@ const updaterMutatesThenReturnsSameReference = (
             parameterSymbol,
             mutationFact.node,
             functionCfg,
+            collectionKind,
+            context,
+          ) &&
+          !hasFreshReassignmentBetween(
+            updaterFunction,
+            parameterSymbol,
+            mutationFact.node,
+            sameReferenceResult,
+            functionCfg,
+            collectionKind,
             context,
           )
         ) {
-          didFindPath = true;
-          return false;
+          return true;
         }
       }
     }
-  });
-  return didFindPath;
+  }
+  return false;
 };
 
 export const noMutateThenSetOrReturnSameReference = defineRule({
@@ -529,6 +633,7 @@ export const noMutateThenSetOrReturnSameReference = defineRule({
       expectedSymbol: SymbolDescriptor,
       mutationNode: EsTreeNode,
       functionCfg: FunctionCfg,
+      collectionKind: string | null,
     ): boolean => {
       const cachedResult = freshReassignmentByMutation.get(mutationNode);
       if (cachedResult !== undefined) return cachedResult;
@@ -537,6 +642,7 @@ export const noMutateThenSetOrReturnSameReference = defineRule({
         expectedSymbol,
         mutationNode,
         functionCfg,
+        collectionKind,
         context,
       );
       freshReassignmentByMutation.set(mutationNode, result);
@@ -576,12 +682,21 @@ export const noMutateThenSetOrReturnSameReference = defineRule({
           context.report({ node, message: MESSAGE });
           return;
         }
-        if (
-          isNodeOfType(argument, "Identifier") &&
-          pair.stateSymbol &&
-          resolveConstIdentifierRootSymbol(argument, context.scopes)?.id === pair.stateSymbol.id
-        ) {
+        if (pair.stateSymbol) {
           const stateSymbol = pair.stateSymbol;
+          const sameReferenceResults = collectSameReferenceResultExpressions(
+            argument,
+            stateSymbol,
+            collectionKind,
+            context,
+          );
+          if (sameReferenceResults.length === 0) {
+            const updaterFunction = resolveLocalFunction(argument, context);
+            if (updaterFunction && updaterHasViolation(updaterFunction, collectionKind)) {
+              context.report({ node, message: MESSAGE });
+            }
+            return;
+          }
           const enclosingFunction = findEnclosingFunction(node);
           const functionCfg = enclosingFunction ? context.cfg.cfgFor(enclosingFunction) : null;
           if (enclosingFunction && functionCfg) {
@@ -589,12 +704,20 @@ export const noMutateThenSetOrReturnSameReference = defineRule({
             if (
               mutationFacts.some(
                 (mutationFact) =>
-                  nodePrecedesOnReachablePath(mutationFact.node, node, functionCfg, context) &&
+                  sameReferenceResults.some((sameReferenceResult) =>
+                    nodePrecedesOnReachablePath(
+                      mutationFact.node,
+                      sameReferenceResult,
+                      functionCfg,
+                      context,
+                    ),
+                  ) &&
                   !mutationHasFreshReassignment(
                     enclosingFunction,
                     stateSymbol,
                     mutationFact.node,
                     functionCfg,
+                    collectionKind,
                   ),
               )
             ) {

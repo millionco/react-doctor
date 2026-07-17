@@ -388,6 +388,29 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("supports bounded literal, alias, and conditional Array chains", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const values = condition ? ["a", "b"] : ["c"];
+       const mapped = ["a", "b"].map((item) => item)
+         .reduce((acc, item) => [...acc, item], []);
+       const copied = Array.from(["a", "b"])
+         .reduce((acc, item) => [...acc, item], []);
+       const filtered = values.filter(Boolean)
+         .reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a spread-bearing literal chain as bounded", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const out = [first, ...items].map((item) => item)
+         .reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a growing method on a fixed-length Array construction", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,

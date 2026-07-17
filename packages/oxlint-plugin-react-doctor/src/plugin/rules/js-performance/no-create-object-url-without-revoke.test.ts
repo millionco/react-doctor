@@ -185,6 +185,16 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("supports computed and const-aliased global URL receivers", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const browserGlobal = window;
+       const BrowserUrl = browserGlobal["URL"];
+       function make(blob) { return BrowserUrl["createObjectURL"](blob); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet when every returned URL feeds a deliberate module cache", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

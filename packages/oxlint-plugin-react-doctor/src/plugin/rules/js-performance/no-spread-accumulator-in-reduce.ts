@@ -97,8 +97,37 @@ const isFixedLengthArrayConstruction = (expression: EsTreeNode, scopes: ScopeAna
 };
 
 const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  let currentExpression = stripParenExpression(expression);
-  while (!isFixedLengthArrayConstruction(currentExpression, scopes)) {
+  const pendingExpressions = [stripParenExpression(expression)];
+  const pendingVisitedSymbolIds = [new Set<number>()];
+  while (pendingExpressions.length > 0) {
+    const currentExpression = pendingExpressions.pop();
+    const visitedSymbolIds = pendingVisitedSymbolIds.pop();
+    if (!currentExpression || !visitedSymbolIds) return false;
+    if (
+      isFixedLengthArrayConstruction(currentExpression, scopes) ||
+      isSpreadFreeArrayLiteral(currentExpression, false)
+    ) {
+      continue;
+    }
+    if (isNodeOfType(currentExpression, "Identifier")) {
+      const symbol = scopes.symbolFor(currentExpression);
+      if (!symbol?.initializer || symbol.kind !== "const" || visitedSymbolIds.has(symbol.id)) {
+        return false;
+      }
+      const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+      nextVisitedSymbolIds.add(symbol.id);
+      pendingExpressions.push(stripParenExpression(symbol.initializer));
+      pendingVisitedSymbolIds.push(nextVisitedSymbolIds);
+      continue;
+    }
+    if (isNodeOfType(currentExpression, "ConditionalExpression")) {
+      pendingExpressions.push(
+        stripParenExpression(currentExpression.consequent),
+        stripParenExpression(currentExpression.alternate),
+      );
+      pendingVisitedSymbolIds.push(new Set(visitedSymbolIds), new Set(visitedSymbolIds));
+      continue;
+    }
     if (!isNodeOfType(currentExpression, "CallExpression")) return false;
     const callee = stripParenExpression(currentExpression.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return false;
@@ -111,11 +140,13 @@ const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnaly
     ) {
       const sourceArgument = currentExpression.arguments[0];
       if (!isAstNode(sourceArgument)) return false;
-      currentExpression = stripParenExpression(sourceArgument);
+      pendingExpressions.push(stripParenExpression(sourceArgument));
+      pendingVisitedSymbolIds.push(visitedSymbolIds);
       continue;
     }
     if (!methodName || !NON_GROWING_ARRAY_METHOD_NAMES.has(methodName)) return false;
-    currentExpression = stripParenExpression(callee.object);
+    pendingExpressions.push(stripParenExpression(callee.object));
+    pendingVisitedSymbolIds.push(visitedSymbolIds);
   }
   return true;
 };

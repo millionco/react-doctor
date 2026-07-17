@@ -7,6 +7,7 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -17,28 +18,6 @@ const ESCAPE_ASSIGNMENT_TARGET_PROPERTIES = new Set(["href", "src", "current"]);
 const MESSAGE =
   "`URL.createObjectURL(...)` pins the underlying Blob/File in memory until it is revoked, and this module never calls `URL.revokeObjectURL`. Store the URL, revoke it once you're done (in an effect cleanup, after the download, or on unmount) so the Blob can be freed.";
 
-const GLOBAL_URL_OWNER_NAMES = new Set(["globalThis", "self", "window"]);
-
-const isGlobalUrlReceiver = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const receiver = stripParenExpression(node);
-  if (isNodeOfType(receiver, "Identifier")) {
-    return receiver.name === "URL" && scopes.isGlobalReference(receiver);
-  }
-  if (
-    !isNodeOfType(receiver, "MemberExpression") ||
-    receiver.computed ||
-    !isNodeOfType(receiver.object, "Identifier") ||
-    !isNodeOfType(receiver.property, "Identifier")
-  ) {
-    return false;
-  }
-  return (
-    receiver.property.name === "URL" &&
-    GLOBAL_URL_OWNER_NAMES.has(receiver.object.name) &&
-    scopes.isGlobalReference(receiver.object)
-  );
-};
-
 const isUrlMethodCall = (
   node: EsTreeNodeOfType<"CallExpression">,
   methodName: string,
@@ -46,9 +25,9 @@ const isUrlMethodCall = (
 ): boolean => {
   const callee = stripParenExpression(node.callee);
   return (
-    isMemberProperty(callee, methodName) &&
-    !callee.computed &&
-    isGlobalUrlReceiver(callee.object, scopes)
+    isNodeOfType(callee, "MemberExpression") &&
+    getStaticPropertyName(callee) === methodName &&
+    isProvenGlobalNamespaceReference(callee.object, "URL", scopes)
   );
 };
 
@@ -57,8 +36,11 @@ const isCreateObjectUrlCall = (
   scopes: ScopeAnalysis,
 ): boolean => {
   const callee = stripParenExpression(node.callee);
-  if (!isMemberProperty(callee, "createObjectURL") || callee.computed) return false;
-  return isGlobalUrlReceiver(callee.object, scopes);
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    getStaticPropertyName(callee) === "createObjectURL" &&
+    isProvenGlobalNamespaceReference(callee.object, "URL", scopes)
+  );
 };
 
 const moduleCallsRevoke = (programRoot: EsTreeNode, scopes: ScopeAnalysis): boolean => {

@@ -14,6 +14,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
 import { serializeEventKey } from "../../utils/serialize-event-key.js";
+import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callback-flow.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const MESSAGE =
@@ -38,79 +39,6 @@ const getPropertyName = (property: EsTreeNodeOfType<"Property">): string | null 
     return property.key.value;
   }
   return null;
-};
-
-// Name a local helper is bound to: a `function` declaration, or a `const`
-// arrow/function initializer. `let`/`var` bindings are excluded — a later
-// reassignment could swap the body before the invocation.
-const getConstLocalHelperName = (functionNode: EsTreeNode): string | null => {
-  if (isNodeOfType(functionNode, "FunctionDeclaration")) {
-    return functionNode.id && isNodeOfType(functionNode.id, "Identifier")
-      ? functionNode.id.name
-      : null;
-  }
-  const declarator = functionNode.parent;
-  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return null;
-  if (declarator.init !== functionNode || !isNodeOfType(declarator.id, "Identifier")) return null;
-  const declaration = declarator.parent;
-  if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return null;
-  return declaration.kind === "const" ? declarator.id.name : null;
-};
-
-// Walks the mount body plus the bodies of local helpers the mount flow
-// synchronously invokes (`const configure = () => {...}; configure();`),
-// transitively — mount-time work factored into immediately-invoked helpers
-// acquires resources just as directly as inline statements. Helpers that
-// are only stored or passed around as callbacks are never entered.
-const walkSynchronousMountFlow = (
-  functionBody: EsTreeNode,
-  visit: (node: EsTreeNode) => void,
-): void => {
-  const walkedBodies = new Set<EsTreeNode>();
-  const walkBody = (body: EsTreeNode, helperBodiesInScope: Map<string, EsTreeNode>): void => {
-    if (walkedBodies.has(body)) return;
-    walkedBodies.add(body);
-    const helperBodies = new Map(helperBodiesInScope);
-    const helperAliases = new Map<string, string>();
-    const synchronouslyInvokedNames = new Set<string>();
-    walkAst(body, (child: EsTreeNode) => {
-      if (child !== body && isFunctionLike(child)) {
-        const helperName = getConstLocalHelperName(child);
-        if (helperName && child.body) helperBodies.set(helperName, child.body);
-        return false;
-      }
-      if (
-        isNodeOfType(child, "VariableDeclarator") &&
-        isNodeOfType(child.id, "Identifier") &&
-        child.init &&
-        isNodeOfType(child.init, "Identifier") &&
-        child.parent &&
-        isNodeOfType(child.parent, "VariableDeclaration") &&
-        child.parent.kind === "const"
-      ) {
-        helperAliases.set(child.id.name, child.init.name);
-      }
-      if (isNodeOfType(child, "CallExpression") && isNodeOfType(child.callee, "Identifier")) {
-        synchronouslyInvokedNames.add(child.callee.name);
-      }
-      visit(child);
-    });
-    for (const [aliasName, targetName] of helperAliases) {
-      let resolvedName = targetName;
-      const visitedNames = new Set([aliasName]);
-      while (helperAliases.has(resolvedName) && !visitedNames.has(resolvedName)) {
-        visitedNames.add(resolvedName);
-        resolvedName = helperAliases.get(resolvedName) ?? resolvedName;
-      }
-      const helperBody = helperBodies.get(resolvedName);
-      if (helperBody) helperBodies.set(aliasName, helperBody);
-    }
-    for (const invokedName of synchronouslyInvokedNames) {
-      const helperBody = helperBodies.get(invokedName);
-      if (helperBody) walkBody(helperBody, helperBodies);
-    }
-  };
-  walkBody(functionBody, new Map());
 };
 
 const getBareCalleeName = (node: EsTreeNode): string | null => {
@@ -167,7 +95,13 @@ const classMemberFunction = (
   return null;
 };
 
-const functionSetsComponentState = (functionNode: EsTreeNode): boolean => {
+const functionSetsComponentState = (
+  functionNode: EsTreeNode,
+  classBody: EsTreeNode | null,
+  visitedFunctions = new Set<EsTreeNode>(),
+): boolean => {
+  if (visitedFunctions.has(functionNode)) return false;
+  visitedFunctions.add(functionNode);
   let mutates = false;
   walkAst(functionNode, (node: EsTreeNode) => {
     if (mutates) return false;
@@ -185,6 +119,22 @@ const functionSetsComponentState = (functionNode: EsTreeNode): boolean => {
     ) {
       mutates = true;
       return false;
+    }
+    if (
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "MemberExpression") &&
+      isNodeOfType(node.callee.object, "ThisExpression") &&
+      !node.callee.computed &&
+      isNodeOfType(node.callee.property, "Identifier")
+    ) {
+      const nestedFunction = classMemberFunction(classBody, node.callee.property.name);
+      if (
+        nestedFunction &&
+        functionSetsComponentState(nestedFunction, classBody, visitedFunctions)
+      ) {
+        mutates = true;
+        return false;
+      }
     }
   });
   return mutates;
@@ -204,7 +154,7 @@ const timeoutCallbackMutatesComponent = (
   const body = resolvedCallback.body;
   if (!body) return false;
   let mutates = false;
-  walkSynchronousMountFlow(body, (node) => {
+  walkSynchronousCallbackFlow(body, (node) => {
     if (mutates) return;
     if (getBareCalleeName(node) === "runInAction") {
       mutates = true;
@@ -223,7 +173,7 @@ const timeoutCallbackMutatesComponent = (
           ? node.callee.property.name
           : null;
       const memberFunction = memberName ? classMemberFunction(classBody, memberName) : null;
-      if (memberFunction && !functionSetsComponentState(memberFunction)) return;
+      if (memberFunction && !functionSetsComponentState(memberFunction, classBody)) return;
       mutates = true;
     }
   });
@@ -257,7 +207,7 @@ const isOneShotListenerOptions = (optionsArgument: EsTreeNode | undefined): bool
 const collectMountLocalReceiverNames = (mountBody: EsTreeNode): Set<string> => {
   const declaredNames = new Set<string>();
   const escapedNames = new Set<string>();
-  walkSynchronousMountFlow(mountBody, (node) => {
+  walkSynchronousCallbackFlow(mountBody, (node) => {
     if (isNodeOfType(node, "VariableDeclarator")) {
       const initializer = node.init ? stripParenExpression(node.init as EsTreeNode) : null;
       if (
@@ -333,7 +283,7 @@ const collectSynchronouslyRemovedListeners = (
   scopes: ScopeAnalysis,
 ): Map<string, number> => {
   const removedListeners = new Map<string, number>();
-  walkSynchronousMountFlow(mountBody, (node) => {
+  walkSynchronousCallbackFlow(mountBody, (node) => {
     if (!isNodeOfType(node, "CallExpression")) return;
     if (getCallMethodName(node.callee) !== "removeEventListener") return;
     const identityKey = listenerIdentityKey(node, scopes);
@@ -494,7 +444,7 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
         const localReceiverNames = collectMountLocalReceiverNames(body);
         const removedListeners = collectSynchronouslyRemovedListeners(body, context.scopes);
         let hazardNode: EsTreeNode | null = null;
-        walkSynchronousMountFlow(body, (candidate) => {
+        walkSynchronousCallbackFlow(body, (candidate) => {
           if (hazardNode) return;
           if (
             isMountHazard(candidate, localReceiverNames, removedListeners, node, context.scopes)

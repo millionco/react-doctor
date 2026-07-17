@@ -542,4 +542,22 @@ describe("effect-raf-loop-needs-cancel", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags an uncancelled RAF loop started inside a synchronous iterator callback", () => {
+    const result = runRule(
+      effectRafLoopNeedsCancel,
+      `function Ticker() {
+         useEffect(() => {
+           [canvas].forEach(() => {
+             const loop = () => {
+               tick();
+               requestAnimationFrame(loop);
+             };
+             requestAnimationFrame(loop);
+           });
+         }, []);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

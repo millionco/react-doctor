@@ -270,4 +270,28 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags forwarded cleanup calls discarded by return void and non-final return sequences", () => {
+    const voidResult = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `const useWrapped = (effect: EffectCallback, deps: DependencyList) => {
+         useEffect(() => { return void effect(); }, deps);
+       };`,
+    );
+    const sequenceResult = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `const useWrapped = (effect: EffectCallback, deps: DependencyList) => {
+         useEffect(() => { return (effect(), undefined); }, deps);
+       };`,
+    );
+    const returnedResult = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `const useWrapped = (effect: EffectCallback, deps: DependencyList) => {
+         useEffect(() => { return (prepare(), effect()); }, deps);
+       };`,
+    );
+    expect(voidResult.diagnostics).toHaveLength(1);
+    expect(sequenceResult.diagnostics).toHaveLength(1);
+    expect(returnedResult.diagnostics).toHaveLength(0);
+  });
 });

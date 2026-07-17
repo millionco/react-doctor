@@ -581,6 +581,32 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a setTimeout whose instance method transitively reaches setState", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Banner extends React.Component {
+         show = () => this.reveal();
+         reveal = () => this.setState({ visible: true });
+         componentDidMount() { setTimeout(() => this.show(), 3000); }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a mount listener registered inside a synchronous iterator callback", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Tracker extends React.Component {
+         componentDidMount() {
+           [window].forEach((target) => target.addEventListener("scroll", this.onScroll));
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a window listener added with no removal anywhere", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

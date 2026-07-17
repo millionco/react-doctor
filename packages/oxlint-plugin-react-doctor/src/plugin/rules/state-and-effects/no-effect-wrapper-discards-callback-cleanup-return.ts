@@ -176,6 +176,30 @@ const statementRebindsCallbackName = (statement: EsTreeNode, callbackName: strin
   );
 };
 
+const discardedForwardedCallInReturnExpression = (
+  returnArgument: EsTreeNode,
+  callbackName: string,
+  callbackBinding: EsTreeNode,
+): EsTreeNode | null => {
+  const expression = stripParenExpression(returnArgument);
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void") {
+    return discardedForwardedCallInExpression(expression.argument, callbackName, callbackBinding);
+  }
+  if (!isNodeOfType(expression, "SequenceExpression")) return null;
+  for (const sequenceExpression of expression.expressions.slice(0, -1)) {
+    const discardedCall = discardedForwardedCallInExpression(
+      sequenceExpression,
+      callbackName,
+      callbackBinding,
+    );
+    if (discardedCall) return discardedCall;
+  }
+  const returnedExpression = expression.expressions.at(-1);
+  return returnedExpression
+    ? discardedForwardedCallInReturnExpression(returnedExpression, callbackName, callbackBinding)
+    : null;
+};
+
 const findBareForwardedCall = (
   effectBody: EsTreeNode,
   callbackName: string,
@@ -186,12 +210,11 @@ const findBareForwardedCall = (
     if (bareCall) return false;
     if (child !== effectBody && isFunctionLike(child)) return false;
     if (statementRebindsCallbackName(child, callbackName)) return false;
-    if (!isNodeOfType(child, "ExpressionStatement")) return;
-    const forwardedCall = discardedForwardedCallInExpression(
-      child.expression,
-      callbackName,
-      callbackBinding,
-    );
+    const forwardedCall = isNodeOfType(child, "ExpressionStatement")
+      ? discardedForwardedCallInExpression(child.expression, callbackName, callbackBinding)
+      : isNodeOfType(child, "ReturnStatement") && child.argument
+        ? discardedForwardedCallInReturnExpression(child.argument, callbackName, callbackBinding)
+        : null;
     if (forwardedCall) {
       bareCall = forwardedCall;
       return false;

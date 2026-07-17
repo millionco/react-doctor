@@ -9,12 +9,14 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenEffectHookCall } from "../../utils/is-proven-effect-hook-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callback-flow.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const REQUEST_ANIMATION_FRAME_NAME = "requestAnimationFrame";
 const CANCEL_ANIMATION_FRAME_NAME = "cancelAnimationFrame";
+const COLLECTION_VALUES_HANDLE_PREFIX = "collection-values:";
 const MONOTONIC_MATH_METHOD_NAMES = new Set(["min", "max"]);
 
 interface SelfReschedulingRafLoop {
@@ -105,8 +107,7 @@ const doesSubtreeRescheduleAnyName = (root: EsTreeNode, selfNames: Set<string>):
 
 const findSelfReschedulingRafLoops = (effectCallback: EsTreeNode): SelfReschedulingRafLoop[] => {
   const foundLoops: SelfReschedulingRafLoop[] = [];
-  walkAst(effectCallback, (child: EsTreeNode) => {
-    if (child !== effectCallback && isFunctionLike(child)) return false;
+  walkSynchronousCallbackFlow(effectCallback, (child: EsTreeNode) => {
     if (!isRequestAnimationFrameCall(child)) return;
     const scheduledArgument = child.arguments?.[0];
     if (!scheduledArgument) return;
@@ -149,6 +150,18 @@ const storedHandleKeyForCall = (call: EsTreeNodeOfType<"CallExpression">): strin
   ) {
     return parent.id.name;
   }
+  if (isNodeOfType(parent, "CallExpression") && isNodeOfType(parent.callee, "MemberExpression")) {
+    const storageMethodName = getStaticPropertyName(parent.callee);
+    const argumentIndex =
+      parent.arguments?.findIndex((argument) => argument === expressionRoot) ?? -1;
+    const storesCollectionValue =
+      (storageMethodName === "set" && argumentIndex > 0) ||
+      ((storageMethodName === "push" || storageMethodName === "unshift") && argumentIndex >= 0);
+    const collectionKey = storesCollectionValue
+      ? serializeHandleKey(parent.callee.object as EsTreeNode)
+      : null;
+    if (collectionKey) return `${COLLECTION_VALUES_HANDLE_PREFIX}${collectionKey}`;
+  }
   return null;
 };
 
@@ -178,18 +191,63 @@ const cancellableHandleKey = (rafLoop: SelfReschedulingRafLoop): string | null =
     : null;
 };
 
-const cleanupCancelsHandle = (cleanupFunction: EsTreeNode, handleKey: string): boolean => {
+const cleanupCancelsCollectionValues = (
+  cleanupFunction: EsTreeNode,
+  collectionKey: string,
+): boolean => {
   let didCancel = false;
-  walkAst(cleanupFunction, (child: EsTreeNode) => {
-    if (didCancel) return false;
-    if (child !== cleanupFunction && isFunctionLike(child)) return false;
+  walkSynchronousCallbackFlow(cleanupFunction, (child: EsTreeNode) => {
+    if (didCancel || !isNodeOfType(child, "CallExpression")) return;
+    const callee = stripParenExpression(child.callee);
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      getStaticPropertyName(callee) !== "forEach" ||
+      serializeHandleKey(callee.object as EsTreeNode) !== collectionKey
+    ) {
+      return;
+    }
+    const callbackArgument = child.arguments?.[0];
+    const callback =
+      callbackArgument && !isNodeOfType(callbackArgument, "SpreadElement")
+        ? resolveFunctionNode(callbackArgument)
+        : null;
+    if (!isFunctionLike(callback)) return;
+    const valueParameter = callback.params?.[0];
+    if (!isNodeOfType(valueParameter, "Identifier")) return;
+    walkAst(callback, (callbackChild: EsTreeNode) => {
+      if (didCancel) return false;
+      if (callbackChild !== callback && isFunctionLike(callbackChild)) return false;
+      if (!isNodeOfType(callbackChild, "CallExpression")) return;
+      const argument = callbackChild.arguments?.[0];
+      if (
+        isCancelAnimationFrameCall(callbackChild) &&
+        isNodeOfType(argument, "Identifier") &&
+        argument.name === valueParameter.name
+      ) {
+        didCancel = true;
+        return false;
+      }
+    });
+  });
+  return didCancel;
+};
+
+const cleanupCancelsHandle = (cleanupFunction: EsTreeNode, handleKey: string): boolean => {
+  if (handleKey.startsWith(COLLECTION_VALUES_HANDLE_PREFIX)) {
+    return cleanupCancelsCollectionValues(
+      cleanupFunction,
+      handleKey.slice(COLLECTION_VALUES_HANDLE_PREFIX.length),
+    );
+  }
+  let didCancel = false;
+  walkSynchronousCallbackFlow(cleanupFunction, (child: EsTreeNode) => {
+    if (didCancel) return;
     if (!isNodeOfType(child, "CallExpression") || !isCancelAnimationFrameCall(child)) {
       return;
     }
     const argument = child.arguments?.[0];
     if (argument && serializeHandleKey(argument) === handleKey) {
       didCancel = true;
-      return false;
     }
   });
   return didCancel;

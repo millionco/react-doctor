@@ -812,6 +812,88 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags callback-ref provenance after an IIFE overwrite", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => {
+            this.monthContainer = node;
+            (() => {
+              this.monthContainer = undefined;
+            })();
+          }} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps callback-ref provenance across a deferred nested overwrite", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => {
+            this.monthContainer = node;
+            const clearContainer = () => {
+              this.monthContainer = undefined;
+            };
+            registerCleanup(clearContainer);
+          }} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("restores callback-ref provenance with a final IIFE write", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => {
+            this.monthContainer = undefined;
+            (() => {
+              this.monthContainer = node;
+            })();
+          }} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when the final callback-ref write restores provenance", () => {
     const result = runRule(
       noDidUpdateSetState,

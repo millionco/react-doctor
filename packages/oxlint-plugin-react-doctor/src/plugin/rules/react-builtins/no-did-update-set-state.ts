@@ -331,7 +331,11 @@ const getCallbackRefAssignedFields = (
   if (!body) return new Set();
   const assignedFieldNames = new Set<string>();
   walkAst(body, (node) => {
-    if (node !== body && (FUNCTION_NODE_TYPES.has(node.type) || CLASS_NODE_TYPES.has(node.type))) {
+    if (
+      node !== body &&
+      ((FUNCTION_NODE_TYPES.has(node.type) && !isImmediatelyInvokedFunction(node)) ||
+        CLASS_NODE_TYPES.has(node.type))
+    ) {
       return false;
     }
     const assignmentTarget =

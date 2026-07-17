@@ -52,6 +52,37 @@ describe("performance/rendering-hydration-no-flicker — regressions", () => {
     `);
   });
 
+  it("flags viewport handlers and cleanup with explicit return statements", () => {
+    expectFail(`
+      import { useEffect, useState } from "react";
+      const ResponsiveSuggestions = () => {
+        const [windowWidth, setWindowWidth] = useState(0);
+        useEffect(() => {
+          const handleResize = () => { return setWindowWidth(window.innerWidth); };
+          window.addEventListener("resize", handleResize);
+          setWindowWidth(window.innerWidth);
+          return () => { return window.removeEventListener("resize", handleResize); };
+        }, []);
+        return windowWidth > 500 ? <Suggestions /> : null;
+      };
+    `);
+
+    expectPass(`
+      import { useEffect, useState } from "react";
+      const ResponsiveSuggestions = () => {
+        const [windowWidth, setWindowWidth] = useState(0);
+        const [otherWidth, setOtherWidth] = useState(0);
+        useEffect(() => {
+          const handleResize = () => { return setOtherWidth(window.innerWidth); };
+          window.addEventListener("resize", handleResize);
+          setWindowWidth(window.innerWidth);
+          return () => { return window.removeEventListener("resize", handleResize); };
+        }, []);
+        return <Suggestions width={windowWidth + otherWidth} />;
+      };
+    `);
+  });
+
   it("keeps the viewport contract through transparent receivers and no-op statements", () => {
     for (const windowReceiver of ["window", "(window as any)", "window!"]) {
       expectFail(`

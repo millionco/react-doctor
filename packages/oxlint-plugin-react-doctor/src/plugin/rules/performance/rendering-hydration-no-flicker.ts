@@ -17,6 +17,7 @@ import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scop
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
+import { unwrapReturnExpression } from "../../utils/unwrap-return-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const USE_EFFECT_ONLY = new Set(["useEffect"]);
@@ -221,7 +222,11 @@ const getCleanupResizeHandler = (
   }
   const cleanupStatements = getCallbackStatements(statement.argument);
   if (cleanupStatements.length !== 1) return null;
-  return getResizeListenerHandler(context, cleanupStatements[0], "removeEventListener");
+  return getResizeListenerHandler(
+    context,
+    unwrapReturnExpression(cleanupStatements[0]),
+    "removeEventListener",
+  );
 };
 
 const findExactViewportState = (
@@ -463,7 +468,10 @@ const isExactViewportSubscriptionEffect = (
   }
   const handlerStatements = getCallbackStatements(handlerDeclarator.init);
   if (handlerStatements.length !== 1) return false;
-  const handlerSetter = getDirectWindowWidthSetter(context, handlerStatements[0]);
+  const handlerSetter = getDirectWindowWidthSetter(
+    context,
+    unwrapReturnExpression(handlerStatements[0]),
+  );
   const subscribedHandler = getResizeListenerHandler(context, statements[1], "addEventListener");
   const immediateSetter = getDirectWindowWidthSetter(context, statements[2]);
   const cleanupHandler = getCleanupResizeHandler(context, statements[3]);

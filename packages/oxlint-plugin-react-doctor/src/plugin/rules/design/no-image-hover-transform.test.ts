@@ -19,6 +19,22 @@ describe("no-image-hover-transform", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags stacked responsive and color-mode hover variants", () => {
+    const result = runRule(
+      noImageHoverTransform,
+      `const Card = () => <><img src="/a.jpg" alt="A" className="md:hover:scale-105" /><img src="/b.jpg" alt="B" className="dark:group-hover:rotate-3" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags named group and peer hover variants", () => {
+    const result = runRule(
+      noImageHoverTransform,
+      `const Card = () => <><img src="/a.jpg" alt="A" className="group-hover/card:scale-105" /><img src="/b.jpg" alt="B" className="peer-hover/item:rotate-2" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("accepts opacity and color hover treatments", () => {
     const result = runRule(
       noImageHoverTransform,

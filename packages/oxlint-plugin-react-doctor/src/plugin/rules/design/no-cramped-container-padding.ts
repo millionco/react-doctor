@@ -1,4 +1,8 @@
-import { MIN_BOUNDED_CONTAINER_PADDING_PX, ROOT_FONT_SIZE_PX } from "../../constants/design.js";
+import {
+  MIN_BOUNDED_CONTAINER_PADDING_PX,
+  ROOT_FONT_SIZE_PX,
+  TAILWIND_SPACING_UNIT_PX,
+} from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
 import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
@@ -29,8 +33,8 @@ const PADDING_STYLE_PROPERTIES = new Set([
   "paddingBottom",
   "paddingLeft",
 ]);
-const TAILWIND_PADDING_PATTERN = /^p-([\d.]+)$/;
-const ARBITRARY_PADDING_PATTERN = /^p-\[([\d.]+)px\]$/;
+const TAILWIND_PADDING_PATTERN = /^(p[trblesxy]?)-(px|[\d.]+)$/;
+const ARBITRARY_PADDING_PATTERN = /^(p[trblesxy]?)-\[([\d.]+)(px|rem)\]$/;
 const TAILWIND_BORDER_WIDTH_PATTERN = /^border(?:-[trblxy])?(?:-([\d.]+|\[[\d.]+px\]))?$/;
 const TAILWIND_RING_WIDTH_PATTERN = /^ring(?:-([\d.]+|\[[\d.]+px\]))?$/;
 const NON_SURFACE_BACKGROUND_PATTERN =
@@ -82,13 +86,36 @@ const isVisibleInlineBoundary = (property: EsTreeNode): boolean => {
 };
 
 const getTailwindPaddingPx = (tokens: string[]): number | null => {
+  const paddingByAxis = new Map<string, number>();
   for (const token of tokens) {
     const spacingMatch = token.match(TAILWIND_PADDING_PATTERN);
-    if (spacingMatch) return parseFloat(spacingMatch[1]) * 4;
+    if (spacingMatch) {
+      paddingByAxis.set(
+        spacingMatch[1],
+        spacingMatch[2] === "px" ? 1 : parseFloat(spacingMatch[2]) * TAILWIND_SPACING_UNIT_PX,
+      );
+    }
     const arbitraryMatch = token.match(ARBITRARY_PADDING_PATTERN);
-    if (arbitraryMatch) return parseFloat(arbitraryMatch[1]);
+    if (arbitraryMatch) {
+      const value = parseFloat(arbitraryMatch[2]);
+      paddingByAxis.set(
+        arbitraryMatch[1],
+        arbitraryMatch[3] === "rem" ? value * ROOT_FONT_SIZE_PX : value,
+      );
+    }
   }
-  return null;
+  const basePadding = paddingByAxis.get("p");
+  const horizontalPadding = paddingByAxis.get("px") ?? basePadding;
+  const verticalPadding = paddingByAxis.get("py") ?? basePadding;
+  const effectivePadding = [
+    paddingByAxis.get("pt") ?? verticalPadding,
+    paddingByAxis.get("pr") ?? horizontalPadding,
+    paddingByAxis.get("pb") ?? verticalPadding,
+    paddingByAxis.get("pl") ?? horizontalPadding,
+    paddingByAxis.get("ps"),
+    paddingByAxis.get("pe"),
+  ].filter((padding): padding is number => padding !== undefined);
+  return effectivePadding.length > 0 ? Math.min(...effectivePadding) : null;
 };
 
 export const noCrampedContainerPadding = defineRule({

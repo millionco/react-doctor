@@ -578,6 +578,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
   `class MultiBranchCallbackRef extends React.Component { componentDidUpdate() { if (this.state.primary !== this.primary || this.state.secondary !== this.secondary) this.setState({ primary: this.primary, secondary: this.secondary }); } render() { return <div ref={(node) => { this.primary = node; this.secondary = node; }} />; } }`,
   `class AlternateBranchCallbackRef extends React.Component { componentDidUpdate() { if (this.state.node === this.node) this.measure(); else this.setState({ node: this.node }); } render() { return <div ref={(node) => { this.node = node; }} />; } }`,
   `class HistoricalTransitionDisjunction extends React.Component { componentDidUpdate(previousProps) { if ((this.props.value === undefined && previousProps.value !== undefined) || (this.props.mode === "closed" && previousProps.mode !== "closed")) this.setState({ value: undefined }); } render() { return null; } }`,
+  `class OverwrittenCallbackRef extends React.Component { componentDidUpdate() { if (this.state.node !== this.node) this.setState({ node: this.node }); } render() { return <div ref={(node) => { this.node = node; this.node = undefined; }} />; } }`,
   `const globalCount = (globalThis as any).__count = ((globalThis as any).__count ?? 0) + 1;`,
   `const emDash = \`\${value} — \${state}\`;`,
   `const composed = event.composedPath()[0];`,

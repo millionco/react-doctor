@@ -782,6 +782,61 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    ["plain", "this.monthContainer = undefined;"],
+    ["compound", "this.monthContainer += node;"],
+    ["update", "this.monthContainer++;"],
+    ["delete", "delete this.monthContainer;"],
+  ])("still flags callback-ref provenance after a later %s overwrite", (_kind, overwrite) => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => {
+            this.monthContainer = node;
+            ${overwrite}
+          }} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when the final callback-ref write restores provenance", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => {
+            this.monthContainer = undefined;
+            this.monthContainer = node;
+          }} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a named callback-ref convergence guard", () => {
     const result = runRule(
       noDidUpdateSetState,

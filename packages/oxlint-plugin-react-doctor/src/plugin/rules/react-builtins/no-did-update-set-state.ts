@@ -334,15 +334,25 @@ const getCallbackRefAssignedFields = (
     if (node !== body && (FUNCTION_NODE_TYPES.has(node.type) || CLASS_NODE_TYPES.has(node.type))) {
       return false;
     }
+    const assignmentTarget =
+      (isNodeOfType(node, "AssignmentExpression") && (node.left as EsTreeNode)) ||
+      (isNodeOfType(node, "UpdateExpression") && (node.argument as EsTreeNode)) ||
+      (isNodeOfType(node, "UnaryExpression") &&
+        node.operator === "delete" &&
+        (node.argument as EsTreeNode)) ||
+      null;
+    if (!assignmentTarget) return;
+    const fieldName = getThisFieldName(assignmentTarget);
+    if (!fieldName) return;
     if (
-      !isNodeOfType(node, "AssignmentExpression") ||
-      node.operator !== "=" ||
-      !isDirectRefParameterValue(node.right as EsTreeNode, parameterSymbolId, scopes)
+      isNodeOfType(node, "AssignmentExpression") &&
+      node.operator === "=" &&
+      isDirectRefParameterValue(node.right as EsTreeNode, parameterSymbolId, scopes)
     ) {
+      assignedFieldNames.add(fieldName);
       return;
     }
-    const fieldName = getThisFieldName(node.left as EsTreeNode);
-    if (fieldName) assignedFieldNames.add(fieldName);
+    assignedFieldNames.delete(fieldName);
   });
   return assignedFieldNames;
 };

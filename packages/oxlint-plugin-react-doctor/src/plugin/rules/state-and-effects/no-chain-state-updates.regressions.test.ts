@@ -181,6 +181,23 @@ describe("no-chain-state-updates — must-detect regressions", () => {
 });
 
 describe("no-chain-state-updates — regressions", () => {
+  it("stays silent when a setter is passed to a helper factory", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const Example = ({ source }) => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        const bind = (setter) => (value) => setter(value);
+        const run = bind(setReady);
+        const onChange = () => setStep((value) => value + 1);
+        useEffect(() => run(true), [step, source, run]);
+        return <button onClick={onChange}>{String(ready)}</button>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when an effect passes a setter through a parameter-bound helper", () => {
     const result = runRule(
       noChainStateUpdates,

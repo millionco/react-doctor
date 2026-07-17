@@ -526,6 +526,8 @@ const NON_CONTAMINATING_MAP_METHOD_NAMES = new Set([
 const isFunctionShapedReturn = (
   returnedValue: EsTreeNode,
   setterToStateName: ReadonlyMap<string, string>,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
+  scopes: ScopeAnalysis,
   isExplicitReturnStatement: boolean,
 ): boolean => {
   if (
@@ -543,7 +545,13 @@ const isFunctionShapedReturn = (
   // state write (`return setSource(1)`) is never cleanup.
   if (isNodeOfType(returnedValue, "CallExpression")) {
     if (isNodeOfType(returnedValue.callee, "Identifier")) {
-      if (setterToStateName.has(returnedValue.callee.name)) return false;
+      const setterSymbol = resolveConstIdentifierAlias(returnedValue.callee, scopes, true);
+      if (
+        setterToStateName.has(returnedValue.callee.name) ||
+        (setterSymbol && setterSymbolIdToStateName.has(setterSymbol.id))
+      ) {
+        return false;
+      }
       if (isSetterIdentifier(returnedValue.callee.name)) return true;
     }
     return isCleanupReturn(returnedValue, EMPTY_CLEANUP_NAME_SET, EMPTY_CLEANUP_NAME_SET, {
@@ -909,6 +917,7 @@ const isExternalSyncEffect = (
   effectCallback: EsTreeNode,
   analysisFunctions: ReadonlySet<EsTreeNode>,
   setterToStateName: ReadonlyMap<string, string>,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
   scopes: ScopeAnalysis,
   allowCommittedDomSync: boolean,
 ): boolean => {
@@ -917,13 +926,29 @@ const isExternalSyncEffect = (
   // an external resource — once we see one, we don't need to inspect
   // the body for an external-sync call shape.
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
-    if (isFunctionShapedReturn(effectCallback.body, setterToStateName, false)) return true;
+    if (
+      isFunctionShapedReturn(
+        effectCallback.body,
+        setterToStateName,
+        setterSymbolIdToStateName,
+        scopes,
+        false,
+      )
+    ) {
+      return true;
+    }
   } else {
     for (const statement of effectCallback.body.body ?? []) {
       if (
         isNodeOfType(statement, "ReturnStatement") &&
         statement.argument &&
-        isFunctionShapedReturn(statement.argument, setterToStateName, true)
+        isFunctionShapedReturn(
+          statement.argument,
+          setterToStateName,
+          setterSymbolIdToStateName,
+          scopes,
+          true,
+        )
       ) {
         return true;
       }
@@ -1010,6 +1035,7 @@ export const noEffectChain = defineRule({
               callback,
               analysisFunctions,
               setterToStateName,
+              setterSymbolIdToStateName,
               context.scopes,
               writtenStateNames.size === 0,
             ) ||

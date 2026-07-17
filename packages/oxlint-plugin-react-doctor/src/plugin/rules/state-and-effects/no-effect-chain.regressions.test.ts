@@ -25,6 +25,25 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports an effect chain when the writer explicitly returns a setter alias call", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      const Example = ({ source }) => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        const writeStep = setStep;
+        useEffect(() => {
+          return writeStep(1);
+        }, [source]);
+        useEffect(() => setReady(step > 0), [step]);
+        return ready;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports a chain through a member dependency of state", () => {
     const result = runRule(
       noEffectChain,

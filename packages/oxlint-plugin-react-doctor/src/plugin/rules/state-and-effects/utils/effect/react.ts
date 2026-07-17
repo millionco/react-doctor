@@ -451,8 +451,28 @@ export const isRefCurrent = (ref: Reference): boolean => {
 export const resolveStateSetterReference = (
   analysis: ProgramAnalysis,
   ref: Reference,
-): Reference | null =>
-  getUpstreamRefs(analysis, ref).find((innerRef) => isStateSetter(analysis, innerRef)) ?? null;
+): Reference | null => {
+  const visitedReferences = new Set<Reference>();
+  let currentReference: Reference | null = ref;
+  while (currentReference && !visitedReferences.has(currentReference)) {
+    if (isStateSetter(analysis, currentReference)) return currentReference;
+    visitedReferences.add(currentReference);
+    const definitions = currentReference.resolved?.defs ?? [];
+    if (definitions.length !== 1) return null;
+    const definitionNode = definitions[0].node as unknown as EsTreeNode;
+    if (!isNodeOfType(definitionNode, "VariableDeclarator")) return null;
+    if (!isNodeOfType(definitionNode.id, "Identifier")) return null;
+    const declaration = (definitionNode as unknown as { parent?: EsTreeNode | null }).parent;
+    if (!isNodeOfType(declaration, "VariableDeclaration") || declaration.kind !== "const") {
+      return null;
+    }
+    if (!definitionNode.init) return null;
+    const initializer = stripParenExpression(definitionNode.init);
+    if (!isNodeOfType(initializer, "Identifier")) return null;
+    currentReference = getRef(analysis, initializer);
+  }
+  return null;
+};
 
 export const isStateSetterCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
   isEventualCallTo(

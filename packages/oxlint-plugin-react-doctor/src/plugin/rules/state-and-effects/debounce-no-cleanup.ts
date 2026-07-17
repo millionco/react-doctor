@@ -7,6 +7,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import {
   isProvenEffectHookCall,
   isProvenReactHookCall,
@@ -103,8 +104,7 @@ const hasTrailingFalseOption = (debounceCall: EsTreeNode): boolean => {
   return (optionsArgument.properties ?? []).some(
     (property) =>
       isNodeOfType(property, "Property") &&
-      ((isNodeOfType(property.key, "Identifier") && property.key.name === "trailing") ||
-        (isNodeOfType(property.key, "Literal") && property.key.value === "trailing")) &&
+      getStaticPropertyKeyName(property, { allowComputedString: true }) === "trailing" &&
       isNodeOfType(property.value, "Literal") &&
       property.value.value === false,
   );

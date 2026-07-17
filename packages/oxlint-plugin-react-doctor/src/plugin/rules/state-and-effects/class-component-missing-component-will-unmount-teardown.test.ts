@@ -629,6 +629,22 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a setTimeout callback reached through local aliases", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Banner extends React.Component {
+         tick() { this.setState({ visible: true }); }
+         componentDidMount() {
+           const callback = this.tick.bind(this);
+           const callbackAlias = callback;
+           setTimeout(callbackAlias, 3000);
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a mount listener registered inside a synchronous iterator callback", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

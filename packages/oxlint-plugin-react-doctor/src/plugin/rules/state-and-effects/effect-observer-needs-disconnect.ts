@@ -1,5 +1,6 @@
 import { EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS } from "../../constants/dom.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -7,7 +8,6 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isProvenEffectHookCall } from "../../utils/is-proven-effect-hook-call.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callback-flow.js";
@@ -130,6 +130,48 @@ const callbackReleasesViaObserverParameter = (
   return didRelease;
 };
 
+const isTrackedObserverReference = (
+  expression: EsTreeNode,
+  bindingIdentifier: EsTreeNode,
+): boolean => {
+  const reference = stripParenExpression(expression);
+  return (
+    isNodeOfType(reference, "Identifier") &&
+    findVariableInitializer(reference, reference.name)?.bindingIdentifier === bindingIdentifier
+  );
+};
+
+const isBoundObserverDisconnect = (
+  returnExpression: EsTreeNode,
+  bindingIdentifier: EsTreeNode,
+  visitedExpressions = new Set<EsTreeNode>(),
+): boolean => {
+  const expression = stripParenExpression(returnExpression);
+  if (visitedExpressions.has(expression)) return false;
+  visitedExpressions.add(expression);
+  if (isNodeOfType(expression, "Identifier")) {
+    const initializer = findVariableInitializer(expression, expression.name)?.initializer;
+    return initializer
+      ? isBoundObserverDisconnect(initializer, bindingIdentifier, visitedExpressions)
+      : false;
+  }
+  if (
+    !isNodeOfType(expression, "CallExpression") ||
+    !isNodeOfType(expression.callee, "MemberExpression") ||
+    getStaticPropertyName(expression.callee) !== "bind" ||
+    !isNodeOfType(expression.callee.object, "MemberExpression") ||
+    getStaticPropertyName(expression.callee.object) !== "disconnect"
+  ) {
+    return false;
+  }
+  const boundReceiver = expression.arguments?.[0];
+  return Boolean(
+    boundReceiver &&
+    isTrackedObserverReference(expression.callee.object.object, bindingIdentifier) &&
+    isTrackedObserverReference(boundReceiver, bindingIdentifier),
+  );
+};
+
 export const effectObserverNeedsDisconnect = defineRule({
   id: "effect-observer-needs-disconnect",
   title: "Observer created in an effect never disconnected",
@@ -141,11 +183,10 @@ export const effectObserverNeedsDisconnect = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isProvenEffectHookCall(node, context.scopes)) return;
       const callback = getEffectCallback(node);
-      if (!callback) return;
+      if (!isFunctionLike(callback)) return;
 
       const trackedObserversByBinding = new Map<EsTreeNode, TrackedObserver>();
-      walkAst(callback, (child: EsTreeNode) => {
-        if (child !== callback && isFunctionLike(child)) return false;
+      walkSynchronousCallbackFlow(callback, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "NewExpression")) return;
         const constructorCallee = stripParenExpression(child.callee);
         const isObserverConstructor = isNodeOfType(constructorCallee, "Identifier")
@@ -192,8 +233,7 @@ export const effectObserverNeedsDisconnect = defineRule({
       });
       if (trackedObserversByBinding.size === 0) return;
 
-      walkAst(callback, (child: EsTreeNode) => {
-        if (child !== callback && isFunctionLike(child)) return false;
+      walkSynchronousCallbackFlow(callback, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "Identifier")) return;
         const bindingIdentifier = findVariableInitializer(child, child.name)?.bindingIdentifier;
         const tracked = bindingIdentifier
@@ -203,8 +243,7 @@ export const effectObserverNeedsDisconnect = defineRule({
       });
 
       for (const cleanupFunction of collectReturnedCleanupFunctions(callback)) {
-        walkAst(cleanupFunction, (child: EsTreeNode) => {
-          if (child !== cleanupFunction && isFunctionLike(child)) return false;
+        walkSynchronousCallbackFlow(cleanupFunction, (child: EsTreeNode) => {
           if (!isNodeOfType(child, "Identifier")) return;
           const bindingIdentifier = findVariableInitializer(child, child.name)?.bindingIdentifier;
           const tracked = bindingIdentifier
@@ -222,15 +261,28 @@ export const effectObserverNeedsDisconnect = defineRule({
         const observerCallback = tracked.construction.arguments?.[0];
         if (!observerCallback || !isFunctionLike(stripParenExpression(observerCallback))) continue;
         const callbackFunction = stripParenExpression(observerCallback);
-        walkAst(callbackFunction, (child: EsTreeNode) => {
-          if (child !== callbackFunction && isFunctionLike(child)) return false;
+        walkSynchronousCallbackFlow(callbackFunction, (child: EsTreeNode) => {
           if (isNodeOfType(child, "Identifier") && child.name === bindingName) {
             recordObserverUsage(child, tracked, context);
           }
         });
       }
 
+      const returnedExpressions = isNodeOfType(callback.body, "BlockStatement")
+        ? collectFunctionReturnStatements(callback).flatMap((returnStatement) =>
+            returnStatement.argument ? [returnStatement.argument] : [],
+          )
+        : [callback.body];
       for (const tracked of trackedObserversByBinding.values()) {
+        if (
+          returnedExpressions.some((returnExpression) =>
+            isBoundObserverDisconnect(returnExpression, tracked.bindingIdentifier),
+          )
+        ) {
+          tracked.didReleaseAll = true;
+          tracked.didObserveUnknownTarget = false;
+          tracked.observedTargetKeys.clear();
+        }
         const didReleaseEveryActiveTarget =
           !tracked.didObserveUnknownTarget && tracked.observedTargetKeys.size === 0;
         if (

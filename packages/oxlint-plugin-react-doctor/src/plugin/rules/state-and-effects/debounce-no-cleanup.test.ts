@@ -350,6 +350,34 @@ describe("debounce-no-cleanup", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("only trusts statically resolved trailing option keys", () => {
+    const dynamicResult = runRule(
+      debounceNoCleanup,
+      `${LODASH_DEBOUNCE_IMPORT}
+       function Search() {
+         const trailing = "leading";
+         const search = useMemo(() => debounce(async (value) => {
+           await fetchResults(value);
+         }, 250, { [trailing]: false }), []);
+         useEffect(() => { search(query); }, [search, query]);
+         return null;
+       }`,
+    );
+    const staticResult = runRule(
+      debounceNoCleanup,
+      `${LODASH_DEBOUNCE_IMPORT}
+       function Search() {
+         const search = useMemo(() => debounce(async (value) => {
+           await fetchResults(value);
+         }, 250, { ["trailing"]: false }), []);
+         useEffect(() => { search(query); }, [search, query]);
+         return null;
+       }`,
+    );
+    expect(dynamicResult.diagnostics).toHaveLength(1);
+    expect(staticResult.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a non-lodash custom debounce", () => {
     const result = runRule(
       debounceNoCleanup,

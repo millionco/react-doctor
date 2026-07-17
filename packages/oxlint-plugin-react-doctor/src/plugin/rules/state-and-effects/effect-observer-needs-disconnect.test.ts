@@ -57,6 +57,21 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a bound disconnect returned through a local alias", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => measure());
+         observer.observe(node);
+         const disconnect = observer.disconnect.bind(observer);
+         const cleanup = disconnect;
+         return cleanup;
+       }, []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag when the cleanup return unobserves", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,
@@ -92,6 +107,28 @@ describe("effect-observer-needs-disconnect", () => {
     );
     expect(disconnectResult.diagnostics).toHaveLength(1);
     expect(unobserveResult.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks observer acquisition and cleanup inside synchronous iterator callbacks", () => {
+    const leakedResult = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         [node].forEach((target) => {
+           const observer = new ResizeObserver(() => measure());
+           observer.observe(target);
+         });
+       }, []);`,
+    );
+    const releasedResult = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => measure());
+         [node].forEach((target) => observer.observe(target));
+         return () => callbacks.forEach(() => observer.disconnect());
+       }, []);`,
+    );
+    expect(leakedResult.diagnostics).toHaveLength(1);
+    expect(releasedResult.diagnostics).toHaveLength(0);
   });
 
   it("does not flag when every active observation is released after restarting", () => {

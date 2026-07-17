@@ -146,11 +146,21 @@ const functionSetsComponentState = (
   return mutates;
 };
 
-const timeoutCallbackMutatesComponent = (
+const resolveTimeoutCallbackFunction = (
   callback: EsTreeNode,
   classBody: EsTreeNode | null,
-): boolean => {
+  visitedExpressions = new Set<EsTreeNode>(),
+): EsTreeNode | null => {
   const expression = stripParenExpression(callback);
+  if (visitedExpressions.has(expression)) return null;
+  visitedExpressions.add(expression);
+  if (isFunctionLike(expression)) return expression;
+  if (isNodeOfType(expression, "Identifier")) {
+    const initializer = findVariableInitializer(expression, expression.name)?.initializer;
+    return initializer
+      ? resolveTimeoutCallbackFunction(initializer, classBody, visitedExpressions)
+      : null;
+  }
   const boundTarget =
     isNodeOfType(expression, "CallExpression") &&
     isNodeOfType(expression.callee, "MemberExpression") &&
@@ -164,7 +174,14 @@ const timeoutCallbackMutatesComponent = (
     isNodeOfType(methodReference.object, "ThisExpression")
       ? getStaticPropertyName(methodReference)
       : null;
-  const resolvedCallback = memberName ? classMemberFunction(classBody, memberName) : expression;
+  return memberName ? classMemberFunction(classBody, memberName) : null;
+};
+
+const timeoutCallbackMutatesComponent = (
+  callback: EsTreeNode,
+  classBody: EsTreeNode | null,
+): boolean => {
+  const resolvedCallback = resolveTimeoutCallbackFunction(callback, classBody);
   if (!isFunctionLike(resolvedCallback)) return false;
   const body = resolvedCallback.body;
   if (!body) return false;

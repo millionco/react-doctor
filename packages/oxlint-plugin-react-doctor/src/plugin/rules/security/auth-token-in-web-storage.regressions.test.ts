@@ -269,6 +269,30 @@ describe("security/auth-token-in-web-storage — regressions", () => {
     expect(logical.diagnostics).toHaveLength(1);
   });
 
+  it("flags a factory that falls back between web storage objects", () => {
+    const { diagnostics } = runRule(
+      authTokenInWebStorage,
+      `const getStorage = () => window.sessionStorage || window.localStorage;
+      const storage = getStorage();
+      storage.setItem("authToken", token);`,
+    );
+
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("flags credential arguments for every storage sink in a helper", () => {
+    const { diagnostics } = runRule(
+      authTokenInWebStorage,
+      `const persist = (cacheKey, cacheValue, credentialKey, credentialValue) => {
+        localStorage.setItem(credentialKey, credentialValue);
+        sessionStorage.setItem(cacheKey, cacheValue);
+      };
+      persist("theme", theme, "authToken", token);`,
+    );
+
+    expect(diagnostics).toHaveLength(1);
+  });
+
   it("flags a storage factory with a void nullish return branch", () => {
     const { diagnostics } = runRule(
       authTokenInWebStorage,

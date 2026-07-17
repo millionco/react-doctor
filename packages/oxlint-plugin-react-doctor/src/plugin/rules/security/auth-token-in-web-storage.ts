@@ -99,9 +99,12 @@ const isWebStorageFactoryResult = (
     }
     const left = stripParenExpression(expression.left);
     const right = stripParenExpression(expression.right);
+    const isLeftStorage = isWebStorageFactoryResult(left, visitedNodes);
+    const isRightStorage = isWebStorageFactoryResult(right, visitedNodes);
     return (
-      (isWebStorageFactoryResult(left, visitedNodes) && isNullishExpression(right)) ||
-      (isNullishExpression(left) && isWebStorageFactoryResult(right, visitedNodes))
+      (isLeftStorage || isNullishExpression(left)) &&
+      (isRightStorage || isNullishExpression(right)) &&
+      (isLeftStorage || isRightStorage)
     );
   }
   return false;
@@ -211,23 +214,23 @@ const parameterIndex = (
   return null;
 };
 
-const storageHelperSinkCache = new WeakMap<EsTreeNode, StorageHelperSink | null>();
+const storageHelperSinkCache = new WeakMap<EsTreeNode, readonly StorageHelperSink[]>();
 
-const findStorageHelperSink = (functionNode: EsTreeNode): StorageHelperSink | null => {
-  const cachedSink = storageHelperSinkCache.get(functionNode);
-  if (cachedSink !== undefined) return cachedSink;
+const findStorageHelperSinks = (functionNode: EsTreeNode): readonly StorageHelperSink[] => {
+  const cachedSinks = storageHelperSinkCache.get(functionNode);
+  if (cachedSinks) return cachedSinks;
   if (
     !isNodeOfType(functionNode, "FunctionDeclaration") &&
     !isNodeOfType(functionNode, "FunctionExpression") &&
     !isNodeOfType(functionNode, "ArrowFunctionExpression")
   ) {
-    storageHelperSinkCache.set(functionNode, null);
-    return null;
+    storageHelperSinkCache.set(functionNode, []);
+    return [];
   }
   const parameterNames = functionNode.params.map((parameter) =>
     isNodeOfType(parameter, "Identifier") ? parameter.name : null,
   );
-  let helperSink: StorageHelperSink | null = null;
+  const helperSinks: StorageHelperSink[] = [];
   walkAst(functionNode.body, (child) => {
     if (child !== functionNode.body && isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
@@ -247,10 +250,10 @@ const findStorageHelperSink = (functionNode: EsTreeNode): StorageHelperSink | nu
     const keyParameterIndex = parameterIndex(keyExpression, parameterNames, false);
     const valueParameterIndex = parameterIndex(valueExpression, parameterNames, true);
     if (keyParameterIndex === null || valueParameterIndex === null) return;
-    helperSink = { keyParameterIndex, valueParameterIndex };
+    helperSinks.push({ keyParameterIndex, valueParameterIndex });
   });
-  storageHelperSinkCache.set(functionNode, helperSink);
-  return helperSink;
+  storageHelperSinkCache.set(functionNode, helperSinks);
+  return helperSinks;
 };
 
 export const authTokenInWebStorage = defineRule({
@@ -263,7 +266,7 @@ export const authTokenInWebStorage = defineRule({
     // `localStorage.setItem("authToken", t)`
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = node.callee;
-      let keyArgument: EsTreeNode | null = null;
+      const keyArguments: EsTreeNode[] = [];
       if (
         isNodeOfType(callee, "MemberExpression") &&
         !callee.computed &&
@@ -271,17 +274,23 @@ export const authTokenInWebStorage = defineRule({
         callee.property.name === "setItem" &&
         isWebStorageObject(stripParenExpression(callee.object))
       ) {
-        keyArgument = node.arguments[0] ?? null;
+        const keyArgument = node.arguments[0];
+        if (keyArgument) keyArguments.push(keyArgument);
       } else if (isNodeOfType(callee, "Identifier")) {
         const helperFunction = immutableInitializer(callee);
-        const helperSink = helperFunction ? findStorageHelperSink(helperFunction) : null;
-        if (helperSink && node.arguments[helperSink.valueParameterIndex]) {
-          keyArgument = node.arguments[helperSink.keyParameterIndex] ?? null;
+        const helperSinks = helperFunction ? findStorageHelperSinks(helperFunction) : [];
+        for (const helperSink of helperSinks) {
+          const keyArgument = node.arguments[helperSink.keyParameterIndex];
+          if (keyArgument && node.arguments[helperSink.valueParameterIndex]) {
+            keyArguments.push(keyArgument);
+          }
         }
       }
-      if (!keyArgument) return;
-      const keyString = resolveStaticKeyString(keyArgument);
-      if (keyString === null || !isAuthCredentialKey(keyString)) return;
+      const hasCredentialKey = keyArguments.some((keyArgument) => {
+        const keyString = resolveStaticKeyString(keyArgument);
+        return keyString !== null && isAuthCredentialKey(keyString);
+      });
+      if (!hasCredentialKey) return;
       context.report({ node, message: MESSAGE });
     },
     // `localStorage.authToken = t` / `localStorage["jwt"] = t`

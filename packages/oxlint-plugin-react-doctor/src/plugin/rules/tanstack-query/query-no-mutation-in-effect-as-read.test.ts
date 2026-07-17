@@ -472,6 +472,86 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    ["raw test", "data"],
+    ["parenthesized test", "(data)"],
+    ["TypeScript as test", "data as { user: unknown } | undefined"],
+    ["TypeScript satisfies test", "data satisfies { user: unknown } | undefined"],
+    ["TypeScript non-null test", "data!"],
+    ["unary negation", "!data"],
+    ["global Boolean coercion", "Boolean(data)"],
+    ["logical-and test", "data && ready"],
+    ["logical-or propagated test", "data || ready"],
+    ["nullish-coalesce propagated test", "data ?? ready"],
+    ["conditional test", "data ? ready : false"],
+    ["conditional branch propagated to a test", "enabled ? data : false"],
+    ["nullish equality", "data !== undefined"],
+    ["final sequence test", "(track(), data)"],
+    ["non-final discarded sequence", "(data, ready)"],
+  ])("keeps %s guard-only", (_guardName, guardExpression) => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         useEffect(() => { fetchUser(params); }, [params]);
+         return (${guardExpression}) ? <Ready /> : null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["unary negation", "!data"],
+    ["global Boolean coercion", "Boolean(data)"],
+    ["logical-and left operand", "data && ready"],
+    ["conditional test", "data ? ready : fallback"],
+    ["nullish equality", "data !== undefined"],
+    ["non-final sequence operand", "(data, ready)"],
+  ])("keeps %s guard-only in a value position", (_guardName, guardExpression) => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         useEffect(() => { fetchUser(params); }, [params]);
+         return <Output value={${guardExpression}} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["raw value", "data"],
+    ["parenthesized value", "(data)"],
+    ["TypeScript as value", "data as { user: unknown }"],
+    ["TypeScript satisfies value", "data satisfies { user: unknown } | undefined"],
+    ["TypeScript non-null value", "data!"],
+    ["optional-chain value", "data?.user"],
+    ["logical-or value", "data || fallback"],
+    ["nullish-coalesce value", "data ?? fallback"],
+    ["conditional branch value", "enabled ? data : fallback"],
+    ["non-nullish equality value", "data === otherData"],
+    ["final sequence value", "(track(), data)"],
+  ])("detects %s consumption", (_consumerName, consumerExpression) => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         useEffect(() => { fetchUser(params); }, [params]);
+         return <Output value={${consumerExpression}} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("treats a shadowed Boolean call as value consumption", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         const Boolean = (value) => value;
+         useEffect(() => { fetchUser(params); }, [params]);
+         return <Output value={Boolean(data)} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts a static computed success status on a whole result", () => {
     const result = runMutationReadRule(
       `function Component() {

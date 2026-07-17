@@ -213,14 +213,33 @@ const isInEffectDependencyArray = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const isGuardOnlyReference = (node: EsTreeNode): boolean => {
-  const parent = node.parent;
+const isGuardOnlyReference = (node: EsTreeNode, context: RuleContext): boolean => {
+  const expressionRoot = findTransparentExpressionRoot(node);
+  const parent = expressionRoot.parent;
   if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") return true;
-  if (isNodeOfType(parent, "LogicalExpression") && parent.left === node) return true;
-  if (isNodeOfType(parent, "ConditionalExpression") && parent.test === node) return true;
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    parent.arguments[0] === expressionRoot &&
+    isNodeOfType(parent.callee, "Identifier") &&
+    parent.callee.name === "Boolean" &&
+    context.scopes.isGlobalReference(parent.callee)
+  ) {
+    return true;
+  }
+  if (isNodeOfType(parent, "LogicalExpression")) {
+    if (parent.left === expressionRoot && parent.operator === "&&") return true;
+    return isGuardOnlyReference(parent, context);
+  }
+  if (isNodeOfType(parent, "ConditionalExpression")) {
+    if (parent.test === expressionRoot) return true;
+    return isGuardOnlyReference(parent, context);
+  }
+  if (isNodeOfType(parent, "SequenceExpression") && parent.expressions.at(-1) === expressionRoot) {
+    return isGuardOnlyReference(parent, context);
+  }
   if (
     (isNodeOfType(parent, "IfStatement") || isNodeOfType(parent, "WhileStatement")) &&
-    parent.test === node
+    parent.test === expressionRoot
   ) {
     return true;
   }
@@ -228,7 +247,7 @@ const isGuardOnlyReference = (node: EsTreeNode): boolean => {
     isNodeOfType(parent, "BinaryExpression") &&
     ["==", "!=", "===", "!=="].includes(parent.operator)
   ) {
-    const otherOperand = parent.left === node ? parent.right : parent.left;
+    const otherOperand = parent.left === expressionRoot ? parent.right : parent.left;
     return isNullishExpression(otherOperand);
   }
   return false;
@@ -265,7 +284,9 @@ const responseExpressionIsConsumed = (
   ) {
     return false;
   }
-  if (isInEffectDependencyArray(expression) || isGuardOnlyReference(expression)) return false;
+  if (isInEffectDependencyArray(expression) || isGuardOnlyReference(expression, context)) {
+    return false;
+  }
   let expressionRoot = findTransparentExpressionRoot(expression);
   let parent = expressionRoot.parent;
   while (

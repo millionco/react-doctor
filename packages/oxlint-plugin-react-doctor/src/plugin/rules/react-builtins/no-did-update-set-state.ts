@@ -371,6 +371,23 @@ const getCallbackRefFieldNames = (
   return fieldNames;
 };
 
+const collectLifecycleWrittenFieldNames = (lifecycleFunction: EsTreeNode): ReadonlySet<string> => {
+  const fieldNames = new Set<string>();
+  const body = (lifecycleFunction as { body?: EsTreeNode }).body;
+  if (!body) return fieldNames;
+  walkAst(body, (node) => {
+    if (FUNCTION_NODE_TYPES.has(node.type) && !isImmediatelyInvokedFunction(node)) return false;
+    const target =
+      (isNodeOfType(node, "AssignmentExpression") && (node.left as EsTreeNode)) ||
+      (isNodeOfType(node, "UpdateExpression") && (node.argument as EsTreeNode)) ||
+      null;
+    if (!target) return;
+    const fieldName = getThisFieldName(target);
+    if (fieldName) fieldNames.add(fieldName);
+  });
+  return fieldNames;
+};
+
 const getThisStateFieldName = (node: EsTreeNode): string | null => {
   const unwrappedNode = stripParenExpression(node);
   if (!isNodeOfType(unwrappedNode, "MemberExpression")) return null;
@@ -560,9 +577,11 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boo
   }
   const derivedNames = collectDiffSourceLocalNames(lifecycleFunction, paramNames);
   const localInitializers = collectLocalInitializers(lifecycleFunction);
-  const callbackRefFieldNames = getCallbackRefFieldNames(
-    findEnclosingClass(lifecycleFunction),
-    scopes,
+  const lifecycleWrittenFieldNames = collectLifecycleWrittenFieldNames(lifecycleFunction);
+  const callbackRefFieldNames = new Set(
+    [...getCallbackRefFieldNames(findEnclosingClass(lifecycleFunction), scopes)].filter(
+      (fieldName) => !lifecycleWrittenFieldNames.has(fieldName),
+    ),
   );
 
   let child: EsTreeNode = setStateCall;

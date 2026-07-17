@@ -605,6 +605,29 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags a callback-ref field reassigned during componentDidUpdate", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          this.monthContainer = getMutableValue();
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => (this.monthContainer = node)} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a callback-ref guard that assigns a different expression", () => {
     const result = runRule(
       noDidUpdateSetState,

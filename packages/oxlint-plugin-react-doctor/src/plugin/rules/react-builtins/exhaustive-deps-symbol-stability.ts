@@ -277,6 +277,41 @@ const symbolHasStableImportedAlias = (symbol: SymbolDescriptor, scopes: ScopeAna
   return resolvedSymbol !== null && resolvedSymbol !== symbol && resolvedSymbol.kind === "import";
 };
 
+const isAssignmentTarget = (node: EsTreeNode): boolean => {
+  let currentNode = findTransparentExpressionRoot(node);
+  while (currentNode.parent) {
+    const parentNode = currentNode.parent;
+    if (isNodeOfType(parentNode, "AssignmentExpression")) {
+      return parentNode.left === currentNode;
+    }
+    if (isNodeOfType(parentNode, "UpdateExpression")) {
+      return parentNode.argument === currentNode;
+    }
+    if (isNodeOfType(parentNode, "UnaryExpression")) {
+      return parentNode.operator === "delete" && parentNode.argument === currentNode;
+    }
+    if (isNodeOfType(parentNode, "ForInStatement") || isNodeOfType(parentNode, "ForOfStatement")) {
+      return parentNode.left === currentNode;
+    }
+    if (
+      (isNodeOfType(parentNode, "ArrayPattern") &&
+        parentNode.elements.some((element) => element === currentNode)) ||
+      (isNodeOfType(parentNode, "ObjectPattern") &&
+        parentNode.properties.some((property) => property === currentNode)) ||
+      (isNodeOfType(parentNode, "RestElement") && parentNode.argument === currentNode) ||
+      (isNodeOfType(parentNode, "AssignmentPattern") && parentNode.left === currentNode) ||
+      (isNodeOfType(parentNode, "Property") &&
+        parentNode.value === currentNode &&
+        isNodeOfType(parentNode.parent, "ObjectPattern"))
+    ) {
+      currentNode = parentNode;
+      continue;
+    }
+    return false;
+  }
+  return false;
+};
+
 const symbolHasStableRefLazyInitialization = (
   symbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
@@ -305,12 +340,7 @@ const symbolHasStableRefLazyInitialization = (
     if (isNodeOfType(parentNode, "AssignmentExpression") && parentNode.left === referenceRoot) {
       return parentNode === initializer;
     }
-    return !(
-      (isNodeOfType(parentNode, "UpdateExpression") && parentNode.argument === referenceRoot) ||
-      (isNodeOfType(parentNode, "UnaryExpression") &&
-        parentNode.operator === "delete" &&
-        parentNode.argument === referenceRoot)
-    );
+    return !isAssignmentTarget(referenceRoot);
   });
 };
 

@@ -1671,6 +1671,22 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
         "const registryRef = useRef(); const registry = (registryRef.current ??= new Set()); registryRef.current = new Set();",
       ],
       [
+        "later ref replacement through object destructuring",
+        "const registryRef = useRef(); const registry = (registryRef.current ??= new Set()); ({ value: registryRef.current } = source);",
+      ],
+      [
+        "later ref replacement through array destructuring",
+        "const registryRef = useRef(); const registry = (registryRef.current ??= new Set()); [registryRef.current] = source;",
+      ],
+      [
+        "later ref replacement through a for-of target",
+        "const registryRef = useRef(); const registry = (registryRef.current ??= new Set()); for (registryRef.current of sources) {}",
+      ],
+      [
+        "later ref replacement through a destructured for-in target",
+        "const registryRef = useRef(); const registry = (registryRef.current ??= new Set()); for ({ value: registryRef.current } in sources) {}",
+      ],
+      [
         "an escaped ref",
         "const registryRef = useRef(); const registry = (registryRef.current ??= new Set()); expose(registryRef);",
       ],

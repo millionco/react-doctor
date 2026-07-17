@@ -2493,7 +2493,7 @@ export const reactDoctorRules = [
     key: "react-doctor/no-blocked-paste",
     id: "no-blocked-paste",
     source: "react-doctor",
-    originallyExternal: true,
+    originallyExternal: false,
     rule: {
       ...noBlockedPaste,
       framework: "global",

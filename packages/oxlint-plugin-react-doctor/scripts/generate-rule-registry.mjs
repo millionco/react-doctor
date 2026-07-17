@@ -93,6 +93,7 @@ const EFFECT_RULES_PORTED_FROM_EXTERNAL = new Set([
 const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "prefer-html-dialog",
   "no-autoplay-without-muted",
+  "no-blocked-paste",
   "no-broken-image-source",
   "no-placeholder-only-field",
   "no-skipped-heading-level",

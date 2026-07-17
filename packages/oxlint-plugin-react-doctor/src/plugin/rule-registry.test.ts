@@ -9,9 +9,11 @@ const CASCADING_SET_STATE_RULE_ID = "no-cascading-set-state";
 const HOOK_IMPORT_RENAME_RULE_ID = "hook-import-rename-loses-use-prefix";
 const IN_HOUSE_A11Y_RULE_IDS = [
   "no-autoplay-without-muted",
+  "no-blocked-paste",
   "no-broken-image-source",
   "no-placeholder-only-field",
   "no-skipped-heading-level",
+  "no-static-motion-config-never",
   "no-uninformative-aria-label",
 ];
 

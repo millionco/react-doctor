@@ -59,6 +59,22 @@ describe("no-ref-callback-cleanup-before-react-19", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("reports immutable function declaration callbacks and aliases", () => {
+    const result = runRuleForCode(`
+      const Component = ({ remove }) => {
+        const attachAlias = attach;
+        return <><div ref={attach} /><span ref={attachAlias} /></>;
+
+        function attach(node) {
+          return () => remove(node);
+        }
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("reports callbacks stabilized with React useCallback", () => {
     const result = runRuleForCode(`
       import React, { useCallback as useStableCallback } from "react";
@@ -140,11 +156,14 @@ describe("no-ref-callback-cleanup-before-react-19", () => {
     const result = runRuleForCode(`
       import { importedRef } from "./refs";
       let mutableRef = (node) => () => node.remove();
+      function reassignedRef(node) { return () => node.remove(); }
+      reassignedRef = (node) => { node?.focus(); };
       const handlers = { ref: (node) => () => node.remove() };
       const Component = ({ providedRef }) => (
         <>
           <div ref={importedRef} />
           <div ref={mutableRef} />
+          <div ref={reassignedRef} />
           <div ref={handlers.ref} />
           <div ref={providedRef} />
           <div ref={async (node) => () => node.remove()} />

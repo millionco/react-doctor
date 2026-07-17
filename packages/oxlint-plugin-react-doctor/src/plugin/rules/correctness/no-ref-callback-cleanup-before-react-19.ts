@@ -64,6 +64,17 @@ const resolveFunctionExpressions = (
 
   const symbol = scopes.symbolFor(expression);
   if (!symbol || visitedSymbolIds.has(symbol.id)) return [];
+  if (
+    symbol.kind === "function" &&
+    isNodeOfType(symbol.declarationNode, "FunctionDeclaration") &&
+    symbol.references.every((reference) => reference.flag === "read")
+  ) {
+    return resolveFunctionExpressions(
+      symbol.declarationNode,
+      scopes,
+      new Set([...visitedSymbolIds, symbol.id]),
+    );
+  }
   const initializer = getDirectConstInitializer(symbol);
   if (!initializer) return [];
   return resolveFunctionExpressions(initializer, scopes, new Set([...visitedSymbolIds, symbol.id]));

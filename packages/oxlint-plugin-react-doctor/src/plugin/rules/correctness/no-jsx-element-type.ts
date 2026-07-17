@@ -1,7 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isComponentFunction } from "../../utils/is-component-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const MESSAGE =
@@ -59,9 +61,14 @@ export const noJsxElementType = defineRule({
     let isJsxImported = false;
     const flaggedAnnotations: EsTreeNode[] = [];
 
-    const checkReturnType = (
+    const collectComponentReturnType = (
+      functionNode: EsTreeNode,
       returnType: EsTreeNodeOfType<"TSTypeAnnotation"> | undefined,
     ): void => {
+      const isComponent = isNodeOfType(functionNode, "TSDeclareFunction")
+        ? Boolean(functionNode.id && isReactComponentName(functionNode.id.name))
+        : isComponentFunction(functionNode);
+      if (!isComponent) return;
       const typeAnnotation = extractReturnTypeAnnotation(returnType);
       if (!typeAnnotation) return;
       if (isJsxElementTypeReference(typeAnnotation)) {
@@ -74,19 +81,16 @@ export const noJsxElementType = defineRule({
         if (isJsxImportBinding(node)) isJsxImported = true;
       },
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
-        checkReturnType(node.returnType);
+        collectComponentReturnType(node, node.returnType);
       },
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
-        checkReturnType(node.returnType);
+        collectComponentReturnType(node, node.returnType);
       },
       FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
-        checkReturnType(node.returnType);
+        collectComponentReturnType(node, node.returnType);
       },
       TSDeclareFunction(node: EsTreeNodeOfType<"TSDeclareFunction">) {
-        checkReturnType(node.returnType);
-      },
-      TSMethodSignature(node: EsTreeNodeOfType<"TSMethodSignature">) {
-        checkReturnType(node.returnType);
+        collectComponentReturnType(node, node.returnType);
       },
       "Program:exit"() {
         if (isJsxImported) return;

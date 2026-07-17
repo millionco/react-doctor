@@ -859,6 +859,31 @@ export const useWindowPan = () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("rejects a callback ref returned from a non-hook function", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+const userPhotoZoom = () => {
+  const detachRef = useRef(null);
+  const setViewportNode = useCallback((node) => {
+    detachRef.current?.();
+    detachRef.current = null;
+    if (!node) return;
+    const handleWheel = () => undefined;
+    node.addEventListener("wheel", handleWheel);
+    detachRef.current = () => node.removeEventListener("wheel", handleWheel);
+  }, []);
+  return { setViewportNode };
+};
+export const Gallery = () => {
+  const zoom = userPhotoZoom();
+  return <button ref={zoom.setViewportNode} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it.each([
     {
       name: "cleanup effect calls a different ref",
@@ -7391,6 +7416,27 @@ export const Viewport = ({ onWheel, shouldRelease }) => {
     viewportNodeRef.current = node;
     if (node) node.addEventListener("wheel", onWheel, { passive: false });
   }, [onWheel, shouldRelease]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects callback-ref replacement that skips release on null unmount", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    if (node) {
+      const previous = viewportNodeRef.current;
+      if (previous) previous.removeEventListener("wheel", onWheel);
+      viewportNodeRef.current = node;
+      node.addEventListener("wheel", onWheel, { passive: false });
+    }
+  }, [onWheel]);
   return <button ref={viewportRef} />;
 };`,
     );

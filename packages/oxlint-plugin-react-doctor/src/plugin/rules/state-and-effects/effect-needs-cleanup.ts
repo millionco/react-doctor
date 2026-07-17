@@ -2389,7 +2389,12 @@ const isRetainedAbortControllerRefRelease = (
   );
 };
 
-const isFunctionUsedAsReactRef = (functionNode: EsTreeNode, context: RuleContext): boolean => {
+const isJsxRefAttribute = (node: EsTreeNode | null | undefined): boolean =>
+  isNodeOfType(node, "JSXAttribute") &&
+  isNodeOfType(node.name, "JSXIdentifier") &&
+  node.name.name === "ref";
+
+const isFunctionForwardedToReactRef = (functionNode: EsTreeNode, context: RuleContext): boolean => {
   const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
   if (!bindingIdentifier) return false;
   const symbol = context.scopes.symbolFor(bindingIdentifier);
@@ -2397,22 +2402,31 @@ const isFunctionUsedAsReactRef = (functionNode: EsTreeNode, context: RuleContext
   return symbol.references.some((reference) => {
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
     const expressionContainer = referenceRoot.parent;
-    const attribute = expressionContainer?.parent;
-    if (
+    return Boolean(
       isNodeOfType(expressionContainer, "JSXExpressionContainer") &&
       expressionContainer.expression === referenceRoot &&
-      isNodeOfType(attribute, "JSXAttribute") &&
-      isNodeOfType(attribute.name, "JSXIdentifier") &&
-      attribute.name.name === "ref"
-    ) {
-      return true;
-    }
+      isJsxRefAttribute(expressionContainer.parent),
+    );
+  });
+};
+
+const isFunctionReturnedFromReactHook = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+  requireRefPropertyName: boolean,
+): boolean => {
+  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  if (!bindingIdentifier) return false;
+  const symbol = context.scopes.symbolFor(bindingIdentifier);
+  if (!symbol) return false;
+  return symbol.references.some((reference) => {
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
     const property = referenceRoot.parent;
     if (
       !isNodeOfType(property, "Property") ||
       property.value !== referenceRoot ||
       !isNodeOfType(property.parent, "ObjectExpression") ||
-      !getStaticPropertyKeyName(property)?.endsWith("Ref")
+      (requireRefPropertyName && !getStaticPropertyKeyName(property)?.endsWith("Ref"))
     ) {
       return false;
     }
@@ -2430,6 +2444,10 @@ const isFunctionUsedAsReactRef = (functionNode: EsTreeNode, context: RuleContext
     );
   });
 };
+
+const isFunctionUsedAsReactRef = (functionNode: EsTreeNode, context: RuleContext): boolean =>
+  isFunctionForwardedToReactRef(functionNode, context) ||
+  isFunctionReturnedFromReactHook(functionNode, context, true);
 
 const isReactRefListenerReplacementRelease = (
   releaseCall: EsTreeNodeOfType<"CallExpression">,
@@ -2518,11 +2536,14 @@ const isReactRefListenerReplacementRelease = (
   const safeOwnershipAssignments = matchingOwnershipAssignments.filter((assignment) =>
     doMatchingNodesCoverEveryPathBeforeUsage(assignment, [releaseAnchor], usageFunction, context),
   );
-  return doMatchingNodesCoverEveryPathBeforeUsage(
-    usage.node,
-    safeOwnershipAssignments,
-    usageFunction,
-    context,
+  return (
+    doMatchingNodesCoverEveryPathFromFunctionEntry(usageFunction, [releaseAnchor], context) &&
+    doMatchingNodesCoverEveryPathBeforeUsage(
+      usage.node,
+      safeOwnershipAssignments,
+      usageFunction,
+      context,
+    )
   );
 };
 
@@ -2792,27 +2813,6 @@ const isPotentiallyReachableFunction = (
   );
 };
 
-const isJsxRefAttribute = (node: EsTreeNode | null | undefined): boolean =>
-  isNodeOfType(node, "JSXAttribute") &&
-  isNodeOfType(node.name, "JSXIdentifier") &&
-  node.name.name === "ref";
-
-const isFunctionForwardedToReactRef = (functionNode: EsTreeNode, context: RuleContext): boolean => {
-  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
-  if (!bindingIdentifier) return false;
-  const symbol = context.scopes.symbolFor(bindingIdentifier);
-  if (!symbol) return false;
-  return symbol.references.some((reference) => {
-    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-    const expressionContainer = referenceRoot.parent;
-    return Boolean(
-      isNodeOfType(expressionContainer, "JSXExpressionContainer") &&
-      expressionContainer.expression === referenceRoot &&
-      isJsxRefAttribute(expressionContainer.parent),
-    );
-  });
-};
-
 const findRetainedDisposerStorages = (
   disposerFunction: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -3005,34 +3005,7 @@ const hasCallbackRefReplacementInvocation = (
     const nodeParameter = storage.retainedFunction.params?.[0];
     const nodeParameterKey = resolveExpressionKey(nodeParameter, context);
     if (!nodeParameterKey || usage.receiverKey !== nodeParameterKey) return false;
-    const bindingIdentifier = getFunctionBindingIdentifier(storage.retainedFunction);
-    const symbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
-    const isReturnedFromHook = Boolean(
-      symbol?.references.some((reference) => {
-        const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-        const property = referenceRoot.parent;
-        if (
-          !isNodeOfType(property, "Property") ||
-          property.value !== referenceRoot ||
-          !isNodeOfType(property.parent, "ObjectExpression")
-        ) {
-          return false;
-        }
-        const returnedObject = findTransparentExpressionRoot(property.parent);
-        const returnStatement = returnedObject.parent;
-        if (
-          !isNodeOfType(returnStatement, "ReturnStatement") ||
-          returnStatement.argument !== returnedObject
-        ) {
-          return false;
-        }
-        const hookFunction = findEnclosingFunction(returnStatement);
-        return Boolean(
-          hookFunction && getFunctionBindingIdentifier(hookFunction)?.name.startsWith("use"),
-        );
-      }),
-    );
-    if (!isReturnedFromHook) return false;
+    if (!isFunctionReturnedFromReactHook(storage.retainedFunction, context, false)) return false;
     const usageStart = getRangeStart(usage.node);
     if (usageStart === null) return false;
     let hasNullExit = false;

@@ -1,10 +1,11 @@
-import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
@@ -12,6 +13,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { resolveTanstackQueryHookNameFromInitializer } from "./utils/resolve-tanstack-query-hook-name.js";
 
@@ -81,33 +83,10 @@ const getPatternBindings = (
   return bindings;
 };
 
-const getFunctionBindingIdentifier = (
-  functionNode: EsTreeNode,
-): EsTreeNodeOfType<"Identifier"> | null => {
-  if (isNodeOfType(functionNode, "FunctionDeclaration") && functionNode.id) {
-    return functionNode.id;
-  }
-  const parent = functionNode.parent;
-  if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
-    return parent.id;
-  }
-  return null;
-};
-
 const findFunctionSymbol = (
   functionNode: EsTreeNode,
   context: RuleContext,
-): SymbolDescriptor | null => {
-  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
-  if (!bindingIdentifier) return null;
-  let scope: ScopeDescriptor | null = context.scopes.scopeFor(functionNode);
-  while (scope) {
-    const symbol = scope.symbolsByName.get(bindingIdentifier.name);
-    if (symbol?.bindingIdentifier === bindingIdentifier) return symbol;
-    scope = scope.parent;
-  }
-  return null;
-};
+): SymbolDescriptor | null => getFunctionBindingSymbols(functionNode, context.scopes)[0] ?? null;
 
 const resolveLocalFunction = (expression: EsTreeNode, context: RuleContext): EsTreeNode | null => {
   const candidate = stripParenExpression(expression);
@@ -447,17 +426,7 @@ const collectDominatingStatements = (node: EsTreeNode): EsTreeNode[] => {
 const getRefCurrentSymbol = (
   expression: EsTreeNode,
   context: RuleContext,
-): SymbolDescriptor | null => {
-  const candidate = stripParenExpression(expression);
-  if (
-    !isNodeOfType(candidate, "MemberExpression") ||
-    getStaticPropertyName(candidate) !== "current"
-  ) {
-    return null;
-  }
-  const object = stripParenExpression(candidate.object);
-  return isNodeOfType(object, "Identifier") ? context.scopes.symbolFor(object) : null;
-};
+): SymbolDescriptor | null => resolveReactRefSymbol(expression, context.scopes);
 
 const getPositiveRefGuardSymbol = (
   test: EsTreeNode,

@@ -1,7 +1,8 @@
-import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -65,33 +66,10 @@ const isTanstackMutateAsyncCall = (
   );
 };
 
-const getFunctionBindingIdentifier = (
-  functionNode: EsTreeNode,
-): EsTreeNodeOfType<"Identifier"> | null => {
-  if (isNodeOfType(functionNode, "FunctionDeclaration") && functionNode.id) {
-    return functionNode.id;
-  }
-  const parent = functionNode.parent;
-  if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
-    return parent.id;
-  }
-  return null;
-};
-
 const findFunctionSymbol = (
   functionNode: EsTreeNode,
   context: RuleContext,
-): SymbolDescriptor | null => {
-  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
-  if (!bindingIdentifier) return null;
-  let scope: ScopeDescriptor | null = context.scopes.scopeFor(functionNode);
-  while (scope) {
-    const symbol = scope.symbolsByName.get(bindingIdentifier.name);
-    if (symbol?.bindingIdentifier === bindingIdentifier) return symbol;
-    scope = scope.parent;
-  }
-  return null;
-};
+): SymbolDescriptor | null => getFunctionBindingSymbols(functionNode, context.scopes)[0] ?? null;
 
 const isEventHandlerAttributeValue = (expression: EsTreeNode): boolean => {
   const container = expression.parent;

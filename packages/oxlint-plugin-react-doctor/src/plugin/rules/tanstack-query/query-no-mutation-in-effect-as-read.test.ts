@@ -84,6 +84,19 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags calls from a useCallback effect callback", () => {
+    const result = runMutationReadRule(
+      `import { useCallback } from "react";
+       function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         const loadUser = useCallback(() => { fetchUser(params); }, [fetchUser, params]);
+         useEffect(loadUser, [loadUser]);
+         return <div>{data.user.name}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("handles both mutate bindings from one result", () => {
     const result = runMutationReadRule(
       `function Component() {
@@ -139,7 +152,8 @@ describe("query-no-mutation-in-effect-as-read", () => {
 
   it("accepts a dominating same-effect run-once ref latch", () => {
     const result = runMutationReadRule(
-      `function Component() {
+      `import { useRef } from "react";
+       function Component() {
          const { mutateAsync: fetchUser } = useMutation(options);
          const handled = useRef(false);
          useEffect(() => {
@@ -196,6 +210,21 @@ describe("query-no-mutation-in-effect-as-read", () => {
              const handled = { current: false };
              handled.current = true;
            }
+           void fetchUser(params).then((response) => setUser(response.user));
+         }, [params]);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not accept a render-local current object as a run-once latch", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser } = useMutation(options);
+         const handled = { current: false };
+         useEffect(() => {
+           if (handled.current) return;
+           handled.current = true;
            void fetchUser(params).then((response) => setUser(response.user));
          }, [params]);
        }`,

@@ -128,6 +128,18 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a useCallback event handler that returns mutateAsync", () => {
+    const result = runMutationRule(
+      `import { useCallback } from "react";
+       const mutation = useMutation(options);
+       const handleClick = useCallback(() => {
+         return mutation.mutateAsync(payload);
+       }, [mutation]);
+       const view = <button onClick={handleClick} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags mutateAsync returned from a forEach callback", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);

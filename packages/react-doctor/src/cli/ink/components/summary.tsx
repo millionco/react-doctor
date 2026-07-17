@@ -39,6 +39,7 @@ export const Summary = ({
       canAddToCi={canAddToCi}
       onAddToCi={onAddToCi}
       projectCount={summary.projects.length}
+      priorityScores={summary.projects.map((project) => project.score)}
     />
   );
 };

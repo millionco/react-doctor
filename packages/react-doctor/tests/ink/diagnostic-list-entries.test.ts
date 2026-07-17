@@ -24,7 +24,7 @@ describe("buildDiagnosticListEntries", () => {
         makeDiagnostic({ rule: "b", category: "Security", severity: "error" }),
         makeDiagnostic({ rule: "c", category: "Maintainability" }),
       ],
-      null,
+      [null],
     );
 
     const entries = buildDiagnosticListEntries(rows);
@@ -49,7 +49,7 @@ describe("buildDiagnosticListEntries", () => {
         makeDiagnostic({ rule: "a", category: "Bugs", severity: "error", filePath: "y.tsx" }),
         makeDiagnostic({ rule: "b", category: "Bugs", severity: "warning" }),
       ],
-      null,
+      [null],
     );
 
     const [header] = buildDiagnosticListEntries(rows);

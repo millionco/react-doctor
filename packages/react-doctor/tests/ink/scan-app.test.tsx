@@ -138,6 +138,16 @@ describe("ScanApp", () => {
     // Combined diagnostics carry folder-qualified paths (rewritten relative to
     // the monorepo root in `runScanApp`) so the flat list shows each finding's
     // project without a per-folder drill-in.
+    const webScore: ScoreResult = {
+      score: 58,
+      label: "Needs work",
+      rules: { "react-doctor/rules-of-hooks": { priority: 10, tier: "P3" } },
+    };
+    const apiScore: ScoreResult = {
+      score: 91,
+      label: "Great",
+      rules: { "react-doctor/no-array-index-key": { priority: 90, tier: "P0" } },
+    };
     const webReport = {
       diagnostics: [
         makeDiagnostic({
@@ -146,7 +156,7 @@ describe("ScanApp", () => {
           filePath: "apps/web/src/Profile.tsx",
         }),
       ],
-      score: { score: 58, label: "Needs work" },
+      score: webScore,
       projectedScore: null,
       projectName: "web",
       rootDirectory: "/tmp/repo/apps/web",
@@ -163,7 +173,7 @@ describe("ScanApp", () => {
           filePath: "apps/api/src/Cart.tsx",
         }),
       ],
-      score: { score: 91, label: "Great" },
+      score: apiScore,
       projectedScore: null,
       projectName: "api",
       rootDirectory: "/tmp/repo/apps/api",
@@ -192,8 +202,11 @@ describe("ScanApp", () => {
     // Both projects' findings appear in one flat list (by rule title).
     expect(frame).toContain("react-doctor/rules-of-hooks");
     expect(frame).toContain("react-doctor/no-array-index-key");
+    expect(frame.indexOf("react-doctor/no-array-index-key")).toBeLessThan(
+      frame.indexOf("react-doctor/rules-of-hooks"),
+    );
     // The selected row's full, folder-qualified path shows in the detail pane.
-    expect(frame).toContain("apps/web/src/Profile.tsx");
+    expect(frame).toContain("apps/api/src/Cart.tsx");
     // The project count rides the status bar instead of a navigable list.
     expect(frame).toContain("2 projects");
     unmount();

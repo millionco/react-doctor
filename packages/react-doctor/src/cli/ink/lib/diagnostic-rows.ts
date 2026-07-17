@@ -24,9 +24,9 @@ const pickRepresentative = (diagnostics: ReadonlyArray<Diagnostic>): Diagnostic 
 
 export const buildDiagnosticRows = (
   diagnostics: ReadonlyArray<Diagnostic>,
-  score: ScoreResult | null,
+  scores: ReadonlyArray<ScoreResult | null>,
 ): DiagnosticRow[] => {
-  const rulePriority = buildRulePriorityMap([score]);
+  const rulePriority = buildRulePriorityMap(scores);
   return buildSortedRuleGroups(diagnostics, rulePriority).map(([ruleKey, ruleDiagnostics]) => {
     const representative = pickRepresentative(ruleDiagnostics);
     return {

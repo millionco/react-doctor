@@ -1,5 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import { useMemo } from "react";
+import type { ScoreResult } from "@react-doctor/core";
 import type { CliAgentId } from "../../utils/launch-agent.js";
 import {
   TUI_REPORT_COLUMN_GUTTER_COLUMNS,
@@ -30,6 +31,7 @@ export interface ReportProps {
   readonly canAddToCi?: boolean;
   readonly onAddToCi?: () => void;
   readonly projectCount?: number;
+  readonly priorityScores?: ReadonlyArray<ScoreResult | null>;
   readonly exitHint?: string;
 }
 
@@ -51,12 +53,13 @@ export const Report = ({
   canAddToCi,
   onAddToCi,
   projectCount,
+  priorityScores,
   exitHint = "q to quit",
 }: ReportProps) => {
   const { rows: terminalRows, columns } = useStdoutDimensions();
   const diagnosticRows = useMemo(
-    () => buildDiagnosticRows(report.diagnostics, report.score),
-    [report.diagnostics, report.score],
+    () => buildDiagnosticRows(report.diagnostics, priorityScores ?? [report.score]),
+    [report.diagnostics, report.score, priorityScores],
   );
 
   useInput(

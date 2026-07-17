@@ -586,6 +586,61 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    ["logical AND", "this.props.enabled && this.setMonthContainer"],
+    ["logical OR", "this.props.forwardedRef || this.setMonthContainer"],
+  ])("stays silent on a %s callback-ref convergence guard", (_description, refExpression) => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        setMonthContainer = (node) => {
+          this.monthContainer = node;
+        };
+
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={${refExpression}} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a wrapped callback nested in a logical ref expression", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        setMonthContainer = (node) => {
+          this.monthContainer = node;
+        };
+
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={this.props.enabled && wrap(this.setMonthContainer)} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when a second convergence branch clears the ref state", () => {
     const result = runRule(
       noDidUpdateSetState,

@@ -34,14 +34,6 @@ const LISTENER_REGISTRATION_METHODS = new Set([
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "global", "self"]);
 const MOUNT_LOCAL_RESOURCE_FACTORY_NAMES = new Set(["initPlaces", "places"]);
 
-const getPropertyName = (property: EsTreeNodeOfType<"Property">): string | null => {
-  if (!property.computed && isNodeOfType(property.key, "Identifier")) return property.key.name;
-  if (isNodeOfType(property.key, "Literal") && typeof property.key.value === "string") {
-    return property.key.value;
-  }
-  return null;
-};
-
 const getBareCalleeName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
   return isNodeOfType(node.callee, "Identifier") ? node.callee.name : null;
@@ -226,7 +218,7 @@ const isOneShotListenerOptions = (optionsArgument: EsTreeNode | undefined): bool
   return (optionsObject.properties ?? []).some(
     (property: EsTreeNode) =>
       isNodeOfType(property, "Property") &&
-      getPropertyName(property) === "once" &&
+      getStaticPropertyKeyName(property, { allowComputedString: true }) === "once" &&
       isNodeOfType(property.value, "Literal") &&
       property.value.value === true,
   );
@@ -295,7 +287,9 @@ const listenerIdentityKey = (
       captureKey = String(unwrappedOptions.value);
     } else if (isNodeOfType(unwrappedOptions, "ObjectExpression")) {
       const captureProperty = unwrappedOptions.properties.find(
-        (property) => isNodeOfType(property, "Property") && getPropertyName(property) === "capture",
+        (property) =>
+          isNodeOfType(property, "Property") &&
+          getStaticPropertyKeyName(property, { allowComputedString: true }) === "capture",
       );
       if (
         captureProperty &&

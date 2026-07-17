@@ -327,6 +327,21 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("recognizes a static computed once option key", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class C extends React.Component {
+        componentDidMount() {
+          window.addEventListener("load", this.onLoad, { [\`once\`]: true });
+        }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a listener on a ref-owned DOM node (dies with the component)", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
@@ -480,6 +495,21 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags mismatched capture values when the registration key is statically computed", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class ScrollArea extends React.Component {
+        noop = () => {};
+        componentDidMount() {
+          window.addEventListener("resize", this.noop, { [\`capture\`]: true });
+          window.removeEventListener("resize", this.noop, { capture: false });
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet: Self-removing { once: true } listener whose options object lives in a variable", () => {

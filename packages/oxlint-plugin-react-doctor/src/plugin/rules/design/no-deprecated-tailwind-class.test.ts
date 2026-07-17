@@ -58,4 +58,10 @@ describe("no-deprecated-tailwind-class", () => {
     const result = runRule(noDeprecatedTailwindClass, code);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does NOT flag utility names that only share deprecated prefixes", () => {
+    const code = `const A = () => <div className="flex-shrinkable flex-grower bg-gradient-to-random" />;`;
+    const result = runRule(noDeprecatedTailwindClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

@@ -6,5 +6,7 @@ export const StaticSearch = () => (
   <>
     <input onChange={() => undefined} value="Search..." />
     <textarea onChange={() => null} value="Search..." />
+    <input onChange={() => void 0} value="Search..." />
+    <textarea onChange={() => void (0 as const)} value="Search..." />
   </>
 );

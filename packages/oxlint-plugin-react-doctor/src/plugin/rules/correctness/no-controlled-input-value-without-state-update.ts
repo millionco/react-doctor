@@ -4,6 +4,7 @@ import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isLiteralVoidExpression } from "../../utils/is-literal-void-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -25,7 +26,8 @@ const isNoOpChangeHandler = (attribute: EsTreeNodeOfType<"JSXAttribute">): boole
   const expression = stripParenExpression(handler.body);
   return (
     (isNodeOfType(expression, "Identifier") && expression.name === "undefined") ||
-    (isNodeOfType(expression, "Literal") && expression.value === null)
+    (isNodeOfType(expression, "Literal") && expression.value === null) ||
+    isLiteralVoidExpression(expression)
   );
 };
 

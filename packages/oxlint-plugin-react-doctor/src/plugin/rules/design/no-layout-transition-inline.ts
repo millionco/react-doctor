@@ -1,3 +1,4 @@
+import { LAYOUT_PROPERTIES } from "../../constants/style.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
@@ -6,35 +7,6 @@ import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSvgLayoutTransitionExemptElementName } from "./utils/is-svg-layout-transition-exempt-element-name.js";
-
-// Exact property names that trigger reflow when animated. Matching whole
-// tokens (not substrings) keeps non-layout lookalikes like `stroke-width`
-// (SVG paint) and `scroll-margin` (scroll-snap offset) silent.
-const LAYOUT_TRANSITION_PROPERTIES = new Set([
-  "width",
-  "height",
-  "min-width",
-  "min-height",
-  "max-width",
-  "max-height",
-  "padding",
-  "padding-top",
-  "padding-right",
-  "padding-bottom",
-  "padding-left",
-  "margin",
-  "margin-top",
-  "margin-right",
-  "margin-bottom",
-  "margin-left",
-  "border-width",
-  "border-top-width",
-  "border-right-width",
-  "border-bottom-width",
-  "border-left-width",
-  "line-height",
-  "column-width",
-]);
 
 const isSvgElementAttribute = (node: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   const openingElement = node.parent;
@@ -70,9 +42,7 @@ export const noLayoutTransitionInline = defineRule({
         const valueTokens = value.toLowerCase().split(/[\s,]+/);
         if (valueTokens.includes("all")) continue;
 
-        const layoutProperty = valueTokens.find((valueToken) =>
-          LAYOUT_TRANSITION_PROPERTIES.has(valueToken),
-        );
+        const layoutProperty = valueTokens.find((valueToken) => LAYOUT_PROPERTIES.has(valueToken));
         if (layoutProperty) {
           context.report({
             node: property,

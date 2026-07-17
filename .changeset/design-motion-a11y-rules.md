@@ -6,7 +6,7 @@
 
 Add deterministic design-quality lint rules spanning motion performance, accessibility, and Tailwind/JSX hygiene.
 
-Add `react-doctor design [directory]` for a focused UI audit. The command runs only design-tagged rules, deliberately activates that family's focused opt-in diagnostics, respects explicit per-rule disablements, and skips unrelated analyzers, external lint configuration, custom plugins, and health scoring.
+Add `react-doctor design [directory]` for a focused UI audit. The command runs the complete design-rule bucket plus other explicitly design-tagged rules, deliberately activates that family's focused opt-in diagnostics, respects explicit per-rule disablements, and skips unrelated analyzers, external lint configuration, custom plugins, and health scoring.
 
 **Motion**
 

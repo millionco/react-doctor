@@ -43,6 +43,9 @@ prints a **fire-coverage** summary (rules that produced ≥1 diagnostic): that
 number, not the iteration count, is the harness's health metric — a rule
 that never fires is only having its early bails fuzzed.
 
+Each compatible canonical liveness fixture runs first, so the harness reaches
+a known reporting path before exploring generated and corpus-derived programs.
+
 Every case is reproducible from its seed; reproducers for findings are written
 to `tmp/fuzz-findings/`.
 
@@ -51,6 +54,7 @@ to `tmp/fuzz-findings/`.
 ```bash
 pnpm fuzz                                  # fuzz all rules (from repo root)
 FUZZ_RULE=no-array-index-as-key pnpm fuzz  # one rule (substring match)
+FUZZ_TAG=design pnpm fuzz                  # every rule with one registry tag
 FUZZ_ITERATIONS=200 FUZZ_SEED=42 pnpm fuzz # more cases, fixed seed
 FUZZ_INVARIANTS=1 pnpm fuzz                # warn on invariant violations
 FUZZ_STRICT=1 pnpm fuzz                    # fail on invariant violations too

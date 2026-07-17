@@ -61,6 +61,7 @@ const BUCKETS_REQUIRING_REACT = new Set([
 // authored tags layer on top (deduped at runtime), so a rule can both
 // inherit a bucket tag and carry its own.
 const BUCKET_TO_AUTO_TAGS = {
+  design: ["design"],
   "react-native": ["react-native"],
   "security-scan": ["security-scan"],
   server: ["server-action"],

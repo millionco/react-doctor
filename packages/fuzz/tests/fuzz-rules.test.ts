@@ -22,6 +22,7 @@ const isStrict = process.env.FUZZ_STRICT === "1";
 const shouldCheckInvariants = isStrict || process.env.FUZZ_INVARIANTS === "1";
 const shouldPrintStats = process.env.FUZZ_PRINT_STATS === "1";
 const ruleFilter = process.env.FUZZ_RULE;
+const tagFilter = process.env.FUZZ_TAG;
 
 // A malformed env value silently degrading to zero iterations would make
 // the whole run a false green, so fail loudly instead. Only validated when
@@ -103,13 +104,15 @@ const formatFinding = (finding: FuzzFinding, reproducerPath: string): string =>
   ].join("\n");
 
 const selectedRules = fuzzRuleEntries.filter(
-  (entry) => ruleFilter === undefined || entry.id === ruleFilter || entry.id.includes(ruleFilter),
+  (entry) =>
+    (ruleFilter === undefined || entry.id === ruleFilter || entry.id.includes(ruleFilter)) &&
+    (tagFilter === undefined || entry.rule.tags?.includes(tagFilter)),
 );
 
 // Adversarial fuzzing of every rule: generated + mutated React/TSX programs
 // with crash, pathological-slowness, and (in strict mode) metamorphic
 // invariance oracles. Opt-in via REACT_DOCTOR_FUZZ=1 (`pnpm fuzz`); tune with
-// FUZZ_RULE=<id substring>, FUZZ_ITERATIONS, FUZZ_SEED, FUZZ_INVARIANTS=1
+// FUZZ_RULE=<id substring>, FUZZ_TAG=<tag>, FUZZ_ITERATIONS, FUZZ_SEED, FUZZ_INVARIANTS=1
 // (warn on invariant violations), FUZZ_STRICT=1 (fail on them too).
 const firedRuleIds = new Set<string>();
 const silentRuleIds = new Set<string>();
@@ -135,10 +138,10 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
     }
   });
 
-  if (ruleFilter !== undefined && selectedRules.length === 0) {
-    it(`FUZZ_RULE matches at least one rule`, () => {
+  if ((ruleFilter !== undefined || tagFilter !== undefined) && selectedRules.length === 0) {
+    it(`fuzz filters match at least one rule`, () => {
       expect.fail(
-        `FUZZ_RULE=${JSON.stringify(ruleFilter)} matches no registry rule id — nothing was fuzzed`,
+        `FUZZ_RULE=${JSON.stringify(ruleFilter)} and FUZZ_TAG=${JSON.stringify(tagFilter)} match no registry rule — nothing was fuzzed`,
       );
     });
   }

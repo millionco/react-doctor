@@ -2615,6 +2615,7 @@ export const reactDoctorRules = [
       ...noAllCapsBodyText,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noAllCapsBodyText.tags ?? [])])],
     },
   },
   {
@@ -2626,6 +2627,7 @@ export const reactDoctorRules = [
       ...noArbitraryPxFontSize,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noArbitraryPxFontSize.tags ?? [])])],
     },
   },
   {
@@ -2896,6 +2898,7 @@ export const reactDoctorRules = [
       ...noClippedOverlay,
       framework: "global",
       category: "Bugs",
+      tags: [...new Set(["design", ...(noClippedOverlay.tags ?? [])])],
     },
   },
   {
@@ -2930,6 +2933,7 @@ export const reactDoctorRules = [
       ...noCommonRootFont,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noCommonRootFont.tags ?? [])])],
     },
   },
   {
@@ -2964,6 +2968,7 @@ export const reactDoctorRules = [
       ...noCrampedContainerPadding,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noCrampedContainerPadding.tags ?? [])])],
     },
   },
   {
@@ -3024,6 +3029,7 @@ export const reactDoctorRules = [
       ...noCrushedLetterSpacing,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noCrushedLetterSpacing.tags ?? [])])],
     },
   },
   {
@@ -3059,6 +3065,7 @@ export const reactDoctorRules = [
       ...noDarkModeGlow,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noDarkModeGlow.tags ?? [])])],
     },
   },
   {
@@ -3070,6 +3077,7 @@ export const reactDoctorRules = [
       ...noDecorativeBlurOrb,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noDecorativeBlurOrb.tags ?? [])])],
     },
   },
   {
@@ -3081,6 +3089,7 @@ export const reactDoctorRules = [
       ...noDecorativeGridBackground,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noDecorativeGridBackground.tags ?? [])])],
     },
   },
   {
@@ -3092,6 +3101,7 @@ export const reactDoctorRules = [
       ...noDecorativePulse,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noDecorativePulse.tags ?? [])])],
     },
   },
   {
@@ -3114,6 +3124,7 @@ export const reactDoctorRules = [
       ...noDefaultPurplePageGradient,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noDefaultPurplePageGradient.tags ?? [])])],
     },
   },
   {
@@ -3125,6 +3136,7 @@ export const reactDoctorRules = [
       ...noDefaultWarmPageSurface,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noDefaultWarmPageSurface.tags ?? [])])],
     },
   },
   {
@@ -3147,6 +3159,7 @@ export const reactDoctorRules = [
       ...noDeprecatedTailwindClass,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noDeprecatedTailwindClass.tags ?? [])])],
     },
   },
   {
@@ -3242,6 +3255,7 @@ export const reactDoctorRules = [
       ...noDisabledZoom,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noDisabledZoom.tags ?? [])])],
     },
   },
   {
@@ -3329,6 +3343,7 @@ export const reactDoctorRules = [
       ...noEaseInMotion,
       framework: "global",
       category: "Performance",
+      tags: [...new Set(["design", ...(noEaseInMotion.tags ?? [])])],
     },
   },
   {
@@ -3405,6 +3420,7 @@ export const reactDoctorRules = [
       ...noEmptyCardShell,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noEmptyCardShell.tags ?? [])])],
     },
   },
   {
@@ -3462,6 +3478,7 @@ export const reactDoctorRules = [
       ...noExcessiveCardSurfaces,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noExcessiveCardSurfaces.tags ?? [])])],
     },
   },
   {
@@ -3473,6 +3490,7 @@ export const reactDoctorRules = [
       ...noExcessiveCenteredCopy,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noExcessiveCenteredCopy.tags ?? [])])],
     },
   },
   {
@@ -3484,6 +3502,7 @@ export const reactDoctorRules = [
       ...noExcessiveFontFamilies,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noExcessiveFontFamilies.tags ?? [])])],
     },
   },
   {
@@ -3507,6 +3526,7 @@ export const reactDoctorRules = [
       ...noExcessivePillTreatment,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noExcessivePillTreatment.tags ?? [])])],
     },
   },
   {
@@ -3518,6 +3538,7 @@ export const reactDoctorRules = [
       ...noFakeBrowserChrome,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noFakeBrowserChrome.tags ?? [])])],
     },
   },
   {
@@ -3575,6 +3596,7 @@ export const reactDoctorRules = [
       ...noFixedInsideTransformedAncestor,
       framework: "global",
       category: "Bugs",
+      tags: [...new Set(["design", ...(noFixedInsideTransformedAncestor.tags ?? [])])],
     },
   },
   {
@@ -3586,6 +3608,7 @@ export const reactDoctorRules = [
       ...noFlatPageTypeScale,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noFlatPageTypeScale.tags ?? [])])],
     },
   },
   {
@@ -3659,6 +3682,7 @@ export const reactDoctorRules = [
       ...noFullViewportCenteredHero,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noFullViewportCenteredHero.tags ?? [])])],
     },
   },
   {
@@ -3670,6 +3694,7 @@ export const reactDoctorRules = [
       ...noFullViewportWidth,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noFullViewportWidth.tags ?? [])])],
     },
   },
   {
@@ -3692,6 +3717,7 @@ export const reactDoctorRules = [
       ...noGenericMarketingCopy,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noGenericMarketingCopy.tags ?? [])])],
     },
   },
   {
@@ -3728,6 +3754,7 @@ export const reactDoctorRules = [
       ...noGradientText,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noGradientText.tags ?? [])])],
     },
   },
   {
@@ -3739,6 +3766,7 @@ export const reactDoctorRules = [
       ...noGrayOnColoredBackground,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noGrayOnColoredBackground.tags ?? [])])],
     },
   },
   {
@@ -3750,6 +3778,7 @@ export const reactDoctorRules = [
       ...noHairlineBorderWideShadow,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noHairlineBorderWideShadow.tags ?? [])])],
     },
   },
   {
@@ -3761,6 +3790,7 @@ export const reactDoctorRules = [
       ...noHeroEyebrowChip,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noHeroEyebrowChip.tags ?? [])])],
     },
   },
   {
@@ -3772,6 +3802,7 @@ export const reactDoctorRules = [
       ...noHoverOnlyReveal,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noHoverOnlyReveal.tags ?? [])])],
     },
   },
   {
@@ -3797,6 +3828,7 @@ export const reactDoctorRules = [
       ...noIconTileHeadingStack,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noIconTileHeadingStack.tags ?? [])])],
     },
   },
   {
@@ -3808,6 +3840,7 @@ export const reactDoctorRules = [
       ...noImageHoverTransform,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noImageHoverTransform.tags ?? [])])],
     },
   },
   {
@@ -3833,6 +3866,7 @@ export const reactDoctorRules = [
       ...noImgWithoutDimensions,
       framework: "global",
       category: "Performance",
+      tags: [...new Set(["design", ...(noImgWithoutDimensions.tags ?? [])])],
     },
   },
   {
@@ -3878,6 +3912,7 @@ export const reactDoctorRules = [
       ...noInertStickyPosition,
       framework: "global",
       category: "Bugs",
+      tags: [...new Set(["design", ...(noInertStickyPosition.tags ?? [])])],
     },
   },
   {
@@ -3901,6 +3936,7 @@ export const reactDoctorRules = [
       ...noInlineBounceEasing,
       framework: "global",
       category: "Performance",
+      tags: [...new Set(["design", ...(noInlineBounceEasing.tags ?? [])])],
     },
   },
   {
@@ -3912,6 +3948,7 @@ export const reactDoctorRules = [
       ...noInlineExhaustiveStyle,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noInlineExhaustiveStyle.tags ?? [])])],
     },
   },
   {
@@ -3977,6 +4014,7 @@ export const reactDoctorRules = [
       ...noItalicSerifDisplayHeading,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noItalicSerifDisplayHeading.tags ?? [])])],
     },
   },
   {
@@ -4010,6 +4048,7 @@ export const reactDoctorRules = [
       ...noJustifiedText,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noJustifiedText.tags ?? [])])],
     },
   },
   {
@@ -4045,6 +4084,7 @@ export const reactDoctorRules = [
       ...noLayoutShiftingInteractionState,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noLayoutShiftingInteractionState.tags ?? [])])],
     },
   },
   {
@@ -4056,6 +4096,7 @@ export const reactDoctorRules = [
       ...noLayoutTransitionInline,
       framework: "global",
       category: "Performance",
+      tags: [...new Set(["design", ...(noLayoutTransitionInline.tags ?? [])])],
     },
   },
   {
@@ -4115,6 +4156,7 @@ export const reactDoctorRules = [
       ...noLongTransitionDuration,
       framework: "global",
       category: "Performance",
+      tags: [...new Set(["design", ...(noLongTransitionDuration.tags ?? [])])],
     },
   },
   {
@@ -4126,6 +4168,7 @@ export const reactDoctorRules = [
       ...noLowContrastInlineStyle,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noLowContrastInlineStyle.tags ?? [])])],
     },
   },
   {
@@ -4137,6 +4180,7 @@ export const reactDoctorRules = [
       ...noManufacturedContrastCopy,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noManufacturedContrastCopy.tags ?? [])])],
     },
   },
   {
@@ -4185,6 +4229,7 @@ export const reactDoctorRules = [
       ...noMixedIconLibraries,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noMixedIconLibraries.tags ?? [])])],
     },
   },
   {
@@ -4218,6 +4263,7 @@ export const reactDoctorRules = [
       ...noMonotonousPageSpacing,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noMonotonousPageSpacing.tags ?? [])])],
     },
   },
   {
@@ -4354,6 +4400,7 @@ export const reactDoctorRules = [
       ...noNestedCardSurface,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noNestedCardSurface.tags ?? [])])],
     },
   },
   {
@@ -4475,6 +4522,7 @@ export const reactDoctorRules = [
       ...noNumberedSectionMarkers,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noNumberedSectionMarkers.tags ?? [])])],
     },
   },
   {
@@ -4508,6 +4556,7 @@ export const reactDoctorRules = [
       ...noOutlineNone,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noOutlineNone.tags ?? [])])],
     },
   },
   {
@@ -4519,6 +4568,7 @@ export const reactDoctorRules = [
       ...noOverloadedHoverState,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noOverloadedHoverState.tags ?? [])])],
     },
   },
   {
@@ -4530,6 +4580,7 @@ export const reactDoctorRules = [
       ...noOversizedLongHeading,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noOversizedLongHeading.tags ?? [])])],
     },
   },
   {
@@ -4541,6 +4592,7 @@ export const reactDoctorRules = [
       ...noOverwideTextMeasure,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noOverwideTextMeasure.tags ?? [])])],
     },
   },
   {
@@ -4588,6 +4640,7 @@ export const reactDoctorRules = [
       ...noPillNavigationCount,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noPillNavigationCount.tags ?? [])])],
     },
   },
   {
@@ -4611,6 +4664,7 @@ export const reactDoctorRules = [
       ...noPlaceholderPersonaCopy,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noPlaceholderPersonaCopy.tags ?? [])])],
     },
   },
   {
@@ -4719,6 +4773,7 @@ export const reactDoctorRules = [
       ...noPureBlackBackground,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noPureBlackBackground.tags ?? [])])],
     },
   },
   {
@@ -4730,6 +4785,7 @@ export const reactDoctorRules = [
       ...noPureBlackShadow,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noPureBlackShadow.tags ?? [])])],
     },
   },
   {
@@ -4786,6 +4842,7 @@ export const reactDoctorRules = [
       ...noRedundantDisplayClass,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noRedundantDisplayClass.tags ?? [])])],
     },
   },
   {
@@ -4823,6 +4880,7 @@ export const reactDoctorRules = [
       ...noRedundantTitleTooltip,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noRedundantTitleTooltip.tags ?? [])])],
     },
   },
   {
@@ -4891,6 +4949,7 @@ export const reactDoctorRules = [
       ...noRepeatedEmojiTiles,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noRepeatedEmojiTiles.tags ?? [])])],
     },
   },
   {
@@ -4902,6 +4961,7 @@ export const reactDoctorRules = [
       ...noRepeatedGlassSurfaces,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noRepeatedGlassSurfaces.tags ?? [])])],
     },
   },
   {
@@ -4913,6 +4973,7 @@ export const reactDoctorRules = [
       ...noRepeatedHoverScale,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noRepeatedHoverScale.tags ?? [])])],
     },
   },
   {
@@ -4924,6 +4985,7 @@ export const reactDoctorRules = [
       ...noRepeatedKickerLabels,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noRepeatedKickerLabels.tags ?? [])])],
     },
   },
   {
@@ -4935,6 +4997,7 @@ export const reactDoctorRules = [
       ...noRepeatedSectionShells,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noRepeatedSectionShells.tags ?? [])])],
     },
   },
   {
@@ -4946,6 +5009,7 @@ export const reactDoctorRules = [
       ...noRepeatingGradientDecoration,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noRepeatingGradientDecoration.tags ?? [])])],
     },
   },
   {
@@ -5070,6 +5134,7 @@ export const reactDoctorRules = [
       ...noSideTabBorder,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noSideTabBorder.tags ?? [])])],
     },
   },
   {
@@ -5093,6 +5158,7 @@ export const reactDoctorRules = [
       ...noSmallFormControlText,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noSmallFormControlText.tags ?? [])])],
     },
   },
   {
@@ -5104,6 +5170,7 @@ export const reactDoctorRules = [
       ...noSmoothScrollWithoutReducedMotion,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noSmoothScrollWithoutReducedMotion.tags ?? [])])],
     },
   },
   {
@@ -5219,6 +5286,7 @@ export const reactDoctorRules = [
       ...noSvgCurrentcolorWithFillClass,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noSvgCurrentcolorWithFillClass.tags ?? [])])],
     },
   },
   {
@@ -5230,6 +5298,7 @@ export const reactDoctorRules = [
       ...noSymmetricTextButtonPadding,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noSymmetricTextButtonPadding.tags ?? [])])],
     },
   },
   {
@@ -5252,6 +5321,7 @@ export const reactDoctorRules = [
       ...noTailwindLayoutTransition,
       framework: "global",
       category: "Performance",
+      tags: [...new Set(["design", ...(noTailwindLayoutTransition.tags ?? [])])],
     },
   },
   {
@@ -5275,6 +5345,7 @@ export const reactDoctorRules = [
       ...noTightAllCapsHeading,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noTightAllCapsHeading.tags ?? [])])],
     },
   },
   {
@@ -5286,6 +5357,7 @@ export const reactDoctorRules = [
       ...noTightBodyLeading,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noTightBodyLeading.tags ?? [])])],
     },
   },
   {
@@ -5297,6 +5369,7 @@ export const reactDoctorRules = [
       ...noTightDisplayTracking,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noTightDisplayTracking.tags ?? [])])],
     },
   },
   {
@@ -5308,6 +5381,7 @@ export const reactDoctorRules = [
       ...noTinyText,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noTinyText.tags ?? [])])],
     },
   },
   {
@@ -5331,6 +5405,7 @@ export const reactDoctorRules = [
       ...noTransitionedFocusRing,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noTransitionedFocusRing.tags ?? [])])],
     },
   },
   {
@@ -5378,6 +5453,7 @@ export const reactDoctorRules = [
       ...noUndersizedIconButton,
       framework: "global",
       category: "Accessibility",
+      tags: [...new Set(["design", ...(noUndersizedIconButton.tags ?? [])])],
     },
   },
   {
@@ -5474,6 +5550,7 @@ export const reactDoctorRules = [
       ...noUniformFeatureCardGrid,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noUniformFeatureCardGrid.tags ?? [])])],
     },
   },
   {
@@ -5558,6 +5635,7 @@ export const reactDoctorRules = [
       ...noUppercaseMonoLabel,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noUppercaseMonoLabel.tags ?? [])])],
     },
   },
   {
@@ -5569,6 +5647,7 @@ export const reactDoctorRules = [
       ...noUppercaseTrackedNavigationLabel,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noUppercaseTrackedNavigationLabel.tags ?? [])])],
     },
   },
   {
@@ -5617,6 +5696,7 @@ export const reactDoctorRules = [
       ...noWideLetterSpacing,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noWideLetterSpacing.tags ?? [])])],
     },
   },
   {
@@ -5640,6 +5720,7 @@ export const reactDoctorRules = [
       ...noZIndex9999,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(noZIndex9999.tags ?? [])])],
     },
   },
   {
@@ -5789,6 +5870,7 @@ export const reactDoctorRules = [
       ...preferDvhOverVh,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(preferDvhOverVh.tags ?? [])])],
     },
   },
   {
@@ -5906,6 +5988,7 @@ export const reactDoctorRules = [
       ...preferTabularNumericData,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(preferTabularNumericData.tags ?? [])])],
     },
   },
   {
@@ -5929,6 +6012,7 @@ export const reactDoctorRules = [
       ...preferTruncateShorthand,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(preferTruncateShorthand.tags ?? [])])],
     },
   },
   {
@@ -6407,6 +6491,7 @@ export const reactDoctorRules = [
       ...requireAutoplayVideoPoster,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(requireAutoplayVideoPoster.tags ?? [])])],
     },
   },
   {
@@ -6430,6 +6515,7 @@ export const reactDoctorRules = [
       ...requireScaleRevealTransformOrigin,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(requireScaleRevealTransformOrigin.tags ?? [])])],
     },
   },
   {

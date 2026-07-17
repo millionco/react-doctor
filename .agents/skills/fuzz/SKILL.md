@@ -27,6 +27,21 @@ FUZZ_RULE=<rule-id> FUZZ_PRINT_SILENT=1 nr fuzz
 
 Confirm that the target rule fires. A silent rule only exercises early exits. If it stays silent, add a triggering shape to `packages/fuzz/src/snippet-pools.ts` and rerun.
 
+Use `FUZZ_TAG=<tag>` instead of `FUZZ_RULE` to exercise an entire registry cohort.
+
+Recommended full sweep (e.g. before a rule-batch release), pointing the
+corpus at real checkouts. Ready-made corpora work on any machine — see the
+package README "Canonical corpora": `bun scripts/sync-fuzz-corpus.ts`
+materializes a pinned 48-repo sample (symlinking the RDE cache when
+present, cloning otherwise), and `bun scripts/build-bench-corpus.ts`
+extracts react-bench's diagnostic-dense RD-health target files:
+
+```sh
+cd packages/fuzz
+bun scripts/sync-fuzz-corpus.ts
+FUZZ_INVARIANTS=1 FUZZ_ITERATIONS=100 FUZZ_CORPUS_DIR=tmp/corpus-repos nr fuzz
+```
+
 Run the direct false-positive check when a rule change affects common syntax:
 
 ```sh

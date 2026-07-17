@@ -10,6 +10,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
@@ -150,11 +151,14 @@ export const noCrampedContainerPadding = defineRule({
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;
         const styleExpression = getInlineStyleExpression(attribute);
         if (!styleExpression) continue;
-        const hasBoundary = styleExpression.properties?.some(isVisibleInlineBoundary);
+        const hasBoundary = [...BOUNDARY_STYLE_PROPERTIES].some((propertyName) => {
+          const property = getEffectiveStyleProperty(styleExpression.properties, propertyName);
+          return property !== null && isVisibleInlineBoundary(property);
+        });
         if (!hasBoundary) continue;
-        for (const property of styleExpression.properties ?? []) {
-          const propertyName = getStylePropertyKey(property);
-          if (!propertyName || !PADDING_STYLE_PROPERTIES.has(propertyName)) continue;
+        for (const propertyName of PADDING_STYLE_PROPERTIES) {
+          const property = getEffectiveStyleProperty(styleExpression.properties, propertyName);
+          if (!property) continue;
           const paddingPx = getPaddingPx(property);
           if (paddingPx === null || paddingPx >= MIN_BOUNDED_CONTAINER_PADDING_PX) continue;
           context.report({

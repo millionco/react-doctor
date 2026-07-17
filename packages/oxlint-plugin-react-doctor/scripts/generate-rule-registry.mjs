@@ -48,6 +48,7 @@ const BUCKETS_REQUIRING_REACT = new Set([
   "performance",
   "react-builtins",
   "react-ui",
+  "r3f",
   "state-and-effects",
   "valtio",
   "view-transitions",
@@ -64,6 +65,7 @@ const BUCKET_TO_AUTO_TAGS = {
   design: ["design"],
   ink: ["ink"],
   "react-native": ["react-native"],
+  r3f: ["r3f", "webgl"],
   "security-scan": ["security-scan"],
   server: ["server-action"],
 };
@@ -185,6 +187,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   preact: "Preact",
   "react-builtins": "Correctness",
   "react-native": "React Native",
+  r3f: "Performance",
   "react-ui": "Accessibility",
   security: "Security",
   "security-scan": "Security",

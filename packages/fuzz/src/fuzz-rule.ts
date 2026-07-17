@@ -129,6 +129,12 @@ export const fuzzRuleWithStats = (
     skippedParseErrorCount: 0,
   };
   const isScanRule = typeof rule.scan === "function";
+  const targetFilePrefix = `${ruleId.replaceAll("/", "__")}--`;
+  const livenessTarget = corpus.find((entry) => {
+    const pathSegments = entry.relativePath.split(/[\\/]/);
+    const fileName = pathSegments.at(-1);
+    return pathSegments[0] === "targets" && fileName?.startsWith(targetFilePrefix) === true;
+  });
 
   const checkProgram = (
     code: string,
@@ -216,9 +222,14 @@ export const fuzzRuleWithStats = (
     let filename: string = random.pick(FUZZ_FILENAME_POOL);
 
     const generated = generateStructuredFuzzProgram(random);
-    let code = generated.code;
-    let sections: ReadonlyArray<string> | undefined = generated.sections;
-    if (corpus.length > 0 && random.chance(CORPUS_PROGRAM_PROBABILITY)) {
+    const usesLivenessTarget = iteration === 0 && livenessTarget !== undefined;
+    let code = usesLivenessTarget ? livenessTarget.code : generated.code;
+    let sections: ReadonlyArray<string> | undefined = usesLivenessTarget
+      ? undefined
+      : generated.sections;
+    if (usesLivenessTarget) {
+      filename = livenessTarget.relativePath;
+    } else if (corpus.length > 0 && random.chance(CORPUS_PROGRAM_PROBABILITY)) {
       const corpusEntry = random.pick(corpus);
       if (random.chance(0.4)) {
         code = crossoverFuzzPrograms(corpusEntry.code, generated.code, random);
@@ -231,7 +242,7 @@ export const fuzzRuleWithStats = (
       }
       sections = undefined;
     }
-    const didApplyNoise = random.chance(NOISE_MUTATION_PROBABILITY);
+    const didApplyNoise = !usesLivenessTarget && random.chance(NOISE_MUTATION_PROBABILITY);
     if (didApplyNoise) {
       code = mutateFuzzProgram(code, random, random.intBetween(1, MAX_NOISE_MUTATIONS + 1));
       sections = undefined;

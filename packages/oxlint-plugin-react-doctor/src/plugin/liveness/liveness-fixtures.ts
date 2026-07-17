@@ -1728,6 +1728,72 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "export const Route = createRootRoute({\n  component: () => (\n    <html>\n      <head />\n      <body />\n    </html>\n  ),\n});",
     filePath: "src/routes/__root.tsx",
   },
+  "r3f-no-advancing-clock-in-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; useFrame((state) => state.clock.getDelta());',
+  },
+  "r3f-no-async-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; useFrame(async () => load());',
+  },
+  "r3f-no-clone-in-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; useFrame(() => mesh.current.position.clone());',
+  },
+  "r3f-no-duplicate-primitive-object": {
+    code: "const Scene = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;",
+  },
+  "r3f-no-fresh-use-three-selector": {
+    code: 'import { useThree } from "@react-three/fiber"; const pair = useThree((state) => [state.camera, state.scene]);',
+  },
+  "r3f-no-fresh-portal-container": {
+    code: 'import { createPortal } from "@react-three/fiber"; import { Scene } from "three"; const World = ({ enabled }) => createPortal(<mesh />, enabled ? {} : new Scene());',
+  },
+  "r3f-no-inline-resource-prop": {
+    code: 'import { Canvas } from "@react-three/fiber"; import { MeshBasicMaterial } from "three"; const Scene = () => <Canvas><mesh material={new MeshBasicMaterial()} /></Canvas>;',
+  },
+  "r3f-no-inline-primitive-object": {
+    code: "const Scene = () => <primitive object={scene.clone()} />;",
+  },
+  "r3f-no-internal-imports": {
+    code: 'import internal from "@react-three/fiber/dist/internal";',
+  },
+  "r3f-no-new-in-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; useFrame(() => new Vector3());',
+  },
+  "r3f-no-object-pointer-capture": {
+    code: 'import { Canvas } from "@react-three/fiber"; const Scene = () => <mesh onPointerDown={(event) => event.object.setPointerCapture(event.pointerId)} />;',
+  },
+  "r3f-no-null-loader-input": {
+    code: 'import { useLoader } from "@react-three/fiber"; const Scene = () => { useLoader(TextureLoader, null); return null; };',
+  },
+  "r3f-no-state-in-use-frame": {
+    code: 'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [count, setCount] = useState(0); useFrame(() => setCount(count + 1)); };',
+  },
+  "r3f-no-sync-readback-in-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; useFrame(({ gl }) => gl.readRenderTargetPixels(target, 0, 0, 1, 1, pixels));',
+  },
+  "r3f-no-unstable-args": {
+    code: 'import { Canvas } from "@react-three/fiber"; import { Vector3 } from "three"; const Scene = () => <shapeGeometry args={[new Vector3()]} />;',
+  },
+  "r3f-no-use-frame-dependency-array": {
+    code: 'import { useFrame } from "@react-three/fiber"; useFrame(() => update(), []);',
+  },
+  "r3f-require-frame-delta": {
+    code: 'import { useFrame } from "@react-three/fiber"; useFrame(() => { mesh.current.rotation.y += 0.01; });',
+  },
+  "r3f-require-global-effect-cleanup": {
+    code: 'import { useEffect } from "react"; import { addEffect } from "@react-three/fiber"; const Scene = () => { useEffect(() => { addEffect(update); }, []); return null; };',
+  },
+  "r3f-webgpu-canvas-prop-compatibility": {
+    code: 'import { Canvas } from "@react-three/fiber/webgpu"; const Scene = () => <Canvas gl={{ antialias: true }} />;',
+  },
+  "r3f-webgpu-no-gl-state": {
+    code: 'import { useThree } from "@react-three/fiber/webgpu"; const renderer = useThree((state) => state.gl);',
+  },
+  "r3f-webgpu-no-js-uniform-branch": {
+    code: 'import { useLocalNodes } from "@react-three/fiber/webgpu"; useLocalNodes(({ uniforms }) => { if (uniforms.mode.value) return { colorNode: red }; return { colorNode: blue }; });',
+  },
+  "r3f-webgpu-no-unregistered-pipeline-pass": {
+    code: 'import { useRenderPipeline } from "@react-three/fiber/webgpu"; useRenderPipeline(({ passes }) => { passes.custom = customPass; });',
+  },
   "tanstack-start-no-anchor-element": {
     code: 'const C = () => <a href="/dashboard">Go</a>;',
     filePath: "src/routes/index.tsx",

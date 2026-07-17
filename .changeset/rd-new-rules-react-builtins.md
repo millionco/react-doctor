@@ -1,5 +1,5 @@
 ---
-"oxlint-plugin-react-doctor": minor
+"oxlint-plugin-react-doctor": patch
 ---
 
-feat(rules): add 1 new react-builtins rules, corpus-validated and FP-hardened
+Add `hook-import-rename-loses-use-prefix` to preserve Rules of Hooks checks when imported hooks are aliased.

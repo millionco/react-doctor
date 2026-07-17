@@ -1090,7 +1090,9 @@ export const reactDoctorRules = [
       ...hookImportRenameLosesUsePrefix,
       framework: "global",
       category: "Bugs",
-      requires: [...new Set(["react", ...(hookImportRenameLosesUsePrefix.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", ...(hookImportRenameLosesUsePrefix.requires ?? [])]),
+      ],
     },
   },
   {

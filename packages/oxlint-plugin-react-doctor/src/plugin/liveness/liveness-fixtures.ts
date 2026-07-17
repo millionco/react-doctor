@@ -222,6 +222,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "heading-has-content": {
     code: "const H = () => <h1 />;",
   },
+  "hook-import-rename-loses-use-prefix": {
+    code: 'import { useEffect as runEffect } from "react";\nconst App = () => { runEffect(() => {}, []); return null; };',
+  },
   "hook-use-state": {
     code: "\n            import React from 'react';\n            export default function useColor() {\n                const color = React.useState();\n                return color;\n            }",
     forceJsx: true,

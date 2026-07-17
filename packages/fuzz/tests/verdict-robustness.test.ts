@@ -21,6 +21,7 @@ const AUDITED_RULE_IDS = [
   "effect-listener-cleanup-mismatch",
   "effect-needs-cleanup",
   "forward-ref-uses-ref",
+  "hook-import-rename-loses-use-prefix",
   "interactive-supports-focus",
   "js-min-max-loop",
   "js-hoist-regexp",

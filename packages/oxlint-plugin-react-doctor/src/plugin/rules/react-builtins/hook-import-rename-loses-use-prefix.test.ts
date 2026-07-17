@@ -167,6 +167,34 @@ describe("hook-import-rename-loses-use-prefix", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a React 19 use import alias that drops the use prefix", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { use as readPromise } from "react";
+       const Products = ({ productsPromise }) => {
+         const products = readPromise(productsPromise);
+         return products.length;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags renamed hooks called through transparent TypeScript wrappers", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import {
+         useAlpha as alpha,
+         useBeta as beta,
+         useGamma as gamma,
+       } from "./hooks";
+       alpha!();
+       (beta as () => void)();
+       (gamma satisfies () => void)();`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
   it("does not flag a default import (no imported hook name to mismatch)", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
@@ -215,6 +243,82 @@ describe("hook-import-rename-loses-use-prefix", () => {
       `import { useTracking as baseUseTracking } from "react-tracking";
        const tracking = baseUseTracking();`,
       { filename: "src/Apps/Auctions/__tests__/MyBids.jest.tsx" },
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an unconditional same-name wrapper", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useNavigate as routerUseNavigate } from "react-router-dom";
+       export const useNavigate = () => routerUseNavigate();`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a same-name wrapper that calls the alias after an early return", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useNavigate as routerUseNavigate } from "react-router-dom";
+       export const useNavigate = (disabled) => {
+         if (disabled) return null;
+         return routerUseNavigate();
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags same-name wrappers with conditional-expression alias calls", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useQuery as query } from "@tanstack/react-query";
+       export const useQuery = (enabled) => enabled && query();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags same-name wrappers with looped alias calls", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useQuery as query } from "@tanstack/react-query";
+       export const useQuery = (keys) => {
+         for (const key of keys) query({ queryKey: [key] });
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags same-name wrappers with alias calls inside try blocks", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useQuery as query } from "@tanstack/react-query";
+       export const useQuery = () => {
+         try {
+           return query();
+         } catch {
+           return null;
+         }
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an alias that is also called outside its same-name wrapper", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useQuery as query } from "@tanstack/react-query";
+       export const useQuery = () => query();
+       export const useProducts = () => query({ queryKey: ["products"] });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag aliases in bundled output", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useState as s } from "react";
+       export const Counter = () => s(0);`,
+      { filename: "/repo/dist/index.js" },
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -300,7 +300,7 @@ return <div dangerouslySetInnerHTML={{ __html: content }} />;
   it("stays silent on KaTeX-rendered html identifiers", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/katex/katex-block.tsx",
-      content: `const html = useMemo(() => katex.renderToString(code, { displayMode: true }), [code]);\nreturn <div role="math" dangerouslySetInnerHTML={{ __html: html }} />;\n`,
+      content: `import katex from "katex";\nconst html = useMemo(() => katex.renderToString(code, { displayMode: true }), [code]);\nreturn <div role="math" dangerouslySetInnerHTML={{ __html: html }} />;\n`,
     });
     expect(findings).toHaveLength(0);
   });

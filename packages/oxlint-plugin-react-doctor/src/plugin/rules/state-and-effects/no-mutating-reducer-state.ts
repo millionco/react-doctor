@@ -1,4 +1,5 @@
 import { MUTATING_ARRAY_METHODS, MUTATING_COLLECTION_METHODS } from "../../constants/js.js";
+import { OBJECT_PROPERTY_MUTATION_METHOD_NAMES } from "../../constants/mutation-methods.js";
 import { REDUCER_PATH_STATE_LIMIT } from "../../constants/thresholds.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -18,8 +19,6 @@ import { getStaticMemberPropertyName } from "./utils/static-member-property-name
 const MESSAGE = "This reducer changes state in place, so your update is silently skipped.";
 
 const SAME_REFERENCE_ARRAY_RETURN_METHODS = new Set(["copyWithin", "fill", "reverse", "sort"]);
-
-const OBJECT_MUTATION_METHODS = new Set(["assign", "defineProperties", "defineProperty"]);
 
 const REFLECT_MUTATION_METHODS = new Set(["deleteProperty", "set"]);
 
@@ -395,7 +394,11 @@ const collectReducerStateMutationsInExpressionOrStatement = (
     if (
       firstArgument &&
       isExpressionRootedInMutableReducerStateSource(firstArgument, state) &&
-      (isStaticMethodCallOnNamedObject(unwrappedChild, "Object", OBJECT_MUTATION_METHODS) ||
+      (isStaticMethodCallOnNamedObject(
+        unwrappedChild,
+        "Object",
+        OBJECT_PROPERTY_MUTATION_METHOD_NAMES,
+      ) ||
         isStaticMethodCallOnNamedObject(unwrappedChild, "Reflect", REFLECT_MUTATION_METHODS))
     ) {
       mutations.push({ node: unwrappedChild });

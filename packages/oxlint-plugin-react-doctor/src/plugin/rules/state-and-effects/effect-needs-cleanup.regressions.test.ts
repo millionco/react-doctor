@@ -3226,6 +3226,105 @@ export const Feed = ({ url, shouldClose }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts a replaced AbortController retained through a ref and aborted on unmount", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const Listener = () => {
+  const controllerRef = useRef(null);
+  const listen = useCallback(() => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    const { signal } = controller;
+    window.addEventListener("resize", update, { signal });
+  }, []);
+  useEffect(() => () => controllerRef.current?.abort(), []);
+  return <button onClick={listen}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a retained AbortController ref without replacement cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const Listener = () => {
+  const controllerRef = useRef(null);
+  const listen = useCallback(() => {
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    window.addEventListener("resize", update, { signal: controller.signal });
+  }, []);
+  useEffect(() => () => controllerRef.current?.abort(), []);
+  return <button onClick={listen}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a retained AbortController ref with conditional replacement cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const Listener = ({ shouldAbort }) => {
+  const controllerRef = useRef(null);
+  const listen = useCallback(() => {
+    if (shouldAbort) controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    window.addEventListener("resize", update, { signal: controller.signal });
+  }, [shouldAbort]);
+  useEffect(() => () => controllerRef.current?.abort(), []);
+  return <button onClick={listen}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a retained AbortController ref without unmount cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Listener = () => {
+  const controllerRef = useRef(null);
+  const listen = useCallback(() => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    window.addEventListener("resize", update, { signal: controller.signal });
+  }, []);
+  return <button onClick={listen}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects retaining an AbortController only after listener registration", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const Listener = () => {
+  const controllerRef = useRef(null);
+  const listen = useCallback(() => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    window.addEventListener("resize", update, { signal: controller.signal });
+    controllerRef.current = controller;
+  }, []);
+  useEffect(() => () => controllerRef.current?.abort(), []);
+  return <button onClick={listen}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("ignores a resource acquisition inside an uncalled nested function", () => {
     const result = runRule(
       effectNeedsCleanup,
@@ -3761,6 +3860,48 @@ export const Resolution = () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts matching modern and legacy media listener branches", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const MediaQuery = ({ breakpoint }) => {
+  useEffect(() => {
+    const media = window.matchMedia(breakpoint);
+    const handleMatch = () => update(media.matches);
+    handleMatch();
+    if (media.addEventListener) {
+      media.addEventListener("change", handleMatch);
+      return () => media.removeEventListener("change", handleMatch);
+    }
+    media.addListener(handleMatch);
+    return () => media.removeListener(handleMatch);
+  }, [breakpoint]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("rejects a legacy media listener cleanup with a changed handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const MediaQuery = ({ breakpoint }) => {
+  useEffect(() => {
+    const media = window.matchMedia(breakpoint);
+    const handleMatch = () => update(media.matches);
+    const otherHandler = () => update(false);
+    media.addListener(handleMatch);
+    return () => media.removeListener(otherHandler);
+  }, [breakpoint]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("rejects a listener disposer assigned on only one control-flow path", () => {
@@ -5237,6 +5378,74 @@ export const UserlandSubscription = ({ subscription }) => {
 });
 
 describe("effect-needs-cleanup useSyncExternalStore subscription cleanup", () => {
+  it("accepts a conditionally delegated subscription disposer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const AccordionItem = ({ root, itemKey }) => {
+  const subscribe = useCallback(
+    (onStoreChange) => (root ? root.subscribe(itemKey, onStoreChange) : () => {}),
+    [root, itemKey],
+  );
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts an optional subscription with a nullish no-op fallback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const AccordionItem = ({ sharedContext }) => {
+  const subscribe = useCallback(
+    (listener) => sharedContext?.subscribe(listener) ?? (() => {}),
+    [sharedContext],
+  );
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("rejects a conditional wrapper that discards the delegated disposer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const AccordionItem = ({ root, itemKey }) => {
+  const subscribe = useCallback(
+    (onStoreChange) =>
+      root ? (root.subscribe(itemKey, onStoreChange), () => {}) : () => {},
+    [root, itemKey],
+  );
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a logical-and wrapper that replaces the delegated disposer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const StoreValue = ({ store }) => {
+  const subscribe = useCallback(
+    () => store.subscribe(update) && (() => {}),
+    [store],
+  );
+  return useSyncExternalStore(subscribe, store.getSnapshot);
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts the TaskTrove i18next subscription with its matching returned disposer", () => {
     const result = runRule(
       effectNeedsCleanup,

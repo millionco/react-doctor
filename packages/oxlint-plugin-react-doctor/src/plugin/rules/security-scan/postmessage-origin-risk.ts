@@ -1,6 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
+import { getNodeEndIndex } from "../../utils/get-node-end-index.js";
+import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { parseSourceText } from "../../utils/parse-source-file.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -50,15 +52,9 @@ const isSameApplicationChannelInstance = (targetText: string, fileContent: strin
 
 const WORKER_FILE_PATH_PATTERN = /worker/i;
 
-// oxc's parseSync emits ESTree byte offsets as `start`/`end` (it never
-// populates `range`), which TSESTree's types don't declare — so read
-// them structurally.
-const getNodeStartIndex = (node: EsTreeNode): number =>
-  "start" in node && typeof node.start === "number" ? node.start : -1;
-
 const getNodeText = (content: string, node: EsTreeNode): string => {
   const startIndex = getNodeStartIndex(node);
-  const endIndex = "end" in node && typeof node.end === "number" ? node.end : -1;
+  const endIndex = getNodeEndIndex(node);
   if (startIndex < 0 || endIndex < 0) return "";
   return content.slice(startIndex, endIndex);
 };

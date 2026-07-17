@@ -1,5 +1,4 @@
-import { isPlainObject, redactSensitiveText } from "@react-doctor/core";
-import { scrubSensitivePaths } from "./scrub-sensitive-text.js";
+import { isPlainObject, redactSensitiveText, scrubSensitivePaths } from "@react-doctor/core";
 
 /**
  * Free-text fields can carry both a home-directory path (the OS username) and a

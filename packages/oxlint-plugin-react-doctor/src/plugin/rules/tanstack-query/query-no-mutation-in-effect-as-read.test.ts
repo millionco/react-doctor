@@ -447,6 +447,31 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(dataAlias.diagnostics).toHaveLength(0);
   });
 
+  it("accepts a dominating void-zero data guard", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         useEffect(() => {
+           if (data !== void 0) return;
+           fetchUser(params);
+         }, [data, params]);
+         return <div>{data?.user.name}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a void-zero comparison as consuming response data", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         useEffect(() => { fetchUser(params); }, [params]);
+         return data !== void 0;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("accepts a static computed success status on a whole result", () => {
     const result = runMutationReadRule(
       `function Component() {

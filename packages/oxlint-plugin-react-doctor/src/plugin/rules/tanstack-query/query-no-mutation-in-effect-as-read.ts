@@ -14,6 +14,7 @@ import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
@@ -212,10 +213,6 @@ const isInEffectDependencyArray = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const isNullishValue = (node: EsTreeNode): boolean =>
-  (isNodeOfType(node, "Literal") && node.value === null) ||
-  (isNodeOfType(node, "Identifier") && node.name === "undefined");
-
 const isGuardOnlyReference = (node: EsTreeNode): boolean => {
   const parent = node.parent;
   if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") return true;
@@ -232,7 +229,7 @@ const isGuardOnlyReference = (node: EsTreeNode): boolean => {
     ["==", "!=", "===", "!=="].includes(parent.operator)
   ) {
     const otherOperand = parent.left === node ? parent.right : parent.left;
-    return isNullishValue(otherOperand);
+    return isNullishExpression(otherOperand);
   }
   return false;
 };
@@ -592,7 +589,7 @@ const testPositivelyMatchesStatusTarget = (
   const other = leftMatches ? candidate.right : rightMatches ? candidate.left : null;
   if (!other) return false;
   if (target.sourcePropertyName === "data") {
-    return ["!=", "!=="].includes(candidate.operator) && isNullishValue(other);
+    return ["!=", "!=="].includes(candidate.operator) && isNullishExpression(other);
   }
   if (!isNodeOfType(other, "Literal") || !["==", "==="].includes(candidate.operator)) {
     return false;

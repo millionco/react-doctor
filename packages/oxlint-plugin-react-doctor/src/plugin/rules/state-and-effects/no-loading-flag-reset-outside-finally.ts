@@ -360,6 +360,36 @@ const isNeverRejectingImportedAsyncHelperCall = (
   if (!isFunctionLike(foreignHelper) || !foreignHelper.async) return false;
   return isRejectionProofForeignHelperBody(foreignHelper, depth);
 };
+const resolveImportedHelperIdentifierThroughConstAliases = (
+  callee: EsTreeNodeOfType<"Identifier">,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  let identifier = callee;
+  const visitedNames = new Set<string>();
+  while (!visitedNames.has(identifier.name)) {
+    visitedNames.add(identifier.name);
+    const binding = findVariableInitializer(identifier, identifier.name);
+    if (!binding?.initializer) return identifier;
+    const initializer = stripParenExpression(binding.initializer);
+    if (
+      isNodeOfType(initializer, "ImportSpecifier") ||
+      isNodeOfType(initializer, "ImportDefaultSpecifier")
+    ) {
+      return identifier;
+    }
+    const declarator = binding.bindingIdentifier.parent;
+    const declaration = declarator?.parent;
+    if (
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      !isNodeOfType(declaration, "VariableDeclaration") ||
+      declaration.kind !== "const"
+    ) {
+      return null;
+    }
+    if (!isNodeOfType(initializer, "Identifier")) return null;
+    identifier = initializer;
+  }
+  return null;
+};
 const getHookReturnedObjectExpression = (
   hookFunction: EsTreeNode,
 ): EsTreeNodeOfType<"ObjectExpression"> | null => {
@@ -474,6 +504,16 @@ const isNeverRejectingLocalAsyncHelperCall = (
   if (!isNodeOfType(callee, "Identifier")) return false;
   if (helper && isNodeOfType(helper, "ImportSpecifier")) {
     return isNeverRejectingImportedAsyncHelperCall(callee, depth);
+  }
+  const importedHelperIdentifier = resolveImportedHelperIdentifierThroughConstAliases(callee);
+  if (importedHelperIdentifier) {
+    const importBinding = getImportBindingForName(
+      importedHelperIdentifier,
+      importedHelperIdentifier.name,
+    );
+    if (importBinding) {
+      return isNeverRejectingImportedAsyncHelperCall(importedHelperIdentifier, depth);
+    }
   }
   if (helper) return false;
   return isNeverRejectingImportedHookFunctionCall(callee, depth);

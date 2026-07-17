@@ -1170,6 +1170,37 @@ describe("no-loading-flag-reset-outside-finally cross-file helpers", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("resolves a guarded imported helper through a local const alias", () => {
+    writeFile("src/utils/file-upload.ts", GUARDED_UPLOAD_HELPER);
+    const source = consumerCode(
+      `import { uploadFiles } from "./utils/file-upload";
+      const upload = uploadFiles;`,
+      "upload",
+    );
+    const consumerFilename = writeFile("src/Modal.tsx", source);
+    const result = runRule(noLoadingFlagResetOutsideFinally, source, {
+      filename: consumerFilename,
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a mutable alias of a guarded imported helper", () => {
+    writeFile("src/utils/file-upload.ts", GUARDED_UPLOAD_HELPER);
+    const source = consumerCode(
+      `import { uploadFiles } from "./utils/file-upload";
+      let upload = uploadFiles;
+      upload = async () => fetch("/unsafe");`,
+      "upload",
+    );
+    const consumerFilename = writeFile("src/Modal.tsx", source);
+    const result = runRule(noLoadingFlagResetOutsideFinally, source, {
+      filename: consumerFilename,
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("resolves through a barrel re-export hop", () => {
     writeFile("src/utils/file-upload.ts", GUARDED_UPLOAD_HELPER);
     writeFile("src/utils/index.ts", `export { uploadFiles } from "./file-upload";`);

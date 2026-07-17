@@ -34,4 +34,25 @@ describe("no-nested-card-surface", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("ignores inner surfaces with non-drawing boundary utilities", () => {
+    const result = runRule(
+      noNestedCardSurface,
+      `const Example = () => <div className="rounded-xl border p-6">
+        <section className="rounded-lg border-0 p-4">Zero border</section>
+        <section className="rounded-lg border-solid p-4">Style only</section>
+        <section className="rounded-lg shadow-none p-4">No shadow</section>
+        <section className="rounded-lg ring-0 p-4">No ring</section>
+      </div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes card interiors with physical padding utilities", () => {
+    const result = runRule(
+      noNestedCardSurface,
+      `const Example = () => <div className="rounded-xl border p-6"><section className="rounded-lg border pt-4">Inner</section></div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

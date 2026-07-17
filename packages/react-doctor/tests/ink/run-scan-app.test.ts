@@ -2,7 +2,7 @@ import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { InspectResult, ResolvedScanTarget } from "@react-doctor/core";
-import { resolveScanTarget } from "@react-doctor/core";
+import { Reporter, resolveScanTarget } from "@react-doctor/core";
 import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
 import { inspect } from "../../src/inspect.js";
 import { buildTestProject } from "../regressions/_helpers.js";
@@ -179,6 +179,8 @@ describe("runScanApp", () => {
     );
     const firstOptions = vi.mocked(inspect).mock.calls[0]?.[1];
     const secondOptions = vi.mocked(inspect).mock.calls[1]?.[1];
+    expect(firstOptions?.uiLayers?.reporter).toBe(Reporter.layerNoop);
+    expect(secondOptions?.uiLayers?.reporter).toBe(Reporter.layerNoop);
     expect(firstOptions?.deadlineEpochMs).toBe(secondOptions?.deadlineEpochMs);
     expect(firstOptions?.deadlineEpochMs).toBeTypeOf("number");
   });

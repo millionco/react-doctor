@@ -7,6 +7,7 @@ import {
   highlighter,
   mapWithConcurrency,
   mergeReactDoctorConfigs,
+  Reporter,
   resolveScanTarget,
 } from "@react-doctor/core";
 import type {
@@ -402,7 +403,7 @@ const runMultiProjectScan = async (
           isCi: isCiEnvironment(),
           configOverride: projectScan.config,
           configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
-          uiLayers: { reporter: reporterLayerForStore(context.store) },
+          uiLayers: { reporter: Reporter.layerNoop },
           concurrentScan: true,
         });
         finishedCount += 1;

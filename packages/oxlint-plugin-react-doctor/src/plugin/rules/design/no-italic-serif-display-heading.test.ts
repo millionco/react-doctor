@@ -26,4 +26,12 @@ describe("no-italic-serif-display-heading", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not combine variant-only display treatments", () => {
+    const result = runRule(
+      noItalicSerifDisplayHeading,
+      `const Hero = () => <h1 className="font-serif dark:italic md:text-7xl">A considered approach</h1>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

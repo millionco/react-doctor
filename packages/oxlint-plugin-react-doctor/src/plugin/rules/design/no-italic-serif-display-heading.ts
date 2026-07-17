@@ -1,5 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
+import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -31,7 +31,7 @@ export const noItalicSerifDisplayHeading = defineRule({
       }
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
-      const tokens = new Set(getClassNameTokens(classNameValue));
+      const tokens = new Set(getUnvariantClassNameTokens(classNameValue));
       if (!tokens.has("font-serif") || !tokens.has("italic")) return;
       if (![...DISPLAY_TEXT_CLASS_NAMES].some((token) => tokens.has(token))) return;
       context.report({

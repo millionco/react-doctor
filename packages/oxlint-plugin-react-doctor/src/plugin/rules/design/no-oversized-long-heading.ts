@@ -4,8 +4,8 @@ import {
   ROOT_FONT_SIZE_PX,
 } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
+import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -31,7 +31,7 @@ const getFontSizePx = (property: EsTreeNode): number | null => {
 };
 
 const hasOversizedClass = (classNameValue: string): boolean =>
-  getClassNameTokens(classNameValue).some((token) => {
+  getUnvariantClassNameTokens(classNameValue).some((token) => {
     if (OVERSIZED_TEXT_CLASS_NAMES.has(token)) return true;
     const match = token.match(ARBITRARY_TEXT_SIZE_PATTERN);
     if (!match) return false;

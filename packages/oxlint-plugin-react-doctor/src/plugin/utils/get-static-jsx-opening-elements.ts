@@ -1,17 +1,20 @@
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+
+const collectStaticJsxOpeningElements = (
+  node: EsTreeNode,
+  openingElements: Array<EsTreeNodeOfType<"JSXOpeningElement">>,
+): void => {
+  if (isNodeOfType(node, "JSXElement")) openingElements.push(node.openingElement);
+  if (!isNodeOfType(node, "JSXElement") && !isNodeOfType(node, "JSXFragment")) return;
+  for (const child of node.children) collectStaticJsxOpeningElements(child, openingElements);
+};
 
 export const getStaticJsxOpeningElements = (
   node: EsTreeNodeOfType<"JSXElement">,
 ): Array<EsTreeNodeOfType<"JSXOpeningElement">> => {
   const openingElements: Array<EsTreeNodeOfType<"JSXOpeningElement">> = [];
-  if (isNodeOfType(node.openingElement, "JSXOpeningElement")) {
-    openingElements.push(node.openingElement);
-  }
-  for (const child of node.children ?? []) {
-    if (isNodeOfType(child, "JSXElement")) {
-      openingElements.push(...getStaticJsxOpeningElements(child));
-    }
-  }
+  collectStaticJsxOpeningElements(node, openingElements);
   return openingElements;
 };

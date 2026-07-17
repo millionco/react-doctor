@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { getStaticJsxOpeningElements } from "../../utils/get-static-jsx-opening-elements.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -24,19 +25,6 @@ const hasDocumentRootAncestor = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const collectStaticHeadings = (
-  node: EsTreeNodeOfType<"JSXElement">,
-  headings: Array<{ level: number; node: EsTreeNodeOfType<"JSXOpeningElement"> }>,
-): void => {
-  const elementName = getElementName(node);
-  const headingMatch = elementName?.match(HEADING_ELEMENT_PATTERN);
-  if (headingMatch)
-    headings.push({ level: parseInt(headingMatch[1], 10), node: node.openingElement });
-  for (const child of node.children ?? []) {
-    if (isNodeOfType(child, "JSXElement")) collectStaticHeadings(child, headings);
-  }
-};
-
 export const noSkippedHeadingLevel = defineRule({
   id: "no-skipped-heading-level",
   title: "Heading hierarchy skips a level",
@@ -54,7 +42,14 @@ export const noSkippedHeadingLevel = defineRule({
         level: number;
         node: EsTreeNodeOfType<"JSXOpeningElement">;
       }> = [];
-      collectStaticHeadings(node, headings);
+      for (const openingElement of getStaticJsxOpeningElements(node)) {
+        const headingMatch = isNodeOfType(openingElement.name, "JSXIdentifier")
+          ? openingElement.name.name.match(HEADING_ELEMENT_PATTERN)
+          : null;
+        if (headingMatch) {
+          headings.push({ level: parseInt(headingMatch[1], 10), node: openingElement });
+        }
+      }
       for (let headingIndex = 1; headingIndex < headings.length; headingIndex += 1) {
         const previousHeading = headings[headingIndex - 1];
         const heading = headings[headingIndex];

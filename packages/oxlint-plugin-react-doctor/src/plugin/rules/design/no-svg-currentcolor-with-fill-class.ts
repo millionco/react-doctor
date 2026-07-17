@@ -28,7 +28,7 @@ const hasColorUtility = (classNameValue: string, prefix: "fill-" | "stroke-"): b
     if (NON_COLOR_PAINT_VALUE_PREFIXES.some((valuePrefix) => value.startsWith(valuePrefix))) {
       return false;
     }
-    if (/^\d/.test(value) || /^\[\d/.test(value)) return false;
+    if (/^\d/.test(value) || /^\[(?:\d|\.\d)/.test(value)) return false;
     return true;
   });
 

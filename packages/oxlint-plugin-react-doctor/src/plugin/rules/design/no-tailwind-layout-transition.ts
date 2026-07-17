@@ -1,4 +1,4 @@
-import { LAYOUT_PROPERTIES } from "../../constants/style.js";
+import { LAYOUT_TRANSITION_PROPERTIES } from "../../constants/style.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -38,7 +38,7 @@ export const noTailwindLayoutTransition = defineRule({
         const layoutProperty = animatedProperties
           .split(",")
           .map((property) => property.trim())
-          .find((property) => LAYOUT_PROPERTIES.has(property));
+          .find((property) => LAYOUT_TRANSITION_PROPERTIES.has(property));
         if (layoutProperty) {
           context.report({
             node,

@@ -1,4 +1,4 @@
-import { LAYOUT_PROPERTIES } from "../../constants/style.js";
+import { LAYOUT_TRANSITION_PROPERTIES } from "../../constants/style.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
@@ -42,7 +42,9 @@ export const noLayoutTransitionInline = defineRule({
         const valueTokens = value.toLowerCase().split(/[\s,]+/);
         if (valueTokens.includes("all")) continue;
 
-        const layoutProperty = valueTokens.find((valueToken) => LAYOUT_PROPERTIES.has(valueToken));
+        const layoutProperty = valueTokens.find((valueToken) =>
+          LAYOUT_TRANSITION_PROPERTIES.has(valueToken),
+        );
         if (layoutProperty) {
           context.report({
             node: property,

@@ -1,3 +1,4 @@
+import { TAILWIND_DISPLAY_TOKENS } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -60,11 +61,6 @@ const INLINE_DEFAULT_TAGS = new Set([
   "time",
 ]);
 
-// Standalone, unprefixed tokens. A breakpoint-prefixed `md:block` is a
-// deliberate per-breakpoint override, so it's never flagged.
-const STANDALONE_BLOCK = /(?:^|\s)block(?:$|\s)/;
-const STANDALONE_INLINE = /(?:^|\s)inline(?:$|\s)/;
-
 export const noRedundantDisplayClass = defineRule({
   id: "no-redundant-display-class",
   title: "Redundant display utility",
@@ -78,15 +74,24 @@ export const noRedundantDisplayClass = defineRule({
       const tagName = node.name.name;
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
+      const classNameTokens = classNameValue.split(/\s+/);
+      const displayTokens = new Set<string>();
+      for (const classNameToken of classNameTokens) {
+        const tokenWithoutImportantModifier = classNameToken.replace(/^!|!$/g, "");
+        if (TAILWIND_DISPLAY_TOKENS.has(tokenWithoutImportantModifier)) {
+          displayTokens.add(tokenWithoutImportantModifier);
+        }
+      }
+      if (displayTokens.size !== 1) return;
 
-      if (BLOCK_DEFAULT_TAGS.has(tagName) && STANDALONE_BLOCK.test(classNameValue)) {
+      if (BLOCK_DEFAULT_TAGS.has(tagName) && classNameTokens.includes("block")) {
         context.report({
           node,
           message: `\`block\` is the default display of \`<${tagName}>\`, so the class does nothing — remove it.`,
         });
         return;
       }
-      if (INLINE_DEFAULT_TAGS.has(tagName) && STANDALONE_INLINE.test(classNameValue)) {
+      if (INLINE_DEFAULT_TAGS.has(tagName) && classNameTokens.includes("inline")) {
         context.report({
           node,
           message: `\`inline\` is the default display of \`<${tagName}>\`, so the class does nothing — remove it.`,

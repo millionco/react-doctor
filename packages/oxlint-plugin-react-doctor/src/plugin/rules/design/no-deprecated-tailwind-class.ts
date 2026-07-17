@@ -37,7 +37,7 @@ export const noDeprecatedTailwindClass = defineRule({
         if (replacement) {
           context.report({
             node,
-            message: `\`${token}\` was renamed in Tailwind v4 and no longer applies — use \`${replacement}\`.`,
+            message: `\`${token}\` is a legacy Tailwind name — use the canonical v4 utility \`${replacement}\`.`,
           });
         }
       }

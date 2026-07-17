@@ -361,6 +361,58 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a listener on a non-null asserted ref-owned DOM node", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class Chart extends React.Component {
+        containerRef = React.createRef();
+        componentDidMount() {
+          this.containerRef.current!.addEventListener("wheel", this.handleWheel);
+        }
+        handleWheel = () => {};
+        render() {
+          return <div ref={this.containerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a non-null asserted mount-local listener receiver", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class Chart extends React.Component {
+        componentDidMount() {
+          const emitter = new Emitter();
+          emitter!.on("change", this.handleChange);
+        }
+        handleChange = () => {};
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a non-null asserted external listener receiver", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class Chart extends React.Component {
+        componentDidMount() {
+          external!.addEventListener("change", this.handleChange);
+        }
+        handleChange = () => {};
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a plain (non-React) class that registers a listener", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
@@ -427,6 +479,25 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
       .enter()
       .append("rect")
       .on("mouseover", (event, datum) => this.props.onBarHover(datum));
+  }
+  render() {
+    return <svg ref={this.svgRef} />;
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet: d3 fluent chain rooted at a non-null asserted ref", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class BarChart extends React.Component {
+  svgRef = React.createRef();
+  componentDidMount() {
+    d3.select(this.svgRef.current!)
+      .selectAll("rect")
+      .on("mouseover", this.props.onBarHover);
   }
   render() {
     return <svg ref={this.svgRef} />;

@@ -365,37 +365,39 @@ const isMountHazard = (
   if (
     methodName &&
     LISTENER_REGISTRATION_METHODS.has(methodName) &&
-    isNodeOfType(node.callee, "MemberExpression")
+    isNodeOfType(callee, "MemberExpression")
   ) {
     const callArguments = node.arguments ?? [];
     const isFunctionFactoryOnce = methodName === "once" && callArguments.length < 2;
-    let receiverBase: EsTreeNode = node.callee.object as EsTreeNode;
+    let receiverBase = stripParenExpression(callee.object);
     let receiverIsRefOwnedNode = false;
     // Descend member chains AND fluent call chains (d3's
     // `select(this.svgRef.current).selectAll(...).on(...)`): a ref-owned
     // node anywhere in the chain (as receiver or call argument) means the
     // listeners die with the component's own DOM.
-    while (
-      isNodeOfType(receiverBase, "MemberExpression") ||
-      isNodeOfType(receiverBase, "CallExpression")
-    ) {
+    while (true) {
+      receiverBase = stripParenExpression(receiverBase);
       if (isNodeOfType(receiverBase, "CallExpression")) {
         for (const argument of receiverBase.arguments ?? []) {
-          let argumentCursor: EsTreeNode = argument as EsTreeNode;
+          let argumentCursor = stripParenExpression(argument as EsTreeNode);
           while (isNodeOfType(argumentCursor, "MemberExpression")) {
             if (getStaticPropertyName(argumentCursor) === "current") {
               receiverIsRefOwnedNode = true;
             }
-            argumentCursor = argumentCursor.object as EsTreeNode;
+            argumentCursor = stripParenExpression(argumentCursor.object);
           }
         }
-        receiverBase = receiverBase.callee as EsTreeNode;
+        receiverBase = stripParenExpression(receiverBase.callee);
         continue;
       }
-      if (getStaticPropertyName(receiverBase) === "current") {
-        receiverIsRefOwnedNode = true;
+      if (isNodeOfType(receiverBase, "MemberExpression")) {
+        if (getStaticPropertyName(receiverBase) === "current") {
+          receiverIsRefOwnedNode = true;
+        }
+        receiverBase = stripParenExpression(receiverBase.object);
+        continue;
       }
-      receiverBase = receiverBase.object;
+      break;
     }
     const isLocalReceiver =
       isNodeOfType(receiverBase, "Identifier") && localReceiverNames.has(receiverBase.name);

@@ -248,6 +248,7 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `export const createFuzzTeam = async (ownerId: string) => { await supabase.from("teams").insert({ ownerId, role: "admin" }); };`,
   `import { ImageResponse as FuzzImageResponse } from "next/og"; export const FuzzPostcardLayout = ({ url }) => <img src={url} alt="" />; export const FuzzPostcardRoute = () => new FuzzImageResponse(FuzzPostcardLayout({ url }));`,
   `import { render as fuzzRender } from "@testing-library/react"; it("mounts a one-shot ref harness", () => { const FuzzOneShotRefTarget = () => { const targetRef = React.createRef(); return <FuzzFocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FuzzFocusTrap>; }; fuzzRender(<FuzzOneShotRefTarget />); });`,
   `import { render as fuzzRenderWithTypeWrapper } from "@testing-library/react"; it("mounts a type-wrapped one-shot ref harness", () => { const FuzzTypeWrappedOneShotRefTarget = () => { const targetRef = React.createRef(); return <FuzzFocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FuzzFocusTrap>; }; fuzzRenderWithTypeWrapper((<FuzzTypeWrappedOneShotRefTarget />) as React.ReactElement); });`,
@@ -292,6 +293,9 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `const StyledButton = styled.button\`color: \${(styledProps) => (styledProps.$active ? "red" : "gray")};\`;`,
   `const StyledInput = styled.input<{ $error: boolean }>\`border: 1px solid \${(styledProps) => (styledProps.$error ? "red" : "gray")}; border: 2px dashed blue;\`;`,
   `const SECRET_KEY = "sk-live-abc123def456ghi789jkl012mno345";`,
+  `const FUZZ_DATABASE_URL = process.env.DATABASE_URL;`,
+  `/** process.env.DATABASE_URL */ const FuzzGeneratedDatabaseClient = {};`,
+  `const FuzzProcessName = "process"; const FuzzDatabaseKeyName = "DATABASE_URL"; const FuzzDocumentationUrl = "https://example.com";`,
   `const ARROW_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);`,
   `export const STATIC_STYLED_ELEMENT = <div style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />;`,
   `const defaults = { title: "untitled", pageSize: 20 };`,
@@ -310,6 +314,24 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  `#!/usr/bin/env node\u2028export const FUZZ_DATABASE_URL = process.env.DATABASE_URL;`,
+  `#!/usr/bin/env node process.env.DATABASE_URL\u2029export const FuzzGeneratedDatabaseClient = {};`,
+  `"use server";
+import { after } from "next/server";
+export const saveFuzzEvent = async () => {
+  console.info("before response");
+  after(() => console.info("after response"));
+};`,
+  `"use server";
+import * as NextServer from "next/server";
+const reportFuzzEvent = () => analytics.track("saved");
+export const saveFuzzRecord = async () => {
+  NextServer["after"](reportFuzzEvent);
+};`,
+  `"use server"
+export const createFuzzTeam = async (ownerId: string) => {
+  await supabase.from("teams").insert({ ownerId, role: "admin" });
+};`,
   `export default async function Page() {
   const response = await fetch("https://api.example.com/feed");
   return Response.json(await response.json());
@@ -616,6 +638,7 @@ export const FUZZ_FILENAME_POOL = [
   "next.config.js",
   "src/utils/fuzz-helper.ts",
   "packages/docs/archive/v1/static/docs.js",
+  "dist/assets/fuzz-bundle.js",
 ] as const;
 
 // Identifiers rules key on by NAME (guard aliases, visibility gates,

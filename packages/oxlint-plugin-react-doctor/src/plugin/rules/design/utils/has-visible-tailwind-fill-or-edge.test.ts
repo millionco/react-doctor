@@ -5,6 +5,7 @@ describe("hasVisibleTailwindFillOrEdge", () => {
   it("recognizes visible fills, borders, and rings", () => {
     expect(hasVisibleTailwindFillOrEdge(["bg-blue-100"])).toBe(true);
     expect(hasVisibleTailwindFillOrEdge(["border"])).toBe(true);
+    expect(hasVisibleTailwindFillOrEdge(["border-l-2"])).toBe(true);
     expect(hasVisibleTailwindFillOrEdge(["ring-2"])).toBe(true);
   });
 

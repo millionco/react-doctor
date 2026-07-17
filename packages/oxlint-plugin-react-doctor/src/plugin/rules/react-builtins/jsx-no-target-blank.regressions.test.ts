@@ -36,6 +36,15 @@ describe("react-builtins/jsx-no-target-blank — regressions", () => {
     expect(result.diagnostics.length).toBe(1);
   });
 
+  it("matches target=_blank case-insensitively", () => {
+    const result = runRule(
+      jsxNoTargetBlank,
+      `const External = () => <a href="https://example.com" target="_BLANK">open</a>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an external link wrapped in other markup (mapguide about)", () => {
     const result = runRule(
       jsxNoTargetBlank,

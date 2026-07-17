@@ -897,9 +897,6 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-tailwind-layout-transition": {
     code: 'const Drawer = () => <div className="transition-[height] duration-300" />;',
   },
-  "no-target-blank-without-rel": {
-    code: 'const Docs = () => <a href="/docs" target="_blank">Docs</a>;',
-  },
   "no-this-in-sfc": {
     code: "const Foo = (props) => <span>{this.props.foo}</span>",
   },

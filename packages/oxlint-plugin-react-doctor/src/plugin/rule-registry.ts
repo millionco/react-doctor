@@ -265,7 +265,6 @@ import { noStringRefs } from "./rules/react-builtins/no-string-refs.js";
 import { noSvgCurrentcolorWithFillClass } from "./rules/design/no-svg-currentcolor-with-fill-class.js";
 import { noSyncXhr } from "./rules/js-performance/no-sync-xhr.js";
 import { noTailwindLayoutTransition } from "./rules/design/no-tailwind-layout-transition.js";
-import { noTargetBlankWithoutRel } from "./rules/a11y/no-target-blank-without-rel.js";
 import { noThisInSfc } from "./rules/react-builtins/no-this-in-sfc.js";
 import { noTinyText } from "./rules/design/no-tiny-text.js";
 import { noTransitionAll } from "./rules/performance/no-transition-all.js";
@@ -3457,18 +3456,6 @@ export const reactDoctorRules = [
       ...noTailwindLayoutTransition,
       framework: "global",
       category: "Performance",
-    },
-  },
-  {
-    key: "react-doctor/no-target-blank-without-rel",
-    id: "no-target-blank-without-rel",
-    source: "react-doctor",
-    originallyExternal: false,
-    rule: {
-      ...noTargetBlankWithoutRel,
-      framework: "global",
-      category: "Accessibility",
-      requires: [...new Set<Capability>(["react", ...(noTargetBlankWithoutRel.requires ?? [])])],
     },
   },
   {

@@ -379,25 +379,22 @@ export interface ReactDoctorConfig {
    */
   adoptExistingLintConfig?: boolean;
   /**
-   * Per-surface include/exclude controls. Each `DiagnosticSurface` is
-   * resolved independently against rule tags, category, and id so a
-   * single rule can be visible locally yet hidden from PR comments,
-   * neutralized from the score, and excluded from the CI gate — all
-   * without touching the rule's severity or activation.
+   * Per-surface include/exclude controls. Each `DiagnosticSurface` resolves
+   * rule tags, categories, and identifiers independently. This lets you keep a rule
+   * visible locally while hiding it from PR comments, the score, or the CI
+   * gate. These controls don't change rule severity or activation.
    *
    * Defaults (applied before user overrides):
    *
    * - `prComment` excludes tag `"design"`
    * - `score` excludes tag `"design"`
    * - `ciFailure` excludes tag `"design"`
-   * - `score` and `ciFailure` exclude test/story file contexts unless an
-   *   existing include control explicitly promotes the diagnostic
+   * - `score` and `ciFailure` exclude test/story file contexts unless explicitly included
    *
-   * Pass any controls block (even an empty `{}`) to keep the default
-   * exclusions; the user's include/exclude entries layer on top.
-   * Include entries always win over exclude entries — handy for
-   * promoting a single high-signal `design-*` rule back into the
-   * score or PR-comment surface.
+   * Pass any controls block, including an empty `{}`, to keep the defaults.
+   * Your include/exclude entries layer on top. Includes always win over
+   * excludes. For example, you can promote one high-signal `design-*` rule
+   * back into the score or PR-comment surface.
    */
   surfaces?: Partial<Record<DiagnosticSurface, SurfaceControls>>;
   /**

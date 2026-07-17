@@ -2483,15 +2483,12 @@ const isReactRefListenerReplacementRelease = (
     return false;
   }
   const registrationReceiver = stripParenExpression(registrationCallee.object);
-  const registrationReceiverSymbol = isNodeOfType(registrationReceiver, "Identifier")
-    ? context.scopes.symbolFor(registrationReceiver)
-    : null;
   const registrationReceiverKey = resolveExpressionKey(registrationReceiver, context);
+  const nodeParameterKey = resolveExpressionKey(usageFunction.params?.[0], context);
   const releaseReceiverKey = resolveExpressionKey(releaseCallee.object, context);
   if (
-    registrationReceiverSymbol?.kind !== "parameter" ||
-    findEnclosingFunction(registrationReceiverSymbol.bindingIdentifier) !== usageFunction ||
     registrationReceiverKey === null ||
+    registrationReceiverKey !== nodeParameterKey ||
     releaseReceiverKey === null ||
     usage.eventKey === null ||
     usage.eventKey !== resolveExpressionKey(releaseCall.arguments?.[0], context) ||

@@ -7294,6 +7294,26 @@ export const Viewport = ({ onWheel }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts an unreassigned alias for the callback-ref node", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    const currentNode = node;
+    const previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = currentNode;
+    if (currentNode) currentNode.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("accepts listener replacement exposed as a hook ref property", () => {
     const result = runRule(
       effectNeedsCleanup,

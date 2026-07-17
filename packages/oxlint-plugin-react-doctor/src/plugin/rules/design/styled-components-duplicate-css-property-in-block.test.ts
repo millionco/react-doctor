@@ -183,6 +183,20 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag equivalent conditions with a defaulted renamed parameter", () => {
+    const result = runStyledRule(
+      'const fallback = { $fullHeight: false }; const Modal = styled.div`height: ${(properties = fallback) => properties.$fullHeight ? "100vh" : "auto"}; height: ${state => state.$fullHeight ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag equivalent conditions with renamed rest parameters", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${(...properties) => properties[0].$fullHeight ? "100vh" : "auto"}; height: ${(...state) => state[0].$fullHeight ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("distinguishes different static property keys that match each parameter name", () => {
     const result = runStyledRule(
       'const Modal = styled.div`height: ${properties => properties.properties ? "100vh" : "auto"}; height: ${state => state.state ? "100dvh" : "auto"};`;',

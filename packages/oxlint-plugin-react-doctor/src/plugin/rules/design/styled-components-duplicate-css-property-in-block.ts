@@ -28,6 +28,17 @@ interface TernaryTest {
   readonly parameterName: string | null;
 }
 
+const getCallbackParameterName = (parameter: EsTreeNode | undefined): string | null => {
+  if (isNodeOfType(parameter, "Identifier")) return parameter.name;
+  if (isNodeOfType(parameter, "AssignmentPattern") && isNodeOfType(parameter.left, "Identifier")) {
+    return parameter.left.name;
+  }
+  if (isNodeOfType(parameter, "RestElement") && isNodeOfType(parameter.argument, "Identifier")) {
+    return parameter.argument.name;
+  }
+  return null;
+};
+
 const getTernaryInterpolationTest = (expression: EsTreeNode | undefined): TernaryTest | null => {
   if (!expression) return null;
   const stripped = stripParenExpression(expression);
@@ -40,9 +51,7 @@ const getTernaryInterpolationTest = (expression: EsTreeNode | undefined): Ternar
   ) {
     const firstParameter = stripped.params[0];
     const parameterName =
-      stripped.params.length === 1 && isNodeOfType(firstParameter, "Identifier")
-        ? firstParameter.name
-        : null;
+      stripped.params.length === 1 ? getCallbackParameterName(firstParameter) : null;
     const body = stripParenExpression(stripped.body);
     if (isNodeOfType(body, "ConditionalExpression")) {
       return { expression: body.test, parameterName };

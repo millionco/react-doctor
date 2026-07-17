@@ -50,6 +50,7 @@ const AUDITED_RULE_IDS = [
   "no-mutate-then-set-or-return-same-reference",
   "no-mutating-reducer-state",
   "no-nested-component-definition",
+  "no-object-keys-values-entries-on-maybe-undefined",
   "no-pass-data-to-parent",
   "no-prop-callback-in-render",
   "no-prop-types",

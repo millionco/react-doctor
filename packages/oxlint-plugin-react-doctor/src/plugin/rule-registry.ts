@@ -157,7 +157,10 @@ import { nextjsNoVercelOgImport } from "./rules/nextjs/nextjs-no-vercel-og-impor
 import { noAccessKey } from "./rules/a11y/no-access-key.js";
 import { noAdjustStateOnPropChange } from "./rules/state-and-effects/no-adjust-state-on-prop-change.js";
 import { noAriaHiddenOnFocusable } from "./rules/a11y/no-aria-hidden-on-focusable.js";
+import { noArithmeticOnOptionalChainedOperand } from "./rules/correctness/no-arithmetic-on-optional-chained-operand.js";
+import { noArrayFindResultMemberAccessWithoutGuard } from "./rules/correctness/no-array-find-result-member-access-without-guard.js";
 import { noArrayIndexAsKey } from "./rules/correctness/no-array-index-as-key.js";
+import { noArrayIndexDerefWithoutBoundsOrEmptyGuard } from "./rules/correctness/no-array-index-deref-without-bounds-or-empty-guard.js";
 import { noArrayIndexKey } from "./rules/react-builtins/no-array-index-key.js";
 import { noAsyncEffectCallback } from "./rules/state-and-effects/no-async-effect-callback.js";
 import { noAsyncEventHandlerWithoutReentryGuard } from "./rules/state-and-effects/no-async-event-handler-without-reentry-guard.js";
@@ -239,14 +242,18 @@ import { noMutateThenSetOrReturnSameReference } from "./rules/state-and-effects/
 import { noMutatingReducerState } from "./rules/state-and-effects/no-mutating-reducer-state.js";
 import { noNamespace } from "./rules/react-builtins/no-namespace.js";
 import { noNestedComponentDefinition } from "./rules/architecture/no-nested-component-definition.js";
+import { noNonNullAssertionOnMaybeUndefinedResult } from "./rules/correctness/no-non-null-assertion-on-maybe-undefined-result.js";
 import { noNoninteractiveElementInteractions } from "./rules/a11y/no-noninteractive-element-interactions.js";
 import { noNoninteractiveElementToInteractiveRole } from "./rules/a11y/no-noninteractive-element-to-interactive-role.js";
 import { noNoninteractiveTabindex } from "./rules/a11y/no-noninteractive-tabindex.js";
+import { noNullishCoalescingArithmeticPrecedence } from "./rules/correctness/no-nullish-coalescing-arithmetic-precedence.js";
+import { noObjectKeysValuesEntriesOnMaybeUndefined } from "./rules/correctness/no-object-keys-values-entries-on-maybe-undefined.js";
 import { noOutlineNone } from "./rules/design/no-outline-none.js";
 import { noPassDataToParent } from "./rules/state-and-effects/no-pass-data-to-parent.js";
 import { noPassLiveStateToParent } from "./rules/state-and-effects/no-pass-live-state-to-parent.js";
 import { noPermanentWillChange } from "./rules/performance/no-permanent-will-change.js";
 import { noPolymorphicChildren } from "./rules/correctness/no-polymorphic-children.js";
+import { noPredicateFunctionReferenceInBooleanPosition } from "./rules/correctness/no-predicate-function-reference-in-boolean-position.js";
 import { noPreventDefault } from "./rules/correctness/no-prevent-default.js";
 import { noPromiseThenSideEffectInEffectWithoutCatch } from "./rules/state-and-effects/no-promise-then-side-effect-in-effect-without-catch.js";
 import { noPropCallbackInEffect } from "./rules/state-and-effects/no-prop-callback-in-effect.js";
@@ -2213,12 +2220,45 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-arithmetic-on-optional-chained-operand",
+    id: "no-arithmetic-on-optional-chained-operand",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noArithmeticOnOptionalChainedOperand,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-array-find-result-member-access-without-guard",
+    id: "no-array-find-result-member-access-without-guard",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noArrayFindResultMemberAccessWithoutGuard,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/no-array-index-as-key",
     id: "no-array-index-as-key",
     source: "react-doctor",
     originallyExternal: false,
     rule: {
       ...noArrayIndexAsKey,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-array-index-deref-without-bounds-or-empty-guard",
+    id: "no-array-index-deref-without-bounds-or-empty-guard",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noArrayIndexDerefWithoutBoundsOrEmptyGuard,
       framework: "global",
       category: "Bugs",
     },
@@ -3209,6 +3249,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-non-null-assertion-on-maybe-undefined-result",
+    id: "no-non-null-assertion-on-maybe-undefined-result",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noNonNullAssertionOnMaybeUndefinedResult,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/no-noninteractive-element-interactions",
     id: "no-noninteractive-element-interactions",
     source: "react-doctor",
@@ -3249,6 +3300,28 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(noNoninteractiveTabindex.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-nullish-coalescing-arithmetic-precedence",
+    id: "no-nullish-coalescing-arithmetic-precedence",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noNullishCoalescingArithmeticPrecedence,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-object-keys-values-entries-on-maybe-undefined",
+    id: "no-object-keys-values-entries-on-maybe-undefined",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noObjectKeysValuesEntriesOnMaybeUndefined,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {
@@ -3307,6 +3380,17 @@ export const reactDoctorRules = [
       ...noPolymorphicChildren,
       framework: "global",
       category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-predicate-function-reference-in-boolean-position",
+    id: "no-predicate-function-reference-in-boolean-position",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPredicateFunctionReferenceInBooleanPosition,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

@@ -543,8 +543,17 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-aria-hidden-on-focusable": {
     code: 'export const A = () => <button aria-hidden={true} type="button">x</button>;',
   },
+  "no-arithmetic-on-optional-chained-operand": {
+    code: "if (config?.limit * factor < threshold) {}",
+  },
+  "no-array-find-result-member-access-without-guard": {
+    code: "const first = values.find(Boolean).id;",
+  },
   "no-array-index-as-key": {
     code: 'const STEPS = [\n  { title: "Install", body: "npm i" },\n  { title: "Run", body: "npm start" },\n];\nconst Steps = () => (\n  <ol>\n    {STEPS.map((step, index) => (\n      <StepCard key={index} title={step.title} body={step.body} />\n    ))}\n  </ol>\n);\n',
+  },
+  "no-array-index-deref-without-bounds-or-empty-guard": {
+    code: "const version = /v(\\d+)/.exec(input)[1].trim();",
   },
   "no-array-index-key": {
     code: "const rows = things.map((thing, index) => React.cloneElement(thing, { key: index }));",
@@ -808,6 +817,15 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-noninteractive-tabindex": {
     code: "<div tabIndex={0} ref={measureRef}>static text</div>",
   },
+  "no-non-null-assertion-on-maybe-undefined-result": {
+    code: "const first = input.match(/(\\d+)/)![1];",
+  },
+  "no-nullish-coalescing-arithmetic-precedence": {
+    code: "const r = x ?? 0 / y;",
+  },
+  "no-object-keys-values-entries-on-maybe-undefined": {
+    code: "const list = Object.keys(response?.data);",
+  },
   "no-outline-none": {
     code: 'const T = () => <button style={{ outline: "none" }}>Save</button>;',
   },
@@ -822,6 +840,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-polymorphic-children": {
     code: 'const Button = ({ children }) =>\n        typeof children === "string" ? <span>{children}</span> : <div>{children}</div>;',
+  },
+  "no-predicate-function-reference-in-boolean-position": {
+    code: "function isReady() { return true; }\nisReady && start();",
   },
   "no-prevent-default": {
     code: "interface LinkProps {\n  href?: string;\n}\n\nexport const Link = (props: LinkProps) => (\n  <a {...props} onClick={(event) => event.preventDefault()}>\n    Open\n  </a>\n);\n",

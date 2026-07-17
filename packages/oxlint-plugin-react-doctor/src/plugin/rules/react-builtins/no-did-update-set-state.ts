@@ -255,8 +255,15 @@ const isHistoricalToCurrentTransitionGuard = (
   test: EsTreeNode,
   previousSourcePaths: ReadonlyMap<string, StateSourcePath>,
 ): boolean => {
+  const expression = stripParenExpression(test);
+  if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "||") {
+    return (
+      isHistoricalToCurrentTransitionGuard(expression.left as EsTreeNode, previousSourcePaths) &&
+      isHistoricalToCurrentTransitionGuard(expression.right as EsTreeNode, previousSourcePaths)
+    );
+  }
   const comparisons: StateSourceComparison[] = [];
-  collectConjunctiveStateSourceComparisons(test, previousSourcePaths, comparisons);
+  collectConjunctiveStateSourceComparisons(expression, previousSourcePaths, comparisons);
   return comparisons.some((comparison, index) =>
     comparisons
       .slice(index + 1)
@@ -546,6 +553,7 @@ const isConvergentPostMountGuard = (
   setStateCall: EsTreeNode,
   localInitializers: ReadonlyMap<string, EsTreeNode>,
   callbackRefFieldNames: ReadonlySet<string>,
+  isTruthfulBranch: boolean,
 ): boolean => {
   const expression = stripParenExpression(test);
   if (isNodeOfType(expression, "LogicalExpression")) {
@@ -555,20 +563,28 @@ const isConvergentPostMountGuard = (
       setStateCall,
       localInitializers,
       callbackRefFieldNames,
+      isTruthfulBranch,
     );
     const rightIsConvergent = isConvergentPostMountGuard(
       expression.right as EsTreeNode,
       setStateCall,
       localInitializers,
       callbackRefFieldNames,
+      isTruthfulBranch,
     );
-    return expression.operator === "||"
+    const requiresEveryBranch =
+      (isTruthfulBranch && expression.operator === "||") ||
+      (!isTruthfulBranch && expression.operator === "&&");
+    return requiresEveryBranch
       ? leftIsConvergent && rightIsConvergent
       : leftIsConvergent || rightIsConvergent;
   }
   if (
     !isNodeOfType(expression, "BinaryExpression") ||
-    !DIFFERENCE_OPERATORS.has(expression.operator)
+    !(isTruthfulBranch
+      ? DIFFERENCE_OPERATORS.has(expression.operator)
+      : EQUALITY_OPERATORS.has(expression.operator) &&
+        !DIFFERENCE_OPERATORS.has(expression.operator))
   ) {
     return false;
   }
@@ -721,14 +737,15 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boo
       guardTest &&
       (isDiffGuardTest(guardTest, paramNames, derivedNames, isTruthfulBranch) ||
         (isTruthfulBranch &&
-          (isHistoricalToCurrentTransitionGuard(guardTest, previousSourcePaths) ||
-            isConvergentPostMountGuard(
-              guardTest,
-              setStateCall,
-              localInitializers,
-              callbackRefFieldNames,
-            ) ||
-            isConvergentUndefinedClearGuard(guardTest, setStateCall))))
+          isHistoricalToCurrentTransitionGuard(guardTest, previousSourcePaths)) ||
+        isConvergentPostMountGuard(
+          guardTest,
+          setStateCall,
+          localInitializers,
+          callbackRefFieldNames,
+          isTruthfulBranch,
+        ) ||
+        (isTruthfulBranch && isConvergentUndefinedClearGuard(guardTest, setStateCall)))
     ) {
       return true;
     }

@@ -155,6 +155,27 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when every logical-OR branch is a historical transition", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Dropdown extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (
+            (this.props.value === undefined && prevProps.value !== undefined) ||
+            (this.props.mode === "closed" && prevProps.mode !== "closed")
+          ) {
+            this.setState({ selectedValue: undefined });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags destructured previous props from a different path", () => {
     const result = runRule(
       noDidUpdateSetState,
@@ -682,6 +703,54 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent in the else branch of a callback-ref equality guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.monthContainer === this.monthContainer) {
+            this.measureContainer();
+          } else {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => (this.monthContainer = node)} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags the else branch of a callback-ref difference guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.measureContainer();
+          } else {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => (this.monthContainer = node)} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it.each([

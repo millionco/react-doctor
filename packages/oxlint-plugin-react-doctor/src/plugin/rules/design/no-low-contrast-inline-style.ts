@@ -116,7 +116,8 @@ export const noLowContrastInlineStyle = defineRule({
         if (key === "color") {
           if (stringValue !== null) foreground = resolveOpaqueColor(stringValue);
         } else if (key === "backgroundColor") {
-          backgroundColorRaw = stringValue;
+          if (stringValue === null) backgroundIsUnknown = true;
+          else backgroundColorRaw = stringValue;
         } else if (key === "background") {
           // A non-string `background` (a CSS var, a gradient bound to an
           // expression, etc.) can't be judged — treat the surface as unknown.

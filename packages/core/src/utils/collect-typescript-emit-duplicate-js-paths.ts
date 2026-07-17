@@ -21,7 +21,8 @@ const lastSourceMappingUrl = (fileContent: string): string | null => {
 const mapTargetsSource = (mapContent: string, input: MapTargetInput): boolean => {
   const parsedMap: unknown = JSON.parse(mapContent);
   if (typeof parsedMap !== "object" || parsedMap === null) return false;
-  const { file, sources } = parsedMap as { file?: unknown; sources?: unknown };
+  if (!("file" in parsedMap) || !("sources" in parsedMap)) return false;
+  const { file, sources } = parsedMap;
   if (file !== input.expectedFile) return false;
   if (!Array.isArray(sources) || sources.length !== 1 || typeof sources[0] !== "string") {
     return false;

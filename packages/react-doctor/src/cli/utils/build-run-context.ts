@@ -1,4 +1,4 @@
-import { resolveLintBatchOrdering } from "@react-doctor/core";
+import { resolveLintBatchOrdering, scrubSensitivePaths } from "@react-doctor/core";
 import { detectTerminalKind } from "./detect-terminal-kind.js";
 import {
   detectCiEventName,
@@ -13,7 +13,6 @@ import { isGitHookEnvironment } from "./is-git-hook-environment.js";
 import { isNonInteractiveEnvironment } from "./is-non-interactive-environment.js";
 import { isJsonModeActive } from "./json-mode.js";
 import { getRunId } from "./run-id.js";
-import { scrubSensitivePaths } from "./scrub-sensitive-text.js";
 import { VERSION } from "./version.js";
 
 export interface RunContext {

@@ -20,6 +20,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // they ARE the ref-based pattern this rule recommends.
 const REACT_STABLE_HANDLER_HOOK_NAMES = new Set(["useCallback", "useEffectEvent"]);
 const CUSTOM_STABLE_HANDLER_HOOK_NAMES = new Set([
+  "useEffectEvent",
   "useEvent",
   "useEventCallback",
   "useMemoizedFn",

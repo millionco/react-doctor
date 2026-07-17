@@ -17,7 +17,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 const ESCAPE_ASSIGNMENT_TARGET_PROPERTIES = new Set(["href", "src", "current"]);
 
 const MESSAGE =
-  "`URL.createObjectURL(...)` pins the underlying Blob/File in memory, but this result is not reliably revoked after creation. Store the URL and pass it to `URL.revokeObjectURL(...)` on every relevant path once you're done (in an effect cleanup, after the download, or on unmount) so the Blob can be freed.";
+  "`URL.createObjectURL(...)` pins the underlying Blob/File in memory, and this produced URL is not provably revoked. Store the URL and pass that same value to `URL.revokeObjectURL` once you're done so the Blob can be freed.";
 
 const isUrlMethodCall = (
   node: EsTreeNodeOfType<"CallExpression">,

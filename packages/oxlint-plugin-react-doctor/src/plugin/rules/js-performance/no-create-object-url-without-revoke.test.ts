@@ -105,7 +105,8 @@ describe("no-create-object-url-without-revoke", () => {
     );
     expect(result.diagnostics).toHaveLength(2);
     for (const diagnostic of result.diagnostics) {
-      expect(diagnostic.message).toContain("not reliably revoked after creation");
+      expect(diagnostic.message).toContain("this produced URL is not provably revoked");
+      expect(diagnostic.message).toContain("pass that same value to `URL.revokeObjectURL`");
       expect(diagnostic.message).not.toContain("never calls");
     }
   });

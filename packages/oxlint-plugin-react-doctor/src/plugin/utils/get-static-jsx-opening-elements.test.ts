@@ -24,7 +24,10 @@ describe("getStaticJsxOpeningElements", () => {
         },
       }),
     });
-    runRule(rule, `const Page = () => <main><section><h2>Title</h2></section><Widget /></main>;`);
+    runRule(
+      rule,
+      `const Page = () => <main><><section><h2>Title</h2></section></><Widget /></main>;`,
+    );
     expect(names).toEqual(["main", "section", "h2", "Widget"]);
   });
 });

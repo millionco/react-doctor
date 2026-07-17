@@ -3,9 +3,9 @@ import {
   SHORT_DECORATIVE_LABEL_MAX_CHARACTERS,
 } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getNextStaticJsxElementSibling } from "../../utils/get-next-static-jsx-element-sibling.js";
 import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
+import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -18,7 +18,7 @@ const isShortTrackedUppercaseLabel = (node: EsTreeNodeOfType<"JSXElement">): boo
   if (!text || text.length > SHORT_DECORATIVE_LABEL_MAX_CHARACTERS) return false;
   const classNameValue = getStringFromClassNameAttr(node.openingElement);
   if (!classNameValue) return false;
-  const tokens = getClassNameTokens(classNameValue);
+  const tokens = getUnvariantClassNameTokens(classNameValue);
   return tokens.includes("uppercase") && tokens.some((token) => token.startsWith("tracking-"));
 };
 

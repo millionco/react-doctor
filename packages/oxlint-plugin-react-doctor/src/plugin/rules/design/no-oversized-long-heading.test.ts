@@ -36,4 +36,12 @@ describe("no-oversized-long-heading", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not treat responsive display sizes as always active", () => {
+    const result = runRule(
+      noOversizedLongHeading,
+      `const Hero = () => <h1 className="md:text-8xl">${LONG_HEADING}</h1>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

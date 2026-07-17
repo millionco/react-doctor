@@ -34,4 +34,12 @@ describe("no-clipped-overlay", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not treat variant-only overflow as base clipping", () => {
+    const result = runRule(
+      noClippedOverlay,
+      `const Example = () => <div className="md:overflow-hidden"><div role="menu" className="absolute">Menu</div></div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

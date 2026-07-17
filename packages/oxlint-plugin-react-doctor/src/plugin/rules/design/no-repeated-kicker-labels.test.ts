@@ -34,4 +34,16 @@ describe("no-repeated-kicker-labels", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not count variant-only kicker treatments", () => {
+    const result = runRule(
+      noRepeatedKickerLabels,
+      `const Page = () => <main>
+        <section><p className="md:uppercase tracking-widest">Approach</p><h2>How it works</h2></section>
+        <section><p className="uppercase md:tracking-widest">Benefits</p><h2>Why it helps</h2></section>
+        <section><p className="dark:uppercase tracking-widest">Results</p><h2>What changed</h2></section>
+      </main>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

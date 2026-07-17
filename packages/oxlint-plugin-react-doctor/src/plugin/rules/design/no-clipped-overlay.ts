@@ -1,6 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
+import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -18,7 +18,8 @@ const hasClassNameToken = (
 ): boolean => {
   const classNameValue = getStringFromClassNameAttr(node);
   return Boolean(
-    classNameValue && getClassNameTokens(classNameValue).some((token) => targetTokens.has(token)),
+    classNameValue &&
+    getUnvariantClassNameTokens(classNameValue).some((token) => targetTokens.has(token)),
   );
 };
 

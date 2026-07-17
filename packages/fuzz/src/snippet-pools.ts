@@ -248,6 +248,7 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `export const createFuzzTeam = async (ownerId: string) => { await supabase.from("teams").insert({ ownerId, role: "admin" }); };`,
   `import { ImageResponse as FuzzImageResponse } from "next/og"; export const FuzzPostcardLayout = ({ url }) => <img src={url} alt="" />; export const FuzzPostcardRoute = () => new FuzzImageResponse(FuzzPostcardLayout({ url }));`,
   `import { render as fuzzRender } from "@testing-library/react"; it("mounts a one-shot ref harness", () => { const FuzzOneShotRefTarget = () => { const targetRef = React.createRef(); return <FuzzFocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FuzzFocusTrap>; }; fuzzRender(<FuzzOneShotRefTarget />); });`,
   `import { render as fuzzRenderWithTypeWrapper } from "@testing-library/react"; it("mounts a type-wrapped one-shot ref harness", () => { const FuzzTypeWrappedOneShotRefTarget = () => { const targetRef = React.createRef(); return <FuzzFocusTrap targetRef={targetRef}><button ref={targetRef}>Target</button></FuzzFocusTrap>; }; fuzzRenderWithTypeWrapper((<FuzzTypeWrappedOneShotRefTarget />) as React.ReactElement); });`,
@@ -301,6 +302,12 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `const useFuzzDocumentEventOptions = ({ callback }) => { useEffect(callback, [callback]); };`,
   `const FuzzPolyfillScript = () => <script src="https://polyfill.io/v3/polyfill.min.js" />;`,
   `import FuzzRawMarkdown from "react-markdown"; import fuzzRawPlugin from "rehype-raw"; export const FuzzRawMarkdownPreview = ({ value }) => <FuzzRawMarkdown rehypePlugins={[fuzzRawPlugin]}>{String(value)}</FuzzRawMarkdown>;`,
+  `import fuzzKatex from "katex"; const renderFuzzMathToHtml = (value) => { try { return fuzzKatex.renderToString(value, { throwOnError: false }); } catch { return value; } }; export const FuzzMathPreview = ({ value }) => <span dangerouslySetInnerHTML={{ __html: renderFuzzMathToHtml(value) }} />;`,
+  `import fuzzKatexDescriptor from "katex"; const fuzzKatexOptions = { trust: true }; Reflect.defineProperty(fuzzKatexOptions, "trust", { value: false }); export const FuzzSafeMathPreview = ({ value }) => <span dangerouslySetInnerHTML={{ __html: fuzzKatexDescriptor.renderToString(value, fuzzKatexOptions) }} />;`,
+  `import fuzzKatexDescriptorMap from "katex"; Object.defineProperties(fuzzKatexDescriptorMap, { version: { value: "1" } }); export const FuzzDescriptorMapMathPreview = ({ value }) => <span dangerouslySetInnerHTML={{ __html: fuzzKatexDescriptorMap.renderToString(value) }} />;`,
+  `import fuzzKatexSanitizer from "katex"; import fuzzPurifier from "dompurify"; Object.assign(fuzzPurifier, { sanitize: (value) => value }); const renderFuzzSanitizedMath = (value) => { try { return fuzzKatexSanitizer.renderToString(value); } catch { return fuzzPurifier.sanitize(value); } }; export const FuzzMutatedSanitizerMathPreview = ({ value }) => <span dangerouslySetInnerHTML={{ __html: renderFuzzSanitizedMath(value) }} />;`,
+  `import fuzzKatexPurified from "katex"; import fuzzPurifierNamespace from "dompurify"; fuzzPurifierNamespace.renderToString = (value) => value; const renderFuzzPurifiedMath = (value) => { try { return fuzzKatexPurified.renderToString(value); } catch { return fuzzPurifierNamespace.sanitize(value); } }; export const FuzzPurifiedMathPreview = ({ value }) => <span dangerouslySetInnerHTML={{ __html: renderFuzzPurifiedMath(value) }} />;`,
+  `import fuzzKatexSibling from "katex"; import fuzzSiblingPurifier from "dompurify"; const replaceFuzzSanitizer = () => { fuzzSiblingPurifier.sanitize = (value) => value; }; const renderFuzzSiblingMath = (value) => { try { return fuzzKatexSibling.renderToString(value); } catch { return fuzzSiblingPurifier.sanitize(value); } }; export const FuzzSiblingMutationMathPreview = ({ value }) => { replaceFuzzSanitizer(); return <span dangerouslySetInnerHTML={{ __html: renderFuzzSiblingMath(value) }} />; };`,
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
@@ -315,6 +322,10 @@ import * as NextServer from "next/server";
 const reportFuzzEvent = () => analytics.track("saved");
 export const saveFuzzRecord = async () => {
   NextServer["after"](reportFuzzEvent);
+};`,
+  `"use server"
+export const createFuzzTeam = async (ownerId: string) => {
+  await supabase.from("teams").insert({ ownerId, role: "admin" });
 };`,
   `export default async function Page() {
   const response = await fetch("https://api.example.com/feed");

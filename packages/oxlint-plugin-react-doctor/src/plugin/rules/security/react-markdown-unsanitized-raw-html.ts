@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
@@ -25,16 +26,8 @@ const REACT_MARKDOWN_NAMED_EXPORTS = new Set(["MarkdownAsync", "MarkdownHooks"])
 const REACT_MARKDOWN_NAMESPACE_EXPORTS = new Set(["default", ...REACT_MARKDOWN_NAMED_EXPORTS]);
 const DEFAULT_EXPORT_NAMES = new Set(["default"]);
 
-const getImportDeclaration = (
-  symbol: SymbolDescriptor,
-): EsTreeNodeOfType<"ImportDeclaration"> | null => {
-  if (symbol.kind !== "import") return null;
-  const importDeclaration = symbol.declarationNode.parent;
-  return isNodeOfType(importDeclaration, "ImportDeclaration") ? importDeclaration : null;
-};
-
 const isImportFromModule = (symbol: SymbolDescriptor, moduleName: string): boolean =>
-  getImportDeclaration(symbol)?.source.value === moduleName;
+  getImportDeclarationForSymbol(symbol)?.source.value === moduleName;
 
 const isDefaultImportSymbol = (symbol: SymbolDescriptor, moduleName: string): boolean => {
   if (!isImportFromModule(symbol, moduleName)) return false;
@@ -174,7 +167,7 @@ const getAttributeExpression = (attribute: EsTreeNodeOfType<"JSXAttribute">): Es
 const isDomPurifyNamespace = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const symbol = resolveImportedIdentifier(node, scopes);
   if (!symbol) return false;
-  const importDeclaration = getImportDeclaration(symbol);
+  const importDeclaration = getImportDeclarationForSymbol(symbol);
   if (!importDeclaration || !DOMPURIFY_MODULES.has(String(importDeclaration.source.value))) {
     return false;
   }

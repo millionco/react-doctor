@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
 import { escapeRegExp } from "./utils/escape-reg-exp.js";
 import { findMatchingBracket } from "./utils/find-matching-bracket.js";
+import { collectKatexSinkProofRanges } from "./utils/get-katex-sink-proof-ranges.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 
 // HTML-injection sinks: React's `dangerouslySetInnerHTML`, the DOM
@@ -759,6 +760,7 @@ export const dangerousHtmlSink = defineRule({
     if (SANITIZER_WRAPPER_PATH_PATTERN.test(file.relativePath)) return [];
     if (!DANGEROUS_HTML_PATTERN.test(file.content)) return [];
 
+    const katexSinkProofRanges = collectKatexSinkProofRanges(file.content, file.absolutePath);
     const findings: ScanFinding[] = [];
     const lines = file.content.split("\n");
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
@@ -787,6 +789,11 @@ export const dangerousHtmlSink = defineRule({
         lines.slice(0, lineIndex).join("\n").length +
         (lineIndex > 0 ? 1 : 0) +
         line.search(DANGEROUS_HTML_PATTERN);
+      const katexSinkProof = katexSinkProofRanges.find(
+        (range) => sinkIndex >= range.startIndex && sinkIndex < range.endIndex,
+      )?.proof;
+      if (katexSinkProof?.isConclusive && katexSinkProof.isSafe) continue;
+      const hasUnsafeKatexProof = katexSinkProof?.isConclusive === true;
 
       if (STRING_LITERAL_VALUE_PATTERN.test(valueExpression)) continue;
       if (MODULE_CONSTANT_VALUE_PATTERN.test(valueExpression)) continue;
@@ -841,19 +848,35 @@ export const dangerousHtmlSink = defineRule({
         splitTopLevelByPlus(judgedExpression).length > 1 ||
         (templateInterpolations?.match(/\$\{/g)?.length ?? 0) > 1;
 
-      if (!doesJudgedExpressionCombineValues && SANITIZER_PATTERN.test(judgedExpression)) continue;
+      if (
+        !hasUnsafeKatexProof &&
+        !doesJudgedExpressionCombineValues &&
+        SANITIZER_PATTERN.test(judgedExpression)
+      ) {
+        continue;
+      }
       if (!doesJudgedExpressionCombineValues && ENV_CONFIG_VALUE_PATTERN.test(judgedExpression)) {
         continue;
       }
       if (!doesJudgedExpressionCombineValues && I18N_VALUE_PATTERN.test(judgedExpression)) continue;
-      if (!isHtmlTainted(judgedExpression, file.content, sinkIndex, new Set(), new Set())) continue;
-      if (ESCAPING_SERIALIZER_CALL_PATTERN.test(valueExpression)) continue;
+      if (
+        !hasUnsafeKatexProof &&
+        !isHtmlTainted(judgedExpression, file.content, sinkIndex, new Set(), new Set())
+      ) {
+        continue;
+      }
+      if (!hasUnsafeKatexProof && ESCAPING_SERIALIZER_CALL_PATTERN.test(valueExpression)) continue;
       // Highlighter output: a `highlighted*` value is escaped, token-wrapped
       // markup by naming convention (often passed as a prop or routed through
       // React state, so no direct serializer assignment is visible); a present-
       // tense `highlight*` value is trusted only when the file uses a highlighter
       // library. (`highlight*()` calls are handled by the serializer-call check.)
-      if (isTrustedHighlighterValue(valueExpression, file.content, sinkIndex)) continue;
+      if (
+        !hasUnsafeKatexProof &&
+        isTrustedHighlighterValue(valueExpression, file.content, sinkIndex)
+      ) {
+        continue;
+      }
       // Value is a bare identifier, member/index access, or identifier with a
       // literal fallback: exempt only when that identifier is assigned from a
       // serializer or a sanitizer in the file. `[:=]` accepts property-style
@@ -876,11 +899,12 @@ export const dangerousHtmlSink = defineRule({
             "i",
           );
           if (
-            visibleInitializer === undefined
+            !hasUnsafeKatexProof &&
+            (visibleInitializer === undefined
               ? fromSerializer.test(file.content)
               : visibleDeclaration !== null &&
                 isDeclarationStable(valueIdentifier, visibleDeclaration, sinkIndex, file.content) &&
-                SERIALIZER_CALL_PROVENANCE_PATTERN.test(visibleInitializer)
+                SERIALIZER_CALL_PROVENANCE_PATTERN.test(visibleInitializer))
           ) {
             continue;
           }
@@ -889,11 +913,12 @@ export const dangerousHtmlSink = defineRule({
             "i",
           );
           if (
-            visibleInitializer === undefined
+            !hasUnsafeKatexProof &&
+            (visibleInitializer === undefined
               ? fromSanitizer.test(file.content)
               : visibleDeclaration !== null &&
                 isDeclarationStable(valueIdentifier, visibleDeclaration, sinkIndex, file.content) &&
-                SANITIZED_ASSIGNMENT_PATTERN.test(`=${visibleInitializer}`)
+                SANITIZED_ASSIGNMENT_PATTERN.test(`=${visibleInitializer}`))
           ) {
             continue;
           }

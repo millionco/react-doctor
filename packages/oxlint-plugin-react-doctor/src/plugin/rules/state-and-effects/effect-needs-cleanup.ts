@@ -1266,19 +1266,18 @@ const doesTestRequireLiveExpressionKey = (
   );
 };
 
-const findDirectHandleGuardForRelease = (
+const findLiveExpressionGuardForRelease = (
   releaseCall: EsTreeNode,
   owner: EsTreeNode,
-  usage: SubscribeLikeUsage,
+  expressionKey: string,
   context: RuleContext,
 ): EsTreeNodeOfType<"IfStatement"> | null => {
-  if (usage.handleKey === null) return null;
   let ancestor = releaseCall.parent;
   while (ancestor && ancestor !== owner) {
     if (isNodeOfType(ancestor, "IfStatement")) {
       if (
         ancestor.alternate !== null ||
-        !doesTestRequireLiveExpressionKey(ancestor.test, usage.handleKey, context) ||
+        !doesTestRequireLiveExpressionKey(ancestor.test, expressionKey, context) ||
         !doMatchingNodesCoverEveryPathAfterUsage(ancestor.consequent, [releaseCall], context)
       ) {
         return null;
@@ -1289,6 +1288,16 @@ const findDirectHandleGuardForRelease = (
   }
   return null;
 };
+
+const findDirectHandleGuardForRelease = (
+  releaseCall: EsTreeNode,
+  owner: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): EsTreeNodeOfType<"IfStatement"> | null =>
+  usage.handleKey === null
+    ? null
+    : findLiveExpressionGuardForRelease(releaseCall, owner, usage.handleKey, context);
 
 const hasRerunReleaseBeforeUsage = (
   callback: EsTreeNode,
@@ -2422,29 +2431,6 @@ const isFunctionUsedAsReactRef = (functionNode: EsTreeNode, context: RuleContext
   });
 };
 
-const findRefPresenceGuardForRelease = (
-  releaseCall: EsTreeNode,
-  owner: EsTreeNode,
-  refCurrentKey: string,
-  context: RuleContext,
-): EsTreeNodeOfType<"IfStatement"> | null => {
-  let ancestor = releaseCall.parent;
-  while (ancestor && ancestor !== owner) {
-    if (isNodeOfType(ancestor, "IfStatement")) {
-      if (
-        ancestor.alternate !== null ||
-        !doesTestRequireLiveExpressionKey(ancestor.test, refCurrentKey, context) ||
-        !doMatchingNodesCoverEveryPathAfterUsage(ancestor.consequent, [releaseCall], context)
-      ) {
-        return null;
-      }
-      return ancestor;
-    }
-    ancestor = ancestor.parent;
-  }
-  return null;
-};
-
 const isReactRefListenerReplacementRelease = (
   releaseCall: EsTreeNodeOfType<"CallExpression">,
   usage: SubscribeLikeUsage,
@@ -2528,7 +2514,7 @@ const isReactRefListenerReplacementRelease = (
     }
   });
   const releaseAnchor =
-    findRefPresenceGuardForRelease(releaseCall, usageFunction, releaseReceiverKey, context) ??
+    findLiveExpressionGuardForRelease(releaseCall, usageFunction, releaseReceiverKey, context) ??
     releaseCall;
   const safeOwnershipAssignments = matchingOwnershipAssignments.filter((assignment) =>
     doMatchingNodesCoverEveryPathBeforeUsage(assignment, [releaseAnchor], usageFunction, context),

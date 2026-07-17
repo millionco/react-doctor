@@ -13,6 +13,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
 
 const OBSERVER_RELEASE_METHOD_NAMES = new Set(["disconnect", "unobserve"]);
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "self"]);
@@ -48,16 +49,6 @@ interface TrackedObserver {
   didEscape: boolean;
   observedTargetKeys: Set<string>;
 }
-
-const serializeReferenceKey = (node: EsTreeNode): string | null => {
-  const unwrappedNode = stripParenExpression(node);
-  if (isNodeOfType(unwrappedNode, "Identifier")) return unwrappedNode.name;
-  if (isNodeOfType(unwrappedNode, "ThisExpression")) return "this";
-  if (!isNodeOfType(unwrappedNode, "MemberExpression")) return null;
-  const objectKey = serializeReferenceKey(unwrappedNode.object);
-  const propertyName = getStaticPropertyName(unwrappedNode);
-  return objectKey && propertyName ? `${objectKey}.${propertyName}` : null;
-};
 
 const recordObserverUsage = (
   identifier: EsTreeNodeOfType<"Identifier">,

@@ -12,6 +12,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
 
 const MESSAGE =
   "This class registers a listener or timer on mount but declares no `componentWillUnmount`, so the subscription/timer keeps firing after the component unmounts; release it in `componentWillUnmount`.";
@@ -268,26 +269,21 @@ const collectMountLocalReceiverNames = (mountBody: EsTreeNode): Set<string> => {
 // `addEventListener` immediately paired with `removeEventListener` for the
 // same event in the same mount body (passive-support detection) leaves
 // nothing registered.
-const serializeReferenceKey = (node: EsTreeNode): string | null => {
+const serializeListenerIdentityPart = (node: EsTreeNode): string | null => {
   const expression = stripParenExpression(node);
-  if (isNodeOfType(expression, "Identifier")) return expression.name;
-  if (isNodeOfType(expression, "ThisExpression")) return "this";
   if (isNodeOfType(expression, "Literal")) return JSON.stringify(expression.value);
-  if (!isNodeOfType(expression, "MemberExpression")) return null;
-  const receiverKey = serializeReferenceKey(expression.object);
-  const propertyName = getStaticPropertyName(expression);
-  return receiverKey && propertyName ? `${receiverKey}.${propertyName}` : null;
+  return serializeReferenceKey(expression);
 };
 
 const listenerIdentityKey = (call: EsTreeNodeOfType<"CallExpression">): string | null => {
   const callee = stripParenExpression(call.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return null;
-  const receiverKey = serializeReferenceKey(callee.object);
+  const receiverKey = serializeListenerIdentityPart(callee.object);
   const eventKey = call.arguments?.[0]
-    ? serializeReferenceKey(call.arguments[0] as EsTreeNode)
+    ? serializeListenerIdentityPart(call.arguments[0] as EsTreeNode)
     : null;
   const handlerKey = call.arguments?.[1]
-    ? serializeReferenceKey(call.arguments[1] as EsTreeNode)
+    ? serializeListenerIdentityPart(call.arguments[1] as EsTreeNode)
     : null;
   if (!receiverKey || !eventKey || !handlerKey) return null;
   const options = call.arguments?.[2] as EsTreeNode | undefined;

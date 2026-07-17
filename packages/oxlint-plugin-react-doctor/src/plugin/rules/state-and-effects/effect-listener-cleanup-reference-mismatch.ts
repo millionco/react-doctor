@@ -11,6 +11,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
 
 interface ListenerMethodPairing {
   registerMethod: string;
@@ -98,19 +99,6 @@ const isFunctionLiteral = (node: EsTreeNode | null | undefined): boolean =>
 // Purely syntactic reference key (node text equality, not aliasing
 // analysis) so `window`/`window`, `el`/`el`, `this.emitter`/`this.emitter`
 // match, and `a`/`b` do not. Returns null for shapes we can't compare.
-const serializeReferenceKey = (node: EsTreeNode): string | null => {
-  const unwrappedNode = stripParenExpression(node);
-  if (isNodeOfType(unwrappedNode, "Identifier")) return unwrappedNode.name;
-  if (isNodeOfType(unwrappedNode, "ThisExpression")) return "this";
-  if (isNodeOfType(unwrappedNode, "MemberExpression")) {
-    const object = serializeReferenceKey(unwrappedNode.object);
-    const propertyName = getStaticPropertyName(unwrappedNode);
-    if (object === null || !propertyName) return null;
-    return `${object}.${propertyName}`;
-  }
-  return null;
-};
-
 interface ListenerUsage {
   method: string;
   receiverKey: string;

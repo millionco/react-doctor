@@ -34,6 +34,38 @@ describe("mobx-reaction-disposer-discarded", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags disposers discarded by logical and conditional statements", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import { autorun, reaction } from "mobx";
+      class Store {
+        start(enabled) {
+          enabled && autorun(() => this.sync());
+          enabled ? reaction(() => this.value, this.persist) : this.skip();
+        }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags a disposer in a non-final sequence position", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import { autorun } from "mobx";
+      class Store {
+        start() {
+          const marker = (autorun(() => this.sync()), 0);
+          return marker;
+        }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a reaction imported under an alias", () => {
     const result = runRule(
       mobxReactionDisposerDiscarded,

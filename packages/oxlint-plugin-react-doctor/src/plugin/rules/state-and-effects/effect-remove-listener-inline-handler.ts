@@ -9,6 +9,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
 
 // Removal verbs that deregister a listener by reference equality on the
 // handler argument. Excludes `addEventListener` on purpose — a fresh
@@ -45,16 +46,6 @@ const isFreshFunctionReference = (node: EsTreeNode): boolean => {
     isMemberProperty(handler.callee, "bind") &&
     !handler.callee.computed
   );
-};
-
-const serializeReferenceKey = (node: EsTreeNode): string | null => {
-  const expression = stripParenExpression(node);
-  if (isNodeOfType(expression, "Identifier")) return expression.name;
-  if (isNodeOfType(expression, "ThisExpression")) return "this";
-  if (!isNodeOfType(expression, "MemberExpression")) return null;
-  const receiverKey = serializeReferenceKey(expression.object);
-  const propertyName = getStaticPropertyName(expression);
-  return receiverKey && propertyName ? `${receiverKey}.${propertyName}` : null;
 };
 
 const serializeEventKey = (node: EsTreeNode | undefined): string | null => {

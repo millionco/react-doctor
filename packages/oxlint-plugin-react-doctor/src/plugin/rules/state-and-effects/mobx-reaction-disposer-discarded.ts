@@ -6,6 +6,7 @@ import {
 } from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -162,29 +163,6 @@ const mayCarryAbortSignal = (optionsArgument: unknown): boolean => {
   });
 };
 
-const isDiscardedExpression = (call: EsTreeNode): boolean => {
-  let expression: EsTreeNode = call;
-  let parent = expression.parent;
-  while (parent) {
-    if (isNodeOfType(parent, "ExpressionStatement")) return true;
-    if (
-      isNodeOfType(parent, "ChainExpression") ||
-      isNodeOfType(parent, "TSAsExpression") ||
-      isNodeOfType(parent, "TSSatisfiesExpression") ||
-      isNodeOfType(parent, "TSTypeAssertion") ||
-      isNodeOfType(parent, "TSNonNullExpression") ||
-      isNodeOfType(parent, "SequenceExpression") ||
-      (isNodeOfType(parent, "UnaryExpression") && parent.operator === "void")
-    ) {
-      expression = parent;
-      parent = expression.parent;
-      continue;
-    }
-    return false;
-  }
-  return false;
-};
-
 export const mobxReactionDisposerDiscarded = defineRule({
   id: "mobx-reaction-disposer-discarded",
   title: "MobX reaction disposer discarded",
@@ -201,7 +179,7 @@ export const mobxReactionDisposerDiscarded = defineRule({
       // The disposer is discarded only when the call is a standalone statement.
       // `const d = reaction(...)`, `this.x = reaction(...)`, and
       // `disposeOnUnmount(this, reaction(...))` all have non-statement parents.
-      if (!isDiscardedExpression(node)) return;
+      if (!isResultDiscardedCall(node)) return;
 
       if (isEvaluatedAtModuleScope(node)) return;
       if (isProcessLifetimeWiring(node)) return;

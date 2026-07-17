@@ -44,6 +44,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-full-lodash-import",
   "no-hydration-branch-on-browser-global",
   "no-indeterminate-attribute",
+  "no-loading-flag-reset-outside-finally",
   "no-locale-format-in-render",
   "no-match-media-in-state-initializer",
   "no-create-ref-in-function-component",

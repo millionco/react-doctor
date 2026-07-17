@@ -154,6 +154,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-hydration-branch-on-browser-global",
       "no-indeterminate-attribute",
       "no-initialize-state",
+      "no-loading-flag-reset-outside-finally",
       "no-locale-format-in-render",
       "no-match-media-in-state-initializer",
       "no-mutating-reducer-state",

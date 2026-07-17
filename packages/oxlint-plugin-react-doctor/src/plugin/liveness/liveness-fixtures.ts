@@ -552,6 +552,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-async-effect-callback": {
     code: "\n      const Profile = ({ id }) => {\n        useEffect(async () => {\n          const user = await load(id);\n          setUser(user);\n        }, [id]);\n        return null;\n      };\n      ",
   },
+  "no-async-event-handler-without-reentry-guard": {
+    code: 'import { useState } from "react"; const Form = () => { const [, setDone] = useState(false); return <form onSubmit={async () => { await fetch("/api/reset", { method: "PATCH" }); setDone(true); }} />; };',
+  },
   "no-autofocus": {
     code: "export const SearchPage = () => (\n        <main>\n          <input autoFocus />\n        </main>\n      );",
   },
@@ -756,6 +759,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-locale-format-in-render": {
     code: '"use client";\nexport const Timestamp = ({ value }) => <time>{new Date(value).toLocaleString()}</time>;',
   },
+  "no-loading-flag-reset-outside-finally": {
+    code: 'import { useState } from "react"; const Form = () => { const [, setSubmitting] = useState(false); const submit = async () => { setSubmitting(true); await save(); setSubmitting(false); }; return <button onClick={submit} />; };',
+  },
   "no-long-transition-duration": {
     code: 'const S = () => <div style={{ transition: "width 2s ease" }} />;',
   },
@@ -837,6 +843,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-prop-types": {
     code: 'import PropTypes from "prop-types";\nconst Foo = ({ name }) => <div>{name}</div>;\nFoo.propTypes = { name: PropTypes.string };',
   },
+  "no-promise-then-side-effect-in-effect-without-catch": {
+    code: 'import { useEffect, useState } from "react"; const C = ({ url }) => { const [, setUser] = useState(); useEffect(() => { fetch(url).then((response) => response.json()).then(setUser); }, [url]); };',
+  },
   "no-pure-black-background": {
     code: 'const El = () => <div className="bg-black" />;',
   },
@@ -888,6 +897,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-set-state": {
     code: "\n\t\t\t        var Hello = createReactClass({\n\t\t\t          componentDidUpdate: function() {\n\t\t\t            this.setState({\n\t\t\t              name: this.props.name.toUpperCase()\n\t\t\t            });\n\t\t\t          },\n\t\t\t          render: function() {\n\t\t\t            return <div>Hello {this.state.name}</div>;\n\t\t\t          }\n\t\t\t        });\n\t\t\t      ",
     forceJsx: true,
+  },
+  "no-set-state-after-await-in-effect": {
+    code: 'import { useEffect, useState } from "react"; const C = ({ id }) => { const [, setUser] = useState(); useEffect(() => { const run = async () => { const user = await load(id); setUser(user); }; run(); }, [id]); };',
   },
   "no-set-state-in-render": {
     code: 'import { useState } from "react";\nexport function C() {\n  const [count, setCount] = useState(0);\n  setCount(1);\n  return null;\n}',

@@ -160,6 +160,7 @@ import { noAriaHiddenOnFocusable } from "./rules/a11y/no-aria-hidden-on-focusabl
 import { noArrayIndexAsKey } from "./rules/correctness/no-array-index-as-key.js";
 import { noArrayIndexKey } from "./rules/react-builtins/no-array-index-key.js";
 import { noAsyncEffectCallback } from "./rules/state-and-effects/no-async-effect-callback.js";
+import { noAsyncEventHandlerWithoutReentryGuard } from "./rules/state-and-effects/no-async-event-handler-without-reentry-guard.js";
 import { noAutofocus } from "./rules/a11y/no-autofocus.js";
 import { noBarrelImport } from "./rules/bundle-size/no-barrel-import.js";
 import { noCallComponentAsFunction } from "./rules/react-builtins/no-call-component-as-function.js";
@@ -224,6 +225,7 @@ import { noLayoutPropertyAnimation } from "./rules/performance/no-layout-propert
 import { noLayoutTransitionInline } from "./rules/design/no-layout-transition-inline.js";
 import { noLegacyClassLifecycles } from "./rules/architecture/no-legacy-class-lifecycles.js";
 import { noLegacyContextApi } from "./rules/architecture/no-legacy-context-api.js";
+import { noLoadingFlagResetOutsideFinally } from "./rules/state-and-effects/no-loading-flag-reset-outside-finally.js";
 import { noLocaleFormatInRender } from "./rules/performance/no-locale-format-in-render.js";
 import { noLongTransitionDuration } from "./rules/design/no-long-transition-duration.js";
 import { noManyBooleanProps } from "./rules/architecture/no-many-boolean-props.js";
@@ -244,6 +246,7 @@ import { noPassLiveStateToParent } from "./rules/state-and-effects/no-pass-live-
 import { noPermanentWillChange } from "./rules/performance/no-permanent-will-change.js";
 import { noPolymorphicChildren } from "./rules/correctness/no-polymorphic-children.js";
 import { noPreventDefault } from "./rules/correctness/no-prevent-default.js";
+import { noPromiseThenSideEffectInEffectWithoutCatch } from "./rules/state-and-effects/no-promise-then-side-effect-in-effect-without-catch.js";
 import { noPropCallbackInEffect } from "./rules/state-and-effects/no-prop-callback-in-effect.js";
 import { noPropCallbackInRender } from "./rules/state-and-effects/no-prop-callback-in-render.js";
 import { noPropTypes } from "./rules/architecture/no-prop-types.js";
@@ -263,6 +266,7 @@ import { noScaleFromZero } from "./rules/performance/no-scale-from-zero.js";
 import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-code.js";
 import { noSelfUpdatingEffect } from "./rules/state-and-effects/no-self-updating-effect.js";
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
+import { noSetStateAfterAwaitInEffect } from "./rules/state-and-effects/no-set-state-after-await-in-effect.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
 import { noSpreadAccumulatorInReduce } from "./rules/js-performance/no-spread-accumulator-in-reduce.js";
@@ -2239,6 +2243,23 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-async-event-handler-without-reentry-guard",
+    id: "no-async-event-handler-without-reentry-guard",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noAsyncEventHandlerWithoutReentryGuard,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          ...(noAsyncEventHandlerWithoutReentryGuard.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-autofocus",
     id: "no-autofocus",
     source: "react-doctor",
@@ -3008,6 +3029,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-loading-flag-reset-outside-finally",
+    id: "no-loading-flag-reset-outside-finally",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noLoadingFlagResetOutsideFinally,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(noLoadingFlagResetOutsideFinally.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-locale-format-in-render",
     id: "no-locale-format-in-render",
     source: "react-doctor",
@@ -3250,6 +3285,23 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-promise-then-side-effect-in-effect-without-catch",
+    id: "no-promise-then-side-effect-in-effect-without-catch",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPromiseThenSideEffectInEffectWithoutCatch,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          ...(noPromiseThenSideEffectInEffectWithoutCatch.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-prop-callback-in-effect",
     id: "no-prop-callback-in-effect",
     source: "react-doctor",
@@ -3471,6 +3523,20 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set<Capability>(["react", ...(noSetState.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-set-state-after-await-in-effect",
+    id: "no-set-state-after-await-in-effect",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSetStateAfterAwaitInEffect,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(noSetStateAfterAwaitInEffect.requires ?? [])]),
+      ],
     },
   },
   {

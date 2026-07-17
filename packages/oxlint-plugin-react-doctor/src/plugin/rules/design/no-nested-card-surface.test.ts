@@ -26,4 +26,12 @@ describe("no-nested-card-surface", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not assemble a nested card from conditional utilities", () => {
+    const result = runRule(
+      noNestedCardSurface,
+      `const Example = () => <div className="rounded-xl border p-6"><section className="rounded-lg dark:border bg-white p-4">Inner</section></div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

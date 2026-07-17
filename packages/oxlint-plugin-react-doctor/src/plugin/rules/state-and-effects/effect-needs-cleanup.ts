@@ -938,7 +938,7 @@ const findPushedResourceCollectionKey = (
     ) {
       return false;
     }
-    return memberNode.property.name === "forEach" || callNode === pushCall;
+    return memberNode.property.name === "forEach" || memberNode.property.name === "push";
   });
   return hasOnlyCollectionRetentionAndIteration
     ? resolveExpressionKey(pushCallee.object, context)

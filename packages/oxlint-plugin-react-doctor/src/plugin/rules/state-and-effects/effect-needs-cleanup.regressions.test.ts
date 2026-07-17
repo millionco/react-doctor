@@ -294,6 +294,28 @@ export const ContextWatcher = ({ element }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts multiple observers pushed into the same cleanup collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, parentElement }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const elementObserver = new MutationObserver(update);
+    elementObserver.observe(element, { attributes: true });
+    observers.push(elementObserver);
+    const parentObserver = new MutationObserver(update);
+    parentObserver.observe(parentElement, { attributes: true });
+    observers.push(parentObserver);
+    return () => observers.forEach((observer) => observer.disconnect());
+  }, [element, parentElement]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("rejects conditionally retaining an observed resource for collection cleanup", () => {
     const result = runRule(
       effectNeedsCleanup,

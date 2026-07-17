@@ -509,6 +509,31 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("still flags callback-ref convergence behind an OR branch", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (
+            this.state.monthContainer !== this.monthContainer ||
+            this.props.forceUpdate
+          ) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => (this.monthContainer = node)} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on a named callback-ref convergence guard", () => {
     const result = runRule(
       noDidUpdateSetState,

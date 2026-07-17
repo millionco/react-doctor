@@ -472,29 +472,45 @@ const isConvergentPostMountGuard = (
   localInitializers: ReadonlyMap<string, EsTreeNode>,
   callbackRefFieldNames: ReadonlySet<string>,
 ): boolean => {
-  let qualifies = false;
-  walkAst(test, (node) => {
-    if (qualifies) return false;
-    if (!isNodeOfType(node, "BinaryExpression") || !DIFFERENCE_OPERATORS.has(node.operator)) {
-      return;
-    }
-    const leftFieldName = getThisStateFieldName(node.left as EsTreeNode);
-    const rightFieldName = getThisStateFieldName(node.right as EsTreeNode);
-    const fieldName = leftFieldName ?? rightFieldName;
-    const comparedValue = leftFieldName ? (node.right as EsTreeNode) : (node.left as EsTreeNode);
-    if (!fieldName || (!leftFieldName && !rightFieldName)) return;
-    const assignedValue = getSetStateFieldValue(setStateCall, fieldName);
-    if (!assignedValue || !areExpressionsStructurallyEqual(comparedValue, assignedValue)) return;
-    if (
-      !isUndefinedIdentifier(comparedValue) &&
-      !derivesFromPostMountValue(comparedValue, localInitializers, callbackRefFieldNames)
-    ) {
-      return;
-    }
-    qualifies = true;
+  const expression = stripParenExpression(test);
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    return (
+      expression.operator === "&&" &&
+      (isConvergentPostMountGuard(
+        expression.left as EsTreeNode,
+        setStateCall,
+        localInitializers,
+        callbackRefFieldNames,
+      ) ||
+        isConvergentPostMountGuard(
+          expression.right as EsTreeNode,
+          setStateCall,
+          localInitializers,
+          callbackRefFieldNames,
+        ))
+    );
+  }
+  if (
+    !isNodeOfType(expression, "BinaryExpression") ||
+    !DIFFERENCE_OPERATORS.has(expression.operator)
+  ) {
     return false;
-  });
-  return qualifies;
+  }
+  const leftFieldName = getThisStateFieldName(expression.left as EsTreeNode);
+  const rightFieldName = getThisStateFieldName(expression.right as EsTreeNode);
+  const fieldName = leftFieldName ?? rightFieldName;
+  const comparedValue = leftFieldName
+    ? (expression.right as EsTreeNode)
+    : (expression.left as EsTreeNode);
+  if (!fieldName) return false;
+  const assignedValue = getSetStateFieldValue(setStateCall, fieldName);
+  if (!assignedValue || !areExpressionsStructurallyEqual(comparedValue, assignedValue)) {
+    return false;
+  }
+  return (
+    isUndefinedIdentifier(comparedValue) ||
+    derivesFromPostMountValue(comparedValue, localInitializers, callbackRefFieldNames)
+  );
 };
 
 const containsPositiveStateFieldTest = (test: EsTreeNode, fieldName: string): boolean => {

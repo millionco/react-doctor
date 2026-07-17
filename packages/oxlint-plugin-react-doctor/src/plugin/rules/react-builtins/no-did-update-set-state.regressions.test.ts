@@ -137,6 +137,95 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("still flags a previous prop compared only with a constant", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Counter extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (prevProps.enabled !== true) {
+            this.setState({ count: this.state.count + 1 });
+          }
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a current prop local compared only with a constant", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Counter extends React.Component {
+        componentDidUpdate() {
+          const currentMode = this.props.mode;
+          if (currentMode !== "ready") {
+            this.setState({ count: this.state.count + 1 });
+          }
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags constant comparisons for different prop paths", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Dropdown extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (this.props.value === undefined && prevProps.other !== undefined) {
+            this.setState({ selectedValue: undefined });
+          }
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a transition comparison behind an OR branch", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Dropdown extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (this.props.value !== prevProps.value || this.props.forceUpdate) {
+            this.setState({ selectedValue: this.props.value });
+          }
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags constant transition comparisons behind an OR branch", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Dropdown extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (
+            (this.props.value === undefined && prevProps.value !== undefined) ||
+            this.props.forceUpdate
+          ) {
+            this.setState({ selectedValue: undefined });
+          }
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent in an ES5 createReactClass component with a prop-diff guard", () => {
     const result = runRule(
       noDidUpdateSetState,

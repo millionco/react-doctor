@@ -5,6 +5,7 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle.js";
@@ -17,6 +18,7 @@ const MESSAGE =
   "Calling setState in componentDidUpdate can trigger another update immediately, loop forever, and freeze the component.";
 
 const DIFFERENCE_OPERATORS = new Set(["!=", "!=="]);
+const EQUALITY_OPERATORS = new Set(["==", "===", "!=", "!=="]);
 const FUNCTION_NODE_TYPES = new Set<string>([
   "FunctionDeclaration",
   "FunctionExpression",
@@ -108,9 +110,113 @@ const collectDiffSourceLocalNames = (
   return derivedNames;
 };
 
+const isStatefulOperand = (
+  node: EsTreeNode,
+  paramNames: ReadonlySet<string>,
+  derivedNames: ReadonlySet<string>,
+): boolean =>
+  referencesAnyName(node, paramNames) ||
+  referencesAnyName(node, derivedNames) ||
+  containsThisStateOrProps(node);
+
 const getStaticMemberName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "MemberExpression") || node.computed === true) return null;
   return isNodeOfType(node.property, "Identifier") ? node.property.name : null;
+};
+
+interface StateSourcePath {
+  domain: string;
+  members: string[];
+  source: "current" | "previous";
+}
+
+interface StateSourceComparison {
+  comparedValue: EsTreeNode;
+  isDifference: boolean;
+  path: StateSourcePath;
+}
+
+const getStateSourcePath = (
+  node: EsTreeNode,
+  previousSourceDomains: ReadonlyMap<string, string>,
+): StateSourcePath | null => {
+  let currentNode = stripParenExpression(node);
+  const members: string[] = [];
+  while (isNodeOfType(currentNode, "MemberExpression")) {
+    const memberName = getStaticMemberName(currentNode);
+    if (!memberName) return null;
+    members.unshift(memberName);
+    currentNode = stripParenExpression(currentNode.object as EsTreeNode);
+  }
+  if (isNodeOfType(currentNode, "ThisExpression")) {
+    const [domain, ...pathMembers] = members;
+    if (domain !== "props" && domain !== "state") return null;
+    return { domain, members: pathMembers, source: "current" };
+  }
+  if (!isNodeOfType(currentNode, "Identifier")) return null;
+  const domain = previousSourceDomains.get(currentNode.name);
+  return domain ? { domain, members, source: "previous" } : null;
+};
+
+const haveMatchingStateSourcePaths = (left: StateSourcePath, right: StateSourcePath): boolean =>
+  left.domain === right.domain &&
+  left.members.length === right.members.length &&
+  left.members.every((member, index) => member === right.members[index]);
+
+const collectConjunctiveStateSourceComparisons = (
+  test: EsTreeNode,
+  previousSourceDomains: ReadonlyMap<string, string>,
+  comparisons: StateSourceComparison[],
+): void => {
+  const expression = stripParenExpression(test);
+  if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "&&") {
+    collectConjunctiveStateSourceComparisons(
+      expression.left as EsTreeNode,
+      previousSourceDomains,
+      comparisons,
+    );
+    collectConjunctiveStateSourceComparisons(
+      expression.right as EsTreeNode,
+      previousSourceDomains,
+      comparisons,
+    );
+    return;
+  }
+  if (
+    !isNodeOfType(expression, "BinaryExpression") ||
+    !EQUALITY_OPERATORS.has(expression.operator)
+  ) {
+    return;
+  }
+  const leftPath = getStateSourcePath(expression.left as EsTreeNode, previousSourceDomains);
+  const rightPath = getStateSourcePath(expression.right as EsTreeNode, previousSourceDomains);
+  if (Boolean(leftPath) === Boolean(rightPath)) return;
+  const path = leftPath ?? rightPath;
+  if (!path) return;
+  comparisons.push({
+    comparedValue: (leftPath ? expression.right : expression.left) as EsTreeNode,
+    isDifference: DIFFERENCE_OPERATORS.has(expression.operator),
+    path,
+  });
+};
+
+const isHistoricalToCurrentTransitionGuard = (
+  test: EsTreeNode,
+  previousSourceDomains: ReadonlyMap<string, string>,
+): boolean => {
+  const comparisons: StateSourceComparison[] = [];
+  collectConjunctiveStateSourceComparisons(test, previousSourceDomains, comparisons);
+  return comparisons.some((comparison, index) =>
+    comparisons
+      .slice(index + 1)
+      .some(
+        (candidate) =>
+          comparison.path.source !== candidate.path.source &&
+          comparison.isDifference !== candidate.isDifference &&
+          haveMatchingStateSourcePaths(comparison.path, candidate.path) &&
+          areExpressionsStructurallyEqual(comparison.comparedValue, candidate.comparedValue),
+      ),
+  );
 };
 
 const getThisFieldName = (node: EsTreeNode): string | null => {
@@ -122,15 +228,6 @@ const getThisFieldName = (node: EsTreeNode): string | null => {
     return null;
   }
   return getStaticMemberName(unwrappedNode);
-};
-
-const findEnclosingClass = (node: EsTreeNode): EsTreeNode | null => {
-  let ancestor: EsTreeNode | null | undefined = node.parent;
-  while (ancestor) {
-    if (CLASS_NODE_TYPES.has(ancestor.type)) return ancestor;
-    ancestor = ancestor.parent ?? null;
-  }
-  return null;
 };
 
 const isUndefinedIdentifier = (node: EsTreeNode): boolean => {
@@ -422,30 +519,44 @@ const isDiffGuardTest = (
   paramNames: ReadonlySet<string>,
   derivedNames: ReadonlySet<string>,
 ): boolean => {
-  let qualifies = false;
-  walkAst(test, (node) => {
-    if (qualifies) return false;
-    if (!isNodeOfType(node, "BinaryExpression")) return;
-    if (!DIFFERENCE_OPERATORS.has(node.operator)) return;
-    if (
-      referencesAnyName(node.left, paramNames) ||
-      referencesAnyName(node.right, paramNames) ||
-      referencesAnyName(node.left, derivedNames) ||
-      referencesAnyName(node.right, derivedNames)
-    ) {
-      qualifies = true;
-      return false;
-    }
-  });
-  return qualifies;
+  const expression = stripParenExpression(test);
+  if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "&&") {
+    return (
+      isDiffGuardTest(expression.left as EsTreeNode, paramNames, derivedNames) ||
+      isDiffGuardTest(expression.right as EsTreeNode, paramNames, derivedNames)
+    );
+  }
+  if (
+    !isNodeOfType(expression, "BinaryExpression") ||
+    !DIFFERENCE_OPERATORS.has(expression.operator)
+  ) {
+    return false;
+  }
+  return (
+    isStatefulOperand(expression.left as EsTreeNode, paramNames, derivedNames) &&
+    isStatefulOperand(expression.right as EsTreeNode, paramNames, derivedNames) &&
+    (referencesAnyName(expression.left, paramNames) ||
+      referencesAnyName(expression.right, paramNames) ||
+      referencesAnyName(expression.left, derivedNames) ||
+      referencesAnyName(expression.right, derivedNames))
+  );
 };
 
 const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const lifecycleFunction = findEnclosingLifecycleFunction(setStateCall);
   if (!lifecycleFunction) return false;
   const paramNames = new Set<string>();
-  for (const param of (lifecycleFunction as { params?: EsTreeNode[] }).params ?? []) {
+  const parameters = (lifecycleFunction as { params?: EsTreeNode[] }).params ?? [];
+  for (const param of parameters) {
     collectPatternNames(param, paramNames);
+  }
+  const previousSourceDomains = new Map<string, string>();
+  const [previousPropsParameter, previousStateParameter] = parameters;
+  if (isNodeOfType(previousPropsParameter, "Identifier")) {
+    previousSourceDomains.set(previousPropsParameter.name, "props");
+  }
+  if (isNodeOfType(previousStateParameter, "Identifier")) {
+    previousSourceDomains.set(previousStateParameter.name, "state");
   }
   const derivedNames = collectDiffSourceLocalNames(lifecycleFunction, paramNames);
   const localInitializers = collectLocalInitializers(lifecycleFunction);
@@ -470,6 +581,7 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boo
     if (
       guardTest &&
       (isDiffGuardTest(guardTest, paramNames, derivedNames) ||
+        isHistoricalToCurrentTransitionGuard(guardTest, previousSourceDomains) ||
         isConvergentPostMountGuard(
           guardTest,
           setStateCall,

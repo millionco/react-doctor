@@ -1,4 +1,4 @@
-import { TANSTACK_QUERY_HOOKS } from "../../../constants/tanstack.js";
+import { TANSTACK_MUTATION_HOOKS, TANSTACK_QUERY_HOOKS } from "../../../constants/tanstack.js";
 import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
 import { getImportBindingForName } from "../../../utils/find-import-source-for-name.js";
 import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
@@ -16,7 +16,12 @@ const resolveTanstackNamespaceHookName = (
 ): string | null => {
   const hookName = getStaticPropertyKeyName(memberExpression, { allowComputedString: true });
   const namespaceObject = stripParenExpression(memberExpression.object);
-  if (!hookName || !TANSTACK_QUERY_HOOKS.has(hookName)) return null;
+  if (
+    !hookName ||
+    (!TANSTACK_QUERY_HOOKS.has(hookName) && !TANSTACK_MUTATION_HOOKS.has(hookName))
+  ) {
+    return null;
+  }
   if (!isNodeOfType(namespaceObject, "Identifier")) return null;
   const resolvedNamespaceSymbol = resolveConstIdentifierAlias(namespaceObject, scopes);
   if (resolvedNamespaceSymbol?.kind !== "import") return null;
@@ -45,7 +50,8 @@ export const resolveTanstackQueryHookName = (
     if (importBinding === null) return null;
     if (importBinding.isNamespace || !isTanstackQuerySource(importBinding.source)) return null;
     return importBinding.exportedName !== null &&
-      TANSTACK_QUERY_HOOKS.has(importBinding.exportedName)
+      (TANSTACK_QUERY_HOOKS.has(importBinding.exportedName) ||
+        TANSTACK_MUTATION_HOOKS.has(importBinding.exportedName))
       ? importBinding.exportedName
       : null;
   }

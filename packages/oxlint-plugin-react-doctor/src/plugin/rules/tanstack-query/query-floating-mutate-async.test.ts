@@ -1,0 +1,174 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { queryFloatingMutateAsync } from "./query-floating-mutate-async.js";
+
+const runMutationRule = (source: string) =>
+  runRule(
+    queryFloatingMutateAsync,
+    `import { useMutation } from "@tanstack/react-query";
+     ${source}`,
+  );
+
+describe("query-floating-mutate-async", () => {
+  it("flags a bare call on a useMutation result", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       mutation.mutateAsync(payload);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags imported and destructured aliases", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `import { useMutation as useWrite } from "@tanstack/react-query";
+       const { mutateAsync: write } = useWrite(options);
+       write(payload);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags namespace and result aliases", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `import * as Query from "@tanstack/react-query";
+       const mutation = Query.useMutation(options);
+       const aliasedMutation = mutation;
+       aliasedMutation.mutateAsync(payload);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on unrelated mutateAsync methods", () => {
+    const result = runMutationRule(
+      `const queue = createQueue();
+       queue.mutateAsync(payload);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on a same-named local useMutation", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `const useMutation = () => ({ mutateAsync: save });
+       const mutation = useMutation();
+       mutation.mutateAsync(payload);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags empty and non-callable catch handlers", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       mutation.mutateAsync(first).catch();
+       mutation.mutateAsync(second).catch(undefined);
+       mutation.mutateAsync(third).catch(null);`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("accepts callable catch handlers", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const handleError = (error) => report(error);
+       mutation.mutateAsync(first).catch(handleError);
+       mutation.mutateAsync(second).catch((error) => report(error));
+       mutation.mutateAsync(third).catch(console.error);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires a callable second then argument", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const onError = (error) => report(error);
+       mutation.mutateAsync(first).then(onSuccess, undefined);
+       mutation.mutateAsync(second).then(onSuccess, onError);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags fulfillment-only and finally-only chains", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       mutation.mutateAsync(first).then(onSuccess);
+       mutation.mutateAsync(second).finally(stopLoading);`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags concise and explicit returns from JSX event handlers", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const first = <button onClick={() => mutation.mutateAsync(payload)} />;
+       const second = <button onClick={() => {
+         return mutation.mutateAsync(payload);
+       }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not treat arbitrary JSX callback props as event handlers", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const view = <DataLoader load={() => mutation.mutateAsync(payload)} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a named event handler that returns mutateAsync", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const handleClick = () => {
+         return mutation.mutateAsync(payload);
+       };
+       const view = <button onClick={handleClick} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags mutateAsync returned from a forEach callback", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       items.forEach((item) => mutation.mutateAsync(item));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags logical and conditional event-handler branches", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const first = <button onClick={() => canSave && mutation.mutateAsync(payload)} />;
+       const second = <button onClick={() =>
+         isNew ? mutation.mutateAsync(firstPayload) : mutation.mutateAsync(secondPayload)
+       } />;`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("stays silent when the promise remains reachable", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       async function awaited() {
+         await mutation.mutateAsync(first);
+       }
+       function returned() {
+         return mutation.mutateAsync(second);
+       }
+       const promise = mutation.mutateAsync(third);
+       async function batched() {
+         await Promise.all(items.map((item) => mutation.mutateAsync(item)));
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves the explicit void escape hatch", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       void mutation.mutateAsync(payload);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});

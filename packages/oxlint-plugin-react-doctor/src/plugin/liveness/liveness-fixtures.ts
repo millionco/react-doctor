@@ -1031,8 +1031,14 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "query-destructure-result": {
     code: "import { useQuery } from '@tanstack/react-query';\nexport function useChartConfig() {\n  const query = useQuery({ queryKey: ['chart'] });\n  const snapshot = { ...query, label: 'chart' };\n  return snapshot.data;\n}",
   },
+  "query-floating-mutate-async": {
+    code: 'import { useMutation } from "@tanstack/react-query";\nconst mutation = useMutation({ mutationFn: save });\nmutation.mutateAsync(payload);',
+  },
   "query-mutation-missing-invalidation": {
     code: 'const posts = useQuery({ queryKey: ["posts"], queryFn: fetchPosts });\n      useMutation({ mutationFn: deletePost });',
+  },
+  "query-no-mutation-in-effect-as-read": {
+    code: 'import { useMutation } from "@tanstack/react-query";\nconst C = () => {\n  const { mutateAsync: fetchUser, data } = useMutation({ mutationFn });\n  useEffect(() => { fetchUser(id); }, [id]);\n  return <div>{data.user.name}</div>;\n};',
   },
   "query-no-query-in-effect": {
     code: 'import { useQuery } from "@tanstack/react-query"; function Dashboard() { const query = useQuery({ queryKey: ["item"] }); useEffect(() => { query.refetch(); }, [query]); return null; }',

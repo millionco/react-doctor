@@ -303,7 +303,9 @@ import { preferUseReducer } from "./rules/state-and-effects/prefer-use-reducer.j
 import { publicDebugArtifact } from "./rules/security-scan/public-debug-artifact.js";
 import { publicEnvSecretName } from "./rules/security-scan/public-env-secret-name.js";
 import { queryDestructureResult } from "./rules/tanstack-query/query-destructure-result.js";
+import { queryFloatingMutateAsync } from "./rules/tanstack-query/query-floating-mutate-async.js";
 import { queryMutationMissingInvalidation } from "./rules/tanstack-query/query-mutation-missing-invalidation.js";
+import { queryNoMutationInEffectAsRead } from "./rules/tanstack-query/query-no-mutation-in-effect-as-read.js";
 import { queryNoQueryInEffect } from "./rules/tanstack-query/query-no-query-in-effect.js";
 import { queryNoRestDestructuring } from "./rules/tanstack-query/query-no-rest-destructuring.js";
 import { queryNoUseQueryForMutation } from "./rules/tanstack-query/query-no-use-query-for-mutation.js";
@@ -3914,12 +3916,34 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/query-floating-mutate-async",
+    id: "query-floating-mutate-async",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...queryFloatingMutateAsync,
+      framework: "tanstack-query",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/query-mutation-missing-invalidation",
     id: "query-mutation-missing-invalidation",
     source: "react-doctor",
     originallyExternal: false,
     rule: {
       ...queryMutationMissingInvalidation,
+      framework: "tanstack-query",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/query-no-mutation-in-effect-as-read",
+    id: "query-no-mutation-in-effect-as-read",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...queryNoMutationInEffectAsRead,
       framework: "tanstack-query",
       category: "Bugs",
     },

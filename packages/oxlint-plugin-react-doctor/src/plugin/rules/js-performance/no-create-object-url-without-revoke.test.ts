@@ -104,6 +104,10 @@ describe("no-create-object-url-without-revoke", () => {
        };`,
     );
     expect(result.diagnostics).toHaveLength(2);
+    for (const diagnostic of result.diagnostics) {
+      expect(diagnostic.message).toContain("not reliably revoked after creation");
+      expect(diagnostic.message).not.toContain("never calls");
+    }
   });
 
   it("recognizes cleanup for an if-guarded pre-declared assignment", () => {

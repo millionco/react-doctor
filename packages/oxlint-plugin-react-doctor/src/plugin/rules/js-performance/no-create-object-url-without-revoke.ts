@@ -17,7 +17,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 const ESCAPE_ASSIGNMENT_TARGET_PROPERTIES = new Set(["href", "src", "current"]);
 
 const MESSAGE =
-  "`URL.createObjectURL(...)` pins the underlying Blob/File in memory until it is revoked, and this module never calls `URL.revokeObjectURL`. Store the URL, revoke it once you're done (in an effect cleanup, after the download, or on unmount) so the Blob can be freed.";
+  "`URL.createObjectURL(...)` pins the underlying Blob/File in memory, but this result is not reliably revoked after creation. Store the URL and pass it to `URL.revokeObjectURL(...)` on every relevant path once you're done (in an effect cleanup, after the download, or on unmount) so the Blob can be freed.";
 
 const isUrlMethodCall = (
   node: EsTreeNodeOfType<"CallExpression">,
@@ -633,8 +633,8 @@ const escapeIsLeaky = (callNode: EsTreeNode): boolean => {
 // an element `href`/`src` directly or via `setAttribute`, stored into a ref,
 // returned, rendered inline in JSX, passed to a state setter, or a guarded
 // value bound to a variable — declared or assigned)
-// when the module never references `URL.revokeObjectURL`. The blob URL
-// pins its Blob/File in memory until revoked, so an un-revoked URL leaks.
+// when no matching cleanup is proven after creation. The blob URL pins its
+// Blob/File in memory until revoked, so an un-revoked URL leaks.
 export const noCreateObjectUrlWithoutRevoke = defineRule({
   id: "no-create-object-url-without-revoke",
   title: "createObjectURL without revokeObjectURL",

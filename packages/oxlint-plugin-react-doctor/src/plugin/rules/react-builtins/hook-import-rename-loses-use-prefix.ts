@@ -30,18 +30,14 @@ const isImportedHookName = (
   return declaration.source.value === "react";
 };
 
-const isSafeSameNameWrapperCall = (
+const isSafeHookWrapperCall = (
   call: EsTreeNodeOfType<"CallExpression">,
-  importedName: string,
   context: RuleContext,
 ): boolean => {
   const enclosingFunction = findEnclosingFunction(call);
-  if (
-    !enclosingFunction ||
-    componentOrHookDisplayNameForFunction(enclosingFunction) !== importedName
-  ) {
-    return false;
-  }
+  if (!enclosingFunction) return false;
+  const enclosingFunctionName = componentOrHookDisplayNameForFunction(enclosingFunction);
+  if (!enclosingFunctionName || !isReactHookName(enclosingFunctionName)) return false;
   return (
     context.cfg.isUnconditionalFromEntry(call) &&
     !isNodeConditionallyExecuted(call, enclosingFunction) &&
@@ -83,7 +79,7 @@ export const hookImportRenameLosesUsePrefix = defineRule({
         return call ? [call] : [];
       });
       if (invokedCalls.length === 0) return;
-      if (invokedCalls.every((call) => isSafeSameNameWrapperCall(call, importedName, context))) {
+      if (invokedCalls.every((call) => isSafeHookWrapperCall(call, context))) {
         return;
       }
 

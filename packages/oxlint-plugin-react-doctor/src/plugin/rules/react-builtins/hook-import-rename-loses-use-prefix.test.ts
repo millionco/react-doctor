@@ -256,6 +256,15 @@ describe("hook-import-rename-loses-use-prefix", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag an unconditional custom hook wrapper", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useQuery as query } from "@tanstack/react-query";
+       export const useProducts = () => query({ queryKey: ["products"] });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a same-name wrapper that calls the alias after an early return", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
@@ -303,12 +312,22 @@ describe("hook-import-rename-loses-use-prefix", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags an alias that is also called outside its same-name wrapper", () => {
+  it("does not flag an alias called from multiple unconditional hook wrappers", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
       `import { useQuery as query } from "@tanstack/react-query";
        export const useQuery = () => query();
        export const useProducts = () => query({ queryKey: ["products"] });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags an alias that is also called outside a hook wrapper", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useQuery as query } from "@tanstack/react-query";
+       export const useQuery = () => query();
+       export const Products = () => query({ queryKey: ["products"] });`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

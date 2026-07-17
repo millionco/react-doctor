@@ -641,6 +641,32 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags a callback that cannot be selected from the left side of logical AND", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        setMonthContainer = (node) => {
+          this.monthContainer = node;
+        };
+
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={this.setMonthContainer && this.props.forwardedRef} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when a second convergence branch clears the ref state", () => {
     const result = runRule(
       noDidUpdateSetState,

@@ -337,12 +337,14 @@ const collectCallbackRefFieldsFromExpression = (
     return;
   }
   if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
-    collectCallbackRefFieldsFromExpression(
-      unwrappedExpression.left as EsTreeNode,
-      classNode,
-      fieldNames,
-      scopes,
-    );
+    if (unwrappedExpression.operator !== "&&") {
+      collectCallbackRefFieldsFromExpression(
+        unwrappedExpression.left as EsTreeNode,
+        classNode,
+        fieldNames,
+        scopes,
+      );
+    }
     collectCallbackRefFieldsFromExpression(
       unwrappedExpression.right as EsTreeNode,
       classNode,

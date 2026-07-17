@@ -1,8 +1,10 @@
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isProvenStyledComponentExpression } from "../../utils/is-proven-styled-component-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -24,22 +26,6 @@ interface TernaryTest {
   readonly expression: EsTreeNode;
   readonly parameterName: string | null;
 }
-
-const getTagRootIdentifier = (tag: EsTreeNode): EsTreeNode | null => {
-  let current: EsTreeNode = tag;
-  while (true) {
-    if (isNodeOfType(current, "Identifier")) return current;
-    if (isNodeOfType(current, "MemberExpression")) {
-      current = current.object;
-      continue;
-    }
-    if (isNodeOfType(current, "CallExpression")) {
-      current = current.callee;
-      continue;
-    }
-    return null;
-  }
-};
 
 const getTernaryInterpolationTest = (expression: EsTreeNode | undefined): TernaryTest | null => {
   if (!expression) return null;
@@ -74,20 +60,21 @@ const getTernaryInterpolationTest = (expression: EsTreeNode | undefined): Ternar
 };
 
 const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
-  if (areExpressionsStructurallyEqual(left.expression, right.expression)) return true;
-  if (!left.parameterName || !right.parameterName) return false;
+  if (
+    left.parameterName === right.parameterName &&
+    areExpressionsStructurallyEqual(left.expression, right.expression)
+  ) {
+    return true;
+  }
 
   const compare = (leftNode: EsTreeNode, rightNode: EsTreeNode): boolean => {
     const unwrappedLeft = stripParenExpression(leftNode);
     const unwrappedRight = stripParenExpression(rightNode);
     if (unwrappedLeft.type !== unwrappedRight.type) return false;
     if (isNodeOfType(unwrappedLeft, "Identifier") && isNodeOfType(unwrappedRight, "Identifier")) {
-      if (
-        unwrappedLeft.name === left.parameterName &&
-        unwrappedRight.name === right.parameterName
-      ) {
-        return true;
-      }
+      const isLeftParameter = unwrappedLeft.name === left.parameterName;
+      const isRightParameter = unwrappedRight.name === right.parameterName;
+      if (isLeftParameter || isRightParameter) return isLeftParameter && isRightParameter;
       return unwrappedLeft.name === unwrappedRight.name;
     }
     if (isNodeOfType(unwrappedLeft, "Literal") && isNodeOfType(unwrappedRight, "Literal")) {
@@ -125,6 +112,25 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
         compare(unwrappedLeft.right, unwrappedRight.right)
       );
     }
+    if (
+      isNodeOfType(unwrappedLeft, "CallExpression") &&
+      isNodeOfType(unwrappedRight, "CallExpression")
+    ) {
+      return (
+        unwrappedLeft.optional === unwrappedRight.optional &&
+        compare(unwrappedLeft.callee, unwrappedRight.callee) &&
+        unwrappedLeft.arguments.length === unwrappedRight.arguments.length &&
+        unwrappedLeft.arguments.every((argument, argumentIndex) =>
+          compare(argument, unwrappedRight.arguments[argumentIndex]),
+        )
+      );
+    }
+    if (
+      isNodeOfType(unwrappedLeft, "SpreadElement") &&
+      isNodeOfType(unwrappedRight, "SpreadElement")
+    ) {
+      return compare(unwrappedLeft.argument, unwrappedRight.argument);
+    }
     return false;
   };
 
@@ -156,7 +162,7 @@ const collectTopLevelDeclarations = (
   let currentTernaryTests: TernaryTest[] = [];
   let activeQuote: '"' | "'" | null = null;
   let isEscaped = false;
-  let isInsideComment = false;
+  let activeComment: "block" | "line" | null = null;
   const resetSegment = (): void => {
     currentText = "";
     currentTernaryTests = [];
@@ -167,11 +173,15 @@ const collectTopLevelDeclarations = (
     for (let characterIndex = 0; characterIndex < staticText.length; characterIndex += 1) {
       const character = staticText[characterIndex];
       const nextCharacter = staticText[characterIndex + 1];
-      if (isInsideComment) {
+      if (activeComment === "block") {
         if (character === "*" && nextCharacter === "/") {
-          isInsideComment = false;
+          activeComment = null;
           characterIndex += 1;
         }
+        continue;
+      }
+      if (activeComment === "line") {
+        if (character === "\n" || character === "\r") activeComment = null;
         continue;
       }
       if (activeQuote) {
@@ -186,7 +196,12 @@ const collectTopLevelDeclarations = (
         continue;
       }
       if (character === "/" && nextCharacter === "*") {
-        isInsideComment = true;
+        activeComment = "block";
+        characterIndex += 1;
+        continue;
+      }
+      if (character === "/" && nextCharacter === "/" && currentText.trim().length === 0) {
+        activeComment = "line";
         characterIndex += 1;
         continue;
       }
@@ -209,7 +224,7 @@ const collectTopLevelDeclarations = (
       }
     }
     const expression = template.expressions[quasiIndex];
-    if (expression && braceDepth === 0 && !activeQuote && !isInsideComment) {
+    if (expression && braceDepth === 0 && !activeQuote && !activeComment) {
       currentText += INTERPOLATION_MARKER;
       const ternaryTest = getTernaryInterpolationTest(expression);
       if (ternaryTest) currentTernaryTests.push(ternaryTest);
@@ -219,13 +234,29 @@ const collectTopLevelDeclarations = (
   return declarations;
 };
 
-const isProvenCssHelperTag = (tag: EsTreeNode): boolean => {
-  const rootIdentifier = getTagRootIdentifier(tag);
-  if (!rootIdentifier || !isNodeOfType(rootIdentifier, "Identifier")) return false;
-  const importBinding = getImportBindingForName(rootIdentifier, rootIdentifier.name);
-  if (!importBinding || importBinding.source !== "styled-components") return false;
-  if (!importBinding.isNamespace) return importBinding.exportedName === "css";
-  return isNodeOfType(tag, "MemberExpression") && getStaticPropertyName(tag) === "css";
+const isProvenCssHelperTag = (tag: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const rootIdentifier = getRootIdentifier(tag);
+  if (!rootIdentifier) return false;
+  const strippedTag = stripParenExpression(tag);
+  const symbol = scopes.symbolFor(rootIdentifier);
+  if (!symbol || symbol.kind !== "import") return false;
+  const importDeclaration = symbol.declarationNode.parent;
+  if (
+    !importDeclaration ||
+    !isNodeOfType(importDeclaration, "ImportDeclaration") ||
+    importDeclaration.source.value !== "styled-components"
+  ) {
+    return false;
+  }
+  if (isNodeOfType(symbol.declarationNode, "ImportSpecifier")) {
+    return getImportedName(symbol.declarationNode) === "css" && rootIdentifier === strippedTag;
+  }
+  return (
+    isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier") &&
+    isNodeOfType(strippedTag, "MemberExpression") &&
+    stripParenExpression(strippedTag.object) === rootIdentifier &&
+    getStaticPropertyName(strippedTag) === "css"
+  );
 };
 
 export const styledComponentsDuplicateCssPropertyInBlock = defineRule({
@@ -239,7 +270,7 @@ export const styledComponentsDuplicateCssPropertyInBlock = defineRule({
     TaggedTemplateExpression(node: EsTreeNodeOfType<"TaggedTemplateExpression">) {
       if (
         !isProvenStyledComponentExpression(node, context.scopes) &&
-        !isProvenCssHelperTag(node.tag)
+        !isProvenCssHelperTag(node.tag, context.scopes)
       ) {
         return;
       }
@@ -253,10 +284,10 @@ export const styledComponentsDuplicateCssPropertyInBlock = defineRule({
       }
 
       for (const [property, occurrences] of occurrencesByProperty) {
-        if (occurrences.length < 2) continue;
-        if (!occurrences.every((occurrence) => occurrence.isConditional)) continue;
-        const firstTests = occurrences[0].ternaryTests;
-        const allTestsEqual = occurrences.every(
+        const conditionalOccurrences = occurrences.filter((occurrence) => occurrence.isConditional);
+        if (conditionalOccurrences.length < 2) continue;
+        const firstTests = conditionalOccurrences[0].ternaryTests;
+        const allTestsEqual = conditionalOccurrences.every(
           (occurrence) =>
             occurrence.ternaryTests.length === firstTests.length &&
             occurrence.ternaryTests.every((test, testIndex) =>

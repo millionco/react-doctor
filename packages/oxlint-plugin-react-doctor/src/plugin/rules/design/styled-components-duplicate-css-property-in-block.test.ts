@@ -120,6 +120,56 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not let line comments hide declarations or change CSS depth", () => {
+    const result = runStyledRule(
+      'const Button = styled.button`// ignored { };\ncolor: ${p => p.$primary ? "blue" : "gray"}; // ignored }\ncolor: ${p => p.$danger ? "red" : "black"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not interpret URL protocol separators as line comments", () => {
+    const result = runStyledRule(
+      'const Button = styled.button`background: url(https://example.com/a.png); color: ${p => p.$primary ? "blue" : "gray"}; color: ${p => p.$danger ? "red" : "black"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag equivalent helper-call conditions with renamed callback parameters", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${props => isFullHeight(props) ? "100vh" : "auto"}; height: ${state => isFullHeight(state) ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("distinguishes a callback parameter from a same-named outer binding", () => {
+    const result = runStyledRule(
+      'const props = { $fullHeight: false }; const Modal = styled.div`height: ${props => props.$fullHeight ? "100vh" : "auto"}; height: ${state => props.$fullHeight ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags conflicting conditional duplicates after a base declaration", () => {
+    const result = runStyledRule(
+      'const Button = styled.button`color: gray; color: ${p => p.$primary ? "blue" : "gray"}; color: ${p => p.$danger ? "red" : "black"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a shadowed styled-components css helper", () => {
+    const result = runStyledRule(
+      'const build = () => { const css = String.raw; return css`color: ${p => p.$a ? "red" : "blue"}; color: ${p => p.$b ? "black" : "white"};`; };',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("supports parenthesized named and namespace css helper tags", () => {
+    const result = runRule(
+      rule,
+      'import { css as styleBlock } from "styled-components"; import * as styles from "styled-components"; const first = (styleBlock)`color: ${p => p.$a ? "red" : "blue"}; color: ${p => p.$b ? "black" : "white"};`; const second = (styles.css)`opacity: ${p => p.$a ? 1 : 0}; opacity: ${p => p.$b ? 1 : 0};`;',
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("does not flag the dvh-with-vh fallback under one condition", () => {
     const result = runStyledRule(
       "const Modal = styled.div`\n" +

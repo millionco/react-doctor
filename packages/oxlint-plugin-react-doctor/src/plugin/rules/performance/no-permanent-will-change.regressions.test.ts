@@ -41,4 +41,16 @@ describe("performance/no-permanent-will-change — regressions", () => {
     const result = run(`const S = () => <div style={{ willChange: "transform, opacity" }} />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a permanent Tailwind will-change utility", () => {
+    const result = run(`const S = () => <div className="will-change-transform" />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts state-scoped and scroll-position Tailwind utilities", () => {
+    const result = run(
+      `const S = () => <><div className="hover:will-change-transform" /><div className="will-change-scroll" /><div className="will-change-[auto]" /><div className="will-change-[scroll-position]" /></>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

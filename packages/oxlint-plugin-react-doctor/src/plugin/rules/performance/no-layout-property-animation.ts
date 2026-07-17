@@ -4,6 +4,13 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isProvenBrowserApiReceiver } from "../../utils/is-proven-browser-api-receiver.js";
+import { getStaticWebAnimationKeyframes } from "../../utils/get-static-web-animation-keyframes.js";
+
+const toCamelCasePropertyName = (propertyName: string): string =>
+  propertyName.replace(/-([a-z])/g, (_match, letter: string) => letter.toUpperCase());
 
 const isMotionElement = (attributeNode: EsTreeNode): boolean => {
   const openingElement = attributeNode.parent;
@@ -56,6 +63,29 @@ export const noLayoutPropertyAnimation = defineRule({
           context.report({
             node: property,
             message: `This stutters because animating "${propertyName}" makes the browser redo page layout every frame, so animate transform or scale instead, or use the layout prop`,
+          });
+        }
+      }
+    },
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+      if (!isNodeOfType(node.callee, "MemberExpression")) return;
+      if (getStaticPropertyName(node.callee) !== "animate") return;
+      if (!isProvenBrowserApiReceiver(node.callee.object, "dom-event-target", context.scopes)) {
+        return;
+      }
+      const keyframesArgument = node.arguments?.[0];
+      if (!keyframesArgument) return;
+      for (const keyframe of getStaticWebAnimationKeyframes(keyframesArgument)) {
+        if (!isNodeOfType(keyframe, "ObjectExpression")) continue;
+        for (const property of keyframe.properties) {
+          if (!isNodeOfType(property, "Property")) continue;
+          const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+          if (!propertyName) continue;
+          const normalizedPropertyName = toCamelCasePropertyName(propertyName);
+          if (!LAYOUT_PROPERTIES.has(normalizedPropertyName)) continue;
+          context.report({
+            node: property,
+            message: `This Web Animation changes "${propertyName}" every frame, forcing layout work. Animate transform or opacity instead.`,
           });
         }
       }

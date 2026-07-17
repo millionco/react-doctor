@@ -2,6 +2,21 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getClassNameLiteral } from "../react-ui/utils/get-class-name-literal.js";
+
+const isPermanentWillChangeClass = (token: string): boolean => {
+  const utility = token.startsWith("!") ? token.slice(1) : token;
+  if (utility.includes(":")) return false;
+  if (
+    utility === "will-change-auto" ||
+    utility === "will-change-scroll" ||
+    utility === "will-change-[auto]" ||
+    utility === "will-change-[scroll-position]"
+  ) {
+    return false;
+  }
+  return utility.startsWith("will-change-");
+};
 
 export const noPermanentWillChange = defineRule({
   id: "no-permanent-will-change",
@@ -12,7 +27,20 @@ export const noPermanentWillChange = defineRule({
     "Add will-change when the animation starts (`onMouseEnter`) and remove it when it ends (`onAnimationEnd`). Leaving it on all the time wastes GPU memory and can slow things down",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "style") return;
+      if (!isNodeOfType(node.name, "JSXIdentifier")) return;
+      if (node.name.name === "className" || node.name.name === "class") {
+        const className = getClassNameLiteral(node);
+        const permanentUtility = className
+          ?.split(/\s+/)
+          .find((token) => isPermanentWillChangeClass(token));
+        if (!permanentUtility) return;
+        context.report({
+          node,
+          message: `This keeps ${permanentUtility} active permanently, which can waste GPU memory. Apply the hint only immediately before the animation and remove it afterward.`,
+        });
+        return;
+      }
+      if (node.name.name !== "style") return;
       if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
       const expression = node.value.expression;

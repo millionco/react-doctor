@@ -139,6 +139,7 @@ import { nextjsErrorBoundaryMissingUseClient } from "./rules/nextjs/nextjs-error
 import { nextjsGlobalErrorMissingHtmlBody } from "./rules/nextjs/nextjs-global-error-missing-html-body.js";
 import { nextjsImageMissingSizes } from "./rules/nextjs/nextjs-image-missing-sizes.js";
 import { nextjsInlineScriptMissingId } from "./rules/nextjs/nextjs-inline-script-missing-id.js";
+import { nextjsMetadataUrlConsistency } from "./rules/nextjs/nextjs-metadata-url-consistency.js";
 import { nextjsMissingMetadata } from "./rules/nextjs/nextjs-missing-metadata.js";
 import { nextjsNoAElement } from "./rules/nextjs/nextjs-no-a-element.js";
 import { nextjsNoClientFetchForServerData } from "./rules/nextjs/nextjs-no-client-fetch-for-server-data.js";
@@ -172,6 +173,7 @@ import { noAsyncEventHandlerWithoutReentryGuard } from "./rules/state-and-effect
 import { noAutofocus } from "./rules/a11y/no-autofocus.js";
 import { noAutoplayWithoutMuted } from "./rules/a11y/no-autoplay-without-muted.js";
 import { noBarrelImport } from "./rules/bundle-size/no-barrel-import.js";
+import { noBlockedPaste } from "./rules/a11y/no-blocked-paste.js";
 import { noBooleanToggleWithoutFunctionalUpdate } from "./rules/state-and-effects/no-boolean-toggle-without-functional-update.js";
 import { noBrokenImageSource } from "./rules/a11y/no-broken-image-source.js";
 import { noCallComponentAsFunction } from "./rules/react-builtins/no-call-component-as-function.js";
@@ -342,6 +344,7 @@ import { noThisInSfc } from "./rules/react-builtins/no-this-in-sfc.js";
 import { noTightBodyLeading } from "./rules/design/no-tight-body-leading.js";
 import { noTinyText } from "./rules/design/no-tiny-text.js";
 import { noTransitionAll } from "./rules/performance/no-transition-all.js";
+import { noUnboundedAnimationFrameLoop } from "./rules/performance/no-unbounded-animation-frame-loop.js";
 import { noUncontrolledInput } from "./rules/correctness/no-uncontrolled-input.js";
 import { noUndeferredThirdParty } from "./rules/bundle-size/no-undeferred-third-party.js";
 import { noUnescapedDynamicStringInRegexp } from "./rules/correctness/no-unescaped-dynamic-string-in-regexp.js";
@@ -355,6 +358,7 @@ import { noUnknownProperty } from "./rules/react-builtins/no-unknown-property.js
 import { noUnsafe } from "./rules/react-builtins/no-unsafe.js";
 import { noUnsafeJsonParse } from "./rules/correctness/no-unsafe-json-parse.js";
 import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-nested-components.js";
+import { noUnthrottledScrollMutation } from "./rules/performance/no-unthrottled-scroll-mutation.js";
 import { noUsememoSimpleExpression } from "./rules/performance/no-usememo-simple-expression.js";
 import { noWholeObjectDefaultLosingPerKeyDefaults } from "./rules/correctness/no-whole-object-default-losing-per-key-defaults.js";
 import { noWholeObjectDepWithMemberReads } from "./rules/state-and-effects/no-whole-object-dep-with-member-reads.js";
@@ -2095,6 +2099,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/nextjs-metadata-url-consistency",
+    id: "nextjs-metadata-url-consistency",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...nextjsMetadataUrlConsistency,
+      framework: "nextjs",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/nextjs-missing-metadata",
     id: "nextjs-missing-metadata",
     source: "react-doctor",
@@ -2468,6 +2483,18 @@ export const reactDoctorRules = [
       ...noBarrelImport,
       framework: "global",
       category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/no-blocked-paste",
+    id: "no-blocked-paste",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...noBlockedPaste,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(noBlockedPaste.requires ?? [])])],
     },
   },
   {
@@ -4486,6 +4513,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-unbounded-animation-frame-loop",
+    id: "no-unbounded-animation-frame-loop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUnboundedAnimationFrameLoop,
+      framework: "global",
+      category: "Performance",
+      requires: [
+        ...new Set<Capability>(["react", ...(noUnboundedAnimationFrameLoop.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-uncontrolled-input",
     id: "no-uncontrolled-input",
     source: "react-doctor",
@@ -4637,6 +4678,20 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set<Capability>(["react", ...(noUnstableNestedComponents.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-unthrottled-scroll-mutation",
+    id: "no-unthrottled-scroll-mutation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUnthrottledScrollMutation,
+      framework: "global",
+      category: "Performance",
+      requires: [
+        ...new Set<Capability>(["react", ...(noUnthrottledScrollMutation.requires ?? [])]),
+      ],
     },
   },
   {

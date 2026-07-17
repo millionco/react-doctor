@@ -18,7 +18,9 @@ const LayoutAnimationComponent = () => (
 
 const TransitionAllComponent = () => <div style={{ transition: "all 0.3s ease" }}>styled</div>;
 
-const LargeBlurComponent = () => <div style={{ filter: "blur(20px)" }}>blurred</div>;
+const LargeBlurComponent = () => (
+  <motion.div animate={{ filter: "blur(20px)" }}>blurred</motion.div>
+);
 
 const ScaleFromZeroComponent = () => <motion.div initial={{ scale: 0 }}>scale</motion.div>;
 

@@ -1,11 +1,31 @@
 import { ANIMATION_CALLBACK_NAMES } from "../../constants/style.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+const isDocumentRootStyleReceiver = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(callExpression.callee, "MemberExpression")) return false;
+  const styleMember = callExpression.callee.object;
+  if (!isNodeOfType(styleMember, "MemberExpression")) return false;
+  if (getStaticPropertyName(styleMember) !== "style") return false;
+  const styledTarget = styleMember.object;
+  if (!isNodeOfType(styledTarget, "MemberExpression")) return false;
+  const targetName = getStaticPropertyName(styledTarget);
+  if (targetName !== "documentElement" && targetName !== "body") return false;
+  return (
+    isNodeOfType(styledTarget.object, "Identifier") &&
+    styledTarget.object.name === "document" &&
+    context.scopes.isGlobalReference(styledTarget.object)
+  );
+};
 
 export const noGlobalCssVariableAnimation = defineRule({
   id: "no-global-css-variable-animation",
@@ -26,6 +46,7 @@ export const noGlobalCssVariableAnimation = defineRule({
       walkAst(callback, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "CallExpression")) return;
         if (!isMemberProperty(child.callee, "setProperty")) return;
+        if (!isDocumentRootStyleReceiver(child, context)) return;
         if (!isNodeOfType(child.arguments?.[0], "Literal")) return;
 
         const variableName = child.arguments[0].value;

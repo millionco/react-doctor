@@ -103,4 +103,33 @@ describe("no-layout-property-animation", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags layout properties in Web Animations keyframes", () => {
+    const result = runRule(
+      noLayoutPropertyAnimation,
+      `document.querySelector(".panel").animate([{ width: "0px" }, { width: "200px", "margin-left": "8px" }], 300);`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("flags property-indexed Web Animations keyframes", () => {
+    const result = runRule(
+      noLayoutPropertyAnimation,
+      `document.getElementById("panel").animate({ height: ["0px", "100px"] }, 300);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts compositor-only Web Animations keyframes", () => {
+    const result = runRule(
+      noLayoutPropertyAnimation,
+      `document.querySelector(".panel").animate([{ transform: "scale(.8)", opacity: 0 }, { transform: "scale(1)", opacity: 1 }], 300);`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores an unproven application method also named animate", () => {
+    const result = runRule(noLayoutPropertyAnimation, `chart.animate([{ width: 100 }]);`);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

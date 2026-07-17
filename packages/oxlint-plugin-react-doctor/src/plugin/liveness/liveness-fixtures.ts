@@ -485,6 +485,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "export default function Page() {\n  return <main>Home</main>;\n}",
     filePath: "app/page.tsx",
   },
+  "nextjs-metadata-url-consistency": {
+    code: 'export const metadata = { alternates: { canonical: "https://example.com/docs" }, openGraph: { url: "https://example.com/help" } };',
+    filePath: "app/docs/page.tsx",
+  },
   "nextjs-no-a-element": {
     code: 'export default function C() { return <a href="/about">About</a>; }',
     filePath: "app/page.tsx",
@@ -591,6 +595,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-broken-image-source": {
     code: 'const Preview = () => <img src="" alt="Preview" />;',
+  },
+  "no-blocked-paste": {
+    code: 'const Password = () => <input type="password" onPaste={(event) => event.preventDefault()} />;',
+    filePath: "src/password.tsx",
   },
   "no-call-component-as-function": {
     code: "\n      const Row = ({ item }) => <li>{item}</li>;\n      const List = ({ items }) => (\n        <ul>{items.map((item) => Row({ item }))}</ul>\n      );\n      ",
@@ -1130,12 +1138,20 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-transition-all": {
     code: 'const El = () => <div style={{ transition: "all 0.3s ease" }} />;',
   },
+  "no-unbounded-animation-frame-loop": {
+    code: "function draw(time) { render(time); requestAnimationFrame(draw); } requestAnimationFrame(draw);",
+    filePath: "src/animation.ts",
+  },
   "no-uncontrolled-input": {
     code: 'export default function Field({ text }) { return <input type="text" value={text} />; }',
     filePath: "app/field.tsx",
   },
   "no-unescaped-dynamic-string-in-regexp": {
     code: "const matcher = RegExp(highlight, 'gi');",
+  },
+  "no-unthrottled-scroll-mutation": {
+    code: 'const hero = document.querySelector(".hero"); document.addEventListener("scroll", () => { hero.style.transform = "translateY(20px)"; });',
+    filePath: "src/scroll.ts",
   },
   "no-unguarded-browser-global-in-render-or-hook-init": {
     code: '"use client";\nexport const Page = () => <main>{window.innerWidth}</main>;',

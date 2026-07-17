@@ -24,4 +24,22 @@ describe("performance/no-global-css-variable-animation — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent for a CSS variable scoped to one element", () => {
+    const result = runRule(
+      noGlobalCssVariableAnimation,
+      `requestAnimationFrame(() => {
+  element.style.setProperty("--progress", String(progress));
+});`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when document is shadowed", () => {
+    const result = runRule(
+      noGlobalCssVariableAnimation,
+      `const document = model; requestAnimationFrame(() => document.body.style.setProperty("--x", "1"));`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

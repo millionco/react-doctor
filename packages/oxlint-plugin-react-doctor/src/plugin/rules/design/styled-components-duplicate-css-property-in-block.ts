@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { getRootIdentifier } from "../../utils/get-root-identifier.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isProvenStyledComponentExpression } from "../../utils/is-proven-styled-component-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -142,6 +143,43 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
       isNodeOfType(unwrappedRight, "SpreadElement")
     ) {
       return compare(unwrappedLeft.argument, unwrappedRight.argument);
+    }
+    if (
+      isNodeOfType(unwrappedLeft, "ArrayExpression") &&
+      isNodeOfType(unwrappedRight, "ArrayExpression")
+    ) {
+      return (
+        unwrappedLeft.elements.length === unwrappedRight.elements.length &&
+        unwrappedLeft.elements.every((element, elementIndex) => {
+          const rightElement = unwrappedRight.elements[elementIndex];
+          if (!element || !rightElement) return element === rightElement;
+          return compare(element, rightElement);
+        })
+      );
+    }
+    if (isNodeOfType(unwrappedLeft, "Property") && isNodeOfType(unwrappedRight, "Property")) {
+      const keysMatch = unwrappedLeft.computed
+        ? unwrappedRight.computed && compare(unwrappedLeft.key, unwrappedRight.key)
+        : !unwrappedRight.computed &&
+          getStaticPropertyKeyName(unwrappedLeft) === getStaticPropertyKeyName(unwrappedRight);
+      return (
+        keysMatch &&
+        unwrappedLeft.kind === unwrappedRight.kind &&
+        unwrappedLeft.method === unwrappedRight.method &&
+        unwrappedLeft.shorthand === unwrappedRight.shorthand &&
+        compare(unwrappedLeft.value, unwrappedRight.value)
+      );
+    }
+    if (
+      isNodeOfType(unwrappedLeft, "ObjectExpression") &&
+      isNodeOfType(unwrappedRight, "ObjectExpression")
+    ) {
+      return (
+        unwrappedLeft.properties.length === unwrappedRight.properties.length &&
+        unwrappedLeft.properties.every((property, propertyIndex) =>
+          compare(property, unwrappedRight.properties[propertyIndex]),
+        )
+      );
     }
     return false;
   };

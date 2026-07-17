@@ -107,6 +107,20 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("still flags when a composition-start handler does not guard the Enter action", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = () => (
+         <input
+           onCompositionStart={() => log()}
+           onKeyDown={(event) => { if (event.key === "Enter") submit(); }}
+         />
+       );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet when the handler bails on nativeEvent.isComposing", () => {
     const result = runRule(
       noEnterSubmitWithoutImeCompositionGuard,
@@ -275,6 +289,21 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
        };`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags when a helper checks composition only after committing", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = ({ isComposing, onSave }) => {
+         const commitEdit = () => {
+           onSave();
+           if (isComposing) return;
+         };
+         return <input onKeyDown={(event) => { if (event.key === "Enter") commitEdit(); }} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet when the guard sits two helper hops below the handler", () => {

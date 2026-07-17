@@ -56,6 +56,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-initialize-state",
   "no-mutating-reducer-state",
   "only-export-components",
+  "no-unguarded-browser-global-at-module-scope",
   "no-unguarded-browser-global-in-render-or-hook-init",
   "prefer-dynamic-import",
   "rendering-hydration-mismatch-time",

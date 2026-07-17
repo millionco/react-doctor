@@ -50,6 +50,12 @@ interface QueryTarget {
   value: string;
 }
 
+interface ClassMutationRecord {
+  node: EsTreeNodeOfType<"CallExpression">;
+  methodName: string;
+  blockId: number;
+}
+
 const literalStringFromJsxAttributeValue = (
   value: EsTreeNode | null | undefined,
 ): string | null => {
@@ -316,40 +322,6 @@ const stylePropertyCallReceiver = (callee: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
-const collectPatternIdentifiers = (
-  pattern: EsTreeNode | null | undefined,
-  visit: (identifier: EsTreeNodeOfType<"Identifier">) => void,
-): void => {
-  if (!pattern) return;
-  if (isNodeOfType(pattern, "Identifier")) {
-    visit(pattern);
-    return;
-  }
-  if (isNodeOfType(pattern, "AssignmentPattern")) {
-    collectPatternIdentifiers(pattern.left, visit);
-    return;
-  }
-  if (isNodeOfType(pattern, "RestElement")) {
-    collectPatternIdentifiers(pattern.argument, visit);
-    return;
-  }
-  if (isNodeOfType(pattern, "ArrayPattern")) {
-    for (const element of pattern.elements) {
-      collectPatternIdentifiers(element, visit);
-    }
-    return;
-  }
-  if (isNodeOfType(pattern, "ObjectPattern")) {
-    for (const property of pattern.properties) {
-      if (isNodeOfType(property, "Property")) {
-        collectPatternIdentifiers(property.value, visit);
-      } else if (isNodeOfType(property, "RestElement")) {
-        collectPatternIdentifiers(property.argument, visit);
-      }
-    }
-  }
-};
-
 interface OwnedNodeBinding {
   identifier: EsTreeNodeOfType<"Identifier">;
   elementInfos: OwnedElementInfo[];
@@ -444,97 +416,125 @@ const isInsideEffectCleanup = (node: EsTreeNode): boolean => {
 
 const OPPOSITE_CLASS_METHOD: Record<string, string> = { add: "remove", remove: "add" };
 
-const receiverIdentifierName = (receiver: EsTreeNode): string | null => {
-  const stripped = stripParenExpression(receiver);
-  return isNodeOfType(stripped, "Identifier") ? stripped.name : null;
-};
-
-const nodesAreInOppositeBranches = (leftNode: EsTreeNode, rightNode: EsTreeNode): boolean => {
-  let leftChild: EsTreeNode = leftNode;
-  let leftAncestor = leftNode.parent ?? null;
-  while (leftAncestor) {
-    if (isNodeOfType(leftAncestor, "IfStatement")) {
-      const leftIsConsequent = leftAncestor.consequent === leftChild;
-      const leftIsAlternate = leftAncestor.alternate === leftChild;
-      if (leftIsConsequent || leftIsAlternate) {
-        let rightChild: EsTreeNode = rightNode;
-        let rightAncestor = rightNode.parent ?? null;
-        while (rightAncestor && rightAncestor !== leftAncestor) {
-          rightChild = rightAncestor;
-          rightAncestor = rightAncestor.parent ?? null;
-        }
-        if (rightAncestor === leftAncestor) {
-          return (
-            (leftIsConsequent && leftAncestor.alternate === rightChild) ||
-            (leftIsAlternate && leftAncestor.consequent === rightChild)
-          );
-        }
-      }
+const collectBalancedClassToggleCalls = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): WeakSet<EsTreeNode> => {
+  const recordsByKey = new Map<string, ClassMutationRecord[]>();
+  walkAst(functionNode, (node) => {
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = node.callee;
+    if (!isNodeOfType(callee, "MemberExpression") || !isNodeOfType(callee.property, "Identifier")) {
+      return;
     }
-    leftChild = leftAncestor;
-    leftAncestor = leftAncestor.parent ?? null;
-  }
-  return false;
-};
-
-// `sheet.classList.add('print-expanded'); window.print();
-// sheet.classList.remove('print-expanded')` — a balanced add/remove of the
-// SAME class in the same function (or an effect + its cleanup) is a
-// temporary toggle React never observes mid-render.
-const hasBalancedClassToggle = (mutationCall: EsTreeNodeOfType<"CallExpression">): boolean => {
-  const callee = mutationCall.callee;
-  if (!isNodeOfType(callee, "MemberExpression") || !isNodeOfType(callee.property, "Identifier")) {
-    return false;
-  }
-  const methodName = callee.property.name;
-  const oppositeMethod = OPPOSITE_CLASS_METHOD[methodName];
-  if (!oppositeMethod) return false;
-  const receiver = classListMutationReceiver(callee);
-  const receiverName = receiver ? receiverIdentifierName(receiver) : null;
-  if (!receiverName) return false;
-  const classArgument = mutationCall.arguments?.[0];
-  if (
-    !classArgument ||
-    !isNodeOfType(classArgument, "Literal") ||
-    typeof classArgument.value !== "string"
-  ) {
-    return false;
-  }
-  const className = classArgument.value;
-  const scope = enclosingFunctionOf(mutationCall);
-  if (!scope) return false;
-  let balanced = false;
-  walkAst(scope, (child: EsTreeNode) => {
-    if (balanced) return false;
-    if (child === mutationCall || !isNodeOfType(child, "CallExpression")) return;
-    if (nodesAreInOppositeBranches(mutationCall, child)) return;
-    const childCallee = child.callee;
+    const methodName = callee.property.name;
+    if (!OPPOSITE_CLASS_METHOD[methodName]) return;
+    const receiver = classListMutationReceiver(callee);
+    const receiverIdentifier = receiver ? stripParenExpression(receiver) : null;
+    if (!receiverIdentifier || !isNodeOfType(receiverIdentifier, "Identifier")) return;
+    const receiverSymbol = context.scopes.symbolFor(receiverIdentifier);
+    const classArgument = node.arguments?.[0];
+    const scope = enclosingFunctionOf(node);
+    const functionControlFlow = scope ? context.cfg.cfgFor(scope) : null;
+    const block = functionControlFlow?.blockOf(node) ?? null;
     if (
-      !isNodeOfType(childCallee, "MemberExpression") ||
-      !isNodeOfType(childCallee.property, "Identifier") ||
-      childCallee.property.name !== oppositeMethod
+      !receiverSymbol ||
+      !classArgument ||
+      !isNodeOfType(classArgument, "Literal") ||
+      typeof classArgument.value !== "string" ||
+      !scope ||
+      !block
     ) {
       return;
     }
-    const childReceiver = classListMutationReceiver(childCallee);
-    if (!childReceiver || receiverIdentifierName(childReceiver) !== receiverName) return;
-    const childArgument = child.arguments?.[0];
-    if (
-      childArgument &&
-      isNodeOfType(childArgument, "Literal") &&
-      childArgument.value === className
-    ) {
-      balanced = true;
-      return false;
-    }
+    const key = `${scope.range[0]}:${receiverSymbol.id}:${classArgument.value}`;
+    const records = recordsByKey.get(key) ?? [];
+    records.push({ node, methodName, blockId: block.id });
+    recordsByKey.set(key, records);
   });
-  return balanced;
+  const balancedCalls = new WeakSet<EsTreeNode>();
+  for (const records of recordsByKey.values()) {
+    records.sort((left, right) => left.node.range[0] - right.node.range[0]);
+    for (let recordIndex = 0; recordIndex + 1 < records.length; recordIndex += 1) {
+      const current = records[recordIndex];
+      const next = records[recordIndex + 1];
+      if (
+        current &&
+        next &&
+        current.blockId === next.blockId &&
+        OPPOSITE_CLASS_METHOD[current.methodName] === next.methodName
+      ) {
+        balancedCalls.add(current.node);
+        balancedCalls.add(next.node);
+        recordIndex += 1;
+      }
+    }
+  }
+  return balancedCalls;
+};
+
+const nodeDominates = (
+  candidate: EsTreeNode,
+  target: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const owner = context.cfg.enclosingFunction(target);
+  if (!owner || context.cfg.enclosingFunction(candidate) !== owner) return false;
+  const functionControlFlow = context.cfg.cfgFor(owner);
+  const candidateBlock = functionControlFlow?.blockOf(candidate) ?? null;
+  const targetBlock = functionControlFlow?.blockOf(target) ?? null;
+  if (!functionControlFlow || !candidateBlock || !targetBlock) return false;
+  if (candidateBlock === targetBlock) return candidate.range[0] < target.range[0];
+  const visitedBlocks = new Set<number>();
+  const pendingBlocks = [functionControlFlow.entry];
+  while (pendingBlocks.length > 0) {
+    const block = pendingBlocks.pop();
+    if (!block || visitedBlocks.has(block.id) || block === candidateBlock) continue;
+    if (block === targetBlock) return false;
+    visitedBlocks.add(block.id);
+    for (const edge of block.successors) pendingBlocks.push(edge.to);
+  }
+  return true;
+};
+
+const nodePostDominates = (
+  candidate: EsTreeNode,
+  target: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const owner = context.cfg.enclosingFunction(candidate);
+  if (!owner || context.cfg.enclosingFunction(target) !== owner) return false;
+  const functionControlFlow = context.cfg.cfgFor(owner);
+  const candidateBlock = functionControlFlow?.blockOf(candidate) ?? null;
+  const targetBlock = functionControlFlow?.blockOf(target) ?? null;
+  if (!functionControlFlow || !candidateBlock || !targetBlock) return false;
+  if (candidateBlock === targetBlock) return candidate.range[0] < target.range[0];
+  const resultByBlockId = new Map<number, boolean>();
+  const visitingBlockIds = new Set<number>();
+  const blockById = new Map(functionControlFlow.blocks.map((block) => [block.id, block]));
+  const everyPathReachesTarget = (blockId: number): boolean => {
+    if (blockId === targetBlock.id) return true;
+    if (blockId === functionControlFlow.exit.id || visitingBlockIds.has(blockId)) return false;
+    const cachedResult = resultByBlockId.get(blockId);
+    if (cachedResult !== undefined) return cachedResult;
+    const block = blockById.get(blockId);
+    if (!block || block.successors.length === 0) return false;
+    visitingBlockIds.add(blockId);
+    const result = block.successors.every((edge) => everyPathReachesTarget(edge.to.id));
+    visitingBlockIds.delete(blockId);
+    resultByBlockId.set(blockId, result);
+    return result;
+  };
+  return everyPathReachesTarget(candidateBlock.id);
 };
 
 // `const prev = node.style.boxShadow; node.style.boxShadow = 'none';
 // ... node.style.boxShadow = prev` — the property is saved before and
 // restored after (try/finally export snapshots, auto-fit measurement).
-const hasStyleSaveRestore = (assignment: EsTreeNodeOfType<"AssignmentExpression">): boolean => {
+const hasStyleSaveRestore = (
+  assignment: EsTreeNodeOfType<"AssignmentExpression">,
+  context: RuleContext,
+): boolean => {
   const target = assignment.left;
   if (
     !isNodeOfType(target, "MemberExpression") ||
@@ -545,8 +545,12 @@ const hasStyleSaveRestore = (assignment: EsTreeNodeOfType<"AssignmentExpression"
   }
   const propertyName = target.property.name;
   const receiver = styleAssignmentReceiver(target);
-  const receiverName = receiver ? receiverIdentifierName(receiver) : null;
-  if (!receiverName) return false;
+  const receiverIdentifier = receiver ? stripParenExpression(receiver) : null;
+  const receiverSymbol =
+    receiverIdentifier && isNodeOfType(receiverIdentifier, "Identifier")
+      ? context.scopes.symbolFor(receiverIdentifier)
+      : null;
+  if (!receiverSymbol) return false;
   const scope = enclosingFunctionOf(assignment);
   if (!scope) return false;
   const matchesStyleRead = (candidate: EsTreeNode): boolean => {
@@ -554,38 +558,48 @@ const hasStyleSaveRestore = (assignment: EsTreeNodeOfType<"AssignmentExpression"
     if (!isNodeOfType(candidate.property, "Identifier")) return false;
     if (candidate.property.name !== propertyName) return false;
     const readReceiver = styleAssignmentReceiver(candidate);
-    return (
-      Boolean(readReceiver) && receiverIdentifierName(readReceiver as EsTreeNode) === receiverName
+    const readReceiverIdentifier = readReceiver ? stripParenExpression(readReceiver) : null;
+    return Boolean(
+      readReceiverIdentifier &&
+      isNodeOfType(readReceiverIdentifier, "Identifier") &&
+      context.scopes.symbolFor(readReceiverIdentifier)?.id === receiverSymbol.id,
     );
   };
-  const savedNames = new Set<string>();
+  const savedDeclarationsBySymbolId = new Map<number, EsTreeNode>();
   walkAst(scope, (child: EsTreeNode) => {
     if (
       isNodeOfType(child, "VariableDeclarator") &&
       isNodeOfType(child.id, "Identifier") &&
       child.init &&
-      child.range[1] <= assignment.range[0] &&
-      matchesStyleRead(stripParenExpression(child.init as EsTreeNode))
+      matchesStyleRead(stripParenExpression(child.init as EsTreeNode)) &&
+      nodeDominates(child, assignment, context)
     ) {
-      savedNames.add(child.id.name);
+      const savedSymbol = context.scopes.symbolFor(child.id);
+      if (savedSymbol) savedDeclarationsBySymbolId.set(savedSymbol.id, child);
     }
   });
-  if (savedNames.size === 0) return false;
-  // The restore assignment itself (`node.style.x = previousX`) is exempt
-  // directly — its right-hand side IS the saved value.
+  if (savedDeclarationsBySymbolId.size === 0) return false;
   const ownValue = stripParenExpression(assignment.right as EsTreeNode);
-  if (isNodeOfType(ownValue, "Identifier") && savedNames.has(ownValue.name)) return true;
+  if (
+    isNodeOfType(ownValue, "Identifier") &&
+    savedDeclarationsBySymbolId.has(context.scopes.symbolFor(ownValue)?.id ?? -1)
+  ) {
+    return true;
+  }
   let restored = false;
   walkAst(scope, (child: EsTreeNode) => {
     if (restored) return false;
     if (
       isNodeOfType(child, "AssignmentExpression") &&
       child !== assignment &&
-      child.range[0] >= assignment.range[1] &&
       matchesStyleRead(child.left as EsTreeNode)
     ) {
       const value = stripParenExpression(child.right as EsTreeNode);
-      if (isNodeOfType(value, "Identifier") && savedNames.has(value.name)) {
+      if (
+        isNodeOfType(value, "Identifier") &&
+        savedDeclarationsBySymbolId.has(context.scopes.symbolFor(value)?.id ?? -1) &&
+        nodePostDominates(assignment, child, context)
+      ) {
         restored = true;
         return false;
       }
@@ -606,12 +620,15 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
 
     const elementInfosForReceiver = (
       receiver: EsTreeNode,
-      ownedQueryVariables: Map<string, OwnedElementInfo[]>,
+      ownedQueryVariables: Map<number, OwnedElementInfo[]>,
       owned: OwnedTokens,
     ): OwnedElementInfo[] => {
       const stripped = stripParenExpression(receiver);
       if (isNodeOfType(stripped, "Identifier")) {
-        return ownedQueryVariables.get(stripped.name) ?? NO_OWNED_ELEMENTS;
+        const receiverSymbol = context.scopes.symbolFor(stripped);
+        return receiverSymbol
+          ? (ownedQueryVariables.get(receiverSymbol.id) ?? NO_OWNED_ELEMENTS)
+          : NO_OWNED_ELEMENTS;
       }
       if (isNodeOfType(stripped, "CallExpression")) {
         return elementInfosForQueryTarget(queryCallTarget(stripped, context), owned);
@@ -651,16 +668,16 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
     };
 
     const analyzeComponent = (functionNode: EsTreeNode, owned: OwnedTokens): void => {
-      const ownedBindingIdentifiers = new Set<EsTreeNode>();
-      const ownedQueryVariables = new Map<string, OwnedElementInfo[]>();
+      const ownedQueryVariables = new Map<number, OwnedElementInfo[]>();
+      const balancedClassToggleCalls = collectBalancedClassToggleCalls(functionNode, context);
       walkAst(functionNode, (node: EsTreeNode) => {
         if (isNodeOfType(node, "VariableDeclarator") && isNodeOfType(node.id, "Identifier")) {
           const queryInfos = node.init
             ? elementInfosForQueryTarget(queryCallTarget(node.init, context), owned)
             : NO_OWNED_ELEMENTS;
           if (queryInfos.length > 0) {
-            ownedBindingIdentifiers.add(node.id);
-            ownedQueryVariables.set(node.id.name, queryInfos);
+            const bindingSymbol = context.scopes.symbolFor(node.id);
+            if (bindingSymbol) ownedQueryVariables.set(bindingSymbol.id, queryInfos);
             return;
           }
         }
@@ -668,36 +685,10 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
           ownedNodeListCallbackParam(node, owned, context) ??
           ownedNodeListLoopBinding(node, owned, context);
         if (iterationBinding) {
-          ownedBindingIdentifiers.add(iterationBinding.identifier);
-          ownedQueryVariables.set(iterationBinding.identifier.name, iterationBinding.elementInfos);
-        }
-      });
-
-      // A same-named binding elsewhere in the component (shadowing const,
-      // callback parameter, catch param) means the bare name no longer proves
-      // the receiver is the queried node, so drop the name entirely.
-      const dropShadowedName = (identifier: EsTreeNodeOfType<"Identifier">): void => {
-        if (!ownedBindingIdentifiers.has(identifier)) {
-          ownedQueryVariables.delete(identifier.name);
-        }
-      };
-      walkAst(functionNode, (node: EsTreeNode) => {
-        if (isNodeOfType(node, "VariableDeclarator")) {
-          collectPatternIdentifiers(node.id, dropShadowedName);
-          return;
-        }
-        if (
-          isNodeOfType(node, "FunctionDeclaration") ||
-          isNodeOfType(node, "FunctionExpression") ||
-          isNodeOfType(node, "ArrowFunctionExpression")
-        ) {
-          for (const parameter of node.params) {
-            collectPatternIdentifiers(parameter, dropShadowedName);
+          const bindingSymbol = context.scopes.symbolFor(iterationBinding.identifier);
+          if (bindingSymbol) {
+            ownedQueryVariables.set(bindingSymbol.id, iterationBinding.elementInfos);
           }
-          return;
-        }
-        if (isNodeOfType(node, "CatchClause")) {
-          collectPatternIdentifiers(node.param, dropShadowedName);
         }
       });
 
@@ -707,7 +698,7 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
           if (!receiver) return;
           const elementInfos = elementInfosForReceiver(receiver, ownedQueryVariables, owned);
           if (canReactClobberStyleMutation(elementInfos, mutatedStylePropertyName(node.left))) {
-            if (isInsideEffectCleanup(node) || hasStyleSaveRestore(node)) return;
+            if (isInsideEffectCleanup(node) || hasStyleSaveRestore(node, context)) return;
             reportMutation(node, "style");
           }
           return;
@@ -721,7 +712,7 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
               owned,
             );
             if (canReactClobberClassMutation(elementInfos)) {
-              if (isInsideEffectCleanup(node) || hasBalancedClassToggle(node)) return;
+              if (isInsideEffectCleanup(node) || balancedClassToggleCalls.has(node)) return;
               reportMutation(node, "classList");
             }
             return;

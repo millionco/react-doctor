@@ -5,6 +5,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isDomGuardIdentifierName } from "../../utils/is-dom-guard-identifier-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { readBrowserGlobalAvailability } from "../../utils/read-browser-global-availability.js";
@@ -24,11 +25,8 @@ import type { RuleVisitors } from "../../utils/rule-visitors.js";
 // - browser-only-by-convention files: Remix/React Router `.client.` module
 //   filenames and Gatsby's `cache-dir/` client runtime are never evaluated
 //   during SSR;
-// - modules whose top level already throws/returns under a
-//   `typeof window === "undefined"` check — that IS the guard the rule
-//   asks for, so every read in the module is deliberate browser-only code;
-// - `window.<prop> = ...` assignment targets — the "expose a global on
-//   window" idiom lives in browser bootstrap entries, not SSR-shared code.
+// - modules whose top level already throws/returns under a preceding
+//   `typeof window === "undefined"` check.
 const BROWSER_GLOBAL_NAMES = new Set([
   "window",
   "navigator",
@@ -49,9 +47,6 @@ const DEFERRED_EXECUTION_NODE_TYPES = new Set<string>([
   "FunctionExpression",
   "ArrowFunctionExpression",
   "MethodDefinition",
-  "PropertyDefinition",
-  "AccessorProperty",
-  "StaticBlock",
 ]);
 
 // Remix/React Router `.client.` modules and Gatsby's `cache-dir/` client
@@ -79,24 +74,17 @@ const isFlowTerminatingStatement = (statement: EsTreeNode): boolean => {
   return false;
 };
 
-// `window.___emitter = emitter` — the flagged global is the root of an
-// assignment-target member chain, the "install a global" bootstrap idiom.
-const isAssignmentTargetRead = (globalIdentifier: EsTreeNode): boolean => {
-  let current: EsTreeNode = globalIdentifier;
-  let ancestor = current.parent;
-  while (ancestor && isNodeOfType(ancestor, "MemberExpression") && ancestor.object === current) {
-    current = ancestor;
-    ancestor = ancestor.parent ?? null;
-  }
-  return Boolean(
-    ancestor && isNodeOfType(ancestor, "AssignmentExpression") && ancestor.left === current,
-  );
-};
-
 const isEvaluatedAtImportTime = (node: EsTreeNode): boolean => {
   let ancestor = node.parent;
   while (ancestor) {
     if (DEFERRED_EXECUTION_NODE_TYPES.has(ancestor.type)) return false;
+    if (
+      (isNodeOfType(ancestor, "PropertyDefinition") ||
+        isNodeOfType(ancestor, "AccessorProperty")) &&
+      !ancestor.static
+    ) {
+      return false;
+    }
     ancestor = ancestor.parent ?? null;
   }
   return true;
@@ -279,25 +267,40 @@ const browserIsAvailableWhenPredicate = (
   );
 };
 
-const moduleDeclaresBrowserOnly = (
+const collectBrowserOnlyGuardEndOffsets = (
   program: EsTreeNodeOfType<"Program">,
   context: RuleContext,
   guardAliasNames: ReadonlySet<string>,
   classifyImportedGuardIdentifier: ClassifyImportedGuardIdentifier,
-): boolean =>
-  (program.body ?? []).some(
-    (statement) =>
-      isNodeOfType(statement, "IfStatement") &&
-      isFlowTerminatingStatement(statement.consequent) &&
-      browserIsAvailableWhenPredicate(
-        statement.test,
-        true,
-        "window",
-        context,
-        guardAliasNames,
-        classifyImportedGuardIdentifier,
-      ) === false,
-  );
+): number[] =>
+  (program.body ?? [])
+    .filter(
+      (statement) =>
+        isNodeOfType(statement, "IfStatement") &&
+        isFlowTerminatingStatement(statement.consequent) &&
+        browserIsAvailableWhenPredicate(
+          statement.test,
+          true,
+          "window",
+          context,
+          guardAliasNames,
+          classifyImportedGuardIdentifier,
+        ) === false,
+    )
+    .map((statement) => statement.range[1]);
+
+const catchClauseCanThrow = (handler: EsTreeNodeOfType<"CatchClause">): boolean => {
+  let canThrow = false;
+  walkAst(handler.body, (child) => {
+    if (canThrow) return false;
+    if (child !== handler.body && isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "ThrowStatement")) {
+      canThrow = true;
+      return false;
+    }
+  });
+  return canThrow;
+};
 
 // True when a browser-environment check dominates the read via an enclosing
 // `if` / ternary / `&&` (a `typeof <global>` test, a module-scope alias like
@@ -317,7 +320,8 @@ const isGuardedAgainstSsrCrash = (
   while (ancestor) {
     if (
       isNodeOfType(ancestor, "TryStatement") &&
-      Boolean(ancestor.handler) &&
+      ancestor.handler &&
+      !catchClauseCanThrow(ancestor.handler) &&
       ancestor.block === current
     ) {
       return true;
@@ -433,7 +437,7 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
     if (isBrowserOnlyModuleFilename(context.filename)) return {};
 
     let guardAliasNames: ReadonlySet<string> = NO_GUARD_ALIASES;
-    let moduleIsDeclaredBrowserOnly = false;
+    let browserOnlyGuardEndOffsets: number[] = [];
 
     const importedGuardResolutionByName = new Map<string, ImportedGuardResolution>();
     let importedGuardResolutionCount = 0;
@@ -478,7 +482,9 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
     };
 
     const reportRead = (node: EsTreeNode, globalName: string): void => {
-      if (moduleIsDeclaredBrowserOnly) return;
+      if (browserOnlyGuardEndOffsets.some((guardEndOffset) => guardEndOffset <= node.range[0])) {
+        return;
+      }
       if (!isEvaluatedAtImportTime(node)) return;
       if (
         isGuardedAgainstSsrCrash(
@@ -499,7 +505,7 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         guardAliasNames = collectGuardAliasNames(node);
-        moduleIsDeclaredBrowserOnly = moduleDeclaresBrowserOnly(
+        browserOnlyGuardEndOffsets = collectBrowserOnlyGuardEndOffsets(
           node,
           context,
           guardAliasNames,
@@ -517,7 +523,6 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
         ) {
           return;
         }
-        if (isAssignmentTargetRead(node)) return;
         reportRead(node, node.name);
       },
     };

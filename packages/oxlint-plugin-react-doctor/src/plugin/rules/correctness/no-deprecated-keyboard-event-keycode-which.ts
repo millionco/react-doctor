@@ -10,6 +10,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNonSourceFilename } from "../../utils/is-non-source-filename.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
@@ -278,11 +279,89 @@ const functionIsKeyboardHandler = (fnNode: EsTreeNode): boolean => {
   return false;
 };
 
+const isDescendantOf = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
+  let current: EsTreeNode | null | undefined = node;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parent;
+  }
+  return false;
+};
+
+const directLogicControlsFallback = (
+  signalNode: EsTreeNode,
+  fallbackConditionRoot: EsTreeNode,
+): boolean => {
+  if (isDescendantOf(signalNode, fallbackConditionRoot)) return true;
+  let ancestor = signalNode.parent ?? null;
+  while (ancestor && !isFunctionLike(ancestor)) {
+    if (
+      isNodeOfType(ancestor, "LogicalExpression") &&
+      isDescendantOf(fallbackConditionRoot, ancestor)
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(ancestor, "ConditionalExpression") &&
+      isDescendantOf(fallbackConditionRoot, ancestor) &&
+      (isDescendantOf(signalNode, ancestor.test) || isDescendantOf(signalNode, ancestor.consequent))
+    ) {
+      return true;
+    }
+    if (isNodeOfType(ancestor, "IfStatement") && isDescendantOf(signalNode, ancestor.test)) {
+      if (ancestor.alternate && isDescendantOf(fallbackConditionRoot, ancestor.alternate)) {
+        return true;
+      }
+      const block = ancestor.parent;
+      if (
+        block &&
+        isNodeOfType(block, "BlockStatement") &&
+        statementAlwaysExits(ancestor.consequent)
+      ) {
+        let fallbackStatement: EsTreeNode = fallbackConditionRoot;
+        while (fallbackStatement.parent && fallbackStatement.parent !== block) {
+          fallbackStatement = fallbackStatement.parent;
+        }
+        const signalIndex = block.body.findIndex((statement) => statement === ancestor);
+        const fallbackIndex = block.body.findIndex((statement) => statement === fallbackStatement);
+        if (signalIndex >= 0 && fallbackIndex > signalIndex) return true;
+      }
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
+const standardReadControlsFallback = (
+  readNode: EsTreeNode,
+  fallbackConditionRoot: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (directLogicControlsFallback(readNode, fallbackConditionRoot)) return true;
+  const valueRoot = readValueRoot(readNode);
+  const parent = valueRoot.parent ?? null;
+  if (
+    parent &&
+    isNodeOfType(parent, "VariableDeclarator") &&
+    parent.init === valueRoot &&
+    isNodeOfType(parent.id, "Identifier")
+  ) {
+    const aliasSymbol = context.scopes.symbolFor(parent.id);
+    return Boolean(
+      aliasSymbol?.references.some((reference) =>
+        directLogicControlsFallback(reference.identifier, fallbackConditionRoot),
+      ),
+    );
+  }
+  return false;
+};
+
 const receiverReadsAnyProperty = (
   scopeNode: EsTreeNode,
   receiverParameter: EsTreeNodeOfType<"Identifier">,
   propertyNames: Set<string>,
   context: RuleContext,
+  fallbackConditionRoot?: EsTreeNode,
   readQualifies?: (readNode: EsTreeNode) => boolean,
 ): boolean => {
   const receiverSymbol = context.scopes.symbolFor(receiverParameter);
@@ -297,7 +376,9 @@ const receiverReadsAnyProperty = (
       context.scopes.symbolFor(child.object)?.id === receiverSymbol?.id &&
       isNodeOfType(child.property, "Identifier") &&
       propertyNames.has(child.property.name) &&
-      (!readQualifies || readQualifies(child))
+      (!readQualifies || readQualifies(child)) &&
+      (!fallbackConditionRoot ||
+        standardReadControlsFallback(child, fallbackConditionRoot, context))
     ) {
       found = true;
       return false;
@@ -314,6 +395,7 @@ const receiverDestructuresAnyProperty = (
   receiverParameter: EsTreeNodeOfType<"Identifier">,
   propertyNames: Set<string>,
   context: RuleContext,
+  fallbackConditionRoot: EsTreeNode,
 ): boolean => {
   const receiverSymbol = context.scopes.symbolFor(receiverParameter);
   let found = false;
@@ -343,7 +425,11 @@ const receiverDestructuresAnyProperty = (
           if (isNodeOfType(bindingNode, "Identifier")) {
             const bindingSymbol = context.scopes.symbolFor(bindingNode);
             if (
-              bindingSymbol?.references.some((reference) => readFeedsLogic(reference.identifier))
+              bindingSymbol?.references.some(
+                (reference) =>
+                  readFeedsLogic(reference.identifier) &&
+                  directLogicControlsFallback(reference.identifier, fallbackConditionRoot),
+              )
             ) {
               found = true;
               return false;
@@ -363,6 +449,7 @@ const receiverFeatureDetectedWithIn = (
   receiverParameter: EsTreeNodeOfType<"Identifier">,
   propertyNames: Set<string>,
   context: RuleContext,
+  fallbackConditionRoot: EsTreeNode,
 ): boolean => {
   const receiverSymbol = context.scopes.symbolFor(receiverParameter);
   let found = false;
@@ -377,7 +464,8 @@ const receiverFeatureDetectedWithIn = (
       propertyNames.has(child.left.value) &&
       isNodeOfType(child.right, "Identifier") &&
       context.scopes.symbolFor(child.right)?.id === receiverSymbol?.id &&
-      readFeedsLogic(child)
+      readFeedsLogic(child) &&
+      directLogicControlsFallback(child, fallbackConditionRoot)
     ) {
       found = true;
       return false;
@@ -532,6 +620,7 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
           firstParamIdentifier,
           MOUSE_BUTTON_MEMBERS,
           context,
+          undefined,
         )
       ) {
         return;
@@ -542,6 +631,7 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
           firstParamIdentifier,
           STANDARD_KEY_MEMBERS,
           context,
+          conditionRoot,
           readFeedsLogic,
         ) ||
         receiverDestructuresAnyProperty(
@@ -549,12 +639,14 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
           firstParamIdentifier,
           STANDARD_KEY_MEMBERS,
           context,
+          conditionRoot,
         ) ||
         receiverFeatureDetectedWithIn(
           enclosingFunction,
           firstParamIdentifier,
           STANDARD_KEY_MEMBERS,
           context,
+          conditionRoot,
         )
       ) {
         return;

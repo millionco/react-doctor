@@ -69,12 +69,6 @@ export const radioInputMissingName = defineRule({
 
         if (findJsxAttribute(attributes, "name")) return;
 
-        // A `checked` prop marks the radio as controlled: React state owns
-        // exclusivity, so a missing `name` cannot cause several radios to end
-        // up checked (single-radio toggles and fully controlled groups are
-        // correct without one).
-        if (findJsxAttribute(attributes, "checked")) return;
-
         context.report({
           node,
           message:

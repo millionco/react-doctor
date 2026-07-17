@@ -186,6 +186,20 @@ describe("no-mutate-queried-dom-node-in-component", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("still tracks an owned query binding when an unrelated callback shadows its name", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Panel({ color, items }) {
+         const node = document.getElementById("panel");
+         items.map((node) => node.id);
+         node.style.color = "red";
+         return <div id="panel" style={{ color }} />;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags the queried node when a nested handler shadows a different name", () => {
     const result = runRule(
       noMutateQueriedDomNodeInComponent,
@@ -555,6 +569,20 @@ export const Modal = ({ open, children }) => {
     expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("does not treat an unreachable opposite class operation as a balanced toggle", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Row({ active }) {
+         const row = document.getElementById("row");
+         if (false) row.classList.remove("active");
+         row.classList.add("active");
+         return <div id="row" className={active ? "active" : ""} />;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("does not treat a restore that happens before the mutation as cleanup", () => {
     const result = runRule(
       noMutateQueriedDomNodeInComponent,
@@ -567,6 +595,33 @@ export const Modal = ({ open, children }) => {
        }`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a conditional or unreachable later restore as guaranteed cleanup", () => {
+    const conditionalResult = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Row({ opacity, shouldRestore }) {
+         const row = document.getElementById("row");
+         const previousOpacity = row.style.opacity;
+         row.style.opacity = "0";
+         if (shouldRestore) row.style.opacity = previousOpacity;
+         return <div id="row" style={{ opacity }} />;
+       }`,
+    );
+    const unreachableResult = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Row({ opacity }) {
+         const row = document.getElementById("row");
+         const previousOpacity = row.style.opacity;
+         row.style.opacity = "0";
+         if (false) row.style.opacity = previousOpacity;
+         return <div id="row" style={{ opacity }} />;
+       }`,
+    );
+    expect(conditionalResult.parseErrors).toEqual([]);
+    expect(unreachableResult.parseErrors).toEqual([]);
+    expect(conditionalResult.diagnostics.length).toBeGreaterThanOrEqual(1);
+    expect(unreachableResult.diagnostics.length).toBeGreaterThanOrEqual(1);
   });
 
   it("recognizes owned JSX returned by a render-time map callback", () => {

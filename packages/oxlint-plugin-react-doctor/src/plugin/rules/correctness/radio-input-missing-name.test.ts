@@ -13,21 +13,21 @@ describe("radio-input-missing-name", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag a controlled radio (checked + onChange): React state owns exclusivity", () => {
+  it("flags a controlled radio because state does not provide native arrow-key grouping", () => {
     const result = runRule(
       radioInputMissingName,
       `<input type="radio" value="no" checked={value === "no"} onChange={handleChange} />;`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag a single controlled radio used as a toggle", () => {
+  it("flags a controlled radio used as a toggle because radio semantics require a group name", () => {
     const result = runRule(
       radioInputMissingName,
       `const Toggle = ({ isOn, onToggle }) => <input type="radio" checked={isOn} onChange={onToggle} />;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a defaultChecked (uncontrolled) radio with no name", () => {

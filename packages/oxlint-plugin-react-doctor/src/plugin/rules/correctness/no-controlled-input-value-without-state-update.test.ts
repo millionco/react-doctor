@@ -137,6 +137,18 @@ describe("no-controlled-input-value-without-state-update", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each(["button", "submit", "reset", "image", "file"])(
+    "does not flag a non-editable type=%s value label or token",
+    (inputType) => {
+      const result = runRule(
+        noControlledInputValueWithoutStateUpdate,
+        `<input type="${inputType}" value="Save" onChange={track} />;`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
   it("does not flag a generic radio component with dynamic type and explicit checked", () => {
     const result = runRule(
       noControlledInputValueWithoutStateUpdate,

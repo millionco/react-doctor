@@ -204,6 +204,16 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a read when the catch rethrows the SSR failure", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `try { consume(window.innerWidth); } catch (error) { throw error; }`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a read inside a try block without a catch handler", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
@@ -293,12 +303,12 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a window-property assignment target (expose-a-global bootstrap idiom)", () => {
+  it("flags a window-property assignment target because resolving window crashes SSR", () => {
     const result = runRule(noUnguardedBrowserGlobalAtModuleScope, `window.___emitter = emitter;`, {
       filename: "src/app.js",
     });
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a module-scope read next to a window-property assignment", () => {
@@ -309,7 +319,31 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
       prod,
     );
     expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags a read that occurs before a terminating browser-only guard", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `const width = window.innerWidth;
+       if (typeof window === "undefined") throw new Error("browser only");`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags browser globals in static class initialization", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `class Viewport {
+         static width = window.innerWidth;
+         static { localStorage.getItem("theme"); }
+       }`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("flags a bare browser-global value read at module scope", () => {

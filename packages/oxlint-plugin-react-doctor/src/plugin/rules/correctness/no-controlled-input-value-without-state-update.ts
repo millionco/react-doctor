@@ -12,9 +12,16 @@ import { walkAst } from "../../utils/walk-ast.js";
 
 const CONTROLLED_INPUT_TAGS = new Set(["input", "textarea"]);
 
-// `checked` drives radio/checkbox state, `hidden` never needs onChange, so a
-// literal `value` on these is the submission token, not a frozen field.
-const VALUE_BYPASS_INPUT_TYPES = new Set(["hidden", "checkbox", "radio"]);
+const VALUE_BYPASS_INPUT_TYPES = new Set([
+  "button",
+  "checkbox",
+  "file",
+  "hidden",
+  "image",
+  "radio",
+  "reset",
+  "submit",
+]);
 
 const READONLY_ATTRIBUTES = ["readOnly", "disabled"];
 
@@ -151,6 +158,7 @@ const returnsAreAlternativeBranches = (
 
 const componentRendersStateDrivenAlternative = (
   flaggedElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  alternativeResultByReturn: WeakMap<EsTreeNode, boolean>,
 ): boolean => {
   let enclosingFunction: EsTreeNode | null = flaggedElement.parent ?? null;
   while (enclosingFunction && !isFunctionLike(enclosingFunction)) {
@@ -159,6 +167,8 @@ const componentRendersStateDrivenAlternative = (
   if (!enclosingFunction) return false;
   const flaggedReturn = findReturnStatementAncestor(flaggedElement, enclosingFunction);
   if (!flaggedReturn) return false;
+  const cachedResult = alternativeResultByReturn.get(flaggedReturn);
+  if (cachedResult !== undefined) return cachedResult;
   let foundSibling = false;
   walkAst(enclosingFunction, (child) => {
     if (foundSibling) return false;
@@ -178,6 +188,7 @@ const componentRendersStateDrivenAlternative = (
       return false;
     }
   });
+  alternativeResultByReturn.set(flaggedReturn, foundSibling);
   return foundSibling;
 };
 
@@ -188,38 +199,41 @@ export const noControlledInputValueWithoutStateUpdate = defineRule({
   tags: ["react-jsx-only"],
   recommendation:
     "Drive the input's `value` from state (`const [value, setValue] = useState(...)`) that `onChange` updates, or drop `value` if the field is meant to be read-only.",
-  create: (context: RuleContext) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-      const tagName = node.name.name;
-      if (!CONTROLLED_INPUT_TAGS.has(tagName)) return;
+  create: (context: RuleContext) => {
+    const alternativeResultByReturn = new WeakMap<EsTreeNode, boolean>();
+    return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (!isNodeOfType(node.name, "JSXIdentifier")) return;
+        const tagName = node.name.name;
+        if (!CONTROLLED_INPUT_TAGS.has(tagName)) return;
 
-      const attributes = node.attributes ?? [];
-      if (hasJsxSpreadAttribute(attributes)) return;
+        const attributes = node.attributes ?? [];
+        if (hasJsxSpreadAttribute(attributes)) return;
 
-      const valueAttribute = findJsxAttribute(attributes, "value");
-      if (!valueAttribute || !isLiteralValueAttribute(valueAttribute)) return;
+        const valueAttribute = findJsxAttribute(attributes, "value");
+        if (!valueAttribute || !isLiteralValueAttribute(valueAttribute)) return;
 
-      const onChangeAttribute = findJsxAttribute(attributes, "onChange");
-      if (!onChangeAttribute || isNoOpChangeHandler(onChangeAttribute)) return;
-      if (READONLY_ATTRIBUTES.some((name) => findJsxAttribute(attributes, name))) return;
+        const onChangeAttribute = findJsxAttribute(attributes, "onChange");
+        if (!onChangeAttribute || isNoOpChangeHandler(onChangeAttribute)) return;
+        if (READONLY_ATTRIBUTES.some((name) => findJsxAttribute(attributes, name))) return;
 
-      if (tagName === "input") {
-        if (findJsxAttribute(attributes, "checked")) return;
-        const typeAttribute = findJsxAttribute(attributes, "type");
-        if (typeAttribute) {
-          const inputType = getStaticStringAttributeValue(typeAttribute);
-          if (inputType === null || VALUE_BYPASS_INPUT_TYPES.has(inputType)) return;
+        if (tagName === "input") {
+          if (findJsxAttribute(attributes, "checked")) return;
+          const typeAttribute = findJsxAttribute(attributes, "type");
+          if (typeAttribute) {
+            const inputType = getStaticStringAttributeValue(typeAttribute);
+            if (inputType === null || VALUE_BYPASS_INPUT_TYPES.has(inputType.toLowerCase())) return;
+          }
         }
-      }
 
-      if (hasHiddenOrDecoySignal(attributes)) return;
-      if (componentRendersStateDrivenAlternative(node)) return;
+        if (hasHiddenOrDecoySignal(attributes)) return;
+        if (componentRendersStateDrivenAlternative(node, alternativeResultByReturn)) return;
 
-      context.report({
-        node,
-        message: `Typing does nothing in this <${tagName}> because its \`value\` is a fixed literal that \`onChange\` never updates, so drive \`value\` from state or drop it if the field should be read-only.`,
-      });
-    },
-  }),
+        context.report({
+          node,
+          message: `Typing does nothing in this <${tagName}> because its \`value\` is a fixed literal that \`onChange\` never updates, so drive \`value\` from state or drop it if the field should be read-only.`,
+        });
+      },
+    };
+  },
 });

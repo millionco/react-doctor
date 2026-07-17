@@ -260,6 +260,18 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags when unrelated event.key logic does not control the deprecated branch", () => {
+    const result = runRule(
+      noDeprecatedKeyboardEventKeycodeWhich,
+      `const onKeyDown = (event: KeyboardEvent) => {
+         if (event.key === "Escape") close();
+         if (event.keyCode === 65) selectAll();
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet when a key-derived comparison guards the fallback", () => {
     const result = runRule(
       noDeprecatedKeyboardEventKeycodeWhich,

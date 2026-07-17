@@ -376,33 +376,6 @@ const statementTerminatesFlow = (statement: EsTreeNode): boolean => {
   return Boolean(lastStatement && statementTerminatesFlow(lastStatement));
 };
 
-const scopeHasCompositionGuard = (scope: EsTreeNode): boolean => {
-  let found = false;
-  walkAst(scope, (child) => {
-    if (found) return false;
-    if (child !== scope && isFunctionLike(child)) return false;
-    const condition =
-      isNodeOfType(child, "IfStatement") ||
-      isNodeOfType(child, "ConditionalExpression") ||
-      isNodeOfType(child, "WhileStatement") ||
-      isNodeOfType(child, "DoWhileStatement")
-        ? child.test
-        : isNodeOfType(child, "LogicalExpression")
-          ? child.left
-          : null;
-    if (
-      condition &&
-      subtreeHasCompositionSignal(condition) &&
-      isNodeOfType(child, "IfStatement") &&
-      statementTerminatesFlow(child.consequent)
-    ) {
-      found = true;
-      return false;
-    }
-  });
-  return found;
-};
-
 const hasPriorCompositionEarlyExit = (handler: EsTreeNode, branchTest: EsTreeNode): boolean => {
   let current: EsTreeNode = branchTest;
   while (current !== handler) {
@@ -427,12 +400,6 @@ const hasPriorCompositionEarlyExit = (handler: EsTreeNode, branchTest: EsTreeNod
   }
   return false;
 };
-
-const elementHasCompositionHandlers = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean =>
-  Boolean(
-    hasJsxPropIgnoreCase(node.attributes, "onCompositionStart") ||
-    hasJsxPropIgnoreCase(node.attributes, "onCompositionEnd"),
-  );
 
 // `this.commitEntry()` delegates to a class member — resolve it to the
 // method/property function on the enclosing class so a guard inside the
@@ -510,6 +477,76 @@ const handlerCalleeInitializers = (handler: EsTreeNode): EsTreeNode[] => {
   return initializers;
 };
 
+const isInsideCompositionCondition = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
+  let child = node;
+  let ancestor = node.parent ?? null;
+  while (ancestor && ancestor !== boundary) {
+    if (
+      ((isNodeOfType(ancestor, "IfStatement") ||
+        isNodeOfType(ancestor, "ConditionalExpression") ||
+        isNodeOfType(ancestor, "WhileStatement") ||
+        isNodeOfType(ancestor, "DoWhileStatement")) &&
+        ancestor.test === child &&
+        subtreeHasCompositionSignal(ancestor.test)) ||
+      (isNodeOfType(ancestor, "LogicalExpression") &&
+        ancestor.left === child &&
+        subtreeHasCompositionSignal(ancestor.left))
+    ) {
+      return true;
+    }
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
+const resolveCalledFunction = (call: EsTreeNodeOfType<"CallExpression">): EsTreeNode | null => {
+  const callee = stripGroupingParens(call.callee as EsTreeNode);
+  if (isNodeOfType(callee, "Identifier")) {
+    const binding = findVariableInitializer(callee, callee.name);
+    return binding?.initializer && isFunctionLike(binding.initializer) ? binding.initializer : null;
+  }
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.object, "ThisExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier")
+  ) {
+    return resolveClassMemberFunction(call, callee.property.name);
+  }
+  return null;
+};
+
+const scopeCommitsAreCompositionGuarded = (
+  scope: EsTreeNode,
+  visitedFunctions: Set<EsTreeNode>,
+): boolean => {
+  if (visitedFunctions.has(scope)) return false;
+  visitedFunctions.add(scope);
+  let foundCommit = false;
+  let foundUnguardedCommit = false;
+  walkAst(scope, (child) => {
+    if (foundUnguardedCommit) return false;
+    if (child !== scope && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const calleeProperty = memberPropertyName(stripGroupingParens(child.callee as EsTreeNode));
+    if (calleeProperty && NON_COMMIT_CALL_PROPERTIES.has(calleeProperty)) return;
+    if (isInsideCompositionCondition(child, scope)) return;
+    foundCommit = true;
+    if (hasPriorCompositionEarlyExit(scope, child)) return;
+    const calledFunction = resolveCalledFunction(child);
+    if (
+      calledFunction &&
+      scopeCommitsAreCompositionGuarded(calledFunction, new Set(visitedFunctions))
+    ) {
+      return;
+    }
+    foundUnguardedCommit = true;
+    return false;
+  });
+  return foundCommit && !foundUnguardedCommit;
+};
+
 const getHandlerFunction = (node: EsTreeNodeOfType<"JSXOpeningElement">): EsTreeNode | null => {
   for (const attributeName of KEY_HANDLER_ATTRS) {
     const attribute = hasJsxPropIgnoreCase(node.attributes, attributeName);
@@ -535,9 +572,8 @@ const getHandlerFunction = (node: EsTreeNodeOfType<"JSXOpeningElement">): EsTree
 // the value via Number/parseInt/parseFloat), modifier-gated
 // (Cmd/Ctrl+Enter) or Space+Enter activation, `preventDefault`-only
 // handlers, and handlers guarded by `isComposing` / `keyCode === 229` /
-// composition wiring on the element itself, in the handler body, or in a
-// same-file function the handler calls — a sibling control's guard does
-// not protect this handler and does not suppress. A negated modifier
+// composition state read in the handler body or in a same-file function
+// the Enter action calls. A negated modifier
 // (`!e.shiftKey`) is not a gate — plain Enter still commits there.
 //
 // KNOWN ACCEPTED NOISE: a commit gated on a validity flag whose setter
@@ -585,20 +621,11 @@ export const noEnterSubmitWithoutImeCompositionGuard = defineRule({
         }
         if (testUsesModifierOrSpace(branch.testExpr)) continue;
         if (!branchPerformsCommit(branch.actionNode)) continue;
+        if (scopeCommitsAreCompositionGuarded(branch.actionNode, new Set())) continue;
         hasBareEnterCommit = true;
         break;
       }
       if (!hasBareEnterCommit) return;
-
-      // A composition guard only protects THIS handler when it is wired
-      // on the element itself (`onCompositionStart`/`onCompositionEnd`
-      // attrs), read inside the handler (`isComposing`, `229`), or
-      // checked inside a same-file function the handler calls. A sibling
-      // control's guard elsewhere in the component does not stop this
-      // handler firing mid-composition, so it must not suppress.
-      if (elementHasCompositionHandlers(node)) return;
-      const guardScopes = handlerCalleeInitializers(handler);
-      if (guardScopes.some(scopeHasCompositionGuard)) return;
 
       context.report({ node: node.name as EsTreeNode, message: MESSAGE });
     },

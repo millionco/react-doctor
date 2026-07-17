@@ -26,6 +26,21 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags type-wrapped response body consumers without treating the response as escaped", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function loadAsserted() {
+         const response = await fetch(endpoint);
+         return (response as Response).json();
+       }
+       async function loadNonNull() {
+         const response = await fetch(endpoint);
+         return response!.json();
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("flags immediate double-await consumption", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,

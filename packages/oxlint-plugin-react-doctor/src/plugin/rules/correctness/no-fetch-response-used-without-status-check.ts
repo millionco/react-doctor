@@ -319,11 +319,12 @@ const scopeChecksParsedBodyStatus = (scope: EsTreeNode, responseName: string): b
 };
 
 const isConsumingReceiver = (identifier: EsTreeNode): boolean => {
-  const parent = identifier.parent;
+  const receiver = findTransparentExpressionRoot(identifier);
+  const parent = receiver.parent;
   return Boolean(
     parent &&
     isNodeOfType(parent, "MemberExpression") &&
-    parent.object === identifier &&
+    parent.object === receiver &&
     !parent.computed &&
     isNodeOfType(parent.property, "Identifier") &&
     (BODY_CONSUMER_METHODS.has(parent.property.name) ||

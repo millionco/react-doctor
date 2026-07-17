@@ -57,6 +57,40 @@ describe("performance/rendering-hydration-no-flicker — regressions", () => {
     `);
   });
 
+  it("still flags a portal hidden until the client mount effect runs", () => {
+    expectFail(`
+      import { createPortal } from "react-dom";
+      import { useEffect, useState } from "react";
+      const Gallery = ({ show }) => {
+        const [isClient, setIsClient] = useState(false);
+        useEffect(() => {
+          setIsClient(true);
+        }, []);
+        if (!show || !isClient) {
+          return null;
+        }
+        return createPortal(<div role="dialog" />, document.body);
+      };
+    `);
+  });
+
+  it("still flags a media capability gate deferred until after paint", () => {
+    expectFail(`
+      import { useEffect, useMemo, useState } from "react";
+      const Background = ({ mime, src }) => {
+        const [hasMounted, setHasMounted] = useState(false);
+        useEffect(() => {
+          setHasMounted(true);
+        }, []);
+        const isPlayable = useMemo(
+          () => Boolean(hasMounted && document.createElement("video").canPlayType(mime)),
+          [hasMounted, mime],
+        );
+        return isPlayable ? <video src={src} /> : <img src={src} />;
+      };
+    `);
+  });
+
   it("still flags a setter feeding visible content", () => {
     expectFail(`
       const NoteForm = () => {

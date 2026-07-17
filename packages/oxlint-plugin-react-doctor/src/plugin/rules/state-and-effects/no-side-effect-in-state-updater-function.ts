@@ -118,12 +118,63 @@ const nodeIsInsideFunction = (node: EsTreeNode, functionNode: EsTreeNode): boole
   return false;
 };
 
+const memberReceiverIsUpdaterLocal = (
+  receiver: EsTreeNodeOfType<"MemberExpression">,
+  executedFunctions: ReadonlySet<EsTreeNode>,
+  context: RuleContext,
+  visitedSymbolIds: Set<number>,
+): boolean => {
+  const propertyName = getStaticPropertyName(receiver);
+  const object = stripParenExpression(receiver.object);
+  if (!propertyName || !isNodeOfType(object, "Identifier")) return false;
+  const objectSymbol = context.scopes.symbolFor(object);
+  if (!objectSymbol || visitedSymbolIds.has(objectSymbol.id)) return false;
+  const initializer = objectSymbol.initializer
+    ? stripParenExpression(objectSymbol.initializer)
+    : null;
+  if (!isNodeOfType(initializer, "ObjectExpression")) return false;
+  for (const property of initializer.properties.toReversed()) {
+    if (
+      !isNodeOfType(property, "Property") ||
+      getStaticPropertyKeyName(property, { allowComputedString: true }) !== propertyName
+    ) {
+      continue;
+    }
+    const value = stripParenExpression(property.value);
+    if (
+      isNodeOfType(value, "CallExpression") ||
+      isNodeOfType(value, "NewExpression") ||
+      isNodeOfType(value, "ObjectExpression") ||
+      isNodeOfType(value, "ArrayExpression")
+    ) {
+      return true;
+    }
+    if (!isNodeOfType(value, "Identifier")) return false;
+    return receiverIsUpdaterLocal(
+      value,
+      executedFunctions,
+      context,
+      new Set([...visitedSymbolIds, objectSymbol.id]),
+    );
+  }
+  return false;
+};
+
 const receiverIsUpdaterLocal = (
   receiver: EsTreeNode,
   executedFunctions: ReadonlySet<EsTreeNode>,
   context: RuleContext,
   visitedSymbolIds: Set<number> = new Set(),
 ): boolean => {
+  const unwrappedReceiver = stripParenExpression(receiver);
+  if (isNodeOfType(unwrappedReceiver, "MemberExpression")) {
+    return memberReceiverIsUpdaterLocal(
+      unwrappedReceiver,
+      executedFunctions,
+      context,
+      visitedSymbolIds,
+    );
+  }
   const baseIdentifier = baseReceiverIdentifier(receiver);
   if (!baseIdentifier) return false;
   const symbol = context.scopes.symbolFor(baseIdentifier);
@@ -205,6 +256,18 @@ const identifierLooksSideEffecting = (identifier: EsTreeNode, context: RuleConte
   (SIDE_EFFECT_CALL_NAME_PATTERN.test(identifier.name) ||
     identifierIsCallbackParameter(identifier, context));
 
+const expressionLooksLikeExternalCallback = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (identifierLooksSideEffecting(unwrappedExpression, context)) return true;
+  return Boolean(
+    isNodeOfType(unwrappedExpression, "MemberExpression") &&
+    /^on[A-Z]/.test(getStaticPropertyName(unwrappedExpression) ?? ""),
+  );
+};
+
 const freshObjectMethodIsExternalCallback = (
   callee: EsTreeNodeOfType<"MemberExpression">,
   context: RuleContext,
@@ -224,19 +287,21 @@ const freshObjectMethodIsExternalCallback = (
     ) {
       continue;
     }
-    return identifierLooksSideEffecting(stripParenExpression(property.value), context);
+    return expressionLooksLikeExternalCallback(property.value, context);
   }
   return false;
 };
 
 const callHasImmediateSideEffectCallback = (
   call: EsTreeNodeOfType<"CallExpression">,
+  updaterFunction: EsTreeNode,
   context: RuleContext,
 ): boolean => {
   const callee = stripParenExpression(call.callee);
   if (
     !isNodeOfType(callee, "MemberExpression") ||
     !SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") ||
+    !receiverIsKnownSynchronousCollection(callee.object, updaterFunction, context) ||
     resolveLocalFunction(callee, context)
   ) {
     return false;
@@ -246,6 +311,34 @@ const callHasImmediateSideEffectCallback = (
     callbackArgument &&
     !isNodeOfType(callbackArgument, "SpreadElement") &&
     identifierLooksSideEffecting(stripParenExpression(callbackArgument), context),
+  );
+};
+
+const receiverIsKnownSynchronousCollection = (
+  expression: EsTreeNode,
+  updaterFunction: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const receiver = stripParenExpression(expression);
+  if (isNodeOfType(receiver, "ArrayExpression")) return true;
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(receiver);
+  if (!symbol) return false;
+  const firstParameter = isFunctionLike(updaterFunction) ? updaterFunction.params?.[0] : null;
+  if (
+    isNodeOfType(firstParameter, "Identifier") &&
+    context.scopes.symbolFor(firstParameter)?.id === symbol.id
+  ) {
+    return true;
+  }
+  const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
+  if (isNodeOfType(initializer, "ArrayExpression")) return true;
+  if (!isNodeOfType(initializer, "NewExpression")) return false;
+  const constructor = stripParenExpression(initializer.callee);
+  return Boolean(
+    isNodeOfType(constructor, "Identifier") &&
+    constructor.name === "Array" &&
+    context.scopes.isGlobalReference(constructor),
   );
 };
 
@@ -381,6 +474,7 @@ const collectExecutedFunctions = (
       if (
         !isNodeOfType(callee, "MemberExpression") ||
         !SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") ||
+        !receiverIsKnownSynchronousCollection(callee.object, updaterFunction, context) ||
         directFunction
       ) {
         return;
@@ -433,7 +527,7 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
             }
             const resolvedFunction = resolveLocalFunction(child.callee, context);
             if (resolvedFunction && executedFunctions.has(resolvedFunction)) return;
-            if (callHasImmediateSideEffectCallback(child, context)) {
+            if (callHasImmediateSideEffectCallback(child, updaterFunction, context)) {
               if (!reportedSideEffectNodes.has(child)) {
                 reportedSideEffectNodes.add(child);
                 context.report({ node: child, message: MESSAGE });

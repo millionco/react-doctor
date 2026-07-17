@@ -324,6 +324,15 @@ const collectSameReferenceResultExpressions = (
   return [];
 };
 
+const nodeIsInside = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
+  let current: EsTreeNode | null | undefined = node;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parent;
+  }
+  return false;
+};
+
 const hasFreshReassignmentBefore = (
   functionNode: EsTreeNode,
   expectedSymbol: SymbolDescriptor,
@@ -331,15 +340,15 @@ const hasFreshReassignmentBefore = (
   functionCfg: FunctionCfg,
   context: RuleContext,
 ): boolean => {
-  let didFindFreshReassignment = false;
+  let lastReassignmentRight: EsTreeNode | null = null;
+  let lastReassignmentStart = Number.NEGATIVE_INFINITY;
   walkAst(functionNode, (child: EsTreeNode) => {
-    if (didFindFreshReassignment || (child !== functionNode && isFunctionLike(child))) return false;
+    if (child !== functionNode && isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "AssignmentExpression") || child.operator !== "=") return;
     const left = stripParenExpression(child.left);
     if (
       !isNodeOfType(left, "Identifier") ||
       resolveConstIdentifierRootSymbol(left, context.scopes)?.id !== expectedSymbol.id ||
-      expressionReturnsSymbol(child.right, expectedSymbol, null, context) ||
       (() => {
         let ancestor: EsTreeNode | null | undefined = child.parent;
         while (ancestor && ancestor !== functionNode) {
@@ -365,10 +374,56 @@ const hasFreshReassignmentBefore = (
     ) {
       return;
     }
-    didFindFreshReassignment = true;
-    return false;
+    const assignmentStart = child.range?.[0] ?? 0;
+    if (assignmentStart > lastReassignmentStart) {
+      lastReassignmentRight = child.right;
+      lastReassignmentStart = assignmentStart;
+    }
   });
-  return didFindFreshReassignment;
+  return Boolean(
+    lastReassignmentRight &&
+    !expressionReturnsSymbol(lastReassignmentRight, expectedSymbol, null, context),
+  );
+};
+
+const deduplicateMutationFactsByBlockWhenParameterIsStable = (
+  mutationFacts: MutationFact[],
+  functionNode: EsTreeNode,
+  expectedSymbol: SymbolDescriptor,
+  functionCfg: FunctionCfg,
+  context: RuleContext,
+): MutationFact[] => {
+  let doesReassignParameter = false;
+  walkAst(functionNode, (child: EsTreeNode) => {
+    if (doesReassignParameter || (child !== functionNode && isFunctionLike(child))) return false;
+    if (!isNodeOfType(child, "AssignmentExpression")) return;
+    const left = stripParenExpression(child.left);
+    if (
+      isNodeOfType(left, "Identifier") &&
+      resolveConstIdentifierRootSymbol(left, context.scopes)?.id === expectedSymbol.id
+    ) {
+      doesReassignParameter = true;
+      return false;
+    }
+  });
+  if (doesReassignParameter) return mutationFacts;
+  const mutationFactByBlockId = new Map<number, MutationFact>();
+  const factsWithoutBlock: MutationFact[] = [];
+  for (const mutationFact of mutationFacts) {
+    const block = functionCfg.blockOf(mutationFact.node);
+    if (!block) {
+      factsWithoutBlock.push(mutationFact);
+      continue;
+    }
+    const previousFact = mutationFactByBlockId.get(block.id);
+    if (
+      !previousFact ||
+      (mutationFact.node.range?.[0] ?? 0) < (previousFact.node.range?.[0] ?? 0)
+    ) {
+      mutationFactByBlockId.set(block.id, mutationFact);
+    }
+  }
+  return [...mutationFactByBlockId.values(), ...factsWithoutBlock];
 };
 
 const updaterMutatesThenReturnsSameReference = (
@@ -391,10 +446,11 @@ const updaterMutatesThenReturnsSameReference = (
   }
   const functionCfg = context.cfg.cfgFor(updaterFunction);
   if (!functionCfg) return false;
-  const mutationFacts = collectMutationFacts(
+  const mutationFacts = deduplicateMutationFactsByBlockWhenParameterIsStable(
+    collectMutationFacts(updaterFunction, parameterSymbol, collectionKind, context),
     updaterFunction,
     parameterSymbol,
-    collectionKind,
+    functionCfg,
     context,
   );
   if (mutationFacts.length === 0) return false;
@@ -404,6 +460,12 @@ const updaterMutatesThenReturnsSameReference = (
     if (!isNodeOfType(child, "ReturnStatement") || !child.argument) {
       return;
     }
+    const reachableMutationFacts = mutationFacts.filter(
+      (mutationFact) =>
+        nodeIsInside(mutationFact.node, child) ||
+        nodePrecedesOnReachablePath(mutationFact.node, child, functionCfg, context),
+    );
+    if (reachableMutationFacts.length === 0) return;
     const sameReferenceResults = collectSameReferenceResultExpressions(
       child.argument,
       parameterSymbol,
@@ -411,7 +473,7 @@ const updaterMutatesThenReturnsSameReference = (
       context,
     );
     for (const sameReferenceResult of sameReferenceResults) {
-      for (const mutationFact of mutationFacts) {
+      for (const mutationFact of reachableMutationFacts) {
         if (
           (mutationFact.node === sameReferenceResult ||
             nodePrecedesOnReachablePath(

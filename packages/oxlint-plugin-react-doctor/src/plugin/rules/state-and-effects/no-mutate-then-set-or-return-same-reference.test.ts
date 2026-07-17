@@ -503,4 +503,40 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
     expect(direct.diagnostics).toHaveLength(1);
     expect(updater.diagnostics).toHaveLength(1);
   });
+
+  it("handles contradictory predicates, boolean equality, and restored original references", () => {
+    const contradiction = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=({flag})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{if(flag){if(!flag)items.push(1)}if(flag)return items;return [...items]})}",
+    );
+    const equalityBranches = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=({flag})=>{const[items,setItems]=useState<number[]>([]);if(flag===true)items.push(1);if(flag===false)setItems(items)}",
+    );
+    const restoredOriginal = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=()=>{const[,setItems]=useState<number[]>([]);setItems(items=>{const original=items;items=[...items];items=original;items.push(1);return items})}",
+    );
+    expect(contradiction.diagnostics).toHaveLength(0);
+    expect(equalityBranches.diagnostics).toHaveLength(0);
+    expect(restoredOriginal.diagnostics).toHaveLength(1);
+  });
+
+  it("amortizes mutation and same-reference pairing by control-flow block", () => {
+    const buildSource = (pairCount: number): string => {
+      const mutations = "items.push(1);".repeat(pairCount);
+      const conditions = Array.from(
+        { length: pairCount },
+        (_, conditionIndex) => `condition${conditionIndex}`,
+      );
+      const sameReferenceResults = `${conditions.map((condition) => `${condition}?items:`).join("")}[...items]`;
+      return `const C=({flag,${conditions.join(",")}})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{if(flag){${mutations}}if(!flag){return ${sameReferenceResults}}return [...items]})}`;
+    };
+    runRule(noMutateThenSetOrReturnSameReference, buildSource(200));
+    const start = performance.now();
+    const result = runRule(noMutateThenSetOrReturnSameReference, buildSource(3_200));
+    const duration = performance.now() - start;
+    expect(result.diagnostics).toHaveLength(0);
+    expect(duration).toBeLessThan(1_500);
+  });
 });

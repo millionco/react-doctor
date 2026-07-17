@@ -11,8 +11,13 @@ interface ExitingPredicate {
   readonly test: EsTreeNode;
 }
 
+interface PredicateConstraints {
+  readonly isImpossible: boolean;
+  readonly values: ReadonlyMap<number, boolean>;
+}
+
 const exitingPredicatesByBlock = new WeakMap<EsTreeNode, ExitingPredicate[]>();
-const predicateConstraintsByNode = new WeakMap<EsTreeNode, ReadonlyMap<number, boolean>>();
+const predicateConstraintsByNode = new WeakMap<EsTreeNode, PredicateConstraints>();
 const statementIndexesByBlock = new WeakMap<EsTreeNode, ReadonlyMap<EsTreeNode, number>>();
 
 const getExitingPredicates = (block: EsTreeNode): ExitingPredicate[] => {
@@ -45,8 +50,35 @@ const predicateConstraint = (
     expectedValue = !expectedValue;
     current = stripParenExpression(current.argument);
   }
-  if (!isNodeOfType(current, "Identifier")) return null;
-  const symbol = resolveConstIdentifierRootSymbol(current, context.scopes);
+  let identifier: EsTreeNode | null = null;
+  if (isNodeOfType(current, "Identifier")) {
+    identifier = current;
+  } else if (
+    isNodeOfType(current, "BinaryExpression") &&
+    ["===", "!==", "==", "!="].includes(current.operator)
+  ) {
+    const operands = [
+      { boolean: current.right, identifier: current.left },
+      { boolean: current.left, identifier: current.right },
+    ];
+    for (const operandsPair of operands) {
+      const booleanExpression = stripParenExpression(operandsPair.boolean);
+      const identifierExpression = stripParenExpression(operandsPair.identifier);
+      if (
+        isNodeOfType(booleanExpression, "Literal") &&
+        typeof booleanExpression.value === "boolean" &&
+        isNodeOfType(identifierExpression, "Identifier")
+      ) {
+        identifier = identifierExpression;
+        const comparisonIsEquality = current.operator === "===" || current.operator === "==";
+        expectedValue =
+          booleanExpression.value === comparisonIsEquality ? expectedValue : !expectedValue;
+        break;
+      }
+    }
+  }
+  if (!identifier) return null;
+  const symbol = resolveConstIdentifierRootSymbol(identifier, context.scopes);
   return symbol ? [symbol.id, expectedValue] : null;
 };
 
@@ -55,38 +87,43 @@ const addPredicateConstraint = (
   expression: EsTreeNode,
   isTruthy: boolean,
   context: RuleContext,
-): void => {
+): boolean => {
   const constraint = predicateConstraint(expression, isTruthy, context);
-  if (constraint) constraints.set(constraint[0], constraint[1]);
+  if (!constraint) return false;
+  const previousValue = constraints.get(constraint[0]);
+  if (previousValue !== undefined && previousValue !== constraint[1]) return true;
+  constraints.set(constraint[0], constraint[1]);
+  return false;
 };
 
 const collectNodePredicateConstraints = (
   node: EsTreeNode,
   context: RuleContext,
-): ReadonlyMap<number, boolean> => {
+): PredicateConstraints => {
   const cached = predicateConstraintsByNode.get(node);
   if (cached) return cached;
   const constraints = new Map<number, boolean>();
+  let isImpossible = false;
   let child: EsTreeNode = node;
   let parent = node.parent;
   while (parent) {
     if (isNodeOfType(parent, "IfStatement")) {
       if (parent.consequent === child) {
-        addPredicateConstraint(constraints, parent.test, true, context);
+        isImpossible ||= addPredicateConstraint(constraints, parent.test, true, context);
       } else if (parent.alternate === child) {
-        addPredicateConstraint(constraints, parent.test, false, context);
+        isImpossible ||= addPredicateConstraint(constraints, parent.test, false, context);
       }
     } else if (isNodeOfType(parent, "ConditionalExpression")) {
       if (parent.consequent === child) {
-        addPredicateConstraint(constraints, parent.test, true, context);
+        isImpossible ||= addPredicateConstraint(constraints, parent.test, true, context);
       } else if (parent.alternate === child) {
-        addPredicateConstraint(constraints, parent.test, false, context);
+        isImpossible ||= addPredicateConstraint(constraints, parent.test, false, context);
       }
     } else if (isNodeOfType(parent, "LogicalExpression") && parent.right === child) {
       if (parent.operator === "&&") {
-        addPredicateConstraint(constraints, parent.left, true, context);
+        isImpossible ||= addPredicateConstraint(constraints, parent.left, true, context);
       } else if (parent.operator === "||") {
-        addPredicateConstraint(constraints, parent.left, false, context);
+        isImpossible ||= addPredicateConstraint(constraints, parent.left, false, context);
       }
     } else if (isNodeOfType(parent, "BlockStatement")) {
       let containingStatement = child;
@@ -103,14 +140,20 @@ const collectNodePredicateConstraints = (
       const statementIndex = statementIndexes.get(containingStatement) ?? -1;
       for (const predicate of getExitingPredicates(parent)) {
         if (predicate.statementIndex >= statementIndex) break;
-        addPredicateConstraint(constraints, predicate.test, predicate.isTruthy, context);
+        isImpossible ||= addPredicateConstraint(
+          constraints,
+          predicate.test,
+          predicate.isTruthy,
+          context,
+        );
       }
     }
     child = parent;
     parent = parent.parent;
   }
-  predicateConstraintsByNode.set(node, constraints);
-  return constraints;
+  const result = { isImpossible, values: constraints };
+  predicateConstraintsByNode.set(node, result);
+  return result;
 };
 
 export const nodesCanCoExecute = (
@@ -120,8 +163,9 @@ export const nodesCanCoExecute = (
 ): boolean => {
   const leftConstraints = collectNodePredicateConstraints(left, context);
   const rightConstraints = collectNodePredicateConstraints(right, context);
-  for (const [symbolId, leftValue] of leftConstraints) {
-    const rightValue = rightConstraints.get(symbolId);
+  if (leftConstraints.isImpossible || rightConstraints.isImpossible) return false;
+  for (const [symbolId, leftValue] of leftConstraints.values) {
+    const rightValue = rightConstraints.values.get(symbolId);
     if (rightValue !== undefined && rightValue !== leftValue) return false;
   }
   return true;

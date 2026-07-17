@@ -178,4 +178,22 @@ describe("no-side-effect-in-state-updater-function", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("distinguishes unknown callback scheduling from nested external receivers", () => {
+    const unknownMap = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({queue,onVisit})=>{const[,setRows]=useState([]);setRows(rows=>queue.map(row=>{onVisit(row);return row}))}",
+    );
+    const nestedReceiver = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({analytics})=>{const[,setValue]=useState(0);setValue(value=>{const box={analytics};box.analytics.track(value);return value+1})}",
+    );
+    const memberCallback = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=(props)=>{const[,setValue]=useState(0);setValue(value=>{const callbacks={onVisit:props.onVisit};callbacks.onVisit(value);return value+1})}",
+    );
+    expect(unknownMap.diagnostics).toHaveLength(0);
+    expect(nestedReceiver.diagnostics).toHaveLength(1);
+    expect(memberCallback.diagnostics).toHaveLength(1);
+  });
 });

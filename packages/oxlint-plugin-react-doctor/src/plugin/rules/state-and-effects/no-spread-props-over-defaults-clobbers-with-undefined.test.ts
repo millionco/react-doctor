@@ -223,4 +223,37 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("models later spreads, conditional repairs, and member computations", () => {
+    const finalDefaults = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:100};const C=(props:Props)=>{const merged={...defaults,...props,...defaults};return merged.width*2}",
+    );
+    const conditionalRepair = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:100};const C=(props:Props)=>{const merged={...defaults,...props};if(merged.width===undefined){merged.width=100}return merged.width*2}",
+    );
+    const conditionalWrite = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number;flag:boolean}const defaults={width:100};const C=(props:Props)=>{const merged={...defaults,...props};if(props.flag)merged.width=100;return merged.width*2}",
+    );
+    const logicalRepair = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:100};const C=(props:Props)=>{const merged={...defaults,...props};merged.width||=100;return merged.width*2}",
+    );
+    const memberCall = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:100};const C=(props:Props)=>{const merged={...defaults,...props};return merged.width.toFixed(2)}",
+    );
+    const updateExpression = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:100};const C=(props:Props)=>{const merged={...defaults,...props};return merged.width++}",
+    );
+    expect(finalDefaults.diagnostics).toHaveLength(0);
+    expect(conditionalRepair.diagnostics).toHaveLength(0);
+    expect(conditionalWrite.diagnostics).toHaveLength(1);
+    expect(logicalRepair.diagnostics).toHaveLength(0);
+    expect(memberCall.diagnostics).toHaveLength(1);
+    expect(updateExpression.diagnostics).toHaveLength(1);
+  });
 });

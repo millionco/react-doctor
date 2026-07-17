@@ -447,4 +447,37 @@ describe("no-boolean-toggle-without-functional-update", () => {
     const largeDuration = measureFastestDuration(8_000);
     expect(largeDuration).toBeLessThan(smallDuration * 2.5);
   });
+
+  it("proves cleanup identity, correlated paths, and render-time ref freshness", () => {
+    const animationFrame = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);useEffect(()=>{const id=requestAnimationFrame(()=>setOpen(!open));return()=>cancelAnimationFrame(id)},[open])}",
+    );
+    const captureMismatch = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      'const C=()=>{const[open,setOpen]=useState(false);useEffect(()=>{const toggle=()=>setOpen(!open);document.addEventListener("click",toggle,{capture:true});return()=>document.removeEventListener("click",toggle)},[open])}',
+    );
+    const unreachableCleanup = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      'const C=()=>{const[open,setOpen]=useState(false);useEffect(()=>{const toggle=()=>setOpen(!open);document.addEventListener("click",toggle);return()=>{if(false)document.removeEventListener("click",toggle)}},[open])}',
+    );
+    const namedEffect = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);const install=()=>{const id=setInterval(()=>setOpen(!open),100);return()=>clearInterval(id)};useEffect(install,[open])}",
+    );
+    const correlatedAwait = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=({flag})=>{const[open,setOpen]=useState(false);const run=async()=>{if(flag===true)await load();if(flag===false)setOpen(!open)};return run}",
+    );
+    const renderFreshRef = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);const ref=useRef(open);useEffect(()=>{const id=setTimeout(()=>{if(ref.current===open)setOpen(!open)},1);return()=>clearTimeout(id)},[]);ref.current=open}",
+    );
+    expect(animationFrame.diagnostics).toHaveLength(0);
+    expect(captureMismatch.diagnostics).toHaveLength(1);
+    expect(unreachableCleanup.diagnostics).toHaveLength(1);
+    expect(namedEffect.diagnostics).toHaveLength(0);
+    expect(correlatedAwait.diagnostics).toHaveLength(0);
+    expect(renderFreshRef.diagnostics).toHaveLength(0);
+  });
 });

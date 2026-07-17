@@ -289,4 +289,12 @@ describe("no-whole-object-dep-with-member-reads", () => {
     expect(aliased.diagnostics).toHaveLength(1);
     expect(array.diagnostics).toHaveLength(1);
   });
+
+  it("tracks a defaulted identifier props parameter", () => {
+    const result = runRule(
+      noWholeObjectDepWithMemberReads,
+      'import{useMemo}from"react";interface Props{x?:number}const Panel=(props:Props={})=>useMemo(()=>props.x??0,[props])',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

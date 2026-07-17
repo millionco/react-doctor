@@ -16,6 +16,7 @@ import type { ReactUseStatePair } from "../../utils/resolve-react-use-state-pair
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
 
 const TIMER_CALLBACK_INDEX_BY_NAME = new Map([
   ["setTimeout", 0],
@@ -26,12 +27,25 @@ const TIMER_CALLBACK_INDEX_BY_NAME = new Map([
   ["requestIdleCallback", 0],
 ]);
 
+const TIMER_CLEANUP_NAME_BY_REGISTRATION_NAME = new Map([
+  ["requestAnimationFrame", "cancelAnimationFrame"],
+  ["requestIdleCallback", "cancelIdleCallback"],
+  ["setImmediate", "clearImmediate"],
+  ["setInterval", "clearInterval"],
+  ["setTimeout", "clearTimeout"],
+]);
+
 const EFFECT_HOOK_NAMES = new Set(["useEffect", "useInsertionEffect", "useLayoutEffect"]);
 
 interface AwaitReachabilityProof {
   readonly node: EsTreeNode;
   readonly sourceBlockId: number;
   readonly reachableBlockIds: ReadonlySet<number>;
+}
+
+interface ReactEffectRegistration {
+  readonly callback: EsTreeNode;
+  readonly call: EsTreeNodeOfType<"CallExpression">;
 }
 
 const resolveFunctionExpression = (
@@ -55,25 +69,57 @@ const isGlobalIdentifier = (expression: EsTreeNode, name: string, context: RuleC
   expression.name === name &&
   context.scopes.isGlobalReference(expression);
 
-const findEnclosingReactEffectCallback = (
+const reactEffectCallForFunction = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  const parent = functionNode.parent;
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    parent.arguments?.[0] === functionNode &&
+    isReactApiCall(parent, EFFECT_HOOK_NAMES, context.scopes, {
+      allowGlobalReactNamespace: true,
+      allowUnboundBareCalls: true,
+      resolveNamedAliases: true,
+    })
+  ) {
+    return parent;
+  }
+  const bindingIdentifier =
+    isNodeOfType(functionNode, "FunctionDeclaration") && functionNode.id
+      ? functionNode.id
+      : isNodeOfType(parent, "VariableDeclarator") &&
+          parent.init === functionNode &&
+          isNodeOfType(parent.id, "Identifier")
+        ? parent.id
+        : null;
+  const symbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
+  for (const reference of symbol?.references ?? []) {
+    const call = reference.identifier.parent;
+    if (
+      isNodeOfType(call, "CallExpression") &&
+      call.arguments?.[0] === reference.identifier &&
+      isReactApiCall(call, EFFECT_HOOK_NAMES, context.scopes, {
+        allowGlobalReactNamespace: true,
+        allowUnboundBareCalls: true,
+        resolveNamedAliases: true,
+      })
+    ) {
+      return call;
+    }
+  }
+  return null;
+};
+
+const findEnclosingReactEffectRegistration = (
   node: EsTreeNode,
   context: RuleContext,
-): EsTreeNode | null => {
+): ReactEffectRegistration | null => {
   let current: EsTreeNode | null | undefined = node;
   while (current) {
     if (isFunctionLike(current)) {
-      const parent: EsTreeNode | null | undefined = current.parent;
-      if (
-        isNodeOfType(parent, "CallExpression") &&
-        parent.arguments?.[0] === current &&
-        isReactApiCall(parent, EFFECT_HOOK_NAMES, context.scopes, {
-          allowGlobalReactNamespace: true,
-          allowUnboundBareCalls: true,
-          resolveNamedAliases: true,
-        })
-      ) {
-        return current;
-      }
+      const call = reactEffectCallForFunction(current, context);
+      if (call) return { callback: current, call };
     }
     current = current.parent;
   }
@@ -143,8 +189,7 @@ const collectDeferredFunctions = (
       addDeferredFunction(secondCallback, child);
       return;
     }
-    const effectCallback = findEnclosingReactEffectCallback(child, context);
-    if (!effectCallback) return;
+    if (!findEnclosingReactEffectRegistration(child, context)) return;
     if (methodName === "addEventListener") {
       const callback = resolveFunctionExpression(child.arguments?.[1], context);
       addDeferredFunction(callback, child);
@@ -268,7 +313,8 @@ const cleanupCallsMethodOnKey = (
     if (didFindCleanup) return false;
     if (
       !isNodeOfType(child, "CallExpression") ||
-      !isReturnedCleanupFunction(child, effectCallback)
+      !isReturnedCleanupFunction(child, effectCallback) ||
+      !context.cfg.isUnconditionalFromEntry(child)
     ) {
       return;
     }
@@ -297,12 +343,9 @@ const registrationHasCleanup = (
         isGlobalIdentifier(stripParenExpression(callee.object), "window", context)
       ? getStaticPropertyName(callee)
       : null;
-  const clearMethodName =
-    timerMethodName === "setInterval"
-      ? "clearInterval"
-      : timerMethodName === "setTimeout"
-        ? "clearTimeout"
-        : null;
+  const clearMethodName = timerMethodName
+    ? (TIMER_CLEANUP_NAME_BY_REGISTRATION_NAME.get(timerMethodName) ?? null)
+    : null;
   if (clearMethodName) {
     const resultKey = registrationResultKey(registrationCall, context);
     if (!resultKey) return false;
@@ -311,7 +354,8 @@ const registrationHasCleanup = (
       if (didFindCleanup) return false;
       if (
         !isNodeOfType(child, "CallExpression") ||
-        !isReturnedCleanupFunction(child, effectCallback)
+        !isReturnedCleanupFunction(child, effectCallback) ||
+        !context.cfg.isUnconditionalFromEntry(child)
       ) {
         return;
       }
@@ -348,13 +392,17 @@ const registrationHasCleanup = (
     const receiverKey = resolveExpressionKey(callee.object, context);
     const eventKey = resolveExpressionKey(registrationCall.arguments?.[0], context);
     const callbackKey = resolveExpressionKey(registrationCall.arguments?.[1], context);
+    const registrationCapture = resolveEventListenerCapture(registrationCall.arguments?.[2], {
+      allowComputedString: true,
+    });
     let didFindMatchingRemoval = false;
     if (receiverKey && eventKey && callbackKey) {
       walkAst(effectCallback, (child: EsTreeNode) => {
         if (didFindMatchingRemoval) return false;
         if (
           !isNodeOfType(child, "CallExpression") ||
-          !isReturnedCleanupFunction(child, effectCallback)
+          !isReturnedCleanupFunction(child, effectCallback) ||
+          !context.cfg.isUnconditionalFromEntry(child)
         ) {
           return;
         }
@@ -362,6 +410,9 @@ const registrationHasCleanup = (
         if (
           isNodeOfType(cleanupCallee, "MemberExpression") &&
           getStaticPropertyName(cleanupCallee) === "removeEventListener" &&
+          registrationCapture !== null &&
+          resolveEventListenerCapture(child.arguments?.[2], { allowComputedString: true }) ===
+            registrationCapture &&
           resolveExpressionKey(cleanupCallee.object, context) === receiverKey &&
           resolveExpressionKey(child.arguments?.[0], context) === eventKey &&
           resolveExpressionKey(child.arguments?.[1], context) === callbackKey
@@ -408,10 +459,9 @@ const effectResubscribesWithCleanup = (
 ): boolean => {
   const deferredFunction = findEnclosingDeferredFunction(node, deferredFunctions);
   if (!deferredFunction) return false;
-  const effectCallback = findEnclosingReactEffectCallback(deferredFunction, context);
-  if (!effectCallback) return false;
-  const effectCall = effectCallback.parent;
-  if (!isNodeOfType(effectCall, "CallExpression")) return false;
+  const effectRegistration = findEnclosingReactEffectRegistration(deferredFunction, context);
+  if (!effectRegistration) return false;
+  const { callback: effectCallback, call: effectCall } = effectRegistration;
   const dependencyArray = stripParenExpression(effectCall.arguments?.[1]);
   if (!isNodeOfType(dependencyArray, "ArrayExpression")) return false;
   const hasStateDependency = dependencyArray.elements.some((element) => {
@@ -508,8 +558,7 @@ const refMemberIsFreshStateMirror = (
       resolveConstIdentifierRootSymbol(stripParenExpression(assignment.right), context.scopes)
         ?.id === stateSymbolId &&
       context.cfg.enclosingFunction(assignment) === componentFunction &&
-      context.cfg.isUnconditionalFromEntry(assignment) &&
-      (assignment.range?.[0] ?? 0) < (node.range?.[0] ?? 0),
+      context.cfg.isUnconditionalFromEntry(assignment),
     );
   });
 };

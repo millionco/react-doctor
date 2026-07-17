@@ -379,7 +379,7 @@ const referenceFeedsComputation = (reference: EsTreeNode, context: RuleContext):
   }
   if (
     (isNodeOfType(parent, "CallExpression") || isNodeOfType(parent, "NewExpression")) &&
-    parent.arguments.some((argument) => argument === current)
+    (parent.arguments.some((argument) => argument === current) || parent.callee === current)
   ) {
     const callee = stripParenExpression(parent.callee);
     if (isNodeOfType(callee, "Identifier") && /^(?:is)?undefined$/i.test(callee.name)) {
@@ -387,6 +387,7 @@ const referenceFeedsComputation = (reference: EsTreeNode, context: RuleContext):
     }
     return true;
   }
+  if (isNodeOfType(parent, "UpdateExpression") && parent.argument === current) return true;
   return false;
 };
 
@@ -483,6 +484,35 @@ const statementTerminates = (statement: EsTreeNode): boolean => {
   return Boolean(lastStatement && statementTerminates(lastStatement));
 };
 
+const statementRepairsMember = (
+  statement: EsTreeNode,
+  symbol: SymbolDescriptor,
+  keyName: string,
+  context: RuleContext,
+): boolean => {
+  const candidateStatement = isNodeOfType(statement, "BlockStatement")
+    ? statement.body[0]
+    : statement;
+  if (!isNodeOfType(candidateStatement, "ExpressionStatement")) return false;
+  const assignment = stripParenExpression(candidateStatement.expression);
+  return Boolean(
+    isNodeOfType(assignment, "AssignmentExpression") &&
+    assignment.operator === "=" &&
+    expressionMatchesMember(assignment.left, symbol, keyName, context) &&
+    expressionIsDefinitelyNonUndefined(assignment.right, context),
+  );
+};
+
+const precedingIfRepairsMember = (
+  statement: EsTreeNodeOfType<"IfStatement">,
+  symbol: SymbolDescriptor,
+  keyName: string,
+  context: RuleContext,
+): boolean =>
+  !statement.alternate &&
+  nullishComparisonPolarity(statement.test, symbol, keyName, context) === "undefined" &&
+  statementRepairsMember(statement.consequent, symbol, keyName, context);
+
 const memberUseIsGuarded = (
   member: EsTreeNodeOfType<"MemberExpression">,
   symbol: SymbolDescriptor,
@@ -530,6 +560,12 @@ const memberUseIsGuarded = (
   }
   for (const statement of block.body) {
     if (statement === containingStatement) break;
+    if (
+      isNodeOfType(statement, "IfStatement") &&
+      precedingIfRepairsMember(statement, symbol, keyName, context)
+    ) {
+      return true;
+    }
     if (!isNodeOfType(statement, "IfStatement") || !statementTerminates(statement.consequent)) {
       continue;
     }
@@ -573,16 +609,20 @@ const getMemberPriorWrite = (
         !isNodeOfType(assignment, "AssignmentExpression") ||
         assignment.left !== repairMember ||
         !isNodeOfType(assignment.parent, "ExpressionStatement") ||
-        (assignment.operator !== "??=" && assignment.operator !== "=")
+        (assignment.operator !== "??=" &&
+          assignment.operator !== "||=" &&
+          assignment.operator !== "=")
       ) {
         continue;
       }
+      const isSafe = expressionIsDefinitelyNonUndefined(assignment.right, context);
+      if (isSafe && !context.cfg.isUnconditionalFromEntry(assignment)) continue;
       const repairBlock = containingBlock(assignment);
       if (!repairBlock) continue;
       const repairStartsByKey = repairStartsByBlock.get(repairBlock) ?? new Map();
       const repairWrites = repairStartsByKey.get(repairKeyName) ?? [];
       repairWrites.push({
-        isSafe: expressionIsDefinitelyNonUndefined(assignment.right, context),
+        isSafe,
         start: getNodeStart(assignment),
       });
       repairStartsByKey.set(repairKeyName, repairWrites);
@@ -818,15 +858,26 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
           const lastExplicitWriteByKey = new Map<string, boolean>();
           const propsSpreadStart = getNodeStart(propsSpread);
           for (const property of node.properties) {
-            if (!isNodeOfType(property, "Property") || getNodeStart(property) <= propsSpreadStart) {
+            if (getNodeStart(property) <= propsSpreadStart) continue;
+            if (isNodeOfType(property, "Property")) {
+              const keyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+              if (keyName) {
+                lastExplicitWriteByKey.set(
+                  keyName,
+                  expressionIsDefinitelyNonUndefined(property.value, context),
+                );
+              }
               continue;
             }
-            const keyName = getStaticPropertyKeyName(property, { allowComputedString: true });
-            if (keyName) {
-              lastExplicitWriteByKey.set(
-                keyName,
-                expressionIsDefinitelyNonUndefined(property.value, context),
-              );
+            if (!isNodeOfType(property, "SpreadElement")) continue;
+            const spreadSource = stripParenExpression(property.argument);
+            if (!isDefaultsSource(spreadSource)) {
+              for (const keyName of defaultedKeys) lastExplicitWriteByKey.set(keyName, false);
+              continue;
+            }
+            const visibleKeys = getVisibleDefaultedKeys(spreadSource, context, defaultsKeyCache);
+            for (const keyName of visibleKeys ?? []) {
+              if (defaultedKeys.has(keyName)) lastExplicitWriteByKey.set(keyName, true);
             }
           }
           const candidateKeys = new Set(

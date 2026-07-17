@@ -46,8 +46,11 @@ const getPropsObjectSymbol = (
 ): SymbolDescriptor | null => {
   if (!isFunctionLike(componentFunction)) return null;
   const firstParameter = componentFunction.params?.[0];
-  if (!firstParameter || !isNodeOfType(firstParameter, "Identifier")) return null;
-  return context.scopes.symbolFor(firstParameter);
+  const propsIdentifier = isNodeOfType(firstParameter, "AssignmentPattern")
+    ? firstParameter.left
+    : firstParameter;
+  if (!isNodeOfType(propsIdentifier, "Identifier")) return null;
+  return context.scopes.symbolFor(propsIdentifier);
 };
 
 const isConstAliasInitializer = (

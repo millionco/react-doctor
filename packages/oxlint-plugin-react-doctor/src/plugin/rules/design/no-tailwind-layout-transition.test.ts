@@ -28,6 +28,12 @@ describe("no-tailwind-layout-transition", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does NOT flag geometry transitions on SVG elements", () => {
+    const code = `const A = () => <rect className="transition-[height,width]" />;`;
+    const result = runRule(noTailwindLayoutTransition, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag `transition-[border-width]` (substring of a non-layout prop)", () => {
     const code = `const A = () => <div className="transition-[border-width]" />;`;
     const result = runRule(noTailwindLayoutTransition, code);

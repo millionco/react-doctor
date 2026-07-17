@@ -1,5 +1,6 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getDestructuredBindingPropertyName } from "./get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -44,26 +45,15 @@ export const isProvenGlobalNamespaceReference = (
       return false;
     }
     visitedSymbolIds.add(symbol.id);
-    if (
-      isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
-      isNodeOfType(symbol.declarationNode.id, "ObjectPattern")
-    ) {
-      const namespaceProperty = symbol.declarationNode.id.properties.find(
-        (property) =>
-          isNodeOfType(property, "Property") && property.value === symbol.bindingIdentifier,
-      );
-      const propertyName =
-        namespaceProperty && isNodeOfType(namespaceProperty, "Property")
-          ? !namespaceProperty.computed && isNodeOfType(namespaceProperty.key, "Identifier")
-            ? namespaceProperty.key.name
-            : isNodeOfType(namespaceProperty.key, "Literal") &&
-                typeof namespaceProperty.key.value === "string"
-              ? namespaceProperty.key.value
-              : null
-          : null;
+    const destructuredPropertyName = getDestructuredBindingPropertyName(symbol.bindingIdentifier);
+    if (destructuredPropertyName !== null) {
+      const destructuredSource = isNodeOfType(symbol.declarationNode, "VariableDeclarator")
+        ? symbol.declarationNode.init
+        : null;
       return (
-        propertyName === namespaceName &&
-        isProvenGlobalObjectReference(symbol.initializer, scopes, visitedSymbolIds)
+        destructuredPropertyName === namespaceName &&
+        destructuredSource !== null &&
+        isProvenGlobalObjectReference(destructuredSource, scopes, visitedSymbolIds)
       );
     }
     return isProvenGlobalNamespaceReference(

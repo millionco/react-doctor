@@ -228,9 +228,11 @@ describe("no-create-object-url-without-revoke", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const { URL: BrowserURL } = globalThis;
-       function make(blob) { return BrowserURL.createObjectURL(blob); }`,
+       const { ["URL"]: DefaultBrowserURL = fallbackUrl } = globalThis;
+       function make(blob) { return BrowserURL.createObjectURL(blob); }
+       function makeDefaulted(blob) { return DefaultBrowserURL.createObjectURL(blob); }`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("flags static computed DOM URL escape APIs", () => {

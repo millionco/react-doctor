@@ -96,11 +96,16 @@ export const Report = ({
   );
 
   if (diagnosticRows.length === 0) {
+    const lintFailureReason = report.lintFailureReason;
     return (
       <Box flexDirection="column">
         {scoreHeader}
         <Box marginTop={1}>
-          <Text color="green">✔ No issues found. Nice work.</Text>
+          {lintFailureReason ? (
+            <Text color="yellow">⚠ Lint did not run: {lintFailureReason}</Text>
+          ) : (
+            <Text color="green">✔ No issues found. Nice work.</Text>
+          )}
         </Box>
         <Text dimColor>{exitHint}</Text>
       </Box>

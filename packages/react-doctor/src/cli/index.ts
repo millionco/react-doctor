@@ -473,13 +473,13 @@ program
       }
       recordCount(METRIC.cliInvoked, 1, { command: "experimental-tui" });
       const { runScanApp } = await import("./ink/run-scan-app.js");
-      const { errorCount } = await runScanApp({
+      const { errorCount, hasLintHardFailure: didLintHardFail } = await runScanApp({
         directory,
         options: { deadCode, noScore },
         projectFlag: options.project,
         skipPrompts: options.yes ?? false,
       });
-      if (errorCount > 0) process.exitCode = 1;
+      if (errorCount > 0 || didLintHardFail) process.exitCode = 1;
     },
   );
 

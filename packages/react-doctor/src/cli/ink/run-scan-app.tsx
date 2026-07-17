@@ -31,6 +31,7 @@ import { detectLaunchableAgents } from "../utils/detect-launchable-agents.js";
 import { CLI_AGENT_BINARIES, launchCliAgent } from "../utils/launch-agent.js";
 import { isReactDoctorWorkflowInstalled } from "../utils/install-github-workflow.js";
 import { findNearestPackageDirectory } from "../utils/install-doctor-script.js";
+import { hasLintHardFailure } from "../utils/has-lint-hard-failure.js";
 import { setUpGitHubActions } from "../utils/set-up-github-actions.js";
 import { recordCount } from "../utils/record-metric.js";
 import { METRIC } from "../utils/constants.js";
@@ -53,6 +54,7 @@ export interface RunScanAppInput {
 export interface RunScanAppResult {
   readonly errorCount: number;
   readonly warningCount: number;
+  readonly hasLintHardFailure: boolean;
 }
 
 interface ResolvedProjectScan {
@@ -92,14 +94,17 @@ const resolveProjectScan = async (
   };
 };
 
-const countDiagnosticsBySeverity = (diagnostics: ReadonlyArray<Diagnostic>): RunScanAppResult => {
+const countDiagnosticsBySeverity = (
+  diagnostics: ReadonlyArray<Diagnostic>,
+  didLintHardFail: boolean,
+): RunScanAppResult => {
   let errorCount = 0;
   let warningCount = 0;
   for (const diagnostic of diagnostics) {
     if (diagnostic.severity === "error") errorCount += 1;
     else warningCount += 1;
   }
-  return { errorCount, warningCount };
+  return { errorCount, warningCount, hasLintHardFailure: didLintHardFail };
 };
 
 const qualifyDiagnosticPaths = (
@@ -183,23 +188,35 @@ interface ScanReportInput {
   readonly noScoreMessage: string;
 }
 
+const resolveLintFailureReason = (results: ReadonlyArray<InspectResult>): string | null => {
+  for (const result of results) {
+    if (!hasLintHardFailure(result)) continue;
+    return result.skippedCheckReasons?.lint ?? "Lint failed before diagnostics were produced.";
+  }
+  return null;
+};
+
 const toScanReport = ({
   result,
   rootDirectory,
   projectedScore,
   isOffline,
   noScoreMessage,
-}: ScanReportInput): ScanReport => ({
-  diagnostics: result.diagnostics,
-  score: result.score,
-  projectedScore,
-  projectName: result.project.projectName,
-  rootDirectory,
-  scannedFileCount: result.scannedFileCount ?? 0,
-  elapsedMilliseconds: result.elapsedMilliseconds,
-  isOffline,
-  noScoreMessage,
-});
+}: ScanReportInput): ScanReport => {
+  const lintFailureReason = resolveLintFailureReason([result]);
+  return {
+    diagnostics: result.diagnostics,
+    score: result.score,
+    projectedScore,
+    projectName: result.project.projectName,
+    rootDirectory,
+    scannedFileCount: result.scannedFileCount ?? 0,
+    elapsedMilliseconds: result.elapsedMilliseconds,
+    isOffline,
+    noScoreMessage,
+    ...(lintFailureReason ? { lintFailureReason } : {}),
+  };
+};
 
 const findLowestScored = (
   reports: ReadonlyArray<{ score: ScoreResult | null; diagnostics: ReadonlyArray<Diagnostic> }>,
@@ -223,14 +240,6 @@ interface ExitFooterInput {
   readonly isOffline: boolean;
   readonly lintFailureReason: string | null;
 }
-
-const resolveLintFailureReason = (results: ReadonlyArray<InspectResult>): string | null => {
-  for (const result of results) {
-    const reason = result.skippedCheckReasons?.lint;
-    if (reason) return reason;
-  }
-  return null;
-};
 
 const printExitFooter = async (input: ExitFooterInput): Promise<void> => {
   const fileLabel = input.scannedFileCount === 1 ? "file" : "files";
@@ -349,7 +358,10 @@ const runMountedScan = async (
       lintFailureReason: resolveLintFailureReason(completedScan.results),
     });
     await settle();
-    return countDiagnosticsBySeverity(completedScan.diagnostics);
+    return countDiagnosticsBySeverity(
+      completedScan.diagnostics,
+      completedScan.results.some(hasLintHardFailure),
+    );
   } catch (error) {
     instance.unmount();
     throw error;
@@ -451,6 +463,7 @@ const runMultiProjectScan = async (
       : null;
     const scannedFileCount = countUniqueScannedFiles(results.map(({ result }) => result));
     const elapsedMilliseconds = performance.now() - startTime;
+    const lintFailureReason = resolveLintFailureReason(results.map(({ result }) => result));
 
     const summary: MultiProjectSummary = {
       projects,
@@ -463,6 +476,7 @@ const runMultiProjectScan = async (
       rootDirectory,
       isOffline: context.isOffline,
       noScoreMessage: context.noScoreMessage,
+      ...(lintFailureReason ? { lintFailureReason } : {}),
     };
     context.store.setSummary(summary);
     return {
@@ -494,7 +508,7 @@ export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResu
   const selectedDirectories = await resolveSelectedDirectories(rootDirectory, resolvedInput);
 
   if (selectedDirectories.length === 0) {
-    return { errorCount: 0, warningCount: 0 };
+    return { errorCount: 0, warningCount: 0, hasLintHardFailure: false };
   }
   if (selectedDirectories.length === 1) {
     return runSingleProjectScan(scanTarget, selectedDirectories[0], resolvedInput);

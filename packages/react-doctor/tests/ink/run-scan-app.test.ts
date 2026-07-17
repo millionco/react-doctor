@@ -172,12 +172,13 @@ describe("runScanApp", () => {
       ),
     );
     mockState.inspectResults.set(resolvedWebDirectory, buildInspectResult(resolvedWebDirectory));
-    mockState.inspectResults.set(
-      requestedAdminDirectory,
-      buildInspectResult(requestedAdminDirectory),
-    );
+    mockState.inspectResults.set(requestedAdminDirectory, {
+      ...buildInspectResult(requestedAdminDirectory),
+      skippedChecks: ["lint"],
+      skippedCheckReasons: { lint: "Oxlint failed." },
+    });
 
-    await runScanApp({
+    const result = await runScanApp({
       directory: rootDirectory,
       options: { maxDurationMs: 1_000 },
       skipPrompts: true,
@@ -219,5 +220,6 @@ describe("runScanApp", () => {
     expect(firstOptions?.deadlineEpochMs).toBe(secondOptions?.deadlineEpochMs);
     expect(firstOptions?.deadlineEpochMs).toBeTypeOf("number");
     expect(mockState.lifecycleEvents).toEqual(["footer", "handoff"]);
+    expect(result.hasLintHardFailure).toBe(true);
   });
 });

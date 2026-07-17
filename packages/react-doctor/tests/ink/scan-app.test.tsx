@@ -133,6 +133,27 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("does not show a clean state when lint hard-fails", () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      lintFailureReason: "Oxlint failed.",
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain("Lint did not run: Oxlint failed.");
+    expect(lastFrame()).not.toContain("No issues found");
+    unmount();
+  });
+
   it("renders a flat monorepo summary: aggregate score, combined list, folder-qualified paths", () => {
     const store = createScanStore();
     // Combined diagnostics carry folder-qualified paths (rewritten relative to

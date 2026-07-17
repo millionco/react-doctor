@@ -29,6 +29,7 @@ export const Summary = ({
     elapsedMilliseconds: summary.elapsedMilliseconds,
     isOffline: summary.isOffline,
     noScoreMessage: summary.noScoreMessage,
+    ...(summary.lintFailureReason ? { lintFailureReason: summary.lintFailureReason } : {}),
   };
   return (
     <Report

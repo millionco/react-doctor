@@ -24,6 +24,7 @@ export interface ScanReport {
   readonly elapsedMilliseconds: number;
   readonly isOffline: boolean;
   readonly noScoreMessage: string;
+  readonly lintFailureReason?: string;
 }
 
 export interface MultiProjectSummary {
@@ -37,6 +38,7 @@ export interface MultiProjectSummary {
   readonly rootDirectory: string;
   readonly isOffline: boolean;
   readonly noScoreMessage: string;
+  readonly lintFailureReason?: string;
 }
 
 export interface ScanStoreSnapshot {

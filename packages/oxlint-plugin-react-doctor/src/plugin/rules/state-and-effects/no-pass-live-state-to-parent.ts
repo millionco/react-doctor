@@ -16,6 +16,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { Reference } from "eslint-scope";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import {
   getCallExpr,
   getDownstreamRefs,
@@ -333,6 +334,24 @@ const resolvesToLocalHookReturnBinding = (
     }),
   );
 
+const getDirectLocalEffectHelper = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  effectFunction: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const helperFunction = resolveExactLocalFunction(
+    callExpression.callee as EsTreeNode,
+    context.scopes,
+  );
+  if (!helperFunction) return null;
+  let ancestor = callExpression.parent as EsTreeNode | null | undefined;
+  while (ancestor && ancestor !== effectFunction) {
+    if (isFunctionLike(ancestor)) return null;
+    ancestor = ancestor.parent;
+  }
+  return ancestor === effectFunction ? helperFunction : null;
+};
+
 export const noPassLiveStateToParent = defineRule({
   id: "no-pass-live-state-to-parent",
   title: "Live state pushed to parent via effect",
@@ -359,6 +378,10 @@ export const noPassLiveStateToParent = defineRule({
       for (const ref of effectFnRefs) {
         const callExpr = getCallExpr(ref);
         if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
+        const directLocalEffectHelper = getDirectLocalEffectHelper(callExpr, effectFn, context);
+        const callGraphReferences = directLocalEffectHelper
+          ? [ref, ...getDownstreamRefs(analysis, directLocalEffectHelper)]
+          : [ref];
         const resolvedCallbackPropNames = getParentCallbackPropNames({
           analysis,
           expression: callExpr.callee as EsTreeNode,
@@ -386,8 +409,10 @@ export const noPassLiveStateToParent = defineRule({
         // hands nothing up, a locally captured result is a transform read,
         // and a fetch-named callback pulls data in rather than mirroring
         // state up.
-        const propCallbackRefs = getEventualCallRefsTo(analysis, ref, (innerRef) =>
-          isParentNotificationCallbackRef(analysis, innerRef),
+        const propCallbackRefs = callGraphReferences.flatMap((callGraphReference) =>
+          getEventualCallRefsTo(analysis, callGraphReference, (innerRef) =>
+            isParentNotificationCallbackRef(analysis, innerRef),
+          ),
         );
         const transparentPropReference =
           propCallbackRefs.length === 0
@@ -401,7 +426,12 @@ export const noPassLiveStateToParent = defineRule({
           continue;
         }
         if (!notificationCallbackPropNames && resolvesToLocalHookReturnBinding(ref)) continue;
-        if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
+        if (
+          !isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn) &&
+          !directLocalEffectHelper
+        ) {
+          continue;
+        }
         // When the prop call's result flows into another call's argument
         // (`setDisplay(format(amount))`) the prop is a pure transform
         // consumed locally, not a parent push. Any other position — a bare
@@ -440,8 +470,10 @@ export const noPassLiveStateToParent = defineRule({
         const stateArgRefs =
           transparentPropReference || notificationCallbackPropNames
             ? collectDirectCallStateRefs(analysis, callExpr)
-            : collectPropCallbackBoundStateRefs(analysis, ref, (innerRef) =>
-                isParentNotificationCallbackRef(analysis, innerRef),
+            : callGraphReferences.flatMap((callGraphReference) =>
+                collectPropCallbackBoundStateRefs(analysis, callGraphReference, (innerRef) =>
+                  isParentNotificationCallbackRef(analysis, innerRef),
+                ),
               );
         const handsSetterNamedCallbackData = propCallbackRefs.some(
           isSetterNamedCallbackReceivingData,

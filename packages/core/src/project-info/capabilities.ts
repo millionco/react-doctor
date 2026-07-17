@@ -127,7 +127,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   if (project.zodMajorVersion !== null && project.zodMajorVersion >= 4) capabilities.add("zod:4");
   if (project.isPreES2023Target) capabilities.add("pre-es2023");
   if (project.hasReactCompiler) capabilities.add("react-compiler");
-  if (project.hasTanStackQuery || project.tanstackQueryVersion !== null) {
+  if (Boolean(project.hasTanStackQuery) || Boolean(project.tanstackQueryVersion)) {
     capabilities.add("tanstack-query");
   }
   if (project.mobxVersion) capabilities.add("mobx");

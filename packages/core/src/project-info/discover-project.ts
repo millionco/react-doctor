@@ -14,7 +14,6 @@ import {
   extractDependencyInfo,
   getDependencyDeclaration,
   getPreactVersion,
-  hasTanStackQuery,
   isCatalogReference,
   REACT_SECTIONS,
   resolveCatalogBackedDependencyVersion,
@@ -273,6 +272,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
         })
       : null;
   const preactVersion = getPreactVersion(packageJson);
+  const tanstackQueryVersion = getTanStackQueryVersion(packageJson);
   const isPreES2023Target = hasTypeScript && detectPreES2023Target(directory);
 
   const projectInfo: ProjectInfo = {
@@ -287,9 +287,9 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),
     hasReactCompilerLintPlugin: detectReactCompilerLintPlugin(directory, packageJson),
-    hasTanStackQuery: hasTanStackQuery(packageJson),
+    hasTanStackQuery: tanstackQueryVersion !== null,
     hasI18nLibrary: hasI18nDependency(packageJson),
-    tanstackQueryVersion: getTanStackQueryVersion(packageJson),
+    tanstackQueryVersion,
     mobxVersion: getMobxVersion(packageJson),
     styledComponentsVersion: getStyledComponentsVersion(packageJson),
     hasSsrDependency: workspaceFacts.hasSsrDependency,

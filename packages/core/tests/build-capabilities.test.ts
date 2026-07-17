@@ -94,9 +94,13 @@ describe("buildCapabilities", () => {
       ...baseProject,
       tanstackQueryVersion: "^5.66.0",
     });
+    const incompleteProject = { ...baseProject };
+    Reflect.deleteProperty(incompleteProject, "tanstackQueryVersion");
+    const incompleteCapabilities = buildCapabilities(incompleteProject);
 
     expect(legacyBooleanCapabilities.has("tanstack-query")).toBe(true);
     expect(versionCapabilities.has("tanstack-query")).toBe(true);
+    expect(incompleteCapabilities.has("tanstack-query")).toBe(false);
   });
 
   it("emits a `preact:<major>` ladder from `preactMajorVersion`, mirroring `react:<major>`", () => {

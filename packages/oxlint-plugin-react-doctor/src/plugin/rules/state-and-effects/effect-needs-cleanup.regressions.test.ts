@@ -7333,6 +7333,25 @@ export const useViewport = ({ onWheel }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts listener replacement exposed as a bare hook ref property", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const useViewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const attachViewportListeners = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return { ref: attachViewportListeners };
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("rejects listener replacement exposed by a non-hook function", () => {
     const result = runRule(
       effectNeedsCleanup,

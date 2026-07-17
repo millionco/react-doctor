@@ -2422,11 +2422,14 @@ const isFunctionReturnedFromReactHook = (
   return symbol.references.some((reference) => {
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
     const property = referenceRoot.parent;
+    const propertyName = isNodeOfType(property, "Property")
+      ? getStaticPropertyKeyName(property)
+      : null;
     if (
       !isNodeOfType(property, "Property") ||
       property.value !== referenceRoot ||
       !isNodeOfType(property.parent, "ObjectExpression") ||
-      (requireRefPropertyName && !getStaticPropertyKeyName(property)?.endsWith("Ref"))
+      (requireRefPropertyName && propertyName !== "ref" && !propertyName?.endsWith("Ref"))
     ) {
       return false;
     }

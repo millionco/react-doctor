@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -181,7 +182,8 @@ const staticMemberName = (member: EsTreeNodeOfType<"MemberExpression">): string 
 
 const parameterIndex = (
   expression: EsTreeNode,
-  parameterNames: Array<string | null>,
+  parameterSymbolIds: Array<number | null>,
+  scopes: ScopeAnalysis,
   canUnwrapSerialization: boolean,
   visitedNodes = new Set<EsTreeNode>(),
 ): number | null => {
@@ -189,11 +191,19 @@ const parameterIndex = (
   if (visitedNodes.has(strippedExpression)) return null;
   visitedNodes.add(strippedExpression);
   if (isNodeOfType(strippedExpression, "Identifier")) {
-    const directIndex = parameterNames.indexOf(strippedExpression.name);
+    const directSymbolId = scopes.symbolFor(strippedExpression)?.id;
+    const directIndex =
+      directSymbolId === undefined ? -1 : parameterSymbolIds.indexOf(directSymbolId);
     if (directIndex !== -1) return directIndex;
     const initializer = immutableInitializer(strippedExpression);
     return initializer
-      ? parameterIndex(initializer, parameterNames, canUnwrapSerialization, visitedNodes)
+      ? parameterIndex(
+          initializer,
+          parameterSymbolIds,
+          scopes,
+          canUnwrapSerialization,
+          visitedNodes,
+        )
       : null;
   }
   if (
@@ -208,7 +218,7 @@ const parameterIndex = (
   ) {
     const serializedArgument = strippedExpression.arguments[0];
     return serializedArgument && isNodeOfType(serializedArgument, "Identifier")
-      ? parameterIndex(serializedArgument, parameterNames, true, visitedNodes)
+      ? parameterIndex(serializedArgument, parameterSymbolIds, scopes, true, visitedNodes)
       : null;
   }
   return null;
@@ -216,7 +226,10 @@ const parameterIndex = (
 
 const storageHelperSinkCache = new WeakMap<EsTreeNode, readonly StorageHelperSink[]>();
 
-const findStorageHelperSinks = (functionNode: EsTreeNode): readonly StorageHelperSink[] => {
+const findStorageHelperSinks = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): readonly StorageHelperSink[] => {
   const cachedSinks = storageHelperSinkCache.get(functionNode);
   if (cachedSinks) return cachedSinks;
   if (
@@ -227,16 +240,15 @@ const findStorageHelperSinks = (functionNode: EsTreeNode): readonly StorageHelpe
     storageHelperSinkCache.set(functionNode, []);
     return [];
   }
-  const parameterNames = functionNode.params.map((parameter) => {
+  const parameterSymbolIds = functionNode.params.map((parameter) => {
     const strippedParameter = stripParenExpression(parameter);
-    if (isNodeOfType(strippedParameter, "Identifier")) return strippedParameter.name;
-    if (
-      isNodeOfType(strippedParameter, "AssignmentPattern") &&
-      isNodeOfType(strippedParameter.left, "Identifier")
-    ) {
-      return strippedParameter.left.name;
-    }
-    return null;
+    const identifier = isNodeOfType(strippedParameter, "Identifier")
+      ? strippedParameter
+      : isNodeOfType(strippedParameter, "AssignmentPattern") &&
+          isNodeOfType(strippedParameter.left, "Identifier")
+        ? strippedParameter.left
+        : null;
+    return identifier ? (scopes.symbolFor(identifier)?.id ?? null) : null;
   });
   const helperSinks: StorageHelperSink[] = [];
   walkAst(functionNode.body, (child) => {
@@ -255,8 +267,8 @@ const findStorageHelperSinks = (functionNode: EsTreeNode): readonly StorageHelpe
     const keyExpression = child.arguments[0];
     const valueExpression = child.arguments[1];
     if (!keyExpression || !valueExpression) return;
-    const keyParameterIndex = parameterIndex(keyExpression, parameterNames, false);
-    const valueParameterIndex = parameterIndex(valueExpression, parameterNames, true);
+    const keyParameterIndex = parameterIndex(keyExpression, parameterSymbolIds, scopes, false);
+    const valueParameterIndex = parameterIndex(valueExpression, parameterSymbolIds, scopes, true);
     if (keyParameterIndex === null || valueParameterIndex === null) return;
     helperSinks.push({ keyParameterIndex, valueParameterIndex });
   });
@@ -286,7 +298,9 @@ export const authTokenInWebStorage = defineRule({
         if (keyArgument) keyArguments.push(keyArgument);
       } else if (isNodeOfType(callee, "Identifier")) {
         const helperFunction = immutableInitializer(callee);
-        const helperSinks = helperFunction ? findStorageHelperSinks(helperFunction) : [];
+        const helperSinks = helperFunction
+          ? findStorageHelperSinks(helperFunction, context.scopes)
+          : [];
         for (const helperSink of helperSinks) {
           const keyArgument = node.arguments[helperSink.keyParameterIndex];
           if (keyArgument && node.arguments[helperSink.valueParameterIndex]) {

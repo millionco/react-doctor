@@ -320,6 +320,22 @@ describe("security/auth-token-in-web-storage — regressions", () => {
     expect(diagnostics).toHaveLength(1);
   });
 
+  it("stays silent when a helper-local key shadows its parameter", () => {
+    const { diagnostics, parseErrors } = runRule(
+      authTokenInWebStorage,
+      `const persist = (key, value) => {
+        {
+          const key = "theme";
+          localStorage.setItem(key, value);
+        }
+      };
+      persist("authToken", token);`,
+    );
+
+    expect(parseErrors).toEqual([]);
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("flags a storage factory with a void nullish return branch", () => {
     const { diagnostics } = runRule(
       authTokenInWebStorage,

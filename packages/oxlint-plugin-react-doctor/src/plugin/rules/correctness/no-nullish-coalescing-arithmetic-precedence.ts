@@ -4,13 +4,14 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-const ARITHMETIC_OPERATORS = new Set(["*", "/", "%", "-", "+"]);
+const ARITHMETIC_OPERATORS = new Set(["*", "/", "%", "-", "+", "**"]);
 const OPERATOR_DESCRIPTIONS = new Map([
   ["*", "multiplies"],
   ["/", "divides"],
   ["%", "applies remainder to"],
   ["-", "subtracts from"],
   ["+", "adds to"],
+  ["**", "raises the fallback to"],
 ]);
 
 const isNumericLiteralLeaf = (node: EsTreeNode): boolean => {
@@ -58,14 +59,28 @@ const isSentinelLiteralSwallow = (node: EsTreeNodeOfType<"BinaryExpression">): b
 // `x ?? 0 - someCall()` is the negation-fallback idiom: `0 - fn()` is a
 // deliberate spelling of `-fn()` (observed as
 // `offset ?? 0 - date.getTimezoneOffset()` in production timezone math), so
-// the as-parsed grouping is what the author wants. Kept narrow: only a
-// CallExpression subtrahend is exempt — `a ?? 0 - b` and the
-// `b.at ?? 0 - (a.at ?? 0)` sort-comparator swallow keep firing.
-const isZeroMinusNegationIdiom = (node: EsTreeNodeOfType<"BinaryExpression">): boolean => {
+// the as-parsed grouping is what the author wants. The exemption is limited to
+// `getTimezoneOffset()`; arbitrary call subtrahends still carry ambiguous grouping.
+const isZeroMinusTimezoneOffsetIdiom = (node: EsTreeNodeOfType<"BinaryExpression">): boolean => {
   if (node.operator !== "-") return false;
   if (!isNodeOfType(node.left, "Literal") || node.left.value !== 0) return false;
   const subtrahend = node.right as EsTreeNode;
-  return isNodeOfType(subtrahend, "CallExpression");
+  if (!isNodeOfType(subtrahend, "CallExpression")) return false;
+  const callee = subtrahend.callee as EsTreeNode;
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "getTimezoneOffset"
+  );
+};
+
+const hasStringLiteralLeaf = (node: EsTreeNode): boolean => {
+  if (isNodeOfType(node, "Literal")) return typeof node.value === "string";
+  if (!isNodeOfType(node, "BinaryExpression") || node.operator !== "+") return false;
+  return (
+    hasStringLiteralLeaf(node.left as EsTreeNode) || hasStringLiteralLeaf(node.right as EsTreeNode)
+  );
 };
 
 // A fully-constant fallback (`x ?? 100 * 1024 * 1024`, `x ?? 60 * 1000`)
@@ -103,7 +118,8 @@ export const noNullishCoalescingArithmeticPrecedence = defineRule({
       if (!ARITHMETIC_OPERATORS.has(right.operator)) return;
       if (!isSentinelLiteralSwallow(right)) return;
       if (!hasNonNumericLiteralLeaf(right)) return;
-      if (isZeroMinusNegationIdiom(right)) return;
+      if (right.operator === "+" && hasStringLiteralLeaf(right)) return;
+      if (isZeroMinusTimezoneOffsetIdiom(right)) return;
 
       context.report({
         node,

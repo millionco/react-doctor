@@ -366,6 +366,65 @@ describe("no-non-null-assertion-on-maybe-undefined-result", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a literal-key lookup on a provably empty local map", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const read = () => {
+         const values = new Map();
+         return values.get("missing")!.x;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a conditional map population prove a later lookup", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const read = (flag, key) => {
+         const values = new Map();
+         if (flag) values.set(key, { x: 1 });
+         return values.get(key)!.x;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat the missing-key branch of has as a presence proof", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const read = (key) => {
+         const values = new Map();
+         if (!values.has(key)) return values.get(key)!.x;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let unrelated projection membership prove a find result", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const ids = rows.map(row => row.id);
+       if (ids.includes(other)) return rows.find(row => row.id === target)!.name;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a false some branch as proof of a find result", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `if (rows.some(row => row.ok) === false) return rows.find(row => row.ok)!.x;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a false regex test branch as proof of a match result", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `if (regex.test(value) === false) return value.match(regex)![0].trim();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag get! keyed by the local map's own keys() iteration", () => {
     const result = runRule(
       noNonNullAssertionOnMaybeUndefinedResult,

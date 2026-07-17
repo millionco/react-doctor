@@ -183,18 +183,26 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a one-arg predicate reference (a real callback shape)", () => {
+  it("flags a one-arg predicate used as a condition", () => {
     const result = runRule(
       noPredicateFunctionReferenceInBooleanPosition,
       `
       function isValid(value) { return Boolean(value); }
-      const check = isValid || defaultCheck;
-      if (check) {
+      if (isValid) {
         run();
       }
       `,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a predicate with a defaulted parameter used as a condition", () => {
+    const result = runRule(
+      noPredicateFunctionReferenceInBooleanPosition,
+      `const isReady = (force = false) => force; if (isReady) start();`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a predicate used for value selection with ||", () => {

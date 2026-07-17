@@ -413,4 +413,55 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags an Object.keys call in the branch where an optional parameter is absent", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `function read(params?: object) {
+         if (!params) return Object.keys(params);
+         return [];
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat assignment to undefined as normalization", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `function read(params?: object) {
+         params = undefined;
+         return Object.keys(params);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a conditional assignment as dominating normalization", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `function read(params?: object, flag: boolean) {
+         if (flag) params = {};
+         return Object.keys(params);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat an empty catch link as consuming the thrown TypeError", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `fetch("/x").then(data => Object.keys(data?.items)).catch();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a rethrowing catch as consuming the thrown TypeError", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `fetch("/x")
+         .then(data => Object.keys(data?.items))
+         .catch(error => { throw error; });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

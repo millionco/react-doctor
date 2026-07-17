@@ -65,6 +65,7 @@ const hasArrayCallbackFirstArgument = (
   // predicate — except for known global predicates like `Boolean`. An
   // identifier that resolves to an object literal is a query filter
   // (`collection.find(filter)`, a MongoDB cursor), not a callback.
+  if (isNodeOfType(firstArgument, "MemberExpression")) return true;
   if (!isNodeOfType(firstArgument, "Identifier")) return false;
   if (
     KNOWN_GLOBAL_PREDICATE_NAMES.has(firstArgument.name) &&
@@ -133,8 +134,15 @@ const isArrayFindCall = (
     return false;
   }
   if (isNodeOfType(receiver, "Identifier")) {
-    const receiverInitializer = context.scopes.symbolFor(receiver)?.initializer;
-    if (receiverInitializer && isNodeOfType(receiverInitializer, "ObjectExpression")) return false;
+    const visitedSymbolIds = new Set<number>();
+    let currentReceiver: EsTreeNode = receiver;
+    while (isNodeOfType(currentReceiver, "Identifier")) {
+      const symbol = context.scopes.symbolFor(currentReceiver);
+      if (!symbol || visitedSymbolIds.has(symbol.id) || !symbol.initializer) break;
+      visitedSymbolIds.add(symbol.id);
+      currentReceiver = stripParenExpression(symbol.initializer);
+    }
+    if (isNodeOfType(currentReceiver, "ObjectExpression")) return false;
   }
   if (receiverChainContainsChainCall(receiver)) return false;
   return hasArrayCallbackFirstArgument(node, context);
@@ -162,21 +170,6 @@ const areNodesStructurallyIdentical = (left: unknown, right: unknown): boolean =
     ([key, value]) =>
       rightEntries.has(key) && areNodesStructurallyIdentical(value, rightEntries.get(key)),
   );
-};
-
-const subtreeContainsMatch = (
-  root: EsTreeNode,
-  matches: (node: EsTreeNode) => boolean,
-): boolean => {
-  let found = false;
-  walkAst(root, (node) => {
-    if (found) return false;
-    if (matches(node)) {
-      found = true;
-      return false;
-    }
-  });
-  return found;
 };
 
 // `some(pred)` / `findIndex(pred)` over the same receiver with a structurally
@@ -216,11 +209,131 @@ const isGuardedByRepeatedFindTest = (findCall: EsTreeNodeOfType<"CallExpression"
       areNodesStructurallyIdentical(candidate.arguments?.[0], findCall.arguments?.[0])
     );
   };
-  const provesFind = (test: EsTreeNode): boolean =>
-    subtreeContainsMatch(
-      test,
-      (candidate) => isIdenticalFindCall(candidate) || isEquivalentPredicateGuard(candidate),
+  const predicateIsStable = (candidate: EsTreeNodeOfType<"CallExpression">): boolean => {
+    const predicate = candidate.arguments?.[0];
+    if (!predicate) return false;
+    if (isNodeOfType(predicate, "Identifier") || isNodeOfType(predicate, "MemberExpression")) {
+      return true;
+    }
+    let hasNestedCall = false;
+    walkAst(predicate as EsTreeNode, (child) => {
+      if (child !== predicate && FUNCTION_NODE_TYPES.has(child.type)) return false;
+      if (isNodeOfType(child, "CallExpression")) {
+        hasNestedCall = true;
+        return false;
+      }
+    });
+    return !hasNestedCall;
+  };
+  const asMatchingCall = (expression: EsTreeNode): EsTreeNodeOfType<"CallExpression"> | null => {
+    const stripped = stripParenExpression(expression);
+    if (!isNodeOfType(stripped, "CallExpression")) return null;
+    if (!isIdenticalFindCall(stripped) && !isEquivalentPredicateGuard(stripped)) return null;
+    return predicateIsStable(stripped) && predicateIsStable(findCall) ? stripped : null;
+  };
+  const isLiteralValue = (node: EsTreeNode, value: unknown): boolean => {
+    const stripped = stripParenExpression(node);
+    if (isNodeOfType(stripped, "Literal")) return stripped.value === value;
+    if (
+      value === -1 &&
+      isNodeOfType(stripped, "UnaryExpression") &&
+      stripped.operator === "-" &&
+      isNodeOfType(stripped.argument, "Literal")
+    ) {
+      return stripped.argument.value === 1;
+    }
+    return (
+      value === undefined && isNodeOfType(stripped, "Identifier") && stripped.name === "undefined"
     );
+  };
+  const optionalReadProvesFind = (test: EsTreeNode): boolean => {
+    let expression = stripParenExpression(test);
+    let hasOptionalRead = false;
+    while (isNodeOfType(expression, "MemberExpression")) {
+      hasOptionalRead ||= Boolean(expression.optional);
+      expression = stripParenExpression(expression.object as EsTreeNode);
+    }
+    return (
+      hasOptionalRead &&
+      isNodeOfType(expression, "CallExpression") &&
+      isIdenticalFindCall(expression) &&
+      predicateIsStable(expression)
+    );
+  };
+  const provesFind = (test: EsTreeNode): boolean => {
+    const expression = stripParenExpression(test);
+    const directCall = asMatchingCall(expression);
+    if (directCall) {
+      const callee = directCall.callee as EsTreeNodeOfType<"MemberExpression">;
+      return getStaticPropertyName(callee) !== "findIndex";
+    }
+    if (optionalReadProvesFind(expression)) return true;
+    if (isNodeOfType(expression, "LogicalExpression")) {
+      if (expression.operator === "&&") {
+        return (
+          provesFind(expression.left as EsTreeNode) || provesFind(expression.right as EsTreeNode)
+        );
+      }
+      if (expression.operator === "||") {
+        return (
+          provesFind(expression.left as EsTreeNode) && provesFind(expression.right as EsTreeNode)
+        );
+      }
+      return false;
+    }
+    if (!isNodeOfType(expression, "BinaryExpression")) return false;
+    const operandPairs: Array<[EsTreeNode, EsTreeNode]> = [
+      [expression.left as EsTreeNode, expression.right as EsTreeNode],
+      [expression.right as EsTreeNode, expression.left as EsTreeNode],
+    ];
+    for (const [candidate, comparisonValue] of operandPairs) {
+      const matchingCall = asMatchingCall(candidate);
+      if (!matchingCall) continue;
+      const callee = matchingCall.callee as EsTreeNodeOfType<"MemberExpression">;
+      const methodName = getStaticPropertyName(callee);
+      if (methodName === "findIndex") {
+        if (
+          (expression.operator === "!==" || expression.operator === "!=") &&
+          isLiteralValue(comparisonValue, -1)
+        ) {
+          return true;
+        }
+        if (
+          (expression.operator === ">=" &&
+            candidate === expression.left &&
+            isLiteralValue(comparisonValue, 0)) ||
+          (expression.operator === "<=" &&
+            candidate === expression.right &&
+            isLiteralValue(comparisonValue, 0))
+        ) {
+          return true;
+        }
+        continue;
+      }
+      if (methodName === "some") {
+        if (
+          (expression.operator === "===" || expression.operator === "==") &&
+          isLiteralValue(comparisonValue, true)
+        ) {
+          return true;
+        }
+        if (
+          (expression.operator === "!==" || expression.operator === "!=") &&
+          isLiteralValue(comparisonValue, false)
+        ) {
+          return true;
+        }
+        continue;
+      }
+      if (
+        (expression.operator === "!==" || expression.operator === "!=") &&
+        (isLiteralValue(comparisonValue, null) || isLiteralValue(comparisonValue, undefined))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   let child: EsTreeNode = findCall;
   let ancestor: EsTreeNode | null = findCall.parent ?? null;

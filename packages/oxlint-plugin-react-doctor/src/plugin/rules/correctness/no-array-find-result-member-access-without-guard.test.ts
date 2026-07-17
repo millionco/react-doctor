@@ -454,6 +454,73 @@ describe("no-array-find-result-member-access-without-guard", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags an array literal find with a member-expression predicate", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `const result = [{ x: 1 }].find(filters.isWanted).x;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a bare findIndex result as a positive guard", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `function read(items, predicate) {
+         if (items.findIndex(predicate)) return items.find(predicate).x;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an explicit non-negative findIndex guard", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `function read(items, predicate) {
+         if (items.findIndex(predicate) !== -1) return items.find(predicate).x;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a false some result as a positive guard", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `function read(items, predicate) {
+         if (items.some(predicate) === false) return items.find(predicate).x;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a negated some result as a positive guard", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `function read(items, predicate) {
+         if (!items.some(predicate)) return items.find(predicate).x;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust repeated find calls with a nondeterministic predicate", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `items.find(() => Math.random() > 0.5) && items.find(() => Math.random() > 0.5).x;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a custom find method reached through an object alias", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `const query = { find(callback) { return { x: 1 }; } };
+       const alias = query;
+       alias.find(callback).x;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags when an unrelated membership lookup does not dominate the dereference", () => {
     const result = runRule(
       noArrayFindResultMemberAccessWithoutGuard,

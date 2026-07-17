@@ -127,7 +127,49 @@ const findOutermostScope = (node: EsTreeNode): EsTreeNode | null => {
 
 // Methods that populate the map, check the key, or hand out keys that are
 // present by construction (`for (const k of map.keys()) map.get(k)!`).
-const KEY_PRESENCE_METHOD_NAMES = new Set(["set", "has", "keys", "entries", "forEach"]);
+const KEY_PRESENCE_METHOD_NAMES = new Set(["set", "keys", "entries", "forEach"]);
+
+const relevantCallsByScope = new WeakMap<EsTreeNode, EsTreeNodeOfType<"CallExpression">[]>();
+
+const indexedRelevantCalls = (scope: EsTreeNode): EsTreeNodeOfType<"CallExpression">[] => {
+  const existing = relevantCallsByScope.get(scope);
+  if (existing) return existing;
+  const calls: EsTreeNodeOfType<"CallExpression">[] = [];
+  walkAst(scope, (child) => {
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = child.callee;
+    const methodName = isNodeOfType(callee, "MemberExpression")
+      ? getStaticPropertyName(callee)
+      : null;
+    if (methodName !== "get" && methodName !== "find" && methodName !== "match") {
+      calls.push(child);
+    }
+  });
+  relevantCallsByScope.set(scope, calls);
+  return calls;
+};
+
+const isUnconditionallyBefore = (
+  candidate: EsTreeNode,
+  assertion: EsTreeNode,
+  scope: EsTreeNode,
+): boolean => {
+  if (candidate.range[0] >= assertion.range[0]) return false;
+  let ancestor = candidate.parent ?? null;
+  while (ancestor && ancestor !== scope) {
+    if (
+      isNodeOfType(ancestor, "IfStatement") ||
+      isNodeOfType(ancestor, "ConditionalExpression") ||
+      isNodeOfType(ancestor, "LogicalExpression") ||
+      isNodeOfType(ancestor, "SwitchCase") ||
+      isNodeOfType(ancestor, "TryStatement")
+    ) {
+      return false;
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return ancestor === scope;
+};
 
 // A `map.get(key)!` is likely safe when the same map is populated or
 // checked (`map.set(...)` / `map.has(...)`), iterated by its own keys, or
@@ -137,42 +179,50 @@ const KEY_PRESENCE_METHOD_NAMES = new Set(["set", "has", "keys", "entries", "for
 // receivers too, not just bare identifiers.
 const scopeProvesKeyPresence = (
   assertion: EsTreeNode,
-  receiverKey: string,
+  receiver: EsTreeNodeOfType<"Identifier">,
   lookupKey: EsTreeNode,
+  context: RuleContext,
 ): boolean => {
   const scope = findOutermostScope(assertion);
   if (!scope) return false;
-  let proven = false;
-  walkAst(scope, (child) => {
-    if (proven) return false;
-    if (child.range[0] >= assertion.range[0]) return;
-    if (!isNodeOfType(child, "CallExpression")) return;
+  const receiverSymbol = context.scopes.symbolFor(receiver);
+  if (!receiverSymbol) return false;
+  const receiverMatches = (candidate: EsTreeNode): boolean => {
+    const target = stripParenExpression(candidate);
+    return (
+      isNodeOfType(target, "Identifier") &&
+      context.scopes.symbolFor(target)?.id === receiverSymbol.id
+    );
+  };
+  const hasGuard = isPresenceProvenBeforeNode(assertion, (test) =>
+    testPositivelyContainsCall(test, (call) => {
+      const callee = call.callee;
+      return Boolean(
+        isNodeOfType(callee, "MemberExpression") &&
+        getStaticPropertyName(callee) === "has" &&
+        receiverMatches(callee.object as EsTreeNode) &&
+        areNodesLooselyEqual(call.arguments[0], lookupKey),
+      );
+    }),
+  );
+  if (hasGuard) return true;
+  for (const child of indexedRelevantCalls(scope)) {
+    if (!isUnconditionallyBefore(child, assertion, scope)) continue;
     const callee = child.callee;
     if (
       isNodeOfType(callee, "MemberExpression") &&
       KEY_PRESENCE_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") &&
-      receiverPathKey(callee.object as EsTreeNode) === receiverKey
+      receiverMatches(callee.object as EsTreeNode)
     ) {
       const methodName = getStaticPropertyName(callee);
-      if (
-        (methodName === "set" || methodName === "has") &&
-        !areNodesLooselyEqual(child.arguments[0], lookupKey)
-      ) {
-        return;
-      }
-      proven = true;
-      return false;
+      if (methodName === "set" && !areNodesLooselyEqual(child.arguments[0], lookupKey)) continue;
+      return true;
     }
-    if (
-      (child.arguments ?? []).some(
-        (argument) => receiverPathKey(stripParenExpression(argument as EsTreeNode)) === receiverKey,
-      )
-    ) {
-      proven = true;
-      return false;
+    if ((child.arguments ?? []).some((argument) => receiverMatches(argument as EsTreeNode))) {
+      return true;
     }
-  });
-  return proven;
+  }
+  return false;
 };
 
 // The `get` branch only fires when the map's emptiness at construction is
@@ -211,9 +261,12 @@ const scopeDeclaresEmptyMap = (
 // flags are dropped from the key — `/x/.test(s)` proves `s.match(/x/g)`
 // returns a non-empty array — while semantic flags (`i`, `m`, `s`, `u`)
 // must agree for the proof to hold.
-const regexComparableKey = (node: EsTreeNode): string | null => {
+const regexComparableKey = (node: EsTreeNode, context?: RuleContext): string | null => {
   const target = stripParenExpression(node);
-  if (isNodeOfType(target, "Identifier")) return `id:${target.name}`;
+  if (isNodeOfType(target, "Identifier")) {
+    const symbol = context?.scopes.symbolFor(target);
+    return symbol ? `id:${symbol.id}` : `id:${target.name}`;
+  }
   if (isNodeOfType(target, "Literal") && "regex" in target && target.regex) {
     const semanticFlags = String(target.regex.flags ?? "").replaceAll(/[gy]/g, "");
     return `regex:${target.regex.pattern}:${semanticFlags}`;
@@ -241,6 +294,21 @@ const testPositivelyContainsCall = (
 ): boolean => {
   const expression = stripParenExpression(test);
   if (unwrapNegativeGuardForm(expression)) return false;
+  if (isNodeOfType(expression, "BinaryExpression")) {
+    const hasBooleanLiteral = (value: boolean): boolean =>
+      [expression.left, expression.right].some((operand) => {
+        const target = stripParenExpression(operand as EsTreeNode);
+        return isNodeOfType(target, "Literal") && target.value === value;
+      });
+    const falseLiteral = hasBooleanLiteral(false);
+    const trueLiteral = hasBooleanLiteral(true);
+    if (
+      (falseLiteral && (expression.operator === "===" || expression.operator === "==")) ||
+      (trueLiteral && (expression.operator === "!==" || expression.operator === "!="))
+    ) {
+      return false;
+    }
+  }
   if (isNodeOfType(expression, "LogicalExpression")) {
     if (expression.operator === "&&") {
       return (
@@ -270,6 +338,7 @@ const scopeProvesMatchTested = (
   assertion: EsTreeNode,
   regexKey: string,
   matchReceiver: EsTreeNode,
+  context: RuleContext,
 ): boolean =>
   isPresenceProvenBeforeNode(assertion, (test) =>
     testPositivelyContainsCall(test, (call) => {
@@ -278,7 +347,7 @@ const scopeProvesMatchTested = (
       const methodName = getStaticPropertyName(callee);
       if (methodName === "test") {
         return (
-          regexComparableKey(callee.object as EsTreeNode) === regexKey &&
+          regexComparableKey(callee.object as EsTreeNode, context) === regexKey &&
           Boolean(
             call.arguments[0] &&
             areNodesLooselyEqual(
@@ -295,7 +364,8 @@ const scopeProvesMatchTested = (
           stripParenExpression(matchReceiver),
         ) &&
         Boolean(
-          call.arguments[0] && regexComparableKey(call.arguments[0] as EsTreeNode) === regexKey,
+          call.arguments[0] &&
+          regexComparableKey(call.arguments[0] as EsTreeNode, context) === regexKey,
         )
       );
     }),
@@ -714,6 +784,7 @@ const scopeProvesFindMatch = (
   assertion: EsTreeNode,
   findReceiver: EsTreeNode,
   findPredicate: EsTreeNode,
+  context: RuleContext,
 ): boolean =>
   isPresenceProvenBeforeNode(assertion, (test) =>
     testPositivelyContainsCall(test, (call) => {
@@ -721,6 +792,20 @@ const scopeProvesFindMatch = (
       if (!isNodeOfType(callee, "MemberExpression")) return false;
       const methodName = getStaticPropertyName(callee);
       if (methodName === "some" || methodName === "findIndex") {
+        if (methodName === "findIndex") {
+          const comparison = call.parent;
+          if (!comparison || !isNodeOfType(comparison, "BinaryExpression")) return false;
+          const otherOperand = comparison.left === call ? comparison.right : comparison.left;
+          const negativeOne = stripParenExpression(otherOperand as EsTreeNode);
+          const isNegativeOne =
+            isNodeOfType(negativeOne, "UnaryExpression") &&
+            negativeOne.operator === "-" &&
+            isNodeOfType(negativeOne.argument, "Literal") &&
+            negativeOne.argument.value === 1;
+          if (!isNegativeOne || (comparison.operator !== "!==" && comparison.operator !== "!=")) {
+            return false;
+          }
+        }
         return (
           areNodesLooselyEqual(
             stripParenExpression(callee.object as EsTreeNode),
@@ -733,10 +818,39 @@ const scopeProvesFindMatch = (
         );
       }
       if (methodName !== "includes") return false;
+      const lookupParts = findEqualityLookupParts(findPredicate);
+      if (!lookupParts || !areNodesLooselyEqual(call.arguments[0], lookupParts.comparedValue)) {
+        return false;
+      }
       const includesReceiver = stripParenExpression(callee.object as EsTreeNode);
       if (!isNodeOfType(includesReceiver, "Identifier")) return false;
       const binding = findVariableInitializer(includesReceiver, includesReceiver.name);
       const initializer = binding?.initializer ? stripParenExpression(binding.initializer) : null;
+      const projection =
+        initializer &&
+        isNodeOfType(initializer, "CallExpression") &&
+        isNodeOfType(initializer.callee, "MemberExpression")
+          ? initializer.arguments[0]
+          : null;
+      const projectionFunction = projection
+        ? resolveExactLocalFunction(projection as EsTreeNode, context.scopes)
+        : null;
+      const projectionBody =
+        projectionFunction &&
+        (isNodeOfType(projectionFunction, "ArrowFunctionExpression") ||
+          isNodeOfType(projectionFunction, "FunctionExpression"))
+          ? singleExpressionPredicateBody(projectionFunction)
+          : null;
+      const projectionParameter =
+        projectionFunction &&
+        (isNodeOfType(projectionFunction, "ArrowFunctionExpression") ||
+          isNodeOfType(projectionFunction, "FunctionExpression"))
+          ? projectionFunction.params[0]
+          : null;
+      const projectionObject =
+        projectionBody && isNodeOfType(projectionBody, "MemberExpression")
+          ? stripParenExpression(projectionBody.object as EsTreeNode)
+          : null;
       return Boolean(
         initializer &&
         isNodeOfType(initializer, "CallExpression") &&
@@ -745,7 +859,13 @@ const scopeProvesFindMatch = (
         areNodesLooselyEqual(
           stripParenExpression(initializer.callee.object as EsTreeNode),
           stripParenExpression(findReceiver),
-        ),
+        ) &&
+        projectionBody &&
+        isNodeOfType(projectionBody, "MemberExpression") &&
+        isNodeOfType(projectionParameter, "Identifier") &&
+        isNodeOfType(projectionObject, "Identifier") &&
+        projectionObject.name === projectionParameter.name &&
+        getStaticPropertyName(projectionBody) === lookupParts.propertyName,
       );
     }),
   );
@@ -885,7 +1005,10 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
           const predicate = args[0] ? stripParenExpression(args[0]) : null;
           if (!isPredicateArgument(predicate)) return;
           const findReceiver = callee.object as EsTreeNode;
-          if (predicate && scopeProvesFindMatch(node as EsTreeNode, findReceiver, predicate)) {
+          if (
+            predicate &&
+            scopeProvesFindMatch(node as EsTreeNode, findReceiver, predicate, context)
+          ) {
             return;
           }
           if (predicate && isEnsureThenFind(node as EsTreeNode, findReceiver, predicate)) return;
@@ -901,7 +1024,7 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
           ) {
             return;
           }
-          const regexKey = pattern ? regexComparableKey(pattern) : null;
+          const regexKey = pattern ? regexComparableKey(pattern, context) : null;
           if (
             pattern &&
             isGuardedAnchoredCharacterMatch(node as EsTreeNode, matchReceiver, pattern)
@@ -915,19 +1038,20 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
           ) {
             return;
           }
-          if (regexKey && scopeProvesMatchTested(node as EsTreeNode, regexKey, matchReceiver)) {
+          if (
+            regexKey &&
+            scopeProvesMatchTested(node as EsTreeNode, regexKey, matchReceiver, context)
+          ) {
             return;
           }
         }
         if (methodName === "get") {
           const key = args[0] ? stripParenExpression(args[0]) : null;
-          // A static literal key is often known-present; only dynamic keys
-          // carry real miss risk.
-          if (!key || isNodeOfType(key, "Literal")) return;
+          if (!key) return;
           const receiver = stripParenExpression(callee.object as EsTreeNode);
           if (!isNodeOfType(receiver, "Identifier")) return;
           if (!scopeDeclaresEmptyMap(receiver, context)) return;
-          if (scopeProvesKeyPresence(node as EsTreeNode, receiver.name, key)) return;
+          if (scopeProvesKeyPresence(node as EsTreeNode, receiver, key, context)) return;
         }
 
         context.report({ node, message });

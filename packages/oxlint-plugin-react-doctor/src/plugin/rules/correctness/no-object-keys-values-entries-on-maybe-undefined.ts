@@ -9,7 +9,7 @@ import {
   stripParenExpression,
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
 } from "../../utils/strip-paren-expression.js";
-import { subtreeReferencesIdentifierName } from "../../utils/subtree-references-identifier-name.js";
+import { unwrapNegativeGuardForm } from "../../utils/unwrap-negative-guard-form.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
@@ -104,7 +104,31 @@ const isInsideCatchTerminatedPromiseChain = (callNode: EsTreeNode): boolean => {
             isNodeOfType(chainLink.parent.property, "Identifier") &&
             chainLink.parent.property.name === "catch"
           ) {
-            return true;
+            const catchCall = chainLink.parent.parent;
+            const catchHandler = catchCall.arguments[0];
+            if (
+              !catchHandler ||
+              (!isNodeOfType(catchHandler as EsTreeNode, "ArrowFunctionExpression") &&
+                !isNodeOfType(catchHandler as EsTreeNode, "FunctionExpression"))
+            ) {
+              return false;
+            }
+            let rethrows = false;
+            walkAst(catchHandler as EsTreeNode, (child) => {
+              if (
+                child !== catchHandler &&
+                (isNodeOfType(child, "ArrowFunctionExpression") ||
+                  isNodeOfType(child, "FunctionExpression") ||
+                  isNodeOfType(child, "FunctionDeclaration"))
+              ) {
+                return false;
+              }
+              if (child !== catchHandler && isNodeOfType(child, "ThrowStatement")) {
+                rethrows = true;
+                return false;
+              }
+            });
+            return !rethrows;
           }
           chainLink = chainLink.parent.parent;
         }
@@ -115,51 +139,98 @@ const isInsideCatchTerminatedPromiseChain = (callNode: EsTreeNode): boolean => {
   return false;
 };
 
-const subtreeContainsMemberPath = (node: EsTreeNode | null | undefined, path: string): boolean => {
-  if (!node) return false;
-  let found = false;
-  walkAst(node, (child: EsTreeNode) => {
-    if (found) return false;
-    if (
-      (isNodeOfType(child, "MemberExpression") || isNodeOfType(child, "Identifier")) &&
-      memberAccessPath(child) === path
-    ) {
-      found = true;
-      return false;
-    }
-  });
-  return found;
+const rootIdentifier = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
+  let expression = stripParenExpression(node);
+  while (isNodeOfType(expression, "MemberExpression")) {
+    expression = stripParenExpression(expression.object as EsTreeNode);
+  }
+  return isNodeOfType(expression, "Identifier") ? expression : null;
 };
 
-// The normalize-then-use idiom: `params = params ?? {}` or
-// `if (!params) params = {}` before the call reassigns the binding, so a
-// later `Object.keys(params)` no longer sees the optional-param value.
-const subtreeAssignsIdentifierName = (node: EsTreeNode, name: string): boolean => {
-  let found = false;
-  walkAst(node, (child: EsTreeNode) => {
-    if (found) return false;
-    if (
-      isNodeOfType(child, "AssignmentExpression") &&
-      isNodeOfType(child.left, "Identifier") &&
-      child.left.name === name
-    ) {
-      found = true;
-      return false;
-    }
-  });
-  return found;
+const bindingKeyForIdentifier = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): string => {
+  const symbol = context.scopes.symbolFor(identifier);
+  return symbol ? String(symbol.id) : `global:${identifier.name}`;
 };
 
-// True when a guard mentioning the value short-circuits, encloses, or
-// precedes the call — the `x && Object.keys(x)`, `!x || …`, `if (x) { … }`,
-// `!x ? [] : Object.keys(x)`, and `if (!x) return; …` shapes. Branch checks
-// credit both the consequent and the alternate: which branch is safe depends
-// on the test's polarity, and requiring a mention (not a polarity proof)
-// keeps the rule precise on real-world guards.
-const isAbsenceComparison = (test: EsTreeNode): boolean => {
+const directNormalizingAssignment = (
+  statement: EsTreeNode,
+): EsTreeNodeOfType<"AssignmentExpression"> | null => {
+  if (
+    isNodeOfType(statement, "ExpressionStatement") &&
+    isNodeOfType(statement.expression, "AssignmentExpression")
+  ) {
+    return statement.expression;
+  }
+  if (
+    isNodeOfType(statement, "IfStatement") &&
+    !statement.alternate &&
+    isNodeOfType(statement.consequent, "ExpressionStatement") &&
+    isNodeOfType(statement.consequent.expression, "AssignmentExpression")
+  ) {
+    return statement.consequent.expression;
+  }
+  return null;
+};
+
+const testPositivelyProvesPath = (
+  test: EsTreeNode,
+  expectedPath: string,
+  expectedBindingKey: string,
+  context: RuleContext,
+): boolean => {
   const expression = stripParenExpression(test);
+  const matchesPath = (candidate: EsTreeNode): boolean => {
+    const candidateRoot = rootIdentifier(candidate);
+    const candidateBindingKey = candidateRoot
+      ? bindingKeyForIdentifier(candidateRoot, context)
+      : null;
+    return (
+      memberAccessPath(candidate) === expectedPath &&
+      candidateRoot !== null &&
+      candidateBindingKey === expectedBindingKey
+    );
+  };
+  if (matchesPath(expression)) return true;
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") return false;
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    if (expression.operator === "&&") {
+      return (
+        testPositivelyProvesPath(
+          expression.left as EsTreeNode,
+          expectedPath,
+          expectedBindingKey,
+          context,
+        ) ||
+        testPositivelyProvesPath(
+          expression.right as EsTreeNode,
+          expectedPath,
+          expectedBindingKey,
+          context,
+        )
+      );
+    }
+    if (expression.operator === "||") {
+      return (
+        testPositivelyProvesPath(
+          expression.left as EsTreeNode,
+          expectedPath,
+          expectedBindingKey,
+          context,
+        ) &&
+        testPositivelyProvesPath(
+          expression.right as EsTreeNode,
+          expectedPath,
+          expectedBindingKey,
+          context,
+        )
+      );
+    }
+    return false;
+  }
   if (!isNodeOfType(expression, "BinaryExpression")) return false;
-  if (expression.operator !== "===" && expression.operator !== "==") return false;
   const isAbsent = (operand: EsTreeNode): boolean => {
     const target = stripParenExpression(operand);
     return (
@@ -167,7 +238,49 @@ const isAbsenceComparison = (test: EsTreeNode): boolean => {
       (isNodeOfType(target, "Identifier") && target.name === "undefined")
     );
   };
-  return isAbsent(expression.left as EsTreeNode) || isAbsent(expression.right as EsTreeNode);
+  const operandPairs: Array<[EsTreeNode, EsTreeNode]> = [
+    [expression.left as EsTreeNode, expression.right as EsTreeNode],
+    [expression.right as EsTreeNode, expression.left as EsTreeNode],
+  ];
+  return operandPairs.some(
+    ([candidate, comparisonValue]) =>
+      matchesPath(candidate) &&
+      isAbsent(comparisonValue) &&
+      (expression.operator === "!==" || expression.operator === "!="),
+  );
+};
+
+const assignmentIndexesByBlock = new WeakMap<
+  EsTreeNode,
+  {
+    assignments: Array<{ index: number; statement: EsTreeNode }>;
+    statementIndexes: Map<EsTreeNode, number>;
+  }
+>();
+
+const indexBlockAssignments = (block: EsTreeNode) => {
+  const existing = assignmentIndexesByBlock.get(block);
+  if (existing) return existing;
+  const body = isNodeOfType(block, "BlockStatement") ? block.body : [];
+  const statementIndexes = new Map<EsTreeNode, number>();
+  const assignments: Array<{ index: number; statement: EsTreeNode }> = [];
+  body.forEach((statement, index) => {
+    const statementNode = statement as EsTreeNode;
+    statementIndexes.set(statementNode, index);
+    if (
+      (isNodeOfType(statementNode, "ExpressionStatement") &&
+        isNodeOfType(statementNode.expression, "AssignmentExpression")) ||
+      (isNodeOfType(statementNode, "IfStatement") &&
+        !statementNode.alternate &&
+        isNodeOfType(statementNode.consequent, "ExpressionStatement") &&
+        isNodeOfType(statementNode.consequent.expression, "AssignmentExpression"))
+    ) {
+      assignments.push({ index, statement: statementNode });
+    }
+  });
+  const indexed = { assignments, statementIndexes };
+  assignmentIndexesByBlock.set(block, indexed);
+  return indexed;
 };
 
 const isValueGuardedBeforeCall = (
@@ -180,11 +293,14 @@ const isValueGuardedBeforeCall = (
   let ancestor: EsTreeNode | null = callNode.parent ?? null;
   while (ancestor) {
     if (isNodeOfType(ancestor, "BlockStatement")) {
-      const statements = ancestor.body ?? [];
-      const childIndex = statements.indexOf(child as never);
-      for (let index = 0; index < childIndex; index += 1) {
-        const statement = statements[index] as EsTreeNode;
-        if (earlierStatementNormalizesValue && earlierStatementNormalizesValue(statement)) {
+      const indexed = indexBlockAssignments(ancestor);
+      const childIndex = indexed.statementIndexes.get(child) ?? -1;
+      for (const assignment of indexed.assignments) {
+        if (assignment.index >= childIndex) break;
+        if (
+          earlierStatementNormalizesValue &&
+          earlierStatementNormalizesValue(assignment.statement)
+        ) {
           return true;
         }
       }
@@ -243,12 +359,14 @@ export const noObjectKeysValuesEntriesOnMaybeUndefined = defineRule({
       })();
       if (argumentContainsOptionalChain) {
         const chainPath = guardComparablePathForChain(argument as EsTreeNode);
+        const chainRoot = rootIdentifier(argument as EsTreeNode);
+        const chainRootBindingKey = chainRoot ? bindingKeyForIdentifier(chainRoot, context) : null;
         const isChainGuarded =
           chainPath !== null &&
-          isValueGuardedBeforeCall(node, (guard: EsTreeNode) => {
-            if (isAbsenceComparison(guard)) return false;
-            return subtreeContainsMemberPath(guard, chainPath);
-          });
+          chainRootBindingKey !== null &&
+          isValueGuardedBeforeCall(node, (guard: EsTreeNode) =>
+            testPositivelyProvesPath(guard, chainPath, chainRootBindingKey, context),
+          );
         if (!isChainGuarded) context.report({ node, message: MESSAGE });
         return;
       }
@@ -259,13 +377,57 @@ export const noObjectKeysValuesEntriesOnMaybeUndefined = defineRule({
       if (isNodeOfType(unwrapped, "Identifier")) {
         if (!isOptionalParameterBinding(unwrapped)) return;
         const parameterName = unwrapped.name;
+        const parameterSymbol = context.scopes.symbolFor(unwrapped);
+        if (!parameterSymbol) return;
         const isParameterGuarded = isValueGuardedBeforeCall(
           node,
-          (guard: EsTreeNode) => {
-            if (isAbsenceComparison(guard)) return false;
-            return subtreeReferencesIdentifierName(guard, parameterName);
+          (guard: EsTreeNode) =>
+            testPositivelyProvesPath(guard, parameterName, String(parameterSymbol.id), context),
+          (statement: EsTreeNode) => {
+            const assignment = directNormalizingAssignment(statement);
+            if (
+              !assignment ||
+              !isNodeOfType(assignment, "AssignmentExpression") ||
+              assignment.operator !== "=" ||
+              !isNodeOfType(assignment.left, "Identifier") ||
+              context.scopes.symbolFor(assignment.left)?.id !== parameterSymbol.id
+            ) {
+              return false;
+            }
+            if (isNodeOfType(statement, "IfStatement")) {
+              const positiveForm = unwrapNegativeGuardForm(statement.test);
+              if (
+                !positiveForm ||
+                !testPositivelyProvesPath(
+                  positiveForm,
+                  parameterName,
+                  String(parameterSymbol.id),
+                  context,
+                )
+              ) {
+                return false;
+              }
+            }
+            const value = stripParenExpression(assignment.right as EsTreeNode);
+            if (
+              isNodeOfType(value, "ObjectExpression") ||
+              isNodeOfType(value, "ArrayExpression") ||
+              isNodeOfType(value, "NewExpression") ||
+              isNodeOfType(value, "FunctionExpression") ||
+              isNodeOfType(value, "ArrowFunctionExpression")
+            ) {
+              return true;
+            }
+            if (isNodeOfType(value, "Literal")) return value.value !== null;
+            if (
+              isNodeOfType(value, "LogicalExpression") &&
+              (value.operator === "??" || value.operator === "||")
+            ) {
+              const fallback = stripParenExpression(value.right as EsTreeNode);
+              return isNodeOfType(fallback, "ObjectExpression");
+            }
+            return false;
           },
-          (statement: EsTreeNode) => subtreeAssignsIdentifierName(statement, parameterName),
         );
         if (isParameterGuarded) return;
         context.report({ node, message: MESSAGE });

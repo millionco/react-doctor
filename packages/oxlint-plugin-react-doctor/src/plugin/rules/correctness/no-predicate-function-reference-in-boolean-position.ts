@@ -96,7 +96,7 @@ const isInitializerExecutedUnconditionally = (binding: BindingInfo): boolean => 
   return true;
 };
 
-const resolvesToZeroArgumentFunction = (
+const resolvesToLocalFunction = (
   identifier: EsTreeNodeOfType<"Identifier">,
   context: RuleContext,
   visitedSymbolIds = new Set<number>(),
@@ -108,7 +108,7 @@ const resolvesToZeroArgumentFunction = (
     const symbol = context.scopes.symbolFor(initializer);
     if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
     visitedSymbolIds.add(symbol.id);
-    return resolvesToZeroArgumentFunction(initializer, context, visitedSymbolIds);
+    return resolvesToLocalFunction(initializer, context, visitedSymbolIds);
   }
   if (
     !isNodeOfType(initializer, "FunctionDeclaration") &&
@@ -117,7 +117,6 @@ const resolvesToZeroArgumentFunction = (
   ) {
     return false;
   }
-  if (!Array.isArray(initializer.params) || initializer.params.length > 0) return false;
   if (!isDeclaredAsDirectInitializer(binding)) return false;
   return isInitializerExecutedUnconditionally(binding);
 };
@@ -224,7 +223,7 @@ export const noPredicateFunctionReferenceInBooleanPosition = defineRule({
     Identifier(node: EsTreeNodeOfType<"Identifier">) {
       if (!PREDICATE_NAME_PATTERN.test(node.name)) return;
       if (!isInBooleanContext(node)) return;
-      if (!resolvesToZeroArgumentFunction(node, context)) return;
+      if (!resolvesToLocalFunction(node, context)) return;
       const symbol = context.scopes.symbolFor(node);
       if (!symbol || hasRelevantWrite(symbol, node)) return;
       if (isExistenceGuardOverUsedReference(node, symbol, context)) return;

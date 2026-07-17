@@ -559,4 +559,64 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not treat a wildcard regex as proof that a literal dot delimiter exists", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function read(value) {
+         if (/./.test(value)) return value.split(".")[1].trim();
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an escaped literal dot regex as proof of the split delimiter", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function read(value) {
+         if (/\\./.test(value)) return value.split(".")[1].trim();
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a bare indexOf result as a delimiter-presence guard", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function read(value) {
+         if (value.indexOf(".")) return value.split(".")[1].trim();
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an optional regex capture even when the overall match is guarded", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function read(value) {
+         if (value.match(/a(b)?/)) return value.match(/a(b)?/)[1].trim();
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet after an early return on an empty TouchList", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `element.addEventListener("touchend", (event) => {
+         if (event.touches.length === 0) return;
+         return event.touches[0].clientX;
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags an unguarded TouchList read in a named touchend handler", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const handleTouchEnd = (event) => event.touches[0].clientX;
+       element.addEventListener("touchend", handleTouchEnd);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

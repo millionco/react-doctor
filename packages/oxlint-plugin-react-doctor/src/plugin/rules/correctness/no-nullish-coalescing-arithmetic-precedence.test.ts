@@ -89,6 +89,33 @@ describe("no-nullish-coalescing-arithmetic-precedence", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a numeric fallback used only for string concatenation", () => {
+    const result = runRule(
+      noNullishCoalescingArithmeticPrecedence,
+      `const result = value ?? 0 + "px";`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a swallowed zero fallback before an arbitrary call", () => {
+    const result = runRule(
+      noNullishCoalescingArithmeticPrecedence,
+      `const result = total ?? 0 - discount();`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags exponentiation swallowing a zero fallback", () => {
+    const result = runRule(
+      noNullishCoalescingArithmeticPrecedence,
+      `const result = value ?? 0 ** exponent;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag an explicitly parenthesized arithmetic fallback", () => {
     const result = runRule(noNullishCoalescingArithmeticPrecedence, `const r = x ?? (0 / y);`);
     expect(result.diagnostics).toHaveLength(0);

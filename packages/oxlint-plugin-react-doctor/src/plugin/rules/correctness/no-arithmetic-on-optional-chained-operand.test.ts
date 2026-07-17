@@ -560,4 +560,62 @@ describe("no-arithmetic-on-optional-chained-operand", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not let a root guard prove a deeper optional segment", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function read(item) {
+         if (item) return (item.details?.price * 2).toFixed(2);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a stale mutable alias guard a re-dereferenced chain", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `let price = item?.price;
+       price = 1;
+       if (price) return (item?.price * 2).toFixed(2);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a standalone NaN observation as sanitization", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `const ratio = item?.price / 2;
+       Number.isNaN(ratio);
+       return ratio.toFixed(2);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a self-assignment as sanitization", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `let ratio = item?.price / 2;
+       ratio = ratio;
+       return ratio.toFixed(2);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a presence-branch early exit guard the following missing path", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `const ratio = item?.price / 2;
+       if (item) return null;
+       return ratio.toFixed(2);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an optional-chain arithmetic result returned directly", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function read(item) { return item?.price * 2; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

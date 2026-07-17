@@ -7,6 +7,43 @@ import { unwrapNegativeGuardForm } from "./unwrap-negative-guard-form.js";
 const positiveFormForFalsyBranch = (test: EsTreeNode): EsTreeNode | null =>
   unwrapNegativeGuardForm(test);
 
+const blockGuardIndexes = new WeakMap<
+  EsTreeNode,
+  {
+    earlyExitGuards: Array<{
+      index: number;
+      positiveTest: EsTreeNode;
+    }>;
+    statementIndexes: Map<EsTreeNode, number>;
+  }
+>();
+
+const indexBlockGuards = (block: EsTreeNode) => {
+  const existing = blockGuardIndexes.get(block);
+  if (existing) return existing;
+  const body =
+    (isNodeOfType(block, "BlockStatement") || isNodeOfType(block, "Program")) && block.body
+      ? block.body
+      : [];
+  const statementIndexes = new Map<EsTreeNode, number>();
+  const earlyExitGuards: Array<{ index: number; positiveTest: EsTreeNode }> = [];
+  body.forEach((statement, index) => {
+    const statementNode = statement as EsTreeNode;
+    statementIndexes.set(statementNode, index);
+    if (!isNodeOfType(statementNode, "IfStatement")) return;
+    if (isEarlyExitStatement(statementNode.consequent)) {
+      const positiveTest = positiveFormForFalsyBranch(statementNode.test as EsTreeNode);
+      if (positiveTest) earlyExitGuards.push({ index, positiveTest });
+    }
+    if (statementNode.alternate && isEarlyExitStatement(statementNode.alternate)) {
+      earlyExitGuards.push({ index, positiveTest: statementNode.test as EsTreeNode });
+    }
+  });
+  const indexed = { earlyExitGuards, statementIndexes };
+  blockGuardIndexes.set(block, indexed);
+  return indexed;
+};
+
 export const isPresenceProvenBeforeNode = (
   node: EsTreeNode,
   testProvesPresence: (test: EsTreeNode) => boolean,
@@ -41,21 +78,11 @@ export const isPresenceProvenBeforeNode = (
       return true;
     }
     if (isNodeOfType(ancestor, "BlockStatement") || isNodeOfType(ancestor, "Program")) {
-      const childIndex = ancestor.body.findIndex((statement) => statement === child);
-      for (let index = 0; index < childIndex; index += 1) {
-        const statement = ancestor.body[index];
-        if (!isNodeOfType(statement, "IfStatement")) continue;
-        if (isEarlyExitStatement(statement.consequent)) {
-          const positiveForm = positiveFormForFalsyBranch(statement.test as EsTreeNode);
-          if (positiveForm && testProvesPresence(positiveForm)) return true;
-        }
-        if (
-          statement.alternate &&
-          isEarlyExitStatement(statement.alternate) &&
-          testProvesPresence(statement.test as EsTreeNode)
-        ) {
-          return true;
-        }
+      const indexed = indexBlockGuards(ancestor);
+      const childIndex = indexed.statementIndexes.get(child) ?? -1;
+      for (const guard of indexed.earlyExitGuards) {
+        if (guard.index >= childIndex) break;
+        if (testProvesPresence(guard.positiveTest)) return true;
       }
     }
     child = ancestor;

@@ -8,6 +8,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isPresenceProvenBeforeNode } from "../../utils/is-presence-proven-before-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { unwrapNegativeGuardForm } from "../../utils/unwrap-negative-guard-form.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const MESSAGE =
@@ -67,28 +68,6 @@ const asDirectOptionalChainMember = (
   return inner;
 };
 
-const optionalChainRootName = (memberExpression: EsTreeNode): string | null => {
-  let current: EsTreeNode | null | undefined = memberExpression;
-  while (current) {
-    const stripped = stripKeepingChain(current);
-    if (isNodeOfType(stripped, "ChainExpression")) {
-      current = stripped.expression as EsTreeNode;
-      continue;
-    }
-    if (isNodeOfType(stripped, "MemberExpression")) {
-      current = stripped.object;
-      continue;
-    }
-    if (isNodeOfType(stripped, "CallExpression")) {
-      current = stripped.callee;
-      continue;
-    }
-    if (isNodeOfType(stripped, "Identifier")) return stripped.name;
-    return null;
-  }
-  return null;
-};
-
 // Serializes `a?.b.c` to "a.b.c" (non-computed members only) so two chain
 // expressions can be compared for identity.
 const chainMemberPath = (memberExpression: EsTreeNode): string | null => {
@@ -114,6 +93,80 @@ const chainMemberPath = (memberExpression: EsTreeNode): string | null => {
   }
 };
 
+const chainRootIdentifier = (
+  memberExpression: EsTreeNode,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  let current = stripKeepingChain(memberExpression);
+  while (true) {
+    if (isNodeOfType(current, "ChainExpression")) {
+      current = stripKeepingChain(current.expression as EsTreeNode);
+      continue;
+    }
+    if (isNodeOfType(current, "MemberExpression")) {
+      current = stripKeepingChain(current.object as EsTreeNode);
+      continue;
+    }
+    return isNodeOfType(current, "Identifier") ? current : null;
+  }
+};
+
+const guardKeyForPath = (node: EsTreeNode, context: RuleContext): string | null => {
+  const path = chainMemberPath(node);
+  const root = chainRootIdentifier(node);
+  const symbol = root ? context.scopes.symbolFor(root) : null;
+  if (!path || !root) return null;
+  return symbol ? `${symbol.id}:${path}` : `global:${path}`;
+};
+
+const optionalChainGuardKey = (
+  memberExpression: EsTreeNode,
+  context: RuleContext,
+): string | null => {
+  let current = stripKeepingChain(memberExpression);
+  while (true) {
+    if (isNodeOfType(current, "ChainExpression")) {
+      current = stripKeepingChain(current.expression as EsTreeNode);
+      continue;
+    }
+    if (!isNodeOfType(current, "MemberExpression")) return null;
+    if (current.optional) return guardKeyForPath(current.object as EsTreeNode, context);
+    current = stripKeepingChain(current.object as EsTreeNode);
+  }
+};
+
+const aliasesByScope = new WeakMap<
+  EsTreeNode,
+  Map<string, Array<{ guardKey: string; offset: number }>>
+>();
+
+const indexScopeAliases = (scopeOwner: EsTreeNode, context: RuleContext) => {
+  const existing = aliasesByScope.get(scopeOwner);
+  if (existing) return existing;
+  const aliases = new Map<string, Array<{ guardKey: string; offset: number }>>();
+  walkAst(scopeOwner, (child) => {
+    if (
+      !isNodeOfType(child, "VariableDeclarator") ||
+      !isNodeOfType(child.id, "Identifier") ||
+      !child.init ||
+      findScopeOwner(child) !== scopeOwner ||
+      !isNodeOfType(child.parent, "VariableDeclaration") ||
+      child.parent.kind !== "const"
+    ) {
+      return;
+    }
+    const initializerMember = asDirectOptionalChainMember(child.init);
+    const initializerPath = initializerMember ? chainMemberPath(initializerMember) : null;
+    const aliasSymbol = context.scopes.symbolFor(child.id);
+    if (!initializerPath || !aliasSymbol) return;
+    const guardKey = `${aliasSymbol.id}:${child.id.name}`;
+    const candidates = aliases.get(initializerPath) ?? [];
+    candidates.push({ guardKey, offset: child.range[0] });
+    aliases.set(initializerPath, candidates);
+  });
+  aliasesByScope.set(scopeOwner, aliases);
+  return aliases;
+};
+
 // Same-scope bindings that alias the exact chain being multiplied
 // (`const price = item?.price;` before `item?.price * 2`) — a guard on the
 // alias narrows the chain just as soundly as a guard on the root. Only
@@ -121,27 +174,14 @@ const chainMemberPath = (memberExpression: EsTreeNode): string | null => {
 // same-named alias inside a sibling nested function is a different
 // variable, and crediting its name would let an unrelated `if (price)`
 // suppress real findings.
-const collectSameChainAliasNames = (operandMember: EsTreeNode): string[] => {
+const collectSameChainAliasNames = (operandMember: EsTreeNode, context: RuleContext): string[] => {
   const operandPath = chainMemberPath(operandMember);
   if (!operandPath) return [];
   const scopeOwner = findScopeOwner(operandMember);
   if (!scopeOwner) return [];
-  const aliasNames: string[] = [];
-  walkAst(scopeOwner, (child: EsTreeNode) => {
-    if (
-      !isNodeOfType(child, "VariableDeclarator") ||
-      !isNodeOfType(child.id, "Identifier") ||
-      !child.init
-    ) {
-      return;
-    }
-    if (findScopeOwner(child) !== scopeOwner) return;
-    const initializerMember = asDirectOptionalChainMember(child.init);
-    if (initializerMember && chainMemberPath(initializerMember) === operandPath) {
-      aliasNames.push(child.id.name);
-    }
-  });
-  return aliasNames;
+  return (indexScopeAliases(scopeOwner, context).get(operandPath) ?? [])
+    .filter((alias) => alias.offset < operandMember.range[0])
+    .map((alias) => alias.guardKey);
 };
 
 // The names a guard may test to prove the operand can never be undefined:
@@ -153,11 +193,14 @@ const collectSameChainAliasNames = (operandMember: EsTreeNode): string[] => {
 // initializer a LogicalExpression, so it naturally fails the chain check and
 // is not treated as unguarded. Returns null when the operand is not an
 // optional-chain value at all.
-const resolveOptionalChainOperandGuardNames = (operand: EsTreeNode): string[] | null => {
+const resolveOptionalChainOperandGuardNames = (
+  operand: EsTreeNode,
+  context: RuleContext,
+): string[] | null => {
   const direct = asDirectOptionalChainMember(operand);
   if (direct) {
-    const rootName = optionalChainRootName(direct);
-    return rootName ? [rootName, ...collectSameChainAliasNames(direct)] : null;
+    const guardKey = optionalChainGuardKey(direct, context);
+    return guardKey ? [guardKey, ...collectSameChainAliasNames(direct, context)] : null;
   }
 
   const stripped = stripKeepingChain(operand);
@@ -166,8 +209,9 @@ const resolveOptionalChainOperandGuardNames = (operand: EsTreeNode): string[] | 
   if (!binding?.initializer) return null;
   const initializerMember = asDirectOptionalChainMember(binding.initializer);
   if (!initializerMember) return null;
-  const rootName = optionalChainRootName(initializerMember);
-  return rootName ? [rootName, stripped.name] : null;
+  const guardKey = optionalChainGuardKey(initializerMember, context);
+  const symbol = context.scopes.symbolFor(stripped);
+  return guardKey && symbol ? [guardKey, `${symbol.id}:${stripped.name}`] : null;
 };
 
 const unwrapUpwards = (node: EsTreeNode): { consumed: EsTreeNode; consumer: EsTreeNode | null } => {
@@ -227,6 +271,7 @@ const isDirectNumericConsumer = (
 ): boolean => {
   const { consumed, consumer } = unwrapUpwards(valueNode);
   if (!consumer) return false;
+  if (isNodeOfType(consumer, "ReturnStatement") && consumer.argument === consumed) return true;
   if (
     isNodeOfType(consumer, "MemberExpression") &&
     consumer.object === consumed &&
@@ -242,12 +287,15 @@ const isDirectNumericConsumer = (
   ) {
     return treatTestComparisonAsGuard ? !isComparisonInTestPosition(consumer) : true;
   }
+  const mathReceiver =
+    isNodeOfType(consumer, "CallExpression") && isNodeOfType(consumer.callee, "MemberExpression")
+      ? stripKeepingChain(consumer.callee.object as EsTreeNode)
+      : null;
   if (
     isNodeOfType(consumer, "CallExpression") &&
-    isNodeOfType(consumer.callee, "MemberExpression") &&
-    isNodeOfType(consumer.callee.object, "Identifier") &&
-    consumer.callee.object.name === "Math" &&
-    context.scopes.isGlobalReference(consumer.callee.object) &&
+    isNodeOfType(mathReceiver, "Identifier") &&
+    mathReceiver.name === "Math" &&
+    context.scopes.isGlobalReference(mathReceiver) &&
     (consumer.arguments ?? []).includes(consumed as never)
   ) {
     return true;
@@ -266,6 +314,41 @@ const findScopeOwner = (node: EsTreeNode): EsTreeNode | null => {
 
 const NAN_CHECK_CALLEE_NAMES = new Set(["isNaN", "isFinite"]);
 
+const isSafeNaNReplacement = (node: EsTreeNode): boolean => {
+  const value = stripKeepingChain(node);
+  return (
+    isNodeOfType(value, "Literal") &&
+    typeof value.value === "number" &&
+    Number.isFinite(value.value)
+  );
+};
+
+const nanCheckClampsBinding = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  identifier: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const enclosingIf = call.parent;
+  if (!enclosingIf || !isNodeOfType(enclosingIf, "IfStatement") || enclosingIf.test !== call) {
+    return false;
+  }
+  const symbol = context.scopes.symbolFor(identifier);
+  let hasSafeAssignment = false;
+  walkAst(enclosingIf.consequent, (child) => {
+    if (hasSafeAssignment || !isNodeOfType(child, "AssignmentExpression")) return;
+    if (
+      child.operator === "=" &&
+      isNodeOfType(child.left, "Identifier") &&
+      context.scopes.symbolFor(child.left)?.id === symbol?.id &&
+      isSafeNaNReplacement(child.right as EsTreeNode)
+    ) {
+      hasSafeAssignment = true;
+      return false;
+    }
+  });
+  return hasSafeAssignment;
+};
+
 const isNanHandledReference = (
   identifier: EsTreeNodeOfType<"Identifier">,
   context: RuleContext,
@@ -275,7 +358,8 @@ const isNanHandledReference = (
   if (
     isNodeOfType(parent, "AssignmentExpression") &&
     parent.operator === "=" &&
-    parent.left === identifier
+    parent.left === identifier &&
+    isSafeNaNReplacement(parent.right as EsTreeNode)
   ) {
     return true;
   }
@@ -289,7 +373,7 @@ const isNanHandledReference = (
       NAN_CHECK_CALLEE_NAMES.has(callee.name) &&
       context.scopes.isGlobalReference(callee)
     ) {
-      return true;
+      return nanCheckClampsBinding(parent, identifier, context);
     }
     if (
       isNodeOfType(callee, "MemberExpression") &&
@@ -298,7 +382,7 @@ const isNanHandledReference = (
       context.scopes.isGlobalReference(callee.object) &&
       NAN_CHECK_CALLEE_NAMES.has(getStaticPropertyName(callee) ?? "")
     ) {
-      return true;
+      return nanCheckClampsBinding(parent, identifier, context);
     }
   }
   return false;
@@ -326,7 +410,7 @@ const isReferenceToBinding = (
 
 // A numeric consumer reached through an intermediate binding:
 // `const share = a?.b / total; share.toFixed(2)`. Order-aware: a NaN check or
-// plain reassignment suppresses only the consumers that come after it — a
+// finite-value replacement suppresses only the consumers that come after it — a
 // consumer that reads the binding first already received the NaN. Each
 // consumer SITE is also checked against the guards individually: the
 // hooks-before-early-returns ordering React forces ("derive first, guard
@@ -348,7 +432,10 @@ const flowsIntoNumericConsumerViaBinding = (
     return false;
   }
   const bindingIdentifier = consumer.id;
-  const consumerSiteGuardNames = [...guardNames, bindingIdentifier.name];
+  const bindingSymbol = context.scopes.symbolFor(bindingIdentifier);
+  const consumerSiteGuardNames = bindingSymbol
+    ? [...guardNames, `${bindingSymbol.id}:${bindingIdentifier.name}`]
+    : guardNames;
   const scopeOwner = findScopeOwner(binaryNode);
   if (!scopeOwner) return false;
   let firstConsumerOffset: number | null = null;
@@ -370,8 +457,8 @@ const flowsIntoNumericConsumerViaBinding = (
       return;
     }
     if (isDirectNumericConsumer(child, context, true)) {
-      if (isGuardedByEnclosingTest(child, consumerSiteGuardNames)) return;
-      if (isGuardedByPrecedingEarlyExit(child, consumerSiteGuardNames)) return;
+      if (isGuardedByEnclosingTest(child, consumerSiteGuardNames, context)) return;
+      if (isGuardedByPrecedingEarlyExit(child, consumerSiteGuardNames, context)) return;
       const consumerOffset = nodeStartOffset(child);
       if (firstConsumerOffset === null || consumerOffset < firstConsumerOffset) {
         firstConsumerOffset = consumerOffset;
@@ -390,23 +477,17 @@ const isNumericConsumerContext = (
   isDirectNumericConsumer(binaryNode, context) ||
   flowsIntoNumericConsumerViaBinding(binaryNode, guardNames, context);
 
-const subtreeReferencesName = (node: EsTreeNode | null | undefined, name: string): boolean => {
+const subtreeReferencesName = (
+  node: EsTreeNode | null | undefined,
+  guardKey: string,
+  context: RuleContext,
+): boolean => {
   if (!node) return false;
   let found = false;
   walkAst(node, (child: EsTreeNode) => {
     if (found) return false;
-    if (isNodeOfType(child, "Identifier") && child.name === name) {
-      const parent = child.parent;
-      // A non-computed member property (`foo.<name>`) or an object property key
-      // is not a reference to the guarded root binding.
-      if (
-        parent &&
-        isNodeOfType(parent, "MemberExpression") &&
-        parent.property === child &&
-        !parent.computed
-      ) {
-        return;
-      }
+    if (isNodeOfType(child, "Identifier") || isNodeOfType(child, "MemberExpression")) {
+      if (guardKeyForPath(child, context) !== guardKey) return;
       found = true;
       return false;
     }
@@ -417,22 +498,27 @@ const subtreeReferencesName = (node: EsTreeNode | null | undefined, name: string
 const subtreeReferencesAnyName = (
   node: EsTreeNode | null | undefined,
   guardNames: string[],
-): boolean => guardNames.some((guardName) => subtreeReferencesName(node, guardName));
+  context: RuleContext,
+): boolean => guardNames.some((guardName) => subtreeReferencesName(node, guardName, context));
 
-const testPositivelyReferencesAnyName = (test: EsTreeNode, guardNames: string[]): boolean => {
+const testPositivelyReferencesAnyName = (
+  test: EsTreeNode,
+  guardNames: string[],
+  context: RuleContext,
+): boolean => {
   const expression = stripKeepingChain(test);
   if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") return false;
   if (isNodeOfType(expression, "LogicalExpression")) {
     if (expression.operator === "&&") {
       return (
-        testPositivelyReferencesAnyName(expression.left as EsTreeNode, guardNames) ||
-        testPositivelyReferencesAnyName(expression.right as EsTreeNode, guardNames)
+        testPositivelyReferencesAnyName(expression.left as EsTreeNode, guardNames, context) ||
+        testPositivelyReferencesAnyName(expression.right as EsTreeNode, guardNames, context)
       );
     }
     if (expression.operator === "||") {
       return (
-        testPositivelyReferencesAnyName(expression.left as EsTreeNode, guardNames) &&
-        testPositivelyReferencesAnyName(expression.right as EsTreeNode, guardNames)
+        testPositivelyReferencesAnyName(expression.left as EsTreeNode, guardNames, context) &&
+        testPositivelyReferencesAnyName(expression.right as EsTreeNode, guardNames, context)
       );
     }
   }
@@ -453,18 +539,22 @@ const testPositivelyReferencesAnyName = (test: EsTreeNode, guardNames: string[])
     if (isAbsent(expression.left as EsTreeNode) || isAbsent(expression.right as EsTreeNode)) {
       return (
         (expression.operator === "!==" || expression.operator === "!=") &&
-        subtreeReferencesAnyName(expression, guardNames)
+        subtreeReferencesAnyName(expression, guardNames, context)
       );
     }
   }
-  return subtreeReferencesAnyName(expression, guardNames);
+  return subtreeReferencesAnyName(expression, guardNames, context);
 };
 
 // The chain can never short-circuit because an enclosing `if`/ternary
 // test or `&&`-guard already narrowed the chain root or its alias binding.
 // The arithmetic must sit in the guarded BRANCH, not in the test itself
 // (otherwise the test of `if (a?.b * n < x)` would suppress its own finding).
-const isGuardedByEnclosingTest = (binaryNode: EsTreeNode, guardNames: string[]): boolean => {
+const isGuardedByEnclosingTest = (
+  binaryNode: EsTreeNode,
+  guardNames: string[],
+  context: RuleContext,
+): boolean => {
   let ancestor: EsTreeNode | null | undefined = binaryNode.parent;
   while (ancestor) {
     // A non-default `case` narrows the chain: when the root is nullish the
@@ -474,23 +564,27 @@ const isGuardedByEnclosingTest = (binaryNode: EsTreeNode, guardNames: string[]):
       ancestor.test !== null &&
       ancestor.parent &&
       isNodeOfType(ancestor.parent, "SwitchStatement") &&
-      subtreeReferencesAnyName(ancestor.parent.discriminant, guardNames)
+      subtreeReferencesAnyName(ancestor.parent.discriminant, guardNames, context)
     ) {
       return true;
     }
     ancestor = ancestor.parent ?? null;
   }
   return isPresenceProvenBeforeNode(binaryNode, (test) =>
-    testPositivelyReferencesAnyName(test, guardNames),
+    testPositivelyReferencesAnyName(test, guardNames, context),
   );
 };
 
 // A preceding sibling `if (!x) return;`-style guard dominates the arithmetic
 // just like an enclosing test does — the single most common React narrowing
 // idiom (`if (!invoice) return null;` before the math).
-const isGuardedByPrecedingEarlyExit = (binaryNode: EsTreeNode, guardNames: string[]): boolean => {
+const isGuardedByPrecedingEarlyExit = (
+  binaryNode: EsTreeNode,
+  guardNames: string[],
+  context: RuleContext,
+): boolean => {
   return isPresenceProvenBeforeNode(binaryNode, (test) =>
-    testPositivelyReferencesAnyName(test, guardNames),
+    testPositivelyReferencesAnyName(test, guardNames, context),
   );
 };
 
@@ -503,7 +597,20 @@ const isGuardedByPrecedingEarlyExit = (binaryNode: EsTreeNode, guardNames: strin
 const isDiscardedByEarlyExitBeforeFirstBindingUse = (
   binaryNode: EsTreeNode,
   guardNames: string[],
+  context: RuleContext,
 ): boolean => {
+  const earlyExitTestProvesPresenceAfterward = (test: EsTreeNode): boolean => {
+    const positiveForm = unwrapNegativeGuardForm(test);
+    if (positiveForm) return testPositivelyReferencesAnyName(positiveForm, guardNames, context);
+    const expression = stripKeepingChain(test);
+    if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "||") {
+      return (
+        earlyExitTestProvesPresenceAfterward(expression.left as EsTreeNode) ||
+        earlyExitTestProvesPresenceAfterward(expression.right as EsTreeNode)
+      );
+    }
+    return false;
+  };
   let child: EsTreeNode = binaryNode;
   let ancestor: EsTreeNode | null | undefined = binaryNode.parent;
   while (ancestor && !isNodeOfType(ancestor, "BlockStatement")) {
@@ -523,14 +630,37 @@ const isDiscardedByEarlyExitBeforeFirstBindingUse = (
     const followingStatement = following as EsTreeNode;
     if (
       isNodeOfType(followingStatement, "IfStatement") &&
-      (isEarlyExitStatement(followingStatement.consequent) ||
-        isEarlyExitStatement(followingStatement.alternate)) &&
-      subtreeReferencesAnyName(followingStatement.test, guardNames) &&
-      !declaredNames.some((name) => subtreeReferencesName(followingStatement, name))
+      ((isEarlyExitStatement(followingStatement.consequent) &&
+        earlyExitTestProvesPresenceAfterward(followingStatement.test)) ||
+        (isEarlyExitStatement(followingStatement.alternate) &&
+          testPositivelyReferencesAnyName(followingStatement.test, guardNames, context))) &&
+      !declaredNames.some((name) => {
+        let hasDeclaredName = false;
+        walkAst(followingStatement, (child) => {
+          if (hasDeclaredName) return false;
+          if (isNodeOfType(child, "Identifier") && child.name === name) {
+            hasDeclaredName = true;
+            return false;
+          }
+        });
+        return hasDeclaredName;
+      })
     ) {
       return true;
     }
-    if (declaredNames.some((name) => subtreeReferencesName(followingStatement, name))) {
+    if (
+      declaredNames.some((name) => {
+        let hasDeclaredName = false;
+        walkAst(followingStatement, (child) => {
+          if (hasDeclaredName) return false;
+          if (isNodeOfType(child, "Identifier") && child.name === name) {
+            hasDeclaredName = true;
+            return false;
+          }
+        });
+        return hasDeclaredName;
+      })
+    ) {
       return false;
     }
   }
@@ -549,11 +679,13 @@ export const noArithmeticOnOptionalChainedOperand = defineRule({
       if (!MULTIPLICATIVE_OPERATORS.has(node.operator)) return;
       const operands: EsTreeNode[] = [node.left as EsTreeNode, node.right as EsTreeNode];
       for (const operand of operands) {
-        const guardNames = resolveOptionalChainOperandGuardNames(operand);
+        const guardNames = resolveOptionalChainOperandGuardNames(operand, context);
         if (!guardNames) continue;
-        if (isGuardedByEnclosingTest(node as EsTreeNode, guardNames)) continue;
-        if (isGuardedByPrecedingEarlyExit(node as EsTreeNode, guardNames)) continue;
-        if (isDiscardedByEarlyExitBeforeFirstBindingUse(node as EsTreeNode, guardNames)) continue;
+        if (isGuardedByEnclosingTest(node as EsTreeNode, guardNames, context)) continue;
+        if (isGuardedByPrecedingEarlyExit(node as EsTreeNode, guardNames, context)) continue;
+        if (isDiscardedByEarlyExitBeforeFirstBindingUse(node as EsTreeNode, guardNames, context)) {
+          continue;
+        }
         if (!isNumericConsumerContext(node as EsTreeNode, guardNames, context)) continue;
         context.report({ node, message: MESSAGE });
         return;

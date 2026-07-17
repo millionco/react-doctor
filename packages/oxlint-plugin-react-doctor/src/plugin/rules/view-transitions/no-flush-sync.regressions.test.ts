@@ -123,4 +123,80 @@ function ColumnHeader({ releaseWidth, columnIndex }) {
 }`,
     );
   });
+
+  it("stays silent when selection restoration immediately follows flushSync", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+const acceptRemoteEvents = (selectionSync, selection, operations) => {
+  flushSync(() => {
+    setText(readRemoteText());
+  });
+  if (selection && operations.length > 0) {
+    selectionSync.restoreSelection(mapSelection(selection, operations));
+  }
+};`,
+    );
+  });
+
+  it("stays silent on a nested selection restoration member", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+const integrateRemoteEvents = (context, selection) => {
+  flushSync(() => {
+    context.setText(readRemoteText());
+  });
+  if (selection) {
+    context.selectionSync.restoreSelection(selection);
+  }
+};`,
+    );
+  });
+
+  it("stays silent when an adjacent local helper mutates the DOM", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+const restoreSelection = (textarea, selection) => {
+  textarea.setSelectionRange(selection.start, selection.end);
+};
+const updateText = (textarea, selection) => {
+  flushSync(() => setText(readRemoteText()));
+  restoreSelection(textarea, selection);
+};`,
+    );
+  });
+
+  it("still flags an adjacent unknown helper", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const updateText = () => {
+  flushSync(() => setText(readRemoteText()));
+  notifyTextUpdated();
+};`,
+    );
+  });
+
+  it("still flags a non-adjacent imperative mutation", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const updateText = (textarea, selection) => {
+  flushSync(() => setText(readRemoteText()));
+  notifyTextUpdated();
+  textarea.setSelectionRange(selection.start, selection.end);
+};`,
+    );
+  });
+
+  it("still flags a deferred imperative helper call", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const restoreSelection = (textarea, selection) => {
+  textarea.setSelectionRange(selection.start, selection.end);
+};
+const updateText = (textarea, selection) => {
+  flushSync(() => setText(readRemoteText()));
+  const restoreLater = () => restoreSelection(textarea, selection);
+  queueMicrotask(restoreLater);
+};`,
+    );
+  });
 });

@@ -452,34 +452,13 @@ const matchHydrationConditionInternal = (
   }
   const leftMatch = matchHydrationConditionInternal(unwrappedExpression.left, context, state);
   const rightMatch = matchHydrationConditionInternal(unwrappedExpression.right, context, state);
-  if (leftMatch && rightMatch) {
-    const clientResult = readHydrationConditionResult(
-      unwrappedExpression,
-      context,
-      "client",
-      state,
-    );
-    const serverResult = readHydrationConditionResult(
-      unwrappedExpression,
-      context,
-      "server",
-      state,
-    );
-    return clientResult !== null && serverResult !== null && clientResult === serverResult
-      ? null
-      : leftMatch;
-  }
   const nestedMatch = leftMatch ?? rightMatch;
   if (!nestedMatch) return null;
-  const otherOperand = leftMatch ? unwrappedExpression.right : unwrappedExpression.left;
-  const otherResult = readHydrationConditionResult(otherOperand, context, "server", state);
-  if (
-    (unwrappedExpression.operator === "&&" && otherResult === false) ||
-    (unwrappedExpression.operator === "||" && otherResult === true)
-  ) {
-    return null;
-  }
-  return nestedMatch;
+  const clientResult = readHydrationConditionResult(unwrappedExpression, context, "client", state);
+  const serverResult = readHydrationConditionResult(unwrappedExpression, context, "server", state);
+  return clientResult !== null && serverResult !== null && clientResult === serverResult
+    ? null
+    : nestedMatch;
 };
 
 const matchHydrationReturningStatement = (

@@ -96,6 +96,22 @@ describe("no-hydration-branch-on-browser-global — helper provenance", () => {
         };
       `,
     ],
+    [
+      "a client-varying helper beside a direct browser predicate",
+      `
+        "use client";
+        const isClient = () => {
+          if (typeof window === "undefined") {
+            if (false) return true;
+            return false;
+          }
+          if (false) return false;
+          return true;
+        };
+        export const Page = () =>
+          isClient() && typeof document !== "undefined" ? <Client /> : <Server />;
+      `,
+    ],
   ])("reports browser-global provenance through %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);

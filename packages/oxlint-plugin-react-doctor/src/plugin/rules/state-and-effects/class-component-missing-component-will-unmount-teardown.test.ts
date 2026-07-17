@@ -444,6 +444,21 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when a listener is synchronously removed with the same static template event", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class ScrollArea extends React.Component {
+        noop = () => {};
+        componentDidMount() {
+          window.addEventListener(\`resize\`, this.noop);
+          window.removeEventListener(\`resize\`, this.noop);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet: Self-removing { once: true } listener whose options object lives in a variable", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

@@ -13,6 +13,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
+import { serializeEventKey } from "../../utils/serialize-event-key.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const MESSAGE =
@@ -37,15 +38,6 @@ const getPropertyName = (property: EsTreeNodeOfType<"Property">): string | null 
     return property.key.value;
   }
   return null;
-};
-
-// Walks a function body without descending into nested functions, so a
-// hazard belongs to the mount body itself (not an event-driven callback).
-const walkMountBody = (functionBody: EsTreeNode, visit: (node: EsTreeNode) => void): void => {
-  walkAst(functionBody, (child: EsTreeNode) => {
-    if (child !== functionBody && isFunctionLike(child)) return false;
-    visit(child);
-  });
 };
 
 // Name a local helper is bound to: a `function` declaration, or a `const`
@@ -308,9 +300,7 @@ const listenerIdentityKey = (
   const callee = stripParenExpression(call.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return null;
   const receiverKey = serializeListenerIdentityPart(callee.object, scopes);
-  const eventKey = call.arguments?.[0]
-    ? serializeListenerIdentityPart(call.arguments[0] as EsTreeNode, scopes)
-    : null;
+  const eventKey = serializeEventKey(call.arguments?.[0], scopes);
   const handlerKey = call.arguments?.[1]
     ? serializeListenerIdentityPart(call.arguments[1] as EsTreeNode, scopes)
     : null;

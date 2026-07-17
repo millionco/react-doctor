@@ -46,10 +46,19 @@ export const isProvenGlobalNamespaceReference = (
     }
     visitedSymbolIds.add(symbol.id);
     const destructuredPropertyName = getDestructuredBindingPropertyName(symbol.bindingIdentifier);
-    if (destructuredPropertyName !== null) {
-      const destructuredSource = isNodeOfType(symbol.declarationNode, "VariableDeclarator")
-        ? symbol.declarationNode.init
-        : null;
+    if (
+      destructuredPropertyName !== null &&
+      isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+      isNodeOfType(symbol.declarationNode.id, "ObjectPattern")
+    ) {
+      const bindingNode =
+        isNodeOfType(symbol.bindingIdentifier.parent, "AssignmentPattern") &&
+        symbol.bindingIdentifier.parent.left === symbol.bindingIdentifier
+          ? symbol.bindingIdentifier.parent
+          : symbol.bindingIdentifier;
+      const destructuredProperty = bindingNode.parent;
+      if (destructuredProperty?.parent !== symbol.declarationNode.id) return false;
+      const destructuredSource = symbol.declarationNode.init;
       return (
         destructuredPropertyName === namespaceName &&
         destructuredSource !== null &&

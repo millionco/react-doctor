@@ -263,6 +263,59 @@ const isReturnedCleanupFromBoundary = (
   );
 };
 
+const isPositiveGuardOnResult = (
+  candidate: EsTreeNode,
+  resultExpression: EsTreeNode,
+  executionBoundary: EsTreeNode | null,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const resultCandidate = stripParenExpression(resultExpression);
+  if (!isNodeOfType(resultCandidate, "Identifier")) return false;
+  const resultSymbol = scopes.symbolFor(resultCandidate);
+  let current = candidate;
+  while (current.parent && current !== executionBoundary) {
+    const parent = current.parent;
+    const guardExpression =
+      isNodeOfType(parent, "IfStatement") && parent.consequent === current
+        ? parent.test
+        : isNodeOfType(parent, "LogicalExpression") &&
+            parent.operator === "&&" &&
+            parent.right === current
+          ? parent.left
+          : null;
+    if (guardExpression) {
+      const guardCandidate = stripParenExpression(guardExpression);
+      return (
+        isNodeOfType(guardCandidate, "Identifier") &&
+        scopes.symbolFor(guardCandidate) === resultSymbol
+      );
+    }
+    current = parent;
+  }
+  return false;
+};
+
+const consumerIsGuaranteedAfterResult = (
+  consumer: EsTreeNode,
+  resultCall: EsTreeNode,
+  resultExpression: EsTreeNode,
+  executionBoundary: EsTreeNode | null,
+  context: RuleContext,
+): boolean => {
+  if (isReturnedCleanupFromBoundary(consumer, executionBoundary, context)) {
+    return context.cfg.isUnconditionalFromEntry(consumer);
+  }
+  if (context.cfg.enclosingFunction(consumer) !== executionBoundary) return false;
+  if (context.cfg.isUnconditionalFromEntry(consumer)) return true;
+  const boundaryControlFlow = executionBoundary ? context.cfg.cfgFor(executionBoundary) : null;
+  const resultBlock = boundaryControlFlow?.blockOf(resultCall);
+  const consumerBlock = boundaryControlFlow?.blockOf(consumer);
+  if (resultBlock && resultBlock === consumerBlock && consumer.range[0] > resultCall.range[1]) {
+    return true;
+  }
+  return isPositiveGuardOnResult(consumer, resultExpression, executionBoundary, context.scopes);
+};
+
 const moduleDisposesEveryReturnedResult = (
   createCall: EsTreeNode,
   programRoot: EsTreeNode,
@@ -359,9 +412,13 @@ const moduleDisposesEveryReturnedResult = (
       if (didDisposeResult) break;
       if (
         isNodeReachableWithinFunction(candidate, context) &&
-        context.cfg.isUnconditionalFromEntry(candidate) &&
-        (context.cfg.enclosingFunction(candidate) === executionBoundary ||
-          isReturnedCleanupFromBoundary(candidate, executionBoundary, context))
+        consumerIsGuaranteedAfterResult(
+          candidate,
+          child,
+          resultExpression,
+          executionBoundary,
+          context,
+        )
       ) {
         if (isRevokeOfExpression(candidate, resultExpression, scopes)) {
           didDisposeResult = true;

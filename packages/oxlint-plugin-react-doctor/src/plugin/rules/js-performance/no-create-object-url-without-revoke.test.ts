@@ -235,6 +235,15 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("does not treat a nested destructured URL as the global namespace", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const { child: { URL: NestedURL } } = globalThis;
+       function make(blob) { return NestedURL.createObjectURL(blob); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags static computed DOM URL escape APIs", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
@@ -309,6 +318,32 @@ describe("no-create-object-url-without-revoke", () => {
        };`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a truthy result guard inside the helper call's loop iteration", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const renderPreview = (blob) => URL.createObjectURL(blob);
+       const cachePreviews = (blobs) => {
+         for (const blob of blobs) {
+           const url = renderPreview(blob);
+           if (url) previewCache.set(blob.name, url);
+         }
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust an unrelated conditional cache store", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const renderPreview = (blob) => URL.createObjectURL(blob);
+       const url = renderPreview(blob);
+       if (shouldCache) previewCache.set("preview", url);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet for Set caches and statically computed cache stores", () => {

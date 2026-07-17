@@ -1,6 +1,6 @@
 import { TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES } from "../../../constants/dom.js";
-import { FETCH_CALLEE_NAMES } from "../../../constants/library.js";
 import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
+import { containsFetchCall } from "../../../utils/contains-fetch-call.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
@@ -9,6 +9,7 @@ import { resolveExactLocalFunction } from "../../../utils/resolve-exact-local-fu
 import { walkAst } from "../../../utils/walk-ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
 import { getEffectFn } from "./effect/react.js";
+import { isSubscribeLikeCallExpression } from "./is-subscribe-like-call-expression.js";
 
 const DEFERRED_MEMBER_NAMES: ReadonlySet<string> = new Set(["catch", "finally", "then"]);
 
@@ -19,6 +20,7 @@ export const hasDeferredOrExternalEffectWork = (
 ): boolean => {
   const effectFunction = getEffectFn(analysis, effectNode);
   if (!effectFunction) return false;
+  if (containsFetchCall(effectFunction, { stopAtFunctionBoundary: true })) return true;
   let didFindDeferredOrExternalWork = false;
   walkAst(effectFunction, (child) => {
     if (didFindDeferredOrExternalWork) return false;
@@ -33,6 +35,10 @@ export const hasDeferredOrExternalEffectWork = (
       }
     }
     if (!isNodeOfType(child, "CallExpression")) return;
+    if (isSubscribeLikeCallExpression(child)) {
+      didFindDeferredOrExternalWork = true;
+      return false;
+    }
     const localFunction = resolveExactLocalFunction(child.callee, scopes);
     if (isFunctionLike(localFunction) && localFunction.async) {
       didFindDeferredOrExternalWork = true;
@@ -41,8 +47,7 @@ export const hasDeferredOrExternalEffectWork = (
     const callee = child.callee;
     if (
       isNodeOfType(callee, "Identifier") &&
-      (FETCH_CALLEE_NAMES.has(callee.name) ||
-        TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES.has(callee.name))
+      TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES.has(callee.name)
     ) {
       didFindDeferredOrExternalWork = true;
       return false;

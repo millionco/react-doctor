@@ -83,6 +83,56 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on synchronous resets beside subscription setup", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Feed({ source }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          source.subscribe(() => refresh());
+          window.addEventListener("focus", refresh);
+          source.events.on("change", refresh);
+        }, [source]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a synchronous reset beside a member-style HTTP request", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Search({ query }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          void axios.get("/search", { params: { query } });
+        }, [query]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports a synchronous reset beside an unrelated get method", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Selection({ itemId, cache }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          cache.get(itemId);
+        }, [itemId, cache]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on a literal reset beside a timer callback", () => {
     const result = runRule(
       noAdjustStateOnPropChange,

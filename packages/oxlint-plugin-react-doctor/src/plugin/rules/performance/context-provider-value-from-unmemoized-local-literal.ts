@@ -175,6 +175,26 @@ const isCallbackOnlyFunctionBinding = (functionNode: EsTreeNode, context: RuleCo
   });
 };
 
+const isSynchronouslyInvokedInlineRenderFunction = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const functionExpression = findTransparentExpressionRoot(functionNode);
+  const call = functionExpression.parent;
+  if (!call || !isNodeOfType(call, "CallExpression")) return false;
+  const isSynchronouslyInvoked =
+    call.callee === functionExpression ||
+    (call.arguments.some((argument) => argument === functionExpression) &&
+      isArgumentSynchronouslyInvoked(call, functionExpression, context));
+  if (!isSynchronouslyInvoked) return false;
+  const enclosingRenderFunction = findEnclosingFunction(call);
+  return Boolean(
+    enclosingRenderFunction &&
+    (componentOrHookDisplayNameForFunction(enclosingRenderFunction) !== null ||
+      isDefaultExportedFunction(enclosingRenderFunction)),
+  );
+};
+
 // `jsx-no-constructed-context-values` owns inline literals. This rule
 // handles one-hop identifiers bound in the same render scope.
 export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
@@ -206,7 +226,8 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
         }
         if (
           componentOrHookDisplayNameForFunction(renderFunction) === null &&
-          !isDefaultExportedFunction(renderFunction)
+          !isDefaultExportedFunction(renderFunction) &&
+          !isSynchronouslyInvokedInlineRenderFunction(renderFunction, context)
         ) {
           return;
         }

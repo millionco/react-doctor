@@ -361,6 +361,64 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    [
+      "an anonymous IIFE",
+      `function App() {
+         return (() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         })();
+       }`,
+    ],
+    [
+      "an anonymous callback passed to a synchronous renderer",
+      `const renderNow = (render) => render();
+       function App() {
+         return renderNow(() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         });
+       }`,
+    ],
+  ])("flags %s during render", (_name, body) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       ${body}`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "an anonymous module initializer",
+      `(() => {
+         const value = {};
+         return <ThemeContext.Provider value={value} />;
+       })();`,
+    ],
+    [
+      "an anonymous callback passed to a conditional renderer",
+      `const renderMaybe = (render) => shouldRender ? render() : null;
+       function App() {
+         return renderMaybe(() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         });
+       }`,
+    ],
+  ])("does not flag %s", (_name, body) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       ${body}`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a nested component passed to a custom synchronous renderer", () => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,

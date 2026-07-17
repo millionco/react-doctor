@@ -28,6 +28,25 @@ describe("nextjs-metadata-url-consistency", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("uses the last duplicate metadata property", () => {
+    const matchingResult = run(
+      `export const metadata = { alternates: { canonical: "/old", canonical: "/docs" }, openGraph: { url: "/wrong", url: "/docs" } };`,
+    );
+    expect(matchingResult.diagnostics).toEqual([]);
+
+    const contradictoryResult = run(
+      `export const metadata = { alternates: { canonical: "/docs", canonical: "/latest" }, openGraph: { url: "/latest", url: "/social" } };`,
+    );
+    expect(contradictoryResult.diagnostics).toHaveLength(1);
+  });
+
+  it("skips metadata properties with later dynamic override barriers", () => {
+    const result = run(
+      `export const metadata = { alternates: { canonical: "/docs", ...alternates }, openGraph: { url: "/social", [propertyName]: value } };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("ignores dynamic URL values", () => {
     const result = run(
       `export const metadata = { alternates: { canonical }, openGraph: { url: buildUrl() } };`,

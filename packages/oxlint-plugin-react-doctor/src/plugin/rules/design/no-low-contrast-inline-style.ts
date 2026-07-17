@@ -85,9 +85,13 @@ export const noLowContrastInlineStyle = defineRule({
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
       const properties = expression.properties ?? [];
-      // A `{...spread}` in the style object can override color/backgroundColor
-      // at runtime, so we can't judge the static literals — bail.
-      if (properties.some((property) => property.type === "SpreadElement")) {
+      // A dynamic key or spread can override a color at runtime, so the static
+      // literals do not prove the effective contrast.
+      if (
+        properties.some(
+          (property) => property.type === "SpreadElement" || getStylePropertyKey(property) === null,
+        )
+      ) {
         return;
       }
 

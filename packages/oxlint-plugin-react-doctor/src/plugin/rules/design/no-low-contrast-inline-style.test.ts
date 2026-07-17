@@ -184,4 +184,10 @@ describe("no-low-contrast-inline-style", () => {
     const result = runRule(noLowContrastInlineStyle, code);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does NOT flag when a computed property could override colors", () => {
+    const code = `const A = ({ propertyName, value }) => <span style={{ color: "#9ca3af", backgroundColor: "#fff", fontSize: 16, [propertyName]: value }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

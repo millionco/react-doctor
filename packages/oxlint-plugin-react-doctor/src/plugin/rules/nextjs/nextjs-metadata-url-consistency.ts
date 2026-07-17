@@ -17,10 +17,16 @@ const getStaticObjectProperty = (
   propertyName: string,
 ): StaticObjectProperty | null => {
   if (!isNodeOfType(objectExpression, "ObjectExpression")) return null;
-  for (const property of objectExpression.properties) {
-    if (!isNodeOfType(property, "Property")) continue;
-    if (getStaticPropertyKeyName(property, { allowComputedString: true }) !== propertyName)
-      continue;
+  for (
+    let propertyIndex = objectExpression.properties.length - 1;
+    propertyIndex >= 0;
+    propertyIndex -= 1
+  ) {
+    const property = objectExpression.properties[propertyIndex];
+    if (!isNodeOfType(property, "Property")) return null;
+    const currentPropertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (currentPropertyName === null) return null;
+    if (currentPropertyName !== propertyName) continue;
     return { property, value: stripParenExpression(property.value) };
   }
   return null;

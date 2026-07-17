@@ -19,6 +19,14 @@ describe("form-control-requires-name", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("skips inputs whose dynamic type could be button-like", () => {
+    const result = runRule(
+      formControlRequiresName,
+      `const Form = ({ inputType }) => <form><input type={inputType} /></form>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("skips controls outside forms, custom controls, and spreads", () => {
     const result = runRule(
       formControlRequiresName,

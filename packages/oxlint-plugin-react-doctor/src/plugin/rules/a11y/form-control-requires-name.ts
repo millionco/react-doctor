@@ -42,8 +42,10 @@ export const formControlRequiresName = defineRule({
       }
       if (tagName === "input") {
         const typeAttribute = findJsxAttribute(node.attributes, "type");
-        const inputType = typeAttribute ? getStringLiteralAttributeValue(typeAttribute) : null;
-        if (inputType && NON_DATA_INPUT_TYPES.has(inputType.toLowerCase())) return;
+        if (typeAttribute) {
+          const inputType = getStringLiteralAttributeValue(typeAttribute);
+          if (inputType === null || NON_DATA_INPUT_TYPES.has(inputType.toLowerCase())) return;
+        }
       }
       const nameAttribute = findJsxAttribute(node.attributes, "name");
       if (nameAttribute) return;

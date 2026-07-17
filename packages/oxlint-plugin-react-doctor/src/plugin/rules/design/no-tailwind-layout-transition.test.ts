@@ -16,6 +16,15 @@ describe("no-tailwind-layout-transition", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each(["top", "right", "bottom", "left"])(
+    "flags inset transition-[%s] utilities",
+    (property) => {
+      const code = `const A = () => <div className="transition-[${property}]" />;`;
+      const result = runRule(noTailwindLayoutTransition, code);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("flags a layout property mixed with a safe one (`transition-[width,opacity]`)", () => {
     const code = `const A = () => <div className="transition-[width,opacity]" />;`;
     const result = runRule(noTailwindLayoutTransition, code);

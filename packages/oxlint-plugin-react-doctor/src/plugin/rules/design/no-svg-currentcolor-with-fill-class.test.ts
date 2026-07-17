@@ -85,4 +85,10 @@ describe("no-svg-currentcolor-with-fill-class", () => {
     const result = runRule(noSvgCurrentcolorWithFillClass, code);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does NOT flag custom components with paint-like props", () => {
+    const code = `const A = () => <Icon fill="currentColor" className="fill-zinc-400" />;`;
+    const result = runRule(noSvgCurrentcolorWithFillClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

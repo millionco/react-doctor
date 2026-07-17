@@ -60,15 +60,16 @@ const toPx = (property: EsTreeNodeOfType<"Property">): number | null => {
   return null;
 };
 
-const isBoldWeight = (property: EsTreeNodeOfType<"Property">): boolean => {
+const resolveBoldWeight = (property: EsTreeNodeOfType<"Property">): boolean | null => {
   const numberValue = getStylePropertyNumberValue(property);
   if (numberValue !== null) return numberValue >= BOLD_FONT_WEIGHT_MIN;
   const stringValue = getStylePropertyStringValue(property);
-  if (stringValue === null) return false;
+  if (stringValue === null) return null;
   if (stringValue === "bold" || stringValue === "bolder") return true;
+  if (stringValue === "normal" || stringValue === "lighter") return false;
   // Numeric weight written as a string, e.g. `fontWeight: "700"`.
   const numericWeight = Number(stringValue);
-  return Number.isFinite(numericWeight) && numericWeight >= BOLD_FONT_WEIGHT_MIN;
+  return Number.isFinite(numericWeight) ? numericWeight >= BOLD_FONT_WEIGHT_MIN : null;
 };
 
 export const noLowContrastInlineStyle = defineRule({
@@ -93,15 +94,19 @@ export const noLowContrastInlineStyle = defineRule({
       let foreground: ParsedRgb | null = null;
       let backgroundColorRaw: string | null = null;
       let backgroundShorthandRaw: string | null = null;
-      let backgroundIsUnknown = false;
+      let backgroundColorIsUnknown = false;
+      let backgroundShorthandIsUnknown = false;
+      let backgroundImagePreventsEvaluation = false;
       let fontSizePx: number | null = null;
-      let isBold = false;
+      let isBold: boolean | null = null;
 
       for (const property of properties) {
         const key = getStylePropertyKey(property);
         if (!key) continue;
         if (key === "backgroundImage") {
-          backgroundIsUnknown = true;
+          const backgroundImageValue = getStylePropertyStringValue(property);
+          backgroundImagePreventsEvaluation =
+            backgroundImageValue === null || backgroundImageValue.trim().toLowerCase() !== "none";
           continue;
         }
         if (key === "fontSize" && property.type === "Property") {
@@ -109,24 +114,30 @@ export const noLowContrastInlineStyle = defineRule({
           continue;
         }
         if (key === "fontWeight" && property.type === "Property") {
-          isBold = isBoldWeight(property);
+          isBold = resolveBoldWeight(property);
           continue;
         }
         const stringValue = getStylePropertyStringValue(property);
         if (key === "color") {
           foreground = stringValue === null ? null : resolveOpaqueColor(stringValue);
         } else if (key === "backgroundColor") {
-          if (stringValue === null) backgroundIsUnknown = true;
-          else backgroundColorRaw = stringValue;
+          backgroundColorRaw = stringValue;
+          backgroundColorIsUnknown = stringValue === null;
         } else if (key === "background") {
           // A non-string `background` (a CSS var, a gradient bound to an
           // expression, etc.) can't be judged — treat the surface as unknown.
-          if (stringValue === null) backgroundIsUnknown = true;
-          else backgroundShorthandRaw = stringValue;
+          backgroundShorthandRaw = stringValue;
+          backgroundShorthandIsUnknown = stringValue === null;
         }
       }
 
-      if (backgroundIsUnknown) return;
+      if (
+        backgroundColorIsUnknown ||
+        backgroundShorthandIsUnknown ||
+        backgroundImagePreventsEvaluation
+      ) {
+        return;
+      }
       // Both `backgroundColor` and the `background` shorthand on one element is
       // ambiguous about which actually paints behind the text — bail.
       if (backgroundColorRaw !== null && backgroundShorthandRaw !== null) return;
@@ -146,7 +157,7 @@ export const noLowContrastInlineStyle = defineRule({
       const couldBeLargeText =
         fontSizePx === null ||
         fontSizePx >= LARGE_TEXT_MIN_PX ||
-        (isBold && fontSizePx >= LARGE_BOLD_TEXT_MIN_PX);
+        (isBold !== false && fontSizePx >= LARGE_BOLD_TEXT_MIN_PX);
       const threshold = couldBeLargeText ? WCAG_CONTRAST_LARGE_MIN : WCAG_CONTRAST_NORMAL_MIN;
       const ratio = getWcagContrastRatio(foreground, background);
       if (ratio < threshold) {

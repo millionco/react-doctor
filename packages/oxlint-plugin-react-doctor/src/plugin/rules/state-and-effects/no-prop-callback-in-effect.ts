@@ -2,8 +2,11 @@ import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -17,6 +20,8 @@ import { getRef, getUpstreamRefs } from "./utils/effect/ast.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isProp, isState } from "./utils/effect/react.js";
+import { getParentCallbackPropNames } from "./utils/resolve-parent-callback-provenance.js";
+import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 
 // The ref-latch shape: the effect reads a `<ref>.current` in an
 // if-guard AND writes that same `<ref>.current`. That is the one-shot
@@ -90,6 +95,7 @@ const isStateLikeDependency = (
   if (!analysis) return true;
   const reference = getRef(analysis, element);
   if (!reference) return true;
+  if (isCustomHookStateResultReference(analysis, reference)) return true;
   const upstreamReferences = getUpstreamRefs(analysis, reference);
   if (upstreamReferences.some((upstreamReference) => isState(analysis, upstreamReference))) {
     return true;
@@ -117,6 +123,33 @@ const getRefHeldPropCallbackName = (
   const callbackArgument = binding.initializer.arguments?.[0];
   if (!callbackArgument || !isNodeOfType(callbackArgument, "Identifier")) return null;
   return isPropName(callbackArgument.name) ? callbackArgument.name : null;
+};
+
+const getTransparentWrappedPropCallbackName = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+  isPropName: (name: string, referenceNode?: EsTreeNode) => boolean,
+): string | null => {
+  const callee = stripParenExpression(callExpression.callee as EsTreeNode);
+  if (!isNodeOfType(callee, "Identifier")) return null;
+  const binding = findVariableInitializer(callExpression, callee.name);
+  if (!binding?.initializer) return null;
+  const resultSymbol = context.scopes.symbolFor(callee);
+  const callbackArgument = getTransparentReactCallbackWrapperArgument(
+    binding.initializer,
+    resultSymbol,
+    context.scopes,
+  );
+  if (!callbackArgument) return null;
+  const callbackSource = stripParenExpression(callbackArgument);
+  if (isNodeOfType(callbackSource, "Identifier")) {
+    return isPropName(callbackSource.name, callbackSource) ? callbackSource.name : null;
+  }
+  if (!isNodeOfType(callbackSource, "MemberExpression")) return null;
+  const receiver = stripParenExpression(callbackSource.object as EsTreeNode);
+  const propertyName = getStaticPropertyName(callbackSource);
+  if (!isNodeOfType(receiver, "Identifier") || !propertyName) return null;
+  return isPropName(receiver.name, receiver) ? propertyName : null;
 };
 
 // HACK: `useEffect(() => parentCallback(state.x), [state.x])` is the
@@ -192,17 +225,31 @@ export const noPropCallbackInEffect = defineRule({
         walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
           if (!isNodeOfType(child, "CallExpression")) return;
           const directCallee = stripParenExpression(child.callee as EsTreeNode);
+          const resolvedCallbackPropNames =
+            analysis && propStackTracker.getCurrentPropNames().size > 0
+              ? getParentCallbackPropNames({
+                  analysis,
+                  expression: directCallee,
+                  scopes: context.scopes,
+                })
+              : null;
           const calleeName =
+            (resolvedCallbackPropNames && [...resolvedCallbackPropNames][0]) ||
             (isNodeOfType(directCallee, "Identifier") &&
               propStackTracker.isPropName(directCallee.name) &&
               directCallee.name) ||
-            getRefHeldPropCallbackName(child, propStackTracker.isPropName);
+            getRefHeldPropCallbackName(child, propStackTracker.isPropName) ||
+            getTransparentWrappedPropCallbackName(child, context, propStackTracker.isPropName);
           if (!calleeName) return;
           // Only the "lift state up" hand-back fires: a discarded
           // `onChange(state)`. When the prop call's result flows somewhere
           // (`setError(validate(value))`) the prop is a pure transform consumed
           // locally, not a parent sync — leave it alone.
-          if (!isResultDiscardedCall(child)) return;
+          const callExpressionRoot = findTransparentExpressionRoot(child);
+          const isDirectEffectReturn =
+            isNodeOfType(callExpressionRoot.parent, "ReturnStatement") &&
+            callExpressionRoot.parent.parent === callback.body;
+          if (!isResultDiscardedCall(child) && !isDirectEffectReturn) return;
           if (reportedNodes.has(child)) return;
           reportedNodes.add(child);
           context.report({

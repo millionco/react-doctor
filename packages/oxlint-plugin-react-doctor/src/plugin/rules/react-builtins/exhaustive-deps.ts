@@ -2086,6 +2086,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (
             !rootSymbol ||
             !hasDirectIdentifierDeclarator(rootSymbol) ||
+            symbolHasStableValue(rootSymbol, context.scopes) ||
             !isUnstableInitializer(rootSymbol.initializer)
           ) {
             continue;

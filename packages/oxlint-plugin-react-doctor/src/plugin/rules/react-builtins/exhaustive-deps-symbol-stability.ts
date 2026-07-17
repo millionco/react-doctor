@@ -2,10 +2,13 @@ import { closureCaptures } from "../../semantic/closure-captures.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import {
   getHookName,
@@ -274,12 +277,49 @@ const symbolHasStableImportedAlias = (symbol: SymbolDescriptor, scopes: ScopeAna
   return resolvedSymbol !== null && resolvedSymbol !== symbol && resolvedSymbol.kind === "import";
 };
 
+const symbolHasStableRefLazyInitialization = (
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (symbol.kind !== "const" || symbol.references.some((reference) => reference.flag !== "read")) {
+    return false;
+  }
+  const initializer = symbol.initializer ? unwrapExpression(symbol.initializer) : null;
+  if (!isNodeOfType(initializer, "AssignmentExpression") || initializer.operator !== "??=") {
+    return false;
+  }
+  const refSymbol = resolveReactRefSymbol(unwrapExpression(initializer.left), scopes);
+  if (!refSymbol) return false;
+  return refSymbol.references.every((reference) => {
+    const memberExpression = reference.identifier.parent;
+    if (
+      !isNodeOfType(memberExpression, "MemberExpression") ||
+      unwrapExpression(memberExpression.object) !== reference.identifier ||
+      getStaticPropertyName(memberExpression) !== "current"
+    ) {
+      return false;
+    }
+    const referenceRoot = findTransparentExpressionRoot(memberExpression);
+    const parentNode = referenceRoot.parent;
+    if (isNodeOfType(parentNode, "AssignmentExpression") && parentNode.left === referenceRoot) {
+      return parentNode === initializer;
+    }
+    return !(
+      (isNodeOfType(parentNode, "UpdateExpression") && parentNode.argument === referenceRoot) ||
+      (isNodeOfType(parentNode, "UnaryExpression") &&
+        parentNode.operator === "delete" &&
+        parentNode.argument === referenceRoot)
+    );
+  });
+};
+
 export const symbolHasStableValue = (
   symbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number> = new Set(),
 ): boolean =>
   symbolHasStableHookOrigin(symbol, scopes) ||
+  symbolHasStableRefLazyInitialization(symbol, scopes) ||
   symbolHasStableImportedAlias(symbol, scopes) ||
   symbolHasStableFunctionOrigin(symbol, scopes, visitedSymbolIds) ||
   symbolHasStableMemoizedOrigin(symbol, scopes, visitedSymbolIds);

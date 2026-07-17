@@ -2371,6 +2371,132 @@ const isRetainedAbortControllerRefRelease = (
   );
 };
 
+const isFunctionUsedAsReactRef = (functionNode: EsTreeNode, context: RuleContext): boolean => {
+  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  if (!bindingIdentifier) return false;
+  const symbol = context.scopes.symbolFor(bindingIdentifier);
+  if (!symbol) return false;
+  return symbol.references.some((reference) => {
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const expressionContainer = referenceRoot.parent;
+    const attribute = expressionContainer?.parent;
+    if (
+      isNodeOfType(expressionContainer, "JSXExpressionContainer") &&
+      expressionContainer.expression === referenceRoot &&
+      isNodeOfType(attribute, "JSXAttribute") &&
+      isNodeOfType(attribute.name, "JSXIdentifier") &&
+      attribute.name.name === "ref"
+    ) {
+      return true;
+    }
+    const property = referenceRoot.parent;
+    if (
+      !isNodeOfType(property, "Property") ||
+      property.value !== referenceRoot ||
+      !isNodeOfType(property.parent, "ObjectExpression") ||
+      !getStaticPropertyKeyName(property)?.endsWith("Ref")
+    ) {
+      return false;
+    }
+    const returnedObject = findTransparentExpressionRoot(property.parent);
+    const returnStatement = returnedObject.parent;
+    if (
+      !isNodeOfType(returnStatement, "ReturnStatement") ||
+      returnStatement.argument !== returnedObject
+    ) {
+      return false;
+    }
+    const ownerFunction = findEnclosingFunction(returnStatement);
+    return Boolean(
+      ownerFunction && getFunctionBindingIdentifier(ownerFunction)?.name.startsWith("use"),
+    );
+  });
+};
+
+const isReactRefListenerReplacementRelease = (
+  releaseCall: EsTreeNodeOfType<"CallExpression">,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(usage.node, "CallExpression")) return false;
+  const usageFunction = findEnclosingFunction(usage.node);
+  if (
+    !usageFunction ||
+    !isFunctionLike(usageFunction) ||
+    usageFunction !== findEnclosingFunction(releaseCall) ||
+    !isFunctionUsedAsReactRef(usageFunction, context)
+  ) {
+    return false;
+  }
+  const registrationCallee = stripParenExpression(usage.node.callee);
+  const releaseCallee = stripParenExpression(releaseCall.callee);
+  if (
+    !isNodeOfType(registrationCallee, "MemberExpression") ||
+    registrationCallee.computed ||
+    !isNodeOfType(registrationCallee.property, "Identifier") ||
+    registrationCallee.property.name !== "addEventListener" ||
+    !isNodeOfType(releaseCallee, "MemberExpression") ||
+    releaseCallee.computed ||
+    !isNodeOfType(releaseCallee.property, "Identifier") ||
+    releaseCallee.property.name !== "removeEventListener" ||
+    !hasReactRefCurrentOrigin(releaseCallee.object, context.scopes)
+  ) {
+    return false;
+  }
+  const registrationReceiver = stripParenExpression(registrationCallee.object);
+  const registrationReceiverSymbol = isNodeOfType(registrationReceiver, "Identifier")
+    ? context.scopes.symbolFor(registrationReceiver)
+    : null;
+  const registrationReceiverKey = resolveExpressionKey(registrationReceiver, context);
+  const releaseReceiverKey = resolveExpressionKey(releaseCallee.object, context);
+  if (
+    registrationReceiverSymbol?.kind !== "parameter" ||
+    findEnclosingFunction(registrationReceiverSymbol.bindingIdentifier) !== usageFunction ||
+    registrationReceiverKey === null ||
+    releaseReceiverKey === null ||
+    usage.eventKey === null ||
+    usage.eventKey !== resolveExpressionKey(releaseCall.arguments?.[0], context) ||
+    usage.handlerKey === null ||
+    usage.handlerKey !== resolveExpressionKey(releaseCall.arguments?.[1], context)
+  ) {
+    return false;
+  }
+  const registrationCapture = resolveEventListenerCapture(usage.node.arguments?.[2], {
+    allowIndeterminateEntries: true,
+  });
+  const releaseCapture = resolveEventListenerCapture(releaseCall.arguments?.[2], {
+    allowIndeterminateEntries: true,
+  });
+  if (
+    registrationCapture === null ||
+    releaseCapture === null ||
+    registrationCapture !== releaseCapture
+  ) {
+    return false;
+  }
+  const releaseStart = getRangeStart(releaseCall);
+  const matchingOwnershipAssignments: EsTreeNode[] = [];
+  const usageFunctionBody = usageFunction.body;
+  walkAst(usageFunctionBody, (child: EsTreeNode) => {
+    if (child !== usageFunctionBody && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "AssignmentExpression") &&
+      resolveExpressionKey(child.left, context) === releaseReceiverKey &&
+      resolveExpressionKey(child.right, context) === registrationReceiverKey &&
+      releaseStart !== null &&
+      (getRangeStart(child) ?? -1) > releaseStart
+    ) {
+      matchingOwnershipAssignments.push(child);
+    }
+  });
+  return doMatchingNodesCoverEveryPathBeforeUsage(
+    usage.node,
+    matchingOwnershipAssignments,
+    usageFunction,
+    context,
+  );
+};
+
 const doesReleaseCallMatchUsage = (
   node: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -2426,6 +2552,8 @@ const doesReleaseCallMatchUsage = (
     return false;
   }
   const releaseReceiverKey = resolveExpressionKey(callee.object, context);
+
+  if (isReactRefListenerReplacementRelease(callNode, usage, context)) return true;
 
   if (usage.kind === "socket") {
     return (

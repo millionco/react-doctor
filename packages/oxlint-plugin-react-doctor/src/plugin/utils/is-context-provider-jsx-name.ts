@@ -16,9 +16,10 @@ const isKnownContextIdentifier = (
   identifier: EsTreeNode,
   contextBindings: ReadonlySet<string>,
   scopes: ScopeAnalysis,
+  allowContextNamedImport: boolean,
 ): boolean => {
   if (!isNodeOfType(identifier, "JSXIdentifier")) return false;
-  if (isContextNamedImport(identifier, scopes)) return true;
+  if (allowContextNamedImport && isContextNamedImport(identifier, scopes)) return true;
   if (!contextBindings.has(identifier.name)) return false;
   const binding = findVariableInitializer(identifier, identifier.name);
   return binding?.scopeOwner.type === "Program";
@@ -32,8 +33,8 @@ export const isContextProviderJsxName = (
   if (isNodeOfType(node, "JSXMemberExpression")) {
     return (
       node.property.name === "Provider" &&
-      isKnownContextIdentifier(node.object, contextBindings, scopes)
+      isKnownContextIdentifier(node.object, contextBindings, scopes, true)
     );
   }
-  return isKnownContextIdentifier(node, contextBindings, scopes);
+  return isKnownContextIdentifier(node, contextBindings, scopes, false);
 };

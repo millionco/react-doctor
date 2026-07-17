@@ -1,13 +1,17 @@
-import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
+import {
+  componentOrHookDisplayNameForFunction,
+  findComponentHocExpressionRoot,
+} from "../../utils/component-or-hook-display-name.js";
 import { collectContextBindings } from "../../utils/collect-context-bindings.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -17,9 +21,6 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 const MESSAGE =
   "Every consumer of this context redraws on each render because its `value` is a fresh object/array/function rebuilt each render — wrap it in useMemo/useCallback (or move it out of the component).";
 
-// Fresh per-render allocations — the literal shapes the revision
-// restricts this rule to. A useMemo/useCallback/useRef/useState call
-// or member access is none of these, so it is naturally excluded.
 const isFreshLiteralInitializer = (expression: EsTreeNode): boolean => {
   const stripped = stripParenExpression(expression);
   return (
@@ -31,12 +32,8 @@ const isFreshLiteralInitializer = (expression: EsTreeNode): boolean => {
   );
 };
 
-// Only an UNCONDITIONAL `const/let/var name = <literal>` (or a hoisted
-// local `function name() {}`) is a per-render allocation. A parameter
-// or destructuring DEFAULT (`function App({ config = {} })`) records
-// its default as the initializer, but that value only allocates when
-// the source is undefined, and "wrap it in useMemo" is the wrong fix
-// for a prop — same contract as no-effect-with-fresh-deps.
+// Parameter and destructuring defaults are conditional, so require the
+// literal to be the direct declaration initializer.
 const isDirectDeclarationInitializer = (binding: BindingInfo): boolean => {
   const declarationNode = binding.bindingIdentifier.parent;
   if (
@@ -62,15 +59,25 @@ const owningFunctionOfBinding = (binding: BindingInfo): EsTreeNode | null =>
     : findEnclosingFunction(binding.scopeOwner);
 
 const isDefaultExportedFunction = (functionNode: EsTreeNode): boolean => {
-  const root = findTransparentExpressionRoot(functionNode);
+  const root = findComponentHocExpressionRoot(functionNode);
   return Boolean(root.parent && isNodeOfType(root.parent, "ExportDefaultDeclaration"));
 };
 
-// Complements `jsx-no-constructed-context-values` (which fires only when
-// the `value` attribute is ITSELF a literal). This rule resolves a
-// one-hop identifier bound in the SAME render scope to a fresh
-// object/array/function literal — the identifier-indirection form the
-// base rule documents as a pass.
+const isNamedInlineCallback = (functionNode: EsTreeNode): boolean => {
+  if (!isNodeOfType(functionNode, "FunctionExpression") || !functionNode.id) return false;
+  const directExpressionRoot = findTransparentExpressionRoot(functionNode);
+  if (findComponentHocExpressionRoot(functionNode) !== directExpressionRoot) return false;
+  const parent = directExpressionRoot.parent;
+  return !(
+    parent &&
+    isNodeOfType(parent, "VariableDeclarator") &&
+    parent.init === directExpressionRoot &&
+    isNodeOfType(parent.id, "Identifier")
+  );
+};
+
+// `jsx-no-constructed-context-values` owns inline literals. This rule
+// handles one-hop identifiers bound in the same render scope.
 export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
   id: "context-provider-value-from-unmemoized-local-literal",
   title: "Context value from an unmemoized local literal",
@@ -88,12 +95,9 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isContextProviderJsxName(node.name, contextBindings, context.scopes)) return;
-        // Only a component/hook body re-runs per render AND can host a
-        // useMemo. An inline callback (a `.map()` render loop, a
-        // `useMemo` factory) is neither: hooks cannot be called there,
-        // so the recommendation would be unactionable — bail.
         const renderFunction = findEnclosingFunction(node);
         if (!renderFunction) return;
+        if (isNamedInlineCallback(renderFunction)) return;
         if (
           componentOrHookDisplayNameForFunction(renderFunction) === null &&
           !isDefaultExportedFunction(renderFunction)
@@ -108,16 +112,12 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
         const inner = stripParenExpression(attributeValue.expression);
         if (!isNodeOfType(inner, "Identifier")) return;
         const symbol = context.scopes.symbolFor(inner);
-        if (!symbol || symbol.references.some((reference) => reference.flag !== "read")) return;
+        if (!symbol || hasSymbolWriteBefore(symbol, inner, context.scopes)) return;
 
         const binding = findVariableInitializer(inner, inner.name);
         if (!binding || !binding.initializer) return;
-        // Module-scope literals are stable; only render-local
-        // declarations are rebuilt each render.
         if (binding.scopeOwner.type === "Program") return;
         if (!isDirectDeclarationInitializer(binding)) return;
-        // A binding owned by an outer factory/HOC closure is
-        // allocated once, not per render of this component.
         if (owningFunctionOfBinding(binding) !== renderFunction) return;
         if (!isFreshLiteralInitializer(binding.initializer)) return;
 

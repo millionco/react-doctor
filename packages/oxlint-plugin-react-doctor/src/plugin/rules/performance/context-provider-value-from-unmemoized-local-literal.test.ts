@@ -276,6 +276,33 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    [
+      "useMemo",
+      `return useMemo(function Build() {
+         const value = { theme };
+         return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+       }, [theme, children]);`,
+    ],
+    [
+      "map",
+      `return items.map(function Item(item) {
+         const value = { item };
+         return <ThemeContext.Provider value={value}>{item.label}</ThemeContext.Provider>;
+       });`,
+    ],
+  ])("does not treat a named %s callback as a component", (_name, body) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext, useMemo } from "react";
+       const ThemeContext = createContext(null);
+       function App({ theme, children, items }) {
+         ${body}
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("still flags a block-scoped literal declared inside the component's own if-block", () => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,
@@ -323,6 +350,22 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a fresh local value read before a later reassignment", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = { theme: "dark" };
+       function App() {
+         let value = {};
+         const provider = <ThemeContext.Provider value={value} />;
+         value = STABLE_VALUE;
+         return provider;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat a local React-shaped object as React", () => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,
@@ -353,6 +396,11 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
       "static computed access",
       `import * as React from "react";
        const ThemeContext = React["createContext"](null);`,
+    ],
+    [
+      "the React default import",
+      `import React from "react";
+       const ThemeContext = React.createContext(null);`,
     ],
   ])("flags a context created through %s", (_name, declaration) => {
     const result = runRule(
@@ -417,6 +465,33 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not assume a bare imported context-shaped name is a React 19 provider", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { ThemeContext } from "./theme-context";
+       function App() {
+         const value = {};
+         return <ThemeContext value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a redeclared var as a proven context binding", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       var ThemeContext = createContext(null);
+       var ThemeContext = FakeContext;
+       function App() {
+         const value = {};
+         return <ThemeContext value={value} />;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags an anonymous default-export component", () => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,
@@ -426,6 +501,19 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
          const value = {};
          return <ThemeContext.Provider value={value} />;
        };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an anonymous default-exported HOC component", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext, memo } from "react";
+       const ThemeContext = createContext(null);
+       export default memo(() => {
+         const value = {};
+         return <ThemeContext.Provider value={value} />;
+       });`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

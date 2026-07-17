@@ -20,6 +20,7 @@ export const collectContextBindings = (
       declaration = topLevel.declaration;
     }
     if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) continue;
+    if (declaration.kind !== "const") continue;
     for (const declarator of declaration.declarations ?? []) {
       if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
       if (!isNodeOfType(declarator.id, "Identifier")) continue;

@@ -5,15 +5,21 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { getUpstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { getEffectDepsRefs, isProp, isState } from "./utils/effect/react.js";
+import {
+  getEffectDepsRefs,
+  hasCleanup,
+  isProp,
+  isState,
+} from "./utils/effect/react.js";
+import { hasDeferredOrExternalEffectWork } from "./utils/has-deferred-or-external-effect-work.js";
 
 export const noAdjustStateOnPropChange = defineRule({
   id: "no-adjust-state-on-prop-change",
-  title: "State synced to a prop inside an effect",
+  title: "State adjusted after a prop changes",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Adjust the state inline during render with a `prev`-prop comparison (`if (prop !== prevProp) { setPrevProp(prop); setX(...); }`), or refactor to remove the duplicated state. Routing the adjustment through a useEffect forces an extra render with a stale UI between the two commits. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
+    "Remove the adjustment effect by deriving values during render, resetting the component with a key, or updating related state in the event that changes the prop. Avoid tracking the previous prop in more state, which preserves the duplication. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (
@@ -36,8 +42,20 @@ export const noAdjustStateOnPropChange = defineRule({
         )
         .some((reference) => isProp(analysis, reference));
       if (!hasPropDependency) return;
-      for (const fact of collectEffectStateWriteFacts(analysis, context, node, context.filename)) {
-        if (!fact.isRenderKnownCopy || fact.resetsSourceState) continue;
+      const facts = collectEffectStateWriteFacts(analysis, context, node, context.filename);
+      if (
+        hasCleanup(analysis, node) ||
+        hasDeferredOrExternalEffectWork(analysis, node, context.scopes) ||
+        facts.some((fact) => fact.isDeferred)
+      ) {
+        return;
+      }
+      for (const fact of facts) {
+        if (!fact.isSynchronousRenderValue || fact.resetsSourceState) continue;
+        const writtenValueHasPropSource = fact.sourceReferences
+          .flatMap((reference) => getUpstreamRefs(analysis, reference))
+          .some((reference) => isProp(analysis, reference));
+        if (writtenValueHasPropSource) continue;
         context.report({
           node: fact.callExpression,
           message:

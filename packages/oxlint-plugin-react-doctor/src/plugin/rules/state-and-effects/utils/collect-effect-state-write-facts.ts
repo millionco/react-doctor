@@ -77,6 +77,7 @@ export interface EffectStateWriteFact {
   sourceReferences: ReadonlyArray<Reference>;
   isDeferred: boolean;
   isRenderKnownCopy: boolean;
+  isSynchronousRenderValue: boolean;
   matchesStateInitializer: boolean;
   resetsSourceState: boolean;
 }
@@ -1684,6 +1685,11 @@ export const collectEffectStateWriteFacts = (
         sourceReferences,
         isDeferred: frame.isDeferred,
         isRenderKnownCopy,
+        isSynchronousRenderValue:
+          !frame.isDeferred &&
+          !valueEvidence.hasUnknownSource &&
+          !valueEvidence.hasDeferredIntroducedValue &&
+          !valueEvidence.readsExternalValue,
         matchesStateInitializer: doesMatchStateInitializer,
         resetsSourceState: false,
       });

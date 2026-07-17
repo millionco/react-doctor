@@ -51,6 +51,20 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("recognizes cleanup for an if-guarded pre-declared assignment", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const makeImageUrl = (data) => URL.createObjectURL(data);
+       const useImage = (data) => {
+         let imageObjectUrl;
+         if (data) imageObjectUrl = makeImageUrl(data);
+         setImgObjectUrl(imageObjectUrl);
+         if (imageObjectUrl) URL.revokeObjectURL(imageObjectUrl);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags an object URL set as an anchor href via setAttribute", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

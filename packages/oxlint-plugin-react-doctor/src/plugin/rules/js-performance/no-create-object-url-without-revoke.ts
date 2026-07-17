@@ -186,15 +186,22 @@ const findCallResultExpression = (call: EsTreeNode): EsTreeNode => {
 const findBoundCallResult = (call: EsTreeNode): EsTreeNode | null => {
   const resultExpression = findCallResultExpression(call);
   const consumer = resultExpression.parent;
+  if (!consumer) return null;
   if (
-    !consumer ||
-    !isNodeOfType(consumer, "VariableDeclarator") ||
-    consumer.init !== resultExpression ||
-    !isNodeOfType(consumer.id, "Identifier")
+    isNodeOfType(consumer, "VariableDeclarator") &&
+    consumer.init === resultExpression &&
+    isNodeOfType(consumer.id, "Identifier")
   ) {
-    return null;
+    return consumer.id;
   }
-  return consumer.id;
+  if (
+    isNodeOfType(consumer, "AssignmentExpression") &&
+    consumer.right === resultExpression &&
+    isNodeOfType(consumer.left, "Identifier")
+  ) {
+    return consumer.left;
+  }
+  return null;
 };
 
 const isExpressionBranchOf = (parent: EsTreeNode, node: EsTreeNode): boolean =>

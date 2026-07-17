@@ -8,7 +8,6 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenEffectHookCall } from "../../utils/is-proven-effect-hook-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { subtreeReferencesIdentifierName } from "../../utils/subtree-references-identifier-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -16,6 +15,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 const REQUEST_ANIMATION_FRAME_NAME = "requestAnimationFrame";
 const CANCEL_ANIMATION_FRAME_NAME = "cancelAnimationFrame";
+const MONOTONIC_MATH_METHOD_NAMES = new Set(["min", "max"]);
 
 interface SelfReschedulingRafLoop {
   rafCall: EsTreeNodeOfType<"CallExpression">;
@@ -244,6 +244,44 @@ const collectWrittenNames = (root: EsTreeNode, writtenNames: Set<string>): void 
   });
 };
 
+const isIncreasingIdentifierWrite = (write: EsTreeNode, identifierName: string): boolean => {
+  if (isNodeOfType(write, "UpdateExpression")) return write.operator === "++";
+  if (!isNodeOfType(write, "AssignmentExpression")) return false;
+  if (write.operator === "+=") return isPositiveNumericLiteral(write.right);
+  if (write.operator !== "=") return false;
+  const value = stripParenExpression(write.right);
+  const leftOperand = isNodeOfType(value, "BinaryExpression")
+    ? stripParenExpression(value.left)
+    : null;
+  return (
+    isNodeOfType(value, "BinaryExpression") &&
+    value.operator === "+" &&
+    isNodeOfType(leftOperand, "Identifier") &&
+    leftOperand.name === identifierName &&
+    isPositiveNumericLiteral(value.right)
+  );
+};
+
+const collectMonotonicIncreasingMutationNames = (root: EsTreeNode): Set<string> => {
+  const increasingNames = new Set<string>();
+  const nonIncreasingNames = new Set<string>();
+  walkAst(root, (child: EsTreeNode) => {
+    const writeTarget = isNodeOfType(child, "AssignmentExpression")
+      ? child.left
+      : isNodeOfType(child, "UpdateExpression")
+        ? child.argument
+        : null;
+    if (!isNodeOfType(writeTarget, "Identifier")) return;
+    if (isIncreasingIdentifierWrite(child, writeTarget.name)) {
+      increasingNames.add(writeTarget.name);
+    } else {
+      nonIncreasingNames.add(writeTarget.name);
+    }
+  });
+  for (const nonIncreasingName of nonIncreasingNames) increasingNames.delete(nonIncreasingName);
+  return increasingNames;
+};
+
 // Names the cleanup neutralizes: direct writes, the roots of anything it
 // CALLS (`controller.abort()`, `stop()`, `stopRef.current()`), the writes
 // inside same-effect functions those calls resolve to, and the writes of
@@ -328,39 +366,102 @@ const doesLoopGuardOnAnyName = (loopFunction: EsTreeNode, guardNames: Set<string
   return didFindGuard;
 };
 
-// A tween that reschedules only while progress is inside a numeric bound
-// terminates by construction within a bounded number of frames — there is
-// nothing left to cancel. Both directions count: `if (t < 1) raf(step)`
-// (progress grows to the bound) and `if (Math.abs(velocity) > 0.1)
-// raf(animate)` (a damped quantity decays to the threshold), including
-// `&&`/`||` combinations of such comparisons.
-const RELATIONAL_BOUND_OPERATORS = new Set(["<", "<=", ">", ">="]);
+const isPositiveNumericLiteral = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "Literal") && typeof node.value === "number" && node.value > 0;
 
-const isNumericBoundTest = (test: EsTreeNode, writtenNames: ReadonlySet<string>): boolean => {
+const isStableNumericOffset = (
+  expression: EsTreeNode,
+  mutatedNames: ReadonlySet<string>,
+): boolean => {
+  const node = stripParenExpression(expression);
+  return (
+    (isNodeOfType(node, "Literal") && typeof node.value === "number") ||
+    (isNodeOfType(node, "Identifier") && !mutatedNames.has(node.name))
+  );
+};
+
+const isMonotonicIncreasingExpression = (
+  expression: EsTreeNode,
+  monotonicNames: ReadonlySet<string>,
+  mutatedNames: ReadonlySet<string>,
+): boolean => {
+  const node = stripParenExpression(expression);
+  if (isNodeOfType(node, "Identifier")) return monotonicNames.has(node.name);
+  if (isNodeOfType(node, "BinaryExpression")) {
+    if (node.operator === "+" || node.operator === "-") {
+      return (
+        isMonotonicIncreasingExpression(node.left, monotonicNames, mutatedNames) &&
+        isStableNumericOffset(node.right, mutatedNames)
+      );
+    }
+    if (node.operator === "*" || node.operator === "/") {
+      return (
+        isMonotonicIncreasingExpression(node.left, monotonicNames, mutatedNames) &&
+        isPositiveNumericLiteral(node.right)
+      );
+    }
+  }
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = stripParenExpression(node.callee);
+  const calleeObject = isNodeOfType(callee, "MemberExpression")
+    ? stripParenExpression(callee.object)
+    : null;
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    !isNodeOfType(calleeObject, "Identifier") ||
+    calleeObject.name !== "Math" ||
+    !MONOTONIC_MATH_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")
+  ) {
+    return false;
+  }
+  let didFindMonotonicArgument = false;
+  for (const argument of node.arguments) {
+    if (isMonotonicIncreasingExpression(argument, monotonicNames, mutatedNames)) {
+      didFindMonotonicArgument = true;
+      continue;
+    }
+    if (!isNodeOfType(argument, "Literal") || typeof argument.value !== "number") return false;
+  }
+  return didFindMonotonicArgument;
+};
+
+const isNumericUpperBoundTest = (
+  test: EsTreeNode,
+  monotonicNames: ReadonlySet<string>,
+  mutatedNames: ReadonlySet<string>,
+): boolean => {
   const stripped = stripParenExpression(test);
   if (isNodeOfType(stripped, "LogicalExpression") && stripped.operator !== "??") {
     return (
-      isNumericBoundTest(stripped.left, writtenNames) &&
-      isNumericBoundTest(stripped.right, writtenNames)
+      isNumericUpperBoundTest(stripped.left, monotonicNames, mutatedNames) &&
+      isNumericUpperBoundTest(stripped.right, monotonicNames, mutatedNames)
     );
   }
   if (!isNodeOfType(stripped, "BinaryExpression")) return false;
-  if (!RELATIONAL_BOUND_OPERATORS.has(stripped.operator)) return false;
-  const variableSide =
-    isNodeOfType(stripped.right, "Literal") && typeof stripped.right.value === "number"
-      ? stripped.left
-      : isNodeOfType(stripped.left, "Literal") && typeof stripped.left.value === "number"
-        ? stripped.right
-        : null;
-  return Boolean(variableSide && subtreeReferencesIdentifierName(variableSide, writtenNames));
+  if (
+    (stripped.operator === "<" || stripped.operator === "<=") &&
+    isNodeOfType(stripped.right, "Literal") &&
+    typeof stripped.right.value === "number"
+  ) {
+    return isMonotonicIncreasingExpression(stripped.left, monotonicNames, mutatedNames);
+  }
+  return (
+    (stripped.operator === ">" || stripped.operator === ">=") &&
+    isNodeOfType(stripped.left, "Literal") &&
+    typeof stripped.left.value === "number" &&
+    isMonotonicIncreasingExpression(stripped.right, monotonicNames, mutatedNames)
+  );
 };
 
 const everyRescheduleIsProgressBounded = (scheduledFunction: EsTreeNode): boolean => {
-  const writtenNames = new Set<string>();
-  collectWrittenNames(scheduledFunction, writtenNames);
+  const mutatedNames = new Set<string>();
+  collectWrittenNames(scheduledFunction, mutatedNames);
+  const monotonicNames = collectMonotonicIncreasingMutationNames(scheduledFunction);
   if (isFunctionLike(scheduledFunction)) {
     for (const parameter of scheduledFunction.params ?? []) {
-      if (isNodeOfType(parameter, "Identifier")) writtenNames.add(parameter.name);
+      if (isNodeOfType(parameter, "Identifier") && !mutatedNames.has(parameter.name)) {
+        monotonicNames.add(parameter.name);
+      }
     }
   }
   let didGrow = true;
@@ -368,14 +469,20 @@ const everyRescheduleIsProgressBounded = (scheduledFunction: EsTreeNode): boolea
     didGrow = false;
     walkAst(scheduledFunction, (child: EsTreeNode) => {
       if (!isNodeOfType(child, "VariableDeclarator") || !child.init) return;
-      if (!isNodeOfType(child.id, "Identifier") || writtenNames.has(child.id.name)) return;
-      if (subtreeReferencesIdentifierName(child.init as EsTreeNode, writtenNames)) {
-        writtenNames.add(child.id.name);
+      if (
+        !isNodeOfType(child.id, "Identifier") ||
+        monotonicNames.has(child.id.name) ||
+        mutatedNames.has(child.id.name)
+      ) {
+        return;
+      }
+      if (isMonotonicIncreasingExpression(child.init as EsTreeNode, monotonicNames, mutatedNames)) {
+        monotonicNames.add(child.id.name);
         didGrow = true;
       }
     });
   }
-  if (writtenNames.size === 0) return false;
+  if (monotonicNames.size === 0) return false;
   let sawReschedule = false;
   let sawUnboundedReschedule = false;
   walkAst(scheduledFunction, (child: EsTreeNode) => {
@@ -387,7 +494,7 @@ const everyRescheduleIsProgressBounded = (scheduledFunction: EsTreeNode): boolea
     while (cursor && cursor !== scheduledFunction) {
       if (
         (isNodeOfType(cursor, "IfStatement") || isNodeOfType(cursor, "ConditionalExpression")) &&
-        isNumericBoundTest(cursor.test as EsTreeNode, writtenNames)
+        isNumericUpperBoundTest(cursor.test as EsTreeNode, monotonicNames, mutatedNames)
       ) {
         bounded = true;
         break;

@@ -12,6 +12,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 interface ListenerMethodPairing {
   registerMethod: string;
@@ -110,7 +111,10 @@ interface ListenerUsage {
 // String literals and expressionless template literals share the `literal:`
 // namespace; identifiers and constant member chains (`EVENTS.RESIZE`) get a
 // `reference:` key so they only match the identical source expression.
-const serializeEventKey = (node: EsTreeNode | null | undefined): string | null => {
+const serializeEventKey = (
+  node: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
+): string | null => {
   if (!node) return null;
   const stripped = stripParenExpression(node);
   if (isNodeOfType(stripped, "Literal") && typeof stripped.value === "string") {
@@ -119,7 +123,7 @@ const serializeEventKey = (node: EsTreeNode | null | undefined): string | null =
   if (isNodeOfType(stripped, "TemplateLiteral") && stripped.expressions.length === 0) {
     return `literal:${stripped.quasis[0]?.value.cooked ?? ""}`;
   }
-  const referenceKey = serializeReferenceKey(stripped);
+  const referenceKey = serializeReferenceKey({ node: stripped, scopes });
   return referenceKey === null ? null : `reference:${referenceKey}`;
 };
 
@@ -128,6 +132,7 @@ const readListenerUsage = (
   pairing: ListenerMethodPairing,
   method: string,
   receiverKey: string,
+  scopes: ScopeAnalysis,
 ): ListenerUsage | null => {
   if (!pairing.requiresEventArgument) {
     const handlerNode = call.arguments?.[0];
@@ -139,7 +144,7 @@ const readListenerUsage = (
     return {
       method,
       receiverKey,
-      eventKey: serializeEventKey(call.arguments?.[0]),
+      eventKey: serializeEventKey(call.arguments?.[0], scopes),
       usesHandlerOnlyForm: false,
       handlerNode: eventFormHandlerNode,
     };
@@ -180,11 +185,17 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
         if (!isNodeOfType(callee, "MemberExpression")) return;
         const method = getStaticPropertyName(callee);
         if (!method) return;
-        const receiverKey = serializeReferenceKey(callee.object);
+        const receiverKey = serializeReferenceKey({ node: callee.object, scopes: context.scopes });
         if (receiverKey === null) return;
         const registerPairing = REGISTER_METHOD_PAIRINGS.get(method);
         if (!registerPairing) return;
-        const usage = readListenerUsage(child, registerPairing, method, receiverKey);
+        const usage = readListenerUsage(
+          child,
+          registerPairing,
+          method,
+          receiverKey,
+          context.scopes,
+        );
         if (usage) registerUsages.push(usage);
       });
 
@@ -198,9 +209,12 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
           if (!method || RELEASE_METHODS_COVERED_BY_INLINE_HANDLER_RULE.has(method)) return;
           const pairing = RELEASE_METHOD_PAIRINGS.get(method);
           if (!pairing) return;
-          const receiverKey = serializeReferenceKey(callee.object);
+          const receiverKey = serializeReferenceKey({
+            node: callee.object,
+            scopes: context.scopes,
+          });
           if (receiverKey === null) return;
-          const usage = readListenerUsage(child, pairing, method, receiverKey);
+          const usage = readListenerUsage(child, pairing, method, receiverKey, context.scopes);
           if (usage) releaseUsages.push(usage);
         });
       }

@@ -495,7 +495,7 @@ describe("effect-raf-loop-needs-cancel", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag a decay-terminated spring loop (reschedule while velocity above threshold)", () => {
+  it("stays quiet: RAF loop started from a later event callback", () => {
     const result = runRule(
       effectRafLoopNeedsCancel,
       `const Logo = () => {

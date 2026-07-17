@@ -7,6 +7,9 @@ import {
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -20,6 +23,7 @@ const MESSAGE =
 const LEAKING_MOBX_SUBSCRIPTIONS = new Set(["reaction", "autorun"]);
 
 const OPTIONS_ARGUMENT_INDEX: Record<string, number> = { autorun: 1, reaction: 2 };
+const DISPOSER_VALUE_COERCION_NAMES = new Set(["Boolean", "Number", "String"]);
 
 const resolveLeakingSubscriptionName = (
   node: EsTreeNodeOfType<"CallExpression">,
@@ -145,10 +149,15 @@ const isProcessLifetimeWiring = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const mayCarryAbortSignal = (optionsArgument: unknown): boolean => {
+const mayCarryAbortSignal = (optionsArgument: EsTreeNode | undefined): boolean => {
   if (!optionsArgument) return false;
-  if (!isNodeOfType(optionsArgument, "ObjectExpression")) return true;
-  return optionsArgument.properties.some((property) => {
+  let options = stripParenExpression(optionsArgument);
+  if (isNodeOfType(options, "Identifier")) {
+    const initializer = findVariableInitializer(options, options.name)?.initializer;
+    if (initializer) options = stripParenExpression(initializer);
+  }
+  if (!isNodeOfType(options, "ObjectExpression")) return true;
+  return options.properties.some((property) => {
     if (!isNodeOfType(property, "Property")) return true;
     if (property.computed) return true;
     const isSignalProperty = isNodeOfType(property.key, "Identifier")
@@ -161,6 +170,47 @@ const mayCarryAbortSignal = (optionsArgument: unknown): boolean => {
     if (isNodeOfType(value, "UnaryExpression") && value.operator === "void") return false;
     return true;
   });
+};
+
+const isDisposerOwnershipDiscarded = (call: EsTreeNode): boolean => {
+  if (isResultDiscardedCall(call)) return true;
+  const expressionRoot = findTransparentExpressionRoot(call);
+  const parent = expressionRoot.parent;
+  if (!parent) return false;
+  if (isNodeOfType(parent, "UnaryExpression") || isNodeOfType(parent, "BinaryExpression")) {
+    return true;
+  }
+  if (
+    (isNodeOfType(parent, "IfStatement") ||
+      isNodeOfType(parent, "WhileStatement") ||
+      isNodeOfType(parent, "DoWhileStatement") ||
+      isNodeOfType(parent, "ForStatement")) &&
+    parent.test === expressionRoot
+  ) {
+    return true;
+  }
+  if (
+    (isNodeOfType(parent, "ConditionalExpression") && parent.test === expressionRoot) ||
+    (isNodeOfType(parent, "SwitchStatement") && parent.discriminant === expressionRoot)
+  ) {
+    return true;
+  }
+  if (isNodeOfType(parent, "LogicalExpression") && parent.left === expressionRoot) {
+    if (parent.operator === "&&") return true;
+    return isResultDiscardedCall(parent);
+  }
+  const callee = isNodeOfType(parent, "CallExpression")
+    ? stripParenExpression(parent.callee)
+    : null;
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    parent.arguments.some((argument) => argument === expressionRoot) &&
+    isNodeOfType(callee, "Identifier") &&
+    DISPOSER_VALUE_COERCION_NAMES.has(callee.name)
+  ) {
+    return true;
+  }
+  return false;
 };
 
 export const mobxReactionDisposerDiscarded = defineRule({
@@ -179,7 +229,7 @@ export const mobxReactionDisposerDiscarded = defineRule({
       // The disposer is discarded only when the call is a standalone statement.
       // `const d = reaction(...)`, `this.x = reaction(...)`, and
       // `disposeOnUnmount(this, reaction(...))` all have non-statement parents.
-      if (!isResultDiscardedCall(node)) return;
+      if (!isDisposerOwnershipDiscarded(node)) return;
 
       if (isEvaluatedAtModuleScope(node)) return;
       if (isProcessLifetimeWiring(node)) return;

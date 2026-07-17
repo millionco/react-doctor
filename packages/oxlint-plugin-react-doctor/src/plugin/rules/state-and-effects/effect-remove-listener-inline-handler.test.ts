@@ -129,6 +129,23 @@ describe("effect-remove-listener-inline-handler", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags off() when matching expressionless template event names", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      "emitter.on(`change`, handleChange); emitter.off(`change`, () => handleChange());",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not match registrations on a shadowed receiver binding", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `function register(emitter) { emitter.on("change", handleChange); }
+       function cleanup(emitter) { emitter.off("change", () => handleChange()); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("carries the test-noise tag so unit tests asserting off() tolerance are pipeline-skipped", () => {
     expect(effectRemoveListenerInlineHandler.tags).toContain("test-noise");
   });

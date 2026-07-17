@@ -11,13 +11,13 @@ import {
   isProvenReactHookCall,
 } from "../../utils/is-proven-effect-hook-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { subtreeReferencesIdentifierName } from "../../utils/subtree-references-identifier-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 
 const DEBOUNCE_WRAPPER_HOOK_NAMES = new Set(["useMemo", "useCallback", "useRef"]);
 const DEBOUNCE_FACTORY_NAMES = new Set(["debounce", "throttle"]);
@@ -29,6 +29,12 @@ const SAVE_LIKE_BINDING_NAME_PATTERN = /save|persist|submit|commit|sync/i;
 type FunctionEsTreeNode = EsTreeNodeOfType<
   "ArrowFunctionExpression" | "FunctionExpression" | "FunctionDeclaration"
 >;
+
+interface DebounceFunctionUsageIndex {
+  escapedSymbolIds: Set<number>;
+  invokedSymbolIds: Set<number>;
+  releasedSymbolIds: Set<number>;
+}
 
 const isLodashModuleSource = (source: string | null): boolean =>
   source !== null &&
@@ -104,241 +110,209 @@ const hasTrailingFalseOption = (debounceCall: EsTreeNode): boolean => {
 };
 
 const collectBindingAliases = (
-  searchRoot: EsTreeNode,
-  bindingName: string,
   bindingIdentifier: EsTreeNode,
-): Map<string, EsTreeNode> => {
-  const aliases = new Map([[bindingName, bindingIdentifier]]);
-  let didGrow = true;
-  while (didGrow) {
-    didGrow = false;
-    walkAst(searchRoot, (child: EsTreeNode) => {
-      if (!isNodeOfType(child, "VariableDeclarator")) return;
-      if (!isNodeOfType(child.id, "Identifier") || !child.init) return;
-      if (aliases.has(child.id.name)) return;
-      const initializer = stripParenExpression(child.init);
-      if (isNodeOfType(initializer, "CallExpression")) {
-        // `const searchRef = useRef(search)` — the ref box carries the
-        // debounced binding, so `searchRef.current.cancel()` releases it.
-        const callee = initializer.callee;
-        if (
-          isNodeOfType(callee, "Identifier") &&
-          callee.name === "useRef" &&
-          initializer.arguments?.some((argument) =>
-            subtreeReferencesIdentifierName(argument as EsTreeNode, new Set(aliases.keys())),
-          )
-        ) {
-          aliases.set(child.id.name, child.id);
-          didGrow = true;
-        }
-        return;
+  scopes: ScopeAnalysis,
+): EsTreeNode[] => {
+  const initialSymbol = scopes.symbolFor(bindingIdentifier);
+  if (!initialSymbol) return [];
+  const aliases = [initialSymbol.bindingIdentifier];
+  const pendingSymbols = [initialSymbol];
+  const visitedSymbolIds = new Set<number>();
+  const discoveredSymbolIds = new Set([initialSymbol.id]);
+  while (pendingSymbols.length > 0) {
+    const symbol = pendingSymbols.pop();
+    if (!symbol || visitedSymbolIds.has(symbol.id)) continue;
+    visitedSymbolIds.add(symbol.id);
+    for (const reference of symbol.references) {
+      if (reference.flag !== "read") continue;
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      let aliasInitializerRoot = referenceRoot;
+      let declarator: EsTreeNode | null | undefined = aliasInitializerRoot.parent;
+      while (
+        isNodeOfType(declarator, "MemberExpression") &&
+        declarator.object === aliasInitializerRoot
+      ) {
+        aliasInitializerRoot = findTransparentExpressionRoot(declarator);
+        declarator = aliasInitializerRoot.parent;
       }
-      if (subtreeReferencesIdentifierName(initializer, new Set(aliases.keys()))) {
-        aliases.set(child.id.name, child.id);
-        didGrow = true;
+      const callCallee = isNodeOfType(declarator, "CallExpression")
+        ? stripParenExpression(declarator.callee)
+        : null;
+      if (
+        isNodeOfType(declarator, "CallExpression") &&
+        declarator.arguments.some((argument) => argument === referenceRoot) &&
+        isNodeOfType(callCallee, "Identifier") &&
+        callCallee.name === "useRef"
+      ) {
+        aliasInitializerRoot = findTransparentExpressionRoot(declarator);
+        declarator = aliasInitializerRoot.parent;
       }
-    });
+      if (
+        !isNodeOfType(declarator, "VariableDeclarator") ||
+        declarator.init !== aliasInitializerRoot ||
+        !isNodeOfType(declarator.id, "Identifier")
+      ) {
+        continue;
+      }
+      const aliasSymbol = scopes.symbolFor(declarator.id);
+      if (!aliasSymbol || discoveredSymbolIds.has(aliasSymbol.id)) continue;
+      discoveredSymbolIds.add(aliasSymbol.id);
+      aliases.push(aliasSymbol.bindingIdentifier);
+      pendingSymbols.push(aliasSymbol);
+    }
   }
   return aliases;
 };
 
-const receiverReferencesAlias = (
-  receiver: EsTreeNode,
-  aliases: ReadonlyMap<string, EsTreeNode>,
-): boolean => {
-  let base = stripParenExpression(receiver);
+const baseReferenceIdentifier = (expression: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
+  let base = stripParenExpression(expression);
   while (isNodeOfType(base, "MemberExpression")) {
     base = stripParenExpression(base.object as EsTreeNode);
   }
-  if (!isNodeOfType(base, "Identifier")) return false;
-  const expectedBinding = aliases.get(base.name);
-  if (!expectedBinding) return false;
-  return findVariableInitializer(base, base.name)?.bindingIdentifier === expectedBinding;
+  return isNodeOfType(base, "Identifier") ? base : null;
 };
 
-const isReleaseFunctionReference = (
+const symbolIdForReferenceExpression = (
   expression: EsTreeNode,
-  aliases: ReadonlyMap<string, EsTreeNode>,
-): boolean => {
+  scopes: ScopeAnalysis,
+): number | null => {
+  const identifier = baseReferenceIdentifier(expression);
+  return identifier ? (scopes.symbolFor(identifier)?.id ?? null) : null;
+};
+
+const releaseTargetSymbolId = (expression: EsTreeNode, scopes: ScopeAnalysis): number | null => {
   const unwrappedExpression = stripParenExpression(expression);
   if (isNodeOfType(unwrappedExpression, "MemberExpression")) {
-    return (
-      DEBOUNCE_RELEASE_METHOD_NAMES.has(getStaticPropertyName(unwrappedExpression) ?? "") &&
-      receiverReferencesAlias(unwrappedExpression.object, aliases)
-    );
+    if (!DEBOUNCE_RELEASE_METHOD_NAMES.has(getStaticPropertyName(unwrappedExpression) ?? "")) {
+      return null;
+    }
+    return symbolIdForReferenceExpression(unwrappedExpression.object, scopes);
   }
-  if (!isNodeOfType(unwrappedExpression, "Identifier")) return false;
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
   const bindingIdentifier = findVariableInitializer(
     unwrappedExpression,
     unwrappedExpression.name,
   )?.bindingIdentifier;
   const property = bindingIdentifier?.parent;
-  if (!isNodeOfType(property, "Property")) return false;
+  if (!isNodeOfType(property, "Property")) return null;
   const propertyName = isNodeOfType(property.key, "Identifier")
     ? property.key.name
     : isNodeOfType(property.key, "Literal") && typeof property.key.value === "string"
       ? property.key.value
       : null;
-  if (!propertyName || !DEBOUNCE_RELEASE_METHOD_NAMES.has(propertyName)) return false;
+  if (!propertyName || !DEBOUNCE_RELEASE_METHOD_NAMES.has(propertyName)) return null;
   const pattern = property.parent;
   const declarator = pattern?.parent;
-  return (
-    isNodeOfType(pattern, "ObjectPattern") &&
-    isNodeOfType(declarator, "VariableDeclarator") &&
-    Boolean(declarator.init && receiverReferencesAlias(declarator.init as EsTreeNode, aliases))
-  );
+  if (
+    !isNodeOfType(pattern, "ObjectPattern") ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !declarator.init
+  ) {
+    return null;
+  }
+  return symbolIdForReferenceExpression(declarator.init as EsTreeNode, scopes);
 };
 
-const cleanupCallsRelease = (
+const addCleanupReleaseSymbols = (
   cleanupFunction: EsTreeNode,
-  aliases: ReadonlyMap<string, EsTreeNode>,
-): boolean => {
-  let didRelease = false;
+  releasedSymbolIds: Set<number>,
+  scopes: ScopeAnalysis,
+): void => {
   walkAst(cleanupFunction, (child: EsTreeNode) => {
-    if (didRelease) return false;
     if (child !== cleanupFunction && isFunctionLike(child)) return false;
-    if (
-      isNodeOfType(child, "CallExpression") &&
-      isReleaseFunctionReference(child.callee as EsTreeNode, aliases)
-    ) {
-      didRelease = true;
-      return false;
-    }
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const symbolId = releaseTargetSymbolId(child.callee as EsTreeNode, scopes);
+    if (symbolId !== null) releasedSymbolIds.add(symbolId);
   });
-  return didRelease;
 };
 
-const hasReleaseForBinding = (
-  searchRoot: EsTreeNode,
-  aliases: ReadonlyMap<string, EsTreeNode>,
+const buildFunctionUsageIndex = (
+  enclosingFunction: EsTreeNode,
   scopes: ScopeAnalysis,
-): boolean => {
-  let didRelease = false;
-  walkAst(searchRoot, (child: EsTreeNode) => {
-    if (didRelease) return false;
-    if (!isNodeOfType(child, "CallExpression") || !isProvenEffectHookCall(child, scopes)) return;
-    const effectCallback = child.arguments?.[0]
-      ? stripParenExpression(child.arguments[0] as EsTreeNode)
-      : null;
-    if (!effectCallback || !isFunctionLike(effectCallback)) return;
-    if (
-      !isNodeOfType(effectCallback.body, "BlockStatement") &&
-      isReleaseFunctionReference(effectCallback.body, aliases)
-    ) {
-      didRelease = true;
-      return false;
-    }
-    didRelease = collectReturnedCleanupFunctions(effectCallback).some((cleanupFunction) =>
-      cleanupCallsRelease(cleanupFunction, aliases),
-    );
-  });
-  if (didRelease) return true;
-  walkAst(searchRoot, (child: EsTreeNode) => {
-    if (didRelease) return false;
+): DebounceFunctionUsageIndex => {
+  const escapedSymbolIds = new Set<number>();
+  const invokedSymbolIds = new Set<number>();
+  const releasedSymbolIds = new Set<number>();
+
+  walkAst(enclosingFunction, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = stripParenExpression(child.callee);
+    if (isProvenEffectHookCall(child, scopes)) {
+      const effectArgument = child.arguments?.[0];
+      const effectCallback = effectArgument ? stripParenExpression(effectArgument) : null;
+      if (effectCallback && isFunctionLike(effectCallback)) {
+        walkAst(effectCallback, (effectChild: EsTreeNode) => {
+          if (!isNodeOfType(effectChild, "CallExpression")) return;
+          const symbolId = symbolIdForReferenceExpression(effectChild.callee as EsTreeNode, scopes);
+          if (symbolId !== null) invokedSymbolIds.add(symbolId);
+        });
+        if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
+          const symbolId = releaseTargetSymbolId(effectCallback.body, scopes);
+          if (symbolId !== null) releasedSymbolIds.add(symbolId);
+        }
+        for (const cleanupFunction of collectReturnedCleanupFunctions(effectCallback)) {
+          addCleanupReleaseSymbols(cleanupFunction, releasedSymbolIds, scopes);
+        }
+      }
+    }
     if (
       isNodeOfType(callee, "Identifier") &&
       callee.name === "useUnmount" &&
       (getImportSourceForName(callee, callee.name) === "react-use" ||
-        !findVariableInitializer(callee, callee.name)) &&
-      child.arguments?.some((argument) =>
-        isReleaseFunctionReference(argument as EsTreeNode, aliases),
-      )
+        !findVariableInitializer(callee, callee.name))
     ) {
-      didRelease = true;
-      return false;
+      for (const argument of child.arguments ?? []) {
+        const symbolId = releaseTargetSymbolId(argument as EsTreeNode, scopes);
+        if (symbolId !== null) releasedSymbolIds.add(symbolId);
+      }
     }
     if (!isNodeOfType(callee, "Identifier")) return;
     const helper = findVariableInitializer(callee, callee.name)?.initializer;
     if (!helper || !isFunctionLike(helper)) return;
-    const matchingParameterNames = (helper.params ?? []).flatMap((parameter, parameterIndex) => {
-      const argument = child.arguments?.[parameterIndex];
-      return argument &&
-        isNodeOfType(parameter, "Identifier") &&
-        receiverReferencesAlias(argument as EsTreeNode, aliases)
-        ? [parameter.name]
-        : [];
-    });
-    if (matchingParameterNames.length === 0) return;
+    const releasingParameterNames = new Set<string>();
     walkAst(helper, (helperChild: EsTreeNode) => {
-      if (didRelease) return false;
       if (!isNodeOfType(helperChild, "CallExpression")) return;
       const helperCallee = stripParenExpression(helperChild.callee);
-      if (!isNodeOfType(helperCallee, "MemberExpression")) return;
-      if (!DEBOUNCE_RELEASE_METHOD_NAMES.has(getStaticPropertyName(helperCallee) ?? "")) return;
-      const receiver = stripParenExpression(helperCallee.object as EsTreeNode);
-      if (isNodeOfType(receiver, "Identifier") && matchingParameterNames.includes(receiver.name)) {
-        didRelease = true;
-        return false;
+      if (
+        !isNodeOfType(helperCallee, "MemberExpression") ||
+        !DEBOUNCE_RELEASE_METHOD_NAMES.has(getStaticPropertyName(helperCallee) ?? "")
+      ) {
+        return;
       }
+      const receiver = baseReferenceIdentifier(helperCallee.object as EsTreeNode);
+      if (receiver) releasingParameterNames.add(receiver.name);
     });
+    for (const [parameterIndex, parameter] of (helper.params ?? []).entries()) {
+      if (!isNodeOfType(parameter, "Identifier") || !releasingParameterNames.has(parameter.name)) {
+        continue;
+      }
+      const argument = child.arguments?.[parameterIndex];
+      const symbolId = argument
+        ? symbolIdForReferenceExpression(argument as EsTreeNode, scopes)
+        : null;
+      if (symbolId !== null) releasedSymbolIds.add(symbolId);
+    }
   });
-  return didRelease;
-};
 
-const escapesViaReturn = (
-  enclosingFunction: EsTreeNode,
-  bindingName: string,
-  bindingIdentifier: EsTreeNode,
-): boolean => {
-  let didEscape = false;
   walkAst(enclosingFunction, (child: EsTreeNode) => {
-    if (didEscape) return false;
     if (child !== enclosingFunction && isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "ReturnStatement") || !child.argument) return;
     const returned = stripParenExpression(child.argument);
     if (
-      isNodeOfType(returned, "Identifier") &&
-      returned.name === bindingName &&
-      findVariableInitializer(returned, bindingName)?.bindingIdentifier === bindingIdentifier
+      !isNodeOfType(returned, "Identifier") &&
+      !isNodeOfType(returned, "ObjectExpression") &&
+      !isNodeOfType(returned, "ArrayExpression")
     ) {
-      didEscape = true;
-      return false;
+      return;
     }
-    if (
-      (isNodeOfType(returned, "ObjectExpression") || isNodeOfType(returned, "ArrayExpression")) &&
-      subtreeReferencesIdentifierName(returned, bindingName)
-    ) {
-      didEscape = true;
-      return false;
-    }
-  });
-  return didEscape;
-};
-
-const isInvokedInsideEffectCallback = (
-  enclosingFunction: EsTreeNode,
-  bindingName: string,
-  bindingIdentifier: EsTreeNode,
-  scopes: ScopeAnalysis,
-): boolean => {
-  let didInvoke = false;
-  walkAst(enclosingFunction, (child: EsTreeNode) => {
-    if (didInvoke) return false;
-    if (!isNodeOfType(child, "CallExpression")) return;
-    if (!isProvenEffectHookCall(child, scopes)) return;
-    const effectArgument = child.arguments?.[0];
-    if (!effectArgument) return;
-    const effectCallback = stripParenExpression(effectArgument);
-    if (!isFunctionLike(effectCallback)) return;
-    walkAst(effectCallback, (inner: EsTreeNode) => {
-      if (didInvoke) return false;
-      if (!isNodeOfType(inner, "CallExpression")) return;
-      const callee = stripParenExpression(inner.callee);
-      const invokesBinding =
-        (isNodeOfType(callee, "Identifier") &&
-          callee.name === bindingName &&
-          findVariableInitializer(callee, bindingName)?.bindingIdentifier === bindingIdentifier) ||
-        (isNodeOfType(callee, "MemberExpression") &&
-          receiverReferencesAlias(callee.object, new Map([[bindingName, bindingIdentifier]])));
-      if (invokesBinding) {
-        didInvoke = true;
-        return false;
-      }
+    walkAst(returned, (returnChild: EsTreeNode) => {
+      if (!isNodeOfType(returnChild, "Identifier")) return;
+      const symbolId = scopes.symbolFor(returnChild)?.id;
+      if (symbolId !== undefined) escapedSymbolIds.add(symbolId);
     });
   });
-  return didInvoke;
+
+  return { escapedSymbolIds, invokedSymbolIds, releasedSymbolIds };
 };
 
 const resolveWrappedCallbackFunction = (
@@ -568,52 +542,72 @@ export const debounceNoCleanup = defineRule({
   category: "Bugs",
   recommendation:
     "A debounced/throttled callback holds a pending timer that still fires after unmount, so add `useEffect(() => () => debounced.cancel(), [debounced])` to cancel the trailing invocation when the component tears down.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isProvenReactHookCall(node, DEBOUNCE_WRAPPER_HOOK_NAMES, context.scopes)) return;
-      const debounceCall = findDebounceCallInHookInitializer(node);
-      if (!debounceCall) return;
-      if (hasTrailingFalseOption(debounceCall)) return;
+  create: (context: RuleContext) => {
+    const functionUsageIndexes = new WeakMap<EsTreeNode, DebounceFunctionUsageIndex>();
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isProvenReactHookCall(node, DEBOUNCE_WRAPPER_HOOK_NAMES, context.scopes)) return;
+        const debounceCall = findDebounceCallInHookInitializer(node);
+        if (!debounceCall) return;
+        if (hasTrailingFalseOption(debounceCall)) return;
 
-      const declarator = node.parent;
-      if (
-        !isNodeOfType(declarator, "VariableDeclarator") ||
-        !isNodeOfType(declarator.id, "Identifier")
-      ) {
-        return;
-      }
-      const bindingName = declarator.id.name;
-      if (SAVE_LIKE_BINDING_NAME_PATTERN.test(bindingName)) return;
+        const declarator = node.parent;
+        if (
+          !isNodeOfType(declarator, "VariableDeclarator") ||
+          !isNodeOfType(declarator.id, "Identifier")
+        ) {
+          return;
+        }
+        const bindingName = declarator.id.name;
+        if (SAVE_LIKE_BINDING_NAME_PATTERN.test(bindingName)) return;
 
-      const enclosingFunction = findEnclosingFunction(node);
-      if (!enclosingFunction) return;
+        const enclosingFunction = findEnclosingFunction(node);
+        if (!enclosingFunction) return;
+        let functionUsageIndex = functionUsageIndexes.get(enclosingFunction);
+        if (!functionUsageIndex) {
+          functionUsageIndex = buildFunctionUsageIndex(enclosingFunction, context.scopes);
+          functionUsageIndexes.set(enclosingFunction, functionUsageIndex);
+        }
 
-      const aliases = collectBindingAliases(enclosingFunction, bindingName, declarator.id);
-      if (hasReleaseForBinding(enclosingFunction, aliases, context.scopes)) return;
-      if (escapesViaReturn(enclosingFunction, bindingName, declarator.id)) return;
-      if (
-        !isInvokedInsideEffectCallback(
+        const aliases = collectBindingAliases(declarator.id, context.scopes);
+        const aliasSymbolIds = new Set(
+          aliases.flatMap((alias) => {
+            const symbolId = context.scopes.symbolFor(alias)?.id;
+            return symbolId === undefined ? [] : [symbolId];
+          }),
+        );
+        if (
+          [...aliasSymbolIds].some((symbolId) => functionUsageIndex.releasedSymbolIds.has(symbolId))
+        ) {
+          return;
+        }
+        const bindingSymbolId = context.scopes.symbolFor(declarator.id)?.id;
+        if (
+          bindingSymbolId !== undefined &&
+          functionUsageIndex.escapedSymbolIds.has(bindingSymbolId)
+        ) {
+          return;
+        }
+        if (
+          ![...aliasSymbolIds].some((symbolId) => functionUsageIndex.invokedSymbolIds.has(symbolId))
+        ) {
+          return;
+        }
+
+        const wrappedCallback = resolveWrappedCallbackFunction(
+          debounceCall,
           enclosingFunction,
-          bindingName,
-          declarator.id,
           context.scopes,
-        )
-      )
-        return;
+        );
+        if (!wrappedCallback) return;
+        if (!hasAsyncOrDomWork(wrappedCallback)) return;
+        if (startsWithNullRefGuard(wrappedCallback)) return;
 
-      const wrappedCallback = resolveWrappedCallbackFunction(
-        debounceCall,
-        enclosingFunction,
-        context.scopes,
-      );
-      if (!wrappedCallback) return;
-      if (!hasAsyncOrDomWork(wrappedCallback)) return;
-      if (startsWithNullRefGuard(wrappedCallback)) return;
-
-      context.report({
-        node: debounceCall,
-        message: `\`${bindingName}\` keeps a pending debounced/throttled call that fires after unmount because nothing cancels it; return \`() => ${bindingName}.cancel()\` from a useEffect so the trailing call is dropped on teardown.`,
-      });
-    },
-  }),
+        context.report({
+          node: debounceCall,
+          message: `\`${bindingName}\` keeps a pending debounced/throttled call that fires after unmount because nothing cancels it; return \`() => ${bindingName}.cancel()\` from a useEffect so the trailing call is dropped on teardown.`,
+        });
+      },
+    };
+  },
 });

@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
@@ -10,6 +11,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 // Removal verbs that deregister a listener by reference equality on the
 // handler argument. Excludes `addEventListener` on purpose — a fresh
@@ -48,39 +50,31 @@ const isFreshFunctionReference = (node: EsTreeNode): boolean => {
   );
 };
 
-const serializeEventKey = (node: EsTreeNode | undefined): string | null => {
+const serializeEventKey = (node: EsTreeNode | undefined, scopes: ScopeAnalysis): string | null => {
   if (!node) return null;
   const expression = stripParenExpression(node);
   if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
     return `literal:${expression.value}`;
   }
-  const referenceKey = serializeReferenceKey(expression);
+  if (isNodeOfType(expression, "TemplateLiteral") && expression.expressions.length === 0) {
+    return `literal:${expression.quasis[0]?.value.cooked ?? ""}`;
+  }
+  const referenceKey = serializeReferenceKey({ node: expression, scopes });
   return referenceKey ? `reference:${referenceKey}` : null;
 };
 
-const hasMatchingOnRegistration = (
-  removalCall: EsTreeNodeOfType<"CallExpression">,
-  receiverKey: string,
-  eventKey: string,
-): boolean => {
-  let searchRoot: EsTreeNode | null | undefined = removalCall.parent;
-  while (searchRoot && searchRoot.parent && !isNodeOfType(searchRoot, "Program")) {
-    searchRoot = searchRoot.parent;
-  }
-  if (!searchRoot) return false;
-  let didFindRegistration = false;
-  walkAst(searchRoot, (node: EsTreeNode) => {
-    if (didFindRegistration) return false;
+const collectOnRegistrationKeys = (program: EsTreeNode, scopes: ScopeAnalysis): Set<string> => {
+  const registrationKeys = new Set<string>();
+  walkAst(program, (node: EsTreeNode) => {
     if (!isNodeOfType(node, "CallExpression")) return;
     const callee = stripParenExpression(node.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return;
     if (getStaticPropertyName(callee) !== "on") return;
-    if (serializeReferenceKey(callee.object) !== receiverKey) return;
-    if (serializeEventKey(node.arguments?.[0]) !== eventKey) return;
-    didFindRegistration = true;
-    return false;
+    const receiverKey = serializeReferenceKey({ node: callee.object, scopes });
+    const eventKey = serializeEventKey(node.arguments?.[0], scopes);
+    if (receiverKey && eventKey) registrationKeys.add(JSON.stringify([receiverKey, eventKey]));
   });
-  return didFindRegistration;
+  return registrationKeys;
 };
 
 export const effectRemoveListenerInlineHandler = defineRule({
@@ -91,31 +85,44 @@ export const effectRemoveListenerInlineHandler = defineRule({
   tags: ["test-noise"],
   recommendation:
     "Removal APIs match the listener by reference equality, so a fresh inline arrow, function expression, or `.bind(...)` result can never equal the registered handler; hoist the handler into a named const and pass that same reference to both the add and remove calls.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const callee = stripParenExpression(node.callee);
-      if (!isNodeOfType(callee, "MemberExpression")) return;
-      const methodName = getStaticPropertyName(callee);
-      if (!methodName || !REFERENCE_EQUALITY_REMOVAL_METHOD_NAMES.has(methodName)) return;
+  create: (context: RuleContext) => {
+    const registrationKeysByProgram = new WeakMap<EsTreeNode, Set<string>>();
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const callee = stripParenExpression(node.callee);
+        if (!isNodeOfType(callee, "MemberExpression")) return;
+        const methodName = getStaticPropertyName(callee);
+        if (!methodName || !REFERENCE_EQUALITY_REMOVAL_METHOD_NAMES.has(methodName)) return;
 
-      const args = node.arguments;
-      const handlerIndex = methodName === "removeListener" && args.length === 1 ? 0 : 1;
-      const handlerArgument = args[handlerIndex];
-      if (!handlerArgument) return;
-      if (handlerIndex === 1 && isNumericFirstArgument(args[0] as EsTreeNode)) return;
-      if (!isFreshFunctionReference(handlerArgument)) return;
-      if (methodName === "off") {
-        const receiverKey = serializeReferenceKey(callee.object);
-        const eventKey = serializeEventKey(args[0]);
-        if (!receiverKey || !eventKey || !hasMatchingOnRegistration(node, receiverKey, eventKey)) {
-          return;
+        const args = node.arguments;
+        const handlerIndex = methodName === "removeListener" && args.length === 1 ? 0 : 1;
+        const handlerArgument = args[handlerIndex];
+        if (!handlerArgument) return;
+        if (handlerIndex === 1 && isNumericFirstArgument(args[0] as EsTreeNode)) return;
+        if (!isFreshFunctionReference(handlerArgument)) return;
+        if (methodName === "off") {
+          const receiverKey = serializeReferenceKey({
+            node: callee.object,
+            scopes: context.scopes,
+          });
+          const eventKey = serializeEventKey(args[0], context.scopes);
+          const program = findProgramRoot(node);
+          if (!receiverKey || !eventKey || !program) return;
+          let registrationKeys = registrationKeysByProgram.get(program);
+          if (!registrationKeys) {
+            registrationKeys = collectOnRegistrationKeys(program, context.scopes);
+            registrationKeysByProgram.set(program, registrationKeys);
+          }
+          if (!registrationKeys.has(JSON.stringify([receiverKey, eventKey]))) {
+            return;
+          }
         }
-      }
 
-      context.report({
-        node: handlerArgument,
-        message: `\`${methodName}\` gets a brand-new function reference here that never equals the registered listener, so the removal silently no-ops and the listener leaks; pass the same named handler to both the add and remove calls.`,
-      });
-    },
-  }),
+        context.report({
+          node: handlerArgument,
+          message: `\`${methodName}\` gets a brand-new function reference here that never equals the registered listener, so the removal silently no-ops and the listener leaks; pass the same named handler to both the add and remove calls.`,
+        });
+      },
+    };
+  },
 });

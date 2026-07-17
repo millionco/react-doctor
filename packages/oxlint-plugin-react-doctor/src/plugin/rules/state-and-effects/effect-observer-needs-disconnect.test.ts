@@ -333,4 +333,38 @@ describe("effect-observer-needs-disconnect", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags when cleanup unobserves only one of multiple targets", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         observer.observe(first);
+         observer.observe(second);
+         return () => observer.unobserve(first);
+       }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks observers and targets by binding identity", () => {
+    const shadowedObserver = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         { const observer = new ResizeObserver(callback); observer.observe(first); observer.disconnect(); }
+         { const observer = new ResizeObserver(callback); observer.observe(second); }
+       }, []);`,
+    );
+    expect(shadowedObserver.diagnostics).toHaveLength(1);
+
+    const shadowedTarget = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         { const target = first; observer.observe(target); }
+         return () => { const target = second; observer.unobserve(target); };
+       }, []);`,
+    );
+    expect(shadowedTarget.diagnostics).toHaveLength(1);
+  });
 });

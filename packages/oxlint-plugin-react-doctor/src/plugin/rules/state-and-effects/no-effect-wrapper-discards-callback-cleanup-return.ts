@@ -128,6 +128,19 @@ const discardedForwardedCallInExpression = (
       discardedForwardedCallInExpression(expression.alternate, callbackName, callbackBinding)
     );
   }
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void") {
+    return discardedForwardedCallInExpression(expression.argument, callbackName, callbackBinding);
+  }
+  if (isNodeOfType(expression, "SequenceExpression")) {
+    for (const sequenceExpression of expression.expressions) {
+      const discardedCall = discardedForwardedCallInExpression(
+        sequenceExpression,
+        callbackName,
+        callbackBinding,
+      );
+      if (discardedCall) return discardedCall;
+    }
+  }
   if (isNodeOfType(expression, "CallExpression")) {
     const callee = stripParenExpression(expression.callee);
     if (

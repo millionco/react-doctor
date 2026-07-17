@@ -45,14 +45,17 @@ interface TrackedObserver {
   construction: EsTreeNodeOfType<"NewExpression">;
   bindingIdentifier: EsTreeNode;
   didObserve: boolean;
-  didRelease: boolean;
+  didObserveUnknownTarget: boolean;
+  didReleaseAll: boolean;
   didEscape: boolean;
   observedTargetKeys: Set<string>;
+  unobservedTargetKeys: Set<string>;
 }
 
 const recordObserverUsage = (
   identifier: EsTreeNodeOfType<"Identifier">,
   tracked: TrackedObserver,
+  context: RuleContext,
 ): void => {
   const binding = findVariableInitializer(identifier, identifier.name);
   if (binding && binding.bindingIdentifier !== tracked.bindingIdentifier) return;
@@ -84,18 +87,25 @@ const recordObserverUsage = (
     if (accessedMethodName === "observe") {
       tracked.didObserve = true;
       const targetArgument = methodCall.arguments?.[0];
-      const targetKey = targetArgument ? serializeReferenceKey(targetArgument) : null;
+      const targetKey = targetArgument
+        ? serializeReferenceKey({ node: targetArgument, scopes: context.scopes })
+        : null;
       if (targetKey) tracked.observedTargetKeys.add(targetKey);
+      else tracked.didObserveUnknownTarget = true;
       return;
     }
     if (accessedMethodName === "disconnect" && tracked.didObserve) {
-      tracked.didRelease = true;
+      tracked.didReleaseAll = true;
       return;
     }
     if (accessedMethodName === "unobserve" && tracked.didObserve) {
       const targetArgument = methodCall.arguments?.[0];
-      const targetKey = targetArgument ? serializeReferenceKey(targetArgument) : null;
-      if (targetKey && tracked.observedTargetKeys.has(targetKey)) tracked.didRelease = true;
+      const targetKey = targetArgument
+        ? serializeReferenceKey({ node: targetArgument, scopes: context.scopes })
+        : null;
+      if (targetKey && tracked.observedTargetKeys.has(targetKey)) {
+        tracked.unobservedTargetKeys.add(targetKey);
+      }
     }
     return;
   }
@@ -160,7 +170,7 @@ export const effectObserverNeedsDisconnect = defineRule({
       const callback = getEffectCallback(node);
       if (!callback) return;
 
-      const trackedObserversByName = new Map<string, TrackedObserver>();
+      const trackedObserversByBinding = new Map<EsTreeNode, TrackedObserver>();
       walkAst(callback, (child: EsTreeNode) => {
         if (child !== callback && isFunctionLike(child)) return false;
         if (!isNodeOfType(child, "NewExpression")) return;
@@ -195,48 +205,73 @@ export const effectObserverNeedsDisconnect = defineRule({
         if (!isNodeOfType(declarator, "VariableDeclarator") || declarator.init !== expressionRoot)
           return;
         const bindingName = isNodeOfType(declarator.id, "Identifier") ? declarator.id.name : null;
-        if (!bindingName || trackedObserversByName.has(bindingName)) return;
-        trackedObserversByName.set(bindingName, {
+        if (!bindingName) return;
+        trackedObserversByBinding.set(declarator.id, {
           construction: child,
           bindingIdentifier: declarator.id,
           didObserve: false,
-          didRelease: callbackReleasesViaObserverParameter(child),
+          didObserveUnknownTarget: false,
+          didReleaseAll: callbackReleasesViaObserverParameter(child),
           didEscape: false,
           observedTargetKeys: new Set(),
+          unobservedTargetKeys: new Set(),
         });
       });
-      if (trackedObserversByName.size === 0) return;
+      if (trackedObserversByBinding.size === 0) return;
 
       walkAst(callback, (child: EsTreeNode) => {
         if (child !== callback && isFunctionLike(child)) return false;
         if (!isNodeOfType(child, "Identifier")) return;
-        const tracked = trackedObserversByName.get(child.name);
-        if (tracked) recordObserverUsage(child, tracked);
+        const bindingIdentifier = findVariableInitializer(child, child.name)?.bindingIdentifier;
+        const tracked = bindingIdentifier
+          ? trackedObserversByBinding.get(bindingIdentifier)
+          : undefined;
+        if (tracked) recordObserverUsage(child, tracked, context);
       });
 
       for (const cleanupFunction of collectReturnedCleanupFunctions(callback)) {
         walkAst(cleanupFunction, (child: EsTreeNode) => {
           if (child !== cleanupFunction && isFunctionLike(child)) return false;
           if (!isNodeOfType(child, "Identifier")) return;
-          const tracked = trackedObserversByName.get(child.name);
-          if (tracked) recordObserverUsage(child, tracked);
+          const bindingIdentifier = findVariableInitializer(child, child.name)?.bindingIdentifier;
+          const tracked = bindingIdentifier
+            ? trackedObserversByBinding.get(bindingIdentifier)
+            : undefined;
+          if (tracked) recordObserverUsage(child, tracked, context);
         });
       }
 
-      for (const [bindingName, tracked] of trackedObserversByName) {
+      for (const tracked of trackedObserversByBinding.values()) {
+        const bindingName = isNodeOfType(tracked.bindingIdentifier, "Identifier")
+          ? tracked.bindingIdentifier.name
+          : null;
+        if (!bindingName) continue;
         const observerCallback = tracked.construction.arguments?.[0];
         if (!observerCallback || !isFunctionLike(stripParenExpression(observerCallback))) continue;
         const callbackFunction = stripParenExpression(observerCallback);
         walkAst(callbackFunction, (child: EsTreeNode) => {
           if (child !== callbackFunction && isFunctionLike(child)) return false;
           if (isNodeOfType(child, "Identifier") && child.name === bindingName) {
-            recordObserverUsage(child, tracked);
+            recordObserverUsage(child, tracked, context);
           }
         });
       }
 
-      for (const tracked of trackedObserversByName.values()) {
-        if (!tracked.didObserve || tracked.didRelease || tracked.didEscape) continue;
+      for (const tracked of trackedObserversByBinding.values()) {
+        const didUnobserveEveryKnownTarget =
+          !tracked.didObserveUnknownTarget &&
+          tracked.observedTargetKeys.size > 0 &&
+          [...tracked.observedTargetKeys].every((targetKey) =>
+            tracked.unobservedTargetKeys.has(targetKey),
+          );
+        if (
+          !tracked.didObserve ||
+          tracked.didReleaseAll ||
+          didUnobserveEveryKnownTarget ||
+          tracked.didEscape
+        ) {
+          continue;
+        }
         context.report({
           node: tracked.construction,
           message:

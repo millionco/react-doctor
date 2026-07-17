@@ -13,6 +13,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const MESSAGE =
   "This class registers a listener or timer on mount but declares no `componentWillUnmount`, so the subscription/timer keeps firing after the component unmounts; release it in `componentWillUnmount`.";
@@ -28,6 +29,7 @@ const LISTENER_REGISTRATION_METHODS = new Set([
 ]);
 
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "global", "self"]);
+const MOUNT_LOCAL_RESOURCE_FACTORY_NAMES = new Set(["initPlaces", "places"]);
 
 const getPropertyName = (property: EsTreeNodeOfType<"Property">): string | null => {
   if (!property.computed && isNodeOfType(property.key, "Identifier")) return property.key.name;
@@ -247,9 +249,11 @@ const collectMountLocalReceiverNames = (mountBody: EsTreeNode): Set<string> => {
       if (
         initializer &&
         (isNodeOfType(initializer, "NewExpression") ||
-          isNodeOfType(initializer, "CallExpression") ||
           isNodeOfType(initializer, "ObjectExpression") ||
-          isNodeOfType(initializer, "ArrayExpression"))
+          isNodeOfType(initializer, "ArrayExpression") ||
+          (isNodeOfType(initializer, "CallExpression") &&
+            isNodeOfType(initializer.callee, "Identifier") &&
+            MOUNT_LOCAL_RESOURCE_FACTORY_NAMES.has(initializer.callee.name)))
       ) {
         collectPatternNames(node.id as EsTreeNode, declaredNames);
       }
@@ -269,21 +273,24 @@ const collectMountLocalReceiverNames = (mountBody: EsTreeNode): Set<string> => {
 // `addEventListener` immediately paired with `removeEventListener` for the
 // same event in the same mount body (passive-support detection) leaves
 // nothing registered.
-const serializeListenerIdentityPart = (node: EsTreeNode): string | null => {
+const serializeListenerIdentityPart = (node: EsTreeNode, scopes: ScopeAnalysis): string | null => {
   const expression = stripParenExpression(node);
   if (isNodeOfType(expression, "Literal")) return JSON.stringify(expression.value);
-  return serializeReferenceKey(expression);
+  return serializeReferenceKey({ node: expression, scopes });
 };
 
-const listenerIdentityKey = (call: EsTreeNodeOfType<"CallExpression">): string | null => {
+const listenerIdentityKey = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): string | null => {
   const callee = stripParenExpression(call.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return null;
-  const receiverKey = serializeListenerIdentityPart(callee.object);
+  const receiverKey = serializeListenerIdentityPart(callee.object, scopes);
   const eventKey = call.arguments?.[0]
-    ? serializeListenerIdentityPart(call.arguments[0] as EsTreeNode)
+    ? serializeListenerIdentityPart(call.arguments[0] as EsTreeNode, scopes)
     : null;
   const handlerKey = call.arguments?.[1]
-    ? serializeListenerIdentityPart(call.arguments[1] as EsTreeNode)
+    ? serializeListenerIdentityPart(call.arguments[1] as EsTreeNode, scopes)
     : null;
   if (!receiverKey || !eventKey || !handlerKey) return null;
   const options = call.arguments?.[2] as EsTreeNode | undefined;
@@ -309,12 +316,15 @@ const listenerIdentityKey = (call: EsTreeNodeOfType<"CallExpression">): string |
   return `${receiverKey}|${eventKey}|${handlerKey}|${captureKey}`;
 };
 
-const collectSynchronouslyRemovedListeners = (mountBody: EsTreeNode): Map<string, number> => {
+const collectSynchronouslyRemovedListeners = (
+  mountBody: EsTreeNode,
+  scopes: ScopeAnalysis,
+): Map<string, number> => {
   const removedListeners = new Map<string, number>();
   walkSynchronousMountFlow(mountBody, (node) => {
     if (!isNodeOfType(node, "CallExpression")) return;
     if (getCallMethodName(node.callee) !== "removeEventListener") return;
-    const identityKey = listenerIdentityKey(node);
+    const identityKey = listenerIdentityKey(node, scopes);
     if (identityKey) removedListeners.set(identityKey, node.range[0]);
   });
   return removedListeners;
@@ -325,6 +335,7 @@ const isMountHazard = (
   localReceiverNames: Set<string>,
   removedListeners: Map<string, number>,
   classBody: EsTreeNode | null,
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   const methodName = getCallMethodName(node.callee);
@@ -373,7 +384,8 @@ const isMountHazard = (
     }
     const isLocalReceiver =
       isNodeOfType(receiverBase, "Identifier") && localReceiverNames.has(receiverBase.name);
-    const listenerKey = methodName === "addEventListener" ? listenerIdentityKey(node) : null;
+    const listenerKey =
+      methodName === "addEventListener" ? listenerIdentityKey(node, scopes) : null;
     const removalPosition = listenerKey ? removedListeners.get(listenerKey) : undefined;
     const isSynchronouslyRemoved = removalPosition !== undefined && removalPosition > node.range[0];
     const isSelfRemovingListener =
@@ -424,6 +436,8 @@ const classUsesDisposeOnUnmount = (classNode: EsTreeNode): boolean => {
       isNodeOfType(callee, "Identifier") &&
       getImportedNameFromModule(callee, callee.name, "mobx-react") === "disposeOnUnmount"
     ) {
+      const target = child.arguments?.[0];
+      if (!target || !isNodeOfType(stripParenExpression(target), "ThisExpression")) return;
       found = true;
       return false;
     }
@@ -466,11 +480,13 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
         if (!body) continue;
 
         const localReceiverNames = collectMountLocalReceiverNames(body);
-        const removedListeners = collectSynchronouslyRemovedListeners(body);
+        const removedListeners = collectSynchronouslyRemovedListeners(body, context.scopes);
         let hazardNode: EsTreeNode | null = null;
         walkSynchronousMountFlow(body, (candidate) => {
           if (hazardNode) return;
-          if (isMountHazard(candidate, localReceiverNames, removedListeners, node)) {
+          if (
+            isMountHazard(candidate, localReceiverNames, removedListeners, node, context.scopes)
+          ) {
             hazardNode = candidate;
           }
         });

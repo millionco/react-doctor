@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { classComponentMissingComponentWillUnmountTeardown } from "./class-component-missing-component-will-unmount-teardown.js";
 import { debounceNoCleanup } from "./debounce-no-cleanup.js";
+import { effectListenerCleanupReferenceMismatch } from "./effect-listener-cleanup-reference-mismatch.js";
 import { effectObserverNeedsDisconnect } from "./effect-observer-needs-disconnect.js";
 import { effectRafLoopNeedsCancel } from "./effect-raf-loop-needs-cancel.js";
 import { effectRemoveListenerInlineHandler } from "./effect-remove-listener-inline-handler.js";
@@ -243,6 +244,78 @@ describe("resource lifecycle audit regressions", () => {
       noEffectWrapperDiscardsCallbackCleanupReturn,
       `const useWrapped: typeof React.useEffect = (effect, deps) => { useEffect(() => { effect(); }, deps); };`,
       1,
+    );
+  });
+
+  it("compares listener and teardown references by binding identity", () => {
+    expectDiagnosticCount(
+      effectListenerCleanupReferenceMismatch,
+      `useEffect(() => { { const source = first; source.subscribe(() => consume()); } return () => { const source = second; source.unsubscribe(() => consume()); }; }, []);`,
+      0,
+    );
+    expectDiagnosticCount(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class C extends React.Component { componentDidMount() { { const target = first; target.addEventListener("data", this.handle); } { const target = second; target.removeEventListener("data", this.handle); } } render() { return null; } }`,
+      1,
+    );
+  });
+
+  it("does not mistake unrelated ownership APIs for resource teardown", () => {
+    expectDiagnosticCount(
+      debounceNoCleanup,
+      `import { debounce } from "lodash"; function C() { const search = useMemo(() => debounce(async () => fetch("/x"), 10), []); const wrapper = { search, cancel() {} }; useEffect(() => { search(); return () => wrapper.cancel(); }, [search]); }`,
+      1,
+    );
+    expectDiagnosticCount(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class C extends React.Component { componentDidMount() { const bus = getGlobalBus(); bus.on("data", this.handle); } render() { return null; } }`,
+      1,
+    );
+    expectDiagnosticCount(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount } from "mobx-react"; class C extends React.Component { componentDidMount() { window.addEventListener("resize", this.handle); disposeOnUnmount(otherStore, otherStore.dispose); } render() { return null; } }`,
+      1,
+    );
+  });
+
+  it("recognizes ownership-losing MobX and effect-wrapper expressions", () => {
+    expectDiagnosticCount(
+      mobxReactionDisposerDiscarded,
+      `import { autorun } from "mobx"; function mountFeature() { if (autorun(() => state.value)) consume(); }`,
+      1,
+    );
+    expectDiagnosticCount(
+      mobxReactionDisposerDiscarded,
+      `import { autorun } from "mobx"; function mountFeature() { autorun(() => state.value, ({ delay: 10 } satisfies IAutorunOptions)); }`,
+      1,
+    );
+    expectDiagnosticCount(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `import { useEffect } from "react"; function useForward(effect: React.EffectCallback) { useEffect(() => { void effect(); }, [effect]); }`,
+      1,
+    );
+    expectDiagnosticCount(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `import { useEffect } from "react"; function useForward(effect: React.EffectCallback) { useEffect(() => { (effect(), undefined); }, [effect]); }`,
+      1,
+    );
+  });
+
+  it("requires numeric RAF guards to make monotonic progress toward the bound", () => {
+    expectDiagnosticCount(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => { let progress = 0; function loop() { progress -= 0.1; if (progress < 1) requestAnimationFrame(loop); } requestAnimationFrame(loop); }, []);`,
+      1,
+    );
+    expectDiagnosticCount(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => { let progress = 0; function loop() { progress += 0.1; if (progress < 1) requestAnimationFrame(loop); } requestAnimationFrame(loop); }, []);`,
+      0,
+    );
+    expectDiagnosticCount(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => { const loop = (timestamp) => { const progress = Math.min(timestamp / 100, 1); if (progress < 1) requestAnimationFrame(loop); }; requestAnimationFrame(loop); }, []);`,
+      0,
     );
   });
 });

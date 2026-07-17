@@ -54,6 +54,35 @@ describe("rn-detox-missing-await", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags an action followed only by finally", () => {
+    const result = runRule(
+      rnDetoxMissingAwait,
+      `it("x", async () => { element(by.id("submit")).tap().finally(cleanup); });`,
+      { filename: "e2e/login.e2e.ts" },
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag locally shadowed Detox globals", () => {
+    const result = runRule(
+      rnDetoxMissingAwait,
+      `const element = (selector) => ({ tap: () => undefined });
+       it("x", () => { element("submit").tap(); });`,
+      { filename: "e2e/local.e2e.ts" },
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags actions through an explicit Detox import", () => {
+    const result = runRule(
+      rnDetoxMissingAwait,
+      `import { by, element } from "detox";
+       it("x", async () => { element(by.id("submit")).tap(); });`,
+      { filename: "e2e/imported.e2e.ts" },
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag matcher construction assigned to a variable", () => {
     const code = `it("x", async () => { const el = element(by.id("submit")); await el.tap(); });`;
     const result = runRule(rnDetoxMissingAwait, code, e2eFile);

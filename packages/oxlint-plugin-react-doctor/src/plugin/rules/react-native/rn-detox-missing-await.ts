@@ -1,4 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -41,9 +43,7 @@ const DETOX_ELEMENT_ACTIONS = new Set<string>([
   "adjustSliderToPosition",
 ]);
 
-// Terminal `.then`/`.catch`/`.finally` means the promise is already being
-// handled — not a missing await.
-const PROMISE_SETTLE_METHODS = new Set<string>(["then", "catch", "finally"]);
+const PROMISE_HANDLING_METHODS = new Set(["then", "catch"]);
 
 interface ChainRoot {
   readonly calleeName: string;
@@ -78,6 +78,13 @@ const isDetoxExpectSubject = (rootCall: EsTreeNodeOfType<"CallExpression">): boo
   return firstArgument.callee.name === "element" || firstArgument.callee.name === "web";
 };
 
+const isLocallyShadowedRoot = (root: ChainRoot): boolean => {
+  if (!isNodeOfType(root.rootCall.callee, "Identifier")) return false;
+  const binding = findVariableInitializer(root.rootCall.callee, root.calleeName);
+  if (!binding) return false;
+  return getImportSourceForName(root.rootCall, root.calleeName) !== "detox";
+};
+
 const getTerminalMethodName = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
 ): string | null => {
@@ -85,6 +92,23 @@ const getTerminalMethodName = (
   if (!isNodeOfType(callee, "MemberExpression")) return null;
   if (callee.computed || !isNodeOfType(callee.property, "Identifier")) return null;
   return callee.property.name;
+};
+
+const getDetoxOperationMethodName = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+): string | null => {
+  let currentCall = callExpression;
+  while (true) {
+    const methodName = getTerminalMethodName(currentCall);
+    if (methodName === null) return null;
+    if (PROMISE_HANDLING_METHODS.has(methodName)) return null;
+    if (methodName !== "finally") return methodName;
+    const callee = currentCall.callee;
+    if (!isNodeOfType(callee, "MemberExpression")) return null;
+    const receiver = stripParenExpression(callee.object);
+    if (!isNodeOfType(receiver, "CallExpression")) return null;
+    currentCall = receiver;
+  }
 };
 
 // HACK: Detox actions, `waitFor(...).…withTimeout()`, and
@@ -113,14 +137,13 @@ export const rnDetoxMissingAwait = defineRule({
         const expression = node.expression;
         // Awaited / yielded calls aren't `CallExpression` here.
         if (!isNodeOfType(expression, "CallExpression")) return;
-        const terminalMethod = getTerminalMethodName(expression);
+        const terminalMethod = getDetoxOperationMethodName(expression);
         // A bare `element(by.id('x'))` (callee is the `element` identifier,
         // no terminal method) only builds a matcher — nothing to await.
         if (terminalMethod === null) return;
-        if (PROMISE_SETTLE_METHODS.has(terminalMethod)) return;
-
         const root = findChainRoot(expression);
         if (!root) return;
+        if (isLocallyShadowedRoot(root)) return;
 
         if (root.calleeName === "element") {
           if (!DETOX_ELEMENT_ACTIONS.has(terminalMethod)) return;

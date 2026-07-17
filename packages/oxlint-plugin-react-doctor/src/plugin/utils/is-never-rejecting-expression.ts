@@ -48,9 +48,7 @@ const isDefinitelyNonThenableValue = (node: EsTreeNode): boolean => {
   if (isNodeOfType(inner, "Literal")) return true;
   if (isNodeOfType(inner, "TemplateLiteral")) return true;
   if (isNodeOfType(inner, "ArrayExpression")) {
-    return inner.elements.every(
-      (element) => element === null || !isNodeOfType(element, "SpreadElement"),
-    );
+    return true;
   }
   if (isNodeOfType(inner, "ObjectExpression")) {
     return inner.properties.every(
@@ -58,7 +56,10 @@ const isDefinitelyNonThenableValue = (node: EsTreeNode): boolean => {
         isNodeOfType(property, "Property") &&
         property.kind === "init" &&
         !property.computed &&
-        isDefinitelyNonThenableValue(property.value as EsTreeNode),
+        !(
+          (isNodeOfType(property.key, "Identifier") && property.key.name === "then") ||
+          (isNodeOfType(property.key, "Literal") && property.key.value === "then")
+        ),
     );
   }
   return false;
@@ -188,7 +189,12 @@ export const chainCarriesRejectionHandler = (node: EsTreeNode, scopes?: ScopeAna
   }
   return false;
 };
-export const isNeverRejectingHelperCall = (root: EsTreeNode, scopes?: ScopeAnalysis): boolean => {
+export const isNeverRejectingHelperCall = (
+  root: EsTreeNode,
+  scopes?: ScopeAnalysis,
+  carriesRejectionHandler: (node: EsTreeNode) => boolean = (node) =>
+    chainCarriesRejectionHandler(node, scopes),
+): boolean => {
   const inner = stripParenExpression(root);
   if (!isNodeOfType(inner, "CallExpression")) return false;
   const callee = stripParenExpression(inner.callee as EsTreeNode);
@@ -232,7 +238,7 @@ export const isNeverRejectingHelperCall = (root: EsTreeNode, scopes?: ScopeAnaly
           !isDefinitelyNonThenableValue(returned) &&
           !isPromiseResolveCall(returned, scopes) &&
           !isNonRejectingPromiseConstruction(returned, scopes) &&
-          !chainCarriesRejectionHandler(returned, scopes)
+          !carriesRejectionHandler(returned)
         ) {
           isRejectionProof = false;
         }
@@ -258,7 +264,7 @@ export const isNeverRejectingHelperCall = (root: EsTreeNode, scopes?: ScopeAnaly
     returnedExpressions.length > 0 &&
     returnedExpressions.every(
       (returned) =>
-        chainCarriesRejectionHandler(returned, scopes) ||
+        carriesRejectionHandler(returned) ||
         isPromiseResolveCall(returned, scopes) ||
         isNonRejectingPromiseConstruction(returned, scopes),
     )

@@ -8,6 +8,11 @@ Add deterministic design-quality lint rules spanning motion performance, accessi
 
 **Motion**
 
+- **`motion-create-in-render`** — Motion component factories executed during a component or custom-hook render, including synchronous iteration callbacks. Module scope, event/effect callbacks, and stable React initializers remain valid.
+- **`motion-value-constructor-in-render`** — manual `motionValue()` objects recreated during React render. Recommends `useMotionValue()` while preserving module-scope and explicitly stabilized values.
+- **`motion-use-transform-range-length`** — statically provable `useTransform()` input and output arrays with different lengths. Aliased and namespace imports are resolved; dynamic and spread-backed ranges are skipped.
+- **`motion-keyframe-times-mismatch`** — static Motion keyframe arrays whose transition `times` count does not match the keyframe count, including transition objects nested inside `animate`.
+- **`motion-value-subscription-in-render`** — `.on()` subscriptions attached to proven hook-created Motion values during render. Effect/event subscriptions and `useMotionValueEvent()` remain valid.
 - **`no-conflicting-spring-options`** — proven Motion transition objects that combine physics spring controls (`stiffness`, `damping`, or `mass`) with duration controls (`duration` or `bounce`) that Motion ignores. Handles direct and nested transition objects while skipping dynamic and spread-overridden configurations.
 - **`prefer-motion-transform-property`** — opt-in guidance for compositor-critical Motion animations that use individual transform keys instead of one directly accelerated `transform` value. Scope resolution limits findings to actual Motion components.
 - **`pointer-capture-needs-cancel-handler`** — manual intrinsic-element drags that capture their pointer and define move/up handling without a pointer-cancel or lost-capture cleanup path. Requires a proven local `event.currentTarget.setPointerCapture(event.pointerId)` call and skips spreads, custom components, nested callbacks, and uncertain handlers.
@@ -23,6 +28,7 @@ Add deterministic design-quality lint rules spanning motion performance, accessi
 - **`no-long-transition-duration`** (extended) — now covers static Motion transition objects, including nested transition configuration, while preserving perpetual loops, decorative hidden motion, dynamic values, unproven components, and duration values ignored by physics-based springs.
 - **`no-scale-from-zero`** (extended) — now covers inline transform transitions and Tailwind scale transitions in addition to proven Motion components.
 - **`no-excessive-motion-stagger`** — opt-in detection for proven Motion stagger intervals above 80 ms, including `staggerChildren` and scope-resolved `stagger()` calls used by `delayChildren`.
+- **`no-hover-only-reveal`** (extended) — now recognizes statically hidden Motion opacity states revealed by `whileHover` without an equivalent `whileFocus` state, in addition to Tailwind hover utilities.
 
 **Accessibility**
 

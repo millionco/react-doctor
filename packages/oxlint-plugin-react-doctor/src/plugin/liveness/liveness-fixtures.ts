@@ -1752,6 +1752,21 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "motion-animate-presence-wait-single-child": {
     code: 'import { AnimatePresence } from "motion/react";\nconst Stack = () => <AnimatePresence mode="wait"><Panel key="a" /><Panel key="b" /></AnimatePresence>;',
   },
+  "motion-create-in-render": {
+    code: 'import { motion } from "motion/react";\nconst Card = () => { const MotionCard = motion.create("article"); return <MotionCard />; };',
+  },
+  "motion-keyframe-times-mismatch": {
+    code: 'import { motion } from "motion/react";\nconst Fade = () => <motion.div animate={{ opacity: [0, 1, 0] }} transition={{ times: [0, 1] }} />;',
+  },
+  "motion-use-transform-range-length": {
+    code: 'import { useTransform } from "motion/react";\nconst opacity = useTransform(progress, [0, 0.5, 1], [0, 1]);',
+  },
+  "motion-value-constructor-in-render": {
+    code: 'import { motionValue } from "motion/react";\nconst Meter = ({ value }) => { const progress = motionValue(value); return <output>{progress.get()}</output>; };',
+  },
+  "motion-value-subscription-in-render": {
+    code: 'import { useMotionValue } from "motion/react";\nconst Meter = () => { const progress = useMotionValue(0); progress.on("change", console.log); return <output>{progress.get()}</output>; };',
+  },
   "no-assertive-status": {
     code: 'const Status = () => <div role="status" aria-live="assertive" />;',
   },

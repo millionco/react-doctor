@@ -144,6 +144,11 @@ import { mobxNoObserverWrappedMemo } from "./rules/mobx/mobx-no-observer-wrapped
 import { mobxReactionDisposerDiscarded } from "./rules/mobx/mobx-reaction-disposer-discarded.js";
 import { motionAnimatePresenceRequiresKey } from "./rules/correctness/motion-animate-presence-requires-key.js";
 import { motionAnimatePresenceWaitSingleChild } from "./rules/correctness/motion-animate-presence-wait-single-child.js";
+import { motionCreateInRender } from "./rules/correctness/motion-create-in-render.js";
+import { motionKeyframeTimesMismatch } from "./rules/correctness/motion-keyframe-times-mismatch.js";
+import { motionUseTransformRangeLength } from "./rules/correctness/motion-use-transform-range-length.js";
+import { motionValueConstructorInRender } from "./rules/performance/motion-value-constructor-in-render.js";
+import { motionValueSubscriptionInRender } from "./rules/correctness/motion-value-subscription-in-render.js";
 import { mouseEventsHaveKeyEvents } from "./rules/a11y/mouse-events-have-key-events.js";
 import { nextjsAsyncClientComponent } from "./rules/nextjs/nextjs-async-client-component.js";
 import { nextjsAsyncDynamicApiNotAwaited } from "./rules/nextjs/nextjs-async-dynamic-api-not-awaited.js";
@@ -2228,6 +2233,64 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...motionAnimatePresenceWaitSingleChild,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/motion-create-in-render",
+    id: "motion-create-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...motionCreateInRender,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/motion-keyframe-times-mismatch",
+    id: "motion-keyframe-times-mismatch",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...motionKeyframeTimesMismatch,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/motion-use-transform-range-length",
+    id: "motion-use-transform-range-length",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...motionUseTransformRangeLength,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/motion-value-constructor-in-render",
+    id: "motion-value-constructor-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...motionValueConstructorInRender,
+      framework: "global",
+      category: "Performance",
+      requires: [
+        ...new Set<Capability>(["react", ...(motionValueConstructorInRender.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/motion-value-subscription-in-render",
+    id: "motion-value-subscription-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...motionValueSubscriptionInRender,
       framework: "global",
       category: "Bugs",
     },

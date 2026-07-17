@@ -1,8 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getStaticMotionPropObject } from "../../utils/get-static-motion-prop-object.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 
 const getRevealKind = (utility: string): string | null => {
   if (utility === "visible") return "visibility";
@@ -62,6 +65,42 @@ const getHoverOnlyReveal = (className: string): string | null => {
   return null;
 };
 
+const getStaticOpacity = (
+  objectExpression: EsTreeNodeOfType<"ObjectExpression"> | null,
+): number | null => {
+  if (!objectExpression) return null;
+  const property = getEffectiveStyleProperty(objectExpression.properties, "opacity");
+  return property &&
+    isNodeOfType(property.value, "Literal") &&
+    typeof property.value.value === "number"
+    ? property.value.value
+    : null;
+};
+
+const hasMotionHoverOnlyReveal = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
+): boolean => {
+  const initialOpacity = getStaticOpacity(
+    getStaticMotionPropObject(node, "initial", context.scopes),
+  );
+  const animateOpacity = getStaticOpacity(
+    getStaticMotionPropObject(node, "animate", context.scopes),
+  );
+  const hoverOpacity = getStaticOpacity(
+    getStaticMotionPropObject(node, "whileHover", context.scopes),
+  );
+  const focusOpacity = getStaticOpacity(
+    getStaticMotionPropObject(node, "whileFocus", context.scopes),
+  );
+  return (
+    (initialOpacity === 0 || animateOpacity === 0) &&
+    hoverOpacity !== null &&
+    hoverOpacity > 0 &&
+    !(focusOpacity !== null && focusOpacity > 0)
+  );
+};
+
 export const noHoverOnlyReveal = defineRule({
   id: "no-hover-only-reveal",
   title: "Content is revealed only on hover",
@@ -73,6 +112,14 @@ export const noHoverOnlyReveal = defineRule({
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (hasJsxSpreadAttribute(node.attributes)) return;
+      if (hasMotionHoverOnlyReveal(node, context)) {
+        context.report({
+          node,
+          message:
+            "This Motion element reveals hidden content only on pointer hover. Add an equivalent whileFocus state and keep the action reachable on touch devices.",
+        });
+        return;
+      }
       const className = getStringFromClassNameAttr(node);
       if (!className) return;
       const revealToken = getHoverOnlyReveal(className);

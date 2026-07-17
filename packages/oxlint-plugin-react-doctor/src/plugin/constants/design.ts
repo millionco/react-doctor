@@ -108,6 +108,14 @@ export const EXCESSIVE_CARD_SURFACE_MIN_COUNT = 6;
 
 export const REPEATED_SECTION_SHELL_MIN_COUNT = 3;
 
+export const OVERLOADED_HOVER_PROPERTY_MIN_COUNT = 3;
+
+export const REPEATED_HOVER_SCALE_MIN_COUNT = 3;
+
+export const LONG_ALL_CAPS_HEADING_MIN_CHARACTERS = 24;
+
+export const EXCESSIVE_FONT_FAMILY_MIN_COUNT = 4;
+
 export const TAILWIND_TEXT_SIZE_PX = new Map([
   ["text-xs", 12],
   ["text-sm", 14],

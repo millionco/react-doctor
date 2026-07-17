@@ -50,6 +50,7 @@ Add deterministic design-quality lint rules spanning motion performance, accessi
 - **`no-nonresizable-textarea`**: opt-in detection for textareas that disable both resize axes.
 - **`form-control-requires-name`**: opt-in detection for native form controls that cannot contribute a name to form submission.
 - **`no-ungated-tailwind-animation`**: opt-in detection for continuous Tailwind animations without a reduced-motion gate.
+- **`no-transitioned-focus-ring`** — detects Tailwind focus rings or outlines whose box-shadow/outline transition delays visible keyboard focus; color-only hover transitions remain valid.
 
 **Design / Tailwind hygiene**
 
@@ -97,6 +98,15 @@ Add deterministic design-quality lint rules spanning motion performance, accessi
 - **`no-excessive-card-surfaces`** — opt-in page-level detection for six or more complete card surfaces in a static page tree.
 - **`no-repeated-section-shells`** — opt-in detection for pages that repeat the same large vertical section padding and centered max-width wrapper structure at least three times.
 - **`no-pure-black-shadow`** — opt-in detection for visible inline or Tailwind shadows colored with opaque or translucent pure black.
+- **`no-decorative-pulse`** — opt-in detection for stable text that pulses continuously outside a proven loading or progress state.
+- **`no-excessive-font-families`** — opt-in page-level detection for four or more literal font families while preserving tokenized font variables.
+- **`no-fake-browser-chrome`** — opt-in detection for framed previews that recreate empty red, yellow, and green browser controls as decoration.
+- **`no-overloaded-hover-state`** — opt-in detection for a single hover state that stacks three or more effect families such as motion, color, shadow, opacity, or filters.
+- **`no-placeholder-persona-copy`** — opt-in detection for generic sample identities rendered in top-level page copy.
+- **`no-repeated-hover-scale`** — opt-in page-level detection for the same hover scale repeated on at least three elements within one static page root.
+- **`no-tight-all-caps-heading`** — opt-in detection for long all-caps headings with a statically proven line-height below 1.0.
+- **`prefer-tabular-numeric-data`** — opt-in detection for dynamically formatted numeric table cells without inherited tabular or monospace figures.
+- **`require-autoplay-video-poster`** — opt-in detection for statically autoplaying intrinsic videos without a poster frame.
 - **`no-gradient-text`** (extended) — now recognizes Tailwind v4 linear, radial, conic, numeric-angle, and arbitrary gradient background utilities without combining utilities across variants.
 
 **HTML and component contracts**

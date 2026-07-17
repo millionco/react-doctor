@@ -1860,6 +1860,36 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-uppercase-mono-label": {
     code: 'const Label = () => <span className="font-mono uppercase tracking-widest">System online</span>;',
   },
+  "no-decorative-pulse": {
+    code: 'const Hero = () => <span className="animate-pulse">New feature</span>;',
+  },
+  "no-excessive-font-families": {
+    code: 'const Page = () => <main><h1 style={{ fontFamily: "Fraunces" }}>Title</h1><p style={{ fontFamily: "Inter" }}>Body</p><code style={{ fontFamily: "JetBrains Mono" }}>Code</code><aside style={{ fontFamily: "Caveat" }}>Note</aside></main>;',
+  },
+  "no-fake-browser-chrome": {
+    code: 'const Preview = () => <div className="overflow-hidden rounded-xl border"><div><div><span className="size-3 rounded-full bg-red-500" /><span className="size-3 rounded-full bg-yellow-500" /><span className="size-3 rounded-full bg-green-500" /></div></div></div>;',
+  },
+  "no-overloaded-hover-state": {
+    code: 'const Card = () => <article className="hover:-translate-y-1 hover:shadow-xl hover:bg-white" />;',
+  },
+  "no-placeholder-persona-copy": {
+    code: "const Page = () => <main><p>Jane Doe</p></main>;",
+  },
+  "no-repeated-hover-scale": {
+    code: 'const Grid = () => <main><article className="hover:scale-105" /><article className="hover:scale-105" /><article className="hover:scale-105" /></main>;',
+  },
+  "no-tight-all-caps-heading": {
+    code: 'const Hero = () => <h1 className="uppercase leading-none">Infrastructure for every engineering team</h1>;',
+  },
+  "no-transitioned-focus-ring": {
+    code: 'const Button = () => <button className="transition-shadow focus-visible:ring-2">Save</button>;',
+  },
+  "prefer-tabular-numeric-data": {
+    code: "const Row = ({ total }) => <tr><td>{total.toLocaleString()}</td></tr>;",
+  },
+  "require-autoplay-video-poster": {
+    code: 'const Hero = () => <video autoPlay muted src="/demo.mp4" />;',
+  },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',
   },

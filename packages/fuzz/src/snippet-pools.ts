@@ -671,6 +671,16 @@ export const JSX_LEAF_POOL = [
   `<main><section className="rounded-xl border p-6">A</section><section className="rounded-xl border p-6">B</section><section className="rounded-xl border p-6">C</section><section className="rounded-xl border p-6">D</section><section className="rounded-xl border p-6">E</section><section className="rounded-xl border p-6">F</section></main>`,
   `<main><section className="py-20"><div className="mx-auto max-w-6xl">A</div></section><section className="py-24"><div className="mx-auto max-w-6xl">B</div></section><section className="py-20"><div className="mx-auto max-w-6xl">C</div></section></main>`,
   `<div style={{ boxShadow: "0 10px 30px #000" }} />`,
+  `<span className="animate-pulse">New feature</span>`,
+  `<main><h1 style={{ fontFamily: "Fraunces" }}>Title</h1><p style={{ fontFamily: "Inter" }}>Body</p><code style={{ fontFamily: "JetBrains Mono" }}>Code</code><aside style={{ fontFamily: "Caveat" }}>Note</aside></main>`,
+  `<div className="overflow-hidden rounded-xl border"><div><div><span className="size-3 rounded-full bg-red-500" /><span className="size-3 rounded-full bg-yellow-500" /><span className="size-3 rounded-full bg-green-500" /></div></div></div>`,
+  `<article className="hover:-translate-y-1 hover:shadow-xl hover:bg-white" />`,
+  `<main><p>Jane Doe</p></main>`,
+  `<main><article className="hover:scale-105" /><article className="hover:scale-105" /><article className="hover:scale-105" /></main>`,
+  `<h1 className="uppercase leading-none">Infrastructure for every engineering team</h1>`,
+  `<button className="transition-shadow focus-visible:ring-2">Save</button>`,
+  `<table><tbody><tr><td>{Number(value).toLocaleString()}</td></tr></tbody></table>`,
+  `<video autoPlay muted src="/demo.mp4" />`,
 ] as const;
 
 // Rare-but-parseable weirdness kept from the original generator, plus

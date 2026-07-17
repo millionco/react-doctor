@@ -4,6 +4,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
@@ -96,26 +97,27 @@ const isFixedLengthArrayConstruction = (expression: EsTreeNode, scopes: ScopeAna
 };
 
 const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const stripped = stripParenExpression(expression);
-  if (isFixedLengthArrayConstruction(stripped, scopes)) return true;
-  if (!isNodeOfType(stripped, "CallExpression")) return false;
-  const callee = stripParenExpression(stripped.callee);
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  if (
-    isNodeOfType(callee.object, "Identifier") &&
-    callee.object.name === "Array" &&
-    scopes.isGlobalReference(callee.object) &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === "from"
-  ) {
-    const sourceArgument = stripped.arguments[0];
-    return isAstNode(sourceArgument) && isFixedLengthArrayConstruction(sourceArgument, scopes);
+  let currentExpression = stripParenExpression(expression);
+  while (!isFixedLengthArrayConstruction(currentExpression, scopes)) {
+    if (!isNodeOfType(currentExpression, "CallExpression")) return false;
+    const callee = stripParenExpression(currentExpression.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return false;
+    const methodName = getStaticPropertyName(callee);
+    if (
+      isNodeOfType(callee.object, "Identifier") &&
+      callee.object.name === "Array" &&
+      scopes.isGlobalReference(callee.object) &&
+      methodName === "from"
+    ) {
+      const sourceArgument = currentExpression.arguments[0];
+      if (!isAstNode(sourceArgument)) return false;
+      currentExpression = stripParenExpression(sourceArgument);
+      continue;
+    }
+    if (!methodName || !NON_GROWING_ARRAY_METHOD_NAMES.has(methodName)) return false;
+    currentExpression = stripParenExpression(callee.object);
   }
-  return (
-    isNodeOfType(callee.property, "Identifier") &&
-    NON_GROWING_ARRAY_METHOD_NAMES.has(callee.property.name) &&
-    isFixedLengthArrayConstruction(callee.object, scopes)
-  );
+  return true;
 };
 
 // The empirical false-positive pattern is spreading the accumulator over a

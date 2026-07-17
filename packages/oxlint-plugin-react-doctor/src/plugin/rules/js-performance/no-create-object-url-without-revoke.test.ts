@@ -227,6 +227,45 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when helper results are stored directly in a module cache", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const renderPreview = (blob) => URL.createObjectURL(blob);
+       const cachePreview = async (blob, id) => {
+         previewCache.set(id, await renderPreview(blob));
+         previewCache.set(id + '-sync', renderPreview(blob));
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for Set caches and statically computed cache stores", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Set();
+       const renderPreview = (blob) => URL.createObjectURL(blob);
+       const cachePreview = (blob) => {
+         (previewCache as Set<string>)[\`add\`](renderPreview(blob));
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a reassigned module cache binding", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `let previewCache = new Map();
+       const renderPreview = (blob) => URL.createObjectURL(blob);
+       previewCache = getCustomStore();
+       const cachePreview = (blob, id) => {
+         previewCache.set(id, renderPreview(blob));
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags escaped object URLs through TypeScript expression wrappers", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
@@ -78,9 +79,17 @@ const CACHE_COLLECTION_CONSTRUCTOR_NAMES = new Set(["Map", "Set"]);
 const CACHE_STORE_METHOD_NAMES = new Set(["add", "set"]);
 
 const isModuleScopeCacheReference = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  if (!isNodeOfType(node, "Identifier")) return false;
-  const symbol = scopes.symbolFor(node);
-  if (!symbol || symbol.scope.kind !== "module" || !/cache/i.test(symbol.name)) return false;
+  const cacheReference = stripParenExpression(node);
+  if (!isNodeOfType(cacheReference, "Identifier")) return false;
+  const symbol = scopes.symbolFor(cacheReference);
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    symbol.scope.kind !== "module" ||
+    !/cache/i.test(symbol.name)
+  ) {
+    return false;
+  }
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
   return Boolean(
     initializer &&
@@ -97,29 +106,37 @@ const isCacheStoreOfExpression = (
   scopes: ScopeAnalysis,
 ): boolean => {
   const callee = stripParenExpression(call.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const storeMethodName = getStaticPropertyName(callee);
   if (
-    !isNodeOfType(callee, "MemberExpression") ||
-    callee.computed ||
-    !isNodeOfType(callee.property, "Identifier") ||
-    !CACHE_STORE_METHOD_NAMES.has(callee.property.name) ||
+    !storeMethodName ||
+    !CACHE_STORE_METHOD_NAMES.has(storeMethodName) ||
     !isModuleScopeCacheReference(callee.object, scopes)
   ) {
     return false;
   }
-  const storedArgument = callee.property.name === "set" ? call.arguments[1] : call.arguments[0];
-  if (!storedArgument || !isNodeOfType(expression, "Identifier")) return false;
+  const storedArgument = storeMethodName === "set" ? call.arguments[1] : call.arguments[0];
+  if (!storedArgument) return false;
   const storedExpression = stripParenExpression(storedArgument);
+  const candidateExpression = stripParenExpression(expression);
+  if (storedExpression === candidateExpression) return true;
   return (
+    isNodeOfType(candidateExpression, "Identifier") &&
     isNodeOfType(storedExpression, "Identifier") &&
-    scopes.symbolFor(storedExpression) === scopes.symbolFor(expression)
+    scopes.symbolFor(storedExpression) === scopes.symbolFor(candidateExpression)
   );
 };
 
-const findBoundCallResult = (call: EsTreeNode): EsTreeNode | null => {
+const findCallResultExpression = (call: EsTreeNode): EsTreeNode => {
   let resultExpression = findTransparentExpressionRoot(call);
   if (resultExpression.parent && isNodeOfType(resultExpression.parent, "AwaitExpression")) {
     resultExpression = findTransparentExpressionRoot(resultExpression.parent);
   }
+  return resultExpression;
+};
+
+const findBoundCallResult = (call: EsTreeNode): EsTreeNode | null => {
+  const resultExpression = findCallResultExpression(call);
   const consumer = resultExpression.parent;
   if (
     !consumer ||
@@ -165,17 +182,13 @@ const moduleCachesEveryReturnedResult = (
       return;
     }
     didFindCall = true;
-    const resultBinding = findBoundCallResult(child);
-    if (!resultBinding) {
-      didFindUncachedCall = true;
-      return false;
-    }
+    const resultExpression = findBoundCallResult(child) ?? findCallResultExpression(child);
     let didCacheResult = false;
     walkAst(programRoot, (candidate) => {
       if (didCacheResult) return false;
       if (
         isNodeOfType(candidate, "CallExpression") &&
-        isCacheStoreOfExpression(candidate, resultBinding, scopes)
+        isCacheStoreOfExpression(candidate, resultExpression, scopes)
       ) {
         didCacheResult = true;
         return false;

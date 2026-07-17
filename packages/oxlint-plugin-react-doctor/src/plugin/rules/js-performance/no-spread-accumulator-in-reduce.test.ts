@@ -367,10 +367,51 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag chained non-growing methods on a fixed-length Array construction", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const out = Array.from(Array(4))
+         .fill(null)
+         .map((item) => item)
+         .reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("supports statically computed non-growing Array methods", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const out = Array["from"](Array(4))["fill"](null)[\`map\`]((item) => item)
+         .reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a growing method on a fixed-length Array construction", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
       "const out = Array(4).concat(items).reduce((acc, item) => [...acc, item], []);",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags growing methods after a bounded Array chain", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const concatenated = Array(4).fill(null).concat(items)
+         .reduce((acc, item) => [...acc, item], []);
+       const flattened = Array(4).fill(null).flatMap(() => items)
+         .reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not trust a shadowed Array constructor", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const Array = createArrayFactory();
+       const out = Array(4).fill(null).reduce((acc, item) => [...acc, item], []);`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

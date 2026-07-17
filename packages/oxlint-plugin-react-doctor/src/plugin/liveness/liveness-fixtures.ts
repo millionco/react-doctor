@@ -513,6 +513,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-adjust-state-on-prop-change": {
     code: 'function Field({ value }) {\n        const [draft, setDraft] = useState("");\n        useEffect(() => {\n          setDraft(value);\n        }, [value]);\n        return <input value={draft} />;\n      }',
   },
+  "no-arbitrary-px-font-size": {
+    code: 'const Label = () => <p className="text-[13px]">Status</p>;',
+  },
   "no-aria-hidden-on-focusable": {
     code: 'export const A = () => <button aria-hidden={true} type="button">x</button>;',
   },
@@ -527,6 +530,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-autofocus": {
     code: "export const SearchPage = () => (\n        <main>\n          <input autoFocus />\n        </main>\n      );",
+  },
+  "no-autoplay-without-muted": {
+    code: 'const Hero = () => <video autoPlay loop src="/hero.mp4" />;',
   },
   "no-call-component-as-function": {
     code: "\n      const Row = ({ item }) => <li>{item}</li>;\n      const List = ({ items }) => (\n        <ul>{items.map((item) => Row({ item }))}</ul>\n      );\n      ",
@@ -562,6 +568,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-default-props": {
     code: "export const Link = (props) => <a {...props} />;\nLink.defaultProps = { appearance: 'default', size: 'regular', disabled: false };",
+  },
+  "no-deprecated-tailwind-class": {
+    code: 'const Gradient = () => <div className="bg-gradient-to-r from-black to-white" />;',
   },
   "no-derived-state": {
     code: 'function Profile({ firstName, lastName }) {\n        const [fullName, setFullName] = useState("");\n        useEffect(() => {\n          setFullName(`${firstName} ${lastName}`);\n        }, [firstName, lastName]);\n        return <p>{fullName}</p>;\n      }',
@@ -633,6 +642,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-full-lodash-import": {
     code: '\n      import _ from "lodash";\n      export const chunked = _.chunk([1, 2, 3], 2);\n    ',
+  },
+  "no-full-viewport-width": {
+    code: 'const Page = () => <main className="w-screen" />;',
   },
   "no-generic-handler-names": {
     code: "const El = () => <button onClick={handleClick}>Go</button>;",
@@ -719,6 +731,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-long-transition-duration": {
     code: 'const S = () => <div style={{ transition: "width 2s ease" }} />;',
+  },
+  "no-low-contrast-inline-style": {
+    code: 'const Balance = () => <span style={{ color: "#9ca3af", backgroundColor: "#ffffff", fontSize: 16 }}>Balance</span>;',
   },
   "no-match-media-in-state-initializer": {
     code: 'import { useState } from "react";\nuseState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);',
@@ -814,6 +829,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-react19-deprecated-apis": {
     code: 'import * as React from "react";\nconst Button = React.createFactory("button");\nvoid Button;',
   },
+  "no-redundant-display-class": {
+    code: 'const Card = () => <div className="block rounded-lg" />;',
+  },
   "no-redundant-roles": {
     code: 'const Nav = () => <nav role="navigation" />;',
   },
@@ -869,9 +887,18 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "\n              var Hello = createReactClass({\n                componentDidMount: function() {\n                  var component = this.refs.hello;\n                },\n                render: function() {\n                  return <div>Hello {this.props.name}</div>;\n                }\n              });\n            ",
     forceJsx: true,
   },
+  "no-svg-currentcolor-with-fill-class": {
+    code: 'const Icon = () => <svg fill="currentColor" className="fill-zinc-400" />;',
+  },
   "no-sync-xhr": {
     code: 'const xhr = new XMLHttpRequest();\nxhr.open("GET", url, false);\nxhr.send(null);',
     filePath: "/repo/src/lib/fetch-sync.ts",
+  },
+  "no-tailwind-layout-transition": {
+    code: 'const Drawer = () => <div className="transition-[height] duration-300" />;',
+  },
+  "no-target-blank-without-rel": {
+    code: 'const Docs = () => <a href="/docs" target="_blank">Docs</a>;',
   },
   "no-this-in-sfc": {
     code: "const Foo = (props) => <span>{this.props.foo}</span>",
@@ -889,6 +916,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-unguarded-browser-global-in-render-or-hook-init": {
     code: '"use client";\nexport const Page = () => <main>{window.innerWidth}</main>;',
     filePath: "app/page.tsx",
+  },
+  "no-uninformative-aria-label": {
+    code: 'const Search = () => <button aria-label="icon"><svg /></button>;',
   },
   "no-undeferred-third-party": {
     code: 'const W = () => <script src="https://cdn.example.com/w.js" />;',
@@ -964,6 +994,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "preact-prefer-oninput": {
     code: '\n      import { useState } from "preact/hooks";\n\n      const Search = () => {\n        const [query, setQuery] = useState("");\n        return <input type="text" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />;\n      };\n      ',
   },
+  "prefer-dvh-over-vh": {
+    code: 'const Page = () => <main className="min-h-screen" />;',
+  },
   "prefer-dynamic-import": {
     code: '\n      import { Chart } from "chart.js";\n      Chart.register();\n    ',
   },
@@ -992,6 +1025,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "prefer-tag-over-role": {
     code: 'const Nav = () => <div role="navigation" />;',
+  },
+  "prefer-truncate-shorthand": {
+    code: 'const Name = () => <span className="overflow-hidden text-ellipsis whitespace-nowrap">Name</span>;',
   },
   "prefer-use-effect-event": {
     code: 'import { useEffect } from "react";\nconst Chat = ({ roomId, onMessage }) => {\n  useEffect(() => {\n    const socket = connect(roomId);\n    socket.on("message", (msg) => onMessage(msg));\n    return () => socket.close();\n  }, [roomId, onMessage]);\n  return null;\n};',

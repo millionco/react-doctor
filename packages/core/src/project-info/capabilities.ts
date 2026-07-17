@@ -117,10 +117,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
     if (isMajorMinorAtLeast(tailwindVersion, { major: 3, minor: 4 })) {
       capabilities.add("tailwind:3.4");
     }
-    if (
-      tailwindVersion !== null &&
-      isMajorMinorAtLeast(tailwindVersion, { major: 4, minor: 0 })
-    ) {
+    if (tailwindVersion !== null && isMajorMinorAtLeast(tailwindVersion, { major: 4, minor: 0 })) {
       capabilities.add("tailwind:4");
     }
   }

@@ -811,6 +811,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-react-dom-deprecated-apis": {
     code: 'import { render } from "react-dom";\nrender(null, document.getElementById("root"));',
   },
+  "no-ref-callback-cleanup-before-react-19": {
+    code: "const Component = ({ release }) => <div ref={(node) => () => release(node)} />;",
+    forceJsx: true,
+  },
   "no-react19-deprecated-apis": {
     code: 'import * as React from "react";\nconst Button = React.createFactory("button");\nvoid Button;',
   },

@@ -18,9 +18,12 @@ export const noDerivedStateEffect = defineRule({
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
-      const derivedWrite = collectEffectStateWriteFacts(analysis, node, context.filename).find(
-        (fact) => fact.isRenderKnownCopy && !fact.resetsSourceState,
-      );
+      const derivedWrite = collectEffectStateWriteFacts(
+        analysis,
+        context,
+        node,
+        context.filename,
+      ).find((fact) => fact.isRenderKnownCopy && !fact.resetsSourceState);
       if (!derivedWrite) return;
       context.report({
         node,

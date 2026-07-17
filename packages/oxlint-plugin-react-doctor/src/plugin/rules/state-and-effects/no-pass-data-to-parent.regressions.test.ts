@@ -1398,6 +1398,98 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("preserves a parent callback passed directly to React useEffectEvent", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useEffect, useEffectEvent } from "react";
+        function PhoneInput({ onChange, withCountryMeta }) {
+          const notify = useEffectEvent(onChange);
+          useEffect(() => {
+            const data = buildPhoneData(withCountryMeta);
+            notify(data);
+          }, [withCountryMeta]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("preserves a parent member callback passed directly to React.useEffectEvent", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import * as React from "react";
+        function PhoneInput(props) {
+          const notify = React.useEffectEvent(props.onChange);
+          React.useEffect(() => {
+            notify(buildValue());
+          }, [buildValue]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("preserves a parent callback passed directly to React useCallback", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useCallback, useEffect } from "react";
+        function PhoneInput({ onChange }) {
+          const notify = useCallback(onChange, [onChange]);
+          useEffect(() => {
+            notify(buildPhoneData());
+          }, [notify]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("does not trust userland or imported useEffectEvent lookalikes", () => {
+      const localResult = runRule(
+        noPassDataToParent,
+        `function useEffectEvent(callback) {
+          return callback;
+        }
+        function PhoneInput({ onChange, phoneNumber }) {
+          const notify = useEffectEvent(onChange);
+          useEffect(() => notify(phoneNumber), [notify, phoneNumber]);
+          return null;
+        }`,
+      );
+      const importedResult = runRule(
+        noPassDataToParent,
+        `import { useEffectEvent } from "effect-event-polyfill";
+        function PhoneInput({ onChange, phoneNumber }) {
+          const notify = useEffectEvent(onChange);
+          useEffect(() => notify(phoneNumber), [notify, phoneNumber]);
+          return null;
+        }`,
+      );
+      expect(localResult.parseErrors).toEqual([]);
+      expect(importedResult.parseErrors).toEqual([]);
+      expect(localResult.diagnostics).toEqual([]);
+      expect(importedResult.diagnostics).toEqual([]);
+    });
+
+    it("does not preserve direct wrapper provenance through a mutable callback alias", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useEffect, useEffectEvent } from "react";
+        function PhoneInput({ onChange, phoneNumber }) {
+          let callback = onChange;
+          callback = log;
+          const notify = useEffectEvent(callback);
+          useEffect(() => notify(phoneNumber), [notify, phoneNumber]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("stays silent for DOM refs and callback object bags", () => {
       const result = runRule(
         noPassDataToParent,

@@ -2120,6 +2120,217 @@ describe("react-builtins/exhaustive-deps — upstream disable-comment suppressio
     });
   });
 
+  describe("render-derived dependency equivalence", () => {
+    it("accepts a directly called pure helper derived from the listed dependency", () => {
+      const code = `
+        import { useMemo } from "react";
+        const BREAK_POINTS = { md: "768px" };
+        function Sidebar({ breakPoint }) {
+          const getBreakpointValue = () => {
+            if (!breakPoint) return undefined;
+            if (breakPoint === "all") return "screen";
+            if (breakPoint in BREAK_POINTS) {
+              return \`(max-width: \${BREAK_POINTS[breakPoint]})\`;
+            }
+            return \`(max-width: \${breakPoint})\`;
+          };
+          return useMemo(() => getBreakpointValue(), [breakPoint]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("keeps an independently captured helper input reportable", () => {
+      const code = `
+        import { useMemo } from "react";
+        function Sidebar({ breakPoint, unit }) {
+          const getBreakpointValue = () => \`(max-width: \${breakPoint}\${unit})\`;
+          return useMemo(() => getBreakpointValue(), [breakPoint]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("unit");
+    });
+
+    it("keeps a helper passed by identity reportable", () => {
+      const code = `
+        import { useMemo } from "react";
+        function Sidebar({ breakPoint }) {
+          const getBreakpointValue = () => String(breakPoint);
+          return useMemo(() => register(getBreakpointValue), [breakPoint]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("getBreakpointValue");
+    });
+
+    it("keeps a side-effecting helper reportable", () => {
+      const code = `
+        import { useMemo } from "react";
+        function Sidebar({ breakPoint }) {
+          const getBreakpointValue = () => {
+            analytics.track(breakPoint);
+            return String(breakPoint);
+          };
+          return useMemo(() => getBreakpointValue(), [breakPoint]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("getBreakpointValue");
+    });
+
+    it("accepts a conditionally assigned local derived from the listed dependency", () => {
+      const code = `
+        import { useEffect, useState } from "react";
+        function Image({ value, thingError }) {
+          let valueError;
+          if (!value) {
+            valueError = new Error("No value found for property.");
+          }
+          const [, setError] = useState();
+          useEffect(() => {
+            setError(thingError ?? valueError);
+          }, [thingError, value]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("keeps an independent conditional assignment input reportable", () => {
+      const code = `
+        import { useEffect, useState } from "react";
+        function Image({ value, retryError }) {
+          let valueError;
+          if (!value) valueError = new Error("No value found for property.");
+          if (retryError) valueError = retryError;
+          const [, setError] = useState();
+          useEffect(() => {
+            setError(valueError);
+          }, [value]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("retryError");
+    });
+
+    it("keeps nested computed-member inputs reportable", () => {
+      const code = `
+        import { useEffect } from "react";
+        function Picker({ enabled, items, index, consume }) {
+          let selectedName;
+          if (enabled) selectedName = items[index].name;
+          useEffect(() => {
+            consume(selectedName);
+          }, [enabled, items, consume]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("selectedName");
+    });
+
+    it("keeps destructured source bindings reportable", () => {
+      const code = `
+        import { useEffect } from "react";
+        function Picker({ enabled, record, consume }) {
+          const { selectedName } = record;
+          let derivedName;
+          if (enabled) derivedName = selectedName;
+          useEffect(() => {
+            consume(derivedName);
+          }, [enabled, record, consume]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("selectedName");
+    });
+
+    it("keeps nested mutable-local writes reportable", () => {
+      const code = `
+        import { useEffect } from "react";
+        function Image({ value, setError }) {
+          let valueError;
+          const updateError = () => {
+            if (!value) valueError = new Error("No value found for property.");
+          };
+          useEffect(() => {
+            updateError();
+            setError(valueError);
+          }, [value]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+
+    it("keeps render-time mutable-local escapes reportable", () => {
+      const code = `
+        import { useEffect } from "react";
+        function Image({ value, retryError, setError }) {
+          let valueError;
+          if (!value) valueError = new Error("No value found for property.");
+          attachRetryError(valueError, retryError);
+          useEffect(() => {
+            setError(valueError);
+          }, [value]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+
+    it("keeps nested render-time mutable-local escapes reportable", () => {
+      const code = `
+        import { useEffect } from "react";
+        function Image({ value, retryError, setError }) {
+          let valueError;
+          if (!value) valueError = new Error("No value found for property.");
+          (() => attachRetryError(valueError, retryError))();
+          useEffect(() => {
+            setError(valueError);
+          }, [value]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+
+    it("keeps mutable initial-state expressions reportable", () => {
+      const code = `
+        import { useEffect, useState } from "react";
+        function Image({ value, retryError, setError }) {
+          let valueError;
+          if (!value) valueError = new Error("No value found for property.");
+          useState((valueError.retry = retryError));
+          useEffect(() => {
+            setError(valueError);
+          }, [value]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+  });
+
   it("does not suppress a report on a different line than the disable comment", () => {
     const code = [
       "function MyComponent({ autoStart, other }) {",

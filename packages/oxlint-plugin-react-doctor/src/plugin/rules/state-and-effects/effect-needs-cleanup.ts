@@ -2320,9 +2320,15 @@ const doesReleaseCallMatchUsage = (
       : callNode.arguments?.[1];
     if (!releaseHandler) return releaseVerbName === "off";
     const expectedHandlerKey = usesUnaryListenerSignature ? usage.eventKey : usage.handlerKey;
+    const registrationHandler = isNodeOfType(usage.node, "CallExpression")
+      ? usage.node.arguments?.[usesUnaryListenerSignature ? 0 : 1]
+      : null;
     return (
-      expectedHandlerKey !== null &&
-      resolveExpressionKey(releaseHandler, context) === expectedHandlerKey
+      (expectedHandlerKey !== null &&
+        resolveExpressionKey(releaseHandler, context) === expectedHandlerKey) ||
+      (registrationHandler !== null &&
+        resolveStableValue(releaseHandler, context) ===
+          resolveStableValue(registrationHandler, context))
     );
   }
   if (releaseVerbName === "unobserve" && usage.eventKey !== null) {
@@ -2691,6 +2697,72 @@ const isRetainedDisposerRefRelease = (
   );
 };
 
+const isSelfReleasingListenerRelease = (
+  releaseNode: EsTreeNode,
+  releaseFunction: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (
+    usage.kind !== "subscribe" ||
+    usage.registrationVerbName !== "addEventListener" ||
+    usage.receiverKey === null ||
+    usage.eventKey === null ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    !isFunctionLike(releaseFunction) ||
+    releaseFunction.async ||
+    releaseFunction.generator ||
+    !isNodeOfType(releaseFunction.body, "BlockStatement") ||
+    !doMatchingNodesCoverEveryPathFromFunctionEntry(releaseFunction, [releaseNode], context)
+  ) {
+    return false;
+  }
+  const registrationCapture = resolveEventListenerCapture(usage.node.arguments?.[2], {
+    allowIndeterminateEntries: true,
+  });
+  const releaseCall = isNodeOfType(releaseNode, "ChainExpression")
+    ? releaseNode.expression
+    : releaseNode;
+  if (!isNodeOfType(releaseCall, "CallExpression")) return false;
+  const releaseCapture = resolveEventListenerCapture(releaseCall.arguments?.[2], {
+    allowIndeterminateEntries: true,
+  });
+  if (
+    registrationCapture === null ||
+    releaseCapture === null ||
+    registrationCapture !== releaseCapture
+  ) {
+    return false;
+  }
+  const ownerFunction = findEnclosingFunction(releaseFunction);
+  if (!ownerFunction || !isFunctionLike(ownerFunction)) return false;
+  const triggerRegistrations: EsTreeNode[] = [];
+  walkAst(ownerFunction.body, (child: EsTreeNode) => {
+    if (child !== ownerFunction.body && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const registrationDetails = getCallRegistrationDetails(child, context);
+    if (
+      registrationDetails.registrationVerbName === "addEventListener" &&
+      registrationDetails.receiverKey === usage.receiverKey &&
+      resolveStableValue(child.arguments?.[1], context) === releaseFunction
+    ) {
+      triggerRegistrations.push(child);
+    }
+  });
+  if (triggerRegistrations.some((triggerRegistration) => triggerRegistration === usage.node)) {
+    return true;
+  }
+  return (
+    doMatchingNodesCoverEveryPathAfterUsage(usage.node, triggerRegistrations, context) ||
+    doMatchingNodesCoverEveryPathBeforeUsage(
+      usage.node,
+      triggerRegistrations,
+      ownerFunction,
+      context,
+    )
+  );
+};
+
 const isReleaseReachableForUsage = (
   releaseNode: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -2710,6 +2782,7 @@ const isReleaseReachableForUsage = (
   ) {
     return isReactRefCallbackCleanupOwnedByEffect(usageFunction, releaseFunction, usage, context);
   }
+  if (isSelfReleasingListenerRelease(releaseNode, releaseFunction, usage, context)) return true;
   return isPotentiallyReachableFunction(releaseFunction, context);
 };
 

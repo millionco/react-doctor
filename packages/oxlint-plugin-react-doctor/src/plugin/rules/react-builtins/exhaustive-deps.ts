@@ -9,6 +9,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findForwardedFreshHookDependencies } from "../../utils/find-forwarded-fresh-hook-dependencies.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
@@ -396,7 +398,10 @@ const collectCaptureDepKeys = (
         keys.add(depKey);
         continue;
       }
-      const identitySourceKeys = resolveReactiveIdentitySourceKeys(symbol, scopes);
+      const identitySourceKeys =
+        resolvePureCalledFunctionSourceKeys(reference, symbol, scopes) ??
+        resolveRenderDerivedMutableSourceKeys(reference, symbol, scopes) ??
+        resolveReactiveIdentitySourceKeys(symbol, scopes);
       if (identitySourceKeys) {
         if (identitySourceKeys.size === 0) stableCapturedNames.add(depKey);
         for (const identitySourceKey of identitySourceKeys) keys.add(identitySourceKey);
@@ -550,6 +555,303 @@ const resolveReactiveIdentitySourceKeys = (
     return null;
   }
   return resolveIdentitySourceKeysFromExpression(symbol.initializer, scopes, new Set([symbol.id]));
+};
+
+const isPureDerivedExpression = (expression: EsTreeNode): boolean => {
+  const candidate = unwrapExpression(expression);
+  if (isNodeOfType(candidate, "Literal") || isNodeOfType(candidate, "Identifier")) return true;
+  if (isNodeOfType(candidate, "MemberExpression")) {
+    return (
+      isPureDerivedExpression(candidate.object) &&
+      (!candidate.computed || isPureDerivedExpression(candidate.property))
+    );
+  }
+  if (isNodeOfType(candidate, "BinaryExpression") || isNodeOfType(candidate, "LogicalExpression")) {
+    return isPureDerivedExpression(candidate.left) && isPureDerivedExpression(candidate.right);
+  }
+  if (isNodeOfType(candidate, "UnaryExpression")) {
+    return candidate.operator !== "delete" && isPureDerivedExpression(candidate.argument);
+  }
+  if (isNodeOfType(candidate, "ConditionalExpression")) {
+    return (
+      isPureDerivedExpression(candidate.test) &&
+      isPureDerivedExpression(candidate.consequent) &&
+      isPureDerivedExpression(candidate.alternate)
+    );
+  }
+  if (isNodeOfType(candidate, "TemplateLiteral")) {
+    return candidate.expressions.every((nestedExpression) =>
+      isPureDerivedExpression(nestedExpression),
+    );
+  }
+  return false;
+};
+
+const isPureDerivedStatement = (statement: EsTreeNode): boolean => {
+  if (isNodeOfType(statement, "BlockStatement")) {
+    return statement.body.every((nestedStatement) => isPureDerivedStatement(nestedStatement));
+  }
+  if (isNodeOfType(statement, "ReturnStatement")) {
+    return !statement.argument || isPureDerivedExpression(statement.argument);
+  }
+  if (isNodeOfType(statement, "IfStatement")) {
+    return (
+      isPureDerivedExpression(statement.test) &&
+      isPureDerivedStatement(statement.consequent) &&
+      (!statement.alternate || isPureDerivedStatement(statement.alternate))
+    );
+  }
+  return false;
+};
+
+const isPureDerivedFunction = (functionNode: EsTreeNode): boolean => {
+  if (
+    !isNodeOfType(functionNode, "FunctionDeclaration") &&
+    !isNodeOfType(functionNode, "FunctionExpression") &&
+    !isNodeOfType(functionNode, "ArrowFunctionExpression")
+  ) {
+    return false;
+  }
+  if (functionNode.async || functionNode.generator) return false;
+  return isNodeOfType(functionNode.body, "BlockStatement")
+    ? isPureDerivedStatement(functionNode.body)
+    : isPureDerivedExpression(functionNode.body);
+};
+
+const resolvePureCalledFunctionSourceKeys = (
+  reference: ReferenceDescriptor,
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): Set<string> | null => {
+  if (symbol.references.some((symbolReference) => symbolReference.flag !== "read")) return null;
+  const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+  const callExpression = referenceRoot.parent;
+  if (!isNodeOfType(callExpression, "CallExpression") || callExpression.callee !== referenceRoot) {
+    return null;
+  }
+  const functionNode = getFunctionValueNode(symbol);
+  if (!functionNode || !isPureDerivedFunction(functionNode)) return null;
+  const sourceKeys = new Set<string>();
+  for (const capturedReference of closureCaptures(functionNode, scopes)) {
+    const capturedSymbol = capturedReference.resolvedSymbol;
+    if (!capturedSymbol || capturedSymbol.id === symbol.id) continue;
+    if (isOutsideAllFunctions(capturedSymbol) || symbolHasStableValue(capturedSymbol, scopes)) {
+      continue;
+    }
+    const capturedKey = computeDepKey(capturedReference);
+    if (!capturedKey) return null;
+    if (capturedKey === capturedSymbol.name) {
+      const nestedSourceKeys = resolveReactiveIdentitySourceKeys(capturedSymbol, scopes);
+      if (nestedSourceKeys) {
+        for (const nestedSourceKey of nestedSourceKeys) sourceKeys.add(nestedSourceKey);
+        continue;
+      }
+    }
+    sourceKeys.add(capturedKey);
+  }
+  return sourceKeys.size > 0 ? sourceKeys : null;
+};
+
+const mergeDerivedExpressionSourceKeys = (
+  expressions: ReadonlyArray<EsTreeNode>,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number>,
+): Set<string> | null => {
+  const sourceKeys = new Set<string>();
+  for (const expression of expressions) {
+    const expressionSourceKeys = resolveDerivedExpressionSourceKeys(
+      expression,
+      scopes,
+      visitedSymbolIds,
+    );
+    if (!expressionSourceKeys) return null;
+    for (const expressionSourceKey of expressionSourceKeys) sourceKeys.add(expressionSourceKey);
+  }
+  return sourceKeys;
+};
+
+const resolveDerivedExpressionSourceKeys = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number>,
+): Set<string> | null => {
+  const candidate = unwrapExpression(expression);
+  if (isNodeOfType(candidate, "Literal")) return new Set();
+  if (isNodeOfType(candidate, "Identifier")) {
+    if (scopes.isGlobalReference(candidate)) return new Set();
+    const sourceSymbol = scopes.symbolFor(candidate);
+    if (!sourceSymbol) return null;
+    if (isOutsideAllFunctions(sourceSymbol) || symbolHasStableValue(sourceSymbol, scopes)) {
+      return new Set();
+    }
+    if (
+      sourceSymbol.kind === "const" &&
+      sourceSymbol.initializer &&
+      isNodeOfType(sourceSymbol.declarationNode, "VariableDeclarator") &&
+      sourceSymbol.declarationNode.id === sourceSymbol.bindingIdentifier &&
+      sourceSymbol.references.every((sourceReference) => sourceReference.flag === "read") &&
+      !visitedSymbolIds.has(sourceSymbol.id)
+    ) {
+      visitedSymbolIds.add(sourceSymbol.id);
+      const sourceKeys = resolveDerivedExpressionSourceKeys(
+        sourceSymbol.initializer,
+        scopes,
+        visitedSymbolIds,
+      );
+      visitedSymbolIds.delete(sourceSymbol.id);
+      if (sourceKeys) return sourceKeys;
+    }
+    return new Set([sourceSymbol.name]);
+  }
+  if (isNodeOfType(candidate, "MemberExpression")) {
+    if (hasComputedMemberExpression(candidate)) return null;
+    const sourceKey = stringifyMemberChain(candidate);
+    const rootIdentifier = getMemberRootIdentifier(candidate);
+    const rootSymbol = rootIdentifier ? scopes.symbolFor(rootIdentifier) : null;
+    if (!sourceKey || !rootSymbol) return null;
+    if (isOutsideAllFunctions(rootSymbol) || symbolHasStableValue(rootSymbol, scopes)) {
+      return new Set();
+    }
+    return new Set([sourceKey]);
+  }
+  if (isNodeOfType(candidate, "BinaryExpression") || isNodeOfType(candidate, "LogicalExpression")) {
+    return mergeDerivedExpressionSourceKeys(
+      [candidate.left, candidate.right],
+      scopes,
+      visitedSymbolIds,
+    );
+  }
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator !== "delete") {
+    return resolveDerivedExpressionSourceKeys(candidate.argument, scopes, visitedSymbolIds);
+  }
+  if (isNodeOfType(candidate, "ConditionalExpression")) {
+    return mergeDerivedExpressionSourceKeys(
+      [candidate.test, candidate.consequent, candidate.alternate],
+      scopes,
+      visitedSymbolIds,
+    );
+  }
+  if (isNodeOfType(candidate, "TemplateLiteral")) {
+    return mergeDerivedExpressionSourceKeys(candidate.expressions, scopes, visitedSymbolIds);
+  }
+  if (isNodeOfType(candidate, "NewExpression")) {
+    const callee = unwrapExpression(candidate.callee);
+    if (
+      !isNodeOfType(callee, "Identifier") ||
+      callee.name !== "Error" ||
+      !scopes.isGlobalReference(callee)
+    ) {
+      return null;
+    }
+    const argumentsToAnalyze: EsTreeNode[] = [];
+    for (const argument of candidate.arguments) {
+      if (!isAstNode(argument) || isNodeOfType(argument, "SpreadElement")) return null;
+      argumentsToAnalyze.push(argument);
+    }
+    return mergeDerivedExpressionSourceKeys(argumentsToAnalyze, scopes, visitedSymbolIds);
+  }
+  return null;
+};
+
+const resolveWriteControlSourceKeys = (
+  assignment: EsTreeNodeOfType<"AssignmentExpression">,
+  boundaryFunction: EsTreeNode,
+  scopes: ScopeAnalysis,
+): Set<string> | null => {
+  const sourceKeys = new Set<string>();
+  let currentNode: EsTreeNode = assignment;
+  while (currentNode.parent && currentNode.parent !== boundaryFunction) {
+    const parentNode: EsTreeNode = currentNode.parent;
+    if (isNodeOfType(parentNode, "IfStatement")) {
+      if (parentNode.test === currentNode) return null;
+      const testSourceKeys = resolveDerivedExpressionSourceKeys(parentNode.test, scopes, new Set());
+      if (!testSourceKeys) return null;
+      for (const testSourceKey of testSourceKeys) sourceKeys.add(testSourceKey);
+    } else if (
+      !isNodeOfType(parentNode, "ExpressionStatement") &&
+      !isNodeOfType(parentNode, "BlockStatement")
+    ) {
+      return null;
+    }
+    currentNode = parentNode;
+  }
+  return currentNode.parent === boundaryFunction ? sourceKeys : null;
+};
+
+const isReadOnlyInitialStateUse = (referenceNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const referenceRoot = findTransparentExpressionRoot(referenceNode);
+  const callExpression = referenceRoot.parent;
+  return (
+    isNodeOfType(callExpression, "CallExpression") &&
+    callExpression.arguments.some((argument) => argument === referenceRoot) &&
+    isReactApiCall(callExpression, "useState", scopes, {
+      allowGlobalReactNamespace: true,
+      allowUnboundBareCalls: true,
+      resolveNamedAliases: true,
+    })
+  );
+};
+
+const resolveRenderDerivedMutableSourceKeys = (
+  capturedReference: ReferenceDescriptor,
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): Set<string> | null => {
+  if (
+    symbol.kind !== "let" ||
+    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+    symbol.declarationNode.id !== symbol.bindingIdentifier
+  ) {
+    return null;
+  }
+  const boundaryFunction = findEnclosingFunction(symbol.bindingIdentifier);
+  if (!boundaryFunction) return null;
+  const capturingFunction = findEnclosingFunction(capturedReference.identifier);
+  if (!capturingFunction || capturingFunction === boundaryFunction) return null;
+  const sourceKeys = new Set<string>();
+  if (symbol.initializer) {
+    const initializerSourceKeys = resolveDerivedExpressionSourceKeys(
+      symbol.initializer,
+      scopes,
+      new Set([symbol.id]),
+    );
+    if (!initializerSourceKeys) return null;
+    for (const initializerSourceKey of initializerSourceKeys) sourceKeys.add(initializerSourceKey);
+  }
+  let writeCount = 0;
+  for (const symbolReference of symbol.references) {
+    if (symbolReference.flag === "read") {
+      if (
+        findEnclosingFunction(symbolReference.identifier) !== capturingFunction &&
+        !isReadOnlyInitialStateUse(symbolReference.identifier, scopes)
+      ) {
+        return null;
+      }
+      continue;
+    }
+    if (symbolReference.flag !== "write") return null;
+    const referenceRoot = findTransparentExpressionRoot(symbolReference.identifier);
+    const assignment = referenceRoot.parent;
+    if (
+      !isNodeOfType(assignment, "AssignmentExpression") ||
+      assignment.operator !== "=" ||
+      assignment.left !== referenceRoot ||
+      findEnclosingFunction(referenceRoot) !== boundaryFunction
+    ) {
+      return null;
+    }
+    const assignmentSourceKeys = resolveDerivedExpressionSourceKeys(
+      assignment.right,
+      scopes,
+      new Set([symbol.id]),
+    );
+    const controlSourceKeys = resolveWriteControlSourceKeys(assignment, boundaryFunction, scopes);
+    if (!assignmentSourceKeys || !controlSourceKeys) return null;
+    for (const assignmentSourceKey of assignmentSourceKeys) sourceKeys.add(assignmentSourceKey);
+    for (const controlSourceKey of controlSourceKeys) sourceKeys.add(controlSourceKey);
+    writeCount += 1;
+  }
+  return writeCount > 0 && sourceKeys.size > 0 ? sourceKeys : null;
 };
 
 // Extra (unused) deps in effect hooks are allowed as intentional

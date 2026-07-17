@@ -1,6 +1,7 @@
 import type { Reference } from "eslint-scope";
 import type { ScopeAnalysis } from "../../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
+import { findTransparentExpressionRoot } from "../../../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyName } from "../../../../utils/get-static-property-name.js";
 import { getRootIdentifier } from "../../../../utils/get-root-identifier.js";
 import { hasPossibleStaticPropertyWriteBefore } from "../../../../utils/has-static-property-write-before.js";
@@ -187,6 +188,15 @@ const isReactNamespaceImportReference = (ref: Reference | null): boolean =>
     }),
   );
 
+const isReactNamespaceReceiver = (analysis: ProgramAnalysis, node: EsTreeNode): boolean => {
+  const receiver = stripParenExpression(node);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const namespaceReference = getRef(analysis, receiver);
+  return namespaceReference?.resolved
+    ? isReactNamespaceImportReference(namespaceReference)
+    : receiver.name === "React";
+};
+
 export const isGenuineReactHookDeclarator = (
   analysis: ProgramAnalysis,
   declarator: EsTreeNode,
@@ -207,15 +217,12 @@ export const isGenuineReactHookDeclarator = (
   if (
     !isNodeOfType(callee, "MemberExpression") ||
     callee.computed ||
-    !isNodeOfType(callee.object, "Identifier") ||
     !isNodeOfType(callee.property, "Identifier") ||
     callee.property.name !== hookName
   ) {
     return false;
   }
-  const namespaceReference = getRef(analysis, callee.object);
-  if (!namespaceReference?.resolved) return callee.object.name === "React";
-  return isReactNamespaceImportReference(namespaceReference);
+  return isReactNamespaceReceiver(analysis, callee.object);
 };
 
 const isHookCallee = (
@@ -227,12 +234,13 @@ const isHookCallee = (
   if (isNodeOfType(node, "Identifier")) {
     if (node.name === hookName) return true;
     if (isReactNamedImportReference(getRef(analysis, node), hookName)) return true;
-    const parent = (node as unknown as { parent?: EsTreeNode | null }).parent;
+    const receiverRoot = findTransparentExpressionRoot(node);
+    const parent = receiverRoot.parent;
     if (
       parent &&
       isNodeOfType(parent, "MemberExpression") &&
-      isNodeOfType(parent.object, "Identifier") &&
-      parent.object.name === "React" &&
+      parent.object === receiverRoot &&
+      isReactNamespaceReceiver(analysis, node) &&
       isNodeOfType(parent.property, "Identifier") &&
       parent.property.name === hookName
     ) {
@@ -241,10 +249,8 @@ const isHookCallee = (
     return false;
   }
   if (isNodeOfType(node, "MemberExpression")) {
-    const receiver = stripParenExpression(node.object);
     return (
-      isNodeOfType(receiver, "Identifier") &&
-      receiver.name === "React" &&
+      isReactNamespaceReceiver(analysis, node.object) &&
       isNodeOfType(node.property, "Identifier") &&
       node.property.name === hookName
     );

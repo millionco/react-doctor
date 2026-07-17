@@ -5,6 +5,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { serializeEventKey } from "../../utils/serialize-event-key.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -50,26 +51,15 @@ const isFreshFunctionReference = (node: EsTreeNode): boolean => {
   );
 };
 
-const serializeEventKey = (node: EsTreeNode | undefined, scopes: ScopeAnalysis): string | null => {
-  if (!node) return null;
-  const expression = stripParenExpression(node);
-  if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
-    return `literal:${expression.value}`;
-  }
-  if (isNodeOfType(expression, "TemplateLiteral") && expression.expressions.length === 0) {
-    return `literal:${expression.quasis[0]?.value.cooked ?? ""}`;
-  }
-  const referenceKey = serializeReferenceKey({ node: expression, scopes });
-  return referenceKey ? `reference:${referenceKey}` : null;
-};
+const EVENT_REGISTRATION_METHOD_NAMES = new Set(["addListener", "on", "once"]);
 
-const collectOnRegistrationKeys = (program: EsTreeNode, scopes: ScopeAnalysis): Set<string> => {
+const collectRegistrationKeys = (program: EsTreeNode, scopes: ScopeAnalysis): Set<string> => {
   const registrationKeys = new Set<string>();
   walkAst(program, (node: EsTreeNode) => {
     if (!isNodeOfType(node, "CallExpression")) return;
     const callee = stripParenExpression(node.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return;
-    if (getStaticPropertyName(callee) !== "on") return;
+    if (!EVENT_REGISTRATION_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")) return;
     const receiverKey = serializeReferenceKey({ node: callee.object, scopes });
     const eventKey = serializeEventKey(node.arguments?.[0], scopes);
     if (receiverKey && eventKey) registrationKeys.add(JSON.stringify([receiverKey, eventKey]));
@@ -110,7 +100,7 @@ export const effectRemoveListenerInlineHandler = defineRule({
           if (!receiverKey || !eventKey || !program) return;
           let registrationKeys = registrationKeysByProgram.get(program);
           if (!registrationKeys) {
-            registrationKeys = collectOnRegistrationKeys(program, context.scopes);
+            registrationKeys = collectRegistrationKeys(program, context.scopes);
             registrationKeysByProgram.set(program, registrationKeys);
           }
           if (!registrationKeys.has(JSON.stringify([receiverKey, eventKey]))) {

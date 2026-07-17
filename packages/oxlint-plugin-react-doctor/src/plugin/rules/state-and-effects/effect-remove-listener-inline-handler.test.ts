@@ -137,6 +137,17 @@ describe("effect-remove-listener-inline-handler", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags off() after matching addListener() and once() registrations", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `emitter.addListener("change", handleChange);
+       emitter.off("change", () => handleChange());
+       emitter.once("close", handleClose);
+       emitter.off("close", () => handleClose());`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("does not match registrations on a shadowed receiver binding", () => {
     const result = runRule(
       effectRemoveListenerInlineHandler,

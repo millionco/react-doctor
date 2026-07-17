@@ -12,6 +12,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
+import { serializeEventKey } from "../../utils/serialize-event-key.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 interface ListenerMethodPairing {
@@ -107,25 +108,6 @@ interface ListenerUsage {
   usesHandlerOnlyForm: boolean;
   handlerNode: EsTreeNode;
 }
-
-// String literals and expressionless template literals share the `literal:`
-// namespace; identifiers and constant member chains (`EVENTS.RESIZE`) get a
-// `reference:` key so they only match the identical source expression.
-const serializeEventKey = (
-  node: EsTreeNode | null | undefined,
-  scopes: ScopeAnalysis,
-): string | null => {
-  if (!node) return null;
-  const stripped = stripParenExpression(node);
-  if (isNodeOfType(stripped, "Literal") && typeof stripped.value === "string") {
-    return `literal:${stripped.value}`;
-  }
-  if (isNodeOfType(stripped, "TemplateLiteral") && stripped.expressions.length === 0) {
-    return `literal:${stripped.quasis[0]?.value.cooked ?? ""}`;
-  }
-  const referenceKey = serializeReferenceKey({ node: stripped, scopes });
-  return referenceKey === null ? null : `reference:${referenceKey}`;
-};
 
 const readListenerUsage = (
   call: EsTreeNodeOfType<"CallExpression">,

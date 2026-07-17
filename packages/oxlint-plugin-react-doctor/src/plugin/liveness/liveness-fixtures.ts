@@ -736,6 +736,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-json-parse-stringify-clone": {
     code: "const copy = JSON.parse(JSON.stringify(state));",
   },
+  "no-collapsed-literal-or-chain-as-value": {
+    code: 'message.includes("first" || "second");',
+  },
   "no-impure-state-updater": {
     code: `import { useState } from "react";
       const Counter = () => {
@@ -808,6 +811,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-nested-component-definition": {
     code: "\n      const Parent = () => {\n        const NestedChild = () => <span>nested</span>;\n        return <NestedChild />;\n      };\n    ",
   },
+  "no-non-literal-selector-query-without-try-catch": {
+    code: "element.matches(location.hash);",
+  },
   "no-noninteractive-element-interactions": {
     code: "<li onClick={() => {}}>x</li>",
   },
@@ -828,6 +834,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-outline-none": {
     code: 'const T = () => <button style={{ outline: "none" }}>Save</button>;',
+  },
+  "no-object-or-array-coerced-to-string-in-template-literal": {
+    code: "function formatPair() { return `pair: ${[1, 2]}`; }",
   },
   "no-pass-data-to-parent": {
     code: "const Child = (props) => {\n          const fetchedData = useSomeAPI();\n          useEffect(() => {\n            props.onLoaded(fetchedData);\n          }, [props, fetchedData]);\n          return null;\n        };",
@@ -973,9 +982,18 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'export default function Field({ text }) { return <input type="text" value={text} />; }',
     filePath: "app/field.tsx",
   },
+  "no-unescaped-dynamic-string-in-regexp": {
+    code: "const matcher = RegExp(highlight, 'gi');",
+  },
   "no-unguarded-browser-global-in-render-or-hook-init": {
     code: '"use client";\nexport const Page = () => <main>{window.innerWidth}</main>;',
     filePath: "app/page.tsx",
+  },
+  "no-unguarded-numeric-input-parse": {
+    code: "const Field = () => <input onChange={(event) => setValue(Number(event.target.value))} />;",
+  },
+  "no-unguarded-throwing-parse-call": {
+    code: "function Swatch(props) { return chroma(props.color).hex(); }",
   },
   "no-undeferred-third-party": {
     code: 'const W = () => <script src="https://cdn.example.com/w.js" />;',
@@ -994,6 +1012,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
       react: { version: "16.4.0" },
     },
     forceJsx: true,
+  },
+  "no-unsafe-json-parse": {
+    code: "const message = JSON.parse(raw).message;",
   },
   "no-unstable-nested-components": {
     code: "\n                    function ParentComponent() {\n                      function UnstableNestedFunctionComponent() {\n                        return <div />;\n                      }\n            \n                      return (\n                        <div>\n                          <UnstableNestedFunctionComponent />\n                        </div>\n                      );\n                    }\n                  ",

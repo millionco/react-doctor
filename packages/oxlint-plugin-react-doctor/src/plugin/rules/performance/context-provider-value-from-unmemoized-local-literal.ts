@@ -12,6 +12,7 @@ import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOnUnconditionalPath } from "../../utils/has-static-property-write-before.js";
 import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-name.js";
@@ -19,12 +20,15 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const MESSAGE =
   "Every consumer of this context redraws on each render because its `value` is a fresh object/array/function rebuilt each render — wrap it in useMemo/useCallback (or move it out of the component).";
+const JSX_CALLBACK_METHOD_NAMES: ReadonlySet<string> = new Set(["flatMap", "map"]);
 const REACT_COMPONENT_WRAPPER_NAMES: ReadonlySet<string> = new Set(["forwardRef", "memo"]);
+const REACT_MEMOIZATION_CALLBACK_NAMES: ReadonlySet<string> = new Set(["useCallback", "useMemo"]);
 
 const isFreshLiteralInitializer = (expression: EsTreeNode): boolean => {
   const stripped = stripParenExpression(expression);
@@ -78,11 +82,71 @@ const isNamedInlineCallback = (functionNode: EsTreeNode): boolean => {
   const directExpressionRoot = findTransparentExpressionRoot(functionNode);
   if (findComponentHocExpressionRoot(functionNode) !== directExpressionRoot) return false;
   const parent = directExpressionRoot.parent;
+  if (parent && isNodeOfType(parent, "CallExpression") && parent.callee === directExpressionRoot) {
+    return false;
+  }
   return !(
     parent &&
     isNodeOfType(parent, "VariableDeclarator") &&
     parent.init === directExpressionRoot &&
     isNodeOfType(parent.id, "Identifier")
+  );
+};
+
+const isKnownJsxCallbackArgument = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  argument: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (
+    call.arguments[0] === argument &&
+    isReactApiCall(call, REACT_MEMOIZATION_CALLBACK_NAMES, context.scopes, {
+      allowGlobalReactNamespace: true,
+      resolveNamedAliases: true,
+    })
+  ) {
+    return true;
+  }
+  return Boolean(
+    isNodeOfType(call.callee, "MemberExpression") &&
+    JSX_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(call.callee) ?? ""),
+  );
+};
+
+const isArgumentSynchronouslyInvoked = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  argument: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const argumentIndex = call.arguments.findIndex((candidate) => candidate === argument);
+  if (argumentIndex < 0) return false;
+  const calledFunction = resolveExactLocalFunction(call.callee, context.scopes);
+  if (
+    !calledFunction ||
+    !isFunctionLike(calledFunction) ||
+    calledFunction.async ||
+    calledFunction.generator
+  ) {
+    return false;
+  }
+  const parameter = calledFunction.params[argumentIndex];
+  if (!parameter || !isNodeOfType(parameter, "Identifier")) return false;
+  const parameterSymbol = context.scopes
+    .ownScopeFor(calledFunction)
+    ?.symbolsByName.get(parameter.name);
+  return Boolean(
+    parameterSymbol?.references.some((reference) => {
+      const callee = findTransparentExpressionRoot(reference.identifier);
+      const parameterCall = callee.parent;
+      return Boolean(
+        parameterCall &&
+        isNodeOfType(parameterCall, "CallExpression") &&
+        parameterCall.callee === callee &&
+        findEnclosingFunction(parameterCall) === calledFunction &&
+        isNodeOnUnconditionalPath(parameterCall, calledFunction) &&
+        context.cfg.isUnconditionalFromEntry(parameterCall),
+      );
+    }),
   );
 };
 
@@ -95,12 +159,18 @@ const isCallbackOnlyFunctionBinding = (functionNode: EsTreeNode, context: RuleCo
     const call = argument.parent;
     if (!call || !isNodeOfType(call, "CallExpression")) return false;
     if (!call.arguments.some((candidate) => candidate === argument)) return false;
-    return !(
+    if (
       call.arguments[0] === argument &&
       isReactApiCall(call, REACT_COMPONENT_WRAPPER_NAMES, context.scopes, {
         allowGlobalReactNamespace: true,
         resolveNamedAliases: true,
       })
+    ) {
+      return false;
+    }
+    return (
+      isKnownJsxCallbackArgument(call, argument, context) ||
+      !isArgumentSynchronouslyInvoked(call, argument, context)
     );
   });
 };

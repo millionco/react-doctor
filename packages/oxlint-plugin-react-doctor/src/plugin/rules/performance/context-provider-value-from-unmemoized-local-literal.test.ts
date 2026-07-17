@@ -346,6 +346,58 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a named IIFE that constructs a local provider value during render", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         return (function Inner() {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         })();
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a nested component passed to a custom synchronous renderer", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const renderNow = (render) => render();
+       function App() {
+         function Inner() {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         }
+         return renderNow(Inner);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["unknown registration helper", "const register = (render) => callbacks.push(render);"],
+    ["conditional renderer", "const register = (render) => shouldRender ? render() : null;"],
+  ])("does not assume a %s invokes its component argument", (_name, helperDeclaration) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       ${helperDeclaration}
+       function App() {
+         function Inner() {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         }
+         return register(Inner);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("still flags a block-scoped literal declared inside the component's own if-block", () => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,

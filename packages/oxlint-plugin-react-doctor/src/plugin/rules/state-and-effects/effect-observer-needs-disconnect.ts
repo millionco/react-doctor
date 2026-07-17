@@ -25,9 +25,9 @@ interface TrackedObserver {
   didObserve: boolean;
   didObserveUnknownTarget: boolean;
   didReleaseAll: boolean;
+  didReleaseViaCallbackParameter: boolean;
   didEscape: boolean;
   observedTargetKeys: Set<string>;
-  unobservedTargetKeys: Set<string>;
 }
 
 const recordObserverUsage = (
@@ -64,6 +64,7 @@ const recordObserverUsage = (
     const accessedMethodName = getStaticPropertyName(parent);
     if (accessedMethodName === "observe") {
       tracked.didObserve = true;
+      tracked.didReleaseAll = false;
       const targetArgument = methodCall.arguments?.[0];
       const targetKey = targetArgument
         ? serializeReferenceKey({ node: targetArgument, scopes: context.scopes })
@@ -74,6 +75,8 @@ const recordObserverUsage = (
     }
     if (accessedMethodName === "disconnect" && tracked.didObserve) {
       tracked.didReleaseAll = true;
+      tracked.didObserveUnknownTarget = false;
+      tracked.observedTargetKeys.clear();
       return;
     }
     if (accessedMethodName === "unobserve" && tracked.didObserve) {
@@ -82,7 +85,7 @@ const recordObserverUsage = (
         ? serializeReferenceKey({ node: targetArgument, scopes: context.scopes })
         : null;
       if (targetKey && tracked.observedTargetKeys.has(targetKey)) {
-        tracked.unobservedTargetKeys.add(targetKey);
+        tracked.observedTargetKeys.delete(targetKey);
       }
     }
     return;
@@ -181,10 +184,10 @@ export const effectObserverNeedsDisconnect = defineRule({
           bindingIdentifier: declarator.id,
           didObserve: false,
           didObserveUnknownTarget: false,
-          didReleaseAll: callbackReleasesViaObserverParameter(child),
+          didReleaseAll: false,
+          didReleaseViaCallbackParameter: callbackReleasesViaObserverParameter(child),
           didEscape: false,
           observedTargetKeys: new Set(),
-          unobservedTargetKeys: new Set(),
         });
       });
       if (trackedObserversByBinding.size === 0) return;
@@ -228,16 +231,13 @@ export const effectObserverNeedsDisconnect = defineRule({
       }
 
       for (const tracked of trackedObserversByBinding.values()) {
-        const didUnobserveEveryKnownTarget =
-          !tracked.didObserveUnknownTarget &&
-          tracked.observedTargetKeys.size > 0 &&
-          [...tracked.observedTargetKeys].every((targetKey) =>
-            tracked.unobservedTargetKeys.has(targetKey),
-          );
+        const didReleaseEveryActiveTarget =
+          !tracked.didObserveUnknownTarget && tracked.observedTargetKeys.size === 0;
         if (
           !tracked.didObserve ||
           tracked.didReleaseAll ||
-          didUnobserveEveryKnownTarget ||
+          tracked.didReleaseViaCallbackParameter ||
+          didReleaseEveryActiveTarget ||
           tracked.didEscape
         ) {
           continue;

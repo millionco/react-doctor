@@ -71,6 +71,43 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags observing again after an earlier disconnect or unobserve", () => {
+    const disconnectResult = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => measure());
+         observer.observe(firstNode);
+         observer.disconnect();
+         observer.observe(secondNode);
+       }, []);`,
+    );
+    const unobserveResult = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => measure());
+         observer.observe(node);
+         observer.unobserve(node);
+         observer.observe(node);
+       }, []);`,
+    );
+    expect(disconnectResult.diagnostics).toHaveLength(1);
+    expect(unobserveResult.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag when every active observation is released after restarting", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => measure());
+         observer.observe(firstNode);
+         observer.disconnect();
+         observer.observe(secondNode);
+         observer.unobserve(secondNode);
+       }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a one-shot observer that disconnects inside its own callback", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,

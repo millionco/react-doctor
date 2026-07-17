@@ -137,12 +137,16 @@ const moduleCachesEveryReturnedResult = (
   programRoot: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const returnedExpression = findTransparentExpressionRoot(createCall);
-  if (!returnedExpression.parent || !isNodeOfType(returnedExpression.parent, "ReturnStatement")) {
-    return false;
-  }
   const enclosingFunction = findEnclosingFunction(createCall);
   if (!enclosingFunction) return false;
+  const returnedExpression = findTransparentExpressionRoot(createCall);
+  const isExplicitReturn = isNodeOfType(returnedExpression.parent, "ReturnStatement");
+  const isConciseArrowReturn =
+    isNodeOfType(enclosingFunction, "ArrowFunctionExpression") &&
+    stripParenExpression(enclosingFunction.body) === stripParenExpression(returnedExpression);
+  if (!isExplicitReturn && !isConciseArrowReturn) {
+    return false;
+  }
   let didFindCall = false;
   let didFindUncachedCall = false;
   walkAst(programRoot, (child) => {

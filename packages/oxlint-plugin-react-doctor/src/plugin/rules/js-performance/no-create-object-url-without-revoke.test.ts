@@ -214,6 +214,19 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when a concise arrow helper feeds a deliberate module cache", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const renderPreview = (blob) => URL.createObjectURL(blob);
+       const generatePreview = (blob, id) => {
+         const url = renderPreview(blob);
+         previewCache.set(id, url);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags escaped object URLs through TypeScript expression wrappers", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

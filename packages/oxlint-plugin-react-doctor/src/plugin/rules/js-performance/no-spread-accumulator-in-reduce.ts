@@ -13,6 +13,18 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const OBJECT_ENUMERATION_METHOD_NAMES = new Set(["keys", "entries", "values"]);
+const NON_GROWING_ARRAY_METHOD_NAMES = new Set([
+  "copyWithin",
+  "fill",
+  "filter",
+  "map",
+  "reverse",
+  "slice",
+  "sort",
+  "toReversed",
+  "toSorted",
+  "with",
+]);
 
 const isFreshLiteralSeed = (seedArgument: EsTreeNode | undefined): boolean => {
   if (!isAstNode(seedArgument)) return false;
@@ -99,7 +111,11 @@ const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnaly
     const sourceArgument = stripped.arguments[0];
     return isAstNode(sourceArgument) && isFixedLengthArrayConstruction(sourceArgument, scopes);
   }
-  return isFixedLengthArrayConstruction(callee.object, scopes);
+  return (
+    isNodeOfType(callee.property, "Identifier") &&
+    NON_GROWING_ARRAY_METHOD_NAMES.has(callee.property.name) &&
+    isFixedLengthArrayConstruction(callee.object, scopes)
+  );
 };
 
 // The empirical false-positive pattern is spreading the accumulator over a

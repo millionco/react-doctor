@@ -358,4 +358,20 @@ describe("no-spread-accumulator-in-reduce", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag a non-growing method on a fixed-length Array construction", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      "const out = Array(4).fill(null).reduce((acc, item) => [...acc, item], []);",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a growing method on a fixed-length Array construction", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      "const out = Array(4).concat(items).reduce((acc, item) => [...acc, item], []);",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

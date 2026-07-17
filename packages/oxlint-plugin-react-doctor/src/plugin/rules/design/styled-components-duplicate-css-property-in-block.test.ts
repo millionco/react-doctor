@@ -204,6 +204,25 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag equivalent nested conditional tests with renamed parameters", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${properties => (properties.compact ? properties.small : properties.large) ? "100vh" : "auto"}; height: ${state => (state.compact ? state.small : state.large) ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("compares sequence and template expressions inside conditions", () => {
+    const equivalentResult = runStyledRule(
+      'const Modal = styled.div`height: ${properties => (track(properties), `${properties.mode}-full`) ? "100vh" : "auto"}; height: ${state => (track(state), `${state.mode}-full`) ? "100dvh" : "auto"};`;',
+    );
+    expect(equivalentResult.diagnostics).toHaveLength(0);
+
+    const differentResult = runStyledRule(
+      'const Modal = styled.div`height: ${properties => (track(properties), `${properties.mode}-full`) ? "100vh" : "auto"}; height: ${state => (track(state), `${state.mode}-compact`) ? "100dvh" : "auto"};`;',
+    );
+    expect(differentResult.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag equivalent this conditions in function callbacks", () => {
     const result = runStyledRule(
       'const Modal = styled.div`height: ${function (properties) { return this.isFull ? "100vh" : "auto"; }}; height: ${function (state) { return this.isFull ? "100dvh" : "auto"; }};`;',
@@ -223,6 +242,30 @@ describe("styled-components-duplicate-css-property-in-block", () => {
       'const Modal = styled.div`height: ${(...properties) => properties[0].$fullHeight ? "100vh" : "auto"}; height: ${(...state) => state[0].$fullHeight ? "100dvh" : "auto"};`;',
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag equivalent destructured parameter bindings", () => {
+    const objectResult = runStyledRule(
+      'const Modal = styled.div`height: ${({ active }) => active ? "100vh" : "auto"}; height: ${({ active: enabled }) => enabled ? "100dvh" : "auto"};`;',
+    );
+    expect(objectResult.diagnostics).toHaveLength(0);
+
+    const arrayResult = runStyledRule(
+      'const Modal = styled.div`height: ${([active]) => active ? "100vh" : "auto"}; height: ${([enabled]) => enabled ? "100dvh" : "auto"};`;',
+    );
+    expect(arrayResult.diagnostics).toHaveLength(0);
+  });
+
+  it("distinguishes different destructured parameter sources", () => {
+    const objectResult = runStyledRule(
+      'const Modal = styled.div`height: ${({ active: value }) => value ? "100vh" : "auto"}; height: ${({ disabled: value }) => value ? "100dvh" : "auto"};`;',
+    );
+    expect(objectResult.diagnostics).toHaveLength(1);
+
+    const arrayResult = runStyledRule(
+      'const Modal = styled.div`height: ${([value]) => value ? "100vh" : "auto"}; height: ${([, value]) => value ? "100dvh" : "auto"};`;',
+    );
+    expect(arrayResult.diagnostics).toHaveLength(1);
   });
 
   it("distinguishes different static property keys that match each parameter name", () => {

@@ -1,5 +1,4 @@
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
-import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -26,43 +25,84 @@ interface CssDeclaration {
 
 interface TernaryTest {
   readonly expression: EsTreeNode;
-  readonly parameterName: string | null;
+  readonly parameterBindings: ReadonlyMap<string, string> | null;
 }
 
-const getCallbackParameterName = (parameter: EsTreeNode | undefined): string | null => {
-  if (isNodeOfType(parameter, "Identifier")) return parameter.name;
-  if (isNodeOfType(parameter, "AssignmentPattern") && isNodeOfType(parameter.left, "Identifier")) {
-    return parameter.left.name;
+const collectCallbackParameterBindings = (
+  parameter: EsTreeNode,
+  sourcePath: string,
+  bindings: Map<string, string>,
+): boolean => {
+  if (isNodeOfType(parameter, "Identifier")) {
+    bindings.set(parameter.name, sourcePath);
+    return true;
   }
-  if (isNodeOfType(parameter, "RestElement") && isNodeOfType(parameter.argument, "Identifier")) {
-    return parameter.argument.name;
+  if (isNodeOfType(parameter, "AssignmentPattern")) {
+    return collectCallbackParameterBindings(parameter.left, sourcePath, bindings);
   }
-  return null;
+  if (isNodeOfType(parameter, "RestElement")) {
+    return collectCallbackParameterBindings(parameter.argument, sourcePath, bindings);
+  }
+  if (isNodeOfType(parameter, "ObjectPattern")) {
+    for (const property of parameter.properties) {
+      if (!isNodeOfType(property, "Property")) return false;
+      const propertyName = getStaticPropertyKeyName(property, {
+        allowComputedString: true,
+        stringifyNonStringLiterals: true,
+      });
+      if (propertyName === null) return false;
+      if (
+        !collectCallbackParameterBindings(property.value, `${sourcePath}.${propertyName}`, bindings)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (isNodeOfType(parameter, "ArrayPattern")) {
+    for (let elementIndex = 0; elementIndex < parameter.elements.length; elementIndex += 1) {
+      const element = parameter.elements[elementIndex];
+      if (!element) continue;
+      if (!collectCallbackParameterBindings(element, `${sourcePath}[${elementIndex}]`, bindings)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+};
+
+const getCallbackParameterBindings = (
+  parameter: EsTreeNode | undefined,
+): ReadonlyMap<string, string> | null => {
+  if (!parameter) return null;
+  const bindings = new Map<string, string>();
+  return collectCallbackParameterBindings(parameter, "$", bindings) ? bindings : null;
 };
 
 const getTernaryInterpolationTest = (expression: EsTreeNode | undefined): TernaryTest | null => {
   if (!expression) return null;
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "ConditionalExpression")) {
-    return { expression: stripped.test, parameterName: null };
+    return { expression: stripped.test, parameterBindings: null };
   }
   if (
     isNodeOfType(stripped, "ArrowFunctionExpression") ||
     isNodeOfType(stripped, "FunctionExpression")
   ) {
     const firstParameter = stripped.params[0];
-    const parameterName =
-      stripped.params.length === 1 ? getCallbackParameterName(firstParameter) : null;
+    const parameterBindings =
+      stripped.params.length === 1 ? getCallbackParameterBindings(firstParameter) : null;
     const body = stripParenExpression(stripped.body);
     if (isNodeOfType(body, "ConditionalExpression")) {
-      return { expression: body.test, parameterName };
+      return { expression: body.test, parameterBindings };
     }
     if (isNodeOfType(body, "BlockStatement")) {
       for (const statement of body.body) {
         if (!isNodeOfType(statement, "ReturnStatement") || !statement.argument) continue;
         const returnedExpression = stripParenExpression(statement.argument);
         if (isNodeOfType(returnedExpression, "ConditionalExpression")) {
-          return { expression: returnedExpression.test, parameterName };
+          return { expression: returnedExpression.test, parameterBindings };
         }
       }
     }
@@ -71,21 +111,16 @@ const getTernaryInterpolationTest = (expression: EsTreeNode | undefined): Ternar
 };
 
 const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
-  if (
-    left.parameterName === right.parameterName &&
-    areExpressionsStructurallyEqual(left.expression, right.expression)
-  ) {
-    return true;
-  }
-
   const compare = (leftNode: EsTreeNode, rightNode: EsTreeNode): boolean => {
     const unwrappedLeft = stripParenExpression(leftNode);
     const unwrappedRight = stripParenExpression(rightNode);
     if (unwrappedLeft.type !== unwrappedRight.type) return false;
     if (isNodeOfType(unwrappedLeft, "Identifier") && isNodeOfType(unwrappedRight, "Identifier")) {
-      const isLeftParameter = unwrappedLeft.name === left.parameterName;
-      const isRightParameter = unwrappedRight.name === right.parameterName;
-      if (isLeftParameter || isRightParameter) return isLeftParameter && isRightParameter;
+      const leftParameterPath = left.parameterBindings?.get(unwrappedLeft.name);
+      const rightParameterPath = right.parameterBindings?.get(unwrappedRight.name);
+      if (leftParameterPath !== undefined || rightParameterPath !== undefined) {
+        return leftParameterPath !== undefined && leftParameterPath === rightParameterPath;
+      }
       return unwrappedLeft.name === unwrappedRight.name;
     }
     if (isNodeOfType(unwrappedLeft, "Literal") && isNodeOfType(unwrappedRight, "Literal")) {
@@ -125,6 +160,42 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
         unwrappedLeft.operator === unwrappedRight.operator &&
         compare(unwrappedLeft.left, unwrappedRight.left) &&
         compare(unwrappedLeft.right, unwrappedRight.right)
+      );
+    }
+    if (
+      isNodeOfType(unwrappedLeft, "ConditionalExpression") &&
+      isNodeOfType(unwrappedRight, "ConditionalExpression")
+    ) {
+      return (
+        compare(unwrappedLeft.test, unwrappedRight.test) &&
+        compare(unwrappedLeft.consequent, unwrappedRight.consequent) &&
+        compare(unwrappedLeft.alternate, unwrappedRight.alternate)
+      );
+    }
+    if (
+      isNodeOfType(unwrappedLeft, "SequenceExpression") &&
+      isNodeOfType(unwrappedRight, "SequenceExpression")
+    ) {
+      return (
+        unwrappedLeft.expressions.length === unwrappedRight.expressions.length &&
+        unwrappedLeft.expressions.every((expression, expressionIndex) =>
+          compare(expression, unwrappedRight.expressions[expressionIndex]),
+        )
+      );
+    }
+    if (
+      isNodeOfType(unwrappedLeft, "TemplateLiteral") &&
+      isNodeOfType(unwrappedRight, "TemplateLiteral")
+    ) {
+      return (
+        unwrappedLeft.quasis.length === unwrappedRight.quasis.length &&
+        unwrappedLeft.expressions.length === unwrappedRight.expressions.length &&
+        unwrappedLeft.quasis.every(
+          (quasi, quasiIndex) => quasi.value.raw === unwrappedRight.quasis[quasiIndex]?.value.raw,
+        ) &&
+        unwrappedLeft.expressions.every((expression, expressionIndex) =>
+          compare(expression, unwrappedRight.expressions[expressionIndex]),
+        )
       );
     }
     if (

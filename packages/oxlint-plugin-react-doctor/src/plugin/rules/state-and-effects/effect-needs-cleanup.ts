@@ -2880,6 +2880,17 @@ const doesResourceResultEscape = (
       continue;
     }
     if (
+      (isNodeOfType(parentNode, "ConditionalExpression") &&
+        (parentNode.consequent === currentNode || parentNode.alternate === currentNode)) ||
+      (isNodeOfType(parentNode, "LogicalExpression") &&
+        (parentNode.right === currentNode ||
+          (parentNode.left === currentNode && parentNode.operator !== "&&")))
+    ) {
+      currentNode = parentNode;
+      parentNode = currentNode.parent;
+      continue;
+    }
+    if (
       isNodeOfType(parentNode, "VariableDeclarator") &&
       parentNode.init === currentNode &&
       isNodeOfType(parentNode.id, "Identifier") &&

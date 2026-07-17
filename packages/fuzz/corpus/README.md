@@ -32,6 +32,7 @@ Header format:
 //            framework-gating | test-gating | control-flow |
 //            wrapper-transparency | library-idiom | cross-file | other>
 // source: <PR/issue/session reference>
+// react-major: <major, only when the false positive depends on React version>
 ```
 
 Files must parse cleanly as TSX (`pnpm test` enforces it).

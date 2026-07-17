@@ -39,15 +39,15 @@ const isSelfReferentialSentinelValue = (variableName: string, literalValue: stri
 
 // Storage/config KEY NAMES (`"auth_local_email_blocklist"`,
 // `"od:memory:pending-connector-auth"`, `"__webstudio__$__api_token"`) are
-// human-readable lowercase words joined by separators; real leaked secrets
-// are high-entropy strings mixing case and digits.
+// human-readable words joined by separators; real leaked secrets are
+// high-entropy strings mixing case and digits.
 const isIdentifierLikeKeyNameValue = (literalValue: string): boolean => {
   const wordSegments = literalValue
     .replace(/^[_$\s]+|[_$\s]+$/g, "")
     .split(/[_\-:./$]+/)
     .filter((segment) => segment.length > 0);
   if (wordSegments.length < 2) return false;
-  return wordSegments.every((segment) => /^[a-z]+$/.test(segment));
+  return wordSegments.every((segment) => /^[a-z]+(?:[A-Z][a-z]+)*$/.test(segment));
 };
 
 // Frameworks with a documented public-env convention get advice naming
@@ -139,8 +139,6 @@ export const noSecretsInClientCode = defineRule({
           !isUiConstant &&
           !isPublicUrlValue(literalValue) &&
           !isPlaceholderValueForVariableHeuristic &&
-          !isSelfReferentialSentinelValue(variableName, literalValue) &&
-          !isIdentifierLikeKeyNameValue(literalValue) &&
           !isSelfReferentialSentinelValue(variableName, literalValue) &&
           !isIdentifierLikeKeyNameValue(literalValue) &&
           literalValue.length > SECRET_MIN_LENGTH_CHARS

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { checkSecurityScan, checkSecurityScanCooperative } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 import { REACT_DOCTOR_RULES } from "oxlint-plugin-react-doctor";
+import { MINIFIED_SNIFF_BYTES } from "../src/constants.js";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures", "check-security-scan");
 
@@ -201,6 +202,30 @@ describe("checkSecurityScan", () => {
       expect(
         checkSecurityScan(path.join(FIXTURES_DIRECTORY, "repository-secret-examples")),
       ).toEqual([]);
+    });
+
+    it("keeps Prisma-style generated JSDoc env examples quiet through file classification", () => {
+      writeFile(
+        "src/generated/prisma/internal/class.ts",
+        `/**
+ * const prisma = new PrismaClient({
+ *   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL })
+ * })
+ */
+export const inlineSchema = "${"a".repeat(MINIFIED_SNIFF_BYTES)}";`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).not.toContain("artifact-env-leak");
+    });
+
+    it("still flags executable env access in minified-looking generated TypeScript", () => {
+      writeFile(
+        "src/generated/client.ts",
+        `export const inlineSchema = "${"a".repeat(MINIFIED_SNIFF_BYTES)}";
+export const databaseUrl = process.env.DATABASE_URL;`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("artifact-env-leak");
     });
 
     it("keeps public Supabase chat browser bundles quiet when they expose no authority fields", () => {

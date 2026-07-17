@@ -39,6 +39,19 @@ describe("no-redundant-display-class", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does NOT flag a default display utility that competes with another display utility", () => {
+    const code = `const A = () => (
+      <>
+        <div className="flex block" />
+        <div className="grid block" />
+        <div className="hidden block" />
+        <span className="inline-flex inline" />
+      </>
+    );`;
+    const result = runRule(noRedundantDisplayClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag `block` on an `<li>` (li defaults to list-item, so block is meaningful)", () => {
     const code = `const A = () => <li className="block">x</li>;`;
     const result = runRule(noRedundantDisplayClass, code);

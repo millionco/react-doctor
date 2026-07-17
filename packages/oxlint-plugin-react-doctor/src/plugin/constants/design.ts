@@ -109,6 +109,30 @@ export const SIZE_HEIGHT_AXIS_PATTERN = /(?:^|\s)(-?)h-(\d+(?:\.\d+)?|\[[^\]]+\]
 
 export const FLEX_OR_GRID_DISPLAY_TOKENS = new Set(["flex", "inline-flex", "grid", "inline-grid"]);
 
+export const TAILWIND_DISPLAY_TOKENS = new Set([
+  "block",
+  "inline-block",
+  "inline",
+  "flex",
+  "inline-flex",
+  "table",
+  "inline-table",
+  "table-caption",
+  "table-cell",
+  "table-column",
+  "table-column-group",
+  "table-footer-group",
+  "table-header-group",
+  "table-row-group",
+  "table-row",
+  "flow-root",
+  "grid",
+  "inline-grid",
+  "contents",
+  "list-item",
+  "hidden",
+]);
+
 export const SPACE_AXIS_PATTERN = /(?:^|\s)(?:-)?space-(x|y)-(\d+(?:\.\d+)?|\[[^\]]+\])(?=$|[\s:])/;
 
 export const TRAILING_THREE_PERIOD_ELLIPSIS_PATTERN = /[A-Za-z]\.\.\./;

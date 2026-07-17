@@ -8,12 +8,23 @@ const REANIMATED_LAYOUT_RULE_ID = "rn-animate-layout-property";
 const CASCADING_SET_STATE_RULE_ID = "no-cascading-set-state";
 const HOOK_IMPORT_RENAME_RULE_ID = "hook-import-rename-loses-use-prefix";
 const IN_HOUSE_A11Y_RULE_IDS = [
+  "data-table-requires-accessible-name",
+  "details-requires-summary",
+  "fieldset-requires-legend",
+  "form-control-requires-name",
+  "no-assertive-status",
+  "no-aria-invalid-without-description",
   "no-autoplay-without-muted",
   "no-blocked-paste",
   "no-broken-image-source",
+  "no-focusable-content-in-aria-hidden",
+  "no-multiple-unlabeled-navigation-landmarks",
+  "no-multiple-main-landmarks",
+  "no-nonresizable-textarea",
   "no-placeholder-only-field",
   "no-skipped-heading-level",
   "no-static-motion-config-never",
+  "no-ungated-tailwind-animation",
   "no-uninformative-aria-label",
 ];
 

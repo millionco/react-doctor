@@ -38,6 +38,17 @@ Add deterministic design-quality lint rules spanning motion performance, accessi
 - **`no-overwide-text-measure`** — explicit body-text widths above 80ch in inline styles or arbitrary Tailwind utilities.
 - **`no-skipped-heading-level`** — opt-in analysis of explicit heading sequences inside static page or article trees, without inferring across component boundaries.
 - **`no-cramped-container-padding`** — text inside an explicitly bounded or colored surface with less than 8px of static padding.
+- **`no-assertive-status`**: flags status regions that use assertive live announcements instead of a deliberate alert.
+- **`no-focusable-content-in-aria-hidden`**: finds statically focusable descendants inside an `aria-hidden` subtree.
+- **`no-multiple-unlabeled-navigation-landmarks`**: finds static JSX trees with multiple unnamed navigation landmarks.
+- **`no-aria-invalid-without-description`**: opt-in detection for invalid controls that do not reference explanatory text.
+- **`details-requires-summary`**: opt-in detection for native disclosure widgets without a first-child summary.
+- **`fieldset-requires-legend`**: opt-in detection for field groups with multiple controls but no direct legend.
+- **`data-table-requires-accessible-name`**: opt-in detection for tables with header cells but no caption or ARIA name.
+- **`no-multiple-main-landmarks`**: finds static JSX trees with multiple main landmarks.
+- **`no-nonresizable-textarea`**: opt-in detection for textareas that disable both resize axes.
+- **`form-control-requires-name`**: opt-in detection for native form controls that cannot contribute a name to form submission.
+- **`no-ungated-tailwind-animation`**: opt-in detection for continuous Tailwind animations without a reduced-motion gate.
 
 **Design / Tailwind hygiene**
 
@@ -65,6 +76,24 @@ Add deterministic design-quality lint rules spanning motion performance, accessi
 - **`no-generic-marketing-copy`** — opt-in detection for broad promotional phrases in static page or article copy.
 - **`no-manufactured-contrast-copy`** — opt-in detection for pages that repeatedly frame claims as short artificial contrasts.
 - **`no-decorative-grid-background`** — opt-in detection for layered one-pixel linear gradients that draw a coordinate grid outside data-visualization contexts.
+- **`no-smooth-scroll-without-reduced-motion`**: opt-in detection for smooth-scrolling utilities without a reduced-motion override.
+- **`no-inert-sticky-position`**: opt-in detection for sticky elements without a static inset anchor.
+- **`no-img-without-dimensions`**: opt-in detection for images without intrinsic dimensions or a statically reserved CSS box.
+- **`no-small-form-control-text`**: opt-in detection for native controls with a static font size below 16 px.
+- **`no-undersized-icon-button`**: opt-in detection for icon-only buttons with a provable target below 24 px on either axis.
+- **`no-layout-shifting-interaction-state`**: opt-in detection for interaction utilities that change layout geometry or font metrics.
+- **`no-hover-only-reveal`**: opt-in detection for content revealed on hover without an equivalent keyboard-focus state.
+- **`no-fixed-inside-transformed-ancestor`**: opt-in detection for fixed descendants whose static ancestor establishes a containing block.
+
+**HTML and component contracts**
+
+- **`html-no-nested-form`**: finds statically nested native forms, which HTML parsing and submission do not support.
+- **`html-label-has-single-control`**: finds labels that statically contain more than one labelable control.
+- **`motion-animate-presence-requires-key`**: requires keys on direct static children of proven Motion `AnimatePresence` components.
+- **`motion-animate-presence-wait-single-child`**: finds `mode="wait"` instances with multiple direct static children.
+- **`no-mixed-srcset-descriptors`**: finds `srcSet` candidates that mix width and pixel-density descriptor modes.
+- **`shadcn-tabs-trigger-requires-list`**: opt-in detection for proven shadcn-style tab triggers outside a corresponding tab list.
+- **`no-srcset-without-sizes`**: requires `sizes` when an intrinsic image uses width descriptors in a static `srcSet`.
 
 **Metadata**
 

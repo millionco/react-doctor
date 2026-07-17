@@ -1743,6 +1743,84 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "window-open-without-noopener": {
     code: "window.open(url);",
   },
+  "html-no-nested-form": {
+    code: "const Form = () => <form><form /></form>;",
+  },
+  "motion-animate-presence-requires-key": {
+    code: 'import { AnimatePresence } from "motion/react";\nconst Stack = () => <AnimatePresence><Panel /><Panel /></AnimatePresence>;',
+  },
+  "motion-animate-presence-wait-single-child": {
+    code: 'import { AnimatePresence } from "motion/react";\nconst Stack = () => <AnimatePresence mode="wait"><Panel key="a" /><Panel key="b" /></AnimatePresence>;',
+  },
+  "no-assertive-status": {
+    code: 'const Status = () => <div role="status" aria-live="assertive" />;',
+  },
+  "no-img-without-dimensions": {
+    code: 'const Avatar = () => <img src="/avatar.jpg" alt="Ada" />;',
+  },
+  "no-inert-sticky-position": {
+    code: 'const Header = () => <header className="sticky" />;',
+  },
+  "no-layout-shifting-interaction-state": {
+    code: 'const Button = () => <button className="hover:px-6">Save</button>;',
+  },
+  "no-small-form-control-text": {
+    code: 'const Form = () => <input className="text-sm" />;',
+  },
+  "no-smooth-scroll-without-reduced-motion": {
+    code: 'const Page = () => <main className="scroll-smooth" />;',
+  },
+  "no-undersized-icon-button": {
+    code: 'const Close = () => <button aria-label="Close" className="size-4 p-0"><CloseIcon /></button>;',
+  },
+  "no-aria-invalid-without-description": {
+    code: "const Field = () => <input aria-invalid />;",
+  },
+  "no-fixed-inside-transformed-ancestor": {
+    code: 'const Overlay = () => <div className="scale-95"><div className="fixed" /></div>;',
+  },
+  "no-focusable-content-in-aria-hidden": {
+    code: 'const Hidden = () => <div aria-hidden><button type="button">Save</button></div>;',
+  },
+  "no-hover-only-reveal": {
+    code: 'const Action = () => <button className="opacity-0 hover:opacity-100" />;',
+  },
+  "no-multiple-unlabeled-navigation-landmarks": {
+    code: "const Page = () => <><nav /><nav /></>;",
+  },
+  "no-srcset-without-sizes": {
+    code: 'const Hero = () => <img srcSet="small.jpg 640w, large.jpg 1280w" alt="" />;',
+  },
+  "no-ungated-tailwind-animation": {
+    code: 'const Spinner = () => <span className="animate-spin" />;',
+  },
+  "shadcn-tabs-trigger-requires-list": {
+    code: 'import { TabsTrigger } from "./tabs";\nconst Trigger = () => <TabsTrigger value="a" />;',
+  },
+  "data-table-requires-accessible-name": {
+    code: "const Results = () => <table><tr><th>Name</th></tr></table>;",
+  },
+  "details-requires-summary": {
+    code: "const Help = () => <details><p>Answer</p></details>;",
+  },
+  "fieldset-requires-legend": {
+    code: "const Group = () => <fieldset><input /><input /></fieldset>;",
+  },
+  "form-control-requires-name": {
+    code: "const Form = () => <form><input /></form>;",
+  },
+  "html-label-has-single-control": {
+    code: "const Range = () => <label><input /><input /></label>;",
+  },
+  "no-mixed-srcset-descriptors": {
+    code: 'const Image = () => <img srcSet="small.jpg 640w, large.jpg 2x" />;',
+  },
+  "no-multiple-main-landmarks": {
+    code: "const Page = () => <><main /><main /></>;",
+  },
+  "no-nonresizable-textarea": {
+    code: 'const Editor = () => <textarea className="resize-none" />;',
+  },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',
   },

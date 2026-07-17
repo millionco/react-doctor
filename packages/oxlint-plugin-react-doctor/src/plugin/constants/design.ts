@@ -21,6 +21,8 @@ export const COLOR_CHROMA_THRESHOLD = 30;
 
 export const TINY_TEXT_THRESHOLD_PX = 12;
 
+export const MINIMUM_TARGET_SIZE_PX = 24;
+
 // WCAG 2.1 contrast minimums. Normal text needs 4.5:1; "large" text
 // (>=24px regular, or >=18.66px / 14pt bold) and icons need 3:1.
 export const WCAG_CONTRAST_NORMAL_MIN = 4.5;

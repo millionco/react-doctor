@@ -19,6 +19,36 @@ const expectFiresAtLeast = (code: string, minimumDiagnosticCount: number): void 
 };
 
 describe("no-pass-live-state-to-parent — must-detect regressions", () => {
+  it("preserves live-state flow through direct React useEffectEvent wrappers", () => {
+    expectFiresAtLeast(
+      `import { useEffect, useEffectEvent, useState } from "react";
+      const Child = ({ onChange }) => {
+        const [value] = useState("");
+        const notify = useEffectEvent(onChange);
+        useEffect(() => {
+          notify(value);
+        }, [value]);
+        return null;
+      };`,
+      1,
+    );
+  });
+
+  it("does not trust a userland useEffectEvent wrapper", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `const useEffectEvent = (callback) => callback;
+      const Child = ({ onChange }) => {
+        const [value] = useState("");
+        const notify = useEffectEvent(onChange);
+        useEffect(() => notify(value), [value]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when a callback parameter is passed through a parent callback", () => {
     const result = runRule(
       noPassLiveStateToParent,

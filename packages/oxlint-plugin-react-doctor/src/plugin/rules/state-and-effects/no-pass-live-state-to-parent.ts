@@ -11,9 +11,11 @@ import {
   STRING_READ_METHOD_NAMES,
 } from "../../constants/data-sink-method-names.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
+import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { Reference } from "eslint-scope";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import {
   getCallExpr,
   getDownstreamRefs,
@@ -27,14 +29,24 @@ import {
   getEffectFn,
   getEffectFnRefs,
   isCustomHookParameter,
+  isProp,
   isPropCallbackInvocationRef,
   isState,
   isUseEffect,
   isWholePropsObjectReference,
 } from "./utils/effect/react.js";
+import { getParentCallbackPropNames } from "./utils/resolve-parent-callback-provenance.js";
+import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 
 const SETTER_NAMED_CALLBACK_PATTERN = /^set[A-Z]/;
 const DATA_FETCHING_CALLBACK_PATTERN = /^(fetch|refetch|load|query|request)([A-Z_]|$)/;
+
+const hasMutableBindingWrite = (reference: Reference): boolean =>
+  Boolean(
+    reference.resolved?.references.some(
+      (candidateReference) => candidateReference.isWrite() && !candidateReference.init,
+    ),
+  );
 
 const getCallCalleeName = (callExpr: EsTreeNode): string | null => {
   if (!isNodeOfType(callExpr, "CallExpression")) return null;
@@ -123,6 +135,10 @@ const collectUpstreamStateRefs = (
     stateRefs.push(ref);
     return;
   }
+  if (isCustomHookStateResultReference(analysis, ref)) {
+    stateRefs.push(ref);
+    return;
+  }
   for (const def of ref.resolved?.defs ?? []) {
     if (def.type === "ImportBinding" || def.type === "Parameter") continue;
     const defNode = def.node as unknown as EsTreeNode;
@@ -176,6 +192,59 @@ const collectPropCallbackBoundStateRefs = (
     }
   }
   return stateRefs;
+};
+
+const collectDirectCallStateRefs = (
+  analysis: ProgramAnalysis,
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+): Reference[] => {
+  const stateReferences: Reference[] = [];
+  for (const argument of callExpression.arguments) {
+    if (isFunctionLike(argument as EsTreeNode)) continue;
+    for (const argumentReference of getDownstreamRefs(analysis, argument as EsTreeNode)) {
+      if (resolveToFunction(argumentReference)) continue;
+      collectUpstreamStateRefs(analysis, argumentReference, stateReferences, new Set());
+    }
+  }
+  return stateReferences;
+};
+
+const getTransparentWrapperPropReference = (
+  analysis: ProgramAnalysis,
+  reference: Reference,
+  context: RuleContext,
+): Reference | null => {
+  for (const definition of reference.resolved?.defs ?? []) {
+    const declarator = definition.node as unknown as EsTreeNode;
+    if (
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      !isNodeOfType(declarator.id, "Identifier") ||
+      !declarator.init
+    ) {
+      continue;
+    }
+    const resultSymbol = context.scopes.symbolFor(declarator.id);
+    const callbackArgument = getTransparentReactCallbackWrapperArgument(
+      declarator.init as EsTreeNode,
+      resultSymbol,
+      context.scopes,
+    );
+    if (!callbackArgument) continue;
+    const callbackReferences = getDownstreamRefs(analysis, callbackArgument);
+    const callbackReference = callbackReferences.find((candidateReference) =>
+      isPropCallbackInvocationRef(analysis, candidateReference),
+    );
+    if (callbackReference) return callbackReference;
+    const propReference = callbackReferences.find(
+      (candidateReference) =>
+        isProp(analysis, candidateReference) &&
+        !candidateReference.resolved?.references.some(
+          (candidateUsage) => candidateUsage.isWrite() && !candidateUsage.init,
+        ),
+    );
+    if (propReference) return propReference;
+  }
+  return null;
 };
 
 // `setHasMoreItems(result && !result.finished)` — a setter-named callback
@@ -280,8 +349,36 @@ export const noPassLiveStateToParent = defineRule({
       if (!effectFnRefs) return;
       const effectFn = getEffectFn(analysis, node);
       if (!effectFn) return;
+      const effectFunctionBody =
+        isNodeOfType(effectFn, "ArrowFunctionExpression") ||
+        isNodeOfType(effectFn, "FunctionExpression") ||
+        isNodeOfType(effectFn, "FunctionDeclaration")
+          ? effectFn.body
+          : null;
 
       for (const ref of effectFnRefs) {
+        const callExpr = getCallExpr(ref);
+        if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
+        const resolvedCallbackPropNames = getParentCallbackPropNames({
+          analysis,
+          expression: callExpr.callee as EsTreeNode,
+          scopes: context.scopes,
+        });
+        const callExpressionRoot = findTransparentExpressionRoot(callExpr);
+        const resolvedCallbackIsNotification = Boolean(
+          resolvedCallbackPropNames &&
+          callExpr.arguments.length > 0 &&
+          (!isCallResultCapturedToLocal(callExpr) ||
+            (isNodeOfType(callExpressionRoot.parent, "ReturnStatement") &&
+              callExpressionRoot.parent.parent === effectFunctionBody)) &&
+          [...resolvedCallbackPropNames].every(
+            (callbackPropName) => !DATA_FETCHING_CALLBACK_PATTERN.test(callbackPropName),
+          ),
+        );
+        const notificationCallbackPropNames = resolvedCallbackIsNotification
+          ? resolvedCallbackPropNames
+          : null;
+        if (!notificationCallbackPropNames && hasMutableBindingWrite(ref)) continue;
         // Only a prop reference actually INVOKED as a parent notification
         // somewhere in the call chain counts — a data method called on a
         // destructured prop value (`hrefs.find(...)`) reads the prop and
@@ -292,11 +389,19 @@ export const noPassLiveStateToParent = defineRule({
         const propCallbackRefs = getEventualCallRefsTo(analysis, ref, (innerRef) =>
           isParentNotificationCallbackRef(analysis, innerRef),
         );
-        if (propCallbackRefs.length === 0) continue;
-        if (resolvesToLocalHookReturnBinding(ref)) continue;
+        const transparentPropReference =
+          propCallbackRefs.length === 0
+            ? getTransparentWrapperPropReference(analysis, ref, context)
+            : null;
+        if (
+          propCallbackRefs.length === 0 &&
+          !transparentPropReference &&
+          !notificationCallbackPropNames
+        ) {
+          continue;
+        }
+        if (!notificationCallbackPropNames && resolvesToLocalHookReturnBinding(ref)) continue;
         if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
-        const callExpr = getCallExpr(ref);
-        if (!callExpr) continue;
         // When the prop call's result flows into another call's argument
         // (`setDisplay(format(amount))`) the prop is a pure transform
         // consumed locally, not a parent push. Any other position — a bare
@@ -323,15 +428,21 @@ export const noPassLiveStateToParent = defineRule({
         if (
           methodName &&
           DATA_SINK_METHOD_NAMES.has(methodName) &&
-          !isPropCallbackNamedLikeStringRead
+          !isPropCallbackNamedLikeStringRead &&
+          !notificationCallbackPropNames
         ) {
           continue;
         }
-        if (calleeNode && isNamespacedApiCallee(calleeNode)) continue;
+        if (!notificationCallbackPropNames && calleeNode && isNamespacedApiCallee(calleeNode)) {
+          continue;
+        }
 
-        const stateArgRefs = collectPropCallbackBoundStateRefs(analysis, ref, (innerRef) =>
-          isParentNotificationCallbackRef(analysis, innerRef),
-        );
+        const stateArgRefs =
+          transparentPropReference || notificationCallbackPropNames
+            ? collectDirectCallStateRefs(analysis, callExpr)
+            : collectPropCallbackBoundStateRefs(analysis, ref, (innerRef) =>
+                isParentNotificationCallbackRef(analysis, innerRef),
+              );
         const handsSetterNamedCallbackData = propCallbackRefs.some(
           isSetterNamedCallbackReceivingData,
         );

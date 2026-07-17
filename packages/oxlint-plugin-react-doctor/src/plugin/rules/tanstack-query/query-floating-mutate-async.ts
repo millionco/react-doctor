@@ -158,6 +158,13 @@ const isFloatingPromiseUse = (
       parent = current.parent ?? null;
       continue;
     }
+    if (isNodeOfType(parent, "SequenceExpression")) {
+      const finalExpression = parent.expressions.at(-1);
+      if (finalExpression !== current) return true;
+      current = parent;
+      parent = current.parent ?? null;
+      continue;
+    }
     if (isNodeOfType(parent, "MemberExpression") && parent.object === current) {
       const chainMethodName = getStaticPropertyName(parent);
       if (

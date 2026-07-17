@@ -197,6 +197,23 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
+  it("flags discarded values inside sequence expressions", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       (mutation.mutateAsync(first), recordAttempt());
+       (prepare(), mutation.mutateAsync(second));`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("keeps the final sequence value reachable when its container is consumed", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const promise = (prepare(), mutation.mutateAsync(payload));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays silent when the promise remains reachable", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);

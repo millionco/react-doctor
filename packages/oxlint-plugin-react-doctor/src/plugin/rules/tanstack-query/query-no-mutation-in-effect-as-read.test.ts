@@ -95,6 +95,42 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a useCallback then handler that consumes the response", () => {
+    const result = runMutationReadRule(
+      `import { useCallback } from "react";
+       function Component() {
+         const { mutateAsync: fetchUser } = useMutation(options);
+         const handleResponse = useCallback((response) => setUser(response.user), []);
+         useEffect(() => { void fetchUser(params).then(handleResponse); }, [params]);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a useCallback onSuccess handler that consumes the response", () => {
+    const result = runMutationReadRule(
+      `import { useCallback } from "react";
+       function Component() {
+         const handleResponse = useCallback((response) => setUser(response.user), []);
+         const { mutate: fetchUser } = useMutation({ mutationFn, onSuccess: handleResponse });
+         useEffect(() => { fetchUser(params); }, [params]);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags digit-separated read intent names", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: get2FA } = useMutation(options);
+         useEffect(() => {
+           void get2FA(params).then((response) => setChallenge(response.challenge));
+         }, [params]);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a named onSuccess consumer", () => {
     const result = runRule(
       queryNoMutationInEffectAsRead,
@@ -151,6 +187,49 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags calls through mutation method and result aliases", () => {
+    const destructured = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         const requestUser = fetchUser;
+         useEffect(() => { requestUser(params); }, [params]);
+         return <div>{data.user.name}</div>;
+       }`,
+    );
+    const wholeResult = runMutationReadRule(
+      `function Component() {
+         const fetchUserMutation = useMutation(options);
+         const aliasedMutation = fetchUserMutation;
+         useEffect(() => { aliasedMutation.mutate(params); }, [params]);
+         return <div>{aliasedMutation.data.user.name}</div>;
+       }`,
+    );
+    expect(destructured.diagnostics).toHaveLength(1);
+    expect(wholeResult.diagnostics).toHaveLength(1);
+  });
+
+  it("flags aliased and conditional effect callbacks", () => {
+    const aliased = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         const loadUser = () => { fetchUser(params); };
+         const aliasedLoadUser = loadUser;
+         useEffect(aliasedLoadUser, [params]);
+         return <div>{data.user.name}</div>;
+       }`,
+    );
+    const conditional = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         const loadUser = () => { fetchUser(params); };
+         useEffect(enabled ? loadUser : undefined, [enabled, params]);
+         return <div>{data.user.name}</div>;
+       }`,
+    );
+    expect(aliased.diagnostics).toHaveLength(1);
+    expect(conditional.diagnostics).toHaveLength(1);
+  });
+
   it("ignores data references that appear only in effect dependencies", () => {
     const result = runMutationReadRule(
       `function Component() {
@@ -203,6 +282,23 @@ describe("query-no-mutation-in-effect-as-read", () => {
        }`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not accept a run-once ref latch reset by cleanup", () => {
+    const result = runMutationReadRule(
+      `import { useRef } from "react";
+       function Component() {
+         const { mutateAsync: fetchUser } = useMutation(options);
+         const handled = useRef(false);
+         useEffect(() => {
+           if (handled.current) return;
+           handled.current = true;
+           void fetchUser(params).then((response) => setUser(response.user));
+           return () => { handled.current = false; };
+         }, [params]);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not accept inverted latch polarity", () => {
@@ -296,6 +392,34 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not accept a truthy data guard as proof of a completed read", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchCount, data } = useMutation(options);
+         useEffect(() => {
+           if (data) return;
+           void fetchCount(params).then((response) => setCount(response.count));
+         }, [data, params]);
+         return <output>{data}</output>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a nullish data-availability guard", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchCount, data } = useMutation(options);
+         useEffect(() => {
+           if (data !== undefined) return;
+           void fetchCount(params).then((response) => setCount(response.count));
+         }, [data, params]);
+         return <output>{data}</output>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not accept a guard from a different effect", () => {
     const result = runMutationReadRule(
       `function Component() {
@@ -342,5 +466,27 @@ describe("query-no-mutation-in-effect-as-read", () => {
     );
     expect(unrelated.diagnostics).toHaveLength(0);
     expect(genericWrite.diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when list is the object of a write-intent name", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: updateList, data } = useMutation(options);
+         useEffect(() => { updateList(params); }, [params]);
+         return <div>{data.items.length}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps list as a leading read-intent verb", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: listUsers, data } = useMutation(options);
+         useEffect(() => { listUsers(params); }, [params]);
+         return <div>{data.users.length}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

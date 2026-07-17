@@ -1,8 +1,11 @@
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
@@ -43,6 +46,29 @@ const symbolComesFromUseMutationResult = (
   );
 };
 
+const symbolComesFromDestructuredMutateAsync = (
+  symbol: SymbolDescriptor | null,
+  context: RuleContext,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+  visitedSymbolIds.add(symbol.id);
+  if (getDestructuredBindingPropertyName(symbol.bindingIdentifier) === "mutateAsync") {
+    return Boolean(symbol.initializer && isUseMutationInitializer(symbol.initializer, context));
+  }
+  const initializer = getDirectConstInitializer(symbol);
+  if (!initializer) return false;
+  const candidate = stripParenExpression(initializer);
+  return (
+    isNodeOfType(candidate, "Identifier") &&
+    symbolComesFromDestructuredMutateAsync(
+      context.scopes.symbolFor(candidate),
+      context,
+      visitedSymbolIds,
+    )
+  );
+};
+
 const isTanstackMutateAsyncCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -55,16 +81,7 @@ const isTanstackMutateAsyncCall = (
     return symbolComesFromUseMutationResult(context.scopes.symbolFor(resultObject), context);
   }
   if (!isNodeOfType(callee, "Identifier")) return false;
-  const mutateSymbol = context.scopes.symbolFor(callee);
-  if (
-    !mutateSymbol ||
-    getDestructuredBindingPropertyName(mutateSymbol.bindingIdentifier) !== "mutateAsync"
-  ) {
-    return false;
-  }
-  return Boolean(
-    mutateSymbol.initializer && isUseMutationInitializer(mutateSymbol.initializer, context),
-  );
+  return symbolComesFromDestructuredMutateAsync(context.scopes.symbolFor(callee), context);
 };
 
 const findFunctionSymbol = (
@@ -124,34 +141,11 @@ const isPossibleCallable = (
   return isPossibleCallable(symbol.initializer, context, visitedSymbols);
 };
 
-const isFunctionReturnDiscarded = (
-  functionNode: EsTreeNode,
-  context: RuleContext,
-  visitedFunctions: Set<EsTreeNode>,
-): boolean => {
-  if (visitedFunctions.has(functionNode)) return false;
-  visitedFunctions.add(functionNode);
-  if (isEventHandlerAttributeValue(functionNode)) return true;
-  const directParent = functionNode.parent;
-  if (
-    isNodeOfType(directParent, "CallExpression") &&
-    directParent.arguments.some((argument) => argument === functionNode) &&
-    isDiscardingCallbackHost(directParent)
-  ) {
-    return true;
-  }
-  const functionSymbol = findFunctionSymbol(functionNode, context);
-  if (!functionSymbol) return false;
-  return functionSymbol.references.some((reference) =>
-    isDiscardedCallbackReference(reference.identifier),
-  );
-};
-
 const isFloatingPromiseUse = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
+  visitedFunctions: Set<EsTreeNode> = new Set(),
 ): boolean => {
-  const visitedFunctions = new Set<EsTreeNode>();
   let current: EsTreeNode = callExpression;
   let parent = current.parent ?? null;
   while (parent) {
@@ -188,15 +182,46 @@ const isFloatingPromiseUse = (
       continue;
     }
     if (isNodeOfType(parent, "ExpressionStatement")) return true;
+    let returningFunction: EsTreeNode | null = null;
     if (isNodeOfType(parent, "ReturnStatement") && parent.argument === current) {
-      const enclosingFunction = findEnclosingFunction(parent);
-      return Boolean(
-        enclosingFunction &&
-        isFunctionReturnDiscarded(enclosingFunction, context, visitedFunctions),
-      );
+      returningFunction = findEnclosingFunction(parent);
+    } else if (isFunctionLike(parent) && parent.body === current) {
+      returningFunction = parent;
     }
-    if (isFunctionLike(parent) && parent.body === current) {
-      return isFunctionReturnDiscarded(parent, context, visitedFunctions);
+    if (returningFunction) {
+      if (visitedFunctions.has(returningFunction)) return false;
+      const nextVisitedFunctions = new Set(visitedFunctions);
+      nextVisitedFunctions.add(returningFunction);
+      if (isEventHandlerAttributeValue(returningFunction)) return true;
+      const directParent = returningFunction.parent;
+      if (
+        isNodeOfType(directParent, "CallExpression") &&
+        directParent.arguments.some((argument) => argument === returningFunction) &&
+        isDiscardingCallbackHost(directParent)
+      ) {
+        return true;
+      }
+      const functionRoot = findTransparentExpressionRoot(returningFunction);
+      const immediateCall = functionRoot.parent;
+      if (
+        isNodeOfType(immediateCall, "CallExpression") &&
+        stripParenExpression(immediateCall.callee) === returningFunction
+      ) {
+        return isFloatingPromiseUse(immediateCall, context, nextVisitedFunctions);
+      }
+      const functionSymbol = findFunctionSymbol(returningFunction, context);
+      if (!functionSymbol) return false;
+      return collectConstAliasSymbols(functionSymbol, context.scopes).some((symbol) =>
+        symbol.references.some((reference) => {
+          if (isDiscardedCallbackReference(reference.identifier)) return true;
+          const caller = reference.identifier.parent;
+          return Boolean(
+            isNodeOfType(caller, "CallExpression") &&
+            caller.callee === reference.identifier &&
+            isFloatingPromiseUse(caller, context, new Set(nextVisitedFunctions)),
+          );
+        }),
+      );
     }
     return false;
   }

@@ -29,6 +29,15 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a secondary alias of a destructured mutateAsync binding", () => {
+    const result = runMutationRule(
+      `const { mutateAsync } = useMutation(options);
+       const save = mutateAsync;
+       save(payload);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags namespace and result aliases", () => {
     const result = runRule(
       queryFloatingMutateAsync,
@@ -140,6 +149,35 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags mutateAsync returned through an event-handler helper", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const requestSave = () => mutation.mutateAsync(payload);
+       const handleClick = () => requestSave();
+       const view = <button onClick={handleClick} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags mutateAsync returned through an aliased event-handler helper", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const requestSave = () => mutation.mutateAsync(payload);
+       const aliasedRequest = requestSave;
+       const view = <button onClick={aliasedRequest} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags mutateAsync returned from immediately invoked functions", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       (() => mutation.mutateAsync(first))();
+       (async () => mutation.mutateAsync(second))();`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("flags mutateAsync returned from a forEach callback", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);
@@ -167,6 +205,10 @@ describe("query-floating-mutate-async", () => {
        }
        function returned() {
          return mutation.mutateAsync(second);
+       }
+       const request = () => mutation.mutateAsync(fourth);
+       async function indirectAwait() {
+         await request();
        }
        const promise = mutation.mutateAsync(third);
        async function batched() {

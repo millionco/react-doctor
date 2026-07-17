@@ -1,5 +1,6 @@
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -13,9 +14,13 @@ import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
 import { resolveTanstackQueryHookNameFromInitializer } from "./utils/resolve-tanstack-query-hook-name.js";
 
 interface EffectInvocation {
@@ -26,6 +31,7 @@ interface EffectInvocation {
 interface StatusTarget {
   symbolId: number;
   propertyName: string | null;
+  sourcePropertyName: string;
 }
 
 const ACKNOWLEDGEMENT_FIELD_NAMES = new Set([
@@ -52,16 +58,14 @@ const READ_INTENT_WORDS = new Set([
   "search",
 ]);
 
-const hasReadIntentName = (name: string | null): boolean =>
-  Boolean(
-    name &&
-    name
-      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
-      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-      .toLowerCase()
-      .split(/[_-]+/)
-      .some((word) => READ_INTENT_WORDS.has(word)),
+const hasReadIntentName = (name: string | null): boolean => {
+  if (!name) return false;
+  const [firstWord, ...remainingWords] = tokenizeIdentifierWords(name);
+  return (
+    firstWord === "list" ||
+    [firstWord, ...remainingWords].some((word) => word !== "list" && READ_INTENT_WORDS.has(word))
   );
+};
 
 const getPatternBindings = (
   pattern: EsTreeNode,
@@ -91,19 +95,35 @@ const findFunctionSymbol = (
 
 const resolveLocalFunction = (expression: EsTreeNode, context: RuleContext): EsTreeNode | null => {
   const candidate = stripParenExpression(expression);
-  if (isFunctionLike(candidate)) return candidate;
-  if (!isNodeOfType(candidate, "Identifier")) return null;
-  const symbol = context.scopes.symbolFor(candidate);
-  if (!symbol?.initializer) return null;
-  const initializer = stripParenExpression(symbol.initializer);
-  return isFunctionLike(initializer) ? initializer : null;
+  const directFunction = resolveExactLocalFunction(candidate, context.scopes);
+  if (directFunction) return directFunction;
+  const symbol = isNodeOfType(candidate, "Identifier")
+    ? resolveConstIdentifierAlias(candidate, context.scopes)
+    : null;
+  const initializer = stripParenExpression(symbol?.initializer ?? candidate);
+  if (
+    !isNodeOfType(initializer, "CallExpression") ||
+    !isReactApiCall(initializer, "useCallback", context.scopes)
+  ) {
+    return null;
+  }
+  const callback = initializer.arguments[0];
+  return callback ? resolveExactLocalFunction(callback, context.scopes) : null;
 };
 
 const isEffectCallbackReference = (identifier: EsTreeNode): boolean => {
-  const callExpression = identifier.parent;
+  let callbackValue = findTransparentExpressionRoot(identifier);
+  while (
+    (isNodeOfType(callbackValue.parent, "ConditionalExpression") &&
+      callbackValue.parent.test !== callbackValue) ||
+    isNodeOfType(callbackValue.parent, "LogicalExpression")
+  ) {
+    callbackValue = findTransparentExpressionRoot(callbackValue.parent);
+  }
+  const callExpression = callbackValue.parent;
   return Boolean(
     isNodeOfType(callExpression, "CallExpression") &&
-    callExpression.arguments[0] === identifier &&
+    callExpression.arguments[0] === callbackValue &&
     isHookCall(callExpression, EFFECT_HOOK_NAMES),
   );
 };
@@ -130,22 +150,27 @@ const collectEffectInvocations = (
 
   const functionSymbol = findFunctionSymbol(functionNode, context);
   if (functionSymbol) {
-    for (const reference of functionSymbol.references) {
-      if (isEffectCallbackReference(reference.identifier)) {
-        return [{ callback: functionNode, pathNodes: [node] }];
+    const functionSymbols = collectConstAliasSymbols(functionSymbol, context.scopes);
+    for (const symbol of functionSymbols) {
+      for (const reference of symbol.references) {
+        if (isEffectCallbackReference(reference.identifier)) {
+          return [{ callback: functionNode, pathNodes: [node] }];
+        }
       }
     }
     const invocations: EffectInvocation[] = [];
-    for (const reference of functionSymbol.references) {
-      const callSite = reference.identifier.parent;
-      if (!isNodeOfType(callSite, "CallExpression") || callSite.callee !== reference.identifier) {
-        continue;
-      }
-      for (const invocation of collectEffectInvocations(callSite, context, visitedFunctions)) {
-        invocations.push({
-          callback: invocation.callback,
-          pathNodes: [node, callSite, ...invocation.pathNodes],
-        });
+    for (const symbol of functionSymbols) {
+      for (const reference of symbol.references) {
+        const callSite = reference.identifier.parent;
+        if (!isNodeOfType(callSite, "CallExpression") || callSite.callee !== reference.identifier) {
+          continue;
+        }
+        for (const invocation of collectEffectInvocations(callSite, context, visitedFunctions)) {
+          invocations.push({
+            callback: invocation.callback,
+            pathNodes: [node, callSite, ...invocation.pathNodes],
+          });
+        }
       }
     }
     return invocations;
@@ -260,21 +285,23 @@ const resultObjectDataIsConsumed = (
   resultSymbol: SymbolDescriptor,
   context: RuleContext,
 ): boolean => {
-  for (const reference of resultSymbol.references) {
-    const parent = reference.identifier.parent;
-    if (isNodeOfType(parent, "MemberExpression") && parent.object === reference.identifier) {
-      if (getStaticPropertyName(parent) !== "data") continue;
-      if (responseExpressionIsConsumed(parent, context, new Set())) return true;
-      continue;
-    }
-    if (
-      isNodeOfType(parent, "VariableDeclarator") &&
-      parent.init === reference.identifier &&
-      isNodeOfType(parent.id, "ObjectPattern")
-    ) {
-      for (const dataBinding of getPatternBindings(parent.id, "data")) {
-        const dataSymbol = context.scopes.symbolFor(dataBinding);
-        if (dataSymbol && symbolHasConsumerRead(dataSymbol, context)) return true;
+  for (const symbol of collectConstAliasSymbols(resultSymbol, context.scopes)) {
+    for (const reference of symbol.references) {
+      const parent = reference.identifier.parent;
+      if (isNodeOfType(parent, "MemberExpression") && parent.object === reference.identifier) {
+        if (getStaticPropertyName(parent) !== "data") continue;
+        if (responseExpressionIsConsumed(parent, context, new Set())) return true;
+        continue;
+      }
+      if (
+        isNodeOfType(parent, "VariableDeclarator") &&
+        parent.init === reference.identifier &&
+        isNodeOfType(parent.id, "ObjectPattern")
+      ) {
+        for (const dataBinding of getPatternBindings(parent.id, "data")) {
+          const dataSymbol = context.scopes.symbolFor(dataBinding);
+          if (dataSymbol && symbolHasConsumerRead(dataSymbol, context)) return true;
+        }
       }
     }
   }
@@ -289,22 +316,24 @@ const getMutationCalls = (
   if (isNodeOfType(declarator.id, "Identifier")) {
     const resultSymbol = context.scopes.symbolFor(declarator.id);
     if (!resultSymbol) return calls;
-    for (const reference of resultSymbol.references) {
-      const memberExpression = reference.identifier.parent;
-      if (
-        !isNodeOfType(memberExpression, "MemberExpression") ||
-        memberExpression.object !== reference.identifier
-      ) {
-        continue;
-      }
-      const methodName = getStaticPropertyName(memberExpression);
-      const callExpression = memberExpression.parent;
-      if (
-        (methodName === "mutate" || methodName === "mutateAsync") &&
-        isNodeOfType(callExpression, "CallExpression") &&
-        callExpression.callee === memberExpression
-      ) {
-        calls.push(callExpression);
+    for (const symbol of collectConstAliasSymbols(resultSymbol, context.scopes)) {
+      for (const reference of symbol.references) {
+        const memberExpression = reference.identifier.parent;
+        if (
+          !isNodeOfType(memberExpression, "MemberExpression") ||
+          memberExpression.object !== reference.identifier
+        ) {
+          continue;
+        }
+        const methodName = getStaticPropertyName(memberExpression);
+        const callExpression = memberExpression.parent;
+        if (
+          (methodName === "mutate" || methodName === "mutateAsync") &&
+          isNodeOfType(callExpression, "CallExpression") &&
+          callExpression.callee === memberExpression
+        ) {
+          calls.push(callExpression);
+        }
       }
     }
     return calls;
@@ -313,13 +342,15 @@ const getMutationCalls = (
     for (const binding of getPatternBindings(declarator.id, propertyName)) {
       const symbol = context.scopes.symbolFor(binding);
       if (!symbol) continue;
-      for (const reference of symbol.references) {
-        const callExpression = reference.identifier.parent;
-        if (
-          isNodeOfType(callExpression, "CallExpression") &&
-          callExpression.callee === reference.identifier
-        ) {
-          calls.push(callExpression);
+      for (const aliasSymbol of collectConstAliasSymbols(symbol, context.scopes)) {
+        for (const reference of aliasSymbol.references) {
+          const callExpression = reference.identifier.parent;
+          if (
+            isNodeOfType(callExpression, "CallExpression") &&
+            callExpression.callee === reference.identifier
+          ) {
+            calls.push(callExpression);
+          }
         }
       }
     }
@@ -456,6 +487,31 @@ const getAssignedTrueRefSymbol = (
   return getRefCurrentSymbol(expression.left, context);
 };
 
+const refSymbolHasResettingWrite = (refSymbol: SymbolDescriptor, context: RuleContext): boolean =>
+  collectConstAliasSymbols(refSymbol, context.scopes).some((symbol) =>
+    symbol.references.some((reference) => {
+      const memberExpression = reference.identifier.parent;
+      if (
+        !isNodeOfType(memberExpression, "MemberExpression") ||
+        memberExpression.object !== reference.identifier ||
+        getStaticPropertyName(memberExpression) !== "current"
+      ) {
+        return false;
+      }
+      const memberRoot = findTransparentExpressionRoot(memberExpression);
+      const parent = memberRoot.parent;
+      if (isNodeOfType(parent, "UpdateExpression") && parent.argument === memberRoot) return true;
+      if (!isNodeOfType(parent, "AssignmentExpression") || parent.left !== memberRoot) {
+        return false;
+      }
+      return !(
+        parent.operator === "=" &&
+        isNodeOfType(parent.right, "Literal") &&
+        parent.right.value === true
+      );
+    }),
+  );
+
 const pathHasRunOnceRefLatch = (pathNode: EsTreeNode, context: RuleContext): boolean => {
   const statements = collectDominatingStatements(pathNode);
   const guardedAt = new Map<number, number>();
@@ -467,7 +523,8 @@ const pathHasRunOnceRefLatch = (pathNode: EsTreeNode, context: RuleContext): boo
     const assignedSymbol = getAssignedTrueRefSymbol(statement, context);
     if (
       assignedSymbol &&
-      (guardedAt.get(assignedSymbol.id) ?? Number.POSITIVE_INFINITY) < statement.range[0]
+      (guardedAt.get(assignedSymbol.id) ?? Number.POSITIVE_INFINITY) < statement.range[0] &&
+      !refSymbolHasResettingWrite(assignedSymbol, context)
     ) {
       return true;
     }
@@ -502,15 +559,23 @@ const testPositivelyMatchesStatusTarget = (
   context: RuleContext,
 ): boolean => {
   const candidate = stripParenExpression(test);
-  if (expressionMatchesStatusTarget(candidate, target, context)) return true;
-  if (!isNodeOfType(candidate, "BinaryExpression") || !["==", "==="].includes(candidate.operator)) {
+  if (expressionMatchesStatusTarget(candidate, target, context)) {
+    return target.sourcePropertyName === "isSuccess";
+  }
+  if (!isNodeOfType(candidate, "BinaryExpression")) {
     return false;
   }
   const leftMatches = expressionMatchesStatusTarget(candidate.left, target, context);
   const rightMatches = expressionMatchesStatusTarget(candidate.right, target, context);
   const other = leftMatches ? candidate.right : rightMatches ? candidate.left : null;
-  if (!other || !isNodeOfType(other, "Literal")) return false;
-  if (target.propertyName === "status") return other.value === "success";
+  if (!other) return false;
+  if (target.sourcePropertyName === "data") {
+    return ["!=", "!=="].includes(candidate.operator) && isNullishValue(other);
+  }
+  if (!isNodeOfType(other, "Literal") || !["==", "==="].includes(candidate.operator)) {
+    return false;
+  }
+  if (target.sourcePropertyName === "status") return other.value === "success";
   return other.value === true;
 };
 
@@ -537,17 +602,21 @@ const getStatusTargets = (
   if (isNodeOfType(declarator.id, "Identifier")) {
     const resultSymbol = context.scopes.symbolFor(declarator.id);
     return resultSymbol
-      ? ["data", "isSuccess", "status"].map((propertyName) => ({
-          symbolId: resultSymbol.id,
-          propertyName,
-        }))
+      ? ["data", "isSuccess", "status"].flatMap((sourcePropertyName) =>
+          collectConstAliasSymbols(resultSymbol, context.scopes).map((symbol) => ({
+            symbolId: symbol.id,
+            propertyName: sourcePropertyName,
+            sourcePropertyName,
+          })),
+        )
       : [];
   }
   const targets: StatusTarget[] = [];
   for (const propertyName of ["data", "isSuccess", "status"]) {
     for (const binding of getPatternBindings(declarator.id, propertyName)) {
       const symbol = context.scopes.symbolFor(binding);
-      if (symbol) targets.push({ symbolId: symbol.id, propertyName: null });
+      if (symbol)
+        targets.push({ symbolId: symbol.id, propertyName: null, sourcePropertyName: propertyName });
     }
   }
   return targets;

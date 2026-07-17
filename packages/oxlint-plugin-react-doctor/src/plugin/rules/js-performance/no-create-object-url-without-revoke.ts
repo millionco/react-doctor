@@ -322,7 +322,12 @@ const consumerIsGuaranteedAfterResult = (
     return context.cfg.isUnconditionalFromEntry(consumer);
   }
   if (context.cfg.enclosingFunction(consumer) !== executionBoundary) return false;
-  if (context.cfg.isUnconditionalFromEntry(consumer)) return true;
+  const consumerRunsAfterResult =
+    consumer.range[0] > resultCall.range[1] ||
+    (consumer.range[0] <= resultCall.range[0] && consumer.range[1] >= resultCall.range[1]);
+  if (context.cfg.isUnconditionalFromEntry(consumer) && consumerRunsAfterResult) {
+    return true;
+  }
   const boundaryControlFlow = executionBoundary ? context.cfg.cfgFor(executionBoundary) : null;
   const resultBlock = boundaryControlFlow?.blockOf(resultCall);
   const consumerBlock = boundaryControlFlow?.blockOf(consumer);

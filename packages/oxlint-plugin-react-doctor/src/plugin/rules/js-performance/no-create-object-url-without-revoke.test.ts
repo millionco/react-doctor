@@ -374,6 +374,17 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat cleanup of a previous binding value as cleanup of a later result", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const renderPreview = (blob) => URL.createObjectURL(blob);
+       let url = getPreviousPreview();
+       URL.revokeObjectURL(url);
+       url = renderPreview(blob);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet for a truthy result guard inside the helper call's loop iteration", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

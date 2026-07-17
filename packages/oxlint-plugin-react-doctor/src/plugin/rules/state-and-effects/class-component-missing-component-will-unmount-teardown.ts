@@ -35,6 +35,7 @@ const LISTENER_REGISTRATION_METHODS = new Set([
 
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "global", "self"]);
 const MOUNT_LOCAL_RESOURCE_FACTORY_NAMES = new Set(["initPlaces", "places"]);
+const COMPONENT_MUTATION_METHOD_NAMES = new Set(["forceUpdate", "setState"]);
 
 const getBareCalleeName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
@@ -113,7 +114,7 @@ const functionSetsComponentState = (
       isNodeOfType(node, "CallExpression") &&
       isNodeOfType(node.callee, "MemberExpression") &&
       isNodeOfType(stripParenExpression(node.callee.object), "ThisExpression") &&
-      getStaticPropertyName(node.callee) === "setState"
+      COMPONENT_MUTATION_METHOD_NAMES.has(getStaticPropertyName(node.callee) ?? "")
     ) {
       mutates = true;
       return false;
@@ -156,7 +157,8 @@ const resolveTimeoutCallbackFunction = (
     isNodeOfType(expression, "CallExpression") &&
     isNodeOfType(expression.callee, "MemberExpression") &&
     getStaticPropertyName(expression.callee) === "bind" &&
-    isNodeOfType(expression.arguments?.[0], "ThisExpression")
+    expression.arguments?.[0] &&
+    isNodeOfType(stripParenExpression(expression.arguments[0] as EsTreeNode), "ThisExpression")
       ? stripParenExpression(expression.callee.object as EsTreeNode)
       : null;
   const methodReference = boundTarget ?? expression;

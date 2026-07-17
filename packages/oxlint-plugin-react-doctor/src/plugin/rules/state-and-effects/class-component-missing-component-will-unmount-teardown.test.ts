@@ -800,4 +800,39 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     );
     expect(result.diagnostics).toHaveLength(2);
   });
+
+  it("tracks forceUpdate helpers and transparent bound this arguments", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class ForceUpdater extends React.Component {
+         refresh = () => this.forceUpdate();
+         componentDidMount() {
+           setTimeout(() => this.refresh(), 100);
+         }
+         render() { return null; }
+       }
+       class NonNullBoundThis extends React.Component {
+         refresh = () => this.setState({ ready: true });
+         componentDidMount() {
+           setTimeout(this.refresh.bind(this!), 100);
+         }
+         render() { return null; }
+       }
+       class AssertedBoundThis extends React.Component {
+         refresh = () => this.setState({ ready: true });
+         componentDidMount() {
+           setTimeout(this.refresh.bind(this as any), 100);
+         }
+         render() { return null; }
+       }
+       class WrongBoundReceiver extends React.Component {
+         refresh = () => this.setState({ ready: true });
+         componentDidMount() {
+           setTimeout(this.refresh.bind(other), 100);
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
 });

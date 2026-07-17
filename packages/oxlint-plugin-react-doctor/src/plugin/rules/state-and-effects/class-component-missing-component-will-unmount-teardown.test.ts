@@ -703,4 +703,69 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("tracks static computed listener and timer method names", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class ComputedInterval extends React.Component {
+         componentDidMount() {
+           window["setInterval"](this.tick, 1000);
+         }
+         render() { return null; }
+       }
+       class ComputedPair extends React.Component {
+         componentDidMount() {
+           window["addEventListener"]("resize", this.resize);
+           window[\`removeEventListener\`]("resize", this.resize);
+         }
+         render() { return null; }
+       }
+       class ComputedTimeoutMutation extends React.Component {
+         componentDidMount() {
+           window["setTimeout"](() => this["setState"]({ ready: true }), 100);
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("resolves stable option bindings at the registration point", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `const outerOptions = { once: true };
+       class CaptureMismatch extends React.Component {
+         componentDidMount() {
+           const captureOptions = { capture: true };
+           window.addEventListener("resize", this.resize, captureOptions);
+           window.removeEventListener("resize", this.resize, { capture: false });
+         }
+         render() { return null; }
+       }
+       class MutatedBeforeRegistration extends React.Component {
+         componentDidMount() {
+           const options = { once: true };
+           options.once = false;
+           window.addEventListener("load", this.load, options);
+         }
+         render() { return null; }
+       }
+       class MutatedAfterRegistration extends React.Component {
+         componentDidMount() {
+           const options = { once: true };
+           window.addEventListener("load", this.load, options);
+           options.once = false;
+         }
+         render() { return null; }
+       }
+       class ShadowedOptions extends React.Component {
+         componentDidMount() {
+           const outerOptions = { once: false };
+           window.addEventListener("load", this.load, outerOptions);
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
 });

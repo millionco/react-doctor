@@ -8,7 +8,9 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { resolveStableOptionsObject } from "../../utils/resolve-stable-options-object.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -37,13 +39,11 @@ const resolveLeakingSubscriptionName = (
   // this still excludes Yup's `schema.when(...)` and `observer.observe(...)`.
   if (
     isNodeOfType(node.callee, "MemberExpression") &&
-    !node.callee.computed &&
     isNodeOfType(node.callee.object, "Identifier") &&
-    isNodeOfType(node.callee.property, "Identifier") &&
-    LEAKING_MOBX_SUBSCRIPTIONS.has(node.callee.property.name) &&
+    LEAKING_MOBX_SUBSCRIPTIONS.has(getStaticPropertyName(node.callee) ?? "") &&
     isNamespaceImportFromModule(node, node.callee.object.name, "mobx")
   ) {
-    return node.callee.property.name;
+    return getStaticPropertyName(node.callee);
   }
   return null;
 };
@@ -149,20 +149,18 @@ const isProcessLifetimeWiring = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const mayCarryAbortSignal = (optionsArgument: EsTreeNode | undefined): boolean => {
+const mayCarryAbortSignal = (
+  optionsArgument: EsTreeNode | undefined,
+  scopes: RuleContext["scopes"],
+): boolean => {
   if (!optionsArgument) return false;
-  let options = stripParenExpression(optionsArgument);
-  if (isNodeOfType(options, "Identifier")) {
-    const initializer = findVariableInitializer(options, options.name)?.initializer;
-    if (initializer) options = stripParenExpression(initializer);
-  }
-  if (!isNodeOfType(options, "ObjectExpression")) return true;
+  const options = resolveStableOptionsObject(optionsArgument, ["signal"], scopes);
+  if (!options) return true;
   return options.properties.some((property) => {
     if (!isNodeOfType(property, "Property")) return true;
-    if (property.computed) return true;
-    const isSignalProperty = isNodeOfType(property.key, "Identifier")
-      ? property.key.name === "signal"
-      : isNodeOfType(property.key, "Literal") && property.key.value === "signal";
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (propertyName === null) return true;
+    const isSignalProperty = propertyName === "signal";
     if (!isSignalProperty) return false;
     const value = property.value as EsTreeNode;
     if (isNodeOfType(value, "Identifier") && value.name === "undefined") return false;
@@ -238,7 +236,7 @@ export const mobxReactionDisposerDiscarded = defineRule({
       // so discarding the disposer is correct there; opaque (non-literal)
       // options may carry one, so they get the benefit of the doubt.
       const optionsArgument = node.arguments[OPTIONS_ARGUMENT_INDEX[subscriptionName]];
-      if (mayCarryAbortSignal(optionsArgument)) return;
+      if (mayCarryAbortSignal(optionsArgument, context.scopes)) return;
 
       context.report({ node, message: MESSAGE });
     },

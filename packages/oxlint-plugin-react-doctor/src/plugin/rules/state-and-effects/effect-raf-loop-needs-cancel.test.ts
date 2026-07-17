@@ -560,4 +560,15 @@ describe("effect-raf-loop-needs-cancel", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("tracks static computed animation-frame lifecycle methods", () => {
+    const result = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+         const frameId = window["requestAnimationFrame"](tick);
+         return () => window[\`cancelAnimationFrame\`](frameId);
+       }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

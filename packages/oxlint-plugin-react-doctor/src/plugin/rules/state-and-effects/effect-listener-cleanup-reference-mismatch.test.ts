@@ -263,4 +263,15 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("matches static computed listener method names", () => {
+    const result = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `useEffect(() => {
+         source["subscribe"](() => onValue());
+         return () => source[\`unsubscribe\`](() => onValue());
+       }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

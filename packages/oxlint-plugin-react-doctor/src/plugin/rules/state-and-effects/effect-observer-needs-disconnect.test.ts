@@ -458,4 +458,16 @@ describe("effect-observer-needs-disconnect", () => {
     );
     expect(shadowedTarget.diagnostics).toHaveLength(1);
   });
+
+  it("tracks static computed observer lifecycle methods", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => {});
+         observer["observe"](element);
+         return () => observer[\`disconnect\`]();
+       }, [element]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

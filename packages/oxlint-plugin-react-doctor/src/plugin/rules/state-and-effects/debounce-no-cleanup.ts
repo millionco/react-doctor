@@ -20,6 +20,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { resolveStableOptionsObject } from "../../utils/resolve-stable-options-object.js";
 
 const DEBOUNCE_WRAPPER_HOOK_NAMES = new Set(["useMemo", "useCallback", "useRef"]);
 const DEBOUNCE_FACTORY_NAMES = new Set(["debounce", "throttle"]);
@@ -56,9 +57,7 @@ const isLodashDebounceCall = (callExpression: EsTreeNode): boolean => {
   }
   if (
     isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.property, "Identifier") &&
-    DEBOUNCE_FACTORY_NAMES.has(callee.property.name) &&
+    DEBOUNCE_FACTORY_NAMES.has(getStaticPropertyName(callee) ?? "") &&
     isNodeOfType(callee.object, "Identifier")
   ) {
     const receiverSource = getImportSourceForName(callee.object, callee.object.name);
@@ -92,16 +91,22 @@ const findDebounceCallInHookInitializer = (hookCall: EsTreeNode): EsTreeNode | n
   return null;
 };
 
-const hasTrailingFalseOption = (debounceCall: EsTreeNode): boolean => {
+const hasTrailingFalseOption = (
+  debounceCall: EsTreeNode,
+  scopes: ScopeAnalysis,
+  optionsReadAnchor: EsTreeNode,
+): boolean => {
   if (!isNodeOfType(debounceCall, "CallExpression")) return false;
-  let optionsArgument: EsTreeNode | null = (debounceCall.arguments?.[2] as EsTreeNode) ?? null;
-  // `debounce(fn, 500, TRACK_OPTIONS)` — resolve the options binding.
-  if (optionsArgument && isNodeOfType(optionsArgument, "Identifier")) {
-    const binding = findVariableInitializer(optionsArgument, optionsArgument.name);
-    if (binding?.initializer) optionsArgument = stripParenExpression(binding.initializer);
-  }
-  if (!optionsArgument || !isNodeOfType(optionsArgument, "ObjectExpression")) return false;
-  return (optionsArgument.properties ?? []).some(
+  const optionsArgument = debounceCall.arguments?.[2] as EsTreeNode | undefined;
+  if (!optionsArgument) return false;
+  const optionsObject = resolveStableOptionsObject(
+    optionsArgument,
+    ["trailing"],
+    scopes,
+    optionsReadAnchor,
+  );
+  if (!optionsObject) return false;
+  return optionsObject.properties.some(
     (property) =>
       isNodeOfType(property, "Property") &&
       getStaticPropertyKeyName(property, { allowComputedString: true }) === "trailing" &&
@@ -390,9 +395,7 @@ const chainEndsInCatch = (callNode: EsTreeNode): boolean => {
   return (
     isNodeOfType(outermost, "CallExpression") &&
     isNodeOfType(outermost.callee, "MemberExpression") &&
-    !outermost.callee.computed &&
-    isNodeOfType(outermost.callee.property, "Identifier") &&
-    outermost.callee.property.name === "catch"
+    getStaticPropertyName(outermost.callee) === "catch"
   );
 };
 
@@ -468,10 +471,8 @@ const hasAsyncOrDomWork = (wrappedFunction: FunctionEsTreeNode): boolean => {
       }
       if (
         isNodeOfType(callee, "MemberExpression") &&
-        !callee.computed &&
-        isNodeOfType(callee.property, "Identifier") &&
-        PROMISE_CHAIN_METHOD_NAMES.has(callee.property.name) &&
-        callee.property.name !== "catch" &&
+        PROMISE_CHAIN_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") &&
+        getStaticPropertyName(callee) !== "catch" &&
         !chainEndsInCatch(child)
       ) {
         didFindWork = true;
@@ -556,7 +557,7 @@ export const debounceNoCleanup = defineRule({
         if (!isProvenReactHookCall(node, DEBOUNCE_WRAPPER_HOOK_NAMES, context.scopes)) return;
         const debounceCall = findDebounceCallInHookInitializer(node);
         if (!debounceCall) return;
-        if (hasTrailingFalseOption(debounceCall)) return;
+        if (hasTrailingFalseOption(debounceCall, context.scopes, node)) return;
 
         const declarator = node.parent;
         if (

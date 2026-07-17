@@ -656,4 +656,49 @@ function SearchBox({ query }) {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("tracks computed factories and flow-stable option bindings", () => {
+    const mutatedBefore = runRule(
+      debounceNoCleanup,
+      `import * as lodash from "lodash";
+       import { useEffect, useMemo } from "react";
+       function MutatedBefore({ query }) {
+         const options = { trailing: false };
+         options.trailing = true;
+         const search = useMemo(() => lodash["debounce"](async (value) => {
+           await fetchResults(value);
+         }, 250, options), []);
+         useEffect(() => search(query), [query, search]);
+       }`,
+    );
+    const mutatedAfter = runRule(
+      debounceNoCleanup,
+      `import * as lodash from "lodash";
+       import { useEffect, useMemo } from "react";
+       function MutatedAfter({ query }) {
+         const options = { trailing: false };
+         const search = useMemo(() => lodash[\`debounce\`](async (value) => {
+           await fetchResults(value);
+         }, 250, options), []);
+         options.trailing = true;
+         useEffect(() => search(query), [query, search]);
+       }`,
+    );
+    const shadowedOptions = runRule(
+      debounceNoCleanup,
+      `import * as lodash from "lodash";
+       import { useEffect, useMemo } from "react";
+       const outerOptions = { trailing: false };
+       function ShadowedOptions({ query }) {
+         const outerOptions = { trailing: true };
+         const search = useMemo(() => lodash["debounce"](async (value) => {
+           await fetchResults(value);
+         }, 250, outerOptions), []);
+         useEffect(() => search(query), [query, search]);
+       }`,
+    );
+    expect(mutatedBefore.diagnostics).toHaveLength(1);
+    expect(mutatedAfter.diagnostics).toHaveLength(0);
+    expect(shadowedOptions.diagnostics).toHaveLength(1);
+  });
 });

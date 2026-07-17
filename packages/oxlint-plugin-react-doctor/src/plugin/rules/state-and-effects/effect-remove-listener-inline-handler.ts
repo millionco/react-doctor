@@ -3,7 +3,6 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
-import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { serializeEventKey } from "../../utils/serialize-event-key.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -46,8 +45,8 @@ const isFreshFunctionReference = (node: EsTreeNode): boolean => {
   if (isInlineFunctionExpression(handler)) return true;
   return (
     isNodeOfType(handler, "CallExpression") &&
-    isMemberProperty(handler.callee, "bind") &&
-    !handler.callee.computed
+    isNodeOfType(handler.callee, "MemberExpression") &&
+    getStaticPropertyName(handler.callee) === "bind"
   );
 };
 

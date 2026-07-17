@@ -160,4 +160,12 @@ describe("effect-remove-listener-inline-handler", () => {
   it("carries the test-noise tag so unit tests asserting off() tolerance are pipeline-skipped", () => {
     expect(effectRemoveListenerInlineHandler.tags).toContain("test-noise");
   });
+
+  it("flags a fresh bind reached through a static computed member", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `window.removeEventListener("resize", handleResize["bind"](this));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

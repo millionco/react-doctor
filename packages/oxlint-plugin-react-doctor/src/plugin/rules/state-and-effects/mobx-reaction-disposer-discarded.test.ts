@@ -365,4 +365,31 @@ export const themeStore = new ThemeStore();`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("tracks computed namespace calls and signal option mutations at call time", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `import * as mobx from "mobx";
+       const controller = new AbortController();
+       const outerOptions = { signal: controller.signal };
+       function computedCall() {
+         mobx["autorun"](() => sync());
+       }
+       function signalBefore() {
+         const options = {};
+         options.signal = controller.signal;
+         mobx.autorun(() => sync(), options);
+       }
+       function signalAfter() {
+         const options = {};
+         mobx.autorun(() => sync(), options);
+         options.signal = controller.signal;
+       }
+       function shadowedOptions() {
+         const outerOptions = {};
+         mobx.autorun(() => sync(), outerOptions);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
 });

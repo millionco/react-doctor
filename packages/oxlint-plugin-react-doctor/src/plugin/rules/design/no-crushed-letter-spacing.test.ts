@@ -42,4 +42,28 @@ describe("no-crushed-letter-spacing", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not look through later unknown inline style overrides", () => {
+    const result = runRule(
+      noCrushedLetterSpacing,
+      `const Example = ({ key, styles }) => <><h1 style={{ letterSpacing: "-0.12em", ...styles }}>Spread override</h1><h2 style={{ letterSpacing: "-0.12em", [key]: "normal" }}>Computed override</h2></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("uses an explicit inline style after unknown entries", () => {
+    const result = runRule(
+      noCrushedLetterSpacing,
+      `const Example = ({ key, styles }) => <><h1 style={{ ...styles, letterSpacing: "-0.12em" }}>Spread first</h1><h2 style={{ [key]: "normal", letterSpacing: "-0.12em" }}>Computed first</h2></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("recognizes a static computed inline style key", () => {
+    const result = runRule(
+      noCrushedLetterSpacing,
+      `const Example = () => <h1 style={{ ["letterSpacing"]: "-0.12em" }}>Static key</h1>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

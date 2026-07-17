@@ -150,8 +150,13 @@ describe("query-floating-mutate-async", () => {
   });
 
   it.each([
-    ["conditional", "enabled ? effectCallback : fallback"],
-    ["logical", "enabled && effectCallback"],
+    ["conditional consequent", "enabled ? effectCallback : fallback"],
+    ["conditional alternate", "enabled ? fallback : effectCallback"],
+    ["logical-and right", "enabled && effectCallback"],
+    ["logical-or left", "effectCallback || fallback"],
+    ["logical-or right", "enabled || effectCallback"],
+    ["nullish-coalesce left", "effectCallback ?? fallback"],
+    ["nullish-coalesce right", "enabled ?? effectCallback"],
     ["final sequence", "(fallback, effectCallback)"],
     ["transparent TypeScript", "effectCallback as EffectCallback"],
   ])("flags a %s wrapped effect callback", (_wrapperName, callbackExpression) => {
@@ -176,6 +181,7 @@ describe("query-floating-mutate-async", () => {
 
   it.each([
     ["conditional predicate", "effectCallback ? fallback : otherFallback"],
+    ["logical-and left", "effectCallback && fallback"],
     ["non-final sequence", "(effectCallback, fallback)"],
   ])("does not treat a %s as the effect callback", (_wrapperName, callbackExpression) => {
     const result = runMutationRule(
@@ -187,8 +193,14 @@ describe("query-floating-mutate-async", () => {
   });
 
   it.each([
-    ["conditional", "enabled ? effectCallback : fallback"],
-    ["logical", "enabled && effectCallback"],
+    ["conditional consequent", "enabled ? effectCallback : fallback"],
+    ["conditional alternate", "enabled ? fallback : effectCallback"],
+    ["logical-and right", "enabled && effectCallback"],
+    ["logical-and left", "effectCallback && fallback"],
+    ["logical-or left", "effectCallback || fallback"],
+    ["logical-or right", "enabled || effectCallback"],
+    ["nullish-coalesce left", "effectCallback ?? fallback"],
+    ["nullish-coalesce right", "enabled ?? effectCallback"],
     ["final sequence", "(fallback, effectCallback)"],
     ["transparent TypeScript", "effectCallback as EffectCallback"],
   ])("keeps a %s wrapped callback result reachable", (_wrapperName, callbackExpression) => {
@@ -199,6 +211,22 @@ describe("query-floating-mutate-async", () => {
        const promise = selectedCallback();`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    "setTimeout",
+    "setInterval",
+    "requestAnimationFrame",
+    "requestIdleCallback",
+    "queueMicrotask",
+    "setImmediate",
+  ])("flags a promise returned from a %s callback", (schedulerName) => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const scheduledCallback = () => mutation.mutateAsync(payload);
+       ${schedulerName}(scheduledCallback);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it.each([

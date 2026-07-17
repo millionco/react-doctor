@@ -1,4 +1,5 @@
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES } from "../../constants/dom.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -22,12 +23,9 @@ import {
 import { resolveTanstackQueryHookNameFromInitializer } from "./utils/resolve-tanstack-query-hook-name.js";
 
 const DISCARDING_CALLBACK_HOST_NAMES = new Set([
+  ...TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES,
   "forEach",
-  "requestAnimationFrame",
-  "requestIdleCallback",
   "setImmediate",
-  "setInterval",
-  "setTimeout",
   "useEffect",
   "useInsertionEffect",
   "useLayoutEffect",

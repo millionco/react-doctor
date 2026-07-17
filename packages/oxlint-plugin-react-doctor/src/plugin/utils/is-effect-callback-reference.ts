@@ -13,7 +13,8 @@ export const isEffectCallbackReference = (identifier: EsTreeNode): boolean => {
         parent.test !== callbackValue &&
         (parent.consequent === callbackValue || parent.alternate === callbackValue)) ||
       (isNodeOfType(parent, "LogicalExpression") &&
-        (parent.left === callbackValue || parent.right === callbackValue)) ||
+        (parent.right === callbackValue ||
+          (parent.left === callbackValue && parent.operator !== "&&"))) ||
       (isNodeOfType(parent, "SequenceExpression") && parent.expressions.at(-1) === callbackValue)
     ) {
       callbackValue = findTransparentExpressionRoot(parent);

@@ -133,6 +133,39 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still reports when external work only exists in an uninvoked nested function", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Selection({ itemId, source }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          const subscribeLater = () => source.subscribe(refresh);
+        }, [itemId, source]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a nested subscription helper is invoked by the effect", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Selection({ itemId, source }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          const subscribe = () => source.subscribe(refresh);
+          subscribe();
+        }, [itemId, source]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a literal reset beside a timer callback", () => {
     const result = runRule(
       noAdjustStateOnPropChange,

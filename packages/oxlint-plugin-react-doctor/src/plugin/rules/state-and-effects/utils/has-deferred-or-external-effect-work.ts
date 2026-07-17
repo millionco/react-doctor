@@ -1,5 +1,6 @@
 import { TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES } from "../../../constants/dom.js";
 import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
+import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
 import { containsFetchCall } from "../../../utils/contains-fetch-call.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
@@ -21,9 +22,13 @@ export const hasDeferredOrExternalEffectWork = (
   const effectFunction = getEffectFn(analysis, effectNode);
   if (!effectFunction) return false;
   if (containsFetchCall(effectFunction, { stopAtFunctionBoundary: true })) return true;
+  const effectInvokedFunctions = collectEffectInvokedFunctions(effectFunction);
   let didFindDeferredOrExternalWork = false;
   walkAst(effectFunction, (child) => {
     if (didFindDeferredOrExternalWork) return false;
+    if (child !== effectFunction && isFunctionLike(child) && !effectInvokedFunctions.has(child)) {
+      return false;
+    }
     if (isNodeOfType(child, "AssignmentExpression")) {
       const assignmentTarget = child.left;
       const handlerName = isNodeOfType(assignmentTarget, "MemberExpression")

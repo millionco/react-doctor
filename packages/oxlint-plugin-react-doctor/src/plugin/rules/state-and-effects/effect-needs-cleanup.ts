@@ -855,6 +855,88 @@ const findContainingCollectionKey = (
   return null;
 };
 
+const findPushedResourceCollectionKey = (
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): string | null => {
+  if (!isNodeOfType(usage.node, "CallExpression")) return null;
+  const registrationCallee = stripParenExpression(usage.node.callee);
+  if (!isNodeOfType(registrationCallee, "MemberExpression") || registrationCallee.computed) {
+    return null;
+  }
+  const resourceIdentifier = stripParenExpression(registrationCallee.object);
+  if (!isPrivatePlainConstIdentifier(resourceIdentifier, context)) return null;
+  const resourceSymbol = context.scopes.symbolFor(resourceIdentifier);
+  if (!resourceSymbol) return null;
+
+  const pushCalls = resourceSymbol.references.flatMap((reference) => {
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const callNode = referenceRoot.parent;
+    if (
+      !isNodeOfType(callNode, "CallExpression") ||
+      !callNode.arguments?.some((argument) => argument === referenceRoot)
+    ) {
+      return [];
+    }
+    const pushCallee = stripParenExpression(callNode.callee);
+    return isNodeOfType(pushCallee, "MemberExpression") &&
+      !pushCallee.computed &&
+      isNodeOfType(pushCallee.object, "Identifier") &&
+      isNodeOfType(pushCallee.property, "Identifier") &&
+      pushCallee.property.name === "push"
+      ? [callNode]
+      : [];
+  });
+  if (pushCalls.length !== 1) return null;
+  const pushCall = pushCalls[0];
+  if (
+    findEnclosingFunction(pushCall) !== findEnclosingFunction(usage.node) ||
+    !doMatchingNodesCoverEveryPathAfterUsage(usage.node, [pushCall], context)
+  ) {
+    return null;
+  }
+
+  const pushCallee = stripParenExpression(pushCall.callee);
+  if (
+    !isNodeOfType(pushCallee, "MemberExpression") ||
+    !isNodeOfType(pushCallee.object, "Identifier") ||
+    !isPrivatePlainConstIdentifier(pushCallee.object, context)
+  ) {
+    return null;
+  }
+  const collectionSymbol = context.scopes.symbolFor(pushCallee.object);
+  const collectionInitializer = collectionSymbol?.initializer
+    ? stripParenExpression(collectionSymbol.initializer)
+    : null;
+  if (
+    !collectionSymbol ||
+    !isNodeOfType(collectionInitializer, "ArrayExpression") ||
+    (collectionInitializer.elements?.length ?? 0) !== 0 ||
+    findEnclosingFunction(collectionSymbol.declarationNode) !== findEnclosingFunction(usage.node)
+  ) {
+    return null;
+  }
+  const hasOnlyCollectionRetentionAndIteration = collectionSymbol.references.every((reference) => {
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const memberNode = referenceRoot.parent;
+    const callNode = memberNode?.parent;
+    if (
+      !isNodeOfType(memberNode, "MemberExpression") ||
+      memberNode.object !== referenceRoot ||
+      memberNode.computed ||
+      !isNodeOfType(memberNode.property, "Identifier") ||
+      !isNodeOfType(callNode, "CallExpression") ||
+      callNode.callee !== memberNode
+    ) {
+      return false;
+    }
+    return memberNode.property.name === "forEach" || callNode === pushCall;
+  });
+  return hasOnlyCollectionRetentionAndIteration
+    ? resolveExpressionKey(pushCallee.object, context)
+    : null;
+};
+
 const isWithinAssignmentTarget = (identifier: EsTreeNode): boolean => {
   let currentNode = identifier;
   let parentNode = currentNode.parent;
@@ -992,6 +1074,22 @@ const isSynchronousIteratorCallback = (functionNode: EsTreeNode): boolean => {
   );
 };
 
+const findEnclosingForEachCall = (node: EsTreeNode): EsTreeNode | null => {
+  const callbackNode = findEnclosingFunction(node);
+  if (!callbackNode) return null;
+  const callNode = callbackNode.parent;
+  if (!isNodeOfType(callNode, "CallExpression") || callNode.arguments?.[0] !== callbackNode) {
+    return null;
+  }
+  const callee = stripParenExpression(callNode.callee);
+  return isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "forEach"
+    ? callNode
+    : null;
+};
+
 const findDirectCallForReference = (identifier: EsTreeNode): EsTreeNode | null => {
   const expressionRoot = findTransparentExpressionRoot(identifier);
   const callNode = expressionRoot.parent;
@@ -1096,6 +1194,19 @@ const doesCleanupFunctionReleaseUsage = (
       ? cleanupChild.expression
       : cleanupChild;
     if (doesReleaseCallMatchUsage(cleanupChild, usage, context)) {
+      const cleanupForEachCall = findEnclosingForEachCall(cleanupChild);
+      const cleanupCallee = isNodeOfType(cleanupCall, "CallExpression")
+        ? stripParenExpression(cleanupCall.callee)
+        : null;
+      const cleanupReceiverCollectionKey = isNodeOfType(cleanupCallee, "MemberExpression")
+        ? resolveIteratorCollectionKey(cleanupCallee.object, context)
+        : null;
+      if (cleanupForEachCall && cleanupReceiverCollectionKey !== null) {
+        if (findPushedResourceCollectionKey(usage, context) === cleanupReceiverCollectionKey) {
+          matchingLoopOrHelperAnchors.push(cleanupForEachCall);
+        }
+        return;
+      }
       const cleanupEventArgument = isNodeOfType(cleanupCall, "CallExpression")
         ? cleanupCall.arguments?.[0]
         : null;
@@ -2426,6 +2537,18 @@ const doesReleaseCallMatchUsage = (
     return false;
   }
   const releaseReceiverKey = resolveExpressionKey(callee.object, context);
+  const pairedReleaseVerbNames = usage.registrationVerbName
+    ? PAIRED_RELEASE_VERB_NAMES_BY_REGISTRATION_VERB.get(usage.registrationVerbName)
+    : null;
+  const pushedResourceCollectionKey = findPushedResourceCollectionKey(usage, context);
+  if (
+    pairedReleaseVerbNames &&
+    matchesPairedReleaseVerb(releaseVerbName, pairedReleaseVerbNames) &&
+    pushedResourceCollectionKey !== null &&
+    pushedResourceCollectionKey === resolveIteratorCollectionKey(callee.object, context)
+  ) {
+    return true;
+  }
 
   if (usage.kind === "socket") {
     return (

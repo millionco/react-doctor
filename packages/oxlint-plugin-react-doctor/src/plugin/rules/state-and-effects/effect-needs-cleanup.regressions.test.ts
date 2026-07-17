@@ -273,6 +273,108 @@ export const Measurer = () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts observers retained and disconnected through the same collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    for (let node = element; node; node = node.parentElement) {
+      const observer = new MutationObserver(update);
+      observer.observe(node, { attributes: true });
+      observers.push(observer);
+    }
+    return () => observers.forEach((observer) => observer.disconnect());
+  }, [element]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects conditionally retaining an observed resource for collection cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, shouldRetain }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(element, { attributes: true });
+    if (shouldRetain) observers.push(observer);
+    return () => observers.forEach((retainedObserver) => retainedObserver.disconnect());
+  }, [element, shouldRetain]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects disconnecting a different observer collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, previousObservers }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(element, { attributes: true });
+    observers.push(observer);
+    return () => previousObservers.forEach((retainedObserver) => retainedObserver.disconnect());
+  }, [element, previousObservers]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects conditionally iterating the observer collection during cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, shouldCleanup }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(element, { attributes: true });
+    observers.push(observer);
+    return () => {
+      if (shouldCleanup) {
+        observers.forEach((retainedObserver) => retainedObserver.disconnect());
+      }
+    };
+  }, [element, shouldCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects mutating an observer collection after retaining the resource", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(element, { attributes: true });
+    observers.push(observer);
+    observers.pop();
+    return () => observers.forEach((retainedObserver) => retainedObserver.disconnect());
+  }, [element]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a MutationObserver cleaned up via unobserve", () => {
     const result = runRule(
       effectNeedsCleanup,

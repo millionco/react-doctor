@@ -34,6 +34,18 @@ describe("no-tailwind-layout-transition", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does NOT flag geometry transitions on SVG image elements", () => {
+    const code = `const A = () => <image className="transition-[height,width]" />;`;
+    const result = runRule(noTailwindLayoutTransition, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag transition text nested inside another arbitrary utility", () => {
+    const code = `const A = () => <div className="before:content-['transition-[height]']" />;`;
+    const result = runRule(noTailwindLayoutTransition, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag `transition-[border-width]` (substring of a non-layout prop)", () => {
     const code = `const A = () => <div className="transition-[border-width]" />;`;
     const result = runRule(noTailwindLayoutTransition, code);

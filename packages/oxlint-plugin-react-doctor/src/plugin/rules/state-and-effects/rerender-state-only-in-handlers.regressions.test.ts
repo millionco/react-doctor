@@ -3,6 +3,20 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { rerenderStateOnlyInHandlers } from "./rerender-state-only-in-handlers.js";
 
 describe("rerender-state-only-in-handlers — regressions", () => {
+  it("treats a userland same-name hook as render-phase consumption", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `const useEffect = (value) => useCustomSubscription(value);
+      function Widget() {
+        const [selected, setSelected] = useState(null);
+        useEffect(selected);
+        return <button onClick={() => setSelected("primary")}>select</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags self-echo state through a React effect import alias", () => {
     const result = runRule(
       rerenderStateOnlyInHandlers,

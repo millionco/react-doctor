@@ -6,6 +6,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle.js";
@@ -136,9 +137,43 @@ interface StateSourceComparison {
   path: StateSourcePath;
 }
 
+const collectPreviousSourcePaths = (
+  pattern: EsTreeNode | null | undefined,
+  domain: string,
+  members: ReadonlyArray<string>,
+  previousSourcePaths: Map<string, StateSourcePath>,
+): void => {
+  if (!pattern) return;
+  const unwrappedPattern = stripParenExpression(pattern);
+  if (isNodeOfType(unwrappedPattern, "Identifier")) {
+    previousSourcePaths.set(unwrappedPattern.name, {
+      domain,
+      members: [...members],
+      source: "previous",
+    });
+    return;
+  }
+  if (isNodeOfType(unwrappedPattern, "AssignmentPattern")) {
+    collectPreviousSourcePaths(unwrappedPattern.left, domain, members, previousSourcePaths);
+    return;
+  }
+  if (!isNodeOfType(unwrappedPattern, "ObjectPattern")) return;
+  for (const property of unwrappedPattern.properties) {
+    if (!isNodeOfType(property, "Property")) continue;
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (!propertyName) continue;
+    collectPreviousSourcePaths(
+      property.value,
+      domain,
+      [...members, propertyName],
+      previousSourcePaths,
+    );
+  }
+};
+
 const getStateSourcePath = (
   node: EsTreeNode,
-  previousSourceDomains: ReadonlyMap<string, string>,
+  previousSourcePaths: ReadonlyMap<string, StateSourcePath>,
 ): StateSourcePath | null => {
   let currentNode = stripParenExpression(node);
   const members: string[] = [];
@@ -154,8 +189,13 @@ const getStateSourcePath = (
     return { domain, members: pathMembers, source: "current" };
   }
   if (!isNodeOfType(currentNode, "Identifier")) return null;
-  const domain = previousSourceDomains.get(currentNode.name);
-  return domain ? { domain, members, source: "previous" } : null;
+  const previousSourcePath = previousSourcePaths.get(currentNode.name);
+  return previousSourcePath
+    ? {
+        ...previousSourcePath,
+        members: [...previousSourcePath.members, ...members],
+      }
+    : null;
 };
 
 const haveMatchingStateSourcePaths = (left: StateSourcePath, right: StateSourcePath): boolean =>
@@ -165,19 +205,19 @@ const haveMatchingStateSourcePaths = (left: StateSourcePath, right: StateSourceP
 
 const collectConjunctiveStateSourceComparisons = (
   test: EsTreeNode,
-  previousSourceDomains: ReadonlyMap<string, string>,
+  previousSourcePaths: ReadonlyMap<string, StateSourcePath>,
   comparisons: StateSourceComparison[],
 ): void => {
   const expression = stripParenExpression(test);
   if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "&&") {
     collectConjunctiveStateSourceComparisons(
       expression.left as EsTreeNode,
-      previousSourceDomains,
+      previousSourcePaths,
       comparisons,
     );
     collectConjunctiveStateSourceComparisons(
       expression.right as EsTreeNode,
-      previousSourceDomains,
+      previousSourcePaths,
       comparisons,
     );
     return;
@@ -188,8 +228,8 @@ const collectConjunctiveStateSourceComparisons = (
   ) {
     return;
   }
-  const leftPath = getStateSourcePath(expression.left as EsTreeNode, previousSourceDomains);
-  const rightPath = getStateSourcePath(expression.right as EsTreeNode, previousSourceDomains);
+  const leftPath = getStateSourcePath(expression.left as EsTreeNode, previousSourcePaths);
+  const rightPath = getStateSourcePath(expression.right as EsTreeNode, previousSourcePaths);
   if (Boolean(leftPath) === Boolean(rightPath)) return;
   const path = leftPath ?? rightPath;
   if (!path) return;
@@ -202,10 +242,10 @@ const collectConjunctiveStateSourceComparisons = (
 
 const isHistoricalToCurrentTransitionGuard = (
   test: EsTreeNode,
-  previousSourceDomains: ReadonlyMap<string, string>,
+  previousSourcePaths: ReadonlyMap<string, StateSourcePath>,
 ): boolean => {
   const comparisons: StateSourceComparison[] = [];
-  collectConjunctiveStateSourceComparisons(test, previousSourceDomains, comparisons);
+  collectConjunctiveStateSourceComparisons(test, previousSourcePaths, comparisons);
   return comparisons.some((comparison, index) =>
     comparisons
       .slice(index + 1)
@@ -623,14 +663,10 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boo
   for (const param of parameters) {
     collectPatternNames(param, paramNames);
   }
-  const previousSourceDomains = new Map<string, string>();
+  const previousSourcePaths = new Map<string, StateSourcePath>();
   const [previousPropsParameter, previousStateParameter] = parameters;
-  if (isNodeOfType(previousPropsParameter, "Identifier")) {
-    previousSourceDomains.set(previousPropsParameter.name, "props");
-  }
-  if (isNodeOfType(previousStateParameter, "Identifier")) {
-    previousSourceDomains.set(previousStateParameter.name, "state");
-  }
+  collectPreviousSourcePaths(previousPropsParameter, "props", [], previousSourcePaths);
+  collectPreviousSourcePaths(previousStateParameter, "state", [], previousSourcePaths);
   const derivedNames = collectDiffSourceLocalNames(lifecycleFunction, paramNames);
   const localInitializers = collectLocalInitializers(lifecycleFunction);
   const lifecycleWrittenFieldNames = collectLifecycleWrittenFieldNames(lifecycleFunction);
@@ -670,7 +706,7 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boo
       guardTest &&
       (isDiffGuardTest(guardTest, paramNames, derivedNames, isTruthfulBranch) ||
         (isTruthfulBranch &&
-          (isHistoricalToCurrentTransitionGuard(guardTest, previousSourceDomains) ||
+          (isHistoricalToCurrentTransitionGuard(guardTest, previousSourcePaths) ||
             isConvergentPostMountGuard(
               guardTest,
               setStateCall,

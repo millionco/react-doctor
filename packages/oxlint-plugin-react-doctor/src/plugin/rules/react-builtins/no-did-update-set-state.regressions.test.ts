@@ -137,6 +137,42 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on a transition guard with destructured previous props", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Dropdown extends React.Component {
+        componentDidUpdate({ value: previousValue }) {
+          if (this.props.value === undefined && previousValue !== undefined) {
+            this.setState({ selectedValue: undefined });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags destructured previous props from a different path", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Dropdown extends React.Component {
+        componentDidUpdate({ other: previousOther }) {
+          if (this.props.value === undefined && previousOther !== undefined) {
+            this.setState({ selectedValue: undefined });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when every logical-OR branch is a prop diff", () => {
     const result = runRule(
       noDidUpdateSetState,

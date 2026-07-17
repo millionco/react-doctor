@@ -193,6 +193,22 @@ describe("no-hydration-branch-on-browser-global — helper provenance", () => {
       `,
     ],
     [
+      "equivalent multi-return helper branches",
+      `
+        "use client";
+        const canRender = (enabled) => {
+          if (typeof window !== "undefined") {
+            if (enabled) return true;
+            return false;
+          }
+          if (enabled) return true;
+          return false;
+        };
+        export const Page = ({ enabled }) =>
+          canRender(enabled) ? <Client /> : <Server />;
+      `,
+    ],
+    [
       "a statically disabled helper parameter gate",
       `
         "use client";

@@ -341,12 +341,22 @@ const doHelperReturnValuesDiffer = (
   leftValues: ReadonlyArray<EsTreeNode>,
   rightValues: ReadonlyArray<EsTreeNode>,
   context: RuleContext,
-): boolean =>
-  leftValues.some((leftValue) =>
-    rightValues.some(
-      (rightValue) => !areHelperReturnValuesEquivalent(leftValue, rightValue, context),
-    ),
+): boolean => {
+  const everyValueHasEquivalent = (
+    values: ReadonlyArray<EsTreeNode>,
+    candidateValues: ReadonlyArray<EsTreeNode>,
+  ): boolean =>
+    values.every((value) =>
+      candidateValues.some((candidateValue) =>
+        areHelperReturnValuesEquivalent(value, candidateValue, context),
+      ),
+    );
+
+  return (
+    !everyValueHasEquivalent(leftValues, rightValues) ||
+    !everyValueHasEquivalent(rightValues, leftValues)
   );
+};
 
 const matchHydrationConditionInternal = (
   expression: EsTreeNode,

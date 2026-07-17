@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -249,6 +250,12 @@ const buildFunctionUsageIndex = (
         if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
           const symbolId = releaseTargetSymbolId(effectCallback.body, scopes);
           if (symbolId !== null) releasedSymbolIds.add(symbolId);
+        } else {
+          for (const returnStatement of collectFunctionReturnStatements(effectCallback)) {
+            if (!returnStatement.argument) continue;
+            const symbolId = releaseTargetSymbolId(returnStatement.argument, scopes);
+            if (symbolId !== null) releasedSymbolIds.add(symbolId);
+          }
         }
         for (const cleanupFunction of collectReturnedCleanupFunctions(effectCallback)) {
           addCleanupReleaseSymbols(cleanupFunction, releasedSymbolIds, scopes);

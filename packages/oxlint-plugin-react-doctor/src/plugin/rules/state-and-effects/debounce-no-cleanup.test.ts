@@ -163,6 +163,23 @@ describe("debounce-no-cleanup", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag returning the cancel method reference from an effect block", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { debounce } from "lodash";
+       function Search() {
+         const search = useMemo(() => debounce(runSearch, 250), []);
+         useEffect(() => {
+           search(query);
+           return search.cancel;
+         }, [search, query]);
+         return null;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag passing the cancel method to react-use's useUnmount", () => {
     const result = runRule(
       debounceNoCleanup,

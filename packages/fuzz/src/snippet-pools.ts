@@ -332,8 +332,6 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `import { motion as FuzzMotion } from "framer-motion"; export const FuzzMotionPanel = () => <FuzzMotion.div animate={{ x: 120 }}>moving</FuzzMotion.div>;`,
   `import { motion as FuzzMenuMotion } from "motion/react"; export const FuzzScaleMenu = () => <FuzzMenuMotion.div role="menu" initial={{ scale: 0.96 }} animate={{ scale: 1 }} />;`,
   `import { Search as FuzzLucideSearch } from "lucide-react"; import { HomeIcon as FuzzHeroHome } from "@heroicons/react/24/outline"; export const FuzzMixedIconToolbar = () => <><FuzzLucideSearch /><FuzzHeroHome /></>;`,
-  `import { motion as FuzzMenuMotion } from "motion/react"; export const FuzzScaleMenu = () => <FuzzMenuMotion.div role="menu" initial={{ scale: 0.96 }} animate={{ scale: 1 }} />;`,
-  `import { Search as FuzzLucideSearch } from "lucide-react"; import { HomeIcon as FuzzHeroHome } from "@heroicons/react/24/outline"; export const FuzzMixedIconToolbar = () => <><FuzzLucideSearch /><FuzzHeroHome /></>;`,
   `import { motion as FuzzScaleMotion } from "framer-motion"; export const FuzzScaleEntry = () => <FuzzScaleMotion.div initial={{ scale: 0 }} animate={{ scale: 1 }}>enter</FuzzScaleMotion.div>;`,
   `import { motion as FuzzStaggerMotion, stagger as fuzzStagger } from "motion/react"; export const FuzzStaggerList = () => <FuzzStaggerMotion.ul transition={{ delayChildren: fuzzStagger(0.15) }} />;`,
   `import { div as fuzzMotionDiv, span as FuzzMotionSpan } from "framer-motion/m"; export const FuzzIntrinsicScaleCollision = () => <fuzzMotionDiv initial={{ scale: 0 }} />; export const FuzzProvenScaleTag = () => <FuzzMotionSpan initial={{ scale: 0 }} />;`,

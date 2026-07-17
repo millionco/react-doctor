@@ -1,3 +1,4 @@
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
@@ -131,16 +132,10 @@ const isWebStorageObject = (node: EsTreeNode, visitedNodes = new Set<EsTreeNode>
   ) {
     return isWebStorageFactoryResult(factory.body, visitedNodes);
   }
-  const returnedExpressions: EsTreeNode[] = [];
-  walkAst(factory.body, (child) => {
-    if (child !== factory.body && isFunctionLike(child)) return false;
-    if (isNodeOfType(child, "ReturnStatement") && child.argument) {
-      returnedExpressions.push(child.argument);
-    }
-  });
   let didReturnWebStorage = false;
-  for (const returnedExpression of returnedExpressions) {
-    const strippedReturn = stripParenExpression(returnedExpression);
+  for (const returnStatement of collectFunctionReturnStatements(factory)) {
+    if (!returnStatement.argument) continue;
+    const strippedReturn = stripParenExpression(returnStatement.argument);
     if (isNullishExpression(strippedReturn)) continue;
     if (!isWebStorageFactoryResult(strippedReturn, visitedNodes)) return false;
     didReturnWebStorage = true;

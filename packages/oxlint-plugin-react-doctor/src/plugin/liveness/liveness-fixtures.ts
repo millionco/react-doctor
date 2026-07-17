@@ -550,6 +550,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-adjust-state-on-prop-change": {
     code: "function List({ items }) {\n        const [selection, setSelection] = useState(null);\n        useEffect(() => {\n          setSelection(null);\n        }, [items]);\n        return <div>{selection}</div>;\n      }",
   },
+  "no-all-caps-body-text": {
+    code: 'const Notice = () => <p className="uppercase">This paragraph contains enough readable copy that forcing every word into capitals makes it harder to scan.</p>;',
+  },
   "no-arbitrary-px-font-size": {
     code: 'const Label = () => <p className="text-[13px]">Status</p>;',
   },
@@ -586,6 +589,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-autoplay-without-muted": {
     code: 'const Hero = () => <video autoPlay loop src="/hero.mp4" />;',
   },
+  "no-broken-image-source": {
+    code: 'const Preview = () => <img src="" alt="Preview" />;',
+  },
   "no-call-component-as-function": {
     code: "\n      const Row = ({ item }) => <li>{item}</li>;\n      const List = ({ items }) => (\n        <ul>{items.map((item) => Row({ item }))}</ul>\n      );\n      ",
   },
@@ -603,6 +609,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-controlled-input-value-without-state-update": {
     code: "const C = () => <input value={123} onChange={handleChange} />;",
   },
+  "no-clipped-overlay": {
+    code: 'const Menu = () => <div className="overflow-hidden"><div role="menu" className="absolute">Items</div></div>;',
+  },
   "no-create-context-in-render": {
     code: '\n      import { createContext } from "react";\n\n      function App() {\n        const Ctx = createContext(null);\n        return null;\n      }\n    ',
   },
@@ -614,6 +623,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-create-store-in-render": {
     code: '\n      import { create } from "zustand";\n\n      function App() {\n        const useStore = create((set) => ({ count: 0 }));\n        return null;\n      }\n    ',
+  },
+  "no-crushed-letter-spacing": {
+    code: 'const Heading = () => <h1 style={{ letterSpacing: "-0.12em" }}>Readable heading</h1>;',
   },
   "no-danger": {
     code: '<div dangerouslySetInnerHTML={{ __html: "x" }} />;',
@@ -690,6 +702,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-enter-submit-without-ime-composition-guard": {
     code: "const Field = () => (\n         <input onKeyDown={(e) => { e.key === 'Enter' && onSave(); }} />\n       );",
+  },
+  "no-ease-in-motion": {
+    code: 'const Panel = () => <div style={{ transition: "opacity 200ms ease-in" }} />;',
   },
   "no-eval": {
     code: 'const fn = new Function("return 1");',
@@ -869,6 +884,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-nondeterministic-id-value-in-render-body": {
     code: 'import { uniqueId } from "lodash";\nconst useBundleChartData = () => {\n  const chartId = useMemo(() => uniqueId(), []);\n  return { chartId };\n};',
   },
+  "no-nested-card-surface": {
+    code: 'const Cards = () => <div className="rounded-xl border p-6"><section className="rounded-lg border bg-white p-4">Inner</section></div>;',
+  },
   "no-noninteractive-element-interactions": {
     code: "<li onClick={() => {}}>x</li>",
   },
@@ -892,6 +910,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-object-or-array-coerced-to-string-in-template-literal": {
     code: "function formatMetadata() { return `metadata: ${{ id: 1 }}`; }",
+  },
+  "no-overwide-text-measure": {
+    code: 'const Copy = () => <p style={{ maxWidth: "96ch" }}>Long-form copy</p>;',
+  },
+  "no-placeholder-only-field": {
+    code: 'const Field = () => <input placeholder="Email address" />;',
   },
   "no-pass-data-to-parent": {
     code: "const Child = (props) => {\n          const fetchedData = useSomeAPI();\n          useEffect(() => {\n            props.onLoaded(fetchedData);\n          }, [props, fetchedData]);\n          return null;\n        };",
@@ -1036,6 +1060,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-tailwind-layout-transition": {
     code: 'const Drawer = () => <div className="transition-[height] duration-300" />;',
+  },
+  "no-tight-body-leading": {
+    code: "const Copy = () => <p style={{ lineHeight: 1.2 }}>This paragraph contains enough words to wrap across several lines in a typical content column.</p>;",
   },
   "no-this-in-sfc": {
     code: "const Foo = (props) => <span>{this.props.foo}</span>",

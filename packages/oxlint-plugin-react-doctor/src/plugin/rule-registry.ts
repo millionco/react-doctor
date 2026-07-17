@@ -159,6 +159,7 @@ import { nextjsNoUseSearchParamsWithoutSuspense } from "./rules/nextjs/nextjs-no
 import { nextjsNoVercelOgImport } from "./rules/nextjs/nextjs-no-vercel-og-import.js";
 import { noAccessKey } from "./rules/a11y/no-access-key.js";
 import { noAdjustStateOnPropChange } from "./rules/state-and-effects/no-adjust-state-on-prop-change.js";
+import { noAllCapsBodyText } from "./rules/design/no-all-caps-body-text.js";
 import { noArbitraryPxFontSize } from "./rules/design/no-arbitrary-px-font-size.js";
 import { noAriaHiddenOnFocusable } from "./rules/a11y/no-aria-hidden-on-focusable.js";
 import { noArithmeticOnOptionalChainedOperand } from "./rules/correctness/no-arithmetic-on-optional-chained-operand.js";
@@ -172,10 +173,12 @@ import { noAutofocus } from "./rules/a11y/no-autofocus.js";
 import { noAutoplayWithoutMuted } from "./rules/a11y/no-autoplay-without-muted.js";
 import { noBarrelImport } from "./rules/bundle-size/no-barrel-import.js";
 import { noBooleanToggleWithoutFunctionalUpdate } from "./rules/state-and-effects/no-boolean-toggle-without-functional-update.js";
+import { noBrokenImageSource } from "./rules/a11y/no-broken-image-source.js";
 import { noCallComponentAsFunction } from "./rules/react-builtins/no-call-component-as-function.js";
 import { noCascadingSetState } from "./rules/state-and-effects/no-cascading-set-state.js";
 import { noChainStateUpdates } from "./rules/state-and-effects/no-chain-state-updates.js";
 import { noChildrenProp } from "./rules/react-builtins/no-children-prop.js";
+import { noClippedOverlay } from "./rules/design/no-clipped-overlay.js";
 import { noCloneElement } from "./rules/react-builtins/no-clone-element.js";
 import { noCollapsedLiteralOrChainAsValue } from "./rules/correctness/no-collapsed-literal-or-chain-as-value.js";
 import { noControlledInputValueWithoutStateUpdate } from "./rules/correctness/no-controlled-input-value-without-state-update.js";
@@ -183,6 +186,7 @@ import { noCreateContextInRender } from "./rules/state-and-effects/no-create-con
 import { noCreateObjectUrlWithoutRevoke } from "./rules/js-performance/no-create-object-url-without-revoke.js";
 import { noCreateRefInFunctionComponent } from "./rules/react-builtins/no-create-ref-in-function-component.js";
 import { noCreateStoreInRender } from "./rules/state-and-effects/no-create-store-in-render.js";
+import { noCrushedLetterSpacing } from "./rules/design/no-crushed-letter-spacing.js";
 import { noDanger } from "./rules/react-builtins/no-danger.js";
 import { noDangerWithChildren } from "./rules/react-builtins/no-danger-with-children.js";
 import { noDarkModeGlow } from "./rules/design/no-dark-mode-glow.js";
@@ -202,6 +206,7 @@ import { noDocumentStartViewTransition } from "./rules/view-transitions/no-docum
 import { noDocumentWrite } from "./rules/js-performance/no-document-write.js";
 import { noDynamicImportPath } from "./rules/bundle-size/no-dynamic-import-path.js";
 import { noEagerNewInUseStateInitializer } from "./rules/performance/no-eager-new-in-use-state-initializer.js";
+import { noEaseInMotion } from "./rules/design/no-ease-in-motion.js";
 import { noEffectChain } from "./rules/state-and-effects/no-effect-chain.js";
 import { noEffectEventHandler } from "./rules/state-and-effects/no-effect-event-handler.js";
 import { noEffectEventInDeps } from "./rules/state-and-effects/no-effect-event-in-deps.js";
@@ -259,6 +264,7 @@ import { noMutateThenSetOrReturnSameReference } from "./rules/state-and-effects/
 import { noMutatingArrayMethodOnPropOrHookResult } from "./rules/correctness/no-mutating-array-method-on-prop-or-hook-result.js";
 import { noMutatingReducerState } from "./rules/state-and-effects/no-mutating-reducer-state.js";
 import { noNamespace } from "./rules/react-builtins/no-namespace.js";
+import { noNestedCardSurface } from "./rules/design/no-nested-card-surface.js";
 import { noNestedComponentDefinition } from "./rules/architecture/no-nested-component-definition.js";
 import { noNonLiteralSelectorQueryWithoutTryCatch } from "./rules/correctness/no-non-literal-selector-query-without-try-catch.js";
 import { noNonNullAssertionOnMaybeUndefinedResult } from "./rules/correctness/no-non-null-assertion-on-maybe-undefined-result.js";
@@ -270,9 +276,11 @@ import { noNullishCoalescingArithmeticPrecedence } from "./rules/correctness/no-
 import { noObjectKeysValuesEntriesOnMaybeUndefined } from "./rules/correctness/no-object-keys-values-entries-on-maybe-undefined.js";
 import { noObjectOrArrayCoercedToStringInTemplateLiteral } from "./rules/correctness/no-object-or-array-coerced-to-string-in-template-literal.js";
 import { noOutlineNone } from "./rules/design/no-outline-none.js";
+import { noOverwideTextMeasure } from "./rules/design/no-overwide-text-measure.js";
 import { noPassDataToParent } from "./rules/state-and-effects/no-pass-data-to-parent.js";
 import { noPassLiveStateToParent } from "./rules/state-and-effects/no-pass-live-state-to-parent.js";
 import { noPermanentWillChange } from "./rules/performance/no-permanent-will-change.js";
+import { noPlaceholderOnlyField } from "./rules/a11y/no-placeholder-only-field.js";
 import { noPolymorphicChildren } from "./rules/correctness/no-polymorphic-children.js";
 import { noPredicateFunctionReferenceInBooleanPosition } from "./rules/correctness/no-predicate-function-reference-in-boolean-position.js";
 import { noPreventDefault } from "./rules/correctness/no-prevent-default.js";
@@ -312,6 +320,7 @@ import { noSvgCurrentcolorWithFillClass } from "./rules/design/no-svg-currentcol
 import { noSyncXhr } from "./rules/js-performance/no-sync-xhr.js";
 import { noTailwindLayoutTransition } from "./rules/design/no-tailwind-layout-transition.js";
 import { noThisInSfc } from "./rules/react-builtins/no-this-in-sfc.js";
+import { noTightBodyLeading } from "./rules/design/no-tight-body-leading.js";
 import { noTinyText } from "./rules/design/no-tiny-text.js";
 import { noTransitionAll } from "./rules/performance/no-transition-all.js";
 import { noUncontrolledInput } from "./rules/correctness/no-uncontrolled-input.js";
@@ -2289,6 +2298,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-all-caps-body-text",
+    id: "no-all-caps-body-text",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noAllCapsBodyText,
+      framework: "global",
+      category: "Accessibility",
+    },
+  },
+  {
     key: "react-doctor/no-arbitrary-px-font-size",
     id: "no-arbitrary-px-font-size",
     source: "react-doctor",
@@ -2449,6 +2469,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-broken-image-source",
+    id: "no-broken-image-source",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...noBrokenImageSource,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noBrokenImageSource.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-call-component-as-function",
     id: "no-call-component-as-function",
     source: "react-doctor",
@@ -2494,6 +2526,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noChildrenProp.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-clipped-overlay",
+    id: "no-clipped-overlay",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noClippedOverlay,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {
@@ -2577,6 +2620,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noCreateStoreInRender.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-crushed-letter-spacing",
+    id: "no-crushed-letter-spacing",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noCrushedLetterSpacing,
+      framework: "global",
+      category: "Accessibility",
     },
   },
   {
@@ -2802,6 +2856,17 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noEagerNewInUseStateInitializer.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-ease-in-motion",
+    id: "no-ease-in-motion",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noEaseInMotion,
+      framework: "global",
+      category: "Performance",
     },
   },
   {
@@ -3485,6 +3550,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-nested-card-surface",
+    id: "no-nested-card-surface",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noNestedCardSurface,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-nested-component-definition",
     id: "no-nested-component-definition",
     source: "react-doctor",
@@ -3616,6 +3692,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-overwide-text-measure",
+    id: "no-overwide-text-measure",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noOverwideTextMeasure,
+      framework: "global",
+      category: "Accessibility",
+    },
+  },
+  {
     key: "react-doctor/no-pass-data-to-parent",
     id: "no-pass-data-to-parent",
     source: "react-doctor",
@@ -3649,6 +3736,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set<Capability>(["react", ...(noPermanentWillChange.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-placeholder-only-field",
+    id: "no-placeholder-only-field",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...noPlaceholderOnlyField,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(noPlaceholderOnlyField.requires ?? [])])],
     },
   },
   {
@@ -4121,6 +4220,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noThisInSfc.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-tight-body-leading",
+    id: "no-tight-body-leading",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noTightBodyLeading,
+      framework: "global",
+      category: "Accessibility",
     },
   },
   {

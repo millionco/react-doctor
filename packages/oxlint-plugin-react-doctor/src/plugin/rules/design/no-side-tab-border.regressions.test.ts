@@ -58,4 +58,23 @@ describe("design/no-side-tab-border — regressions", () => {
     const result = run(`const C = () => <div className="border-l-4 border-[#dc2626]" />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a colored top edge on a rounded Tailwind surface", () => {
+    const result = run(
+      `const C = () => <div className="rounded-lg border-t-2 border-t-red-500" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a top edge on a square surface", () => {
+    const result = run(`const C = () => <div className="border-t-4 border-t-red-500" />;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a colored bottom edge in a rounded inline style", () => {
+    const result = run(
+      `const C = () => <div style={{ borderRadius: 8, borderBottom: "3px solid red" }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

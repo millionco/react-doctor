@@ -35,6 +35,14 @@ export const ROOT_FONT_SIZE_PX = 16;
 
 export const WIDE_TRACKING_THRESHOLD_EM = 0.05;
 
+export const CRUSHED_TRACKING_THRESHOLD_EM = -0.08;
+
+export const TIGHT_LINE_HEIGHT_RATIO = 1.3;
+
+export const LONG_BODY_TEXT_MIN_CHARACTERS = 48;
+
+export const READABLE_LINE_LENGTH_MAX_CH = 80;
+
 export const LONG_TRANSITION_DURATION_THRESHOLD_MS = 1000;
 
 export const VAGUE_BUTTON_LABELS = new Set([

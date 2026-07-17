@@ -110,4 +110,24 @@ describe("no-cramped-container-padding", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("uses the last duplicate inline boundary and padding values", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <>
+        <span style={{ backgroundColor: "navy", backgroundColor: "transparent", padding: 4 }}>No surface</span>
+        <span style={{ backgroundColor: "navy", padding: 4, padding: 16 }}>Roomy</span>
+        <span style={{ backgroundColor: "transparent", backgroundColor: "navy", padding: 16, padding: 4 }}>Cramped</span>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays conservative when a later spread can override inline geometry", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Example = ({ overrides }) => <span style={{ backgroundColor: "navy", padding: 4, ...overrides }}>Status</span>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

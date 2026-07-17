@@ -46,6 +46,25 @@ describe("no-tight-body-leading", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("uses the last duplicate font size and line height values", () => {
+    const result = runRule(
+      noTightBodyLeading,
+      `const Example = () => <>
+        <p style={{ lineHeight: 1.1, lineHeight: 1.5 }}>${LONG_TEXT}</p>
+        <p style={{ fontSize: 32, fontSize: 16, lineHeight: "18px" }}>${LONG_TEXT}</p>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays conservative when a later spread can override inline leading", () => {
+    const result = runRule(
+      noTightBodyLeading,
+      `const Example = ({ overrides }) => <p style={{ lineHeight: 1.1, ...overrides }}>${LONG_TEXT}</p>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag short labels or headings", () => {
     const result = runRule(
       noTightBodyLeading,

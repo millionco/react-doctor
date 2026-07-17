@@ -56,11 +56,16 @@ export const noPlaceholderOnlyField = defineRule({
         if (elementName !== "input" && elementName !== "textarea") return;
         if (hasJsxSpreadAttribute(node.attributes)) return;
         if (isNestedInLabel(node)) return;
-        if (
-          hasJsxPropIgnoreCase(node.attributes, "aria-label") ||
-          hasJsxPropIgnoreCase(node.attributes, "aria-labelledby")
-        ) {
-          return;
+        const accessibleNameAttributes = [
+          hasJsxPropIgnoreCase(node.attributes, "aria-label"),
+          hasJsxPropIgnoreCase(node.attributes, "aria-labelledby"),
+        ].filter((attribute) => attribute !== undefined);
+        if (accessibleNameAttributes.length > 0) {
+          const hasPossibleAccessibleName = accessibleNameAttributes.some((attribute) => {
+            const value = getStringLiteralAttributeValue(attribute);
+            return value === null || Boolean(value.trim());
+          });
+          if (hasPossibleAccessibleName) return;
         }
 
         if (elementName === "input") {

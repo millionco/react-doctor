@@ -35,6 +35,22 @@ describe("no-placeholder-only-field", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags fields with empty static accessible names", () => {
+    const result = runRule(
+      noPlaceholderOnlyField,
+      `const Example = () => <><input aria-label="  " placeholder="Search docs" /><textarea aria-labelledby={''} placeholder="Message" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("accepts fields with dynamically resolved accessible names", () => {
+    const result = runRule(
+      noPlaceholderOnlyField,
+      `const Example = ({ label, labelledBy }) => <><input aria-label={label} placeholder="Search docs" /><textarea aria-labelledby={labelledBy} placeholder="Message" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not infer missing labels through spread props", () => {
     const result = runRule(
       noPlaceholderOnlyField,

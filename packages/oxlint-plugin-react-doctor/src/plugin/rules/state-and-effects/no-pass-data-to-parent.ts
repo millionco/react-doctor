@@ -1011,11 +1011,9 @@ const getLocalHookExternalStateProof = (
         : [],
     )
     .filter(isReactStateReference);
-  return (
-    returnedStateReferences.length > 0 &&
-    returnedStateReferences.every((stateReference) =>
-      isExternallyDrivenState(analysis, stateReference),
-    )
+  if (returnedStateReferences.length === 0) return null;
+  return returnedStateReferences.every((stateReference) =>
+    isExternallyDrivenState(analysis, stateReference),
   );
 };
 

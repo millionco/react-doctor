@@ -126,6 +126,56 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("stays silent when a local allowlisted hook delegates to useSyncExternalStore", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useMediaQuery = (query) =>
+          useSyncExternalStore(
+            (notify) => {
+              const mediaQuery = window.matchMedia(query);
+              mediaQuery.addEventListener("change", notify);
+              return () => mediaQuery.removeEventListener("change", notify);
+            },
+            () => window.matchMedia(query).matches,
+            () => false,
+          );
+        const Sidebar = ({ onBreakPoint }) => {
+          const broken = useMediaQuery("(max-width: 768px)");
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags an unknown local useSyncExternalStore wrapper", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useSidebarStatus = (query) =>
+          useSyncExternalStore(
+            (notify) => {
+              const mediaQuery = window.matchMedia(query);
+              mediaQuery.addEventListener("change", notify);
+              return () => mediaQuery.removeEventListener("change", notify);
+            },
+            () => window.matchMedia(query).matches,
+            () => false,
+          );
+        const Sidebar = ({ onBreakPoint }) => {
+          const broken = useSidebarStatus("(max-width: 768px)");
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags media-query state that a user handler can also update", () => {
       const result = runRule(
         noPassDataToParent,

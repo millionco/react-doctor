@@ -255,11 +255,13 @@ const isReturnedCleanupFromBoundary = (
   }
   const cleanupSymbol = context.scopes.symbolFor(cleanupConsumer.id);
   return Boolean(
-    cleanupSymbol?.references.some(
-      (reference) =>
-        isNodeOfType(reference.identifier.parent, "ReturnStatement") &&
-        context.cfg.enclosingFunction(reference.identifier.parent) === executionBoundary,
-    ),
+    cleanupSymbol?.references.some((reference) => {
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      return (
+        isNodeOfType(referenceRoot.parent, "ReturnStatement") &&
+        context.cfg.enclosingFunction(referenceRoot.parent) === executionBoundary
+      );
+    }),
   );
 };
 

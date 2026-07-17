@@ -490,6 +490,20 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("recognizes a stored cleanup returned through TypeScript wrappers", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob: Blob) => URL.createObjectURL(blob);
+       const usePreview = (blob: Blob) => {
+         const url = make(blob);
+         setPreview(url);
+         const cleanup = () => URL.revokeObjectURL(url);
+         return (cleanup as () => void);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not let an unrelated revoke suppress an escaping creation", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

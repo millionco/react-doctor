@@ -4,13 +4,15 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
-import { isMemberProperty } from "../../utils/is-member-property.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const OBJECT_ENUMERATION_METHOD_NAMES = new Set(["keys", "entries", "values"]);
@@ -26,6 +28,7 @@ const NON_GROWING_ARRAY_METHOD_NAMES = new Set([
   "toSorted",
   "with",
 ]);
+const ARRAY_LENGTH_GROWING_MUTATION_METHOD_NAMES = new Set(["push", "splice", "unshift"]);
 
 const isFreshLiteralSeed = (seedArgument: EsTreeNode | undefined): boolean => {
   if (!isAstNode(seedArgument)) return false;
@@ -53,12 +56,51 @@ const isRestParameterBinding = (bindingIdentifier: EsTreeNode): boolean => {
   );
 };
 
-const isLocallyConstructedBoundedObject = (expression: EsTreeNode): boolean => {
+const bindingMayHaveGrown = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = scopes.symbolFor(candidate);
+  if (!symbol) return true;
+  return symbol.references.some((reference) => {
+    if (reference.flag !== "read") return true;
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const member = referenceRoot.parent;
+    if (
+      !member ||
+      !isNodeOfType(member, "MemberExpression") ||
+      stripParenExpression(member.object) !== referenceRoot
+    ) {
+      return false;
+    }
+    const memberRoot = findTransparentExpressionRoot(member);
+    const consumer = memberRoot.parent;
+    if (
+      (isNodeOfType(consumer, "AssignmentExpression") && consumer.left === memberRoot) ||
+      (isNodeOfType(consumer, "UpdateExpression") && consumer.argument === memberRoot) ||
+      (isNodeOfType(consumer, "UnaryExpression") &&
+        consumer.operator === "delete" &&
+        consumer.argument === memberRoot)
+    ) {
+      return true;
+    }
+    return (
+      isNodeOfType(consumer, "CallExpression") &&
+      consumer.callee === memberRoot &&
+      ARRAY_LENGTH_GROWING_MUTATION_METHOD_NAMES.has(getStaticPropertyName(member) ?? "")
+    );
+  });
+};
+
+const isLocallyConstructedBoundedObject = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   const stripped = stripParenExpression(expression);
   if (isSpreadFreeObjectLiteral(stripped)) return true;
   if (!isNodeOfType(stripped, "Identifier")) return false;
   const binding = findVariableInitializer(stripped, stripped.name);
   if (!binding?.initializer || !isConstDeclaredBinding(binding)) return false;
+  if (bindingMayHaveGrown(stripped, scopes)) return false;
   return isSpreadFreeObjectLiteral(stripParenExpression(binding.initializer));
 };
 
@@ -111,7 +153,12 @@ const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnaly
     }
     if (isNodeOfType(currentExpression, "Identifier")) {
       const symbol = scopes.symbolFor(currentExpression);
-      if (!symbol?.initializer || symbol.kind !== "const" || visitedSymbolIds.has(symbol.id)) {
+      if (
+        !symbol?.initializer ||
+        symbol.kind !== "const" ||
+        visitedSymbolIds.has(symbol.id) ||
+        bindingMayHaveGrown(currentExpression, scopes)
+      ) {
         return false;
       }
       const nextVisitedSymbolIds = new Set(visitedSymbolIds);
@@ -180,10 +227,37 @@ const isStaticallyBoundedReduceSource = (source: EsTreeNode, scopes: ScopeAnalys
   ) {
     return false;
   }
-  if (!isNodeOfType(enumerationCallee.property, "Identifier")) return false;
-  if (!OBJECT_ENUMERATION_METHOD_NAMES.has(enumerationCallee.property.name)) return false;
+  const enumerationMethodName = getStaticPropertyName(enumerationCallee);
+  if (!enumerationMethodName || !OBJECT_ENUMERATION_METHOD_NAMES.has(enumerationMethodName)) {
+    return false;
+  }
   const enumeratedObject = stripped.arguments[0];
-  return isAstNode(enumeratedObject) && isLocallyConstructedBoundedObject(enumeratedObject);
+  return isAstNode(enumeratedObject) && isLocallyConstructedBoundedObject(enumeratedObject, scopes);
+};
+
+const hasOwnReducerMethod = (
+  source: EsTreeNode,
+  methodName: string,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let candidate = stripParenExpression(source);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = scopes.symbolFor(candidate);
+    if (!symbol?.initializer || symbol.kind !== "const") return false;
+    candidate = stripParenExpression(symbol.initializer);
+  }
+  if (!isNodeOfType(candidate, "ObjectExpression")) return false;
+  return candidate.properties.some((property) => {
+    if (!isNodeOfType(property, "Property")) return false;
+    if (!property.computed && isNodeOfType(property.key, "Identifier")) {
+      return property.key.name === methodName;
+    }
+    return (
+      isNodeOfType(property.key, "Literal") &&
+      typeof property.key.value === "string" &&
+      property.key.value === methodName
+    );
+  });
 };
 
 interface ReducerReturnAnalysis {
@@ -200,16 +274,40 @@ interface ReducerReturnAnalysis {
 const analyzeReducerReturns = (
   callback: EsTreeNodeOfType<"ArrowFunctionExpression"> | EsTreeNodeOfType<"FunctionExpression">,
   accumulatorParameter: EsTreeNode,
-  scopes: ScopeAnalysis,
+  context: RuleContext,
 ): ReducerReturnAnalysis => {
+  const { scopes } = context;
   const analysis: ReducerReturnAnalysis = {
     returnedLiterals: [],
     hasAccumulatorPassthroughReturn: false,
   };
   const accumulatorSymbol = scopes.symbolFor(accumulatorParameter);
+  const returnIsReachable = (returnStatement: EsTreeNode): boolean => {
+    if (!isNodeReachableWithinFunction(returnStatement, context)) return false;
+    let current = returnStatement;
+    while (current !== callback.body && current.parent) {
+      const parent = current.parent;
+      if (isNodeOfType(parent, "BlockStatement")) {
+        const currentIndex = parent.body.findIndex((statement) => statement === current);
+        if (
+          currentIndex > 0 &&
+          parent.body.slice(0, currentIndex).some((statement) => statementAlwaysExits(statement))
+        ) {
+          return false;
+        }
+      }
+      current = parent;
+    }
+    return true;
+  };
   const recordReturnedExpression = (expression: EsTreeNode | null | undefined): void => {
     if (!expression) return;
     const stripped = stripParenExpression(expression);
+    if (isNodeOfType(stripped, "ConditionalExpression")) {
+      recordReturnedExpression(stripped.consequent);
+      recordReturnedExpression(stripped.alternate);
+      return;
+    }
     if (isNodeOfType(stripped, "ObjectExpression") || isNodeOfType(stripped, "ArrayExpression")) {
       analysis.returnedLiterals.push(stripped);
       return;
@@ -232,7 +330,7 @@ const analyzeReducerReturns = (
 
   walkAst(body, (child) => {
     if (FUNCTION_LIKE_TYPES.has(child.type)) return false;
-    if (isNodeOfType(child, "ReturnStatement")) {
+    if (isNodeOfType(child, "ReturnStatement") && returnIsReachable(child)) {
       recordReturnedExpression(child.argument);
       return false;
     }
@@ -282,6 +380,9 @@ const literalGrowsAccumulatorPerIteration = (
       if (!element) return false;
       if (!isNodeOfType(element, "SpreadElement")) return true;
       const spreadArgument = stripParenExpression(element.argument);
+      if (isNodeOfType(spreadArgument, "ArrayExpression") && spreadArgument.elements.length === 0) {
+        return false;
+      }
       return (
         !isNodeOfType(spreadArgument, "Identifier") ||
         scopes.symbolFor(spreadArgument) !== accumulatorSymbol
@@ -289,9 +390,20 @@ const literalGrowsAccumulatorPerIteration = (
     });
   }
   if (!isNodeOfType(literal, "ObjectExpression")) return false;
-  return (
-    literal.properties.filter((property) => isNodeOfType(property, "SpreadElement")).length >= 2
-  );
+  const accumulatorSymbol = scopes.symbolFor(accumulatorParameter);
+  return literal.properties.some((property) => {
+    if (!isNodeOfType(property, "SpreadElement")) return false;
+    const spreadArgument = stripParenExpression(property.argument);
+    if (
+      isNodeOfType(spreadArgument, "Identifier") &&
+      scopes.symbolFor(spreadArgument) === accumulatorSymbol
+    ) {
+      return false;
+    }
+    return !(
+      isNodeOfType(spreadArgument, "ObjectExpression") && spreadArgument.properties.length === 0
+    );
+  });
 };
 
 export const noSpreadAccumulatorInReduce = defineRule({
@@ -304,14 +416,17 @@ export const noSpreadAccumulatorInReduce = defineRule({
     "Mutate the accumulator and return it (`acc[key] = value; return acc`) so the fold stays O(n) instead of copying the whole accumulator every step.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const callee = node.callee;
-      if (!isMemberProperty(callee, "reduce") && !isMemberProperty(callee, "reduceRight")) {
-        return;
-      }
+      const callee = stripParenExpression(node.callee);
+      if (!isNodeOfType(callee, "MemberExpression")) return;
+      const reducerMethodName = getStaticPropertyName(callee);
+      if (reducerMethodName !== "reduce" && reducerMethodName !== "reduceRight") return;
+      if (hasOwnReducerMethod(callee.object, reducerMethodName, context.scopes)) return;
       if (!isFreshLiteralSeed(node.arguments[1])) return;
       if (isStaticallyBoundedReduceSource(callee.object, context.scopes)) return;
 
-      const callback = node.arguments[0];
+      const callbackArgument = node.arguments[0];
+      if (!callbackArgument || !isAstNode(callbackArgument)) return;
+      const callback = stripParenExpression(callbackArgument);
       if (
         !callback ||
         (!isNodeOfType(callback, "ArrowFunctionExpression") &&
@@ -319,10 +434,11 @@ export const noSpreadAccumulatorInReduce = defineRule({
       ) {
         return;
       }
+      if (callback.async || callback.generator) return;
       const accumulatorParam = callback.params[0];
       if (!accumulatorParam || !isNodeOfType(accumulatorParam, "Identifier")) return;
 
-      const analysis = analyzeReducerReturns(callback, accumulatorParam, context.scopes);
+      const analysis = analyzeReducerReturns(callback, accumulatorParam, context);
       if (analysis.hasAccumulatorPassthroughReturn) return;
 
       for (const literal of analysis.returnedLiterals) {

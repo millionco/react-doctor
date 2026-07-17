@@ -61,6 +61,25 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("supports statically computed reducer methods and TypeScript-wrapped callbacks", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const first = items["reduce"]((acc, item) => [...acc, item], []);
+       const second = items.reduce((((acc, item) => [...acc, item]) as Reducer), []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not analyze async or generator reducer callbacks", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const asyncResult = items.reduce(async (acc, item) => [...acc, item], []);
+       const generatorResult = items.reduce(function* (acc, item) { return [...acc, item]; }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags an explicit return of the spread literal (block body)", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
@@ -101,6 +120,47 @@ describe("no-spread-accumulator-in-reduce", () => {
       `const out = values.reduce((acc, value) => ({ ...acc, ...getBoxMod(value) }), {});`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag additional spreads that cannot grow the accumulator", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const sameObject = items.reduce((acc) => ({ ...acc, ...acc }), {});
+       const emptyObject = items.reduce((acc) => ({ ...acc, ...{} }), {});
+       const emptyArray = items.reduce((acc) => [...acc, ...[]], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags growth returned through every conditional branch", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const out = items.reduce(
+         (acc, item) => item.ok ? [...acc, item] : [...acc, item],
+         [],
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores unreachable accumulator passthrough returns", () => {
+    const falseBranch = runRule(
+      noSpreadAccumulatorInReduce,
+      `const out = items.reduce((acc, item) => {
+         if (false) return acc;
+         return [...acc, item];
+       }, []);`,
+    );
+    expect(falseBranch.diagnostics).toHaveLength(1);
+
+    const unreachableTail = runRule(
+      noSpreadAccumulatorInReduce,
+      `const out = items.reduce((acc, item) => {
+         if (true) return [...acc, item];
+         return acc;
+       }, []);`,
+    );
+    expect(unreachableTail.diagnostics).toHaveLength(1);
   });
 
   it("does not flag mutate-and-return (the correct O(n) idiom)", () => {
@@ -204,6 +264,33 @@ describe("no-spread-accumulator-in-reduce", () => {
         {},
       );
     `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat locally constructed collections as bounded after they grow", () => {
+    const arrayResult = runRule(
+      noSpreadAccumulatorInReduce,
+      `const bounded = [];
+       bounded.push(...items);
+       const out = bounded.reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(arrayResult.diagnostics).toHaveLength(1);
+
+    const objectResult = runRule(
+      noSpreadAccumulatorInReduce,
+      `const bounded = {};
+       for (const item of items) bounded[item.id] = item;
+       const out = Object.keys(bounded).reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(objectResult.diagnostics).toHaveLength(1);
+  });
+
+  it("does not analyze a locally defined custom reducer method", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const custom = { reduce(callback, seed) { return seed; } };
+       const out = custom.reduce((acc, item) => [...acc, item], []);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -347,6 +434,25 @@ describe("no-spread-accumulator-in-reduce", () => {
       noSpreadAccumulatorInReduce,
       `const Object = customObjectApi;
        const out = Object.keys({ first: 1, second: 2 }).reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("supports static computed Object enumeration methods", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const glyphs = { first: "a", second: "b" };
+       const out = Object["keys"](glyphs).reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a dynamic computed Object enumeration method", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const glyphs = { first: "a", second: "b" };
+       const keys = getEnumerationMethod();
+       const out = Object[keys](glyphs).reduce((acc, key) => [...acc, key], []);`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

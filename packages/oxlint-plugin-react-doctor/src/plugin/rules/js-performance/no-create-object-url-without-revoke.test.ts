@@ -86,6 +86,24 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags awaited and final sequence-expression returns", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `async function makeAsync(blob) { return await URL.createObjectURL(blob); }
+       function makeLogged(blob) { return (log(), URL.createObjectURL(blob)); }`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags object URLs nested in returned values", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `function make(blob) { return { src: URL.createObjectURL(blob) }; }
+       const makeConcise = (blob) => ({ src: URL.createObjectURL(blob) });`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("stays quiet when the module revokes elsewhere", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
@@ -145,6 +163,17 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when an unguarded object URL is the left side of a logical expression", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const onSelect = (file) => {
+         const preview = URL.createObjectURL(file) ?? fallbackUrl;
+         setAvatar(preview);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet for setAttribute with a non-URL attribute name", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
@@ -193,6 +222,24 @@ describe("no-create-object-url-without-revoke", () => {
        function make(blob) { return BrowserUrl["createObjectURL"](blob); }`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("supports a destructured global URL alias", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const { URL: BrowserURL } = globalThis;
+       function make(blob) { return BrowserURL.createObjectURL(blob); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags static computed DOM URL escape APIs", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `anchor["href"] = URL.createObjectURL(firstBlob);
+       element["setAttribute"]("href", URL.createObjectURL(secondBlob));`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("stays quiet when every returned URL feeds a deliberate module cache", () => {
@@ -250,6 +297,18 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when every guarded helper result feeds a deliberate module cache", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const renderPreview = (blob) => blob && URL.createObjectURL(blob);
+       const cachePreview = (blob, id) => {
+         previewCache.set(id, renderPreview(blob));
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet for Set caches and statically computed cache stores", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
@@ -272,6 +331,67 @@ describe("no-create-object-url-without-revoke", () => {
        const cachePreview = (blob, id) => {
          previewCache.set(id, renderPreview(blob));
        };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust conditional or disconnected cache stores", () => {
+    const conditionalResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const url = make(blob);
+       if (false) previewCache.set("x", url);`,
+    );
+    expect(conditionalResult.diagnostics).toHaveLength(1);
+
+    const disconnectedResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const url = make(blob);
+       function neverCalled() { previewCache.set("x", url); }`,
+    );
+    expect(disconnectedResult.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a cache that evicts retained object URLs", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const url = make(blob);
+       previewCache.set("x", url);
+       previewCache.clear();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes object URLs retained as cache keys and nested values", () => {
+    const keyResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const url = make(blob);
+       previewCache.set(url, metadata);`,
+    );
+    expect(keyResult.diagnostics).toHaveLength(0);
+
+    const nestedResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const url = make(blob);
+       previewCache.set("x", { url });`,
+    );
+    expect(nestedResult.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let an unrelated revoke suppress an escaping creation", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const releaseOld = (oldUrl) => URL.revokeObjectURL(oldUrl);
+       const make = (blob) => URL.createObjectURL(blob);`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

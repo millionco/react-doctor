@@ -51,6 +51,66 @@ export const SHORT_DECORATIVE_LABEL_MAX_CHARACTERS = 32;
 
 export const REPEATED_DECORATIVE_LABEL_MIN_COUNT = 3;
 
+export const MIN_BOUNDED_CONTAINER_PADDING_PX = 8;
+
+export const WIDE_SHADOW_BLUR_MIN_PX = 16;
+
+export const COMMON_UI_FONT_FAMILIES = new Set([
+  "arial",
+  "geist",
+  "helvetica",
+  "inter",
+  "lato",
+  "montserrat",
+  "open sans",
+  "plus jakarta sans",
+  "roboto",
+  "space grotesk",
+]);
+
+export const MIN_PAGE_TYPE_SCALE_RATIO = 2;
+
+export const PAGE_TYPE_SCALE_MIN_STEPS = 3;
+
+export const PAGE_SPACING_MIN_SAMPLES = 12;
+
+export const PAGE_SPACING_DOMINANT_RATIO = 0.67;
+
+export const PAGE_SPACING_MAX_DISTINCT_VALUES = 4;
+
+export const TAILWIND_SPACING_UNIT_PX = 4;
+
+export const MANUFACTURED_COPY_PATTERN_MIN_COUNT = 3;
+
+export const DECORATIVE_GRID_MIN_GRADIENT_LAYERS = 2;
+
+export const TAILWIND_TEXT_SIZE_PX = new Map([
+  ["text-xs", 12],
+  ["text-sm", 14],
+  ["text-base", 16],
+  ["text-lg", 18],
+  ["text-xl", 20],
+  ["text-2xl", 24],
+  ["text-3xl", 30],
+  ["text-4xl", 36],
+  ["text-5xl", 48],
+  ["text-6xl", 60],
+  ["text-7xl", 72],
+  ["text-8xl", 96],
+  ["text-9xl", 128],
+]);
+
+export const GENERIC_MARKETING_PHRASES = new Set([
+  "cutting-edge",
+  "future-proof",
+  "next-generation",
+  "seamless experience",
+  "supercharge your workflow",
+  "transform your business",
+  "unlock your potential",
+  "world-class",
+]);
+
 export const LONG_TRANSITION_DURATION_THRESHOLD_MS = 1000;
 
 export const VAGUE_BUTTON_LABELS = new Set([

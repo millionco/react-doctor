@@ -181,7 +181,9 @@ import { noChildrenProp } from "./rules/react-builtins/no-children-prop.js";
 import { noClippedOverlay } from "./rules/design/no-clipped-overlay.js";
 import { noCloneElement } from "./rules/react-builtins/no-clone-element.js";
 import { noCollapsedLiteralOrChainAsValue } from "./rules/correctness/no-collapsed-literal-or-chain-as-value.js";
+import { noCommonRootFont } from "./rules/design/no-common-root-font.js";
 import { noControlledInputValueWithoutStateUpdate } from "./rules/correctness/no-controlled-input-value-without-state-update.js";
+import { noCrampedContainerPadding } from "./rules/design/no-cramped-container-padding.js";
 import { noCreateContextInRender } from "./rules/state-and-effects/no-create-context-in-render.js";
 import { noCreateObjectUrlWithoutRevoke } from "./rules/js-performance/no-create-object-url-without-revoke.js";
 import { noCreateRefInFunctionComponent } from "./rules/react-builtins/no-create-ref-in-function-component.js";
@@ -190,7 +192,10 @@ import { noCrushedLetterSpacing } from "./rules/design/no-crushed-letter-spacing
 import { noDanger } from "./rules/react-builtins/no-danger.js";
 import { noDangerWithChildren } from "./rules/react-builtins/no-danger-with-children.js";
 import { noDarkModeGlow } from "./rules/design/no-dark-mode-glow.js";
+import { noDecorativeGridBackground } from "./rules/design/no-decorative-grid-background.js";
 import { noDefaultProps } from "./rules/architecture/no-default-props.js";
+import { noDefaultPurplePageGradient } from "./rules/design/no-default-purple-page-gradient.js";
+import { noDefaultWarmPageSurface } from "./rules/design/no-default-warm-page-surface.js";
 import { noDeprecatedKeyboardEventKeycodeWhich } from "./rules/correctness/no-deprecated-keyboard-event-keycode-which.js";
 import { noDeprecatedTailwindClass } from "./rules/design/no-deprecated-tailwind-class.js";
 import { noDerivedState } from "./rules/state-and-effects/no-derived-state.js";
@@ -220,16 +225,22 @@ import { noFetchInEffect } from "./rules/state-and-effects/no-fetch-in-effect.js
 import { noFetchResponseUsedWithoutStatusCheck } from "./rules/correctness/no-fetch-response-used-without-status-check.js";
 import { noFillMapElementAsKey } from "./rules/correctness/no-fill-map-element-as-key.js";
 import { noFindDomNode } from "./rules/react-builtins/no-find-dom-node.js";
+import { noFlatPageTypeScale } from "./rules/design/no-flat-page-type-scale.js";
 import { noFloatingThenInJsxHandler } from "./rules/correctness/no-floating-then-in-jsx-handler.js";
 import { noFlushSync } from "./rules/view-transitions/no-flush-sync.js";
 import { noFullLodashImport } from "./rules/bundle-size/no-full-lodash-import.js";
 import { noFullViewportWidth } from "./rules/design/no-full-viewport-width.js";
 import { noGenericHandlerNames } from "./rules/architecture/no-generic-handler-names.js";
+import { noGenericMarketingCopy } from "./rules/design/no-generic-marketing-copy.js";
 import { noGiantComponent } from "./rules/architecture/no-giant-component.js";
 import { noGlobalCssVariableAnimation } from "./rules/performance/no-global-css-variable-animation.js";
 import { noGradientText } from "./rules/design/no-gradient-text.js";
 import { noGrayOnColoredBackground } from "./rules/design/no-gray-on-colored-background.js";
+import { noHairlineBorderWideShadow } from "./rules/design/no-hairline-border-wide-shadow.js";
+import { noHeroEyebrowChip } from "./rules/design/no-hero-eyebrow-chip.js";
 import { noHydrationBranchOnBrowserGlobal } from "./rules/performance/no-hydration-branch-on-browser-global.js";
+import { noIconTileHeadingStack } from "./rules/design/no-icon-tile-heading-stack.js";
+import { noImageHoverTransform } from "./rules/design/no-image-hover-transform.js";
 import { noImgLazyWithHighFetchpriority } from "./rules/performance/no-img-lazy-with-high-fetchpriority.js";
 import { noImpureCallAtModuleScope } from "./rules/correctness/no-impure-call-at-module-scope.js";
 import { noImpureStateUpdater } from "./rules/state-and-effects/no-impure-state-updater.js";
@@ -254,10 +265,12 @@ import { noLoadingFlagResetOutsideFinally } from "./rules/state-and-effects/no-l
 import { noLocaleFormatInRender } from "./rules/performance/no-locale-format-in-render.js";
 import { noLongTransitionDuration } from "./rules/design/no-long-transition-duration.js";
 import { noLowContrastInlineStyle } from "./rules/design/no-low-contrast-inline-style.js";
+import { noManufacturedContrastCopy } from "./rules/design/no-manufactured-contrast-copy.js";
 import { noManyBooleanProps } from "./rules/architecture/no-many-boolean-props.js";
 import { noMatchMediaInStateInitializer } from "./rules/performance/no-match-media-in-state-initializer.js";
 import { noMirrorPropEffect } from "./rules/state-and-effects/no-mirror-prop-effect.js";
 import { noMoment } from "./rules/bundle-size/no-moment.js";
+import { noMonotonousPageSpacing } from "./rules/design/no-monotonous-page-spacing.js";
 import { noMultiComp } from "./rules/react-builtins/no-multi-comp.js";
 import { noMutableInDeps } from "./rules/state-and-effects/no-mutable-in-deps.js";
 import { noMutateQueriedDomNodeInComponent } from "./rules/correctness/no-mutate-queried-dom-node-in-component.js";
@@ -305,6 +318,7 @@ import { noRenderInRender } from "./rules/architecture/no-render-in-render.js";
 import { noRenderPropChildren } from "./rules/architecture/no-render-prop-children.js";
 import { noRenderReturnValue } from "./rules/react-builtins/no-render-return-value.js";
 import { noRepeatedKickerLabels } from "./rules/design/no-repeated-kicker-labels.js";
+import { noRepeatingGradientDecoration } from "./rules/design/no-repeating-gradient-decoration.js";
 import { noResetAllStateOnPropChange } from "./rules/state-and-effects/no-reset-all-state-on-prop-change.js";
 import { noScaleFromZero } from "./rules/performance/no-scale-from-zero.js";
 import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-code.js";
@@ -2568,6 +2582,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-common-root-font",
+    id: "no-common-root-font",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noCommonRootFont,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-controlled-input-value-without-state-update",
     id: "no-controlled-input-value-without-state-update",
     source: "react-doctor",
@@ -2576,6 +2601,17 @@ export const reactDoctorRules = [
       ...noControlledInputValueWithoutStateUpdate,
       framework: "global",
       category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-cramped-container-padding",
+    id: "no-cramped-container-padding",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noCrampedContainerPadding,
+      framework: "global",
+      category: "Accessibility",
     },
   },
   {
@@ -2674,12 +2710,45 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-decorative-grid-background",
+    id: "no-decorative-grid-background",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noDecorativeGridBackground,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-default-props",
     id: "no-default-props",
     source: "react-doctor",
     originallyExternal: false,
     rule: {
       ...noDefaultProps,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-default-purple-page-gradient",
+    id: "no-default-purple-page-gradient",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noDefaultPurplePageGradient,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-default-warm-page-surface",
+    id: "no-default-warm-page-surface",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noDefaultWarmPageSurface,
       framework: "global",
       category: "Maintainability",
     },
@@ -3032,6 +3101,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-flat-page-type-scale",
+    id: "no-flat-page-type-scale",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noFlatPageTypeScale,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-floating-then-in-jsx-handler",
     id: "no-floating-then-in-jsx-handler",
     source: "react-doctor",
@@ -3088,6 +3168,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-generic-marketing-copy",
+    id: "no-generic-marketing-copy",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noGenericMarketingCopy,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-giant-component",
     id: "no-giant-component",
     source: "react-doctor",
@@ -3135,6 +3226,28 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-hairline-border-wide-shadow",
+    id: "no-hairline-border-wide-shadow",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noHairlineBorderWideShadow,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-hero-eyebrow-chip",
+    id: "no-hero-eyebrow-chip",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noHeroEyebrowChip,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-hydration-branch-on-browser-global",
     id: "no-hydration-branch-on-browser-global",
     source: "react-doctor",
@@ -3146,6 +3259,28 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noHydrationBranchOnBrowserGlobal.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-icon-tile-heading-stack",
+    id: "no-icon-tile-heading-stack",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noIconTileHeadingStack,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-image-hover-transform",
+    id: "no-image-hover-transform",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noImageHoverTransform,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {
@@ -3434,6 +3569,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-manufactured-contrast-copy",
+    id: "no-manufactured-contrast-copy",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noManufacturedContrastCopy,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-many-boolean-props",
     id: "no-many-boolean-props",
     source: "react-doctor",
@@ -3479,6 +3625,17 @@ export const reactDoctorRules = [
       ...noMoment,
       framework: "global",
       category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/no-monotonous-page-spacing",
+    id: "no-monotonous-page-spacing",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noMonotonousPageSpacing,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {
@@ -4030,6 +4187,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...noRepeatedKickerLabels,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-repeating-gradient-decoration",
+    id: "no-repeating-gradient-decoration",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRepeatingGradientDecoration,
       framework: "global",
       category: "Maintainability",
     },

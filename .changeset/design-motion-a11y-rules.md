@@ -25,6 +25,7 @@ Add design-quality lint rules distilled from a cross-resource design reference, 
 - **`no-crushed-letter-spacing`** — static inline or arbitrary Tailwind tracking below -0.08em on text-bearing elements.
 - **`no-overwide-text-measure`** — explicit body-text widths above 80ch in inline styles or arbitrary Tailwind utilities.
 - **`no-skipped-heading-level`** — opt-in analysis of explicit heading sequences inside static page or article trees, without inferring across component boundaries.
+- **`no-cramped-container-padding`** — text inside an explicitly bounded or colored surface with less than 8px of static padding.
 
 **Design / Tailwind hygiene**
 
@@ -39,6 +40,19 @@ Add design-quality lint rules distilled from a cross-resource design reference, 
 - **`no-italic-serif-display-heading`** — opt-in detection for oversized headings that combine serif and italic treatments.
 - **`no-repeated-kicker-labels`** — opt-in file-level detection for three or more short uppercase tracked labels immediately preceding headings.
 - **`no-numbered-section-markers`** — opt-in detection for consecutive decorative number labels preceding section headings.
+- **`no-image-hover-transform`** — opt-in detection for images that scale or rotate on hover through static Tailwind utilities.
+- **`no-repeating-gradient-decoration`** — opt-in detection for repeating CSS gradients used as generic surface texture.
+- **`no-hairline-border-wide-shadow`** — opt-in detection for card treatments that combine a one-pixel border with a broad shadow.
+- **`no-icon-tile-heading-stack`** — opt-in detection for repeated card composition built from a colored icon tile followed by a heading.
+- **`no-hero-eyebrow-chip`** — opt-in detection for tracked uppercase eyebrow copy placed immediately before an oversized hero heading.
+- **`no-common-root-font`** — opt-in detection for page roots that explicitly select a commonly reused UI font.
+- **`no-default-warm-page-surface`** — opt-in detection for full-page warm-neutral Tailwind surfaces.
+- **`no-default-purple-page-gradient`** — opt-in detection for full-page purple-to-blue or purple-to-cyan Tailwind gradients.
+- **`no-flat-page-type-scale`** — opt-in page-level analysis for three or more explicit text sizes compressed into less than a 2× range.
+- **`no-monotonous-page-spacing`** — opt-in page-level analysis for a dominant spacing value repeated across a sufficiently large static sample.
+- **`no-generic-marketing-copy`** — opt-in detection for broad promotional phrases in static page or article copy.
+- **`no-manufactured-contrast-copy`** — opt-in detection for pages that repeatedly frame claims as short artificial contrasts.
+- **`no-decorative-grid-background`** — opt-in detection for layered one-pixel linear gradients that draw a coordinate grid outside data-visualization contexts.
 
 **Tailwind canonicalization** (distilled from ui.sh's canonicalize-tailwind guidance)
 

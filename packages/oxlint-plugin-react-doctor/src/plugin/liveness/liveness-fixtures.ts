@@ -609,6 +609,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-controlled-input-value-without-state-update": {
     code: "const C = () => <input value={123} onChange={handleChange} />;",
   },
+  "no-common-root-font": {
+    code: 'const Page = () => <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;',
+  },
   "no-clipped-overlay": {
     code: 'const Menu = () => <div className="overflow-hidden"><div role="menu" className="absolute">Items</div></div>;',
   },
@@ -624,11 +627,23 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-create-store-in-render": {
     code: '\n      import { create } from "zustand";\n\n      function App() {\n        const useStore = create((set) => ({ count: 0 }));\n        return null;\n      }\n    ',
   },
+  "no-cramped-container-padding": {
+    code: 'const Badge = () => <span className="border rounded p-1">Status</span>;',
+  },
   "no-crushed-letter-spacing": {
     code: 'const Heading = () => <h1 style={{ letterSpacing: "-0.12em" }}>Readable heading</h1>;',
   },
   "no-danger": {
     code: '<div dangerouslySetInnerHTML={{ __html: "x" }} />;',
+  },
+  "no-default-purple-page-gradient": {
+    code: 'const Page = () => <main className="min-h-screen bg-gradient-to-br from-violet-600 to-cyan-400">Content</main>;',
+  },
+  "no-default-warm-page-surface": {
+    code: 'const Page = () => <main className="min-h-screen bg-stone-50">Content</main>;',
+  },
+  "no-decorative-grid-background": {
+    code: 'const Hero = () => <section style={{ backgroundImage: "linear-gradient(to right, #aaa 1px, transparent 1px), linear-gradient(to bottom, #aaa 1px, transparent 1px)" }} />;',
   },
   "no-danger-with-children": {
     code: "const a = <div dangerouslySetInnerHTML={{ __html: html }}>text</div>;",
@@ -728,6 +743,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-find-dom-node": {
     code: 'import { findDOMNode } from "react-dom"; export const f = (node) => findDOMNode(node);',
   },
+  "no-flat-page-type-scale": {
+    code: 'const Page = () => <main><p className="text-sm">A</p><h2 className="text-base">B</h2><h1 className="text-lg">C</h1></main>;',
+  },
   "no-flush-sync": {
     code: 'import { flushSync } from "react-dom";\nfunction C() {\n  const onClick = () => {\n    flushSync(() => {\n      setCount((count) => count + 1);\n    });\n  };\n  return <button onClick={onClick}>go</button>;\n}',
   },
@@ -739,6 +757,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-full-viewport-width": {
     code: 'const Page = () => <main className="w-screen" />;',
+  },
+  "no-generic-marketing-copy": {
+    code: "const Page = () => <main><h1>Supercharge your workflow</h1></main>;",
   },
   "no-generic-handler-names": {
     code: "const El = () => <button onClick={handleClick}>Go</button>;",
@@ -752,6 +773,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-gradient-text": {
     code: 'const El = () => <span className="bg-clip-text bg-gradient-to-r from-pink-500 to-violet-500">Hi</span>;',
   },
+  "no-hairline-border-wide-shadow": {
+    code: 'const Card = () => <div className="border shadow-2xl" />;',
+  },
   "no-gray-on-colored-background": {
     code: 'const C = () => <div className="bg-blue-600 text-gray-400">Hi</div>;',
   },
@@ -759,11 +783,20 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: '"use client";\nexport const Page = () => typeof window === "undefined" ? <Server /> : <Client />;',
     filePath: "app/page.tsx",
   },
+  "no-hero-eyebrow-chip": {
+    code: 'const Hero = () => <header><p className="uppercase tracking-widest">Built for teams</p><h1 className="text-7xl">Work together</h1></header>;',
+  },
   "no-img-lazy-with-high-fetchpriority": {
     code: 'const Hero = () => <img src="/a.png" loading="lazy" fetchPriority="high" />;',
   },
   "no-impure-call-at-module-scope": {
     code: "const RENDERED = Date.now();",
+  },
+  "no-icon-tile-heading-stack": {
+    code: 'const Feature = () => <article className="rounded-xl border bg-white p-6"><div className="size-12 rounded-lg bg-blue-100"><SparklesIcon /></div><h3>Automations</h3></article>;',
+  },
+  "no-image-hover-transform": {
+    code: 'const Card = () => <img src="/photo.jpg" alt="Landscape" className="hover:scale-105" />;',
   },
   "no-indeterminate-attribute": {
     code: 'const Checkbox = () => <input type="checkbox" indeterminate />;',
@@ -847,6 +880,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-match-media-in-state-initializer": {
     code: 'import { useState } from "react";\nuseState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);',
   },
+  "no-manufactured-contrast-copy": {
+    code: "const Page = () => <main><p>Not just another report. It is a plan.</p><p>No busywork. Just useful diagnostics.</p><p>Not a wall of warnings. You get prioritized fixes.</p></main>;",
+  },
   "no-many-boolean-props": {
     code: "const Toggle = ({ isOpen, isLoading, hasIcon, canEdit }) => <div />;",
   },
@@ -855,6 +891,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-moment": {
     code: 'import moment from "moment";',
+  },
+  "no-monotonous-page-spacing": {
+    code: 'const Page = () => <main><div className="p-4" /><div className="p-4" /><div className="p-4" /><div className="p-4" /><div className="p-4" /><div className="p-4" /><div className="p-4" /><div className="p-4" /><div className="p-4" /><div className="p-4" /><div className="p-4" /><div className="p-4" /></main>;',
   },
   "no-multi-comp": {
     code: "const Foo = () => <div />; const Bar = () => <div />; const Baz = () => <div />;",
@@ -992,6 +1031,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-redundant-display-class": {
     code: 'const Card = () => <div className="block rounded-lg" />;',
+  },
+  "no-repeating-gradient-decoration": {
+    code: 'const Panel = () => <div style={{ backgroundImage: "repeating-linear-gradient(45deg, #fff 0 4px, #eee 4px 8px)" }} />;',
   },
   "no-redundant-roles": {
     code: 'const Nav = () => <nav role="navigation" />;',

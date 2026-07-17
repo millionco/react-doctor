@@ -1,0 +1,122 @@
+import { MIN_BOUNDED_CONTAINER_PADDING_PX, ROOT_FONT_SIZE_PX } from "../../constants/design.js";
+import { defineRule } from "../../utils/define-rule.js";
+import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
+import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
+import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
+import { getStylePropertyKey } from "./utils/get-style-property-key.js";
+import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
+import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
+
+const BOUNDARY_STYLE_PROPERTIES = new Set([
+  "background",
+  "backgroundColor",
+  "border",
+  "borderWidth",
+  "boxShadow",
+  "outline",
+]);
+const PADDING_STYLE_PROPERTIES = new Set([
+  "padding",
+  "paddingBlock",
+  "paddingInline",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+]);
+const TAILWIND_PADDING_PATTERN = /^p-([\d.]+)$/;
+const ARBITRARY_PADDING_PATTERN = /^p-\[([\d.]+)px\]$/;
+
+const getPaddingPx = (property: EsTreeNode): number | null => {
+  const numberValue = getStylePropertyNumberValue(property);
+  if (numberValue !== null) return numberValue;
+  const stringValue = getStylePropertyStringValue(property)?.trim();
+  if (!stringValue) return null;
+  const match = stringValue.match(/^([\d.]+)(px|rem)$/);
+  if (!match) return null;
+  const value = parseFloat(match[1]);
+  return match[2] === "rem" ? value * ROOT_FONT_SIZE_PX : value;
+};
+
+const hasTailwindBoundary = (tokens: string[]): boolean =>
+  tokens.some(
+    (token) =>
+      token === "border" ||
+      token.startsWith("border-") ||
+      token === "ring" ||
+      token.startsWith("ring-") ||
+      (token.startsWith("bg-") && token !== "bg-transparent"),
+  );
+
+const getTailwindPaddingPx = (tokens: string[]): number | null => {
+  for (const token of tokens) {
+    const spacingMatch = token.match(TAILWIND_PADDING_PATTERN);
+    if (spacingMatch) return parseFloat(spacingMatch[1]) * 4;
+    const arbitraryMatch = token.match(ARBITRARY_PADDING_PATTERN);
+    if (arbitraryMatch) return parseFloat(arbitraryMatch[1]);
+  }
+  return null;
+};
+
+export const noCrampedContainerPadding = defineRule({
+  id: "no-cramped-container-padding",
+  title: "Bounded text container has cramped padding",
+  severity: "warn",
+  tags: ["design", "test-noise"],
+  category: "Accessibility",
+  recommendation: "Give text at least 8px of space inside a visible border or colored surface.",
+  create: (context: RuleContext) => ({
+    JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
+      if (!getStaticJsxText(node).trim()) return;
+      const openingElement = node.openingElement;
+      const classNameValue = getStringFromClassNameAttr(openingElement);
+      if (classNameValue) {
+        const tokens = getUnvariantClassNameTokens(classNameValue);
+        const paddingPx = getTailwindPaddingPx(tokens);
+        if (
+          hasTailwindBoundary(tokens) &&
+          paddingPx !== null &&
+          paddingPx < MIN_BOUNDED_CONTAINER_PADDING_PX
+        ) {
+          context.report({
+            node: openingElement,
+            message: `This visible container leaves only ${paddingPx}px around its text. Use at least ${MIN_BOUNDED_CONTAINER_PADDING_PX}px of padding.`,
+          });
+          return;
+        }
+      }
+
+      for (const attribute of openingElement.attributes ?? []) {
+        if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+        const styleExpression = getInlineStyleExpression(attribute);
+        if (!styleExpression) continue;
+        const hasBoundary = styleExpression.properties?.some((property) => {
+          const propertyName = getStylePropertyKey(property);
+          const propertyValue = getStylePropertyStringValue(property);
+          return Boolean(
+            propertyName &&
+            BOUNDARY_STYLE_PROPERTIES.has(propertyName) &&
+            propertyValue !== "transparent" &&
+            propertyValue !== "none",
+          );
+        });
+        if (!hasBoundary) continue;
+        for (const property of styleExpression.properties ?? []) {
+          const propertyName = getStylePropertyKey(property);
+          if (!propertyName || !PADDING_STYLE_PROPERTIES.has(propertyName)) continue;
+          const paddingPx = getPaddingPx(property);
+          if (paddingPx === null || paddingPx >= MIN_BOUNDED_CONTAINER_PADDING_PX) continue;
+          context.report({
+            node: property,
+            message: `This bounded surface gives its text ${paddingPx}px of padding. Increase it to at least ${MIN_BOUNDED_CONTAINER_PADDING_PX}px.`,
+          });
+        }
+      }
+    },
+  }),
+});

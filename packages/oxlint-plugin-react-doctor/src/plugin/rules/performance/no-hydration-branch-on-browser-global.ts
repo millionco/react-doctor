@@ -326,12 +326,46 @@ const readHydrationFunctionResult = (
   return result;
 };
 
+const doEquivalentExpressionBindingsMatch = (
+  leftExpression: EsTreeNode,
+  rightExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const left = stripParenExpression(leftExpression);
+  const right = stripParenExpression(rightExpression);
+  if (isNodeOfType(left, "Identifier") && isNodeOfType(right, "Identifier")) {
+    const leftSymbol = scopes.symbolFor(left);
+    const rightSymbol = scopes.symbolFor(right);
+    return leftSymbol || rightSymbol ? leftSymbol?.id === rightSymbol?.id : true;
+  }
+  if (isNodeOfType(left, "MemberExpression") && isNodeOfType(right, "MemberExpression")) {
+    return (
+      doEquivalentExpressionBindingsMatch(left.object, right.object, scopes) &&
+      (!left.computed || doEquivalentExpressionBindingsMatch(left.property, right.property, scopes))
+    );
+  }
+  if (isNodeOfType(left, "CallExpression") && isNodeOfType(right, "CallExpression")) {
+    const rightArguments = right.arguments ?? [];
+    return (
+      doEquivalentExpressionBindingsMatch(left.callee, right.callee, scopes) &&
+      (left.arguments ?? []).every((argument, index) => {
+        const rightArgument = rightArguments[index];
+        return Boolean(
+          rightArgument && doEquivalentExpressionBindingsMatch(argument, rightArgument, scopes),
+        );
+      })
+    );
+  }
+  return true;
+};
+
 const areHelperReturnValuesEquivalent = (
   leftValue: EsTreeNode,
   rightValue: EsTreeNode,
   context: RuleContext,
 ): boolean => {
-  if (areExpressionsStructurallyEqual(leftValue, rightValue)) return true;
+  if (areExpressionsStructurallyEqual(leftValue, rightValue))
+    return doEquivalentExpressionBindingsMatch(leftValue, rightValue, context.scopes);
   const leftBoolean = readInitialStateBoolean(leftValue, context.scopes);
   const rightBoolean = readInitialStateBoolean(rightValue, context.scopes);
   return leftBoolean !== null && rightBoolean !== null && leftBoolean === rightBoolean;

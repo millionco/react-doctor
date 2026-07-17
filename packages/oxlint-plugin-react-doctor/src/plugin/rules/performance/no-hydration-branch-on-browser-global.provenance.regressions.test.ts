@@ -112,6 +112,21 @@ describe("no-hydration-branch-on-browser-global — helper provenance", () => {
           isClient() && typeof document !== "undefined" ? <Client /> : <Server />;
       `,
     ],
+    [
+      "shadowed helper return bindings",
+      `
+        "use client";
+        const isClient = () => {
+          if (typeof window !== "undefined") {
+            const available = true;
+            return available;
+          }
+          const available = false;
+          return available;
+        };
+        export const Page = () => isClient() ? <Client /> : <Server />;
+      `,
+    ],
   ])("reports browser-global provenance through %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);

@@ -355,6 +355,28 @@ export const ContextWatcher = ({ element, shouldCleanup }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("rejects short-circuit iteration of the observer collection during cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(element, { attributes: true });
+    observers.push(observer);
+    return () => observers.some((retainedObserver) => {
+      retainedObserver.disconnect();
+      return true;
+    });
+  }, [element]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("rejects mutating an observer collection after retaining the resource", () => {
     const result = runRule(
       effectNeedsCleanup,

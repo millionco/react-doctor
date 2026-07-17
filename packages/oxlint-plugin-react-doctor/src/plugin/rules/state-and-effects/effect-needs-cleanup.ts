@@ -1201,8 +1201,11 @@ const doesCleanupFunctionReleaseUsage = (
       const cleanupReceiverCollectionKey = isNodeOfType(cleanupCallee, "MemberExpression")
         ? resolveIteratorCollectionKey(cleanupCallee.object, context)
         : null;
-      if (cleanupForEachCall && cleanupReceiverCollectionKey !== null) {
-        if (findPushedResourceCollectionKey(usage, context) === cleanupReceiverCollectionKey) {
+      if (cleanupReceiverCollectionKey !== null) {
+        if (
+          cleanupForEachCall &&
+          findPushedResourceCollectionKey(usage, context) === cleanupReceiverCollectionKey
+        ) {
           matchingLoopOrHelperAnchors.push(cleanupForEachCall);
         }
         return;

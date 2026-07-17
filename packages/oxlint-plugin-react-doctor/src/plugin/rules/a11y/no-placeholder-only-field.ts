@@ -1,5 +1,4 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
@@ -66,10 +65,11 @@ export const noPlaceholderOnlyField = defineRule({
 
         if (elementName === "input") {
           const typeAttribute = hasJsxPropIgnoreCase(node.attributes, "type");
-          const inputType = typeAttribute
-            ? getJsxPropStringValue(typeAttribute)?.toLowerCase()
-            : "text";
-          if (inputType && !TEXT_INPUT_TYPES.has(inputType)) return;
+          if (typeAttribute) {
+            const inputType = getStringLiteralAttributeValue(typeAttribute);
+            if (inputType === null) return;
+            if (inputType && !TEXT_INPUT_TYPES.has(inputType.toLowerCase())) return;
+          }
         }
 
         const placeholderAttribute = hasJsxPropIgnoreCase(node.attributes, "placeholder");

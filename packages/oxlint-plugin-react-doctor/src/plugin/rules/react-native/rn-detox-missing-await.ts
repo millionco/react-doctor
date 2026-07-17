@@ -1,3 +1,4 @@
+import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";

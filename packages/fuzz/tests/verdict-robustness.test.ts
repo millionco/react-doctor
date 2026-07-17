@@ -33,6 +33,7 @@ const AUDITED_RULE_IDS = [
   "js-hoist-regexp",
   "jsx-numeric-and-leaked-render",
   "mobx-reaction-disposer-discarded",
+  "nextjs-async-dynamic-api-not-awaited",
   "nextjs-no-polyfill-script",
   "no-adjust-state-on-prop-change",
   "no-aria-hidden-on-focusable",

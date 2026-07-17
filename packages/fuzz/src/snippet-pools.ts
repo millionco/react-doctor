@@ -314,6 +314,8 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  `import { headers } from "next/headers";
+export const readFuzzRequestId = () => headers().get("x-request-id");`,
   `export default async function Page() {
   const response = await fetch("https://api.example.com/feed");
   return Response.json(await response.json());

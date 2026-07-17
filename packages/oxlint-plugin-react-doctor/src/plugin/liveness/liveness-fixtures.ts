@@ -584,6 +584,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { cloneElement } from "react";\n           const clonedElement = cloneElement(\n             <Row title="Cabbage">Hello</Row>,\n             { isHighlighted: true },\n             "Goodbye",\n           );',
     forceJsx: true,
   },
+  "no-controlled-input-value-without-state-update": {
+    code: "const C = () => <input value={123} onChange={handleChange} />;",
+  },
   "no-create-context-in-render": {
     code: '\n      import { createContext } from "react";\n\n      function App() {\n        const Ctx = createContext(null);\n        return null;\n      }\n    ',
   },
@@ -607,6 +610,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-default-props": {
     code: "export const Link = (props) => <a {...props} />;\nLink.defaultProps = { appearance: 'default', size: 'regular', disabled: false };",
+  },
+  "no-deprecated-keyboard-event-keycode-which": {
+    code: "const Row = () => <div onKeyDown={(e) => { if (e.keyCode === 75) focusSearch(); }} />;",
   },
   "no-derived-state": {
     code: 'function Profile({ firstName, lastName }) {\n        const [fullName, setFullName] = useState("");\n        useEffect(() => {\n          setFullName(`${firstName} ${lastName}`);\n        }, [firstName, lastName]);\n        return <p>{fullName}</p>;\n      }',
@@ -662,6 +668,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-effect-with-fresh-deps": {
     code: '\n      import { useEffect } from "react";\n\n      function Component({ a, b }) {\n        useEffect(() => {\n          // ...\n        }, [{ a, b }]);\n      }\n    ',
+  },
+  "no-enter-submit-without-ime-composition-guard": {
+    code: "const Field = () => (\n         <input onKeyDown={(e) => { e.key === 'Enter' && onSave(); }} />\n       );",
   },
   "no-eval": {
     code: 'const fn = new Function("return 1");',
@@ -797,6 +806,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-mutable-in-deps": {
     code: "\n      function Page() {\n        useEffect(() => {\n          track(location.href);\n        }, [location.href]);\n        return null;\n      }\n    ",
+  },
+  "no-mutate-queried-dom-node-in-component": {
+    code: "function Row({ order }) {\n        document.getElementById('row-1').style.zIndex = '1';\n        return <div id=\"row-1\" style={{ zIndex: order }} />;\n      }",
   },
   "no-mutating-reducer-state": {
     code: '\n      import { useReducer } from "react";\n\n      function reducer(state, action) {\n        state.age = state.age + 1;\n        return state;\n      }\n\n      useReducer(reducer, { age: 0 });\n    ',
@@ -1002,6 +1014,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "\n        var Hello = createReactClass({\n            render: function() {\n              return <div>'</div>;\n            }\n        });\n        ",
     forceJsx: true,
   },
+  "no-unguarded-browser-global-at-module-scope": {
+    code: "const lang = navigator.language;",
+    filePath: "src/lib/foo.ts",
+  },
   "no-unknown-property": {
     code: '<div transform-origin="center" />',
   },
@@ -1147,6 +1163,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "query-stable-query-client": {
     code: "function App() { const client = new QueryClient(); return null; }",
+  },
+  "radio-input-missing-name": {
+    code: '<input type="radio" value="yes" />;',
   },
   "raw-sql-injection-risk": {
     code: "export const q = (prisma, id) => prisma.$queryRawUnsafe(`SELECT * FROM users WHERE id = '${id}'`);\n",

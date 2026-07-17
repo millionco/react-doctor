@@ -173,6 +173,7 @@ import { noChainStateUpdates } from "./rules/state-and-effects/no-chain-state-up
 import { noChildrenProp } from "./rules/react-builtins/no-children-prop.js";
 import { noCloneElement } from "./rules/react-builtins/no-clone-element.js";
 import { noCollapsedLiteralOrChainAsValue } from "./rules/correctness/no-collapsed-literal-or-chain-as-value.js";
+import { noControlledInputValueWithoutStateUpdate } from "./rules/correctness/no-controlled-input-value-without-state-update.js";
 import { noCreateContextInRender } from "./rules/state-and-effects/no-create-context-in-render.js";
 import { noCreateObjectUrlWithoutRevoke } from "./rules/js-performance/no-create-object-url-without-revoke.js";
 import { noCreateRefInFunctionComponent } from "./rules/react-builtins/no-create-ref-in-function-component.js";
@@ -181,6 +182,7 @@ import { noDanger } from "./rules/react-builtins/no-danger.js";
 import { noDangerWithChildren } from "./rules/react-builtins/no-danger-with-children.js";
 import { noDarkModeGlow } from "./rules/design/no-dark-mode-glow.js";
 import { noDefaultProps } from "./rules/architecture/no-default-props.js";
+import { noDeprecatedKeyboardEventKeycodeWhich } from "./rules/correctness/no-deprecated-keyboard-event-keycode-which.js";
 import { noDerivedState } from "./rules/state-and-effects/no-derived-state.js";
 import { noDerivedStateEffect } from "./rules/state-and-effects/no-derived-state-effect.js";
 import { noDerivedUseState } from "./rules/state-and-effects/no-derived-use-state.js";
@@ -199,6 +201,7 @@ import { noEffectEventHandler } from "./rules/state-and-effects/no-effect-event-
 import { noEffectEventInDeps } from "./rules/state-and-effects/no-effect-event-in-deps.js";
 import { noEffectWithFreshDeps } from "./rules/state-and-effects/no-effect-with-fresh-deps.js";
 import { noEffectWrapperDiscardsCallbackCleanupReturn } from "./rules/state-and-effects/no-effect-wrapper-discards-callback-cleanup-return.js";
+import { noEnterSubmitWithoutImeCompositionGuard } from "./rules/correctness/no-enter-submit-without-ime-composition-guard.js";
 import { noEval } from "./rules/security/no-eval.js";
 import { noEventHandler } from "./rules/state-and-effects/no-event-handler.js";
 import { noEventTriggerState } from "./rules/state-and-effects/no-event-trigger-state.js";
@@ -239,6 +242,7 @@ import { noMirrorPropEffect } from "./rules/state-and-effects/no-mirror-prop-eff
 import { noMoment } from "./rules/bundle-size/no-moment.js";
 import { noMultiComp } from "./rules/react-builtins/no-multi-comp.js";
 import { noMutableInDeps } from "./rules/state-and-effects/no-mutable-in-deps.js";
+import { noMutateQueriedDomNodeInComponent } from "./rules/correctness/no-mutate-queried-dom-node-in-component.js";
 import { noMutateThenSetOrReturnSameReference } from "./rules/state-and-effects/no-mutate-then-set-or-return-same-reference.js";
 import { noMutatingReducerState } from "./rules/state-and-effects/no-mutating-reducer-state.js";
 import { noNamespace } from "./rules/react-builtins/no-namespace.js";
@@ -296,6 +300,7 @@ import { noUncontrolledInput } from "./rules/correctness/no-uncontrolled-input.j
 import { noUndeferredThirdParty } from "./rules/bundle-size/no-undeferred-third-party.js";
 import { noUnescapedDynamicStringInRegexp } from "./rules/correctness/no-unescaped-dynamic-string-in-regexp.js";
 import { noUnescapedEntities } from "./rules/react-builtins/no-unescaped-entities.js";
+import { noUnguardedBrowserGlobalAtModuleScope } from "./rules/correctness/no-unguarded-browser-global-at-module-scope.js";
 import { noUnguardedBrowserGlobalInRenderOrHookInit } from "./rules/performance/no-unguarded-browser-global-in-render-or-hook-init.js";
 import { noUnguardedNumericInputParse } from "./rules/correctness/no-unguarded-numeric-input-parse.js";
 import { noUnguardedThrowingParseCall } from "./rules/correctness/no-unguarded-throwing-parse-call.js";
@@ -342,6 +347,7 @@ import { queryNoRestDestructuring } from "./rules/tanstack-query/query-no-rest-d
 import { queryNoUseQueryForMutation } from "./rules/tanstack-query/query-no-use-query-for-mutation.js";
 import { queryNoVoidQueryFn } from "./rules/tanstack-query/query-no-void-query-fn.js";
 import { queryStableQueryClient } from "./rules/tanstack-query/query-stable-query-client.js";
+import { radioInputMissingName } from "./rules/correctness/radio-input-missing-name.js";
 import { rawSqlInjectionRisk } from "./rules/security-scan/raw-sql-injection-risk.js";
 import { reactCompilerNoManualMemoization } from "./rules/architecture/react-compiler-no-manual-memoization.js";
 import { reactInJsxScope } from "./rules/react-builtins/react-in-jsx-scope.js";
@@ -2423,6 +2429,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-controlled-input-value-without-state-update",
+    id: "no-controlled-input-value-without-state-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noControlledInputValueWithoutStateUpdate,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/no-create-context-in-render",
     id: "no-create-context-in-render",
     source: "react-doctor",
@@ -2515,6 +2532,17 @@ export const reactDoctorRules = [
       ...noDefaultProps,
       framework: "global",
       category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-deprecated-keyboard-event-keycode-which",
+    id: "no-deprecated-keyboard-event-keycode-which",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noDeprecatedKeyboardEventKeycodeWhich,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {
@@ -2737,6 +2765,17 @@ export const reactDoctorRules = [
           ...(noEffectWrapperDiscardsCallbackCleanupReturn.requires ?? []),
         ]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-enter-submit-without-ime-composition-guard",
+    id: "no-enter-submit-without-ime-composition-guard",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noEnterSubmitWithoutImeCompositionGuard,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {
@@ -3215,6 +3254,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noMutableInDeps.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-mutate-queried-dom-node-in-component",
+    id: "no-mutate-queried-dom-node-in-component",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noMutateQueriedDomNodeInComponent,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {
@@ -3908,6 +3958,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-unguarded-browser-global-at-module-scope",
+    id: "no-unguarded-browser-global-at-module-scope",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUnguardedBrowserGlobalAtModuleScope,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/no-unguarded-browser-global-in-render-or-hook-init",
     id: "no-unguarded-browser-global-in-render-or-hook-init",
     source: "react-doctor",
@@ -4441,6 +4502,17 @@ export const reactDoctorRules = [
       ...queryStableQueryClient,
       framework: "tanstack-query",
       category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/radio-input-missing-name",
+    id: "radio-input-missing-name",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...radioInputMissingName,
+      framework: "global",
+      category: "Accessibility",
     },
   },
   {

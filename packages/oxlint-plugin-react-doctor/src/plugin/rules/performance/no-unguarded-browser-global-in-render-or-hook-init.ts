@@ -14,6 +14,7 @@ import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-re
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { readBrowserGlobalAvailability } from "../../utils/read-browser-global-availability.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -30,121 +31,6 @@ const BROWSER_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   "matchMedia",
 ]);
 
-const getTypeofBrowserGlobalName = (
-  expression: EsTreeNode,
-  context: RuleContext,
-): string | null => {
-  const unwrappedExpression = stripParenExpression(expression);
-  if (
-    !isNodeOfType(unwrappedExpression, "UnaryExpression") ||
-    unwrappedExpression.operator !== "typeof"
-  ) {
-    return null;
-  }
-  const argument = stripParenExpression(unwrappedExpression.argument);
-  if (isNodeOfType(argument, "Identifier")) {
-    return BROWSER_GLOBAL_NAMES.has(argument.name) && context.scopes.isGlobalReference(argument)
-      ? argument.name
-      : null;
-  }
-  if (
-    !isNodeOfType(argument, "MemberExpression") ||
-    argument.computed ||
-    !isNodeOfType(argument.object, "Identifier") ||
-    argument.object.name !== "globalThis" ||
-    !context.scopes.isGlobalReference(argument.object) ||
-    !isNodeOfType(argument.property, "Identifier") ||
-    !BROWSER_GLOBAL_NAMES.has(argument.property.name)
-  ) {
-    return null;
-  }
-  return argument.property.name;
-};
-
-const browserGuardCoversGlobal = (guardName: string, browserGlobalName: string): boolean =>
-  guardName === browserGlobalName || guardName === "window" || guardName === "document";
-
-const mergeAvailability = (
-  leftAvailability: boolean | null,
-  rightAvailability: boolean | null,
-): boolean | null => {
-  if (leftAvailability === null) return rightAvailability;
-  if (rightAvailability === null) return leftAvailability;
-  return leftAvailability === rightAvailability ? leftAvailability : null;
-};
-
-const readAvailabilityWhenPredicate = (
-  expression: EsTreeNode,
-  browserGlobalName: string,
-  context: RuleContext,
-  predicateResult: boolean,
-): boolean | null => {
-  const unwrappedExpression = stripParenExpression(expression);
-  if (
-    isNodeOfType(unwrappedExpression, "UnaryExpression") &&
-    unwrappedExpression.operator === "!"
-  ) {
-    return readAvailabilityWhenPredicate(
-      unwrappedExpression.argument,
-      browserGlobalName,
-      context,
-      !predicateResult,
-    );
-  }
-  if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
-    if (unwrappedExpression.operator === "&&" && predicateResult) {
-      return mergeAvailability(
-        readAvailabilityWhenPredicate(unwrappedExpression.left, browserGlobalName, context, true),
-        readAvailabilityWhenPredicate(unwrappedExpression.right, browserGlobalName, context, true),
-      );
-    }
-    if (unwrappedExpression.operator === "||" && !predicateResult) {
-      return mergeAvailability(
-        readAvailabilityWhenPredicate(unwrappedExpression.left, browserGlobalName, context, false),
-        readAvailabilityWhenPredicate(unwrappedExpression.right, browserGlobalName, context, false),
-      );
-    }
-    return null;
-  }
-  if (!isNodeOfType(unwrappedExpression, "BinaryExpression")) return null;
-  const leftTypeofName = getTypeofBrowserGlobalName(unwrappedExpression.left, context);
-  const rightTypeofName = getTypeofBrowserGlobalName(unwrappedExpression.right, context);
-  const leftComparedType =
-    isNodeOfType(unwrappedExpression.left, "Literal") &&
-    typeof unwrappedExpression.left.value === "string"
-      ? unwrappedExpression.left.value
-      : null;
-  const rightComparedType =
-    isNodeOfType(unwrappedExpression.right, "Literal") &&
-    typeof unwrappedExpression.right.value === "string"
-      ? unwrappedExpression.right.value
-      : null;
-  const guardName =
-    leftTypeofName && rightComparedType
-      ? leftTypeofName
-      : rightTypeofName && leftComparedType
-        ? rightTypeofName
-        : null;
-  const comparedType =
-    leftTypeofName && rightComparedType
-      ? rightComparedType
-      : rightTypeofName && leftComparedType
-        ? leftComparedType
-        : null;
-  if (!guardName || !browserGuardCoversGlobal(guardName, browserGlobalName)) return null;
-  if (!comparedType) return null;
-  const isEquality =
-    unwrappedExpression.operator === "===" || unwrappedExpression.operator === "==";
-  const isInequality =
-    unwrappedExpression.operator === "!==" || unwrappedExpression.operator === "!=";
-  if (!isEquality && !isInequality) return null;
-  const browserType = guardName === "matchMedia" ? "function" : "object";
-  const browserResult = isEquality ? browserType === comparedType : browserType !== comparedType;
-  const serverResult = isEquality ? comparedType === "undefined" : comparedType !== "undefined";
-  if (browserResult === serverResult) return null;
-  return predicateResult === browserResult;
-};
-
 const isInsideAvailabilityGuard = (
   node: EsTreeNode,
   browserGlobalName: string,
@@ -158,7 +44,7 @@ const isInsideAvailabilityGuard = (
       isNodeOfType(parentNode, "LogicalExpression") &&
       (parentNode.operator === "&&" || parentNode.operator === "||") &&
       parentNode.right === currentNode &&
-      readAvailabilityWhenPredicate(
+      readBrowserGlobalAvailability(
         parentNode.left,
         browserGlobalName,
         context,
@@ -170,10 +56,10 @@ const isInsideAvailabilityGuard = (
     if (isNodeOfType(parentNode, "ConditionalExpression")) {
       if (
         (parentNode.consequent === currentNode &&
-          readAvailabilityWhenPredicate(parentNode.test, browserGlobalName, context, true) ===
+          readBrowserGlobalAvailability(parentNode.test, browserGlobalName, context, true) ===
             true) ||
         (parentNode.alternate === currentNode &&
-          readAvailabilityWhenPredicate(parentNode.test, browserGlobalName, context, false) ===
+          readBrowserGlobalAvailability(parentNode.test, browserGlobalName, context, false) ===
             true)
       ) {
         return true;
@@ -182,10 +68,10 @@ const isInsideAvailabilityGuard = (
     if (isNodeOfType(parentNode, "IfStatement")) {
       if (
         (parentNode.consequent === currentNode &&
-          readAvailabilityWhenPredicate(parentNode.test, browserGlobalName, context, true) ===
+          readBrowserGlobalAvailability(parentNode.test, browserGlobalName, context, true) ===
             true) ||
         (parentNode.alternate === currentNode &&
-          readAvailabilityWhenPredicate(parentNode.test, browserGlobalName, context, false) ===
+          readBrowserGlobalAvailability(parentNode.test, browserGlobalName, context, false) ===
             true)
       ) {
         return true;
@@ -223,14 +109,14 @@ const isAfterAvailabilityEarlyExit = (
         if (statement === currentNode) break;
         if (!isNodeOfType(statement, "IfStatement")) continue;
         if (
-          readAvailabilityWhenPredicate(statement.test, browserGlobalName, context, false) ===
+          readBrowserGlobalAvailability(statement.test, browserGlobalName, context, false) ===
             true &&
           statementAlwaysExits(statement.consequent)
         ) {
           return true;
         }
         if (
-          readAvailabilityWhenPredicate(statement.test, browserGlobalName, context, true) ===
+          readBrowserGlobalAvailability(statement.test, browserGlobalName, context, true) ===
             true &&
           statement.alternate &&
           statementAlwaysExits(statement.alternate)

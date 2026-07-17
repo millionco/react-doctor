@@ -452,6 +452,7 @@ export const JSX_ATTRIBUTE_POOL = [
   `onKeyDown={handleKeyDown}`,
   `onChange={handleChange}`,
   `onMouseEnter={() => setIsOpen(true)}`,
+  `ref={(node) => () => handle(node)}`,
   `style="color: red"`,
   `style={{ color: "red" }}`,
   `style={{ width: state }}`,

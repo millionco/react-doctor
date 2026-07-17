@@ -1,6 +1,6 @@
 import { HOOKS_WITH_DEPS } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -14,7 +14,9 @@ export const rerenderDependencies = defineRule({
     "Move it into a useMemo, useRef, or a constant outside the component so it stays the same between renders.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isHookCall(node, HOOKS_WITH_DEPS) || node.arguments.length < 2) return;
+      if (!isReactHookCall(node, HOOKS_WITH_DEPS, context.scopes) || node.arguments.length < 2) {
+        return;
+      }
       const depsNode = node.arguments[1];
       if (!isNodeOfType(depsNode, "ArrayExpression")) return;
 

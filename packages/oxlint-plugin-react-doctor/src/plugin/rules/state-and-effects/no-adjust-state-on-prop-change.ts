@@ -1,5 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
@@ -17,16 +17,7 @@ export const noAdjustStateOnPropChange = defineRule({
     "Remove the adjustment effect by deriving values during render, resetting the component with a key, or updating related state in the event that changes the prop. Avoid tracking the previous prop in more state, which preserves the duplication. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (
-        !isReactApiCall(node, "useEffect", context.scopes, {
-          allowGlobalReactNamespace: true,
-          allowUnboundBareCalls: true,
-          resolveConditionalAliases: true,
-          resolveNamedAliases: true,
-        })
-      ) {
-        return;
-      }
+      if (!isReactHookCall(node, "useEffect", context.scopes)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
       const dependencyReferences = getEffectDepsRefs(analysis, node);

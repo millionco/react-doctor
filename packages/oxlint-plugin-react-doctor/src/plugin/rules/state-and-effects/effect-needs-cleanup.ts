@@ -25,8 +25,8 @@ import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import {
@@ -1477,7 +1477,7 @@ const hasStableUnmountCleanupForUsage = (
     ) {
       return;
     }
-    if (!isHookCall(child, CLEANUP_EFFECT_HOOK_NAMES)) return;
+    if (!isReactHookCall(child, CLEANUP_EFFECT_HOOK_NAMES, context.scopes)) return;
     const dependencyList = child.arguments?.[1];
     if (!isNodeOfType(dependencyList, "ArrayExpression") || dependencyList.elements.length > 0) {
       return;
@@ -2448,7 +2448,7 @@ const isRetainedAbortControllerRefRelease = (
     !releaseFunction ||
     !usageFunction ||
     !isFunctionLike(usageFunction) ||
-    !isReturnedEffectCleanupFunction(releaseFunction) ||
+    !isReturnedEffectCleanupFunction(releaseFunction, context) ||
     !resolveReactRefCurrentOriginSymbol(releaseReceiver, context.scopes)
   ) {
     return false;
@@ -2901,7 +2901,10 @@ const matchesPairedReleaseVerb = (
 ): boolean =>
   pairedVerbNames.has(releaseVerbName) || UNIVERSAL_RELEASE_VERB_NAMES.has(releaseVerbName);
 
-const isReturnedEffectCleanupFunction = (functionNode: EsTreeNode): boolean => {
+const isReturnedEffectCleanupFunction = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   let currentNode = functionNode;
   let parentNode = currentNode.parent;
   while (
@@ -2922,7 +2925,7 @@ const isReturnedEffectCleanupFunction = (functionNode: EsTreeNode): boolean => {
   return Boolean(
     effectCallback &&
     isNodeOfType(effectCall, "CallExpression") &&
-    isHookCall(effectCall, CLEANUP_EFFECT_HOOK_NAMES),
+    isReactHookCall(effectCall, CLEANUP_EFFECT_HOOK_NAMES, context.scopes),
   );
 };
 
@@ -2932,7 +2935,7 @@ const isPotentiallyReachableFunction = (
 ): boolean => {
   if (
     isInlineRetainedHandlerFunction(functionNode, context) ||
-    isReturnedEffectCleanupFunction(functionNode)
+    isReturnedEffectCleanupFunction(functionNode, context)
   ) {
     return true;
   }
@@ -4394,7 +4397,7 @@ const isInlineRetainedHandlerFunction = (
   if (
     isNodeOfType(callbackCall, "CallExpression") &&
     callbackCall.arguments?.[0] === functionRoot &&
-    isHookCall(callbackCall, "useCallback") &&
+    isReactHookCall(callbackCall, "useCallback", context.scopes) &&
     isDirectJsxEventHandlerValue(callbackCall)
   ) {
     return true;
@@ -4455,14 +4458,14 @@ export const effectNeedsCleanup = defineRule({
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (isHookCall(node, "useCallback")) {
+        if (isReactHookCall(node, "useCallback", context.scopes)) {
           const retainedCallback = getEffectCallback(node);
           if (retainedCallback && !isInlineRetainedHandlerFunction(retainedCallback, context)) {
             reportRetainedLeak(retainedCallback);
           }
           return;
         }
-        if (!isHookCall(node, CLEANUP_EFFECT_HOOK_NAMES)) return;
+        if (!isReactHookCall(node, CLEANUP_EFFECT_HOOK_NAMES, context.scopes)) return;
         const callback = getEffectCallback(node);
         if (!callback) return;
 

@@ -3,6 +3,23 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { rerenderStateOnlyInHandlers } from "./rerender-state-only-in-handlers.js";
 
 describe("rerender-state-only-in-handlers — regressions", () => {
+  it("flags self-echo state through a React effect import alias", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `import { useEffect as useSynchronize, useState } from "react";
+      function Widget({ value }) {
+        const [copied, setCopied] = useState(value);
+        useSynchronize(() => {
+          if (copied !== value) setCopied(value);
+        }, [copied, value]);
+        return <button onClick={() => setCopied(null)}>reset</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("copied");
+  });
+
   it("stays silent when state drives a side-effect-only effect through a one-hop derived local", () => {
     const result = runRule(
       rerenderStateOnlyInHandlers,

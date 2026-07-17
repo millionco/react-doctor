@@ -85,6 +85,20 @@ describe("buildCapabilities", () => {
     expect(capabilities.has("vite")).toBe(true);
   });
 
+  it("emits the `tanstack-query` capability from either project signal", () => {
+    const legacyBooleanCapabilities = buildCapabilities({
+      ...baseProject,
+      hasTanStackQuery: true,
+    });
+    const versionCapabilities = buildCapabilities({
+      ...baseProject,
+      tanstackQueryVersion: "^5.66.0",
+    });
+
+    expect(legacyBooleanCapabilities.has("tanstack-query")).toBe(true);
+    expect(versionCapabilities.has("tanstack-query")).toBe(true);
+  });
+
   it("emits a `preact:<major>` ladder from `preactMajorVersion`, mirroring `react:<major>`", () => {
     const preact11 = buildCapabilities({
       ...baseProject,

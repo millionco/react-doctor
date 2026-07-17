@@ -16,12 +16,21 @@ let lastContentLineIndex: ContentLineIndex | undefined;
 
 const buildLineStartOffsets = (content: string): number[] => {
   const lineStartOffsets = [0];
-  for (
-    let newlineIndex = content.indexOf("\n");
-    newlineIndex !== -1;
-    newlineIndex = content.indexOf("\n", newlineIndex + 1)
-  ) {
-    lineStartOffsets.push(newlineIndex + 1);
+  for (let characterIndex = 0; characterIndex < content.length; characterIndex += 1) {
+    const character = content[characterIndex];
+    if (character === "\r" && content[characterIndex + 1] === "\n") {
+      characterIndex += 1;
+      lineStartOffsets.push(characterIndex + 1);
+      continue;
+    }
+    if (
+      character === "\r" ||
+      character === "\n" ||
+      character === "\u2028" ||
+      character === "\u2029"
+    ) {
+      lineStartOffsets.push(characterIndex + 1);
+    }
   }
   return lineStartOffsets;
 };

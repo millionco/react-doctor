@@ -2301,11 +2301,19 @@ const doesReleaseCallMatchUsage = (
     releaseVerbName === "removeListener" ||
     releaseVerbName === "off"
   ) {
-    const releaseHandler = callNode.arguments?.[1];
+    const usesUnaryListenerSignature =
+      usage.registrationVerbName === "addListener" &&
+      isNodeOfType(usage.node, "CallExpression") &&
+      usage.node.arguments?.length === 1 &&
+      callNode.arguments?.length === 1;
+    const releaseHandler = usesUnaryListenerSignature
+      ? callNode.arguments?.[0]
+      : callNode.arguments?.[1];
     if (!releaseHandler) return releaseVerbName === "off";
+    const expectedHandlerKey = usesUnaryListenerSignature ? usage.eventKey : usage.handlerKey;
     return (
-      usage.handlerKey !== null &&
-      resolveExpressionKey(releaseHandler, context) === usage.handlerKey
+      expectedHandlerKey !== null &&
+      resolveExpressionKey(releaseHandler, context) === expectedHandlerKey
     );
   }
   if (releaseVerbName === "unobserve" && usage.eventKey !== null) {
@@ -2937,6 +2945,17 @@ const doesResourceResultEscape = (
       isNodeOfType(parentNode, "ChainExpression") ||
       isNodeOfType(parentNode, "TSAsExpression") ||
       isNodeOfType(parentNode, "TSNonNullExpression")
+    ) {
+      currentNode = parentNode;
+      parentNode = currentNode.parent;
+      continue;
+    }
+    if (
+      (isNodeOfType(parentNode, "ConditionalExpression") &&
+        (parentNode.consequent === currentNode || parentNode.alternate === currentNode)) ||
+      (isNodeOfType(parentNode, "LogicalExpression") &&
+        (parentNode.right === currentNode ||
+          (parentNode.left === currentNode && parentNode.operator !== "&&")))
     ) {
       currentNode = parentNode;
       parentNode = currentNode.parent;

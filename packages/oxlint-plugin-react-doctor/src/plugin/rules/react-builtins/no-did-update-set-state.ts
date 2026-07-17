@@ -255,18 +255,18 @@ const isDirectRefParameterValue = (
   );
 };
 
-const getCallbackRefAssignedField = (
+const getCallbackRefAssignedFields = (
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
-): string | null => {
+): ReadonlySet<string> => {
   const parameters = (callback as { params?: EsTreeNode[] }).params ?? [];
   const firstParameter = parameters[0];
-  if (!firstParameter || !isNodeOfType(firstParameter, "Identifier")) return null;
+  if (!firstParameter || !isNodeOfType(firstParameter, "Identifier")) return new Set();
   const parameterSymbolId = scopes.symbolFor(firstParameter)?.id;
-  if (parameterSymbolId === undefined) return null;
+  if (parameterSymbolId === undefined) return new Set();
   const body = (callback as { body?: EsTreeNode }).body;
-  if (!body) return null;
-  let assignedFieldName: string | null = null;
+  if (!body) return new Set();
+  const assignedFieldNames = new Set<string>();
   walkAst(body, (node) => {
     if (node !== body && (FUNCTION_NODE_TYPES.has(node.type) || CLASS_NODE_TYPES.has(node.type))) {
       return false;
@@ -279,9 +279,9 @@ const getCallbackRefAssignedField = (
       return;
     }
     const fieldName = getThisFieldName(node.left as EsTreeNode);
-    if (fieldName) assignedFieldName = fieldName;
+    if (fieldName) assignedFieldNames.add(fieldName);
   });
-  return assignedFieldName;
+  return assignedFieldNames;
 };
 
 const getClassMemberCallback = (classNode: EsTreeNode, memberName: string): EsTreeNode | null => {
@@ -310,15 +310,19 @@ const collectCallbackRefFieldsFromExpression = (
 ): void => {
   const unwrappedExpression = stripParenExpression(expression);
   if (FUNCTION_NODE_TYPES.has(unwrappedExpression.type)) {
-    const fieldName = getCallbackRefAssignedField(unwrappedExpression, scopes);
-    if (fieldName) fieldNames.add(fieldName);
+    for (const fieldName of getCallbackRefAssignedFields(unwrappedExpression, scopes)) {
+      fieldNames.add(fieldName);
+    }
     return;
   }
   const handlerName = getThisFieldName(unwrappedExpression);
   if (handlerName) {
     const callback = getClassMemberCallback(classNode, handlerName);
-    const fieldName = callback && getCallbackRefAssignedField(callback, scopes);
-    if (fieldName) fieldNames.add(fieldName);
+    if (callback) {
+      for (const fieldName of getCallbackRefAssignedFields(callback, scopes)) {
+        fieldNames.add(fieldName);
+      }
+    }
     return;
   }
   if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
@@ -568,17 +572,36 @@ const isDiffGuardTest = (
   test: EsTreeNode,
   paramNames: ReadonlySet<string>,
   derivedNames: ReadonlySet<string>,
+  isTruthfulBranch: boolean,
 ): boolean => {
   const expression = stripParenExpression(test);
-  if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "&&") {
-    return (
-      isDiffGuardTest(expression.left as EsTreeNode, paramNames, derivedNames) ||
-      isDiffGuardTest(expression.right as EsTreeNode, paramNames, derivedNames)
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    if (expression.operator !== "&&" && expression.operator !== "||") return false;
+    const leftIsDiffGuard = isDiffGuardTest(
+      expression.left as EsTreeNode,
+      paramNames,
+      derivedNames,
+      isTruthfulBranch,
     );
+    const rightIsDiffGuard = isDiffGuardTest(
+      expression.right as EsTreeNode,
+      paramNames,
+      derivedNames,
+      isTruthfulBranch,
+    );
+    const requiresEveryBranch =
+      (isTruthfulBranch && expression.operator === "||") ||
+      (!isTruthfulBranch && expression.operator === "&&");
+    return requiresEveryBranch
+      ? leftIsDiffGuard && rightIsDiffGuard
+      : leftIsDiffGuard || rightIsDiffGuard;
   }
   if (
     !isNodeOfType(expression, "BinaryExpression") ||
-    !DIFFERENCE_OPERATORS.has(expression.operator)
+    !(isTruthfulBranch
+      ? DIFFERENCE_OPERATORS.has(expression.operator)
+      : EQUALITY_OPERATORS.has(expression.operator) &&
+        !DIFFERENCE_OPERATORS.has(expression.operator))
   ) {
     return false;
   }
@@ -620,27 +643,41 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boo
   let child: EsTreeNode = setStateCall;
   let ancestor: EsTreeNode | null | undefined = setStateCall.parent;
   while (ancestor && ancestor !== lifecycleFunction) {
-    const guardTest =
-      (isNodeOfType(ancestor, "IfStatement") && child !== ancestor.test && ancestor.test) ||
-      (isNodeOfType(ancestor, "ConditionalExpression") &&
-        child !== ancestor.test &&
-        ancestor.test) ||
-      (isNodeOfType(ancestor, "LogicalExpression") &&
-        ancestor.operator === "&&" &&
-        child === ancestor.right &&
-        ancestor.left) ||
-      null;
+    let guardTest: EsTreeNode | null = null;
+    let isTruthfulBranch = true;
+    if (isNodeOfType(ancestor, "IfStatement")) {
+      if (child === ancestor.consequent) {
+        guardTest = ancestor.test as EsTreeNode;
+      } else if (child === ancestor.alternate) {
+        guardTest = ancestor.test as EsTreeNode;
+        isTruthfulBranch = false;
+      }
+    } else if (isNodeOfType(ancestor, "ConditionalExpression")) {
+      if (child === ancestor.consequent) {
+        guardTest = ancestor.test as EsTreeNode;
+      } else if (child === ancestor.alternate) {
+        guardTest = ancestor.test as EsTreeNode;
+        isTruthfulBranch = false;
+      }
+    } else if (
+      isNodeOfType(ancestor, "LogicalExpression") &&
+      ancestor.operator === "&&" &&
+      child === ancestor.right
+    ) {
+      guardTest = ancestor.left as EsTreeNode;
+    }
     if (
       guardTest &&
-      (isDiffGuardTest(guardTest, paramNames, derivedNames) ||
-        isHistoricalToCurrentTransitionGuard(guardTest, previousSourceDomains) ||
-        isConvergentPostMountGuard(
-          guardTest,
-          setStateCall,
-          localInitializers,
-          callbackRefFieldNames,
-        ) ||
-        isConvergentUndefinedClearGuard(guardTest, setStateCall))
+      (isDiffGuardTest(guardTest, paramNames, derivedNames, isTruthfulBranch) ||
+        (isTruthfulBranch &&
+          (isHistoricalToCurrentTransitionGuard(guardTest, previousSourceDomains) ||
+            isConvergentPostMountGuard(
+              guardTest,
+              setStateCall,
+              localInitializers,
+              callbackRefFieldNames,
+            ) ||
+            isConvergentUndefinedClearGuard(guardTest, setStateCall))))
     ) {
       return true;
     }

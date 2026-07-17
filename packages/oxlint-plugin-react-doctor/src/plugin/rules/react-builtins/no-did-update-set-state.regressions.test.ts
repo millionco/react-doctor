@@ -137,6 +137,64 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when every logical-OR branch is a prop diff", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Profile extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (
+            prevProps.name !== this.props.name ||
+            prevProps.email !== this.props.email
+          ) {
+            this.setState({ draft: this.props });
+          }
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent in the else branch of a prop equality guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Profile extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (prevProps.name === this.props.name) {
+            return;
+          } else {
+            this.setState({ draftName: this.props.name });
+          }
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags the else branch of a prop difference guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Profile extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (prevProps.name !== this.props.name) {
+            return;
+          } else {
+            this.setState({ updates: this.state.updates + 1 });
+          }
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a previous prop compared only with a constant", () => {
     const result = runRule(
       noDidUpdateSetState,
@@ -509,6 +567,31 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent for every field assigned by one callback ref", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.primaryContainer !== this.primaryContainer) {
+            this.setState({ primaryContainer: this.primaryContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => {
+            this.primaryContainer = node;
+            this.secondaryContainer = node;
+          }} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags callback-ref convergence behind an OR branch", () => {
     const result = runRule(
       noDidUpdateSetState,
@@ -803,6 +886,26 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
       class Calendar extends React.Component {
         componentDidUpdate() {
           if (!this.state.monthContainer) {
+            this.setState({ monthContainer: undefined });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an undefined clear in the else branch of a truthy state guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.monthContainer) {
+            this.measureContainer();
+          } else {
             this.setState({ monthContainer: undefined });
           }
         }

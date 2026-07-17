@@ -15,6 +15,12 @@ describe("no-transition-all", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags all in a comma-separated transition list", () => {
+    const code = `const A = () => <div style={{ transition: "opacity 200ms, all 300ms" }} />;`;
+    const result = runRule(noTransitionAll, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags the Tailwind `transition-all` class", () => {
     const code = `const A = () => <div className="transition-all duration-200 hover:translate-y-1" />;`;
     const result = runRule(noTransitionAll, code);
@@ -54,6 +60,12 @@ describe("no-transition-all", () => {
 
   it("does NOT flag a specific inline transition", () => {
     const code = `const A = () => <div style={{ transition: "transform 200ms, opacity 200ms" }} />;`;
+    const result = runRule(noTransitionAll, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag transition behavior keywords beginning with all", () => {
+    const code = `const A = () => <div style={{ transition: "allow-discrete 200ms" }} />;`;
     const result = runRule(noTransitionAll, code);
     expect(result.diagnostics).toHaveLength(0);
   });

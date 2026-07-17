@@ -94,7 +94,6 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "prefer-html-dialog",
   "no-autoplay-without-muted",
   "no-uninformative-aria-label",
-  "no-target-blank-without-rel",
   "dialog-has-accessible-name",
   "no-create-ref-in-function-component",
   "no-call-component-as-function",

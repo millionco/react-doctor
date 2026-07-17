@@ -13,6 +13,8 @@ import { getStringFromClassNameAttr } from "../design/utils/get-string-from-clas
 const hasTransitionAllClass = (classNameValue: string): boolean =>
   getClassNameTokens(classNameValue).some((token) => token === "transition-all");
 
+const TRANSITION_ALL_VALUE_PATTERN = /(?:^|,)\s*all(?:\s|,|$)/i;
+
 const TAILWIND_MESSAGE =
   "Your users see janky animation because `transition-all` animates every property that changes, including expensive layout ones and instant ones like focus rings. Name the properties: `transition-colors`, `transition-opacity`, or `transition-transform`.";
 
@@ -39,7 +41,7 @@ export const noTransitionAll = defineRule({
         if (
           isNodeOfType(property.value, "Literal") &&
           typeof property.value.value === "string" &&
-          property.value.value.trim().startsWith("all")
+          TRANSITION_ALL_VALUE_PATTERN.test(property.value.value.trim())
         ) {
           context.report({
             node: property,

@@ -4,7 +4,7 @@
 "react-doctor": patch
 ---
 
-Add 10 design-quality lint rules distilled from a cross-resource design reference, spanning motion performance, accessibility, and Tailwind/JSX hygiene.
+Add design-quality lint rules distilled from a cross-resource design reference, spanning motion performance, accessibility, and Tailwind/JSX hygiene.
 
 **Motion**
 
@@ -15,7 +15,6 @@ Add 10 design-quality lint rules distilled from a cross-resource design referenc
 
 - **`no-autoplay-without-muted`** — `<video autoPlay>` / `<audio autoPlay>` missing `muted` (sound-on autoplay is hostile to users and browser-blocked). Skips dynamic `autoPlay`, spreads, and truthy/dynamic `muted`.
 - **`no-uninformative-aria-label`** — an `aria-label` whose value is a content-free element-type word (`"icon"`, `"button"`, `"image"`, `"link"`, …) that tells screen-reader users nothing about the action.
-- **`no-target-blank-without-rel`** — `<a target="_blank">` (and `<area>`) missing `rel="noopener"`/`noreferrer` (reverse tabnabbing). Skips spreads and dynamic `rel`.
 - **`no-low-contrast-inline-style`** — computes the real WCAG 2.1 contrast ratio from a co-located inline `color` + `backgroundColor` and flags pairs below 4.5:1 (3:1 for large/bold text). Only fires on opaque, statically-resolvable colors (skips alpha, `var()`, gradients).
 
 **Design / Tailwind hygiene**

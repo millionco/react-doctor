@@ -702,6 +702,119 @@ export const DevServer = ({ app }) => {
   });
 });
 
+describe("effect-needs-cleanup self-releasing gesture listeners", () => {
+  it("accepts the react-bnb mouseup-owned release protocol", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const useZoomPan = () => {
+  const dragRef = useRef(null);
+  const panBy = useCallback(() => {}, []);
+  const onMouseDown = useCallback((event) => {
+    dragRef.current = { startX: event.clientX, startY: event.clientY };
+    function handleMouseMove(moveEvent) {
+      panBy(moveEvent.clientX, moveEvent.clientY);
+    }
+    function handleMouseUp() {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    }
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }, [panBy]);
+  return { onMouseDown };
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a const-bound end listener that releases itself and its peer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const useDrag = () => {
+  const onMouseDown = useCallback(() => {
+    const handleMouseMove = () => updatePosition();
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }, []);
+  return onMouseDown;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "a conditionally registered end listener",
+      moveOptions: "",
+      releaseBody:
+        'window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp);',
+      endRegistration: 'if (shouldAttachEnd) window.addEventListener("mouseup", handleMouseUp);',
+      endPrefix: "",
+    },
+    {
+      name: "a conditionally executed release",
+      moveOptions: "",
+      releaseBody:
+        'if (shouldRelease) { window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp); }',
+      endRegistration: 'window.addEventListener("mouseup", handleMouseUp);',
+      endPrefix: "",
+    },
+    {
+      name: "an async end listener",
+      moveOptions: "",
+      releaseBody:
+        'window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp);',
+      endRegistration: 'window.addEventListener("mouseup", handleMouseUp);',
+      endPrefix: "async ",
+    },
+    {
+      name: "an end listener on a different receiver",
+      moveOptions: "",
+      releaseBody:
+        'window.removeEventListener("mousemove", handleMouseMove); document.removeEventListener("mouseup", handleMouseUp);',
+      endRegistration: 'document.addEventListener("mouseup", handleMouseUp);',
+      endPrefix: "",
+    },
+    {
+      name: "a capture mismatch",
+      moveOptions: ", true",
+      releaseBody:
+        'window.removeEventListener("mousemove", handleMouseMove, false); window.removeEventListener("mouseup", handleMouseUp);',
+      endRegistration: 'window.addEventListener("mouseup", handleMouseUp);',
+      endPrefix: "",
+    },
+  ])("rejects $name", ({ moveOptions, releaseBody, endRegistration, endPrefix }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const useDrag = ({ shouldAttachEnd, shouldRelease }) => {
+  const onMouseDown = useCallback(() => {
+    function handleMouseMove() {
+      updatePosition();
+    }
+    ${endPrefix}function handleMouseUp() {
+      ${releaseBody}
+    }
+    window.addEventListener("mousemove", handleMouseMove${moveOptions});
+    ${endRegistration}
+  }, [shouldAttachEnd, shouldRelease]);
+  return onMouseDown;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
 describe("effect-needs-cleanup — for-of listener pairs", () => {
   it("accepts matching listener setup and cleanup loops over the same event collection", () => {
     const result = runRule(

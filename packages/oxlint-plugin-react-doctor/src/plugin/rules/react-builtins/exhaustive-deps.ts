@@ -9,6 +9,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findForwardedFreshHookDependencies } from "../../utils/find-forwarded-fresh-hook-dependencies.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
@@ -701,7 +702,7 @@ const resolveDerivedExpressionSourceKeys = (
     return new Set([sourceSymbol.name]);
   }
   if (isNodeOfType(candidate, "MemberExpression")) {
-    if (candidate.computed) return null;
+    if (hasComputedMemberExpression(candidate)) return null;
     const sourceKey = stringifyMemberChain(candidate);
     const rootIdentifier = getMemberRootIdentifier(candidate);
     const rootSymbol = rootIdentifier ? scopes.symbolFor(rootIdentifier) : null;
@@ -746,21 +747,6 @@ const resolveDerivedExpressionSourceKeys = (
       argumentsToAnalyze.push(argument);
     }
     return mergeDerivedExpressionSourceKeys(argumentsToAnalyze, scopes, visitedSymbolIds);
-  }
-  return null;
-};
-
-const findNearestFunction = (node: EsTreeNode): EsTreeNode | null => {
-  let currentNode = node.parent;
-  while (currentNode) {
-    if (
-      isNodeOfType(currentNode, "FunctionDeclaration") ||
-      isNodeOfType(currentNode, "FunctionExpression") ||
-      isNodeOfType(currentNode, "ArrowFunctionExpression")
-    ) {
-      return currentNode;
-    }
-    currentNode = currentNode.parent ?? null;
   }
   return null;
 };
@@ -820,7 +806,7 @@ const resolveRenderDerivedMutableSourceKeys = (
   ) {
     return null;
   }
-  const boundaryFunction = findNearestFunction(symbol.bindingIdentifier);
+  const boundaryFunction = findEnclosingFunction(symbol.bindingIdentifier);
   if (!boundaryFunction) return null;
   const sourceKeys = new Set<string>();
   if (symbol.initializer) {
@@ -836,7 +822,7 @@ const resolveRenderDerivedMutableSourceKeys = (
   for (const symbolReference of symbol.references) {
     if (symbolReference.flag === "read") {
       if (
-        findNearestFunction(symbolReference.identifier) === boundaryFunction &&
+        findEnclosingFunction(symbolReference.identifier) === boundaryFunction &&
         !isReadOnlyInitialStateUse(symbolReference.identifier, boundaryFunction, scopes)
       ) {
         return null;
@@ -850,7 +836,7 @@ const resolveRenderDerivedMutableSourceKeys = (
       !isNodeOfType(assignment, "AssignmentExpression") ||
       assignment.operator !== "=" ||
       assignment.left !== referenceRoot ||
-      findNearestFunction(referenceRoot) !== boundaryFunction
+      findEnclosingFunction(referenceRoot) !== boundaryFunction
     ) {
       return null;
     }

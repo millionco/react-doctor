@@ -2225,6 +2225,23 @@ describe("react-builtins/exhaustive-deps — upstream disable-comment suppressio
       expect(result.diagnostics[0]?.message).toContain("retryError");
     });
 
+    it("keeps nested computed-member inputs reportable", () => {
+      const code = `
+        import { useEffect } from "react";
+        function Picker({ enabled, items, index, consume }) {
+          let selectedName;
+          if (enabled) selectedName = items[index].name;
+          useEffect(() => {
+            consume(selectedName);
+          }, [enabled, items, consume]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("selectedName");
+    });
+
     it("keeps nested mutable-local writes reportable", () => {
       const code = `
         import { useEffect } from "react";

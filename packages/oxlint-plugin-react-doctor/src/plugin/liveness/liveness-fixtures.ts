@@ -1821,6 +1821,45 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-nonresizable-textarea": {
     code: 'const Editor = () => <textarea className="resize-none" />;',
   },
+  "no-decorative-blur-orb": {
+    code: 'const Hero = () => <div className="absolute size-96 rounded-full bg-purple-500 blur-3xl" />;',
+  },
+  "no-excessive-centered-copy": {
+    code: 'const Page = () => <main><p className="text-center">Build polished interfaces with a workflow that keeps every decision visible.</p><p className="text-center">Move from an initial idea to a working result without losing important context.</p><p className="text-center">Keep the whole team aligned with clear updates and shared project history.</p></main>;',
+  },
+  "no-excessive-motion-stagger": {
+    code: 'import { motion } from "motion/react"; const List = () => <motion.ul transition={{ staggerChildren: 0.2 }} />;',
+  },
+  "no-excessive-pill-treatment": {
+    code: 'const Page = () => <main><span className="rounded-full border px-3">Fast</span><span className="rounded-full border px-3">Safe</span><span className="rounded-full border px-3">Simple</span><span className="rounded-full border px-3">Clear</span><span className="rounded-full border px-3">New</span></main>;',
+  },
+  "no-full-viewport-centered-hero": {
+    code: 'const Hero = () => <section className="flex min-h-dvh items-center justify-center"><h1>Build faster</h1></section>;',
+  },
+  "no-repeated-emoji-tiles": {
+    code: 'const Page = () => <main><span className="size-12 rounded-xl bg-blue-100">🚀</span><span className="size-12 rounded-xl bg-green-100">🔒</span><span className="size-12 rounded-xl bg-amber-100">⚡</span></main>;',
+  },
+  "no-repeated-glass-surfaces": {
+    code: 'const Page = () => <main><div className="rounded-xl border bg-white/10 backdrop-blur-xl" /><div className="rounded-xl border bg-white/10 backdrop-blur-xl" /><div className="rounded-xl border bg-white/10 backdrop-blur-xl" /></main>;',
+  },
+  "no-uniform-feature-card-grid": {
+    code: 'const Features = () => <section className="grid grid-cols-3"><article className="rounded-xl border p-6"><h3>Fast</h3><p>Finish sooner.</p></article><article className="rounded-xl border p-6"><h3>Safe</h3><p>Protect changes.</p></article><article className="rounded-xl border p-6"><h3>Simple</h3><p>Stay focused.</p></article></section>;',
+  },
+  "no-excessive-card-surfaces": {
+    code: 'const Page = () => <main><section className="rounded-xl border p-6">A</section><section className="rounded-xl border p-6">B</section><section className="rounded-xl border p-6">C</section><section className="rounded-xl border p-6">D</section><section className="rounded-xl border p-6">E</section><section className="rounded-xl border p-6">F</section></main>;',
+  },
+  "no-pure-black-shadow": {
+    code: 'const Card = () => <div style={{ boxShadow: "0 10px 30px #000" }} />;',
+  },
+  "no-repeated-section-shells": {
+    code: 'const Page = () => <main><section className="py-20"><div className="mx-auto max-w-6xl">A</div></section><section className="py-24"><div className="mx-auto max-w-6xl">B</div></section><section className="py-20"><div className="mx-auto max-w-6xl">C</div></section></main>;',
+  },
+  "no-tight-display-tracking": {
+    code: 'const Hero = () => <h1 className="tracking-tighter">Build faster</h1>;',
+  },
+  "no-uppercase-mono-label": {
+    code: 'const Label = () => <span className="font-mono uppercase tracking-widest">System online</span>;',
+  },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',
   },

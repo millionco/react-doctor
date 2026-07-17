@@ -22,6 +22,7 @@ Add deterministic design-quality lint rules spanning motion performance, accessi
 - **`no-ease-in-motion`** — exact inline, Motion, and Tailwind `ease-in` timing that delays the visible response, including transition configuration nested inside static Motion animation targets; preserves `ease-in-out` and dynamic timing values.
 - **`no-long-transition-duration`** (extended) — now covers static Motion transition objects, including nested transition configuration, while preserving perpetual loops, decorative hidden motion, dynamic values, unproven components, and duration values ignored by physics-based springs.
 - **`no-scale-from-zero`** (extended) — now covers inline transform transitions and Tailwind scale transitions in addition to proven Motion components.
+- **`no-excessive-motion-stagger`** — opt-in detection for proven Motion stagger intervals above 80 ms, including `staggerChildren` and scope-resolved `stagger()` calls used by `delayChildren`.
 
 **Accessibility**
 
@@ -84,6 +85,19 @@ Add deterministic design-quality lint rules spanning motion performance, accessi
 - **`no-layout-shifting-interaction-state`**: opt-in detection for interaction utilities that change layout geometry or font metrics.
 - **`no-hover-only-reveal`**: opt-in detection for content revealed on hover without an equivalent keyboard-focus state.
 - **`no-fixed-inside-transformed-ancestor`**: opt-in detection for fixed descendants whose static ancestor establishes a containing block.
+- **`no-decorative-blur-orb`** — opt-in detection for empty, absolutely positioned, strongly blurred circular color fields used as generic decoration.
+- **`no-repeated-glass-surfaces`** — opt-in page-level detection for three or more complete translucent, blurred, bordered, and rounded surface treatments.
+- **`no-excessive-pill-treatment`** — opt-in page-level detection for five or more short labels or actions presented as filled or outlined pills.
+- **`no-uniform-feature-card-grid`** — opt-in detection for grids whose direct children all repeat the same complete card, heading, and paragraph composition.
+- **`no-excessive-centered-copy`** — opt-in page-level detection for repeated substantial paragraphs set as centered copy.
+- **`no-full-viewport-centered-hero`** — opt-in detection for structurally simple hero sections that combine full-viewport height, centered layout, and a primary heading.
+- **`no-repeated-emoji-tiles`** — opt-in page-level detection for three or more emoji-only glyphs placed in small, rounded, colored square tiles.
+- **`no-uppercase-mono-label`** — opt-in detection for static short labels that combine monospace, uppercase, and explicit tracking while preserving code elements and dynamic identifiers.
+- **`no-tight-display-tracking`** — opt-in detection for static primary headings using Tailwind's tightest built-in letter spacing.
+- **`no-excessive-card-surfaces`** — opt-in page-level detection for six or more complete card surfaces in a static page tree.
+- **`no-repeated-section-shells`** — opt-in detection for pages that repeat the same large vertical section padding and centered max-width wrapper structure at least three times.
+- **`no-pure-black-shadow`** — opt-in detection for visible inline or Tailwind shadows colored with opaque or translucent pure black.
+- **`no-gradient-text`** (extended) — now recognizes Tailwind v4 linear, radial, conic, numeric-angle, and arbitrary gradient background utilities without combining utilities across variants.
 
 **HTML and component contracts**
 

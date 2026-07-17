@@ -5,6 +5,10 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
+
+const TAILWIND_GRADIENT_BACKGROUND_PATTERN =
+  /^bg-(?:gradient-to-[trbl]|linear-(?:\d+|to-[trbl]|\[[^\]]+\])|radial|conic)$/;
 
 export const noGradientText = defineRule({
   id: "no-gradient-text",
@@ -48,8 +52,12 @@ export const noGradientText = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classStr = getStringFromClassNameAttr(node);
       if (!classStr) return;
+      const tokens = getUnvariantClassNameTokens(classStr);
 
-      if (/\bbg-clip-text\b/.test(classStr) && /\bbg-gradient-to-/.test(classStr)) {
+      if (
+        tokens.includes("bg-clip-text") &&
+        tokens.some((token) => TAILWIND_GRADIENT_BACKGROUND_PATTERN.test(token))
+      ) {
         context.report({
           node,
           message:

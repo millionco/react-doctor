@@ -330,6 +330,7 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `import { test as fuzzProviderChildrenTest } from "vitest"; import { FuzzChildrenProvider } from "./children-provider"; fuzzProviderChildrenTest("renders direct children", () => { render(<FuzzChildrenProvider children={<img src="/subject.png" />} />); });`,
   `import { motion as FuzzMotion } from "framer-motion"; export const FuzzMotionPanel = () => <FuzzMotion.div animate={{ x: 120 }}>moving</FuzzMotion.div>;`,
   `import { motion as FuzzScaleMotion } from "framer-motion"; export const FuzzScaleEntry = () => <FuzzScaleMotion.div initial={{ scale: 0 }} animate={{ scale: 1 }}>enter</FuzzScaleMotion.div>;`,
+  `import { motion as FuzzStaggerMotion, stagger as fuzzStagger } from "motion/react"; export const FuzzStaggerList = () => <FuzzStaggerMotion.ul transition={{ delayChildren: fuzzStagger(0.15) }} />;`,
   `import { div as fuzzMotionDiv, span as FuzzMotionSpan } from "framer-motion/m"; export const FuzzIntrinsicScaleCollision = () => <fuzzMotionDiv initial={{ scale: 0 }} />; export const FuzzProvenScaleTag = () => <FuzzMotionSpan initial={{ scale: 0 }} />;`,
   `import { createRoot as mountFuzzRoot } from "react-dom/client"; export const FuzzRootApp = () => <div />; export const fuzzRootConfig = getConfig(); const fuzzApplicationRoot = mountFuzzRoot(document.body); fuzzApplicationRoot.render(<FuzzRootApp />);`,
   `const GLOBAL_CACHE = new Map<string, unknown>();`,
@@ -658,6 +659,18 @@ export const JSX_LEAF_POOL = [
   `<img srcSet="small.jpg 640w, large.jpg 2x" />`,
   `<form><input /></form>`,
   `<label><input /><input /></label>`,
+  `<div className="absolute size-96 rounded-full bg-purple-500 blur-3xl" />`,
+  `<main><div className="rounded-xl border bg-white/10 backdrop-blur-xl" /><div className="rounded-xl border bg-white/10 backdrop-blur-xl" /><div className="rounded-xl border bg-white/10 backdrop-blur-xl" /></main>`,
+  `<main><span className="rounded-full border px-3">Fast</span><span className="rounded-full border px-3">Safe</span><span className="rounded-full border px-3">Simple</span><span className="rounded-full border px-3">Clear</span><span className="rounded-full border px-3">New</span></main>`,
+  `<section className="grid grid-cols-3"><article className="rounded-xl border p-6"><h3>Fast</h3><p>Finish sooner.</p></article><article className="rounded-xl border p-6"><h3>Safe</h3><p>Protect changes.</p></article><article className="rounded-xl border p-6"><h3>Simple</h3><p>Stay focused.</p></article></section>`,
+  `<main><p className="text-center">Build polished interfaces with a workflow that keeps every decision visible.</p><p className="text-center">Move from an initial idea to a working result without losing important context.</p><p className="text-center">Keep the whole team aligned with clear updates and shared project history.</p></main>`,
+  `<section className="flex min-h-dvh items-center justify-center"><h1>Build faster</h1></section>`,
+  `<main><span className="size-12 rounded-xl bg-blue-100">🚀</span><span className="size-12 rounded-xl bg-green-100">🔒</span><span className="size-12 rounded-xl bg-amber-100">⚡</span></main>`,
+  `<span className="font-mono text-xs uppercase tracking-widest">System online</span>`,
+  `<h1 className="text-7xl tracking-tighter">Build your next idea</h1>`,
+  `<main><section className="rounded-xl border p-6">A</section><section className="rounded-xl border p-6">B</section><section className="rounded-xl border p-6">C</section><section className="rounded-xl border p-6">D</section><section className="rounded-xl border p-6">E</section><section className="rounded-xl border p-6">F</section></main>`,
+  `<main><section className="py-20"><div className="mx-auto max-w-6xl">A</div></section><section className="py-24"><div className="mx-auto max-w-6xl">B</div></section><section className="py-20"><div className="mx-auto max-w-6xl">C</div></section></main>`,
+  `<div style={{ boxShadow: "0 10px 30px #000" }} />`,
 ] as const;
 
 // Rare-but-parseable weirdness kept from the original generator, plus

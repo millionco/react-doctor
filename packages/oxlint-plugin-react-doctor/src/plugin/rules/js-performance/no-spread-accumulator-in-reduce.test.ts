@@ -132,6 +132,14 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags an array that spreads the accumulator more than once", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const out = items.reduce((acc) => [...acc, ...acc], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags growth returned through every conditional branch", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
@@ -271,7 +279,7 @@ describe("no-spread-accumulator-in-reduce", () => {
   it("does not treat locally constructed collections as bounded after they grow", () => {
     const arrayResult = runRule(
       noSpreadAccumulatorInReduce,
-      `const bounded = [];
+      `const bounded = [seed];
        bounded.push(...items);
        const out = bounded.reduce((acc, item) => [...acc, item], []);`,
     );

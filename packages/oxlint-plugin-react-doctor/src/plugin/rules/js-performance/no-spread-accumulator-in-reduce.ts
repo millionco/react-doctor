@@ -214,6 +214,7 @@ const isStaticallyBoundedReduceSource = (source: EsTreeNode, scopes: ScopeAnalys
     return Boolean(
       binding.initializer &&
       isConstDeclaredBinding(binding) &&
+      !bindingMayHaveGrown(stripped, scopes) &&
       isBoundedArrayInitializer(binding.initializer),
     );
   }
@@ -376,6 +377,14 @@ const literalGrowsAccumulatorPerIteration = (
 ): boolean => {
   if (isNodeOfType(literal, "ArrayExpression")) {
     const accumulatorSymbol = scopes.symbolFor(accumulatorParameter);
+    const accumulatorSpreadCount = literal.elements.filter((element) => {
+      if (!isNodeOfType(element, "SpreadElement")) return false;
+      const spreadArgument = stripParenExpression(element.argument);
+      return (
+        isNodeOfType(spreadArgument, "Identifier") &&
+        scopes.symbolFor(spreadArgument) === accumulatorSymbol
+      );
+    }).length;
     return literal.elements.some((element) => {
       if (!element) return false;
       if (!isNodeOfType(element, "SpreadElement")) return true;
@@ -385,7 +394,8 @@ const literalGrowsAccumulatorPerIteration = (
       }
       return (
         !isNodeOfType(spreadArgument, "Identifier") ||
-        scopes.symbolFor(spreadArgument) !== accumulatorSymbol
+        scopes.symbolFor(spreadArgument) !== accumulatorSymbol ||
+        accumulatorSpreadCount > 1
       );
     });
   }

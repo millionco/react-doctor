@@ -2,7 +2,6 @@ import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { collectEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
@@ -10,6 +9,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
@@ -633,7 +633,10 @@ const analyzeAsyncStatements = (
   return { states, hasUnsafeSetter: false };
 };
 
-const collectInvokedAsyncFunctions = (effectCallback: EsTreeNode): Set<EsTreeNode> => {
+const collectInvokedAsyncFunctions = (
+  effectCallback: EsTreeNode,
+  context: RuleContext,
+): Set<EsTreeNode> => {
   const invokedFunctions = collectEffectInvokedFunctions(effectCallback);
   const pendingFunctions = [...invokedFunctions];
   while (pendingFunctions.length > 0) {
@@ -643,7 +646,7 @@ const collectInvokedAsyncFunctions = (effectCallback: EsTreeNode): Set<EsTreeNod
       if (!isNodeOfType(child, "CallExpression")) return;
       const callee = stripParenExpression(child.callee);
       if (!isNodeOfType(callee, "Identifier")) return;
-      const resolvedFunction = findVariableInitializer(callee, callee.name)?.initializer;
+      const resolvedFunction = resolveExactLocalFunction(callee, context.scopes);
       if (
         !resolvedFunction ||
         !isFunctionLike(resolvedFunction) ||
@@ -714,7 +717,7 @@ export const noSetStateAfterAwaitInEffect = defineRule({
       if (dependencyArray && hasOnlyStableIdentityDependencies({ dependencyArray, context })) {
         return;
       }
-      for (const asyncFunction of collectInvokedAsyncFunctions(callback)) {
+      for (const asyncFunction of collectInvokedAsyncFunctions(callback, context)) {
         if (
           asyncFunction !== callback &&
           hasUnsafePostAwaitSetter(asyncFunction, callback, context)

@@ -40,6 +40,7 @@ export const collectEffectInvokedFunctions = (effectCallback: EsTreeNode): Set<E
   const invokedFunctions = new Set<EsTreeNode>([effectCallback]);
   const localFunctionBindings = new Map<string, EsTreeNode>();
   const calledBindingNames = new Set<string>();
+  const reassignedBindingNames = new Set<string>();
   const pendingFunctions: EsTreeNode[] = [effectCallback];
 
   const enqueue = (candidate: EsTreeNode | null | undefined): void => {
@@ -69,6 +70,14 @@ export const collectEffectInvokedFunctions = (effectCallback: EsTreeNode): Set<E
         return;
       }
 
+      if (isNodeOfType(child, "AssignmentExpression")) {
+        const assignedTarget = stripParenExpression(child.left);
+        if (isNodeOfType(assignedTarget, "Identifier")) {
+          reassignedBindingNames.add(assignedTarget.name);
+        }
+        return;
+      }
+
       if (!isNodeOfType(child, "CallExpression")) return;
 
       const callee = stripParenExpression(child.callee);
@@ -91,6 +100,7 @@ export const collectEffectInvokedFunctions = (effectCallback: EsTreeNode): Set<E
     });
 
     for (const calledName of calledBindingNames) {
+      if (reassignedBindingNames.has(calledName)) continue;
       enqueue(localFunctionBindings.get(calledName));
     }
   }

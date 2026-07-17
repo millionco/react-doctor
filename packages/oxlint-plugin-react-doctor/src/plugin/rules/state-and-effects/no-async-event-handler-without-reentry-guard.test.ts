@@ -664,4 +664,12 @@ describe("no-async-event-handler-without-reentry-guard audit regressions", () =>
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not analyze a reassigned event handler from its initializer", () => {
+    const result = runRule(
+      noAsyncEventHandlerWithoutReentryGuard,
+      `const C = () => { const [, setSaved] = useState(false); let handleSave = async () => { await api.post(); setSaved(true); }; handleSave = () => {}; return <button onClick={handleSave}>Save</button>; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

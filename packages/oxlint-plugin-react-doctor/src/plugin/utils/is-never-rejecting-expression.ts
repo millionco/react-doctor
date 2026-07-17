@@ -1,9 +1,11 @@
+import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findVariableInitializer } from "./find-variable-initializer.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isInsideTryStatement } from "./is-inside-try-statement.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 import { walkOwnFunctionScope } from "./walk-own-function-scope.js";
@@ -110,19 +112,21 @@ export const isPromiseResolveCall = (node: EsTreeNode): boolean => {
   const argument = inner.arguments[0];
   return !argument || isDefinitelyNonThenableValue(argument);
 };
-export const chainCarriesRejectionHandler = (node: EsTreeNode): boolean => {
+export const chainCarriesRejectionHandler = (node: EsTreeNode, scopes?: ScopeAnalysis): boolean => {
   const isAbsorbingHandler = (candidate: EsTreeNode | null | undefined): boolean => {
     if (!candidate) return false;
     const strippedCandidate = stripParenExpression(candidate);
     const resolvedCandidate = isNodeOfType(strippedCandidate, "Identifier")
-      ? findVariableInitializer(strippedCandidate, strippedCandidate.name)?.initializer
+      ? scopes
+        ? resolveExactLocalFunction(strippedCandidate, scopes)
+        : findVariableInitializer(strippedCandidate, strippedCandidate.name)?.initializer
       : strippedCandidate;
     if (!resolvedCandidate || !isFunctionLike(resolvedCandidate)) return false;
     const resultCanReject = (result: EsTreeNode): boolean =>
       !isDefinitelyNonThenableValue(result) &&
       !isPromiseResolveCall(result) &&
       !isNonRejectingPromiseConstruction(result) &&
-      !chainCarriesRejectionHandler(result);
+      !chainCarriesRejectionHandler(result, scopes);
     let canReject = false;
     walkOwnFunctionScope(resolvedCandidate, (child: EsTreeNode) => {
       if (canReject) return false;
@@ -176,13 +180,26 @@ export const chainCarriesRejectionHandler = (node: EsTreeNode): boolean => {
   }
   return false;
 };
-export const isNeverRejectingHelperCall = (root: EsTreeNode): boolean => {
+export const isNeverRejectingHelperCall = (root: EsTreeNode, scopes?: ScopeAnalysis): boolean => {
   const inner = stripParenExpression(root);
   if (!isNodeOfType(inner, "CallExpression")) return false;
   const callee = stripParenExpression(inner.callee as EsTreeNode);
   if (!isNodeOfType(callee, "Identifier")) return false;
-  const binding = findVariableInitializer(callee, callee.name);
-  const helper = binding?.initializer;
+  let helper: EsTreeNode | null = null;
+  if (scopes) {
+    helper = resolveExactLocalFunction(callee, scopes);
+  } else {
+    const binding = findVariableInitializer(callee, callee.name);
+    const declaration = binding?.bindingIdentifier.parent;
+    if (
+      isNodeOfType(declaration, "FunctionDeclaration") ||
+      (isNodeOfType(declaration, "VariableDeclarator") &&
+        isNodeOfType(declaration.parent, "VariableDeclaration") &&
+        declaration.parent.kind === "const")
+    ) {
+      helper = binding?.initializer ?? null;
+    }
+  }
   if (!helper || !isFunctionLike(helper)) return false;
 
   if (helper.async) {
@@ -207,7 +224,7 @@ export const isNeverRejectingHelperCall = (root: EsTreeNode): boolean => {
           !isDefinitelyNonThenableValue(returned) &&
           !isPromiseResolveCall(returned) &&
           !isNonRejectingPromiseConstruction(returned) &&
-          !chainCarriesRejectionHandler(returned)
+          !chainCarriesRejectionHandler(returned, scopes)
         ) {
           isRejectionProof = false;
         }
@@ -233,7 +250,7 @@ export const isNeverRejectingHelperCall = (root: EsTreeNode): boolean => {
     returnedExpressions.length > 0 &&
     returnedExpressions.every(
       (returned) =>
-        chainCarriesRejectionHandler(returned) ||
+        chainCarriesRejectionHandler(returned, scopes) ||
         isPromiseResolveCall(returned) ||
         isNonRejectingPromiseConstruction(returned),
     )

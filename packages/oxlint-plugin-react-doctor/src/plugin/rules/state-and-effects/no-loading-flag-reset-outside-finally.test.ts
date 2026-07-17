@@ -710,6 +710,19 @@ const SaveButton = () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not trust a reassigned same-file helper initializer", () => {
+    const variableHelper = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `let request = async () => { try { await fetch("/safe"); } catch {} }; request = async () => fetch("/unsafe"); const load = async () => { setLoading(true); await request(); setLoading(false); };`,
+    );
+    const functionHelper = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `async function request() { try { await fetch("/safe"); } catch {} } request = async () => fetch("/unsafe"); const load = async () => { setLoading(true); await request(); setLoading(false); };`,
+    );
+    expect(variableHelper.diagnostics).toHaveLength(1);
+    expect(functionHelper.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet: same-file helper awaiting Promise.all over an array populated with dispatch pushes", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,

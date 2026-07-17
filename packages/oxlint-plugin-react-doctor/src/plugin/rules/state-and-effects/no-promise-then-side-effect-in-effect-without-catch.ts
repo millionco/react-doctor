@@ -1,7 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { findGuardingTryStatement } from "../../utils/find-guarding-try-statement.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -9,6 +8,7 @@ import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import { chainCarriesRejectionHandler } from "../../utils/is-never-rejecting-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -44,7 +44,7 @@ interface ResolvedInitiator {
 }
 const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): PromiseChainWalk => {
   let cursor = stripParenExpression(chainExpression);
-  const hasCatch = chainCarriesRejectionHandler(chainExpression);
+  const hasCatch = chainCarriesRejectionHandler(chainExpression, context.scopes);
   const hasRejectionHandlerArgument = false;
   let sawThen = false;
   let hasDirectSetterThenCallback = false;
@@ -66,7 +66,7 @@ const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): Pr
         if (isReactHookResultReference(callback, STATE_DISPATCHER_HOOK_NAMES, 1, context.scopes)) {
           hasDirectSetterThenCallback = true;
         } else {
-          const resolvedCallback = findVariableInitializer(callback, callback.name)?.initializer;
+          const resolvedCallback = resolveExactLocalFunction(callback, context.scopes);
           if (resolvedCallback && isFunctionLike(resolvedCallback)) {
             thenCallbacks.push(resolvedCallback);
           }
@@ -100,9 +100,9 @@ const resolveRootInitiator = (root: EsTreeNode, context: RuleContext): ResolvedI
     }
     if (isNodeOfType(cursor, "Identifier") && !visitedBindingNames.has(cursor.name)) {
       visitedBindingNames.add(cursor.name);
-      const binding = findVariableInitializer(cursor, cursor.name);
-      if (binding?.initializer && !isFunctionLike(binding.initializer)) {
-        cursor = stripParenExpression(binding.initializer);
+      const symbol = context.scopes.symbolFor(cursor);
+      if (symbol?.kind === "const" && symbol.initializer && !isFunctionLike(symbol.initializer)) {
+        cursor = stripParenExpression(symbol.initializer);
         continue;
       }
     }
@@ -115,9 +115,10 @@ const memberLookupResolvesToRejectableFunction = (
   context: RuleContext,
 ): boolean => {
   const strippedObject = stripParenExpression(memberNode.object);
-  const boundInitializer = isNodeOfType(strippedObject, "Identifier")
-    ? findVariableInitializer(strippedObject, strippedObject.name)?.initializer
+  const objectSymbol = isNodeOfType(strippedObject, "Identifier")
+    ? context.scopes.symbolFor(strippedObject)
     : null;
+  const boundInitializer = objectSymbol?.kind === "const" ? objectSymbol.initializer : null;
   const objectExpression = boundInitializer
     ? stripParenExpression(boundInitializer)
     : strippedObject;
@@ -153,15 +154,17 @@ const isProvablyRejectableExpression = (
   if (!isNodeOfType(stripped, "CallExpression")) return false;
   const callee = stripParenExpression(stripped.callee);
   if (isNodeOfType(callee, "Identifier")) {
-    const initializer = findVariableInitializer(callee, callee.name)?.initializer ?? null;
     if (callee.name === "fetch" && context.scopes.isGlobalReference(callee)) {
       return true;
     }
-    if (initializer === null || remainingDepth <= 0) return false;
-    const strippedInitializer = stripParenExpression(initializer);
-    if (isFunctionLike(strippedInitializer)) {
-      return functionHasUnhandledRejectableSource(strippedInitializer, remainingDepth - 1, context);
+    if (remainingDepth <= 0) return false;
+    const localFunction = resolveExactLocalFunction(callee, context.scopes);
+    if (localFunction && isFunctionLike(localFunction)) {
+      return functionHasUnhandledRejectableSource(localFunction, remainingDepth - 1, context);
     }
+    const symbol = context.scopes.symbolFor(callee);
+    if (symbol?.kind !== "const" || !symbol.initializer) return false;
+    const strippedInitializer = stripParenExpression(symbol.initializer);
     if (isNodeOfType(strippedInitializer, "MemberExpression")) {
       return memberLookupResolvesToRejectableFunction(
         strippedInitializer,
@@ -256,7 +259,7 @@ const collectStateSideEffectNodes = (callback: EsTreeNode, context: RuleContext)
   });
   return sideEffectNodes;
 };
-const referenceHasRejectionHandler = (reference: EsTreeNode): boolean => {
+const referenceHasRejectionHandler = (reference: EsTreeNode, context: RuleContext): boolean => {
   const member = reference.parent;
   if (!member || !isNodeOfType(member, "MemberExpression") || member.object !== reference) {
     return false;
@@ -266,14 +269,16 @@ const referenceHasRejectionHandler = (reference: EsTreeNode): boolean => {
     call &&
     isNodeOfType(call, "CallExpression") &&
     call.callee === member &&
-    chainCarriesRejectionHandler(call),
+    chainCarriesRejectionHandler(call, context.scopes),
   );
 };
 const bindingHasRejectionHandler = (binding: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(binding, "Identifier")) return false;
   const symbol = context.scopes.symbolFor(binding);
   return Boolean(
-    symbol?.references.some((reference) => referenceHasRejectionHandler(reference.identifier)),
+    symbol?.references.some((reference) =>
+      referenceHasRejectionHandler(reference.identifier, context),
+    ),
   );
 };
 const collectFloatingChains = (callback: EsTreeNode, context: RuleContext): EsTreeNode[] => {

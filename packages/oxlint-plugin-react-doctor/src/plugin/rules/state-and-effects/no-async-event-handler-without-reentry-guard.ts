@@ -1,13 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -140,10 +140,12 @@ const unwrapUseCallback = (expression: EsTreeNode, context: RuleContext): EsTree
 const resolveHandlerFunction = (value: EsTreeNode, context: RuleContext): EsTreeNode | null => {
   const unwrappedValue = unwrapUseCallback(value, context);
   if (isInlineFunctionExpression(unwrappedValue)) return unwrappedValue;
+  const exactLocalFunction = resolveExactLocalFunction(unwrappedValue, context.scopes);
+  if (exactLocalFunction) return exactLocalFunction;
   if (isNodeOfType(unwrappedValue, "Identifier")) {
-    const binding = findVariableInitializer(unwrappedValue, unwrappedValue.name);
-    if (!binding?.initializer) return null;
-    const unwrappedInitializer = unwrapUseCallback(binding.initializer, context);
+    const symbol = context.scopes.symbolFor(unwrappedValue);
+    if (symbol?.kind !== "const" || !symbol.initializer) return null;
+    const unwrappedInitializer = unwrapUseCallback(symbol.initializer, context);
     if (isFunctionLike(unwrappedInitializer)) return unwrappedInitializer;
   }
   return null;

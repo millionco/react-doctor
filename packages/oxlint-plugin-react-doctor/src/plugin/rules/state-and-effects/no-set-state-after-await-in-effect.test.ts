@@ -1141,4 +1141,17 @@ describe("no-set-state-after-await-in-effect audit regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not analyze a reassigned invoked helper from its initializer", () => {
+    const outerHelper = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ id }) => { const [, setValue] = useState(); let load = async () => { await fetch("/value"); setValue(id); }; load = async () => {}; useEffect(() => { void load(); }, [id]); };`,
+    );
+    const effectLocalHelper = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ id }) => { const [, setValue] = useState(); useEffect(() => { let load = async () => { await fetch("/value"); setValue(id); }; load = async () => {}; void load(); }, [id]); };`,
+    );
+    expect(outerHelper.diagnostics).toHaveLength(0);
+    expect(effectLocalHelper.diagnostics).toHaveLength(0);
+  });
 });

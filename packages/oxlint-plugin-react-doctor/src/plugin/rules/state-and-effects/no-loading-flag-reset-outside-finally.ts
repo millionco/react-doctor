@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import {
   chainCarriesRejectionHandler,
   isInsideNonRethrowingTry,
@@ -16,6 +17,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import type { ResolvedCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
@@ -130,6 +132,7 @@ const getUseCallbackWrappedFunction = (expression: EsTreeNode): EsTreeNode => {
 const isArrayBindingOfNeverRejectingPromises = (
   identifier: EsTreeNodeOfType<"Identifier">,
   depth: number,
+  scopes?: ScopeAnalysis,
 ): boolean => {
   if (depth <= 0) return false;
   const binding = findVariableInitializer(identifier, identifier.name);
@@ -138,7 +141,7 @@ const isArrayBindingOfNeverRejectingPromises = (
   if (!isNodeOfType(initializer, "ArrayExpression")) return false;
   if (
     !initializer.elements.every(
-      (element) => element !== null && isNeverRejectingExpression(element, depth - 1),
+      (element) => element !== null && isNeverRejectingExpression(element, depth - 1, scopes),
     )
   ) {
     return false;
@@ -161,7 +164,9 @@ const isArrayBindingOfNeverRejectingPromises = (
     const receiver = stripParenExpression(callee.object);
     if (!isNodeOfType(receiver, "Identifier") || receiver.name !== identifier.name) return;
     if (
-      !(child.arguments ?? []).every((argument) => isNeverRejectingExpression(argument, depth - 1))
+      !(child.arguments ?? []).every((argument) =>
+        isNeverRejectingExpression(argument, depth - 1, scopes),
+      )
     ) {
       isRejectionProof = false;
       return false;
@@ -181,6 +186,7 @@ const getPromiseCombinatorMethodName = (
 const isNeverRejectingPromiseCombinatorCall = (
   callNode: EsTreeNodeOfType<"CallExpression">,
   depth: number,
+  scopes?: ScopeAnalysis,
 ): boolean => {
   const methodName = getPromiseCombinatorMethodName(callNode);
   if (methodName === "allSettled") return true;
@@ -190,11 +196,11 @@ const isNeverRejectingPromiseCombinatorCall = (
   const stripped = stripParenExpression(argument);
   if (isNodeOfType(stripped, "ArrayExpression")) {
     return stripped.elements.every(
-      (element) => element !== null && isNeverRejectingExpression(element, depth),
+      (element) => element !== null && isNeverRejectingExpression(element, depth, scopes),
     );
   }
   if (isNodeOfType(stripped, "Identifier")) {
-    return isArrayBindingOfNeverRejectingPromises(stripped, depth);
+    return isArrayBindingOfNeverRejectingPromises(stripped, depth, scopes);
   }
   return false;
 };
@@ -230,11 +236,15 @@ const isSyncArrayLiteralMethodCall = (callNode: EsTreeNodeOfType<"CallExpression
   return (callNode.arguments ?? []).every((argument) => !subtreeContainsThrow(argument));
 };
 
-const returnedExpressionCanReject = (expression: EsTreeNode, depth: number): boolean => {
+const returnedExpressionCanReject = (
+  expression: EsTreeNode,
+  depth: number,
+  scopes?: ScopeAnalysis,
+): boolean => {
   const returned = stripParenExpression(expression);
   if (isNodeOfType(returned, "CallExpression")) {
     if (isSyncArrayLiteralMethodCall(returned)) return false;
-    return !isNeverRejectingExpression(returned, depth);
+    return !isNeverRejectingExpression(returned, depth, scopes);
   }
   if (isNodeOfType(returned, "NewExpression")) {
     const isPromiseConstruction =
@@ -270,11 +280,26 @@ const findEnclosingClassMethodFunction = (
 
 const resolveSameFileHelperFunction = (
   callNode: EsTreeNodeOfType<"CallExpression">,
+  scopes?: ScopeAnalysis,
 ): EsTreeNode | null => {
   const callee = stripParenExpression(callNode.callee);
   if (isNodeOfType(callee, "Identifier")) {
     const binding = findVariableInitializer(callee, callee.name);
     if (!binding?.initializer) return null;
+    const declaration = binding.bindingIdentifier.parent;
+    if (scopes && isNodeOfType(declaration, "FunctionDeclaration")) {
+      return resolveExactLocalFunction(callee, scopes);
+    }
+    if (
+      !isNodeOfType(declaration, "FunctionDeclaration") &&
+      !isNodeOfType(declaration, "ImportSpecifier") &&
+      !isNodeOfType(declaration, "ImportDefaultSpecifier") &&
+      (!isNodeOfType(declaration, "VariableDeclarator") ||
+        !isNodeOfType(declaration.parent, "VariableDeclaration") ||
+        declaration.parent.kind !== "const")
+    ) {
+      return null;
+    }
     return getUseCallbackWrappedFunction(binding.initializer);
   }
   if (
@@ -287,14 +312,18 @@ const resolveSameFileHelperFunction = (
   }
   return null;
 };
-const isRejectionProofAsyncHelperBody = (helper: EsTreeNode, depth: number): boolean => {
+const isRejectionProofAsyncHelperBody = (
+  helper: EsTreeNode,
+  depth: number,
+  scopes?: ScopeAnalysis,
+): boolean => {
   let isRejectionProof = true;
   walkOwnFunctionScope(helper, (child: EsTreeNode) => {
     if (!isRejectionProof) return false;
     if (isNodeOfType(child, "AwaitExpression")) {
       const awaited = child.argument ? stripParenExpression(child.argument) : null;
       const isSafeAwait =
-        (awaited !== null && isNeverRejectingExpression(awaited, depth - 1)) ||
+        (awaited !== null && isNeverRejectingExpression(awaited, depth - 1, scopes)) ||
         isInsideNonRethrowingTry(child, helper);
       if (!isSafeAwait) isRejectionProof = false;
       return;
@@ -304,13 +333,15 @@ const isRejectionProofAsyncHelperBody = (helper: EsTreeNode, depth: number): boo
       return;
     }
     if (isNodeOfType(child, "ReturnStatement") && child.argument) {
-      if (returnedExpressionCanReject(child.argument, depth - 1)) isRejectionProof = false;
+      if (returnedExpressionCanReject(child.argument, depth - 1, scopes)) {
+        isRejectionProof = false;
+      }
     }
   });
   if (
     isNodeOfType(helper, "ArrowFunctionExpression") &&
     !isNodeOfType(helper.body, "BlockStatement") &&
-    returnedExpressionCanReject(helper.body, depth - 1)
+    returnedExpressionCanReject(helper.body, depth - 1, scopes)
   ) {
     isRejectionProof = false;
   }
@@ -493,11 +524,12 @@ const isNeverRejectingImportedHookFunctionCall = (
 const isNeverRejectingLocalAsyncHelperCall = (
   callNode: EsTreeNodeOfType<"CallExpression">,
   depth: number,
+  scopes?: ScopeAnalysis,
 ): boolean => {
   if (depth <= 0) return false;
-  const helper = resolveSameFileHelperFunction(callNode);
+  const helper = resolveSameFileHelperFunction(callNode, scopes);
   if (helper && isFunctionLike(helper)) {
-    return Boolean(helper.async) && isRejectionProofAsyncHelperBody(helper, depth);
+    return Boolean(helper.async) && isRejectionProofAsyncHelperBody(helper, depth, scopes);
   }
   if (isAnalyzingForeignHelperBody) return false;
   const callee = stripParenExpression(callNode.callee);
@@ -519,23 +551,28 @@ const isNeverRejectingLocalAsyncHelperCall = (
   return isNeverRejectingImportedHookFunctionCall(callee, depth);
 };
 
-const isNeverRejectingExpression = (expression: EsTreeNode, depth: number): boolean => {
+const isNeverRejectingExpression = (
+  expression: EsTreeNode,
+  depth: number,
+  scopes?: ScopeAnalysis,
+): boolean => {
   const inner = stripParenExpression(expression);
   if (isNonRejectingPromiseConstruction(inner)) return true;
   if (!isNodeOfType(inner, "CallExpression")) return false;
   if (isPromiseResolveCall(inner)) return true;
   if (isThunkActionDispatchCall(inner)) return true;
-  if (chainCarriesRejectionHandler(inner)) return true;
-  if (isNeverRejectingPromiseCombinatorCall(inner, depth)) return true;
-  if (isNeverRejectingHelperCall(inner)) return true;
-  return isNeverRejectingLocalAsyncHelperCall(inner, depth);
+  if (chainCarriesRejectionHandler(inner, scopes)) return true;
+  if (isNeverRejectingPromiseCombinatorCall(inner, depth, scopes)) return true;
+  if (isNeverRejectingHelperCall(inner, scopes)) return true;
+  return isNeverRejectingLocalAsyncHelperCall(inner, depth, scopes);
 };
 const isNeverRejectingAwaitedExpression = (
   awaitNode: EsTreeNodeOfType<"AwaitExpression">,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const awaited = awaitNode.argument;
   if (!awaited) return false;
-  return isNeverRejectingExpression(awaited, NEVER_REJECTING_ANALYSIS_MAX_DEPTH);
+  return isNeverRejectingExpression(awaited, NEVER_REJECTING_ANALYSIS_MAX_DEPTH, scopes);
 };
 
 const CANCELLATION_GUARD_TEST_PATTERN = /cancel|abort|unmount|mounted|stale|ignore|dispos/i;
@@ -907,7 +944,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
   if (awaitSites.length === 0) return;
   const rejectingAwaitNodes = new Set(
     awaitSites
-      .filter((awaitSite) => !isNeverRejectingAwaitedExpression(awaitSite.node))
+      .filter((awaitSite) => !isNeverRejectingAwaitedExpression(awaitSite.node, context.scopes))
       .map((awaitSite) => awaitSite.node),
   );
 

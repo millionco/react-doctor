@@ -518,4 +518,20 @@ describe("no-promise-then-side-effect-in-effect-without-catch audit regressions"
     expect(deferredClosure.diagnostics).toHaveLength(0);
     expect(localFunction.diagnostics).toHaveLength(0);
   });
+
+  it("does not analyze a reassigned promise helper from its initializer", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = () => { const [, setValue] = useState(); let load = async () => fetch("/value"); load = async () => null; useEffect(() => { load().then(setValue); }, []); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a reassigned rejection handler initializer", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = () => { const [, setValue] = useState(); let recover = () => null; recover = () => { throw new Error("failed"); }; useEffect(() => { fetch("/value").catch(recover).then(setValue); }, []); };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -7416,4 +7416,26 @@ export const Viewport = ({ onWheel }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it.each([
+    { name: "loose null", guard: "previous != null" },
+    { name: "strict null", guard: "previous !== null" },
+  ])("accepts callback-ref replacement guarded by $name", ({ guard }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (${guard}) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

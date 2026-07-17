@@ -1236,6 +1236,36 @@ const callbackReturnsCleanupForUsage = (
   return doMatchingNodesCoverEveryPathFromFunctionEntry(callback, matchingCleanupReturns, context);
 };
 
+const doesTestRequireLiveExpressionKey = (
+  test: EsTreeNode,
+  expressionKey: string,
+  context: RuleContext,
+): boolean => {
+  if (resolveExpressionKey(test, context) === expressionKey) return true;
+  const unwrappedTest = stripParenExpression(test);
+  if (
+    !isNodeOfType(unwrappedTest, "BinaryExpression") ||
+    (unwrappedTest.operator !== "!=" && unwrappedTest.operator !== "!==")
+  ) {
+    return false;
+  }
+  const isNullishOperand = (operand: EsTreeNode): boolean => {
+    const unwrappedOperand = stripParenExpression(operand);
+    return (
+      (isNodeOfType(unwrappedOperand, "Literal") && unwrappedOperand.value === null) ||
+      (isNodeOfType(unwrappedOperand, "Identifier") &&
+        unwrappedOperand.name === "undefined" &&
+        context.scopes.isGlobalReference(unwrappedOperand))
+    );
+  };
+  return (
+    (resolveExpressionKey(unwrappedTest.left, context) === expressionKey &&
+      isNullishOperand(unwrappedTest.right)) ||
+    (resolveExpressionKey(unwrappedTest.right, context) === expressionKey &&
+      isNullishOperand(unwrappedTest.left))
+  );
+};
+
 const findDirectHandleGuardForRelease = (
   releaseCall: EsTreeNode,
   owner: EsTreeNode,
@@ -1243,37 +1273,12 @@ const findDirectHandleGuardForRelease = (
   context: RuleContext,
 ): EsTreeNodeOfType<"IfStatement"> | null => {
   if (usage.handleKey === null) return null;
-  const doesTestRequireLiveHandle = (test: EsTreeNode): boolean => {
-    if (resolveExpressionKey(test, context) === usage.handleKey) return true;
-    const unwrappedTest = stripParenExpression(test);
-    if (
-      !isNodeOfType(unwrappedTest, "BinaryExpression") ||
-      (unwrappedTest.operator !== "!=" && unwrappedTest.operator !== "!==")
-    ) {
-      return false;
-    }
-    const isNullishOperand = (operand: EsTreeNode): boolean => {
-      const unwrappedOperand = stripParenExpression(operand);
-      return (
-        (isNodeOfType(unwrappedOperand, "Literal") && unwrappedOperand.value === null) ||
-        (isNodeOfType(unwrappedOperand, "Identifier") &&
-          unwrappedOperand.name === "undefined" &&
-          context.scopes.isGlobalReference(unwrappedOperand))
-      );
-    };
-    return (
-      (resolveExpressionKey(unwrappedTest.left, context) === usage.handleKey &&
-        isNullishOperand(unwrappedTest.right)) ||
-      (resolveExpressionKey(unwrappedTest.right, context) === usage.handleKey &&
-        isNullishOperand(unwrappedTest.left))
-    );
-  };
   let ancestor = releaseCall.parent;
   while (ancestor && ancestor !== owner) {
     if (isNodeOfType(ancestor, "IfStatement")) {
       if (
         ancestor.alternate !== null ||
-        !doesTestRequireLiveHandle(ancestor.test) ||
+        !doesTestRequireLiveExpressionKey(ancestor.test, usage.handleKey, context) ||
         !doMatchingNodesCoverEveryPathAfterUsage(ancestor.consequent, [releaseCall], context)
       ) {
         return null;
@@ -2428,7 +2433,7 @@ const findRefPresenceGuardForRelease = (
     if (isNodeOfType(ancestor, "IfStatement")) {
       if (
         ancestor.alternate !== null ||
-        resolveExpressionKey(ancestor.test, context) !== refCurrentKey ||
+        !doesTestRequireLiveExpressionKey(ancestor.test, refCurrentKey, context) ||
         !doMatchingNodesCoverEveryPathAfterUsage(ancestor.consequent, [releaseCall], context)
       ) {
         return null;

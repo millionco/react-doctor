@@ -191,6 +191,37 @@ export const Component = ({ timer }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports when a Promise callback can invoke the guarded allocator after cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const Component = ({ timer }) => {
+  const loopID = React.useRef(undefined);
+  const delayID = React.useRef(undefined);
+  const runID = React.useRef(0);
+  React.useEffect(() => {
+    runID.current += 1;
+    const currentRunID = runID.current;
+    const start = () => {
+      if (currentRunID !== runID.current) return;
+      loopID.current = timer.subscribe(tick, 1000);
+    };
+    start();
+    delayID.current = setTimeout(start, 1000);
+    Promise.resolve().then(() => start());
+    return () => {
+      timer.unsubscribe(loopID.current);
+      clearTimeout(delayID.current);
+    };
+  }, [timer]);
+  return null;
+};`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports when cleanup releases a different retained handle", () => {
     const result = runRule(
       effectNeedsCleanup,

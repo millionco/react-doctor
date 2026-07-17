@@ -12,6 +12,7 @@ import {
 import { defineRule } from "../../utils/define-rule.js";
 import {
   collectEffectInvokedFunctions,
+  collectSynchronouslyEffectInvokedFunctions,
   getPromiseChainCallForCallback,
 } from "../../utils/collect-effect-invoked-functions.js";
 import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
@@ -1789,7 +1790,7 @@ const getOwnedFunctionReference = (
     if (
       referenceOwner &&
       referenceOwner !== usageFunction &&
-      collectEffectInvokedFunctions(callback).has(referenceOwner)
+      collectSynchronouslyEffectInvokedFunctions(callback).has(referenceOwner)
     ) {
       return { generationKey: null };
     }
@@ -1848,7 +1849,7 @@ const hasGuardedRefOwnedNestedCleanup = (
     usageAssignment.operator !== "=" ||
     usageAssignment.right !== usageExpression ||
     !resolveReactRefSymbol(stripParenExpression(usageAssignment.left), context.scopes) ||
-    !collectEffectInvokedFunctions(callback).has(usageFunction) ||
+    !collectSynchronouslyEffectInvokedFunctions(callback).has(usageFunction) ||
     !cleanupReturnsReleaseUsage(cleanupReturns, usage, context) ||
     !doMatchingNodesCoverEveryPathFromFunctionEntry(callback, cleanupReturns, context)
   ) {
@@ -1881,7 +1882,7 @@ const hasGuardedRefOwnedNestedCleanup = (
   if (generationKeys.size !== 1) return false;
   const generationKey = generationKeys.values().next().value;
   if (typeof generationKey !== "string") return false;
-  const invokedFunctions = collectEffectInvokedFunctions(callback);
+  const invokedFunctions = collectSynchronouslyEffectInvokedFunctions(callback);
   return [...invokedFunctions, ...cleanupFunctions].some((owner) =>
     functionAdvancesGeneration(owner, generationKey, context),
   );

@@ -117,4 +117,22 @@ describe("ProjectSelect", () => {
     expect(onSubmit).toHaveBeenCalledWith([]);
     unmount();
   });
+
+  it("keeps the list and hint inside a small terminal", async () => {
+    const onSubmit = vi.fn();
+    const packages = [
+      ...PACKAGES,
+      { name: "admin", directory: "/repo/apps/admin" },
+      { name: "api", directory: "/repo/apps/api" },
+    ];
+    const { stdout, lastFrame, unmount } = render(
+      <ProjectSelect packages={packages} rootDirectory="/repo" onSubmit={onSubmit} />,
+    );
+    Object.defineProperty(stdout, "rows", { get: () => 5, configurable: true });
+    stdout.emit("resize");
+    await flush();
+
+    expect(lastFrame()?.split("\n")).toHaveLength(5);
+    unmount();
+  });
 });

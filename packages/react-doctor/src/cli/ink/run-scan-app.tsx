@@ -339,7 +339,6 @@ const runMountedScan = async (
   try {
     const completedScan = await executeScan(context);
     await instance.waitUntilExit();
-    await settle();
     await printExitFooter({
       diagnostics: completedScan.diagnostics,
       scoreResult: completedScan.scoreResult,
@@ -349,6 +348,7 @@ const runMountedScan = async (
       isOffline: context.isOffline,
       lintFailureReason: resolveLintFailureReason(completedScan.results),
     });
+    await settle();
     return countDiagnosticsBySeverity(completedScan.diagnostics);
   } catch (error) {
     instance.unmount();

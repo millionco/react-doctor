@@ -4,24 +4,37 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { InspectResult, ResolvedScanTarget } from "@react-doctor/core";
 import { Reporter, resolveScanTarget } from "@react-doctor/core";
 import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
+import type { TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
 import { inspect } from "../../src/inspect.js";
 import { buildTestProject } from "../regressions/_helpers.js";
+
+interface MockScanAppProps {
+  readonly onHandoff?: (request: TuiHandoffRequest) => void;
+}
 
 const mockState = vi.hoisted(() => ({
   projectDirectories: new Array<string>(),
   scanTargets: new Map<string, ResolvedScanTarget>(),
   inspectResults: new Map<string, InspectResult>(),
+  shouldRequestHandoff: false,
+  lifecycleEvents: new Array<string>(),
 }));
 
 vi.mock("ink", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ink")>();
+  const React = await import("react");
   return {
     ...actual,
-    render: vi.fn(() => ({
-      clear: vi.fn(),
-      unmount: vi.fn(),
-      waitUntilExit: vi.fn(async () => {}),
-    })),
+    render: vi.fn((node) => {
+      if (mockState.shouldRequestHandoff && React.isValidElement<MockScanAppProps>(node)) {
+        node.props.onHandoff?.({ agentId: "codex", prompt: "fix" });
+      }
+      return {
+        clear: vi.fn(),
+        unmount: vi.fn(),
+        waitUntilExit: vi.fn(async () => {}),
+      };
+    }),
   };
 });
 
@@ -67,7 +80,20 @@ vi.mock("../../src/cli/utils/install-github-workflow.js", () => ({
 
 vi.mock("../../src/cli/utils/render-summary.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/cli/utils/render-summary.js")>();
-  return { ...actual, printFooter: vi.fn(() => Effect.void) };
+  return {
+    ...actual,
+    printFooter: vi.fn(() => Effect.sync(() => mockState.lifecycleEvents.push("footer"))),
+  };
+});
+
+vi.mock("../../src/cli/utils/launch-agent.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/cli/utils/launch-agent.js")>();
+  return {
+    ...actual,
+    launchCliAgent: vi.fn(async () => {
+      mockState.lifecycleEvents.push("handoff");
+    }),
+  };
 });
 
 vi.mock("../../src/cli/utils/compute-score-projection.js", () => ({
@@ -107,11 +133,14 @@ describe("runScanApp", () => {
     mockState.projectDirectories.length = 0;
     mockState.scanTargets.clear();
     mockState.inspectResults.clear();
+    mockState.shouldRequestHandoff = false;
+    mockState.lifecycleEvents.length = 0;
     vi.restoreAllMocks();
   });
 
   it("merges root and project configs while sharing one scan deadline", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockState.shouldRequestHandoff = true;
     const rootDirectory = "/repo";
     const requestedWebDirectory = "/repo/apps/web";
     const requestedAdminDirectory = "/repo/apps/admin";
@@ -189,5 +218,6 @@ describe("runScanApp", () => {
     expect(secondOptions?.noScore).toBeUndefined();
     expect(firstOptions?.deadlineEpochMs).toBe(secondOptions?.deadlineEpochMs);
     expect(firstOptions?.deadlineEpochMs).toBeTypeOf("number");
+    expect(mockState.lifecycleEvents).toEqual(["footer", "handoff"]);
   });
 });

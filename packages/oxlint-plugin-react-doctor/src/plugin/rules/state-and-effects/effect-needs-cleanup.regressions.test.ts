@@ -5289,6 +5289,22 @@ export const AccordionItem = ({ root, itemKey }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("rejects a logical-and wrapper that replaces the delegated disposer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const StoreValue = ({ store }) => {
+  const subscribe = useCallback(
+    () => store.subscribe(update) && (() => {}),
+    [store],
+  );
+  return useSyncExternalStore(subscribe, store.getSnapshot);
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts the TaskTrove i18next subscription with its matching returned disposer", () => {
     const result = runRule(
       effectNeedsCleanup,

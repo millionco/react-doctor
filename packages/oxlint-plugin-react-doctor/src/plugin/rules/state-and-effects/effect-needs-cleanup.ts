@@ -2875,7 +2875,8 @@ const doesResourceResultEscape = (
       (isNodeOfType(parentNode, "ConditionalExpression") &&
         (parentNode.consequent === currentNode || parentNode.alternate === currentNode)) ||
       (isNodeOfType(parentNode, "LogicalExpression") &&
-        (parentNode.left === currentNode || parentNode.right === currentNode))
+        (parentNode.right === currentNode ||
+          (parentNode.left === currentNode && parentNode.operator !== "&&")))
     ) {
       currentNode = parentNode;
       parentNode = currentNode.parent;

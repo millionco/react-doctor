@@ -30,6 +30,7 @@ import {
   hasCleanup,
   isState,
   isSyncStateSetterCall,
+  resolveStateSetterReference,
 } from "./utils/effect/react.js";
 
 // Port of upstream `src/rules/no-chain-state-updates.js`, plus the
@@ -224,7 +225,7 @@ export const noChainStateUpdates = defineRule({
         if (!readsPostMountValueThroughLocals(callExpr, effectFn, { ignoreBareRefCurrent: true })) {
           continue;
         }
-        const declarator = getUseStateDeclarator(ref);
+        const declarator = getUseStateDeclarator(resolveStateSetterReference(analysis, ref) ?? ref);
         if (declarator) domSyncedStateDeclarators.add(declarator);
       }
 
@@ -244,7 +245,9 @@ export const noChainStateUpdates = defineRule({
         // in-scope values, so there is no handler to hoist them into. Only
         // simple re-derivations are exempt; a self-targeting setter fed by
         // a call result (editor/instance creation) is still a chain.
-        const setterDeclarator = getUseStateDeclarator(ref);
+        const setterDeclarator = getUseStateDeclarator(
+          resolveStateSetterReference(analysis, ref) ?? ref,
+        );
         if (setterDeclarator && domSyncedStateDeclarators.has(setterDeclarator)) continue;
         const isSelfTargeting =
           setterDeclarator !== null && stateDepDeclarators.has(setterDeclarator);

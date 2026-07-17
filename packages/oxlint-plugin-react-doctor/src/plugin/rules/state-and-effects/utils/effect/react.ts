@@ -448,8 +448,18 @@ export const isRefCurrent = (ref: Reference): boolean => {
   return parent.property.name === "current";
 };
 
+export const resolveStateSetterReference = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+): Reference | null =>
+  getUpstreamRefs(analysis, ref).find((innerRef) => isStateSetter(analysis, innerRef)) ?? null;
+
 export const isStateSetterCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
-  isEventualCallTo(analysis, ref, (innerRef) => isStateSetter(analysis, innerRef));
+  isEventualCallTo(
+    analysis,
+    ref,
+    (innerRef) => resolveStateSetterReference(analysis, innerRef) !== null,
+  );
 
 // The shared "is this a synchronous, hoistable state-setter call worth
 // reporting" filter for the mount-effect rules. A direct `setState()` at
@@ -732,14 +742,19 @@ export const isRefCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
   );
 
 export const getUseStateDecl = (analysis: ProgramAnalysis, ref: Reference): EsTreeNode | null => {
-  const useStateRef = getUpstreamRefs(analysis, ref).find((upRef) =>
-    isHookCallee(analysis, upRef.identifier as unknown as EsTreeNode, "useState"),
+  const stateBindingReference = getUpstreamRefs(analysis, ref).find(
+    (upstreamReference) =>
+      isState(analysis, upstreamReference) || isStateSetter(analysis, upstreamReference),
   );
-  let node: EsTreeNode | null | undefined = useStateRef?.identifier as unknown as EsTreeNode;
-  while (node && !isNodeOfType(node, "VariableDeclarator")) {
-    node = (node as unknown as { parent?: EsTreeNode | null }).parent;
-  }
-  return node ?? null;
+  const definition = stateBindingReference?.resolved?.defs.find((candidateDefinition) => {
+    const definitionNode = candidateDefinition.node as unknown as EsTreeNode;
+    return (
+      isNodeOfType(definitionNode, "VariableDeclarator") &&
+      isNodeOfType(definitionNode.init, "CallExpression") &&
+      isHookCallee(analysis, definitionNode.init.callee as EsTreeNode, "useState")
+    );
+  });
+  return definition ? (definition.node as unknown as EsTreeNode) : null;
 };
 
 const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): boolean => {

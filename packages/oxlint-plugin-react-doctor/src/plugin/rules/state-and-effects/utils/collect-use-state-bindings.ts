@@ -1,11 +1,14 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
+import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
 import { isHookCall } from "../../../utils/is-hook-call.js";
+import { isReactApiCall } from "../../../utils/is-react-api-call.js";
 import { isSetterIdentifier } from "../../../utils/is-setter-identifier.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
 export const collectUseStateBindings = (
   componentBody: EsTreeNode,
+  scopes?: ScopeAnalysis,
 ): Array<{
   valueName: string;
   setterName: string;
@@ -34,7 +37,15 @@ export const collectUseStateBindings = (
         continue;
       }
       if (!isNodeOfType(declarator.init, "CallExpression")) continue;
-      if (!isHookCall(declarator.init, "useState")) continue;
+      const isUseStateCall = scopes
+        ? isReactApiCall(declarator.init, "useState", scopes, {
+            allowGlobalReactNamespace: true,
+            allowUnboundBareCalls: true,
+            resolveConditionalAliases: true,
+            resolveNamedAliases: true,
+          })
+        : isHookCall(declarator.init, "useState");
+      if (!isUseStateCall) continue;
       bindings.push({
         valueName: valueElement.name,
         setterName: setterElement.name,

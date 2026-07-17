@@ -361,6 +361,84 @@ describe("derived-state family contracts", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    [
+      "a renamed React import",
+      `import { useEffect as runEffect, useState } from "react";
+      const Example = ({ value }) => {
+        const [mirror, setMirror] = useState("");
+        runEffect(() => setMirror(value), [value]);
+        return mirror;
+      };`,
+    ],
+    [
+      "an immutable local alias",
+      `import { useEffect, useState } from "react";
+      const runEffect = useEffect;
+      const Example = ({ value }) => {
+        const [mirror, setMirror] = useState("");
+        runEffect(() => setMirror(value), [value]);
+        return mirror;
+      };`,
+    ],
+    [
+      "a multi-hop immutable alias",
+      `import { useEffect, useState } from "react";
+      const localEffect = useEffect;
+      const runEffect = localEffect;
+      const Example = ({ value }) => {
+        const [mirror, setMirror] = useState("");
+        runEffect(() => setMirror(value), [value]);
+        return mirror;
+      };`,
+    ],
+  ])("recognizes %s by React binding identity", (_name, aliasCode) => {
+    for (const rule of [noDerivedState, noDerivedStateEffect, noAdjustStateOnPropChange]) {
+      const result = runRule(rule, aliasCode);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it.each([
+    [
+      "a userland same-name function",
+      `const useEffect = (callback) => callback();
+      const Example = ({ value }) => {
+        const [mirror, setMirror] = useState("");
+        useEffect(() => setMirror(value), [value]);
+        return mirror;
+      };`,
+    ],
+    [
+      "a shadowed React import",
+      `import { useEffect, useState } from "react";
+      const Example = ({ value }) => {
+        const useEffect = (callback) => callback();
+        const [mirror, setMirror] = useState("");
+        useEffect(() => setMirror(value), [value]);
+        return mirror;
+      };`,
+    ],
+    [
+      "a mutable alias",
+      `import { useEffect, useState } from "react";
+      let runEffect = useEffect;
+      runEffect = (callback) => callback();
+      const Example = ({ value }) => {
+        const [mirror, setMirror] = useState("");
+        runEffect(() => setMirror(value), [value]);
+        return mirror;
+      };`,
+    ],
+  ])("rejects %s", (_name, aliasCode) => {
+    for (const rule of [noDerivedState, noDerivedStateEffect, noAdjustStateOnPropChange]) {
+      const result = runRule(rule, aliasCode);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
   it("shares proven render-source writes with no-initialize-state", () => {
     const result = runRule(noInitializeState, code, { forceJsx: true });
     expect(result.parseErrors).toEqual([]);
@@ -434,6 +512,24 @@ describe("derived-state family contracts", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it.each(["React as any", "React!"])(
+    "preserves state identity through a %s namespace receiver",
+    (reactReceiver) => {
+      const result = runRule(
+        noDerivedStateEffect,
+        `import * as React from "react";
+        const runEffect = React.useEffect;
+        const Example = ({ value }) => {
+          const [mirror, setMirror] = (${reactReceiver}).useState("");
+          runEffect(() => setMirror(value), [value]);
+          return mirror;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
 
   it.each([
     ["structuredClone", "structuredClone(value)"],

@@ -1,10 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { getUpstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { getEffectDepsRefs, isProp, isState, isUseEffect } from "./utils/effect/react.js";
+import { getEffectDepsRefs, isProp, isState } from "./utils/effect/react.js";
 
 export const noAdjustStateOnPropChange = defineRule({
   id: "no-adjust-state-on-prop-change",
@@ -15,7 +16,16 @@ export const noAdjustStateOnPropChange = defineRule({
     "Adjust the state inline during render with a `prev`-prop comparison (`if (prop !== prevProp) { setPrevProp(prop); setX(...); }`), or refactor to remove the duplicated state. Routing the adjustment through a useEffect forces an extra render with a stale UI between the two commits. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isUseEffect(node)) return;
+      if (
+        !isReactApiCall(node, "useEffect", context.scopes, {
+          allowGlobalReactNamespace: true,
+          allowUnboundBareCalls: true,
+          resolveConditionalAliases: true,
+          resolveNamedAliases: true,
+        })
+      ) {
+        return;
+      }
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
       const dependencyReferences = getEffectDepsRefs(analysis, node);

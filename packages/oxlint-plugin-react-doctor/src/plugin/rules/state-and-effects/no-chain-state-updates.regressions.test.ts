@@ -19,6 +19,20 @@ const expectFiresAtLeast = (code: string, minimumDiagnosticCount: number): void 
 };
 
 describe("no-chain-state-updates — must-detect regressions", () => {
+  it("reports a state update through an immutable setter alias", () => {
+    expectFiresAtLeast(
+      `import { useEffect, useState } from "react";
+      const Example = ({ source }) => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        const writeReady = setReady;
+        const onChange = () => setStep((value) => value + 1);
+        useEffect(() => writeReady(true), [step, source]);
+        return <button onClick={onChange}>{String(ready)}</button>;
+      };`,
+      1,
+    );
+  });
   it("fires on validate-then-submit effect chains when one setter call site sits in a setTimeout (latitude Form)", () => {
     expectFiresAtLeast(
       `

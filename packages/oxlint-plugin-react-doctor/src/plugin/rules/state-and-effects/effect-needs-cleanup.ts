@@ -2232,14 +2232,25 @@ const doesReleaseCallMatchUsage = (
     releaseVerbName === "removeListener" ||
     releaseVerbName === "off"
   ) {
-    const releaseHandler = callNode.arguments?.[1];
+    const usesUnaryListenerSignature =
+      usage.registrationVerbName === "addListener" &&
+      isNodeOfType(usage.node, "CallExpression") &&
+      usage.node.arguments?.length === 1 &&
+      callNode.arguments?.length === 1;
+    const releaseHandler = usesUnaryListenerSignature
+      ? callNode.arguments?.[0]
+      : callNode.arguments?.[1];
     if (!releaseHandler) return releaseVerbName === "off";
+    const expectedHandlerKey = usesUnaryListenerSignature ? usage.eventKey : usage.handlerKey;
+    const registrationHandler = isNodeOfType(usage.node, "CallExpression")
+      ? usage.node.arguments?.[usesUnaryListenerSignature ? 0 : 1]
+      : null;
     return (
-      (usage.handlerKey !== null &&
-        resolveExpressionKey(releaseHandler, context) === usage.handlerKey) ||
-      (isNodeOfType(usage.node, "CallExpression") &&
+      (expectedHandlerKey !== null &&
+        resolveExpressionKey(releaseHandler, context) === expectedHandlerKey) ||
+      (registrationHandler !== null &&
         resolveStableValue(releaseHandler, context) ===
-          resolveStableValue(usage.node.arguments?.[1], context))
+          resolveStableValue(registrationHandler, context))
     );
   }
   if (releaseVerbName === "unobserve" && usage.eventKey !== null) {
@@ -2936,6 +2947,17 @@ const doesResourceResultEscape = (
       isNodeOfType(parentNode, "ChainExpression") ||
       isNodeOfType(parentNode, "TSAsExpression") ||
       isNodeOfType(parentNode, "TSNonNullExpression")
+    ) {
+      currentNode = parentNode;
+      parentNode = currentNode.parent;
+      continue;
+    }
+    if (
+      (isNodeOfType(parentNode, "ConditionalExpression") &&
+        (parentNode.consequent === currentNode || parentNode.alternate === currentNode)) ||
+      (isNodeOfType(parentNode, "LogicalExpression") &&
+        (parentNode.right === currentNode ||
+          (parentNode.left === currentNode && parentNode.operator !== "&&")))
     ) {
       currentNode = parentNode;
       parentNode = currentNode.parent;

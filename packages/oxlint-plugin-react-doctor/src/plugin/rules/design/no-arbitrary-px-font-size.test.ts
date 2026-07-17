@@ -14,6 +14,7 @@ describe("no-arbitrary-px-font-size", () => {
     const code = `const A = () => <p className="text-[13px]/5">x</p>;`;
     const result = runRule(noArbitraryPxFontSize, code);
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("text-[0.8125rem]/5");
   });
 
   it("flags a variant-prefixed `sm:text-[15px]`", () => {

@@ -48,7 +48,6 @@ const IMPERATIVE_DOM_MUTATION_NAMES: ReadonlySet<string> = new Set([
   "scrollBy",
   "scrollIntoView",
   "scrollTo",
-  "select",
   "setRangeText",
   "setSelectionRange",
 ]);
@@ -179,6 +178,12 @@ const isFollowedByImperativeDomMutation = (
           callsAnyName(nextStatement, imperativeDomFunctionNames, true)
         );
       }
+    }
+    if (
+      isFunctionLike(parent) ||
+      (parent.type.endsWith("Statement") && !isNodeOfType(parent, "ExpressionStatement"))
+    ) {
+      return false;
     }
     statement = parent;
     parent = parent.parent;

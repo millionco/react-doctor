@@ -186,6 +186,26 @@ const updateText = (textarea, selection) => {
     );
   });
 
+  it("still flags an imperative mutation outside a bare control-flow branch", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const updateText = (textarea, shouldUpdate) => {
+  if (shouldUpdate) flushSync(() => setText(readRemoteText()));
+  textarea.focus();
+};`,
+    );
+  });
+
+  it("still flags an adjacent generic select method", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const updateSelection = (store) => {
+  flushSync(() => setText(readRemoteText()));
+  store.select("activeDocument");
+};`,
+    );
+  });
+
   it("still flags a deferred imperative helper call", () => {
     expectFail(
       `import { flushSync } from "react-dom";

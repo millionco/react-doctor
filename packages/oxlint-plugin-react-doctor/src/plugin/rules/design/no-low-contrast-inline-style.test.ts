@@ -83,6 +83,18 @@ describe("no-low-contrast-inline-style", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does NOT flag a static color overridden by a dynamic color", () => {
+    const code = `const A = ({ textColor }) => <span style={{ color: "#9ca3af", color: textColor, backgroundColor: "#fff", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a dynamic color overridden by a later static color", () => {
+    const code = `const A = ({ textColor }) => <span style={{ color: textColor, color: "#9ca3af", backgroundColor: "#fff", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag large + string `fontWeight: '700'` (Bugbot: string weight ignored)", () => {
     const code = `const A = () => <span style={{ color: "#808080", backgroundColor: "#fff", fontSize: 20, fontWeight: "700" }}>x</span>;`;
     const result = runRule(noLowContrastInlineStyle, code);

@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
@@ -29,6 +30,11 @@ const NON_GROWING_ARRAY_METHOD_NAMES = new Set([
   "with",
 ]);
 const ARRAY_LENGTH_GROWING_MUTATION_METHOD_NAMES = new Set(["push", "splice", "unshift"]);
+const OBJECT_GROWING_MUTATION_METHOD_NAMES = new Set([
+  "assign",
+  "defineProperties",
+  "defineProperty",
+]);
 
 const isFreshLiteralSeed = (seedArgument: EsTreeNode | undefined): boolean => {
   if (!isAstNode(seedArgument)) return false;
@@ -64,11 +70,28 @@ const bindingMayHaveGrown = (expression: EsTreeNode, scopes: ScopeAnalysis): boo
   return symbol.references.some((reference) => {
     if (reference.flag !== "read") return true;
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const directConsumer = referenceRoot.parent;
+    if (
+      directConsumer &&
+      isNodeOfType(directConsumer, "CallExpression") &&
+      directConsumer.arguments[0] === referenceRoot
+    ) {
+      const directCallee = stripParenExpression(directConsumer.callee);
+      if (
+        isNodeOfType(directCallee, "MemberExpression") &&
+        isNodeOfType(directCallee.object, "Identifier") &&
+        directCallee.object.name === "Object" &&
+        scopes.isGlobalReference(directCallee.object) &&
+        OBJECT_GROWING_MUTATION_METHOD_NAMES.has(getStaticPropertyName(directCallee) ?? "")
+      ) {
+        return true;
+      }
+    }
     const member = referenceRoot.parent;
     if (
       !member ||
       !isNodeOfType(member, "MemberExpression") ||
-      stripParenExpression(member.object) !== referenceRoot
+      stripParenExpression(member.object) !== stripParenExpression(referenceRoot)
     ) {
       return false;
     }
@@ -249,17 +272,11 @@ const hasOwnReducerMethod = (
     candidate = stripParenExpression(symbol.initializer);
   }
   if (!isNodeOfType(candidate, "ObjectExpression")) return false;
-  return candidate.properties.some((property) => {
-    if (!isNodeOfType(property, "Property")) return false;
-    if (!property.computed && isNodeOfType(property.key, "Identifier")) {
-      return property.key.name === methodName;
-    }
-    return (
-      isNodeOfType(property.key, "Literal") &&
-      typeof property.key.value === "string" &&
-      property.key.value === methodName
-    );
-  });
+  return candidate.properties.some(
+    (property) =>
+      isNodeOfType(property, "Property") &&
+      getStaticPropertyKeyName(property, { allowComputedString: true }) === methodName,
+  );
 };
 
 interface ReducerReturnAnalysis {
@@ -315,6 +332,17 @@ const analyzeReducerReturns = (
       return;
     }
     if (isNodeOfType(stripped, "LogicalExpression")) {
+      const left = stripParenExpression(stripped.left);
+      const leftIsAccumulator =
+        isNodeOfType(left, "Identifier") &&
+        accumulatorSymbol !== null &&
+        scopes.symbolFor(left) === accumulatorSymbol;
+      const leftIsAlwaysTruthy =
+        isNodeOfType(left, "ObjectExpression") || isNodeOfType(left, "ArrayExpression");
+      if (leftIsAccumulator || leftIsAlwaysTruthy) {
+        recordReturnedExpression(stripped.operator === "&&" ? stripped.right : stripped.left);
+        return;
+      }
       recordReturnedExpression(stripped.left);
       recordReturnedExpression(stripped.right);
       return;

@@ -160,6 +160,24 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("flags definite logical growth with a fresh truthy accumulator", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const rightGrowth = items.reduce((acc, item) => acc && [...acc, item], []);
+       const leftGrowth = items.reduce((acc, item) => [...acc, item] || acc, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("keeps logical expressions that definitely return the accumulator quiet", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const leftAccumulator = items.reduce((acc, item) => acc || [...acc, item], []);
+       const rightAccumulator = items.reduce((acc, item) => [...acc, item] && acc, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("ignores unreachable accumulator passthrough returns", () => {
     const falseBranch = runRule(
       noSpreadAccumulatorInReduce,
@@ -301,6 +319,47 @@ describe("no-spread-accumulator-in-reduce", () => {
        const out = Object.keys(bounded).reduce((acc, key) => [...acc, key], []);`,
     );
     expect(objectResult.diagnostics).toHaveLength(1);
+
+    const assignedObjectResult = runRule(
+      noSpreadAccumulatorInReduce,
+      `const bounded = {};
+       Object.assign(bounded, externalValues);
+       const out = Object.keys(bounded).reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(assignedObjectResult.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks growth through transparent receiver wrappers", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const asserted = [seed];
+       (asserted as string[]).push(...items);
+       const assertedOut = (asserted as string[]).reduce((acc, item) => [...acc, item], []);
+       const nonNull = [seed];
+       nonNull!.push(...items);
+       const nonNullOut = nonNull!.reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not treat shadowed Object.assign as a built-in mutation", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const bounded = { first: true };
+       { const Object = { assign() {} }; Object.assign(bounded, externalValues); }
+       const out = Object.keys(bounded).reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes statically computed built-in object mutators", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const bounded = {};
+       Object["defineProperty"](bounded, dynamicKey, { value: true });
+       const out = Object.keys(bounded).reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not analyze a locally defined custom reducer method", () => {
@@ -308,6 +367,14 @@ describe("no-spread-accumulator-in-reduce", () => {
       noSpreadAccumulatorInReduce,
       `const custom = { reduce(callback, seed) { return seed; } };
        const out = custom.reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not analyze a custom reducer with a static template key", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      "const custom = { [`reduce`](callback, seed) { return seed; } }; const out = custom.reduce((acc, item) => [...acc, item], []);",
     );
     expect(result.diagnostics).toHaveLength(0);
   });

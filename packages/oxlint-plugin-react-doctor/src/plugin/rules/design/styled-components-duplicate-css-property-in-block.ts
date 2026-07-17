@@ -8,6 +8,7 @@ import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isProvenStyledComponentExpression } from "../../utils/is-proven-styled-component-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 // Opaque marker substituted for each `${...}` interpolation while scanning
@@ -86,8 +87,11 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
     ) {
       return (
         unwrappedLeft.computed === unwrappedRight.computed &&
+        unwrappedLeft.optional === unwrappedRight.optional &&
         compare(unwrappedLeft.object, unwrappedRight.object) &&
-        compare(unwrappedLeft.property, unwrappedRight.property)
+        (unwrappedLeft.computed
+          ? compare(unwrappedLeft.property, unwrappedRight.property)
+          : getStaticPropertyName(unwrappedLeft) === getStaticPropertyName(unwrappedRight))
       );
     }
     if (
@@ -211,6 +215,9 @@ const collectTopLevelDeclarations = (
         continue;
       }
       if (character === "{") {
+        if (braceDepth === 0) {
+          finalizeDeclaration(currentText, currentTernaryTests, declarations);
+        }
         braceDepth += 1;
         resetSegment();
       } else if (character === "}") {
@@ -225,9 +232,13 @@ const collectTopLevelDeclarations = (
     }
     const expression = template.expressions[quasiIndex];
     if (expression && braceDepth === 0 && !activeQuote && !activeComment) {
-      currentText += INTERPOLATION_MARKER;
-      const ternaryTest = getTernaryInterpolationTest(expression);
-      if (ternaryTest) currentTernaryTests.push(ternaryTest);
+      if (currentText.trim().length === 0) {
+        resetSegment();
+      } else {
+        currentText += INTERPOLATION_MARKER;
+        const ternaryTest = getTernaryInterpolationTest(expression);
+        if (ternaryTest) currentTernaryTests.push(ternaryTest);
+      }
     }
   });
   if (braceDepth === 0) finalizeDeclaration(currentText, currentTernaryTests, declarations);
@@ -238,7 +249,7 @@ const isProvenCssHelperTag = (tag: EsTreeNode, scopes: ScopeAnalysis): boolean =
   const rootIdentifier = getRootIdentifier(tag);
   if (!rootIdentifier) return false;
   const strippedTag = stripParenExpression(tag);
-  const symbol = scopes.symbolFor(rootIdentifier);
+  const symbol = resolveConstIdentifierAlias(rootIdentifier, scopes);
   if (!symbol || symbol.kind !== "import") return false;
   const importDeclaration = symbol.declarationNode.parent;
   if (

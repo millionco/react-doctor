@@ -141,6 +141,20 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag equivalent static property keys that match one parameter name", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${properties => properties.state ? "100vh" : "auto"}; height: ${state => state.state ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("distinguishes different static property keys that match each parameter name", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${properties => properties.properties ? "100vh" : "auto"}; height: ${state => state.state ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("distinguishes a callback parameter from a same-named outer binding", () => {
     const result = runStyledRule(
       'const props = { $fullHeight: false }; const Modal = styled.div`height: ${props => props.$fullHeight ? "100vh" : "auto"}; height: ${state => props.$fullHeight ? "100dvh" : "auto"};`;',
@@ -151,6 +165,20 @@ describe("styled-components-duplicate-css-property-in-block", () => {
   it("flags conflicting conditional duplicates after a base declaration", () => {
     const result = runStyledRule(
       'const Button = styled.button`color: gray; color: ${p => p.$primary ? "blue" : "gray"}; color: ${p => p.$danger ? "red" : "black"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags duplicates after a standalone mixin interpolation", () => {
+    const result = runStyledRule(
+      'const baseStyles = css`display: block;`; const Button = styled.button`${baseStyles}\ncolor: ${p => p.$primary ? "blue" : "gray"}; color: ${p => p.$danger ? "red" : "black"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a pending declaration before a nested block", () => {
+    const result = runStyledRule(
+      'const Button = styled.button`color: ${p => p.$primary ? "blue" : "gray"}\n&:hover { opacity: 0.8; } color: ${p => p.$danger ? "red" : "black"};`;',
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -168,6 +196,13 @@ describe("styled-components-duplicate-css-property-in-block", () => {
       'import { css as styleBlock } from "styled-components"; import * as styles from "styled-components"; const first = (styleBlock)`color: ${p => p.$a ? "red" : "blue"}; color: ${p => p.$b ? "black" : "white"};`; const second = (styles.css)`opacity: ${p => p.$a ? 1 : 0}; opacity: ${p => p.$b ? 1 : 0};`;',
     );
     expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("supports const aliases of css helper imports", () => {
+    const result = runStyledRule(
+      'const styleBlock = css; const shared = styleBlock`color: ${p => p.$primary ? "blue" : "gray"}; color: ${p => p.$danger ? "red" : "black"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag the dvh-with-vh fallback under one condition", () => {

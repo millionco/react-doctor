@@ -84,14 +84,14 @@ export const noRedundantDisplayClass = defineRule({
       }
       if (displayTokens.size !== 1) return;
 
-      if (BLOCK_DEFAULT_TAGS.has(tagName) && classNameTokens.includes("block")) {
+      if (BLOCK_DEFAULT_TAGS.has(tagName) && displayTokens.has("block")) {
         context.report({
           node,
           message: `\`block\` is the default display of \`<${tagName}>\`, so the class does nothing — remove it.`,
         });
         return;
       }
-      if (INLINE_DEFAULT_TAGS.has(tagName) && classNameTokens.includes("inline")) {
+      if (INLINE_DEFAULT_TAGS.has(tagName) && displayTokens.has("inline")) {
         context.report({
           node,
           message: `\`inline\` is the default display of \`<${tagName}>\`, so the class does nothing — remove it.`,

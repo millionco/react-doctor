@@ -1,0 +1,37 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { noCrushedLetterSpacing } from "./no-crushed-letter-spacing.js";
+
+describe("no-crushed-letter-spacing", () => {
+  it("flags extreme negative em tracking", () => {
+    const result = runRule(
+      noCrushedLetterSpacing,
+      `const Example = () => <h1 style={{ letterSpacing: "-0.12em" }}>Readable heading</h1>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags extreme arbitrary Tailwind tracking", () => {
+    const result = runRule(
+      noCrushedLetterSpacing,
+      `const Example = () => <h1 className="tracking-[-0.1em]">Readable heading</h1>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag moderate negative tracking", () => {
+    const result = runRule(
+      noCrushedLetterSpacing,
+      `const Example = () => <h1 style={{ letterSpacing: "-0.04em" }}>Readable heading</h1>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag dynamic tracking or childless icons", () => {
+    const result = runRule(
+      noCrushedLetterSpacing,
+      `const Example = ({ spacing }) => <><h1 style={{ letterSpacing: spacing }}>Heading</h1><Icon style={{ letterSpacing: "-0.2em" }} /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});

@@ -5,6 +5,32 @@ import { noScaleFromZero } from "./no-scale-from-zero.js";
 const run = (code: string) => runRule(noScaleFromZero, code, { filename: "fixture.tsx" });
 
 describe("performance/no-scale-from-zero — regressions", () => {
+  it("flags inline and Tailwind scale-zero transitions", () => {
+    const result = run(`
+      export const Examples = () => (
+        <>
+          <div style={{ transform: "scale(0)", transition: "transform 200ms ease-out" }} />
+          <div className="scale-0 transition-transform" />
+        </>
+      );
+    `);
+
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("stays silent on static scale-zero states", () => {
+    const result = run(`
+      export const Examples = () => (
+        <>
+          <div style={{ transform: "scale(0)" }} />
+          <div className="scale-0" />
+        </>
+      );
+    `);
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not treat an ordinary initial data prop as animation state", () => {
     const result = run(`
       interface PanelProps {

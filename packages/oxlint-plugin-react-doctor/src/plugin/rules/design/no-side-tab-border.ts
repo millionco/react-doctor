@@ -41,6 +41,8 @@ const extractBorderColorFromShorthand = (shorthandValue: string): string | null 
 const BORDER_SIDE_KEYS = new Map<string, string>([
   ["borderLeft", "left"],
   ["borderRight", "right"],
+  ["borderTop", "top"],
+  ["borderBottom", "bottom"],
   ["borderInlineStart", "left"],
   ["borderInlineEnd", "right"],
 ]);
@@ -48,13 +50,15 @@ const BORDER_SIDE_KEYS = new Map<string, string>([
 const BORDER_SIDE_WIDTH_KEYS = new Set([
   "borderLeftWidth",
   "borderRightWidth",
+  "borderTopWidth",
+  "borderBottomWidth",
   "borderInlineStartWidth",
   "borderInlineEndWidth",
 ]);
 
-const ARBITRARY_BORDER_COLOR_PATTERN = /\bborder(?:-([lrse]))?-\[([^\]]+)\]/g;
+const ARBITRARY_BORDER_COLOR_PATTERN = /\bborder(?:-([lrsetb]))?-\[([^\]]+)\]/g;
 const NAMED_BORDER_COLOR_PATTERN =
-  /\bborder(?:-([lrse]))?-((?:gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+|white|black|transparent)\b/g;
+  /\bborder(?:-([lrsetb]))?-((?:gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+|white|black|transparent)\b/g;
 const NEUTRAL_NAMED_BORDER_COLOR_PATTERN =
   /^(?:(?:gray|slate|zinc|neutral|stone)-\d+|white|black|transparent)$/;
 
@@ -98,6 +102,7 @@ export const noSideTabBorder = defineRule({
 
         const sideLabel = BORDER_SIDE_KEYS.get(key);
         if (sideLabel !== undefined) {
+          if ((sideLabel === "top" || sideLabel === "bottom") && !hasBorderRadius) continue;
           const value = getStylePropertyStringValue(property);
           if (!value) continue;
           const widthMatch = value.match(/^(\d+)px\s+solid/);
@@ -116,6 +121,9 @@ export const noSideTabBorder = defineRule({
         }
 
         if (BORDER_SIDE_WIDTH_KEYS.has(key)) {
+          if ((key === "borderTopWidth" || key === "borderBottomWidth") && !hasBorderRadius) {
+            continue;
+          }
           const numValue = getStylePropertyNumberValue(property);
           const strValue = getStylePropertyStringValue(property);
           const width = numValue ?? (strValue !== null ? parseFloat(strValue) : NaN);
@@ -143,7 +151,7 @@ export const noSideTabBorder = defineRule({
       const classStr = getStringFromClassNameAttr(node);
       if (!classStr) return;
 
-      const sideMatch = classStr.match(/\bborder-([lrse])-(\d+)\b/);
+      const sideMatch = classStr.match(/\bborder-([lrsetb])-(\d+)\b/);
       if (!sideMatch) return;
       const flaggedSideLetter = sideMatch[1];
 
@@ -171,6 +179,7 @@ export const noSideTabBorder = defineRule({
       const width = parseInt(sideMatch[2], 10);
       const hasRounded =
         /\brounded(?:-(?!none\b)\w+)?\b/.test(classStr) && !/\brounded-none\b/.test(classStr);
+      if ((flaggedSideLetter === "t" || flaggedSideLetter === "b") && !hasRounded) return;
       const tailwindThreshold = hasRounded
         ? SIDE_TAB_BORDER_WIDTH_WITH_RADIUS_PX
         : SIDE_TAB_TAILWIND_WIDTH_WITHOUT_RADIUS;

@@ -15,6 +15,12 @@ describe("no-redundant-display-class", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags important forms of redundant display utilities", () => {
+    const code = `const A = () => <><div className="!block" /><span className="inline!" /></>;`;
+    const result = runRule(noRedundantDisplayClass, code);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("does NOT flag `inline-block` on a span (different display)", () => {
     const code = `const A = () => <span className="inline-block" />;`;
     const result = runRule(noRedundantDisplayClass, code);

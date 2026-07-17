@@ -290,7 +290,7 @@ const isAlwaysMatchRegexResult = (regexResultCall: EsTreeNode, partIndex: number
   if (!regexOperand || !isNodeOfType(regexOperand, "Literal") || !("regex" in regexOperand)) {
     return false;
   }
-  return isAlwaysMatchingRegexPattern(regexOperand.regex?.pattern);
+  return isAlwaysMatchingRegexPattern(regexOperand.regex?.pattern, regexOperand.regex?.flags);
 };
 
 // `"1.2.3".split(".")[1]` — splitting a string literal by a string-literal

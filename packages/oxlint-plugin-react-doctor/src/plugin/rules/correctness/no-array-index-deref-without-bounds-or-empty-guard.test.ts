@@ -446,6 +446,27 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags an unguarded result from a dual-anchored star regex", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const whitespaceLength = value.match(/^\\s*$/)[0].length;
+      const stickySuffixLength = value.match(/[^\\n]*$/y)[0].length;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("stays quiet on universal dual-anchored or sticky star regexes", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const dotAllLength = value.match(/^.*$/s)[0].length;
+      const everyCharacterLength = value.match(/^[\\s\\S]*$/)[0].length;
+      const stickyDotAllLength = value.match(/.*$/ys)[0].length;
+      const firstLineLength = value.match(/^[^\\n]*$/m)[0].length;
+      const stickyFirstLineLength = value.match(/[^\\r\\n]*$/ym)[0].length;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet on String(value) under the same opaque predicate trusted for .toString()", () => {
     const result = runRule(
       noArrayIndexDerefWithoutBoundsOrEmptyGuard,

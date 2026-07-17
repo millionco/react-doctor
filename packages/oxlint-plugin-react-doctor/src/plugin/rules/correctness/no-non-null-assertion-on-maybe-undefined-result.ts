@@ -955,7 +955,7 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
             pattern &&
             isNodeOfType(pattern, "Literal") &&
             "regex" in pattern &&
-            isAlwaysMatchingRegexPattern(pattern.regex?.pattern)
+            isAlwaysMatchingRegexPattern(pattern.regex?.pattern, pattern.regex?.flags)
           ) {
             return;
           }

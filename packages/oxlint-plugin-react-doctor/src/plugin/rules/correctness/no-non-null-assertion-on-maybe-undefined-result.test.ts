@@ -256,6 +256,28 @@ describe("no-non-null-assertion-on-maybe-undefined-result", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags match! with a dual-anchored star regex", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const letters = (value: string) => value.match(/^[a-z]*$/)![0];
+      const oneLine = (value: string) => value.match(/^.*$/)![0];
+      const stickySuffix = (value: string) => value.match(/\\s*$/y)![0];`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("does not flag universal dual-anchored or sticky star regexes", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const dotAll = (value: string) => value.match(/^.*$/s)![0];
+      const everyCharacter = (value: string) => value.match(/^[\\s\\S]*$/)![0];
+      const stickyDotAll = (value: string) => value.match(/.*$/ys)![0];
+      const firstLine = (value: string) => value.match(/^[^\\n]*$/m)![0];
+      const stickyFirstLine = (value: string) => value.match(/[^\\r\\n]*$/ym)![0];`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag match! with a g-flagged twin of the tested regex", () => {
     const result = runRule(
       noNonNullAssertionOnMaybeUndefinedResult,

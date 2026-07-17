@@ -223,6 +223,12 @@ const buildClassComponent: SnippetBuilder = (random) => {
   const hasWillUnmount = random.chance(0.6);
   const usesRefNode = random.chance(0.4);
   const mountTarget = usesRefNode ? "this.containerRef.current" : "window";
+  const renderParameters = random.pick([
+    "",
+    "props",
+    "props, state",
+    `this: ${componentName}, props`,
+  ]);
   return [
     `export class ${componentName} extends React.Component {`,
     `  containerRef = React.createRef();`,
@@ -238,7 +244,7 @@ const buildClassComponent: SnippetBuilder = (random) => {
           `  }`,
         ].join("\n")
       : ``,
-    `  render() {`,
+    `  render(${renderParameters}) {`,
     `    return <div ref={this.containerRef}>{this.props.children}</div>;`,
     `  }`,
     `}`,

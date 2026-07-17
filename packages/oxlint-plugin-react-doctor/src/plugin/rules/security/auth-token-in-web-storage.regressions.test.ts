@@ -320,6 +320,21 @@ describe("security/auth-token-in-web-storage — regressions", () => {
     expect(diagnostics).toHaveLength(1);
   });
 
+  it("flags typed helper parameters serialized through TypeScript wrappers", () => {
+    const { diagnostics, parseErrors } = runRule(
+      authTokenInWebStorage,
+      `interface CredentialRecord { token: string }
+      const persist = (key: string, value: CredentialRecord | null) => {
+        sessionStorage.setItem(key, JSON.stringify((value as CredentialRecord)!));
+      };
+      persist("accessToken", credential);`,
+      { filename: "storage.ts" },
+    );
+
+    expect(parseErrors).toEqual([]);
+    expect(diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when a helper-local key shadows its parameter", () => {
     const { diagnostics, parseErrors } = runRule(
       authTokenInWebStorage,

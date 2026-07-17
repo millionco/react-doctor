@@ -212,7 +212,7 @@ const parameterIndex = (
     strippedExpression.callee.property.name === "stringify"
   ) {
     const serializedArgument = strippedExpression.arguments[0];
-    return serializedArgument && isNodeOfType(serializedArgument, "Identifier")
+    return serializedArgument
       ? parameterIndex(serializedArgument, parameterSymbolIds, scopes, true, visitedNodes)
       : null;
   }

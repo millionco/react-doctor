@@ -60,11 +60,18 @@ const READ_INTENT_WORDS = new Set([
 
 const hasReadIntentName = (name: string | null): boolean => {
   if (!name) return false;
-  const [firstWord, ...remainingWords] = tokenizeIdentifierWords(name);
-  return (
-    firstWord === "list" ||
-    [firstWord, ...remainingWords].some((word) => word !== "list" && READ_INTENT_WORDS.has(word))
-  );
+  const words = tokenizeIdentifierWords(name);
+  if (
+    words.some(
+      (word, wordIndex) => word === "check" && ["in", "out"].includes(words[wordIndex + 1] ?? ""),
+    )
+  ) {
+    return false;
+  }
+  return words.some((word, wordIndex) => {
+    if (word === "list") return wordIndex === 0;
+    return READ_INTENT_WORDS.has(word);
+  });
 };
 
 const getPatternBindings = (
@@ -630,8 +637,14 @@ const getStatusTargets = (
   for (const propertyName of ["data", "isSuccess", "status"]) {
     for (const binding of getPatternBindings(declarator.id, propertyName)) {
       const symbol = context.scopes.symbolFor(binding);
-      if (symbol)
-        targets.push({ symbolId: symbol.id, propertyName: null, sourcePropertyName: propertyName });
+      if (!symbol) continue;
+      for (const aliasSymbol of collectConstAliasSymbols(symbol, context.scopes)) {
+        targets.push({
+          symbolId: aliasSymbol.id,
+          propertyName: null,
+          sourcePropertyName: propertyName,
+        });
+      }
     }
   }
   return targets;

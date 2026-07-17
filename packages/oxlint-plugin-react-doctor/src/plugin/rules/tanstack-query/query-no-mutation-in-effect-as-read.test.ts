@@ -408,6 +408,45 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts dominating guards through destructured status aliases", () => {
+    const successAlias = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data, isSuccess } = useMutation(options);
+         const didLoadUser = isSuccess;
+         useEffect(() => {
+           if (didLoadUser) return;
+           fetchUser(params);
+         }, [didLoadUser, params]);
+         return <div>{data.user.name}</div>;
+       }`,
+    );
+    const statusAlias = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data, status } = useMutation(options);
+         const userStatus = status;
+         useEffect(() => {
+           if (userStatus === "success") return;
+           fetchUser(params);
+         }, [params, userStatus]);
+         return <div>{data.user.name}</div>;
+       }`,
+    );
+    const dataAlias = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         const loadedUser = data;
+         useEffect(() => {
+           if (loadedUser !== undefined) return;
+           fetchUser(params);
+         }, [loadedUser, params]);
+         return <div>{data.user.name}</div>;
+       }`,
+    );
+    expect(successAlias.diagnostics).toHaveLength(0);
+    expect(statusAlias.diagnostics).toHaveLength(0);
+    expect(dataAlias.diagnostics).toHaveLength(0);
+  });
+
   it("accepts a static computed success status on a whole result", () => {
     const result = runMutationReadRule(
       `function Component() {
@@ -507,6 +546,25 @@ describe("query-no-mutation-in-effect-as-read", () => {
        }`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on check-in and check-out write-intent names", () => {
+    const checkOut = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: checkOutBook, data } = useMutation(options);
+         useEffect(() => { checkOutBook(bookId); }, [bookId]);
+         return <div>{data.receiptId}</div>;
+       }`,
+    );
+    const checkIn = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: checkInBook, data } = useMutation(options);
+         useEffect(() => { checkInBook(bookId); }, [bookId]);
+         return <div>{data.receiptId}</div>;
+       }`,
+    );
+    expect(checkOut.diagnostics).toHaveLength(0);
+    expect(checkIn.diagnostics).toHaveLength(0);
   });
 
   it("keeps list as a leading read-intent verb", () => {

@@ -114,7 +114,7 @@ export const noLowContrastInlineStyle = defineRule({
         }
         const stringValue = getStylePropertyStringValue(property);
         if (key === "color") {
-          if (stringValue !== null) foreground = resolveOpaqueColor(stringValue);
+          foreground = stringValue === null ? null : resolveOpaqueColor(stringValue);
         } else if (key === "backgroundColor") {
           if (stringValue === null) backgroundIsUnknown = true;
           else backgroundColorRaw = stringValue;

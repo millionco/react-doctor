@@ -248,6 +248,50 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("tracks transparent wrappers around global timer receivers", () => {
+    const castGlobalReceiver = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Clock extends React.Component {
+        componentDidMount() {
+          (window as any).setInterval(() => this.tick(), 1000);
+        }
+        render() { return null; }
+      }`,
+    );
+    const assertedGlobalReceiver = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Clock extends React.Component {
+        componentDidMount() {
+          window!.setInterval(() => this.tick(), 1000);
+        }
+        render() { return null; }
+      }`,
+    );
+    const shadowedGlobalReceiver = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `const window = scheduler;
+      class Clock extends React.Component {
+        componentDidMount() {
+          (window as any).setInterval(() => this.tick(), 1000);
+        }
+        render() { return null; }
+      }`,
+    );
+    const unrelatedReceiver = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Clock extends React.Component {
+        componentDidMount() {
+          (scheduler as any).setInterval(() => this.tick(), 1000);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(castGlobalReceiver.diagnostics).toHaveLength(1);
+    expect(assertedGlobalReceiver.diagnostics).toHaveLength(1);
+    expect(shadowedGlobalReceiver.diagnostics).toHaveLength(0);
+    expect(unrelatedReceiver.diagnostics).toHaveLength(0);
+  });
+
   it("flags addListener on a module-scope emitter (React Native Keyboard idiom)", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

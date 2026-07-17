@@ -396,6 +396,57 @@ describe("effect-raf-loop-needs-cancel", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("recognizes finite decreasing RAF counters with lower bounds", () => {
+    const directLowerBound = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let remainingFrames = 10;
+        const step = () => {
+          remainingFrames--;
+          if (remainingFrames > 0) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const reversedLowerBound = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let remainingFrames = 10;
+        const step = () => {
+          remainingFrames -= 1;
+          if (0 < remainingFrames) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const wrongDirectionBound = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let remainingFrames = 10;
+        const step = () => {
+          remainingFrames--;
+          if (remainingFrames < 100) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const unstableLowerBound = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let remainingFrames = 10;
+        const step = () => {
+          remainingFrames--;
+          if (remainingFrames > minimumFrames) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    expect(directLowerBound.diagnostics).toHaveLength(0);
+    expect(reversedLowerBound.diagnostics).toHaveLength(0);
+    expect(wrongDirectionBound.diagnostics).toHaveLength(1);
+    expect(unstableLowerBound.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet: Custom useRafLoop hook whose cleanup invokes the stop closure through a ref", () => {
     const result = runRule(
       effectRafLoopNeedsCancel,

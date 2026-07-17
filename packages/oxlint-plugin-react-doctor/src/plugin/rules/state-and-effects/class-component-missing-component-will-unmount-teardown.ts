@@ -54,15 +54,16 @@ const getTimerCalleeName = (node: EsTreeNode): string | null => {
   ) {
     return bareName;
   }
+  if (!isNodeOfType(node.callee, "MemberExpression")) return null;
+  const receiver = stripParenExpression(node.callee.object);
   if (
-    isNodeOfType(node.callee, "MemberExpression") &&
-    isNodeOfType(node.callee.object, "Identifier") &&
-    GLOBAL_OBJECT_NAMES.has(node.callee.object.name) &&
-    !findVariableInitializer(node.callee.object, node.callee.object.name)
+    !isNodeOfType(receiver, "Identifier") ||
+    !GLOBAL_OBJECT_NAMES.has(receiver.name) ||
+    findVariableInitializer(receiver, receiver.name)
   ) {
-    return getStaticPropertyName(node.callee);
+    return null;
   }
-  return null;
+  return getStaticPropertyName(node.callee);
 };
 
 const getClassMemberName = (member: EsTreeNode): string | null => {

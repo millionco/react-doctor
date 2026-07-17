@@ -5,9 +5,9 @@ import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
 const BODY_TEXT_ELEMENT_NAMES = new Set(["blockquote", "dd", "figcaption", "li", "p", "td"]);
@@ -21,15 +21,9 @@ const hasUppercaseStyle = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean
     if (!isNodeOfType(attribute, "JSXAttribute")) continue;
     const styleExpression = getInlineStyleExpression(attribute);
     if (!styleExpression) continue;
-    if (
-      styleExpression.properties?.some(
-        (property) =>
-          getStylePropertyKey(property) === "textTransform" &&
-          getStylePropertyStringValue(property)?.toLowerCase() === "uppercase",
-      )
-    ) {
+    const property = getEffectiveStyleProperty(styleExpression.properties, "textTransform");
+    if (property && getStylePropertyStringValue(property)?.toLowerCase() === "uppercase")
       return true;
-    }
   }
   return false;
 };

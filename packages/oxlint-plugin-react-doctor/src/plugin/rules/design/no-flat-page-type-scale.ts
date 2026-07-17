@@ -11,9 +11,9 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
@@ -52,11 +52,10 @@ const collectInlineFontSizes = (
     if (!isNodeOfType(attribute, "JSXAttribute")) continue;
     const styleExpression = getInlineStyleExpression(attribute);
     if (!styleExpression) continue;
-    for (const property of styleExpression.properties ?? []) {
-      if (getStylePropertyKey(property) !== "fontSize") continue;
-      const fontSizePx = getFontSizePx(property);
-      if (fontSizePx !== null) fontSizes.add(fontSizePx);
-    }
+    const property = getEffectiveStyleProperty(styleExpression.properties, "fontSize");
+    if (!property) continue;
+    const fontSizePx = getFontSizePx(property);
+    if (fontSizePx !== null) fontSizes.add(fontSizePx);
   }
 };
 

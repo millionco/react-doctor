@@ -34,4 +34,12 @@ describe("no-all-caps-body-text", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("uses the last duplicate inline text transform", () => {
+    const result = runRule(
+      noAllCapsBodyText,
+      `const Example = () => <><p style={{ textTransform: "uppercase", textTransform: "none" }}>This paragraph contains enough readable copy to test the effective transform value.</p><p style={{ textTransform: "none", textTransform: "uppercase" }}>This paragraph contains enough readable copy to test the effective transform value.</p></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

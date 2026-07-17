@@ -4,9 +4,9 @@ import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-nam
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
 const ROOT_LAYOUT_CLASS_NAMES = new Set(["h-dvh", "h-screen", "min-h-dvh", "min-h-screen"]);
@@ -52,21 +52,20 @@ export const noCommonRootFont = defineRule({
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;
         const styleExpression = getInlineStyleExpression(attribute);
         if (!styleExpression) continue;
-        for (const property of styleExpression.properties ?? []) {
-          if (getStylePropertyKey(property) !== "fontFamily") continue;
-          const fontFamilyValue = getStylePropertyStringValue(property);
-          if (!fontFamilyValue || fontFamilyValue.includes("var(")) continue;
-          const primaryFont = fontFamilyValue
-            .split(",")[0]
-            .trim()
-            .replace(/^['"]|['"]$/g, "")
-            .toLowerCase();
-          if (!COMMON_UI_FONT_FAMILIES.has(primaryFont)) continue;
-          context.report({
-            node: property,
-            message: `The page root defaults to ${primaryFont}, a very common UI font. Choose typography that contributes a more specific voice.`,
-          });
-        }
+        const property = getEffectiveStyleProperty(styleExpression.properties, "fontFamily");
+        if (!property) continue;
+        const fontFamilyValue = getStylePropertyStringValue(property);
+        if (!fontFamilyValue || fontFamilyValue.includes("var(")) continue;
+        const primaryFont = fontFamilyValue
+          .split(",")[0]
+          .trim()
+          .replace(/^['"]|['"]$/g, "")
+          .toLowerCase();
+        if (!COMMON_UI_FONT_FAMILIES.has(primaryFont)) continue;
+        context.report({
+          node: property,
+          message: `The page root defaults to ${primaryFont}, a very common UI font. Choose typography that contributes a more specific voice.`,
+        });
       }
     },
   }),

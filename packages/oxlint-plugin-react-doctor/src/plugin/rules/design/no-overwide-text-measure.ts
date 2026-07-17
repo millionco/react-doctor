@@ -4,9 +4,9 @@ import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
 const TEXT_ELEMENT_NAMES = new Set(["blockquote", "dd", "figcaption", "li", "p"]);
@@ -45,9 +45,9 @@ export const noOverwideTextMeasure = defineRule({
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;
         const styleExpression = getInlineStyleExpression(attribute);
         if (!styleExpression) continue;
-        for (const property of styleExpression.properties ?? []) {
-          const propertyName = getStylePropertyKey(property);
-          if (propertyName !== "width" && propertyName !== "maxWidth") continue;
+        for (const propertyName of ["width", "maxWidth"]) {
+          const property = getEffectiveStyleProperty(styleExpression.properties, propertyName);
+          if (!property) continue;
           const propertyValue = getStylePropertyStringValue(property)?.trim();
           const match = propertyValue?.match(/^([\d.]+)ch$/);
           if (!match || parseFloat(match[1]) <= READABLE_LINE_LENGTH_MAX_CH) continue;

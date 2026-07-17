@@ -1,8 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -25,9 +25,9 @@ export const preferDvhOverVh = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
-      for (const property of expression.properties ?? []) {
-        const key = getStylePropertyKey(property);
-        if (!key || !HEIGHT_KEYS.has(key)) continue;
+      for (const key of HEIGHT_KEYS) {
+        const property = getEffectiveStyleProperty(expression.properties, key);
+        if (!property) continue;
         const value = getStylePropertyStringValue(property);
         if (value && value.trim().toLowerCase() === "100vh") {
           context.report({ node: property, message: MESSAGE });

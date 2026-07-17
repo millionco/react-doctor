@@ -4,9 +4,9 @@ import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-nam
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
@@ -14,24 +14,26 @@ const WIDE_SHADOW_CLASS_NAMES = new Set(["shadow-xl", "shadow-2xl"]);
 const HAIRLINE_BORDER_CLASS_NAMES = new Set(["border", "border-1", "border-px"]);
 
 const hasOnePixelBorder = (properties: EsTreeNode[]): boolean => {
-  const hasVisibleBorderStyle = properties.some(
-    (property) =>
-      getStylePropertyKey(property) === "borderStyle" &&
-      /^(?:dashed|dotted|double|solid)$/.test(getStylePropertyStringValue(property)?.trim() ?? ""),
-  );
-  return properties.some((property) => {
-    const propertyName = getStylePropertyKey(property);
-    if (propertyName === "borderWidth") {
-      const numberValue = getStylePropertyNumberValue(property);
-      const stringValue = getStylePropertyStringValue(property)?.trim();
-      return hasVisibleBorderStyle && (numberValue === 1 || stringValue === "1px");
-    }
-    if (propertyName !== "border") return false;
-    const borderValue = getStylePropertyStringValue(property)?.trim() ?? "";
-    return (
-      !/\btransparent\b/.test(borderValue) && /^1px\s+(?:solid|dashed|dotted)\b/.test(borderValue)
-    );
-  });
+  const borderStyleProperty = getEffectiveStyleProperty(properties, "borderStyle");
+  const borderStyle = borderStyleProperty
+    ? (getStylePropertyStringValue(borderStyleProperty)?.trim() ?? null)
+    : null;
+  const borderWidthProperty = getEffectiveStyleProperty(properties, "borderWidth");
+  const borderWidth = borderWidthProperty
+    ? (getStylePropertyNumberValue(borderWidthProperty) ??
+      getStylePropertyStringValue(borderWidthProperty)?.trim())
+    : null;
+  const hasSeparateHairlineBorder =
+    borderStyle !== null &&
+    /^(?:dashed|dotted|double|solid)$/.test(borderStyle) &&
+    (borderWidth === 1 || borderWidth === "1px");
+  const borderProperty = getEffectiveStyleProperty(properties, "border");
+  const borderValue = borderProperty
+    ? (getStylePropertyStringValue(borderProperty)?.trim() ?? "")
+    : "";
+  const hasShorthandHairlineBorder =
+    !/\btransparent\b/.test(borderValue) && /^1px\s+(?:solid|dashed|dotted)\b/.test(borderValue);
+  return hasSeparateHairlineBorder || hasShorthandHairlineBorder;
 };
 
 const getShadowBlurPx = (value: string): number | null => {
@@ -53,18 +55,17 @@ export const noHairlineBorderWideShadow = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const styleExpression = getInlineStyleExpression(node);
       if (!styleExpression || !hasOnePixelBorder(styleExpression.properties ?? [])) return;
-      for (const property of styleExpression.properties ?? []) {
-        if (getStylePropertyKey(property) !== "boxShadow") continue;
-        const shadowValue = getStylePropertyStringValue(property);
-        if (!shadowValue || /\btransparent\b/.test(shadowValue)) continue;
-        const shadowBlurPx = getShadowBlurPx(shadowValue);
-        if (shadowBlurPx === null || shadowBlurPx < WIDE_SHADOW_BLUR_MIN_PX) continue;
-        context.report({
-          node: property,
-          message:
-            "This surface combines a crisp hairline edge with a broad diffuse shadow. Pick one elevation signal to keep the shape clear.",
-        });
-      }
+      const property = getEffectiveStyleProperty(styleExpression.properties, "boxShadow");
+      if (!property) return;
+      const shadowValue = getStylePropertyStringValue(property);
+      if (!shadowValue || /\btransparent\b/.test(shadowValue)) return;
+      const shadowBlurPx = getShadowBlurPx(shadowValue);
+      if (shadowBlurPx === null || shadowBlurPx < WIDE_SHADOW_BLUR_MIN_PX) return;
+      context.report({
+        node: property,
+        message:
+          "This surface combines a crisp hairline edge with a broad diffuse shadow. Pick one elevation signal to keep the shape clear.",
+      });
     },
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classNameValue = getStringFromClassNameAttr(node);

@@ -34,4 +34,12 @@ describe("no-crushed-letter-spacing", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("uses the last duplicate inline letter spacing", () => {
+    const result = runRule(
+      noCrushedLetterSpacing,
+      `const Example = () => <><h1 style={{ letterSpacing: "-0.12em", letterSpacing: "0" }}>Readable heading</h1><h2 style={{ letterSpacing: "0", letterSpacing: "-0.12em" }}>Readable heading</h2></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

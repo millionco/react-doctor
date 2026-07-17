@@ -4,11 +4,10 @@ import {
   SIDE_TAB_TAILWIND_WIDTH_WITHOUT_RADIUS,
 } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { parseColorToRgb } from "./utils/parse-color-to-rgb.js";
 import { hasColorChroma } from "./utils/has-color-chroma.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
@@ -78,17 +77,15 @@ export const noSideTabBorder = defineRule({
       if (!expression) return;
 
       let hasBorderRadius = false;
-      for (const property of expression.properties ?? []) {
-        const key = getStylePropertyKey(property);
-        if (key === "borderRadius") {
-          const numValue = getStylePropertyNumberValue(property);
-          const strValue = getStylePropertyStringValue(property);
-          if (
-            (numValue !== null && numValue > 0) ||
-            (strValue !== null && parseFloat(strValue) > 0)
-          ) {
-            hasBorderRadius = true;
-          }
+      const borderRadiusProperty = getEffectiveStyleProperty(expression.properties, "borderRadius");
+      if (borderRadiusProperty) {
+        const numValue = getStylePropertyNumberValue(borderRadiusProperty);
+        const strValue = getStylePropertyStringValue(borderRadiusProperty);
+        if (
+          (numValue !== null && numValue > 0) ||
+          (strValue !== null && parseFloat(strValue) > 0)
+        ) {
+          hasBorderRadius = true;
         }
       }
 
@@ -96,54 +93,44 @@ export const noSideTabBorder = defineRule({
         ? SIDE_TAB_BORDER_WIDTH_WITH_RADIUS_PX
         : SIDE_TAB_BORDER_WIDTH_WITHOUT_RADIUS_PX;
 
-      for (const property of expression.properties ?? []) {
-        const key = getStylePropertyKey(property);
-        if (!key) continue;
-
-        const sideLabel = BORDER_SIDE_KEYS.get(key);
-        if (sideLabel !== undefined) {
-          if ((sideLabel === "top" || sideLabel === "bottom") && !hasBorderRadius) continue;
-          const value = getStylePropertyStringValue(property);
-          if (!value) continue;
-          const widthMatch = value.match(/^(\d+)px\s+solid/);
-          if (!widthMatch) continue;
-
-          const borderColor = extractBorderColorFromShorthand(value);
-          if (borderColor && isNeutralBorderColor(borderColor)) continue;
-
-          const width = parseInt(widthMatch[1], 10);
-          if (width >= threshold) {
-            context.report({
-              node: property,
-              message: `Your users see an off, dated thick border on one side (${sideLabel}: ${width}px), so use a softer accent or drop it.`,
-            });
-          }
-        }
-
-        if (BORDER_SIDE_WIDTH_KEYS.has(key)) {
-          if ((key === "borderTopWidth" || key === "borderBottomWidth") && !hasBorderRadius) {
-            continue;
-          }
-          const numValue = getStylePropertyNumberValue(property);
-          const strValue = getStylePropertyStringValue(property);
-          const width = numValue ?? (strValue !== null ? parseFloat(strValue) : NaN);
-          if (isNaN(width)) continue;
-
-          const colorKey = key.replace("Width", "Color");
-          const hasColoredBorder = expression.properties?.some((colorProperty: EsTreeNode) => {
-            const colorPropertyKey = getStylePropertyKey(colorProperty);
-            if (colorPropertyKey !== colorKey) return false;
-            const colorValue = getStylePropertyStringValue(colorProperty);
-            return colorValue !== null && !isNeutralBorderColor(colorValue);
+      for (const [key, sideLabel] of BORDER_SIDE_KEYS) {
+        const property = getEffectiveStyleProperty(expression.properties, key);
+        if (!property) continue;
+        if ((sideLabel === "top" || sideLabel === "bottom") && !hasBorderRadius) continue;
+        const value = getStylePropertyStringValue(property);
+        if (!value) continue;
+        const widthMatch = value.match(/^(\d+)px\s+solid/);
+        if (!widthMatch) continue;
+        const borderColor = extractBorderColorFromShorthand(value);
+        if (borderColor && isNeutralBorderColor(borderColor)) continue;
+        const width = parseInt(widthMatch[1], 10);
+        if (width >= threshold) {
+          context.report({
+            node: property,
+            message: `Your users see an off, dated thick border on one side (${sideLabel}: ${width}px), so use a softer accent or drop it.`,
           });
-          if (!hasColoredBorder) continue;
+        }
+      }
 
-          if (width >= threshold) {
-            context.report({
-              node: property,
-              message: `Your users see an off, dated thick border on one side (${width}px), so use a softer accent or drop it.`,
-            });
-          }
+      for (const key of BORDER_SIDE_WIDTH_KEYS) {
+        const property = getEffectiveStyleProperty(expression.properties, key);
+        if (!property) continue;
+        if ((key === "borderTopWidth" || key === "borderBottomWidth") && !hasBorderRadius) {
+          continue;
+        }
+        const numValue = getStylePropertyNumberValue(property);
+        const strValue = getStylePropertyStringValue(property);
+        const width = numValue ?? (strValue !== null ? parseFloat(strValue) : NaN);
+        if (isNaN(width)) continue;
+        const colorKey = key.replace("Width", "Color");
+        const colorProperty = getEffectiveStyleProperty(expression.properties, colorKey);
+        const colorValue = colorProperty ? getStylePropertyStringValue(colorProperty) : null;
+        if (colorValue === null || isNeutralBorderColor(colorValue)) continue;
+        if (width >= threshold) {
+          context.report({
+            node: property,
+            message: `Your users see an off, dated thick border on one side (${width}px), so use a softer accent or drop it.`,
+          });
         }
       }
     },

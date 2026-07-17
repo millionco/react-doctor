@@ -1004,16 +1004,17 @@ const getLocalHookExternalStateProof = (
     }
   }
   if (!hookFunction) return null;
-  const returnedStateReferences = collectFunctionReturnStatements(hookFunction)
-    .flatMap((returnStatement) =>
+  const returnedReferences = collectFunctionReturnStatements(hookFunction).flatMap(
+    (returnStatement) =>
       returnStatement.argument
         ? getDownstreamRefs(analysis, returnStatement.argument as EsTreeNode)
         : [],
-    )
-    .filter(isReactStateReference);
-  if (returnedStateReferences.length === 0) return null;
-  return returnedStateReferences.every((stateReference) =>
-    isExternallyDrivenState(analysis, stateReference),
+  );
+  if (returnedReferences.length === 0) return null;
+  return returnedReferences.every(
+    (returnedReference) =>
+      isReactStateReference(returnedReference) &&
+      isExternallyDrivenState(analysis, returnedReference),
   );
 };
 

@@ -377,6 +377,31 @@ export const ContextWatcher = ({ element }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("accepts observer collection cleanup through a direct for-of loop", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const ObserverGroup = ({ nodes }) => {
+  useEffect(() => {
+    const observers = [];
+    for (const node of nodes) {
+      const observer = new ResizeObserver(updateSize);
+      observer.observe(node);
+      observers.push(observer);
+    }
+    return () => {
+      for (const observer of observers) {
+        observer.disconnect();
+      }
+    };
+  }, [nodes]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("rejects mutating an observer collection after retaining the resource", () => {
     const result = runRule(
       effectNeedsCleanup,

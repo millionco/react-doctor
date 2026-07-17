@@ -918,6 +918,14 @@ const findPushedResourceCollectionKey = (
   }
   const hasOnlyCollectionRetentionAndIteration = collectionSymbol.references.every((reference) => {
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const forOfStatement = referenceRoot.parent;
+    if (
+      isNodeOfType(forOfStatement, "ForOfStatement") &&
+      forOfStatement.right === referenceRoot &&
+      forOfStatement.await !== true
+    ) {
+      return true;
+    }
     const memberNode = referenceRoot.parent;
     const callNode = memberNode?.parent;
     if (
@@ -1198,10 +1206,18 @@ const doesCleanupFunctionReleaseUsage = (
       const cleanupCallee = isNodeOfType(cleanupCall, "CallExpression")
         ? stripParenExpression(cleanupCall.callee)
         : null;
-      const cleanupReceiverCollectionKey = isNodeOfType(cleanupCallee, "MemberExpression")
-        ? resolveIteratorCollectionKey(cleanupCallee.object, context)
+      const cleanupReceiverForOfStatement = isNodeOfType(cleanupCallee, "MemberExpression")
+        ? findForOfStatementForIteratorExpression(cleanupCallee.object, context)
         : null;
-      if (cleanupReceiverCollectionKey !== null) {
+      const cleanupReceiverCollectionKey = cleanupReceiverForOfStatement
+        ? resolveExpressionKey(cleanupReceiverForOfStatement.right, context)
+        : isNodeOfType(cleanupCallee, "MemberExpression")
+          ? resolveIteratorCollectionKey(cleanupCallee.object, context)
+          : null;
+      if (
+        cleanupReceiverCollectionKey !== null &&
+        findEnclosingFunction(cleanupChild) !== cleanupFunction
+      ) {
         if (
           cleanupForEachCall &&
           findPushedResourceCollectionKey(usage, context) === cleanupReceiverCollectionKey
@@ -1213,10 +1229,9 @@ const doesCleanupFunctionReleaseUsage = (
       const cleanupEventArgument = isNodeOfType(cleanupCall, "CallExpression")
         ? cleanupCall.arguments?.[0]
         : null;
-      const cleanupForOfStatement = findForOfStatementForIteratorExpression(
-        cleanupEventArgument,
-        context,
-      );
+      const cleanupForOfStatement =
+        findForOfStatementForIteratorExpression(cleanupEventArgument, context) ??
+        cleanupReceiverForOfStatement;
       if (!cleanupForOfStatement) {
         didCleanupFunctionMatch = true;
         return false;
@@ -2544,11 +2559,18 @@ const doesReleaseCallMatchUsage = (
     ? PAIRED_RELEASE_VERB_NAMES_BY_REGISTRATION_VERB.get(usage.registrationVerbName)
     : null;
   const pushedResourceCollectionKey = findPushedResourceCollectionKey(usage, context);
+  const releaseReceiverForOfStatement = findForOfStatementForIteratorExpression(
+    callee.object,
+    context,
+  );
+  const releaseReceiverCollectionKey = releaseReceiverForOfStatement
+    ? resolveExpressionKey(releaseReceiverForOfStatement.right, context)
+    : resolveIteratorCollectionKey(callee.object, context);
   if (
     pairedReleaseVerbNames &&
     matchesPairedReleaseVerb(releaseVerbName, pairedReleaseVerbNames) &&
     pushedResourceCollectionKey !== null &&
-    pushedResourceCollectionKey === resolveIteratorCollectionKey(callee.object, context)
+    pushedResourceCollectionKey === releaseReceiverCollectionKey
   ) {
     return true;
   }

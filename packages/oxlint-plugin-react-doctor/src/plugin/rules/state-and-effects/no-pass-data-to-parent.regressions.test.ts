@@ -152,6 +152,31 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("still flags externally updated state when its setter escapes the hook", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useSidebarMediaState = () => {
+          const [broken, setBroken] = useState(false);
+          useEffect(() => {
+            const query = window.matchMedia("(max-width: 768px)");
+            const update = (event) => setBroken(event.matches);
+            query.addEventListener("change", update);
+            return () => query.removeEventListener("change", update);
+          }, []);
+          return [broken, setBroken];
+        };
+        const Sidebar = ({ onBreakPoint }) => {
+          const [broken, setBroken] = useSidebarMediaState();
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return <button onClick={() => setBroken(false)}>Reset</button>;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("stays silent when a local allowlisted hook delegates to useSyncExternalStore", () => {
       const result = runRule(
         noPassDataToParent,

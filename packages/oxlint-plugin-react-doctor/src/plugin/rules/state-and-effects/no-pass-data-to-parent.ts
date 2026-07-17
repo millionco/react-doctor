@@ -37,12 +37,13 @@ import {
   isProp,
   isRefCall,
   isRefCurrent,
+  isState,
   isUseEffect,
   isWholePropsObjectReference,
 } from "./utils/effect/react.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { isExternallyDrivenState, isReactStateReference } from "./utils/effect/external-state.js";
+import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`, narrowed to
@@ -1013,8 +1014,7 @@ const getLocalHookExternalStateProof = (
   if (returnedReferences.length === 0) return null;
   return returnedReferences.every(
     (returnedReference) =>
-      isReactStateReference(returnedReference) &&
-      isExternallyDrivenState(analysis, returnedReference),
+      isState(analysis, returnedReference) && isExternallyDrivenState(analysis, returnedReference),
   );
 };
 

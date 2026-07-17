@@ -46,10 +46,11 @@ describe("no-tailwind-layout-transition", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does NOT flag `transition-[border-width]` (substring of a non-layout prop)", () => {
+  it("flags `transition-[border-width]`", () => {
     const code = `const A = () => <div className="transition-[border-width]" />;`;
     const result = runRule(noTailwindLayoutTransition, code);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("border-width");
   });
 
   it("flags `transition-[max-height]` (a real layout property)", () => {

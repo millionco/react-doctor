@@ -303,6 +303,17 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat destructuring defaults as bounded sources", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const { items = ["fallback"] } = props;
+       const itemList = items.reduce((acc, item) => [...acc, item], []);
+       const { glyphs = {} } = data;
+       const glyphNames = Object.keys(glyphs).reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("does not treat locally constructed collections as bounded after they grow", () => {
     const arrayResult = runRule(
       noSpreadAccumulatorInReduce,

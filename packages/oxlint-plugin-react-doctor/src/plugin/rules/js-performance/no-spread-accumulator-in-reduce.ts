@@ -123,6 +123,14 @@ const isLocallyConstructedBoundedObject = (
   if (!isNodeOfType(stripped, "Identifier")) return false;
   const binding = findVariableInitializer(stripped, stripped.name);
   if (!binding?.initializer || !isConstDeclaredBinding(binding)) return false;
+  const declarator = binding.bindingIdentifier.parent;
+  if (
+    !declarator ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== binding.initializer
+  ) {
+    return false;
+  }
   if (bindingMayHaveGrown(stripped, scopes)) return false;
   return isSpreadFreeObjectLiteral(stripParenExpression(binding.initializer));
 };
@@ -177,9 +185,15 @@ const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnaly
     }
     if (isNodeOfType(currentExpression, "Identifier")) {
       const symbol = scopes.symbolFor(currentExpression);
+      const binding = findVariableInitializer(currentExpression, currentExpression.name);
+      const declarator = binding?.bindingIdentifier.parent;
       if (
         !symbol?.initializer ||
         symbol.kind !== "const" ||
+        !binding?.initializer ||
+        !declarator ||
+        !isNodeOfType(declarator, "VariableDeclarator") ||
+        declarator.init !== binding.initializer ||
         visitedSymbolIds.has(symbol.id) ||
         bindingMayHaveGrown(currentExpression, scopes)
       ) {
@@ -235,8 +249,12 @@ const isStaticallyBoundedReduceSource = (source: EsTreeNode, scopes: ScopeAnalys
     const binding = findVariableInitializer(stripped, stripped.name);
     if (!binding) return false;
     if (isRestParameterBinding(binding.bindingIdentifier)) return true;
+    const declarator = binding.bindingIdentifier.parent;
     return Boolean(
       binding.initializer &&
+      declarator &&
+      isNodeOfType(declarator, "VariableDeclarator") &&
+      declarator.init === binding.initializer &&
       isConstDeclaredBinding(binding) &&
       !bindingMayHaveGrown(stripped, scopes) &&
       isBoundedArrayInitializer(binding.initializer),

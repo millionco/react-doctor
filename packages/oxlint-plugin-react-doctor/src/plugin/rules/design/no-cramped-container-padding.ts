@@ -31,6 +31,14 @@ const PADDING_STYLE_PROPERTIES = new Set([
 ]);
 const TAILWIND_PADDING_PATTERN = /^p-([\d.]+)$/;
 const ARBITRARY_PADDING_PATTERN = /^p-\[([\d.]+)px\]$/;
+const TAILWIND_BORDER_WIDTH_PATTERN = /^border(?:-[trblxy])?(?:-([\d.]+|\[[\d.]+px\]))?$/;
+const TAILWIND_RING_WIDTH_PATTERN = /^ring(?:-([\d.]+|\[[\d.]+px\]))?$/;
+const NON_SURFACE_BACKGROUND_PATTERN =
+  /^bg-(?:auto|center|clip-|contain|cover|fixed|left|local|none|origin-|repeat|right|scroll|top|transparent|\[(?:length|position|size):)/;
+const TRANSPARENT_BORDER_PATTERN =
+  /^(?:border(?:-[trblxy])?-(?:opacity-0|transparent)|border(?:-[trblxy])?-.+\/0)$/;
+const TRANSPARENT_RING_PATTERN = /^(?:ring-(?:opacity-0|transparent)|ring-.+\/0)$/;
+const TRANSPARENT_BACKGROUND_PATTERN = /^(?:bg-opacity-0|bg-(?:\[transparent\]|.+\/0))$/;
 
 const getPaddingPx = (property: EsTreeNode): number | null => {
   const numberValue = getStylePropertyNumberValue(property);
@@ -43,15 +51,35 @@ const getPaddingPx = (property: EsTreeNode): number | null => {
   return match[2] === "rem" ? value * ROOT_FONT_SIZE_PX : value;
 };
 
-const hasTailwindBoundary = (tokens: string[]): boolean =>
-  tokens.some(
-    (token) =>
-      token === "border" ||
-      token.startsWith("border-") ||
-      token === "ring" ||
-      token.startsWith("ring-") ||
-      (token.startsWith("bg-") && token !== "bg-transparent"),
-  );
+const hasPositiveWidth = (token: string, pattern: RegExp): boolean => {
+  const match = token.match(pattern);
+  if (!match) return false;
+  if (!match[1]) return true;
+  return parseFloat(match[1].replace(/^\[|px\]$/g, "")) > 0;
+};
+
+const hasTailwindBoundary = (tokens: string[]): boolean => {
+  const hasVisibleBorder =
+    !tokens.some((token) => TRANSPARENT_BORDER_PATTERN.test(token)) &&
+    tokens.some((token) => hasPositiveWidth(token, TAILWIND_BORDER_WIDTH_PATTERN));
+  const hasVisibleRing =
+    !tokens.some((token) => TRANSPARENT_RING_PATTERN.test(token)) &&
+    tokens.some((token) => hasPositiveWidth(token, TAILWIND_RING_WIDTH_PATTERN));
+  const hasVisibleBackground =
+    !tokens.some((token) => TRANSPARENT_BACKGROUND_PATTERN.test(token)) &&
+    tokens.some((token) => token.startsWith("bg-") && !NON_SURFACE_BACKGROUND_PATTERN.test(token));
+  return hasVisibleBorder || hasVisibleRing || hasVisibleBackground;
+};
+
+const isVisibleInlineBoundary = (property: EsTreeNode): boolean => {
+  const propertyName = getStylePropertyKey(property);
+  if (!propertyName || !BOUNDARY_STYLE_PROPERTIES.has(propertyName)) return false;
+  const numberValue = getStylePropertyNumberValue(property);
+  if (numberValue !== null) return numberValue > 0;
+  const propertyValue = getStylePropertyStringValue(property)?.trim().toLowerCase();
+  if (!propertyValue) return false;
+  return !/^(?:0(?:px|rem|em)?|none|transparent)$/.test(propertyValue);
+};
 
 const getTailwindPaddingPx = (tokens: string[]): number | null => {
   for (const token of tokens) {
@@ -95,16 +123,7 @@ export const noCrampedContainerPadding = defineRule({
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;
         const styleExpression = getInlineStyleExpression(attribute);
         if (!styleExpression) continue;
-        const hasBoundary = styleExpression.properties?.some((property) => {
-          const propertyName = getStylePropertyKey(property);
-          const propertyValue = getStylePropertyStringValue(property);
-          return Boolean(
-            propertyName &&
-            BOUNDARY_STYLE_PROPERTIES.has(propertyName) &&
-            propertyValue !== "transparent" &&
-            propertyValue !== "none",
-          );
-        });
+        const hasBoundary = styleExpression.properties?.some(isVisibleInlineBoundary);
         if (!hasBoundary) continue;
         for (const property of styleExpression.properties ?? []) {
           const propertyName = getStylePropertyKey(property);

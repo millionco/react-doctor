@@ -42,4 +42,38 @@ describe("no-cramped-container-padding", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("ignores Tailwind utilities that do not draw a visible surface", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <>
+        <span className="border-0 p-1">Zero border</span>
+        <span className="border-none p-1">No border</span>
+        <span className="border-transparent p-1">Transparent border color</span>
+        <span className="border border-transparent p-1">Transparent border</span>
+        <span className="border-spacing-2 p-1">Table spacing</span>
+        <span className="ring-0 p-1">Zero ring</span>
+        <span className="ring ring-transparent p-1">Transparent ring</span>
+        <span className="bg-transparent p-1">Transparent background</span>
+        <span className="bg-blue-500 bg-opacity-0 p-1">Transparent background color</span>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still recognizes positive border and ring widths", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <><span className="border-2 p-1">Border</span><span className="ring-1 p-1">Ring</span></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("ignores zero-width inline boundaries", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <><span style={{ borderWidth: 0, padding: 4 }}>Zero</span><span style={{ border: "0", padding: 4 }}>None</span></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

@@ -5,6 +5,12 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
+
+interface StorageHelperSink {
+  keyParameterIndex: number;
+  valueParameterIndex: number;
+}
 
 const MESSAGE =
   "Storing an auth token in `localStorage`/`sessionStorage` exposes it to any XSS on the page: JavaScript can read web storage and exfiltrate the token. Keep tokens in an `HttpOnly`, `Secure`, `SameSite` cookie instead.";
@@ -29,14 +35,8 @@ const NON_AUTH_TOKEN_PATTERN =
   /csrf|xsrf|device|fcm|apns|push|design|tokeniz|syntax|css|theme|color/i;
 const STRONG_AUTH_KEY_PATTERN =
   /jwt|secret|password|passwd|credential|private[-_]?key|api[-_]?key|bearer|access[-_]?token|refresh[-_]?token|auth[-_]?token|id[-_]?token|session/i;
-const PRODUCT_API_KEY_RECORDS_PATTERN =
-  /(?:^|[._:-])(?:created|saved|integration|mailing)[-_]?api[-_]?keys$/i;
-const PRODUCT_API_KEY_COLLECTION_PATTERN = /[._:-](?:created|generated|saved)[-_]?api[-_]?keys$/i;
-
 const isAuthCredentialKey = (key: string): boolean => {
-  if (PRODUCT_API_KEY_RECORDS_PATTERN.test(key)) return false;
   if (!SENSITIVE_KEY_PATTERN.test(key)) return false;
-  if (PRODUCT_API_KEY_COLLECTION_PATTERN.test(key)) return false;
   if (NON_AUTH_TOKEN_PATTERN.test(key) && !STRONG_AUTH_KEY_PATTERN.test(key)) return false;
   return true;
 };
@@ -57,13 +57,68 @@ const isDirectWebStorageObject = (node: EsTreeNode): boolean => {
   return false;
 };
 
-// Also resolves one level of aliasing: `const storage = window.localStorage`
-// then `storage.setItem(...)` — the binding provably IS web storage.
-const isWebStorageObject = (node: EsTreeNode): boolean => {
-  if (isDirectWebStorageObject(node)) return true;
-  if (!isNodeOfType(node, "Identifier")) return false;
-  const binding = findVariableInitializer(node, node.name);
-  return binding?.initializer ? isDirectWebStorageObject(binding.initializer) : false;
+const immutableInitializer = (identifier: EsTreeNodeOfType<"Identifier">): EsTreeNode | null => {
+  const binding = findVariableInitializer(identifier, identifier.name);
+  if (!binding?.initializer) return null;
+  if (isNodeOfType(binding.initializer, "FunctionDeclaration")) return binding.initializer;
+  const declarator = binding.bindingIdentifier.parent;
+  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return null;
+  const declaration = declarator.parent;
+  if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return null;
+  return declaration.kind === "const" ? binding.initializer : null;
+};
+
+const isFunctionNode = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "FunctionDeclaration") ||
+  isNodeOfType(node, "FunctionExpression") ||
+  isNodeOfType(node, "ArrowFunctionExpression");
+
+const isNullishExpression = (node: EsTreeNode): boolean =>
+  (isNodeOfType(node, "Literal") && node.value === null) ||
+  (isNodeOfType(node, "Identifier") && node.name === "undefined");
+
+const isWebStorageObject = (node: EsTreeNode, visitedNodes = new Set<EsTreeNode>()): boolean => {
+  const expression = stripParenExpression(node);
+  if (visitedNodes.has(expression)) return false;
+  visitedNodes.add(expression);
+  if (isDirectWebStorageObject(expression)) return true;
+  if (isNodeOfType(expression, "Identifier")) {
+    const initializer = immutableInitializer(expression);
+    return initializer ? isWebStorageObject(initializer, new Set(visitedNodes)) : false;
+  }
+  if (!isNodeOfType(expression, "CallExpression")) return false;
+  const callee = stripParenExpression(expression.callee);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const factory = immutableInitializer(callee);
+  if (!factory || !isFunctionNode(factory)) return false;
+  if (
+    isNodeOfType(factory, "ArrowFunctionExpression") &&
+    !isNodeOfType(factory.body, "BlockStatement")
+  ) {
+    return isWebStorageObject(factory.body, new Set(visitedNodes));
+  }
+  if (
+    !isNodeOfType(factory, "FunctionDeclaration") &&
+    !isNodeOfType(factory, "FunctionExpression") &&
+    !isNodeOfType(factory, "ArrowFunctionExpression")
+  ) {
+    return false;
+  }
+  const returnedExpressions: EsTreeNode[] = [];
+  walkAst(factory.body, (child) => {
+    if (child !== factory.body && isFunctionNode(child)) return false;
+    if (isNodeOfType(child, "ReturnStatement") && child.argument) {
+      returnedExpressions.push(child.argument);
+    }
+  });
+  let didReturnWebStorage = false;
+  for (const returnedExpression of returnedExpressions) {
+    const strippedReturn = stripParenExpression(returnedExpression);
+    if (isNullishExpression(strippedReturn)) continue;
+    if (!isWebStorageObject(strippedReturn, new Set(visitedNodes))) return false;
+    didReturnWebStorage = true;
+  }
+  return didReturnWebStorage;
 };
 
 // Static string value of a key expression: a string literal, a
@@ -98,6 +153,83 @@ const staticMemberName = (member: EsTreeNodeOfType<"MemberExpression">): string 
   return null;
 };
 
+const parameterIndex = (
+  expression: EsTreeNode,
+  parameterNames: Array<string | null>,
+  canUnwrapSerialization: boolean,
+  visitedNodes = new Set<EsTreeNode>(),
+): number | null => {
+  const strippedExpression = stripParenExpression(expression);
+  if (visitedNodes.has(strippedExpression)) return null;
+  visitedNodes.add(strippedExpression);
+  if (isNodeOfType(strippedExpression, "Identifier")) {
+    const directIndex = parameterNames.indexOf(strippedExpression.name);
+    if (directIndex !== -1) return directIndex;
+    const initializer = immutableInitializer(strippedExpression);
+    return initializer
+      ? parameterIndex(initializer, parameterNames, canUnwrapSerialization, visitedNodes)
+      : null;
+  }
+  if (
+    canUnwrapSerialization &&
+    isNodeOfType(strippedExpression, "CallExpression") &&
+    isNodeOfType(strippedExpression.callee, "MemberExpression") &&
+    !strippedExpression.callee.computed &&
+    isNodeOfType(strippedExpression.callee.object, "Identifier") &&
+    strippedExpression.callee.object.name === "JSON" &&
+    isNodeOfType(strippedExpression.callee.property, "Identifier") &&
+    strippedExpression.callee.property.name === "stringify"
+  ) {
+    const serializedArgument = strippedExpression.arguments[0];
+    return serializedArgument && isNodeOfType(serializedArgument, "Identifier")
+      ? parameterIndex(serializedArgument, parameterNames, true, visitedNodes)
+      : null;
+  }
+  return null;
+};
+
+const storageHelperSinkCache = new WeakMap<EsTreeNode, StorageHelperSink | null>();
+
+const findStorageHelperSink = (functionNode: EsTreeNode): StorageHelperSink | null => {
+  const cachedSink = storageHelperSinkCache.get(functionNode);
+  if (cachedSink !== undefined) return cachedSink;
+  if (
+    !isNodeOfType(functionNode, "FunctionDeclaration") &&
+    !isNodeOfType(functionNode, "FunctionExpression") &&
+    !isNodeOfType(functionNode, "ArrowFunctionExpression")
+  ) {
+    storageHelperSinkCache.set(functionNode, null);
+    return null;
+  }
+  const parameterNames = functionNode.params.map((parameter) =>
+    isNodeOfType(parameter, "Identifier") ? parameter.name : null,
+  );
+  let helperSink: StorageHelperSink | null = null;
+  walkAst(functionNode.body, (child) => {
+    if (child !== functionNode.body && isFunctionNode(child)) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = stripParenExpression(child.callee);
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      callee.computed ||
+      !isNodeOfType(callee.property, "Identifier") ||
+      callee.property.name !== "setItem" ||
+      !isWebStorageObject(callee.object)
+    ) {
+      return;
+    }
+    const keyExpression = child.arguments[0];
+    const valueExpression = child.arguments[1];
+    if (!keyExpression || !valueExpression) return;
+    const keyParameterIndex = parameterIndex(keyExpression, parameterNames, false);
+    const valueParameterIndex = parameterIndex(valueExpression, parameterNames, true);
+    if (keyParameterIndex === null || valueParameterIndex === null) return;
+    helperSink = { keyParameterIndex, valueParameterIndex };
+  });
+  storageHelperSinkCache.set(functionNode, helperSink);
+  return helperSink;
+};
+
 export const authTokenInWebStorage = defineRule({
   id: "auth-token-in-web-storage",
   title: "Auth token in web storage",
@@ -108,11 +240,22 @@ export const authTokenInWebStorage = defineRule({
     // `localStorage.setItem("authToken", t)`
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = node.callee;
-      if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
-      if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "setItem")
-        return;
-      if (!isWebStorageObject(stripParenExpression(callee.object))) return;
-      const keyArgument = node.arguments?.[0];
+      let keyArgument: EsTreeNode | null = null;
+      if (
+        isNodeOfType(callee, "MemberExpression") &&
+        !callee.computed &&
+        isNodeOfType(callee.property, "Identifier") &&
+        callee.property.name === "setItem" &&
+        isWebStorageObject(stripParenExpression(callee.object))
+      ) {
+        keyArgument = node.arguments[0] ?? null;
+      } else if (isNodeOfType(callee, "Identifier")) {
+        const helperFunction = immutableInitializer(callee);
+        const helperSink = helperFunction ? findStorageHelperSink(helperFunction) : null;
+        if (helperSink && node.arguments[helperSink.valueParameterIndex]) {
+          keyArgument = node.arguments[helperSink.keyParameterIndex] ?? null;
+        }
+      }
       if (!keyArgument) return;
       const keyString = resolveStaticKeyString(keyArgument);
       if (keyString === null || !isAuthCredentialKey(keyString)) return;

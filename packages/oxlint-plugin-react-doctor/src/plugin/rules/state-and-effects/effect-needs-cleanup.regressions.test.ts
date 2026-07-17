@@ -5237,6 +5237,58 @@ export const UserlandSubscription = ({ subscription }) => {
 });
 
 describe("effect-needs-cleanup useSyncExternalStore subscription cleanup", () => {
+  it("accepts a conditionally delegated subscription disposer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const AccordionItem = ({ root, itemKey }) => {
+  const subscribe = useCallback(
+    (onStoreChange) => (root ? root.subscribe(itemKey, onStoreChange) : () => {}),
+    [root, itemKey],
+  );
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts an optional subscription with a nullish no-op fallback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const AccordionItem = ({ sharedContext }) => {
+  const subscribe = useCallback(
+    (listener) => sharedContext?.subscribe(listener) ?? (() => {}),
+    [sharedContext],
+  );
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("rejects a conditional wrapper that discards the delegated disposer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useSyncExternalStore } from "react";
+export const AccordionItem = ({ root, itemKey }) => {
+  const subscribe = useCallback(
+    (onStoreChange) =>
+      root ? (root.subscribe(itemKey, onStoreChange), () => {}) : () => {},
+    [root, itemKey],
+  );
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts the TaskTrove i18next subscription with its matching returned disposer", () => {
     const result = runRule(
       effectNeedsCleanup,

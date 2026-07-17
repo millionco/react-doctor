@@ -10,6 +10,7 @@ import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symb
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isEffectCallbackReference } from "../../utils/is-effect-callback-reference.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
@@ -112,7 +113,8 @@ const isDiscardingCallbackHost = (callExpression: EsTreeNodeOfType<"CallExpressi
 };
 
 const isDiscardedCallbackReference = (identifier: EsTreeNode): boolean => {
-  if (isEventHandlerAttributeValue(identifier)) return true;
+  if (isEventHandlerAttributeValue(identifier) || isEffectCallbackReference(identifier))
+    return true;
   const callExpression = identifier.parent;
   return Boolean(
     isNodeOfType(callExpression, "CallExpression") &&

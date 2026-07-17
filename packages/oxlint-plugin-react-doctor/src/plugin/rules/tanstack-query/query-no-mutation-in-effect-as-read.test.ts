@@ -552,6 +552,56 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    [
+      "wrapped do-while test",
+      `do {
+          track();
+        } while ((data as { user: unknown } | undefined));`,
+    ],
+    [
+      "wrapped for test",
+      `for (; (data satisfies { user: unknown } | undefined); ) {
+          track();
+        }`,
+    ],
+  ])("keeps a %s guard-only", (_guardName, loopStatement) => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         useEffect(() => { fetchUser(params); }, [params]);
+         ${loopStatement}
+         return null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "do-while body",
+      `do {
+          consume(data as { user: unknown });
+        } while (enabled);`,
+    ],
+    [
+      "for body",
+      `for (; enabled; ) {
+          consume(data!);
+        }`,
+    ],
+  ])("detects wrapped data consumption in a %s", (_consumerName, loopStatement) => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         useEffect(() => { fetchUser(params); }, [params]);
+         ${loopStatement}
+         return null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts a static computed success status on a whole result", () => {
     const result = runMutationReadRule(
       `function Component() {

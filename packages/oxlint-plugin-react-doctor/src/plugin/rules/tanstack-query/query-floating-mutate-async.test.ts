@@ -149,6 +149,71 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    ["conditional", "enabled ? effectCallback : fallback"],
+    ["logical", "enabled && effectCallback"],
+    ["final sequence", "(fallback, effectCallback)"],
+    ["transparent TypeScript", "effectCallback as EffectCallback"],
+  ])("flags a %s wrapped effect callback", (_wrapperName, callbackExpression) => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const effectCallback = () => mutation.mutateAsync(payload);
+       useEffect(${callbackExpression}, [enabled]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a conditional useCallback alias used by an effect", () => {
+    const result = runMutationRule(
+      `import { useCallback } from "react";
+       const mutation = useMutation(options);
+       const effectCallback = useCallback(() => mutation.mutateAsync(payload), [mutation]);
+       const aliasedCallback = effectCallback;
+       useEffect(enabled ? aliasedCallback : fallback, [aliasedCallback, enabled]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["conditional predicate", "effectCallback ? fallback : otherFallback"],
+    ["non-final sequence", "(effectCallback, fallback)"],
+  ])("does not treat a %s as the effect callback", (_wrapperName, callbackExpression) => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const effectCallback = () => mutation.mutateAsync(payload);
+       useEffect(${callbackExpression}, [effectCallback]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["conditional", "enabled ? effectCallback : fallback"],
+    ["logical", "enabled && effectCallback"],
+    ["final sequence", "(fallback, effectCallback)"],
+    ["transparent TypeScript", "effectCallback as EffectCallback"],
+  ])("keeps a %s wrapped callback result reachable", (_wrapperName, callbackExpression) => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const effectCallback = () => mutation.mutateAsync(payload);
+       const selectedCallback = ${callbackExpression};
+       const promise = selectedCallback();`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["voided", "void mutation.mutateAsync(payload)"],
+    ["rejection-handled", "mutation.mutateAsync(payload).catch(handleError)"],
+  ])("accepts a %s promise inside a wrapped effect callback", (_usageName, promiseExpression) => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const handleError = (error) => report(error);
+       const effectCallback = () => ${promiseExpression};
+       useEffect(enabled ? effectCallback : fallback, [enabled]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags mutateAsync returned through an event-handler helper", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);

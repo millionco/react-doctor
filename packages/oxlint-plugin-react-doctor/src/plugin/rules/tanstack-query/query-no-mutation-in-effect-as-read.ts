@@ -11,6 +11,7 @@ import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symb
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
+import { isEffectCallbackReference } from "../../utils/is-effect-callback-reference.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -119,23 +120,6 @@ const resolveLocalFunction = (expression: EsTreeNode, context: RuleContext): EsT
   return callback ? resolveExactLocalFunction(callback, context.scopes) : null;
 };
 
-const isEffectCallbackReference = (identifier: EsTreeNode): boolean => {
-  let callbackValue = findTransparentExpressionRoot(identifier);
-  while (
-    (isNodeOfType(callbackValue.parent, "ConditionalExpression") &&
-      callbackValue.parent.test !== callbackValue) ||
-    isNodeOfType(callbackValue.parent, "LogicalExpression")
-  ) {
-    callbackValue = findTransparentExpressionRoot(callbackValue.parent);
-  }
-  const callExpression = callbackValue.parent;
-  return Boolean(
-    isNodeOfType(callExpression, "CallExpression") &&
-    callExpression.arguments[0] === callbackValue &&
-    isHookCall(callExpression, EFFECT_HOOK_NAMES),
-  );
-};
-
 const collectEffectInvocations = (
   node: EsTreeNode,
   context: RuleContext,
@@ -227,6 +211,7 @@ const isGuardOnlyReference = (node: EsTreeNode, context: RuleContext): boolean =
     return true;
   }
   if (isNodeOfType(parent, "LogicalExpression")) {
+    if (parent.left !== expressionRoot && parent.right !== expressionRoot) return false;
     if (parent.left === expressionRoot && parent.operator === "&&") return true;
     return isGuardOnlyReference(parent, context);
   }
@@ -238,7 +223,10 @@ const isGuardOnlyReference = (node: EsTreeNode, context: RuleContext): boolean =
     return isGuardOnlyReference(parent, context);
   }
   if (
-    (isNodeOfType(parent, "IfStatement") || isNodeOfType(parent, "WhileStatement")) &&
+    (isNodeOfType(parent, "IfStatement") ||
+      isNodeOfType(parent, "WhileStatement") ||
+      isNodeOfType(parent, "DoWhileStatement") ||
+      isNodeOfType(parent, "ForStatement")) &&
     parent.test === expressionRoot
   ) {
     return true;

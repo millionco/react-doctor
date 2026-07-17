@@ -2338,7 +2338,7 @@ const isRetainedAbortControllerRefRelease = (
     !usageFunction ||
     !isFunctionLike(usageFunction) ||
     !isReturnedEffectCleanupFunction(releaseFunction) ||
-    !hasReactRefCurrentOrigin(releaseReceiver, context.scopes)
+    !resolveReactRefCurrentOriginSymbol(releaseReceiver, context.scopes)
   ) {
     return false;
   }

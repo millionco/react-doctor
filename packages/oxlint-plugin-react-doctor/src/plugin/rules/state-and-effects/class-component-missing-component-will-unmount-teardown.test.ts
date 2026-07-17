@@ -768,4 +768,29 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     );
     expect(result.diagnostics).toHaveLength(3);
   });
+
+  it("tracks state mutation through transparent this wrappers", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class AssertedThis extends React.Component {
+         componentDidMount() {
+           setTimeout(() => {
+             const update = () => (this as any).setState({ ready: true });
+             update();
+           }, 100);
+         }
+         render() { return null; }
+       }
+       class NonNullThis extends React.Component {
+         componentDidMount() {
+           setTimeout(() => {
+             const update = () => this!.setState({ ready: true });
+             update();
+           }, 100);
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
 });

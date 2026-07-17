@@ -112,7 +112,7 @@ const functionSetsComponentState = (
     if (
       isNodeOfType(node, "CallExpression") &&
       isNodeOfType(node.callee, "MemberExpression") &&
-      isNodeOfType(node.callee.object, "ThisExpression") &&
+      isNodeOfType(stripParenExpression(node.callee.object), "ThisExpression") &&
       getStaticPropertyName(node.callee) === "setState"
     ) {
       mutates = true;
@@ -121,7 +121,7 @@ const functionSetsComponentState = (
     if (
       isNodeOfType(node, "CallExpression") &&
       isNodeOfType(node.callee, "MemberExpression") &&
-      isNodeOfType(node.callee.object, "ThisExpression")
+      isNodeOfType(stripParenExpression(node.callee.object), "ThisExpression")
     ) {
       const memberName = getStaticPropertyName(node.callee);
       const nestedFunction = memberName ? classMemberFunction(classBody, memberName) : null;
@@ -162,7 +162,7 @@ const resolveTimeoutCallbackFunction = (
   const methodReference = boundTarget ?? expression;
   const memberName =
     isNodeOfType(methodReference, "MemberExpression") &&
-    isNodeOfType(methodReference.object, "ThisExpression")
+    isNodeOfType(stripParenExpression(methodReference.object), "ThisExpression")
       ? getStaticPropertyName(methodReference)
       : null;
   return memberName ? classMemberFunction(classBody, memberName) : null;
@@ -186,7 +186,7 @@ const timeoutCallbackMutatesComponent = (
     if (
       isNodeOfType(node, "CallExpression") &&
       isNodeOfType(node.callee, "MemberExpression") &&
-      isNodeOfType(node.callee.object, "ThisExpression")
+      isNodeOfType(stripParenExpression(node.callee.object), "ThisExpression")
     ) {
       // `this.focusInput()` — resolve the instance method; a ref/DOM nudge
       // that never calls setState/runInAction mutates nothing when it

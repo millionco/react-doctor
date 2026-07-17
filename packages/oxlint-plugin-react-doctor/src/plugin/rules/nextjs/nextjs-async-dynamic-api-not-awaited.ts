@@ -1,5 +1,5 @@
 import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
-import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -14,6 +14,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import {
   stripParenExpression,
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
@@ -24,6 +25,20 @@ const UNSAFE_UNWRAPPED_TYPE_NAMES: ReadonlySet<string> = new Set([
   "UnsafeUnwrappedCookies",
   "UnsafeUnwrappedHeaders",
   "UnsafeUnwrappedDraftMode",
+]);
+const OBJECT_ENUMERATION_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "entries",
+  "getOwnPropertyDescriptors",
+  "getOwnPropertyNames",
+  "getOwnPropertySymbols",
+  "keys",
+  "values",
+]);
+const ITERABLE_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
+  "Map",
+  "Set",
+  "WeakMap",
+  "WeakSet",
 ]);
 
 const MESSAGE =
@@ -39,8 +54,16 @@ interface PendingSymbolFlow {
 }
 
 const resolvesToImportBinding = (context: RuleContext, identifier: EsTreeNode): boolean => {
-  const symbol = context.scopes.symbolFor(identifier);
-  return symbol !== null && symbol.kind === "import";
+  const referenceSymbol = context.scopes.symbolFor(identifier);
+  if (referenceSymbol) return referenceSymbol.kind === "import";
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  let scope: ScopeDescriptor | null = context.scopes.scopeFor(identifier);
+  while (scope) {
+    const lexicalSymbol = scope.symbolsByName.get(identifier.name);
+    if (lexicalSymbol) return lexicalSymbol.kind === "import";
+    scope = scope.parent;
+  }
+  return false;
 };
 
 const isNextHeadersDynamicCall = (context: RuleContext, expression: EsTreeNode): boolean => {
@@ -70,6 +93,7 @@ const isUnsafeUnwrappedType = (context: RuleContext, typeNode: EsTreeNode): bool
   if (!isNodeOfType(typeNode, "TSTypeReference")) return false;
   const typeName = typeNode.typeName;
   if (isNodeOfType(typeName, "Identifier")) {
+    if (!resolvesToImportBinding(context, typeName)) return false;
     const importedName = getImportedNameFromModule(typeNode, typeName.name, "next/headers");
     return importedName !== null && UNSAFE_UNWRAPPED_TYPE_NAMES.has(importedName);
   }
@@ -77,7 +101,8 @@ const isUnsafeUnwrappedType = (context: RuleContext, typeNode: EsTreeNode): bool
     !isNodeOfType(typeName, "TSQualifiedName") ||
     !isNodeOfType(typeName.left, "Identifier") ||
     !isNodeOfType(typeName.right, "Identifier") ||
-    !UNSAFE_UNWRAPPED_TYPE_NAMES.has(typeName.right.name)
+    !UNSAFE_UNWRAPPED_TYPE_NAMES.has(typeName.right.name) ||
+    !resolvesToImportBinding(context, typeName.left)
   ) {
     return false;
   }
@@ -110,28 +135,107 @@ const isPromiseSettleAccess = (memberExpression: EsTreeNodeOfType<"MemberExpress
   return propertyName !== null && PROMISE_SETTLE_METHODS.has(propertyName);
 };
 
-const objectPatternReadsDynamicApiValue = (pattern: EsTreeNodeOfType<"ObjectPattern">): boolean =>
-  pattern.properties.some(
+interface StaticLogicalValue {
+  isNullish: boolean;
+  isTruthy: boolean;
+}
+
+const getStaticLogicalValue = (expression: EsTreeNode): StaticLogicalValue | null => {
+  const node = stripParenExpression(expression);
+  if (!isNodeOfType(node, "Literal")) return null;
+  return { isNullish: node.value === null, isTruthy: Boolean(node.value) };
+};
+
+const logicalRightCanBecomeResult = (
+  operator: EsTreeNodeOfType<"LogicalExpression">["operator"],
+  leftValue: StaticLogicalValue,
+): boolean => {
+  if (operator === "&&") return leftValue.isTruthy;
+  if (operator === "||") return !leftValue.isTruthy;
+  return leftValue.isNullish;
+};
+
+const findPendingDynamicApiSource = (
+  context: RuleContext,
+  expression: EsTreeNode,
+): EsTreeNode | null => {
+  if (castChainAssertsUnsafeUnwrapped(context, expression)) return null;
+  const pendingExpressions: EsTreeNode[] = [expression];
+  while (pendingExpressions.length > 0) {
+    const currentExpression = pendingExpressions.pop();
+    if (!currentExpression) continue;
+    const node = stripParenExpression(currentExpression);
+    if (isNextHeadersDynamicCall(context, node)) return node;
+    if (isNodeOfType(node, "ConditionalExpression")) {
+      const staticTestValue = getStaticLogicalValue(node.test);
+      if (staticTestValue) {
+        pendingExpressions.push(staticTestValue.isTruthy ? node.consequent : node.alternate);
+        continue;
+      }
+      pendingExpressions.push(node.consequent, node.alternate);
+      continue;
+    }
+    if (isNodeOfType(node, "LogicalExpression")) {
+      const leftSource = findPendingDynamicApiSource(context, node.left);
+      if (leftSource) {
+        if (node.operator !== "&&") return leftSource;
+        pendingExpressions.push(node.right);
+        continue;
+      }
+      const staticLeftValue = getStaticLogicalValue(node.left);
+      if (staticLeftValue) {
+        pendingExpressions.push(
+          logicalRightCanBecomeResult(node.operator, staticLeftValue) ? node.right : node.left,
+        );
+        continue;
+      }
+      pendingExpressions.push(node.left, node.right);
+      continue;
+    }
+    if (isNodeOfType(node, "SequenceExpression")) {
+      const finalExpression = node.expressions.at(-1);
+      if (finalExpression) pendingExpressions.push(finalExpression);
+      continue;
+    }
+    if (isNodeOfType(node, "AssignmentExpression")) {
+      pendingExpressions.push(node.right);
+      continue;
+    }
+    if (!isNodeOfType(node, "CallExpression")) continue;
+    const callee = stripParenExpression(node.callee);
+    if (isNodeOfType(callee, "MemberExpression") && isPromiseSettleAccess(callee)) {
+      pendingExpressions.push(callee.object);
+    }
+  }
+  return null;
+};
+
+const patternReadsDynamicApiValue = (pattern: EsTreeNode): boolean => {
+  if (isNodeOfType(pattern, "ArrayPattern")) return true;
+  if (!isNodeOfType(pattern, "ObjectPattern")) return false;
+  return pattern.properties.some(
     (property) =>
-      isNodeOfType(property, "Property") &&
-      !PROMISE_SETTLE_METHODS.has(
-        getStaticPropertyKeyName(property, { allowComputedString: true }) ?? "",
-      ),
+      isNodeOfType(property, "RestElement") ||
+      (isNodeOfType(property, "Property") &&
+        !PROMISE_SETTLE_METHODS.has(
+          getStaticPropertyKeyName(property, { allowComputedString: true }) ?? "",
+        )),
   );
+};
 
 const isObjectDestructureOfExpression = (parent: EsTreeNode, expression: EsTreeNode): boolean => {
   if (
     isNodeOfType(parent, "VariableDeclarator") &&
     parent.init === expression &&
-    isNodeOfType(parent.id, "ObjectPattern")
+    (isNodeOfType(parent.id, "ObjectPattern") || isNodeOfType(parent.id, "ArrayPattern"))
   ) {
-    return objectPatternReadsDynamicApiValue(parent.id);
+    return patternReadsDynamicApiValue(parent.id);
   }
   return (
     isNodeOfType(parent, "AssignmentExpression") &&
     parent.right === expression &&
-    isNodeOfType(parent.left, "ObjectPattern") &&
-    objectPatternReadsDynamicApiValue(parent.left)
+    (isNodeOfType(parent.left, "ObjectPattern") || isNodeOfType(parent.left, "ArrayPattern")) &&
+    patternReadsDynamicApiValue(parent.left)
   );
 };
 
@@ -151,10 +255,28 @@ const expressionMayRetainPendingSymbol = (
       continue;
     }
     if (isNodeOfType(node, "ConditionalExpression")) {
+      const staticTestValue = getStaticLogicalValue(node.test);
+      if (staticTestValue) {
+        pendingExpressions.push(staticTestValue.isTruthy ? node.consequent : node.alternate);
+        continue;
+      }
       pendingExpressions.push(node.consequent, node.alternate);
       continue;
     }
     if (isNodeOfType(node, "LogicalExpression")) {
+      const leftMayRetain = expressionMayRetainPendingSymbol(context, node.left, symbol);
+      if (leftMayRetain) {
+        if (node.operator !== "&&") return true;
+        pendingExpressions.push(node.right);
+        continue;
+      }
+      const staticLeftValue = getStaticLogicalValue(node.left);
+      if (staticLeftValue) {
+        pendingExpressions.push(
+          logicalRightCanBecomeResult(node.operator, staticLeftValue) ? node.right : node.left,
+        );
+        continue;
+      }
       pendingExpressions.push(node.left, node.right);
       continue;
     }
@@ -165,9 +287,166 @@ const expressionMayRetainPendingSymbol = (
     }
     if (isNodeOfType(node, "AssignmentExpression")) {
       pendingExpressions.push(node.right);
+      continue;
+    }
+    if (isNodeOfType(node, "CallExpression")) {
+      const callee = stripParenExpression(node.callee);
+      if (isNodeOfType(callee, "MemberExpression") && isPromiseSettleAccess(callee)) {
+        pendingExpressions.push(callee.object);
+      }
     }
   }
   return false;
+};
+
+const isGlobalEnumerationCallForArgument = (
+  context: RuleContext,
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  argumentExpression: EsTreeNode,
+): boolean => {
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object);
+  if (!isNodeOfType(receiver, "Identifier") || !context.scopes.isGlobalReference(receiver)) {
+    return false;
+  }
+  const methodName = getStaticPropertyName(callee);
+  if (receiver.name === "Array") {
+    return methodName === "from" && callExpression.arguments[0] === argumentExpression;
+  }
+  if (receiver.name === "Reflect") {
+    return methodName === "ownKeys" && callExpression.arguments[0] === argumentExpression;
+  }
+  return (
+    receiver.name === "Object" &&
+    methodName !== null &&
+    ((OBJECT_ENUMERATION_METHOD_NAMES.has(methodName) &&
+      callExpression.arguments[0] === argumentExpression) ||
+      (methodName === "fromEntries" && callExpression.arguments[0] === argumentExpression) ||
+      (methodName === "assign" &&
+        callExpression.arguments.slice(1).some((argument) => argument === argumentExpression)))
+  );
+};
+
+const isGlobalIterableConstructorForArgument = (
+  context: RuleContext,
+  newExpression: EsTreeNodeOfType<"NewExpression">,
+  argumentExpression: EsTreeNode,
+): boolean => {
+  const callee = stripParenExpression(newExpression.callee);
+  return (
+    isNodeOfType(callee, "Identifier") &&
+    ITERABLE_CONSTRUCTOR_NAMES.has(callee.name) &&
+    context.scopes.isGlobalReference(callee) &&
+    newExpression.arguments[0] === argumentExpression
+  );
+};
+
+const isPromiseSettlementCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  calleeRoot: EsTreeNode,
+  memberExpression: EsTreeNodeOfType<"MemberExpression">,
+): boolean => callExpression.callee === calleeRoot && isPromiseSettleAccess(memberExpression);
+
+const expressionIsSynchronouslyConsumed = (
+  context: RuleContext,
+  expression: EsTreeNode,
+): boolean => {
+  let current = findTransparentExpressionRoot(expression);
+  while (current.parent) {
+    const parent = current.parent;
+    if (isNodeOfType(parent, "MemberExpression") && parent.object === current) {
+      if (!isPromiseSettleAccess(parent)) return true;
+      const memberRoot = findTransparentExpressionRoot(parent);
+      const call = memberRoot.parent;
+      if (
+        !call ||
+        !isNodeOfType(call, "CallExpression") ||
+        !isPromiseSettlementCall(call, memberRoot, parent)
+      ) {
+        return false;
+      }
+      current = findTransparentExpressionRoot(call);
+      continue;
+    }
+    if (isNodeOfType(parent, "SpreadElement") && parent.argument === current) return true;
+    if (
+      (isNodeOfType(parent, "ForOfStatement") || isNodeOfType(parent, "ForInStatement")) &&
+      parent.right === current
+    ) {
+      return true;
+    }
+    if (isNodeOfType(parent, "YieldExpression") && parent.delegate && parent.argument === current) {
+      return true;
+    }
+    if (isObjectDestructureOfExpression(parent, current)) return true;
+    if (isNodeOfType(parent, "CallExpression")) {
+      return isGlobalEnumerationCallForArgument(context, parent, current);
+    }
+    if (isNodeOfType(parent, "NewExpression")) {
+      return isGlobalIterableConstructorForArgument(context, parent, current);
+    }
+    if (isNodeOfType(parent, "ConditionalExpression")) {
+      if (parent.test === current) return false;
+      current = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    if (isNodeOfType(parent, "LogicalExpression")) {
+      current = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    if (isNodeOfType(parent, "SequenceExpression")) {
+      if (parent.expressions.at(-1) !== current) return false;
+      current = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    if (isNodeOfType(parent, "AssignmentExpression") && parent.right === current) {
+      current = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    return false;
+  }
+  return false;
+};
+
+const findRetainingAliasCandidate = (
+  context: RuleContext,
+  referenceIdentifier: EsTreeNode,
+  sourceSymbol: SymbolDescriptor,
+): PendingSymbolCandidate | null => {
+  let current = findTransparentExpressionRoot(referenceIdentifier);
+  while (current.parent) {
+    const parent = current.parent;
+    if (
+      isNodeOfType(parent, "VariableDeclarator") &&
+      parent.init === current &&
+      isNodeOfType(parent.id, "Identifier")
+    ) {
+      if (!expressionMayRetainPendingSymbol(context, parent.init, sourceSymbol)) return null;
+      const symbol = context.scopes.symbolFor(parent.id);
+      return symbol ? { sourceExpression: parent.init, symbol } : null;
+    }
+    if (
+      isNodeOfType(parent, "AssignmentExpression") &&
+      parent.operator === "=" &&
+      parent.right === current &&
+      isNodeOfType(stripParenExpression(parent.left), "Identifier")
+    ) {
+      if (!expressionMayRetainPendingSymbol(context, parent.right, sourceSymbol)) return null;
+      const symbol = context.scopes.symbolFor(stripParenExpression(parent.left));
+      return symbol ? { sourceExpression: parent.right, symbol } : null;
+    }
+    if (
+      parent.type.endsWith("Statement") ||
+      isNodeOfType(parent, "AwaitExpression") ||
+      isNodeOfType(parent, "ArrowFunctionExpression") ||
+      isNodeOfType(parent, "FunctionExpression")
+    ) {
+      return null;
+    }
+    current = findTransparentExpressionRoot(parent);
+  }
+  return null;
 };
 
 const getProvenanceClearingAssignment = (
@@ -182,8 +461,6 @@ const getProvenanceClearingAssignment = (
     !isNodeOfType(assignment, "AssignmentExpression") ||
     assignment.operator !== "=" ||
     assignment.left !== assignmentTarget ||
-    (isNextHeadersDynamicCall(context, assignment.right) &&
-      !castChainAssertsUnsafeUnwrapped(context, assignment.right)) ||
     expressionMayRetainPendingSymbol(context, assignment.right, symbol)
   ) {
     return null;
@@ -197,6 +474,28 @@ const isConditionallyExecutedWithinExpression = (node: EsTreeNode): boolean => {
     const parent = current.parent;
     if (isNodeOfType(parent, "LogicalExpression") && parent.right === current) return true;
     if (isNodeOfType(parent, "ConditionalExpression") && parent.test !== current) return true;
+    if (
+      isNodeOfType(parent, "AssignmentExpression") &&
+      (parent.operator === "&&=" || parent.operator === "||=" || parent.operator === "??=") &&
+      parent.right === current
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(parent, "CallExpression") &&
+      parent.optional &&
+      parent.arguments.some((argument) => argument === current)
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(parent, "MemberExpression") &&
+      parent.optional &&
+      parent.computed &&
+      parent.property === current
+    ) {
+      return true;
+    }
     if (parent.type.endsWith("Statement") || isNodeOfType(parent, "VariableDeclarator")) {
       return false;
     }
@@ -204,6 +503,36 @@ const isConditionallyExecutedWithinExpression = (node: EsTreeNode): boolean => {
   }
   return false;
 };
+
+const getCaughtTryHandlerExitStatus = (node: EsTreeNode): boolean | null => {
+  let current = node;
+  while (current.parent) {
+    const parent = current.parent;
+    if (
+      isNodeOfType(parent, "TryStatement") &&
+      parent.block === current &&
+      parent.handler &&
+      parent.handler
+    ) {
+      return statementAlwaysExits(parent.handler.body);
+    }
+    if (
+      isNodeOfType(parent, "ArrowFunctionExpression") ||
+      isNodeOfType(parent, "FunctionExpression") ||
+      isNodeOfType(parent, "FunctionDeclaration")
+    ) {
+      return null;
+    }
+    current = parent;
+  }
+  return null;
+};
+
+const isClearingWriteSkippableThroughCatch = (node: EsTreeNode): boolean =>
+  getCaughtTryHandlerExitStatus(node) === false;
+
+const isClearingWriteProtectedByExitingCatch = (node: EsTreeNode): boolean =>
+  getCaughtTryHandlerExitStatus(node) === true;
 
 const createPendingSymbolFlow = (
   context: RuleContext,
@@ -219,7 +548,13 @@ const createPendingSymbolFlow = (
     if (reference.flag === "read") continue;
     if (context.cfg.enclosingFunction(reference.identifier) !== owner) continue;
     const assignment = getProvenanceClearingAssignment(context, symbol, reference.identifier);
-    if (!assignment || isConditionallyExecutedWithinExpression(assignment)) continue;
+    if (
+      !assignment ||
+      isConditionallyExecutedWithinExpression(assignment) ||
+      isClearingWriteSkippableThroughCatch(assignment)
+    ) {
+      continue;
+    }
     const assignmentStart = getNodeStartIndex(assignment);
     if (assignmentStart <= sourceStart) continue;
     clearingAssignments.push(assignment);
@@ -256,6 +591,16 @@ const createPendingSymbolFlow = (
       const referenceStart = getNodeStartIndex(referenceIdentifier);
       const referenceBlock = functionCfg.blockOf(referenceIdentifier);
       if (referenceStart < 0 || !referenceBlock) return false;
+      if (
+        clearingAssignments.some(
+          (assignment) =>
+            getNodeStartIndex(assignment) < referenceStart &&
+            isClearingWriteProtectedByExitingCatch(assignment) &&
+            context.cfg.isUnconditionalFromEntry(assignment),
+        )
+      ) {
+        return true;
+      }
 
       const everyPathHasClearingWrite = (
         block: typeof referenceBlock,
@@ -302,27 +647,13 @@ const symbolHasSynchronousAccess = (
       if (context.cfg.enclosingFunction(reference.identifier) !== owner && hasAnyWrite) continue;
       if (flow.isClearedBefore(reference.identifier)) continue;
       const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-      const parent = referenceRoot.parent;
-      if (!parent) continue;
-      if (isObjectDestructureOfExpression(parent, referenceRoot)) return true;
-      if (
-        isNodeOfType(parent, "MemberExpression") &&
-        parent.object === referenceRoot &&
-        !isPromiseSettleAccess(parent)
-      ) {
-        return true;
-      }
-      if (
-        isNodeOfType(parent, "VariableDeclarator") &&
-        parent.init === referenceRoot &&
-        isNodeOfType(parent.id, "Identifier") &&
-        !castChainAssertsUnsafeUnwrapped(context, parent.init)
-      ) {
-        const aliasSymbol = context.scopes.symbolFor(parent.id);
-        if (aliasSymbol) {
-          pendingCandidates.push({ sourceExpression: parent.init, symbol: aliasSymbol });
-        }
-      }
+      if (expressionIsSynchronouslyConsumed(context, referenceRoot)) return true;
+      const aliasCandidate = findRetainingAliasCandidate(
+        context,
+        reference.identifier,
+        candidate.symbol,
+      );
+      if (aliasCandidate) pendingCandidates.push(aliasCandidate);
     }
   }
   return false;
@@ -333,11 +664,27 @@ const reportDirectDestructure = (
   expression: EsTreeNode,
   pattern: EsTreeNode,
 ): void => {
-  if (!isNodeOfType(pattern, "ObjectPattern")) return;
-  if (!objectPatternReadsDynamicApiValue(pattern)) return;
-  if (!isNextHeadersDynamicCall(context, expression)) return;
-  if (castChainAssertsUnsafeUnwrapped(context, expression)) return;
-  context.report({ node: stripParenExpression(expression), message: MESSAGE });
+  if (!patternReadsDynamicApiValue(pattern)) return;
+  const source = findPendingDynamicApiSource(context, expression);
+  if (!source) return;
+  context.report({ node: source, message: MESSAGE });
+};
+
+const reportAssignedPendingExpression = (
+  context: RuleContext,
+  expression: EsTreeNode,
+  identifier: EsTreeNode,
+): void => {
+  const source = findPendingDynamicApiSource(context, expression);
+  if (!source) return;
+  const symbol = context.scopes.symbolFor(identifier);
+  if (!symbol || !symbolHasSynchronousAccess(context, symbol, expression)) return;
+  context.report({ node: source, message: MESSAGE });
+};
+
+const reportDirectSynchronousConsumption = (context: RuleContext, expression: EsTreeNode): void => {
+  const source = findPendingDynamicApiSource(context, expression);
+  if (source) context.report({ node: source, message: MESSAGE });
 };
 
 export const nextjsAsyncDynamicApiNotAwaited = defineRule({
@@ -350,25 +697,50 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
     "Await `cookies()`, `headers()`, and `draftMode()` from `next/headers`, or unwrap their promises with React `use()`, before reading properties.",
   create: (context: RuleContext) => ({
     MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
-      if (!isNextHeadersDynamicCall(context, node.object)) return;
+      const source = findPendingDynamicApiSource(context, node.object);
+      if (!source) return;
       if (isPromiseSettleAccess(node)) return;
-      if (castChainAssertsUnsafeUnwrapped(context, node.object)) return;
-      context.report({ node: stripParenExpression(node.object), message: MESSAGE });
+      context.report({ node: source, message: MESSAGE });
     },
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!node.init) return;
       reportDirectDestructure(context, node.init, node.id);
       if (!isNodeOfType(node.id, "Identifier")) return;
-      if (!isNextHeadersDynamicCall(context, node.init)) return;
-      if (castChainAssertsUnsafeUnwrapped(context, node.init)) return;
-      const symbol = context.scopes.symbolFor(node.id);
-      if (!symbol) return;
-      if (!symbolHasSynchronousAccess(context, symbol, node.init)) return;
-      context.report({ node: stripParenExpression(node.init), message: MESSAGE });
+      reportAssignedPendingExpression(context, node.init, node.id);
     },
     AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
       if (node.operator !== "=") return;
       reportDirectDestructure(context, node.right, node.left);
+      const assignmentTarget = stripParenExpression(node.left);
+      if (!isNodeOfType(assignmentTarget, "Identifier")) return;
+      reportAssignedPendingExpression(context, node.right, assignmentTarget);
+    },
+    SpreadElement(node: EsTreeNodeOfType<"SpreadElement">) {
+      reportDirectSynchronousConsumption(context, node.argument);
+    },
+    ForInStatement(node: EsTreeNodeOfType<"ForInStatement">) {
+      reportDirectSynchronousConsumption(context, node.right);
+    },
+    ForOfStatement(node: EsTreeNodeOfType<"ForOfStatement">) {
+      reportDirectSynchronousConsumption(context, node.right);
+    },
+    YieldExpression(node: EsTreeNodeOfType<"YieldExpression">) {
+      if (!node.delegate || !node.argument) return;
+      reportDirectSynchronousConsumption(context, node.argument);
+    },
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+      for (const argument of node.arguments) {
+        if (isNodeOfType(argument, "SpreadElement")) continue;
+        if (!isGlobalEnumerationCallForArgument(context, node, argument)) continue;
+        reportDirectSynchronousConsumption(context, argument);
+      }
+    },
+    NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
+      for (const argument of node.arguments) {
+        if (isNodeOfType(argument, "SpreadElement")) continue;
+        if (!isGlobalIterableConstructorForArgument(context, node, argument)) continue;
+        reportDirectSynchronousConsumption(context, argument);
+      }
     },
   }),
 });

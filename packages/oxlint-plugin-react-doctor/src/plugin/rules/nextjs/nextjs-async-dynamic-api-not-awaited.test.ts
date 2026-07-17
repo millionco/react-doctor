@@ -120,10 +120,105 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     );
   });
 
-  it("does not report an empty or rest-only Promise destructure", () => {
+  it("reports a rest-only Promise destructure", () => {
     expectDiagnosticCount(
       `import { cookies } from "next/headers";
        export const read = () => { const pending = cookies(); const { ...ownProperties } = pending; return ownProperties; };`,
+      1,
+    );
+  });
+
+  it("does not report an empty object destructure", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = () => { const {} = cookies(); };`,
+      0,
+    );
+  });
+
+  it.each([
+    "const [firstCookie] = cookies(); return firstCookie;",
+    "const pending = cookies(); const [] = pending;",
+  ])("reports iterable destructuring through %s", (statement) => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = () => { ${statement} };`,
+      1,
+    );
+  });
+
+  it.each([
+    "return [...headers()];",
+    "return { ...headers() };",
+    "const pending = headers(); return consume(...pending);",
+  ])("reports synchronous spread through %s", (statement) => {
+    expectDiagnosticCount(
+      `import { headers } from "next/headers";
+       export const read = () => { ${statement} };`,
+      1,
+    );
+  });
+
+  it.each([
+    "for (const header of headers()) consume(header);",
+    "const pending = headers(); for (const key in pending) consume(key);",
+    "const pending = headers(); yield* pending;",
+  ])("reports synchronous iteration through %s", (statement) => {
+    expectDiagnosticCount(
+      `import { headers } from "next/headers";
+       export function* read() { ${statement} }`,
+      1,
+    );
+  });
+
+  it.each([
+    "Object.keys(cookies())",
+    "Object.values(cookies())",
+    "Object.entries(cookies())",
+    "Object.getOwnPropertyNames(cookies())",
+    "Reflect.ownKeys(cookies())",
+    "Object.fromEntries(cookies())",
+    "Object.assign({}, cookies())",
+    "Array.from(cookies())",
+  ])("reports synchronous enumeration through %s", (expression) => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = () => ${expression};`,
+      1,
+    );
+  });
+
+  it.each(["new Map(headers())", "const pending = headers(); return new Set(pending);"])(
+    "reports synchronous iterable construction through %s",
+    (statement) => {
+      expectDiagnosticCount(
+        `import { headers } from "next/headers";
+         export const read = () => { ${statement} };`,
+        1,
+      );
+    },
+  );
+
+  it("does not treat a shadowed iterable constructor as built-in consumption", () => {
+    expectDiagnosticCount(
+      `import { headers } from "next/headers";
+       export const read = (Map) => new Map(headers());`,
+      0,
+    );
+  });
+
+  it("reports synchronous enumeration through a binding", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = () => { const pending = cookies(); return Object.keys(pending); };`,
+      1,
+    );
+  });
+
+  it("does not treat a shadowed Object helper as built-in enumeration", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = (Object) => Object.keys(cookies());`,
       0,
     );
   });
@@ -179,6 +274,21 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
       `import { cookies } from "next/headers";
        export const read = () => { let pending = cookies(); pending = cookies(); return pending.get("session"); };`,
       1,
+    );
+  });
+
+  it("reports independent pending phases of the same binding", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async () => {
+         let pending = cookies();
+         const first = pending.get("first");
+         pending = await pending;
+         pending = cookies();
+         const second = pending.get("second");
+         return { first, second };
+       };`,
+      2,
     );
   });
 
@@ -340,6 +450,77 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     },
   );
 
+  it.each([
+    'cookies().catch(handle).get("session")',
+    'cookies().then(handle).finally(cleanup).get("session")',
+  ])("reports synchronous access after Promise settlement chaining through %s", (expression) => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = () => ${expression};`,
+      1,
+    );
+  });
+
+  it("reports synchronous access through a Promise settlement-chain binding", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = () => {
+         const pending = cookies().catch(handle);
+         return pending.get("session");
+       };`,
+      1,
+    );
+  });
+
+  it.each([
+    'const alias = shouldRead ? pending : getFallback(); return alias.get("session");',
+    'const alias = pending ?? getFallback(); return alias.get("session");',
+    'let alias; alias = pending; return alias.get("session");',
+    'return (shouldRead ? pending : getFallback()).get("session");',
+  ])("reports retained pending provenance through %s", (statement) => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = (shouldRead) => {
+         const pending = cookies();
+         ${statement}
+       };`,
+      1,
+    );
+  });
+
+  it("does not retain provenance from a non-final sequence expression", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = () => { const store = (cookies(), getFallback()); return store.get("session"); };`,
+      0,
+    );
+  });
+
+  it.each([
+    'const store = false && cookies(); return store.get("session");',
+    'const store = true || cookies(); return store.get("session");',
+    'const store = true ? getFallback() : cookies(); return store.get("session");',
+    'const store = cookies() && getFallback(); return store.get("session");',
+    'const pending = cookies(); const store = pending && getFallback(); return store.get("session");',
+  ])("does not retain unreachable or short-circuited provenance through %s", (statement) => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = () => { ${statement} };`,
+      0,
+    );
+  });
+
+  it.each([
+    'const store = cookies() || getFallback(); return store.get("session");',
+    'const store = cookies() ?? getFallback(); return store.get("session");',
+  ])("retains truthy Promise provenance through %s", (statement) => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = () => { ${statement} };`,
+      1,
+    );
+  });
+
   it.each(["then", "catch", "finally"])(
     "does not report computed binding access to %s",
     (methodName) => {
@@ -494,6 +675,77 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
        interface UnsafeUnwrappedCookies { get(name: string): string }
        export const read = () => (cookies() as unknown as UnsafeUnwrappedCookies).get("session");`,
       1,
+    );
+  });
+
+  it("reports a nested type alias that shadows an imported compatibility type", () => {
+    expectDiagnosticCount(
+      `import { cookies, type UnsafeUnwrappedCookies as LegacyCookies } from "next/headers";
+       export const read = () => {
+         interface LegacyCookies { get(name: string): string }
+         return (cookies() as unknown as LegacyCookies).get("session");
+       };`,
+      1,
+    );
+  });
+
+  it("does not let an optional call conditionally clear pending provenance", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async (maybeConsume) => {
+         let pending = cookies();
+         maybeConsume?.(pending = await pending);
+         return pending.get("session");
+       };`,
+      1,
+    );
+  });
+
+  it("does not let a logical assignment conditionally clear pending provenance", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async (state) => {
+         let pending = cookies();
+         state.store ||= (pending = await pending);
+         return pending.get("session");
+       };`,
+      1,
+    );
+  });
+
+  it("reports when a catch path can reach access without clearing provenance", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async () => {
+         let pending = cookies();
+         try { mayThrow(); pending = await pending; } catch {}
+         return pending.get("session");
+       };`,
+      1,
+    );
+  });
+
+  it("does not report when a finally block clears provenance", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async () => {
+         let pending = cookies();
+         try { mayThrow(); } finally { pending = await pending; }
+         return pending.get("session");
+       };`,
+      0,
+    );
+  });
+
+  it("does not report when a catch path always exits", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async () => {
+         let pending = cookies();
+         try { mayThrow(); pending = await pending; } catch { return null; }
+         return pending.get("session");
+       };`,
+      0,
     );
   });
 

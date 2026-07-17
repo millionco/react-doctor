@@ -239,10 +239,14 @@ const isReturnedCleanupFromBoundary = (
   const cleanupRoot = findTransparentExpressionRoot(cleanupFunction);
   const cleanupConsumer = cleanupRoot.parent;
   if (
-    (isNodeOfType(cleanupConsumer, "ReturnStatement") &&
-      context.cfg.enclosingFunction(cleanupConsumer) === executionBoundary) ||
-    (isNodeOfType(executionBoundary, "ArrowFunctionExpression") &&
-      stripParenExpression(executionBoundary.body) === stripParenExpression(cleanupRoot))
+    isNodeOfType(cleanupConsumer, "ReturnStatement") &&
+    context.cfg.enclosingFunction(cleanupConsumer) === executionBoundary
+  ) {
+    return context.cfg.isUnconditionalFromEntry(cleanupConsumer);
+  }
+  if (
+    isNodeOfType(executionBoundary, "ArrowFunctionExpression") &&
+    stripParenExpression(executionBoundary.body) === stripParenExpression(cleanupRoot)
   ) {
     return true;
   }
@@ -259,7 +263,8 @@ const isReturnedCleanupFromBoundary = (
       const referenceRoot = findTransparentExpressionRoot(reference.identifier);
       return (
         isNodeOfType(referenceRoot.parent, "ReturnStatement") &&
-        context.cfg.enclosingFunction(referenceRoot.parent) === executionBoundary
+        context.cfg.enclosingFunction(referenceRoot.parent) === executionBoundary &&
+        context.cfg.isUnconditionalFromEntry(referenceRoot.parent)
       );
     }),
   );

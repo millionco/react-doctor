@@ -504,6 +504,20 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not trust a cleanup closure returned only conditionally", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const usePreview = (blob, shouldCleanUp) => {
+         const url = make(blob);
+         setPreview(url);
+         if (shouldCleanUp) return () => URL.revokeObjectURL(url);
+         return () => {};
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not let an unrelated revoke suppress an escaping creation", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

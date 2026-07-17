@@ -324,6 +324,45 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("tracks transparent wrappers when a mount-local emitter escapes", () => {
+    const castEscape = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Legend extends React.Component {
+        componentDidMount() {
+          const network = new Network();
+          network.on("draw", this.draw);
+          this.network = network as Network;
+        }
+        render() { return null; }
+      }`,
+    );
+    const assertedEscape = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Legend extends React.Component {
+        componentDidMount() {
+          const network = new Network();
+          network.on("draw", this.draw);
+          this.network = network!;
+        }
+        render() { return null; }
+      }`,
+    );
+    const unrelatedAssignment = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Legend extends React.Component {
+        componentDidMount() {
+          const network = new Network();
+          network.on("draw", this.draw);
+          this.network = externalNetwork as Network;
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(castEscape.diagnostics).toHaveLength(1);
+    expect(assertedEscape.diagnostics).toHaveLength(1);
+    expect(unrelatedAssignment.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a listener on an emitter constructed locally in the mount body (Algolia places idiom)", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

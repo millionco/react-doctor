@@ -702,6 +702,53 @@ function SearchBox({ query }) {
     expect(shadowedOptions.diagnostics).toHaveLength(1);
   });
 
+  it("tracks transparent wrappers around lodash namespace receivers", () => {
+    const castNamespace = runRule(
+      debounceNoCleanup,
+      `import * as lodash from "lodash";
+       function Search({ query }) {
+         const search = useMemo(() => (lodash as any).debounce(async (value) => {
+           await fetchResults(value);
+         }, 250), []);
+         useEffect(() => search(query), [query, search]);
+       }`,
+    );
+    const assertedNamespace = runRule(
+      debounceNoCleanup,
+      `import * as lodash from "lodash";
+       function Search({ query }) {
+         const search = useMemo(() => lodash!.debounce(async (value) => {
+           await fetchResults(value);
+         }, 250), []);
+         useEffect(() => search(query), [query, search]);
+       }`,
+    );
+    const shadowedNamespace = runRule(
+      debounceNoCleanup,
+      `import * as lodash from "lodash";
+       function Search({ query }, lodash) {
+         const search = useMemo(() => (lodash as any).debounce(async (value) => {
+           await fetchResults(value);
+         }, 250), []);
+         useEffect(() => search(query), [query, search]);
+       }`,
+    );
+    const unrelatedNamespace = runRule(
+      debounceNoCleanup,
+      `import * as lodash from "lodash";
+       function Search({ query }) {
+         const search = useMemo(() => (custom as any).debounce(async (value) => {
+           await fetchResults(value);
+         }, 250), []);
+         useEffect(() => search(query), [query, search]);
+       }`,
+    );
+    expect(castNamespace.diagnostics).toHaveLength(1);
+    expect(assertedNamespace.diagnostics).toHaveLength(1);
+    expect(shadowedNamespace.diagnostics).toHaveLength(0);
+    expect(unrelatedNamespace.diagnostics).toHaveLength(0);
+  });
+
   it("requires the matching computed debounce release", () => {
     const acquireOnly = runRule(
       debounceNoCleanup,

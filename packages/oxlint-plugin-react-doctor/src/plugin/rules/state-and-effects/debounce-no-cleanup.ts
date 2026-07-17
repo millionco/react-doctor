@@ -50,17 +50,34 @@ const isLodashModuleSource = (source: string | null): boolean =>
 
 const isLodashDebounceCall = (callExpression: EsTreeNode): boolean => {
   if (!isNodeOfType(callExpression, "CallExpression")) return false;
-  const callee = callExpression.callee;
+  const callee = stripParenExpression(callExpression.callee);
   if (isNodeOfType(callee, "Identifier")) {
     if (!DEBOUNCE_FACTORY_NAMES.has(callee.name)) return false;
+    const binding = findVariableInitializer(callee, callee.name);
+    if (
+      !binding?.initializer ||
+      (!isNodeOfType(binding.initializer, "ImportSpecifier") &&
+        !isNodeOfType(binding.initializer, "ImportDefaultSpecifier"))
+    ) {
+      return false;
+    }
     return isLodashModuleSource(getImportSourceForName(callee, callee.name));
   }
   if (
     isNodeOfType(callee, "MemberExpression") &&
-    DEBOUNCE_FACTORY_NAMES.has(getStaticPropertyName(callee) ?? "") &&
-    isNodeOfType(callee.object, "Identifier")
+    DEBOUNCE_FACTORY_NAMES.has(getStaticPropertyName(callee) ?? "")
   ) {
-    const receiverSource = getImportSourceForName(callee.object, callee.object.name);
+    const receiver = stripParenExpression(callee.object);
+    if (!isNodeOfType(receiver, "Identifier")) return false;
+    const binding = findVariableInitializer(receiver, receiver.name);
+    if (
+      !binding?.initializer ||
+      (!isNodeOfType(binding.initializer, "ImportNamespaceSpecifier") &&
+        !isNodeOfType(binding.initializer, "ImportDefaultSpecifier"))
+    ) {
+      return false;
+    }
+    const receiverSource = getImportSourceForName(receiver, receiver.name);
     return isLodashModuleSource(receiverSource);
   }
   return false;

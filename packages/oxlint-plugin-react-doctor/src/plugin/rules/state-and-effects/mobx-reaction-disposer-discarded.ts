@@ -8,6 +8,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { resolveStableOptionsObject } from "../../utils/resolve-stable-options-object.js";
@@ -30,20 +31,34 @@ const DISPOSER_VALUE_COERCION_NAMES = new Set(["Boolean", "Number", "String"]);
 const resolveLeakingSubscriptionName = (
   node: EsTreeNodeOfType<"CallExpression">,
 ): string | null => {
-  if (isNodeOfType(node.callee, "Identifier")) {
-    const importedName = getImportedNameFromModule(node, node.callee.name, "mobx");
+  const callee = stripParenExpression(node.callee);
+  if (isNodeOfType(callee, "Identifier")) {
+    const binding = findVariableInitializer(callee, callee.name);
+    if (!binding?.initializer || !isNodeOfType(binding.initializer, "ImportSpecifier")) {
+      return null;
+    }
+    const importedName = getImportedNameFromModule(node, callee.name, "mobx");
     if (importedName && LEAKING_MOBX_SUBSCRIPTIONS.has(importedName)) return importedName;
     return null;
   }
   // `mobx.autorun(...)` on a verified `import * as mobx from "mobx"` binding —
   // this still excludes Yup's `schema.when(...)` and `observer.observe(...)`.
   if (
-    isNodeOfType(node.callee, "MemberExpression") &&
-    isNodeOfType(node.callee.object, "Identifier") &&
-    LEAKING_MOBX_SUBSCRIPTIONS.has(getStaticPropertyName(node.callee) ?? "") &&
-    isNamespaceImportFromModule(node, node.callee.object.name, "mobx")
+    isNodeOfType(callee, "MemberExpression") &&
+    LEAKING_MOBX_SUBSCRIPTIONS.has(getStaticPropertyName(callee) ?? "")
   ) {
-    return getStaticPropertyName(node.callee);
+    const receiver = stripParenExpression(callee.object);
+    const binding = isNodeOfType(receiver, "Identifier")
+      ? findVariableInitializer(receiver, receiver.name)
+      : null;
+    if (
+      isNodeOfType(receiver, "Identifier") &&
+      binding?.initializer &&
+      isNodeOfType(binding.initializer, "ImportNamespaceSpecifier") &&
+      isNamespaceImportFromModule(node, receiver.name, "mobx")
+    ) {
+      return getStaticPropertyName(callee);
+    }
   }
   return null;
 };

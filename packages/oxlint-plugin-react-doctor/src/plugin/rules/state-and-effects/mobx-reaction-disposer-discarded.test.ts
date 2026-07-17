@@ -121,6 +121,41 @@ describe("mobx-reaction-disposer-discarded", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("tracks transparent wrappers around MobX namespace receivers", () => {
+    const castNamespace = runRule(
+      mobxReactionDisposerDiscarded,
+      `import * as mobx from "mobx";
+       class Store {
+         start() { (mobx as any).autorun(() => this.persist()); }
+       }`,
+    );
+    const assertedNamespace = runRule(
+      mobxReactionDisposerDiscarded,
+      `import * as mobx from "mobx";
+       class Store {
+         start() { mobx!.reaction(() => this.value, this.persist); }
+       }`,
+    );
+    const shadowedNamespace = runRule(
+      mobxReactionDisposerDiscarded,
+      `import * as mobx from "mobx";
+       class Store {
+         start(mobx) { (mobx as any).autorun(() => this.persist()); }
+       }`,
+    );
+    const unrelatedNamespace = runRule(
+      mobxReactionDisposerDiscarded,
+      `import * as mobx from "mobx";
+       class Store {
+         start() { (custom as any).autorun(() => this.persist()); }
+       }`,
+    );
+    expect(castNamespace.diagnostics).toHaveLength(1);
+    expect(assertedNamespace.diagnostics).toHaveLength(1);
+    expect(shadowedNamespace.diagnostics).toHaveLength(0);
+    expect(unrelatedNamespace.diagnostics).toHaveLength(0);
+  });
+
   it("still flags autorun() with a literal options object that has no signal", () => {
     const result = runRule(
       mobxReactionDisposerDiscarded,

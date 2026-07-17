@@ -243,12 +243,9 @@ const collectMountLocalReceiverNames = (mountBody: EsTreeNode): Set<string> => {
         collectPatternNames(node.id as EsTreeNode, declaredNames);
       }
     }
-    if (
-      isNodeOfType(node, "AssignmentExpression") &&
-      isNodeOfType(node.left, "MemberExpression") &&
-      isNodeOfType(node.right, "Identifier")
-    ) {
-      escapedNames.add(node.right.name);
+    if (isNodeOfType(node, "AssignmentExpression") && isNodeOfType(node.left, "MemberExpression")) {
+      const assignedValue = stripParenExpression(node.right);
+      if (isNodeOfType(assignedValue, "Identifier")) escapedNames.add(assignedValue.name);
     }
   });
   for (const escapedName of escapedNames) declaredNames.delete(escapedName);

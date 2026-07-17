@@ -9,6 +9,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { stripThisParameter } from "../../utils/strip-this-parameter.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 interface StorageHelperSink {
@@ -235,7 +236,8 @@ const findStorageHelperSinks = (
     storageHelperSinkCache.set(functionNode, []);
     return [];
   }
-  const parameterSymbolIds = functionNode.params.map((parameter) => {
+  const runtimeParameters = stripThisParameter(functionNode.params);
+  const parameterSymbolIds = runtimeParameters.map((parameter) => {
     const strippedParameter = stripParenExpression(parameter);
     const identifier = isNodeOfType(strippedParameter, "Identifier")
       ? strippedParameter

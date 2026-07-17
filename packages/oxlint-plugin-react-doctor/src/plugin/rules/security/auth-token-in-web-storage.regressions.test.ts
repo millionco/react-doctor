@@ -335,6 +335,20 @@ describe("security/auth-token-in-web-storage — regressions", () => {
     expect(diagnostics).toHaveLength(1);
   });
 
+  it("flags runtime arguments after a TypeScript this parameter", () => {
+    const { diagnostics, parseErrors } = runRule(
+      authTokenInWebStorage,
+      `function persist(this: void, key: string, value: string) {
+        sessionStorage.setItem(key, value);
+      }
+      persist("accessToken", token);`,
+      { filename: "storage.ts" },
+    );
+
+    expect(parseErrors).toEqual([]);
+    expect(diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when a helper-local key shadows its parameter", () => {
     const { diagnostics, parseErrors } = runRule(
       authTokenInWebStorage,

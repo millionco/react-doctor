@@ -1221,7 +1221,7 @@ export const reactDoctorRules = [
     key: "react-doctor/hook-import-rename-loses-use-prefix",
     id: "hook-import-rename-loses-use-prefix",
     source: "react-doctor",
-    originallyExternal: true,
+    originallyExternal: false,
     rule: {
       ...hookImportRenameLosesUsePrefix,
       framework: "global",

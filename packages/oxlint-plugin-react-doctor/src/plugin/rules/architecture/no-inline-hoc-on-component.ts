@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -56,6 +57,7 @@ const RELAY_CONTAINER_CREATOR_NAMES = new Set([
 // assigns the HOC result to the outer binding, so the inline function inside
 // `withTheme` keeps every harm the rule describes.
 const TRANSPARENT_WRAPPER_CALLEE_NAMES = new Set(["memo", "forwardRef", "observer"]);
+const RENDER_OUTPUT_MAPPING_METHOD_NAMES: ReadonlySet<string> = new Set(["flatMap", "map"]);
 
 // Component *factory primitives* — Mantine's `factory` / `polymorphicFactory`,
 // any `createXFactory`, and codebase-local typed wrappers around the React
@@ -90,13 +92,38 @@ const isNamedComponentFunctionExpression = (functionNode: EsTreeNode): boolean =
   functionNode.id != null &&
   isUppercaseName(functionNode.id.name);
 
-// JSX detection bounded to the expression's own scope: nested function
-// expressions are separate closures (a data callback rendering JSX inside a
-// non-returned `.forEach`/render-prop closure is not itself a component).
-const containsJsxInOwnExpression = (root: EsTreeNode): boolean => {
+const isSynchronousRenderOutputMappingCallback = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callbackExpression = findTransparentExpressionRoot(functionNode);
+  if (!executesDuringRender(callbackExpression, scopes)) return false;
+  const call = callbackExpression.parent;
+  if (!call || !isNodeOfType(call, "CallExpression")) return false;
+  const isArrayFromMapper = call.arguments[1] === callbackExpression;
+  if (isArrayFromMapper) return true;
+  if (call.arguments[0] !== callbackExpression) return false;
+  const callee = stripParenExpression(call.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const methodName = getStaticPropertyKeyName(callee, { allowComputedString: false });
+  return methodName !== null && RENDER_OUTPUT_MAPPING_METHOD_NAMES.has(methodName);
+};
+
+// Only mapper callbacks synchronously compose their result into the returned
+// expression. Other nested functions stay separate closures.
+const containsJsxInOwnExpression = (root: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let didFindJsx = false;
   walkAst(root, (node: EsTreeNode) => {
-    if (didFindJsx || isFunctionLike(node)) return false;
+    if (didFindJsx) return false;
+    if (isFunctionLike(node)) {
+      if (
+        isSynchronousRenderOutputMappingCallback(node, scopes) &&
+        functionReturnValueIsJsx(node, scopes)
+      ) {
+        didFindJsx = true;
+      }
+      return false;
+    }
     if (isJsxElementOrFragment(node)) {
       didFindJsx = true;
       return false;
@@ -114,7 +141,7 @@ const returnValueContainsJsx = (
   scopes: ScopeAnalysis,
 ): boolean => {
   const unwrappedExpression = stripParenExpression(expression);
-  if (containsJsxInOwnExpression(unwrappedExpression)) return true;
+  if (containsJsxInOwnExpression(unwrappedExpression, scopes)) return true;
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return false;
   const symbol = scopes.symbolFor(unwrappedExpression);
   const hasOnlyReadReferences = symbol?.references.every((reference) => reference.flag === "read");
@@ -122,7 +149,7 @@ const returnValueContainsJsx = (
     (symbol?.kind === "const" || (symbol?.kind === "let" && hasOnlyReadReferences)) &&
     symbol.initializer &&
     findEnclosingFunction(symbol.declarationNode) === functionNode &&
-    containsJsxInOwnExpression(stripParenExpression(symbol.initializer)),
+    containsJsxInOwnExpression(stripParenExpression(symbol.initializer), scopes),
   );
 };
 

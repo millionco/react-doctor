@@ -327,6 +327,55 @@ describe("no-inline-hoc-on-component", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    ["an array map callback", `items.map((item) => <Row key={item.id} item={item} />)`],
+    [
+      "an array flatMap callback with a block body",
+      `items.flatMap((item) => {
+        if (!item.visible) return [];
+        return [<Row key={item.id} item={item} />];
+      })`,
+    ],
+    [
+      "a global Array.from mapper",
+      `Array.from(items, (item) => <Row key={item.id} item={item} />)`,
+    ],
+  ])("flags JSX returned through %s", (_name, returnedExpression) => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Rows = withTracking(({ items }) => {
+        useRows(items);
+        return ${returnedExpression};
+      });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["forEach", `items.forEach((item) => <Row key={item.id} item={item} />)`],
+    ["filter", `items.filter((item) => <Row key={item.id} item={item} />)`],
+    ["a deferred promise", `loadItems().then((item) => <Row key={item.id} item={item} />)`],
+    ["a returned render closure", `items.map((item) => () => <Row item={item} />)`],
+    [
+      "discarded JSX in a map callback",
+      `items.map((item) => {
+        const preview = <Row item={item} />;
+        return item.id;
+      })`,
+    ],
+  ])("does not treat JSX inside %s as the component return value", (_name, returnedExpression) => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Rows = withTracking(({ items }) => {
+        useRows(items);
+        return ${returnedExpression};
+      });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag an expression-body data callback whose JSX lives only in a nested closure", () => {
     const result = runRule(
       noInlineHocOnComponent,

@@ -117,8 +117,9 @@ const returnValueContainsJsx = (
   if (containsJsxInOwnExpression(unwrappedExpression)) return true;
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return false;
   const symbol = scopes.symbolFor(unwrappedExpression);
+  const hasOnlyReadReferences = symbol?.references.every((reference) => reference.flag === "read");
   return Boolean(
-    symbol?.kind === "const" &&
+    (symbol?.kind === "const" || (symbol?.kind === "let" && hasOnlyReadReferences)) &&
     symbol.initializer &&
     findEnclosingFunction(symbol.declarationNode) === functionNode &&
     containsJsxInOwnExpression(stripParenExpression(symbol.initializer)),

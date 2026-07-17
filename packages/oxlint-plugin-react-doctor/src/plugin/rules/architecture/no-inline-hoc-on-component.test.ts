@@ -394,6 +394,31 @@ describe("no-inline-hoc-on-component", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags JSX returned through an unchanged local let binding", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Page = withTheme((props) => {
+        useTheme();
+        let content = props.compact ? <span /> : <div />;
+        return content;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not resolve a reassigned local let binding", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Page = withTheme((props) => {
+        useTheme();
+        let content = <div />;
+        content = props.fallback;
+        return content;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags inline components passed through optional HOC calls", () => {
     const result = runRule(
       noInlineHocOnComponent,

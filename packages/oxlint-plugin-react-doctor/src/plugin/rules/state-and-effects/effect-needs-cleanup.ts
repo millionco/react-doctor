@@ -2505,7 +2505,6 @@ const isReactRefListenerReplacementRelease = (
       child.operator === "=" &&
       resolveReactRefSymbol(stripParenExpression(child.left), context.scopes)?.id ===
         releaseRefSymbol.id &&
-      resolveExpressionKey(child.left, context) === releaseReceiverKey &&
       resolveExpressionKey(child.right, context) === registrationReceiverKey &&
       releaseStart !== null &&
       (getRangeStart(child) ?? -1) > releaseStart

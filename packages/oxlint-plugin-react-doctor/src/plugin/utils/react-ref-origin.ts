@@ -1,5 +1,6 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getDirectUnreassignedInitializer } from "./get-direct-unreassigned-initializer.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall } from "./is-react-api-call.js";
@@ -40,10 +41,12 @@ export const resolveReactRefCurrentOriginSymbol = (
   const refSymbol = resolveReactRefSymbol(expression, scopes);
   if (refSymbol) return refSymbol;
   if (!isNodeOfType(expression, "Identifier")) return null;
-  const symbol = resolveConstIdentifierAlias(expression, scopes);
-  if (!symbol?.initializer || visitedSymbolIds.has(symbol.id)) return null;
+  const symbol = scopes.symbolFor(expression);
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
+  const initializer = getDirectUnreassignedInitializer(symbol);
+  if (!initializer) return null;
   visitedSymbolIds.add(symbol.id);
-  return resolveReactRefCurrentOriginSymbol(symbol.initializer, scopes, visitedSymbolIds);
+  return resolveReactRefCurrentOriginSymbol(initializer, scopes, visitedSymbolIds);
 };
 
 export const hasReactRefCurrentOrigin = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>

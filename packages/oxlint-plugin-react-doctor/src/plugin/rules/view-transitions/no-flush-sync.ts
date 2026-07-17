@@ -109,7 +109,7 @@ const collectMeasuringFunctionNames = (program: EsTreeNode): Set<string> =>
   collectFunctionNamesMatchingBody(program, subtreeReadsDomMeasurement);
 
 const subtreeMutatesDomImperatively = (root: EsTreeNode | null | undefined): boolean => {
-  if (!root) return false;
+  if (!root || isFunctionLike(root)) return false;
   let found = false;
   walkAst(root, (child: EsTreeNode) => {
     if (found) return false;
@@ -135,7 +135,9 @@ const callsAnyName = (
   names: ReadonlySet<string>,
   shouldSkipNestedFunctions = false,
 ): boolean => {
-  if (!root || names.size === 0) return false;
+  if (!root || names.size === 0 || (shouldSkipNestedFunctions && isFunctionLike(root))) {
+    return false;
+  }
   let found = false;
   walkAst(root, (child: EsTreeNode) => {
     if (found) return false;
@@ -157,19 +159,31 @@ const isFollowedByImperativeDomMutation = (
 ): boolean => {
   let statement: EsTreeNode = call;
   let parent = statement.parent;
-  while (parent && !isNodeOfType(parent, "BlockStatement")) {
+  while (parent) {
+    const statements =
+      isNodeOfType(parent, "BlockStatement") ||
+      isNodeOfType(parent, "Program") ||
+      isNodeOfType(parent, "StaticBlock")
+        ? parent.body
+        : isNodeOfType(parent, "SwitchCase")
+          ? parent.consequent
+          : null;
+    if (statements) {
+      const statementIndex = statements.findIndex(
+        (siblingStatement) => siblingStatement === statement,
+      );
+      if (statementIndex >= 0) {
+        const nextStatement = statements[statementIndex + 1];
+        return (
+          subtreeMutatesDomImperatively(nextStatement) ||
+          callsAnyName(nextStatement, imperativeDomFunctionNames, true)
+        );
+      }
+    }
     statement = parent;
     parent = parent.parent;
   }
-  if (!parent) return false;
-  const statements = parent.body;
-  const statementIndex = statements.findIndex((blockStatement) => blockStatement === statement);
-  if (statementIndex < 0) return false;
-  const nextStatement = statements[statementIndex + 1];
-  return (
-    subtreeMutatesDomImperatively(nextStatement) ||
-    callsAnyName(nextStatement, imperativeDomFunctionNames, true)
-  );
+  return false;
 };
 
 const isInsideStartViewTransition = (node: EsTreeNode): boolean => {

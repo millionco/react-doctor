@@ -199,4 +199,51 @@ const updateText = (textarea, selection) => {
 };`,
     );
   });
+
+  it("still flags an adjacent imperative function declaration", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const updateText = (textarea) => {
+  flushSync(() => setText(readRemoteText()));
+  function restoreLater() {
+    textarea.focus();
+  }
+  queueMicrotask(restoreLater);
+};`,
+    );
+  });
+
+  it("stays silent on a top-level imperative handoff", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+flushSync(() => setText(readRemoteText()));
+textarea.focus();`,
+    );
+  });
+
+  it("stays silent on an imperative handoff in a switch case", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+const updateText = (textarea, mode) => {
+  switch (mode) {
+    case "edit":
+      flushSync(() => setText(readRemoteText()));
+      textarea.focus();
+      break;
+  }
+};`,
+    );
+  });
+
+  it("stays silent on an imperative handoff in a static block", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+class Editor {
+  static {
+    flushSync(() => setText(readRemoteText()));
+    textarea.focus();
+  }
+}`,
+    );
+  });
 });

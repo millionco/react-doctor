@@ -7,6 +7,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getPropertyKeyName } from "../../utils/get-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle.js";
@@ -263,11 +264,12 @@ const getThisFieldName = (node: EsTreeNode): string | null => {
   const unwrappedNode = stripParenExpression(node);
   if (
     !isNodeOfType(unwrappedNode, "MemberExpression") ||
+    unwrappedNode.computed === true ||
     !isNodeOfType(stripParenExpression(unwrappedNode.object as EsTreeNode), "ThisExpression")
   ) {
     return null;
   }
-  return getStaticMemberName(unwrappedNode);
+  return getPropertyKeyName(unwrappedNode.property) ?? null;
 };
 
 const isUndefinedIdentifier = (node: EsTreeNode): boolean => {
@@ -333,9 +335,8 @@ const getClassMemberCallback = (classNode: EsTreeNode, memberName: string): EsTr
     if (member.static === true) continue;
     const key = member.key as EsTreeNode;
     const keyName =
-      (isNodeOfType(key, "Identifier") && key.name) ||
-      (isNodeOfType(key, "Literal") && typeof key.value === "string" && key.value) ||
-      null;
+      getPropertyKeyName(key) ??
+      (isNodeOfType(key, "Literal") && typeof key.value === "string" ? key.value : null);
     if (keyName !== memberName) continue;
     const value = member.value as EsTreeNode | null | undefined;
     return value && FUNCTION_NODE_TYPES.has(value.type) ? value : null;

@@ -707,6 +707,48 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    [
+      "private field",
+      "#setMonthContainer = (node) => { this.#monthContainer = node ?? undefined; };",
+      "this.#setMonthContainer",
+    ],
+    [
+      "private method",
+      "#setMonthContainer(node) { this.#monthContainer = node ?? undefined; }",
+      "this.#setMonthContainer",
+    ],
+    [
+      "string-named method",
+      '"setMonthContainer"(node) { this.#monthContainer = node ?? undefined; }',
+      "this.setMonthContainer",
+    ],
+  ])("stays silent on callback-ref convergence using a %s", (_kind, handler, refExpression) => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        #monthContainer;
+
+        ${handler}
+
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.#monthContainer) {
+            this.setState({ monthContainer: this.#monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={${refExpression}} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a conditional named callback-ref convergence guard", () => {
     const result = runRule(
       noDidUpdateSetState,

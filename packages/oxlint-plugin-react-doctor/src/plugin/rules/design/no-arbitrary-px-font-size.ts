@@ -5,7 +5,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const ARBITRARY_PX_FONT_SIZE = /^text-\[(\d+(?:\.\d+)?)px\](?:\/.+)?$/;
+const ARBITRARY_PX_FONT_SIZE = /^text-\[(\d+(?:\.\d+)?)px\](\/.+)?$/;
 
 export const noArbitraryPxFontSize = defineRule({
   id: "no-arbitrary-px-font-size",
@@ -24,9 +24,10 @@ export const noArbitraryPxFontSize = defineRule({
         if (!match) continue;
         const pixels = parseFloat(match[1]);
         const rem = pixels / ROOT_FONT_SIZE_PX;
+        const lineHeightSuffix = match[2] ?? "";
         context.report({
           node,
-          message: `\`text-[${match[1]}px]\` doesn't scale with the user's font-size preference — use rem, e.g. \`text-[${rem}rem]\`.`,
+          message: `\`${match[0]}\` doesn't scale with the user's font-size preference — use rem, e.g. \`text-[${rem}rem]${lineHeightSuffix}\`.`,
         });
       }
     },

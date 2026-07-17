@@ -96,12 +96,13 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
       isNodeOfType(unwrappedLeft, "MemberExpression") &&
       isNodeOfType(unwrappedRight, "MemberExpression")
     ) {
+      const leftPropertyName = getStaticPropertyName(unwrappedLeft);
       return (
         unwrappedLeft.computed === unwrappedRight.computed &&
         compare(unwrappedLeft.object, unwrappedRight.object) &&
         (unwrappedLeft.computed
           ? compare(unwrappedLeft.property, unwrappedRight.property)
-          : getStaticPropertyName(unwrappedLeft) === getStaticPropertyName(unwrappedRight))
+          : leftPropertyName !== null && leftPropertyName === getStaticPropertyName(unwrappedRight))
       );
     }
     if (
@@ -158,10 +159,15 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
       );
     }
     if (isNodeOfType(unwrappedLeft, "Property") && isNodeOfType(unwrappedRight, "Property")) {
+      const leftPropertyName = getStaticPropertyKeyName(unwrappedLeft, {
+        stringifyNonStringLiterals: true,
+      });
       const keysMatch = unwrappedLeft.computed
         ? unwrappedRight.computed && compare(unwrappedLeft.key, unwrappedRight.key)
         : !unwrappedRight.computed &&
-          getStaticPropertyKeyName(unwrappedLeft) === getStaticPropertyKeyName(unwrappedRight);
+          leftPropertyName !== null &&
+          leftPropertyName ===
+            getStaticPropertyKeyName(unwrappedRight, { stringifyNonStringLiterals: true });
       return (
         keysMatch &&
         unwrappedLeft.kind === unwrappedRight.kind &&

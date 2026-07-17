@@ -190,6 +190,20 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("distinguishes different numeric object keys", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${properties => matches({ 1: properties.active }) ? "100vh" : "auto"}; height: ${state => matches({ 2: state.active }) ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag equivalent numeric object keys", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${properties => matches({ 1: properties.active }) ? "100vh" : "auto"}; height: ${state => matches({ 1: state.active }) ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag equivalent this conditions in function callbacks", () => {
     const result = runStyledRule(
       'const Modal = styled.div`height: ${function (properties) { return this.isFull ? "100vh" : "auto"; }}; height: ${function (state) { return this.isFull ? "100dvh" : "auto"; }};`;',

@@ -38,6 +38,68 @@ describe("no-unguarded-throwing-parse-call", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("stays quiet for values produced by built-in URI encoders", () => {
+    const directResult = runRule(
+      noUnguardedThrowingParseCall,
+      `function Page(params) {
+        return decodeURIComponent(encodeURIComponent(params.path));
+      }`,
+    );
+    const searchParamsResult = runRule(
+      noUnguardedThrowingParseCall,
+      `function Page() {
+        return decodeURI(encodeURI(searchParams.get("redirect")));
+      }`,
+    );
+    const aliasResult = runRule(
+      noUnguardedThrowingParseCall,
+      `function Page() {
+        const encodedHash = encodeURIComponent(location.hash);
+        return decodeURIComponent(encodedHash);
+      }`,
+    );
+    expect(directResult.diagnostics).toHaveLength(0);
+    expect(searchParamsResult.diagnostics).toHaveLength(0);
+    expect(aliasResult.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust shadowed or transformed URI encoder calls", () => {
+    const shadowedResult = runRule(
+      noUnguardedThrowingParseCall,
+      `function Page(params, encodeURIComponent) {
+        return decodeURIComponent(encodeURIComponent(params.path));
+      }`,
+    );
+    const transformedResult = runRule(
+      noUnguardedThrowingParseCall,
+      `function Page(params) {
+        return decodeURIComponent(encodeURIComponent(params.path).slice(1));
+      }`,
+    );
+    expect(shadowedResult.diagnostics).toHaveLength(1);
+    expect(transformedResult.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet for a shadowed decode helper", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function Page(params, decodeURIComponent) {
+        return decodeURIComponent(params.path);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags location href values that can preserve malformed percent escapes", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function Page() {
+        return [decodeURIComponent(location.href), decodeURIComponent(window.location.href)];
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("flags decodeURIComponent of a bare route param named branch", () => {
     const result = runRule(
       noUnguardedThrowingParseCall,

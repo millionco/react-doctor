@@ -22,6 +22,7 @@ const URL_MESSAGE =
   "This builds a `URL` from a runtime URL/route value (`params`, `searchParams`, a `location` field), which throws `TypeError` on a malformed string and crashes render. Guard it with `URL.canParse`, pass a base-URL second argument, or wrap the call in a try/catch.";
 
 const DECODE_CALLEE_NAMES = new Set(["decodeURIComponent", "decodeURI"]);
+const URI_ENCODER_NAMES = new Set(["encodeURIComponent", "encodeURI"]);
 const COLOR_CALLEE_NAMES = new Set(["readableColor", "parseToRgb", "chroma"]);
 
 // A prop/param named after a URL/route field, or a well-known route source.
@@ -249,6 +250,14 @@ const hasRuntimeUrlRouteRoot = (node: EsTreeNode, context: RuleContext): boolean
   );
 };
 
+const isBuiltInUriEncoderCall = (node: EsTreeNode, context: RuleContext): boolean => {
+  const inner = stripParenExpression(node);
+  if (!isNodeOfType(inner, "CallExpression")) return false;
+  const callee = stripParenExpression(inner.callee as EsTreeNode);
+  if (!isNodeOfType(callee, "Identifier") || !URI_ENCODER_NAMES.has(callee.name)) return false;
+  return context.scopes.isGlobalReference(callee);
+};
+
 const argumentTracesToUrlRouteSource = (
   argument: EsTreeNode,
   context: RuleContext,
@@ -257,6 +266,7 @@ const argumentTracesToUrlRouteSource = (
   if (traceDepth > MAX_INITIALIZER_TRACE_DEPTH) return false;
   const inner = stripParenExpression(argument);
   if (isSearchParamsSerialization(inner, 0)) return false;
+  if (isBuiltInUriEncoderCall(inner, context)) return false;
   if (isNodeOfType(inner, "Identifier")) {
     if (URL_ROUTE_SOURCE_ROOTS.has(inner.name)) return true;
     const symbol = context.scopes.referenceFor(inner)?.resolvedSymbol ?? null;
@@ -718,7 +728,8 @@ export const noUnguardedThrowingParseCall = defineRule({
         if (fileIsExcluded) return;
         if (!isNodeOfType(node.callee, "Identifier")) return;
         const calleeName = node.callee.name;
-        const isDecode = DECODE_CALLEE_NAMES.has(calleeName);
+        const isDecode =
+          DECODE_CALLEE_NAMES.has(calleeName) && context.scopes.isGlobalReference(node.callee);
         const isColor = COLOR_CALLEE_NAMES.has(calleeName);
         if (!isDecode && !isColor) return;
 

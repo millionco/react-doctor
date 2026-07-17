@@ -27,7 +27,17 @@ npx react-doctor@latest
 
 https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570
 
-### 2. Install for agents
+### 2. Run a focused design audit
+
+Use the design command when you only want UI composition, typography, interaction, accessibility, and motion findings:
+
+```bash
+npx react-doctor@latest design
+```
+
+This activates the complete design rule family, including focused rules that stay opt-in during a general health scan, and skips unrelated dead-code, supply-chain, custom-plugin, and health-score passes. It accepts the normal scan flags, including `--scope`, `--project`, `--verbose`, and `--json`.
+
+### 3. Install for agents
 
 Once you have an audit, you can install the skill for your coding agent to learn from the issues and fix them in the future.
 
@@ -37,7 +47,7 @@ npx react-doctor@latest install
 
 Works with Claude Code, Cursor, Codex, OpenCode, and many more.
 
-### 3. Run in CI
+### 4. Run in CI
 
 React Doctor reviews every pull request and reports only the issues your change introduced, not your existing backlog. Set it up with one command:
 
@@ -49,13 +59,13 @@ This adds the workflow, scans every pull request, and posts a summary comment. C
 
 [CI docs →](https://react.doctor/ci)
 
-### 4. Configure rules
+### 5. Configure rules
 
 You can configure which rules to run and how to run them in `doctor.config.ts`.
 
 [Learn more →](https://react.doctor/docs/configuration/config-files)
 
-### 5. Consume JSON
+### 6. Consume JSON
 
 Use `--json` for stdout or `--json-out <path>` for a file. The default
 `schemaVersion: 3` report includes deterministic diagnostic IDs and exact

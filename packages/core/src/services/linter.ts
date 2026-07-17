@@ -42,6 +42,8 @@ export interface LintInput {
   readonly respectInlineDisables?: boolean;
   readonly adoptExistingLintConfig?: boolean;
   readonly ignoredTags?: ReadonlySet<string>;
+  readonly includedTags?: ReadonlySet<string>;
+  readonly includeTagDefaults?: boolean;
   readonly userConfig?: ReactDoctorConfig | null;
   readonly configSourceDirectory?: string;
   readonly nodeBinaryPath?: string;
@@ -145,6 +147,8 @@ export class Linter extends Context.Service<
                   respectInlineDisables: input.respectInlineDisables,
                   adoptExistingLintConfig: input.adoptExistingLintConfig,
                   ignoredTags: input.ignoredTags,
+                  includedTags: input.includedTags,
+                  includeTagDefaults: input.includeTagDefaults,
                   userConfig: input.userConfig ?? null,
                   configSourceDirectory: input.configSourceDirectory,
                   onPartialFailure: (reason) => {

@@ -8,6 +8,9 @@ import { resolveParallelFlag } from "./resolve-parallel-flag.js";
 
 export interface CliInspectOptions extends InspectOptions {
   categoryFilters?: string[];
+  includedTags?: ReadonlySet<string>;
+  includeTagDefaults?: boolean;
+  scoreDisabledMessage?: string;
 }
 
 /**
@@ -29,11 +32,12 @@ export const resolveCliInspectOptions = (
   // on warnings you've hidden). Otherwise the warnings flag passes through.
   // The gate level itself is resolved by `resolveBlockingLevel`.
   const wantsWarningGate = pickBlockingLevel(flags, userConfig) === "warning";
+  const isDesignScan = flags.design === true;
 
   return {
     lint: flags.lint,
-    deadCode: flags.deadCode,
-    supplyChain: flags.supplyChain,
+    deadCode: isDesignScan ? false : flags.deadCode,
+    supplyChain: isDesignScan ? false : flags.supplyChain,
     verbose: flags.verbose,
     outputDirectory: flags.outputDir,
     // `--no-respect-inline-disables` is negatable-only, so commander defaults
@@ -46,11 +50,16 @@ export const resolveCliInspectOptions = (
     // `inspect()`'s merge layer inherits `userConfig.noScore` from the
     // per-project (module-merged) config — eagerly collapsing it here from the
     // ROOT config silently overrode a workspace module's own `noScore: true`.
-    noScore: flags.score === false || flags.telemetry === false ? true : undefined,
+    noScore: isDesignScan || flags.score === false || flags.telemetry === false ? true : undefined,
     isCi: isCiEnvironment(),
     silent: Boolean(flags.json),
     concurrency: resolveParallelFlag(flags.parallel),
     maxDurationMs: resolveMaxDurationFlag(flags.maxDuration),
     categoryFilters: resolveCliCategories(flags.category),
+    includedTags: isDesignScan ? new Set(["design"]) : undefined,
+    includeTagDefaults: isDesignScan ? true : undefined,
+    scoreDisabledMessage: isDesignScan
+      ? "Design scans do not affect the React health score."
+      : undefined,
   };
 };

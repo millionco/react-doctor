@@ -51,6 +51,8 @@ interface RunOxlintOptions {
   respectInlineDisables?: boolean;
   adoptExistingLintConfig?: boolean;
   ignoredTags?: ReadonlySet<string>;
+  includedTags?: ReadonlySet<string>;
+  includeTagDefaults?: boolean;
   /**
    * Optional react-doctor user config (already-loaded
    * `react-doctor.config.json` or `package.json#reactDoctor`). When
@@ -370,6 +372,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     respectInlineDisables = true,
     adoptExistingLintConfig = true,
     ignoredTags = new Set<string>(),
+    includedTags = new Set<string>(),
+    includeTagDefaults = false,
     userConfig,
     configSourceDirectory = rootDirectory,
     onPartialFailure,
@@ -423,7 +427,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // the parser crash + misleading warning. Drop them up front so the
   // scan starts in the same state the fallback would land in.
   const extendsPaths = detectedConfigPaths.filter(canOxlintExtendConfig);
-  const userPlugins = resolveUserPlugins(userConfig?.plugins, configSourceDirectory);
+  const userPlugins =
+    includedTags.size > 0 ? [] : resolveUserPlugins(userConfig?.plugins, configSourceDirectory);
 
   const buildConfig = (overrides: {
     extendsPaths: string[];
@@ -437,6 +442,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       customRulesOnly,
       extendsPaths: overrides.extendsPaths,
       ignoredTags,
+      includedTags,
+      includeTagDefaults,
       serverAuthFunctionNames,
       severityControls,
       userPlugins,

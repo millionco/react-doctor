@@ -3,6 +3,7 @@
 // is optional here. The resolvers use that to distinguish "user passed
 // nothing" from "user passed a value" without consulting `program`.
 export interface InspectFlags {
+  design?: boolean;
   lint?: boolean;
   deadCode?: boolean;
   // Resolved against `supplyChain.enabled` (this flag wins), like lint/deadCode.

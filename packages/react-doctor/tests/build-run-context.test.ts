@@ -63,6 +63,11 @@ describe("buildRunContext", () => {
     expect(buildRunContext().nodeMajor).toBe(expectedMajor);
   });
 
+  it("records the focused design command separately from a general inspection", () => {
+    process.argv = ["node", "react-doctor", "design", ".", "--verbose"];
+    expect(buildRunContext().command).toBe("design");
+  });
+
   it("scrubs the OS username out of cwd (home directory replaced with ~)", () => {
     const { cwd } = buildRunContext();
     expect(cwd).not.toContain(os.homedir());

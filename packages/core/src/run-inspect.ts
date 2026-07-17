@@ -83,6 +83,8 @@ export interface InspectInput {
   readonly warnings?: boolean;
   readonly adoptExistingLintConfig: boolean;
   readonly ignoredTags: ReadonlySet<string>;
+  readonly includedTags?: ReadonlySet<string>;
+  readonly includeTagDefaults?: boolean;
   readonly nodeBinaryPath?: string;
   /** Whether dead-code analysis runs. Gated also on `!isDiffMode`. */
   readonly runDeadCode: boolean;
@@ -544,6 +546,8 @@ export const runInspect = <HooksR = never>(
                   checkSecurityScanCooperative(scanDirectory, {
                     project,
                     ignoredTags: input.ignoredTags,
+                    includedTags: input.includedTags,
+                    includeTagDefaults: input.includeTagDefaults,
                   }),
                 ).pipe(
                   Effect.map((diagnostics) => Stream.fromIterable(diagnostics)),
@@ -793,6 +797,8 @@ export const runInspect = <HooksR = never>(
         respectInlineDisables: input.respectInlineDisables,
         adoptExistingLintConfig: input.adoptExistingLintConfig,
         ignoredTags: input.ignoredTags,
+        includedTags: input.includedTags,
+        includeTagDefaults: input.includeTagDefaults,
         userConfig: resolvedConfig.config ?? undefined,
         configSourceDirectory: resolvedConfig.configSourceDirectory ?? undefined,
         onFileProgress: (scannedFileCount, totalFileCount) => {

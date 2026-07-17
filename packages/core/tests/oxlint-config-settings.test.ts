@@ -222,6 +222,33 @@ describe("createOxlintConfig settings", () => {
     expect(config.rules).not.toHaveProperty("react-doctor/forbid-component-props");
   });
 
+  it("runs only an explicitly included tag and activates that tag's opt-in rules", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      includedTags: new Set(["design"]),
+      includeTagDefaults: true,
+    });
+
+    expect(config.rules).toHaveProperty("react-doctor/no-uppercase-mono-label");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-comp");
+    expect(hasReactHooksJsEntry(config)).toBe(false);
+  });
+
+  it("preserves an explicit off override inside an included tag", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      includedTags: new Set(["design"]),
+      includeTagDefaults: true,
+      severityControls: {
+        rules: { "react-doctor/no-uppercase-mono-label": "off" },
+      },
+    });
+
+    expect(config.rules).not.toHaveProperty("react-doctor/no-uppercase-mono-label");
+  });
+
   it("does not let a category-level severity flip an opt-out rule on", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

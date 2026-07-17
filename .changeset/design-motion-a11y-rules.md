@@ -6,6 +6,8 @@
 
 Add deterministic design-quality lint rules spanning motion performance, accessibility, and Tailwind/JSX hygiene.
 
+Add `react-doctor design [directory]` for a focused UI audit. The command runs only design-tagged rules, deliberately activates that family's focused opt-in diagnostics, respects explicit per-rule disablements, and skips unrelated analyzers, external lint configuration, custom plugins, and health scoring.
+
 **Motion**
 
 - **`motion-create-in-render`** — Motion component factories executed during a component or custom-hook render, including synchronous iteration callbacks. Module scope, event/effect callbacks, and stable React initializers remain valid.

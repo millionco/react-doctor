@@ -1627,6 +1627,15 @@ alter table data enable row level security;
     ).toEqual([]);
   });
 
+  it("skips scan rules outside an explicitly included tag", () => {
+    expect(
+      checkSecurityScan(path.join(FIXTURES_DIRECTORY, "eva-todesktop-release-pipeline"), {
+        includedTags: new Set(["design"]),
+        includeTagDefaults: true,
+      }),
+    ).toEqual([]);
+  });
+
   it("single-sources diagnostic metadata from the registry rule", () => {
     const entry = REACT_DOCTOR_RULES.find(
       (candidate) => candidate.id === "build-pipeline-secret-boundary",

@@ -13,6 +13,8 @@ import type { Capability } from "oxlint-plugin-react-doctor";
 export interface CheckSecurityScanOptions {
   readonly project?: ProjectInfo;
   readonly ignoredTags?: ReadonlySet<string>;
+  readonly includedTags?: ReadonlySet<string>;
+  readonly includeTagDefaults?: boolean;
 }
 
 interface EnabledScanRule {
@@ -43,13 +45,23 @@ const createSecurityScanSession = (
 ): SecurityScanSession | null => {
   const capabilities = options.project ? getCapabilities(options.project) : new Set<Capability>();
   const ignoredTags = options.ignoredTags ?? new Set<string>();
+  const includedTags = options.includedTags ?? new Set<string>();
 
   const enabledScanRules: EnabledScanRule[] = REACT_DOCTOR_RULES.flatMap((entry) => {
     const rule = entry.rule;
     const scan = rule.scan;
     if (typeof scan !== "function") return [];
-    if (rule.defaultEnabled === false) return [];
-    if (!shouldEnableRule(rule.requires, rule.tags, capabilities, ignoredTags, rule.disabledWhen)) {
+    if (rule.defaultEnabled === false && !options.includeTagDefaults) return [];
+    if (
+      !shouldEnableRule(
+        rule.requires,
+        rule.tags,
+        capabilities,
+        ignoredTags,
+        rule.disabledWhen,
+        includedTags,
+      )
+    ) {
       return [];
     }
     return [{ entry, scan, committedFilesOnly: rule.committedFilesOnly === true }];

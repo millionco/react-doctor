@@ -143,6 +143,9 @@ const buildChangedLineMatcher = (
 
 export interface ReactDoctorInspectOptions extends InspectOptions {
   categoryFilters?: string[];
+  includedTags?: ReadonlySet<string>;
+  includeTagDefaults?: boolean;
+  scoreDisabledMessage?: string;
   /**
    * Internal: an absolute epoch-ms deadline shared across a workspace scan's
    * projects. The CLI sets it so every project honors ONE `--max-duration`
@@ -174,6 +177,9 @@ export interface ResolvedInspectOptions {
   categoryFilters: ReadonlySet<string>;
   adoptExistingLintConfig: boolean;
   ignoredTags: ReadonlySet<string>;
+  includedTags: ReadonlySet<string>;
+  includeTagDefaults: boolean;
+  scoreDisabledMessage: string | undefined;
   outputSurface: DiagnosticSurface;
   suppressRendering: boolean;
   /** See `InspectOptions.concurrentScan`. */
@@ -198,47 +204,58 @@ export interface ResolvedInspectOptions {
   supplyChainManifestChanged: boolean;
 }
 
-const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<string> => {
+const buildIgnoredTags = (
+  userConfig: ReactDoctorConfig | null,
+  includedTags: ReadonlySet<string>,
+): ReadonlySet<string> => {
   const tags = new Set<string>();
   if (userConfig?.ignore?.tags) {
     for (const tag of userConfig.ignore.tags) tags.add(tag);
   }
+  for (const tag of includedTags) tags.delete(tag);
   return tags;
 };
 
 const mergeInspectOptions = (
   inputOptions: ReactDoctorInspectOptions,
   userConfig: ReactDoctorConfig | null,
-): ResolvedInspectOptions => ({
-  lint: inputOptions.lint ?? userConfig?.lint ?? true,
-  deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
-  supplyChain: inputOptions.supplyChain ?? userConfig?.supplyChain?.enabled ?? true,
-  verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
-  outputDirectory: inputOptions.outputDirectory || null,
-  scoreOnly: inputOptions.scoreOnly ?? false,
-  noScore: inputOptions.noScore ?? userConfig?.noScore ?? false,
-  isCi: inputOptions.isCi ?? false,
-  isCiOrCodingAgentEnvironment: isCiOrCodingAgentEnvironment(),
-  isNonInteractiveEnvironment: isNonInteractiveEnvironment(),
-  silent: inputOptions.silent ?? false,
-  includePaths: inputOptions.includePaths ?? [],
-  customRulesOnly: userConfig?.customRulesOnly ?? false,
-  share: userConfig?.share ?? true,
-  respectInlineDisables:
-    inputOptions.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
-  warnings: inputOptions.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
-  categoryFilters: new Set(resolveCliCategories(inputOptions.categoryFilters) ?? []),
-  adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
-  ignoredTags: buildIgnoredTags(userConfig),
-  outputSurface: inputOptions.outputSurface ?? "cli",
-  suppressRendering: inputOptions.suppressRendering ?? false,
-  concurrentScan: inputOptions.concurrentScan ?? false,
-  concurrency: inputOptions.concurrency,
-  maxDurationMs: inputOptions.maxDurationMs ?? null,
-  baseline: inputOptions.baseline ?? null,
-  changedLineRanges: inputOptions.changedLineRanges ?? null,
-  supplyChainManifestChanged: inputOptions.supplyChainManifestChanged ?? false,
-});
+): ResolvedInspectOptions => {
+  const includedTags = inputOptions.includedTags ?? new Set<string>();
+  return {
+    lint: inputOptions.lint ?? userConfig?.lint ?? true,
+    deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
+    supplyChain: inputOptions.supplyChain ?? userConfig?.supplyChain?.enabled ?? true,
+    verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
+    outputDirectory: inputOptions.outputDirectory || null,
+    scoreOnly: inputOptions.scoreOnly ?? false,
+    noScore: inputOptions.noScore ?? userConfig?.noScore ?? false,
+    isCi: inputOptions.isCi ?? false,
+    isCiOrCodingAgentEnvironment: isCiOrCodingAgentEnvironment(),
+    isNonInteractiveEnvironment: isNonInteractiveEnvironment(),
+    silent: inputOptions.silent ?? false,
+    includePaths: inputOptions.includePaths ?? [],
+    customRulesOnly: includedTags.size > 0 ? false : (userConfig?.customRulesOnly ?? false),
+    share: userConfig?.share ?? true,
+    respectInlineDisables:
+      inputOptions.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
+    warnings: inputOptions.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
+    categoryFilters: new Set(resolveCliCategories(inputOptions.categoryFilters) ?? []),
+    adoptExistingLintConfig:
+      includedTags.size > 0 ? false : (userConfig?.adoptExistingLintConfig ?? true),
+    ignoredTags: buildIgnoredTags(userConfig, includedTags),
+    includedTags,
+    includeTagDefaults: inputOptions.includeTagDefaults ?? false,
+    scoreDisabledMessage: inputOptions.scoreDisabledMessage,
+    outputSurface: inputOptions.outputSurface ?? "cli",
+    suppressRendering: inputOptions.suppressRendering ?? false,
+    concurrentScan: inputOptions.concurrentScan ?? false,
+    concurrency: inputOptions.concurrency,
+    maxDurationMs: inputOptions.maxDurationMs ?? null,
+    baseline: inputOptions.baseline ?? null,
+    changedLineRanges: inputOptions.changedLineRanges ?? null,
+    supplyChainManifestChanged: inputOptions.supplyChainManifestChanged ?? false,
+  };
+};
 
 // The scan-config slice of the wide event, shared by the success and failure
 // emit paths (the failure path has no `result`, so it can only supply config).
@@ -498,6 +515,8 @@ const runBaselineComparison = async (
         warnings: params.options.warnings,
         adoptExistingLintConfig: params.options.adoptExistingLintConfig,
         ignoredTags: params.options.ignoredTags,
+        includedTags: params.options.includedTags,
+        includeTagDefaults: params.options.includeTagDefaults,
         nodeBinaryPath: params.resolvedNodeBinaryPath ?? undefined,
         runDeadCode: false,
         isCi: params.options.isCi,
@@ -662,6 +681,8 @@ const runInspectWithRuntime = async (
       warnings: options.warnings,
       adoptExistingLintConfig: options.adoptExistingLintConfig,
       ignoredTags: options.ignoredTags,
+      includedTags: options.includedTags,
+      includeTagDefaults: options.includeTagDefaults,
       nodeBinaryPath: resolvedNodeBinaryPath ?? undefined,
       runDeadCode: options.deadCode,
       isCi: options.isCi,
@@ -1088,7 +1109,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     });
     const hasSkippedChecks = skippedChecks.length > 0;
 
-    const noScoreMessage = buildNoScoreMessage(options.noScore);
+    const noScoreMessage = buildNoScoreMessage(options.noScore, options.scoreDisabledMessage);
 
     const buildResult = (): InspectResult => ({
       diagnostics: [...diagnostics],

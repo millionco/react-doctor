@@ -48,6 +48,14 @@ Use `--staged` for pre-commit hooks (scans only staged files):
 npx react-doctor@latest --staged
 ```
 
+Use the focused design command to run only UI composition, typography, interaction, accessibility, and motion rules. It deliberately activates the complete design family, including rules that stay opt-in in a general health scan:
+
+```bash
+npx react-doctor@latest design --verbose
+```
+
+The design command accepts normal scan flags such as `--scope`, `--project`, and `--json`, while skipping dead-code, supply-chain, external lint configuration, custom plugins, and health scoring.
+
 react-doctor blocks (exits non-zero) when an error-severity diagnostic is found, so CI fails by default. Use `--blocking <level>` to change the threshold — `error` (default), `warning` (fail on any diagnostic), or `none` (advisory; findings and the score are still reported, but the process always exits 0):
 
 ```bash

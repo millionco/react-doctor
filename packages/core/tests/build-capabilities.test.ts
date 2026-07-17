@@ -794,3 +794,28 @@ describe("shouldEnableRule MobX gating", () => {
     ).toBe(false);
   });
 });
+
+describe("shouldEnableRule tag inclusion", () => {
+  const capabilities = new Set(["react"]);
+  const ignoredTags = new Set<string>();
+  const includedTags = new Set(["design"]);
+
+  it("keeps only rules carrying an explicitly included tag", () => {
+    expect(
+      shouldEnableRule(
+        undefined,
+        ["design", "test-noise"],
+        capabilities,
+        ignoredTags,
+        undefined,
+        includedTags,
+      ),
+    ).toBe(true);
+    expect(
+      shouldEnableRule(undefined, ["security"], capabilities, ignoredTags, undefined, includedTags),
+    ).toBe(false);
+    expect(
+      shouldEnableRule(undefined, undefined, capabilities, ignoredTags, undefined, includedTags),
+    ).toBe(false);
+  });
+});

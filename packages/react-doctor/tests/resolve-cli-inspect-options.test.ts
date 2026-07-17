@@ -153,3 +153,21 @@ describe("resolveCliInspectOptions: scan-phase flags", () => {
     expect(resolveCliInspectOptions({ supplyChain: true }, null).supplyChain).toBe(true);
   });
 });
+
+describe("resolveCliInspectOptions: design scan", () => {
+  it("selects design rules while skipping unrelated analyzers and scoring", () => {
+    const resolved = resolveCliInspectOptions(
+      { design: true, deadCode: true, supplyChain: true, score: true },
+      null,
+    );
+
+    expect(resolved.includedTags).toEqual(new Set(["design"]));
+    expect(resolved.includeTagDefaults).toBe(true);
+    expect(resolved.deadCode).toBe(false);
+    expect(resolved.supplyChain).toBe(false);
+    expect(resolved.noScore).toBe(true);
+    expect(resolved.scoreDisabledMessage).toBe(
+      "Design scans do not affect the React health score.",
+    );
+  });
+});

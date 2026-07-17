@@ -112,6 +112,12 @@ describe("stripUnknownCliFlags", () => {
     expect(stripUserArguments([".", "--supply-chain"])).toEqual([".", "--supply-chain"]);
   });
 
+  it("keeps standard scan flags on the design subcommand", () => {
+    expect(
+      stripUserArguments(["design", "./apps/web", "--verbose", "--scope", "changed", "--json"]),
+    ).toEqual(["design", "./apps/web", "--verbose", "--scope", "changed", "--json"]);
+  });
+
   it("keeps color flags on the version subcommand and drops unknown ones", () => {
     expect(stripUserArguments(["version", "--no-color"])).toEqual(["version", "--no-color"]);
     expect(stripUserArguments(["version", "--color"])).toEqual(["version", "--color"]);

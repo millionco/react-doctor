@@ -447,6 +447,8 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
       warnings: input.options.warnings,
       adoptExistingLintConfig: input.options.adoptExistingLintConfig,
       ignoredTags: [...input.options.ignoredTags].sort(),
+      includedTags: [...input.options.includedTags].sort(),
+      includeTagDefaults: input.options.includeTagDefaults,
       concurrency: input.options.concurrency,
       // Full-scan batch ordering can change which files trip the spawn
       // timeout and get dropped, so — like `concurrency` above — it must key

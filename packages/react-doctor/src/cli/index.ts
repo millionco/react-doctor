@@ -2,6 +2,7 @@ import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL, CI_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
 import { ciConfigAction, ciInstallAction, ciUpgradeAction } from "./commands/ci.js";
+import { designAction } from "./commands/design.js";
 import { inspectAction } from "./commands/inspect.js";
 import { installAction } from "./commands/install.js";
 import {
@@ -74,6 +75,7 @@ ${formatExampleLines([
   ["react-doctor --scope changed --base main", "scan only new issues vs. main"],
   ["react-doctor --project modules/a,modules/b", "score each module separately (names or paths)"],
   ["react-doctor --staged", "scan staged files (pre-commit hook)"],
+  ["react-doctor design", "run the focused UI design audit"],
   ["react-doctor --category Security", "show only one diagnostic category"],
   ["react-doctor --blocking warning", "fail CI on warnings too (default: error)"],
   ["react-doctor --json > report.json", "write a machine-readable report"],
@@ -107,6 +109,21 @@ ${highlighter.dim("Managing CI:")}
 
 ${highlighter.dim("Learn more:")}
   ${highlighter.info(CANONICAL_GITHUB_URL)}
+`;
+
+const renderDesignHelpEpilog = (): string => `
+${highlighter.dim("Examples:")}
+${formatExampleLines([
+  ["react-doctor design", "audit UI design in the current project"],
+  ["react-doctor design ./apps/web", "audit one application"],
+  ["react-doctor design --verbose", "show every design finding"],
+  ["react-doctor design --json", "write a design-only JSON report"],
+])}
+
+${highlighter.dim("Scope:")}
+  Runs only rules tagged ${highlighter.info("design")}, including focused rules that stay opt-in during a general health scan.
+  Dead-code, supply-chain, external lint-config, custom-plugin, and health-score passes are skipped.
+  Standard scan flags such as ${highlighter.info("--scope")}, ${highlighter.info("--project")}, ${highlighter.info("--verbose")}, and ${highlighter.info("--json")} still work.
 `;
 
 const renderCiHelpEpilog = (): string => `
@@ -233,6 +250,14 @@ const program = new Command()
   .addHelpText("after", renderRootHelpEpilog);
 
 program.action(inspectAction);
+
+program
+  .command("design [directory]")
+  .description("Run only the focused UI design diagnostics")
+  .addHelpText("after", renderDesignHelpEpilog)
+  .action((directory, _options, command) =>
+    designAction(directory ?? ".", command.optsWithGlobals()),
+  );
 
 program
   .command("why <location>")

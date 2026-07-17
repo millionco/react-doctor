@@ -129,6 +129,7 @@ const WHY_FLAG_SPEC: CliFlagSpec = {
 };
 
 const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
+  ["design", ROOT_FLAG_SPEC],
   ["install", INSTALL_FLAG_SPEC],
   ["setup", INSTALL_FLAG_SPEC],
   ["version", VERSION_FLAG_SPEC],

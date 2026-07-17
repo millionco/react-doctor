@@ -18,6 +18,10 @@ If the score dropped, fix the regressions before committing.
 
 Run `npx react-doctor@latest --verbose` (the default `--scope full`) to scan the full codebase. Fix issues by severity — errors first, then warnings.
 
+## For a focused UI design audit:
+
+Run `npx react-doctor@latest design --verbose`. This selects only design-tagged UI composition, typography, interaction, accessibility, and motion rules, including focused rules that remain opt-in during a general health scan.
+
 ## /doctor — full local triage workflow
 
 When the user types `/doctor`, says "run react doctor", or asks for a full triage / cleanup pass (not just a regression check), fetch the canonical local-triage playbook and follow every step in it:
@@ -49,3 +53,4 @@ npx react-doctor@latest --verbose --scope changed
 | `--scope changed` | Only report issues introduced vs the base branch (default: full) |
 | `--scope lines`   | Only report issues on the changed lines                          |
 | `--score`         | Output only the numeric score                                    |
+| `design`          | Run only the focused UI design diagnostics                       |

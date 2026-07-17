@@ -14,4 +14,10 @@ describe("buildNoScoreMessage", () => {
       `Score unavailable (could not reach the score API). Want something custom to your company? Contact us at ${ENTERPRISE_CONTACT_URL}.`,
     );
   });
+
+  it("accepts a focused-scan explanation", () => {
+    expect(buildNoScoreMessage(true, "Design scans do not affect the React health score.")).toBe(
+      `Design scans do not affect the React health score. Want something custom to your company? Contact us at ${ENTERPRISE_CONTACT_URL}.`,
+    );
+  });
 });

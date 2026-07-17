@@ -260,6 +260,7 @@ export const shouldEnableRule = (
   capabilities: ReadonlySet<Capability>,
   ignoredTags: ReadonlySet<string>,
   disabledWhen?: ReadonlyArray<Capability>,
+  includedTags?: ReadonlySet<string>,
 ): boolean => {
   if (requires) {
     for (const capability of requires) {
@@ -281,6 +282,9 @@ export const shouldEnableRule = (
     for (const tag of tags) {
       if (ignoredTags.has(tag)) return false;
     }
+  }
+  if (includedTags && includedTags.size > 0) {
+    if (!tags?.some((tag) => includedTags.has(tag))) return false;
   }
   return true;
 };

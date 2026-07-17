@@ -1,6 +1,6 @@
 import type { Event } from "@sentry/node";
+import { scrubSensitivePaths } from "@react-doctor/core";
 import { anonymizeInPlace, anonymizeText } from "./anonymize-text.js";
-import { scrubSensitivePaths } from "./scrub-sensitive-text.js";
 
 /**
  * Anonymizes a Sentry event (error or transaction) before it leaves the

@@ -179,6 +179,7 @@ import { noDistractingElements } from "./rules/a11y/no-distracting-elements.js";
 import { noDocumentStartViewTransition } from "./rules/view-transitions/no-document-start-view-transition.js";
 import { noDocumentWrite } from "./rules/js-performance/no-document-write.js";
 import { noDynamicImportPath } from "./rules/bundle-size/no-dynamic-import-path.js";
+import { noEagerNewInUseStateInitializer } from "./rules/performance/no-eager-new-in-use-state-initializer.js";
 import { noEffectChain } from "./rules/state-and-effects/no-effect-chain.js";
 import { noEffectEventHandler } from "./rules/state-and-effects/no-effect-event-handler.js";
 import { noEffectEventInDeps } from "./rules/state-and-effects/no-effect-event-in-deps.js";
@@ -2431,6 +2432,20 @@ export const reactDoctorRules = [
       ...noDynamicImportPath,
       framework: "global",
       category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/no-eager-new-in-use-state-initializer",
+    id: "no-eager-new-in-use-state-initializer",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noEagerNewInUseStateInitializer,
+      framework: "global",
+      category: "Performance",
+      requires: [
+        ...new Set<Capability>(["react", ...(noEagerNewInUseStateInitializer.requires ?? [])]),
+      ],
     },
   },
   {

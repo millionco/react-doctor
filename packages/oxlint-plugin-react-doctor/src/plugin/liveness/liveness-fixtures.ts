@@ -606,6 +606,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-dynamic-import-path": {
     code: "const load = (p) => import(p);",
   },
+  "no-eager-new-in-use-state-initializer": {
+    code: 'import { useState } from "react";\nconst Client = () => useState(new AbortController());',
+  },
   "no-effect-chain": {
     code: "function Game({ card }) {\n        const [goldCardCount, setGoldCardCount] = useState(0);\n        const [round, setRound] = useState(1);\n        useEffect(() => { if (card.gold) setGoldCardCount(goldCardCount + 1); }, [card]);\n        useEffect(() => { if (goldCardCount > 3) setRound(round + 1); }, [goldCardCount]);\n        return null;\n      }",
   },

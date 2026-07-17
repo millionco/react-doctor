@@ -126,6 +126,7 @@ export const STATE_SNIPPET_POOL = [
   `const [copied, setCopied] = useState(false);`,
   `const [cache] = useState(new Map());`,
   `const [snapshot] = useState(new Date());`,
+  `const [fuzzEagerClient] = useState(new AbortController());`,
   `const id = useId();`,
   `const deferredValue = useDeferredValue(state);`,
   `const [isPending, startTransition] = useTransition();`,

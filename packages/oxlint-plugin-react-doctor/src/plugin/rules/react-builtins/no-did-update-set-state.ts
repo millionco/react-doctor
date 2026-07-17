@@ -330,6 +330,7 @@ const getClassMemberCallback = (classNode: EsTreeNode, memberName: string): EsTr
     if (!isNodeOfType(member, "MethodDefinition") && !isNodeOfType(member, "PropertyDefinition")) {
       continue;
     }
+    if (member.static === true) continue;
     const key = member.key as EsTreeNode;
     const keyName =
       (isNodeOfType(key, "Identifier") && key.name) ||

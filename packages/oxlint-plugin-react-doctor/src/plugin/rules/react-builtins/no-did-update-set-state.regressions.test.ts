@@ -749,6 +749,61 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    [
+      "private provenance for a public field",
+      `
+        #node;
+        #setNode = (node) => { this.#node = node; };
+        componentDidUpdate() {
+          if (this.state.node !== this.node) this.setState({ node: this.node });
+        }
+        render() { return <div ref={this.#setNode} />; }
+      `,
+    ],
+    [
+      "public provenance for a private field",
+      `
+        #node;
+        setNode = (node) => { this.node = node; };
+        componentDidUpdate() {
+          if (this.state.node !== this.#node) this.setState({ node: this.#node });
+        }
+        render() { return <div ref={this.setNode} />; }
+      `,
+    ],
+  ])("still flags %s with the same spelling", (_description, classBody) => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `class Calendar extends React.Component { ${classBody} }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves a private handler separately from a same-named public handler", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        #node;
+        setNode = (node) => { this.publicNode = node; };
+        #setNode = (node) => { this.#node = node; };
+
+        componentDidUpdate() {
+          if (this.state.node !== this.#node) this.setState({ node: this.#node });
+        }
+
+        render() { return <div ref={this.#setNode} />; }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a conditional named callback-ref convergence guard", () => {
     const result = runRule(
       noDidUpdateSetState,

@@ -573,6 +573,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
   `export const FuzzCard = () => <div />; const FormatCurrency = (value: number) => String(value); export default FormatCurrency;`,
   `class EventShield extends React.Component { handleClick(event) { event.stopPropagation(); } render() { return <div onClick={this.handleClick} />; } }`,
   `class PrivateCallbackRefComponent extends React.Component { #node; #setNode = (node) => { this.#node = node ?? undefined; }; componentDidUpdate() { if (this.state.node !== this.#node) this.setState({ node: this.#node }); } render() { return <div ref={this.#setNode} />; } }`,
+  `class PrivatePublicRefCollision extends React.Component { #node; #setNode = (node) => { this.#node = node; }; componentDidUpdate() { if (this.state.node !== this.node) this.setState({ node: this.node }); } render() { return <div ref={this.#setNode} />; } }`,
   `const globalCount = (globalThis as any).__count = ((globalThis as any).__count ?? 0) + 1;`,
   `const emDash = \`\${value} — \${state}\`;`,
   `const composed = event.composedPath()[0];`,

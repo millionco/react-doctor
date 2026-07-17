@@ -126,6 +126,16 @@ const getStaticMemberName = (node: EsTreeNode): string | null => {
   return isNodeOfType(node.property, "Identifier") ? node.property.name : null;
 };
 
+const getMemberIdentity = (property: EsTreeNode): string | null => {
+  const propertyName = getPropertyKeyName(property);
+  if (propertyName !== undefined) {
+    return isNodeOfType(property, "PrivateIdentifier") ? `#${propertyName}` : propertyName;
+  }
+  return isNodeOfType(property, "Literal") && typeof property.value === "string"
+    ? property.value
+    : null;
+};
+
 interface StateSourcePath {
   domain: string;
   members: string[];
@@ -269,7 +279,7 @@ const getThisFieldName = (node: EsTreeNode): string | null => {
   ) {
     return null;
   }
-  return getPropertyKeyName(unwrappedNode.property) ?? null;
+  return getMemberIdentity(unwrappedNode.property);
 };
 
 const isUndefinedIdentifier = (node: EsTreeNode): boolean => {
@@ -334,9 +344,7 @@ const getClassMemberCallback = (classNode: EsTreeNode, memberName: string): EsTr
     }
     if (member.static === true) continue;
     const key = member.key as EsTreeNode;
-    const keyName =
-      getPropertyKeyName(key) ??
-      (isNodeOfType(key, "Literal") && typeof key.value === "string" ? key.value : null);
+    const keyName = getMemberIdentity(key);
     if (keyName !== memberName) continue;
     const value = member.value as EsTreeNode | null | undefined;
     return value && FUNCTION_NODE_TYPES.has(value.type) ? value : null;

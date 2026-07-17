@@ -1,9 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
 const REPEATING_GRADIENT_PATTERN = /repeating-(?:linear|radial|conic)-gradient\(/i;
@@ -20,9 +20,9 @@ export const noRepeatingGradientDecoration = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const styleExpression = getInlineStyleExpression(node);
       if (!styleExpression) return;
-      for (const property of styleExpression.properties ?? []) {
-        const propertyName = getStylePropertyKey(property);
-        if (propertyName !== "background" && propertyName !== "backgroundImage") continue;
+      for (const propertyName of ["background", "backgroundImage"]) {
+        const property = getEffectiveStyleProperty(styleExpression.properties, propertyName);
+        if (!property) continue;
         const propertyValue = getStylePropertyStringValue(property);
         if (!propertyValue || !REPEATING_GRADIENT_PATTERN.test(propertyValue)) continue;
         context.report({

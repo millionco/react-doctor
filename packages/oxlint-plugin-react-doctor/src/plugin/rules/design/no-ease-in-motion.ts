@@ -1,14 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenFramerMotionJsxElement } from "../../utils/is-proven-framer-motion-jsx-element.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
 const EASE_IN_TOKEN_PATTERN = /(?:^|[\s,])ease-in(?=$|[\s,])/i;
@@ -18,12 +17,6 @@ const TIMING_PROPERTY_NAMES = new Set([
   "animation",
   "animationTimingFunction",
 ]);
-
-const getMotionEaseProperty = (node: EsTreeNode): EsTreeNode | null => {
-  if (!isNodeOfType(node, "Property") || getStylePropertyKey(node) !== "ease") return null;
-  const easeValue = getStylePropertyStringValue(node);
-  return easeValue === "easeIn" || easeValue === "ease-in" ? node : null;
-};
 
 export const noEaseInMotion = defineRule({
   id: "no-ease-in-motion",
@@ -37,15 +30,11 @@ export const noEaseInMotion = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const styleExpression = getInlineStyleExpression(node);
       if (styleExpression) {
-        for (const property of styleExpression.properties ?? []) {
-          const propertyName = getStylePropertyKey(property);
+        for (const propertyName of TIMING_PROPERTY_NAMES) {
+          const property = getEffectiveStyleProperty(styleExpression.properties, propertyName);
+          if (!property) continue;
           const propertyValue = getStylePropertyStringValue(property);
-          if (
-            propertyName &&
-            TIMING_PROPERTY_NAMES.has(propertyName) &&
-            propertyValue &&
-            EASE_IN_TOKEN_PATTERN.test(propertyValue)
-          ) {
+          if (propertyValue && EASE_IN_TOKEN_PATTERN.test(propertyValue)) {
             context.report({
               node: property,
               message:
@@ -67,8 +56,9 @@ export const noEaseInMotion = defineRule({
       ) {
         return;
       }
-      const easeProperty = node.value.expression.properties?.find(getMotionEaseProperty);
-      if (easeProperty) {
+      const easeProperty = getEffectiveStyleProperty(node.value.expression.properties, "ease");
+      const easeValue = easeProperty ? getStylePropertyStringValue(easeProperty) : null;
+      if (easeProperty && (easeValue === "easeIn" || easeValue === "ease-in")) {
         context.report({
           node: easeProperty,
           message:

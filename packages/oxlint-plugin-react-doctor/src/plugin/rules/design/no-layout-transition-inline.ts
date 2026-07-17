@@ -1,9 +1,9 @@
 import { LAYOUT_TRANSITION_PROPERTIES } from "../../constants/style.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSvgLayoutTransitionExemptElementName } from "./utils/is-svg-layout-transition-exempt-element-name.js";
@@ -32,10 +32,9 @@ export const noLayoutTransitionInline = defineRule({
       if (!expression) return;
       if (isSvgElementAttribute(node)) return;
 
-      for (const property of expression.properties ?? []) {
-        const key = getStylePropertyKey(property);
-        if (key !== "transition" && key !== "transitionProperty") continue;
-
+      for (const key of ["transition", "transitionProperty"]) {
+        const property = getEffectiveStyleProperty(expression.properties, key);
+        if (!property) continue;
         const value = getStylePropertyStringValue(property);
         if (!value) continue;
 

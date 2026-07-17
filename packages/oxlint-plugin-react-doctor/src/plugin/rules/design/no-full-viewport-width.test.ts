@@ -80,4 +80,10 @@ describe("no-full-viewport-width", () => {
     const result = runRule(noFullViewportWidth, code);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("uses the last duplicate inline width", () => {
+    const code = `const A = () => <><div style={{ width: "100vw", width: "100%" }} /><div style={{ minWidth: "100%", minWidth: "100vw" }} /></>;`;
+    const result = runRule(noFullViewportWidth, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

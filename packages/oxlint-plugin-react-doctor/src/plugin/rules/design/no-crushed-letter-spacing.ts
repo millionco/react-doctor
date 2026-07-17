@@ -6,9 +6,9 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
@@ -48,15 +48,14 @@ export const noCrushedLetterSpacing = defineRule({
       if (!styleExpression) return;
       const jsxElement = node.parent?.parent;
       if (!isNodeOfType(jsxElement, "JSXElement") || !getStaticJsxText(jsxElement).trim()) return;
-      for (const property of styleExpression.properties ?? []) {
-        if (getStylePropertyKey(property) !== "letterSpacing") continue;
-        const trackingEm = getTrackingEm(property);
-        if (trackingEm === null || trackingEm >= CRUSHED_TRACKING_THRESHOLD_EM) continue;
-        context.report({
-          node: property,
-          message: `This ${trackingEm.toFixed(2)}em tracking compresses the letterforms and hurts readability. Use a less aggressive value.`,
-        });
-      }
+      const property = getEffectiveStyleProperty(styleExpression.properties, "letterSpacing");
+      if (!property) return;
+      const trackingEm = getTrackingEm(property);
+      if (trackingEm === null || trackingEm >= CRUSHED_TRACKING_THRESHOLD_EM) return;
+      context.report({
+        node: property,
+        message: `This ${trackingEm.toFixed(2)}em tracking compresses the letterforms and hurts readability. Use a less aggressive value.`,
+      });
     },
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classNameValue = getStringFromClassNameAttr(node);

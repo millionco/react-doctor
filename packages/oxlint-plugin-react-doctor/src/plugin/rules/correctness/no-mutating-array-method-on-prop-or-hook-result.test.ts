@@ -54,7 +54,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
       }
       `,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags .sort() on a destructured hook result", () => {
@@ -68,7 +68,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
       }
       `,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag [...array].sort() copy-first", () => {
@@ -641,7 +641,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag sort on props in a file importing Immutable.js", () => {
+  it("does not let an Immutable.js import exempt native prop arrays", () => {
     const result = runRule(
       noMutatingArrayMethodOnPropOrHookResult,
       `import { List } from "immutable";
@@ -651,7 +651,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
       }`,
       { filename: "tags.tsx" },
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a sort-strategy object sorting rows passed as data", () => {
@@ -705,6 +705,32 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         return drop;
       }`,
       { filename: "use-queue.ts" },
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("audit regressions", () => {
+  it("does not trust a conditional fresh-array rebind", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `const C = ({ items, copy }) => { if (copy) items = items.slice(); return items.sort(); };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not disable native-array checks for an Immutable import", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `import { List } from "immutable"; const C = ({ items }: { items: string[] }) => items.sort();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("abstains on an unknown custom hook collection API", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `const C = () => { const ranking = useRanking(); return ranking.sort(); };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

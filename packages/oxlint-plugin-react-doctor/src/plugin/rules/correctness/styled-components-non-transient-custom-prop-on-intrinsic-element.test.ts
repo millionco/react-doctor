@@ -142,12 +142,12 @@ describe("styled-components-non-transient-custom-prop-on-intrinsic-element", () 
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag event handler props", () => {
+  it("flags unknown on-prefixed props that are not DOM events", () => {
     const result = runRule(
       rule,
       "const D = styled.div<{ onCustomThing: () => void }>`color: red;`;",
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag styled.div without a generic", () => {
@@ -211,12 +211,12 @@ describe("styled-components-non-transient-custom-prop-on-intrinsic-element", () 
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a type alias to a union or intersection (out of v1 scope)", () => {
+  it("flags custom props declared through an intersection", () => {
     const result = runRule(
       rule,
       "type TrackProps = { active: boolean } & { hovered: boolean };\nconst T = styled.div<TrackProps>`color: red;`;",
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("flags selected on div but not on option", () => {
@@ -288,6 +288,32 @@ describe("styled-components-non-transient-custom-prop-on-intrinsic-element", () 
 
   it("still flags a local styled component with no JSX usage at all", () => {
     const result = runRule(rule, "const Track = styled.div<{ index: number }>`color: red;`;");
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("audit regressions", () => {
+  it("flags unknown event-looking props", () => {
+    const result = runRule(
+      styledComponentsNonTransientCustomPropOnIntrinsicElement,
+      `import styled from "styled-components"; export const B = styled.button<{ onMagic: () => void }>\`\`;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves local JSX usage by binding identity", () => {
+    const result = runRule(
+      styledComponentsNonTransientCustomPropOnIntrinsicElement,
+      `import styled from "styled-components"; const S = styled.div<{ custom: boolean }>\`\`; const C = () => { const S = Other; return <S custom />; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("supports aliased styled-components imports", () => {
+    const result = runRule(
+      styledComponentsNonTransientCustomPropOnIntrinsicElement,
+      `import sc from "styled-components"; export const S = sc.div<{ custom: boolean }>\`\`;`,
+    );
     expect(result.diagnostics).toHaveLength(1);
   });
 });

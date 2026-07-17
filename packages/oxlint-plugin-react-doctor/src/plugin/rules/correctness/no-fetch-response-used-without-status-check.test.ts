@@ -73,7 +73,7 @@ describe("no-fetch-response-used-without-status-check", () => {
          return { response, json };
        }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet when response.ok is checked before consuming", () => {
@@ -253,7 +253,7 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet when a .catch link materializes the failure with a fallback value", () => {
+  it("flags a body consume even when a later .catch handles rejection", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `fetch(url)
@@ -261,10 +261,10 @@ describe("no-fetch-response-used-without-status-check", () => {
          .then((posts) => setPosts(posts))
          .catch(() => setPosts([]));`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet when a two-arg .then routes rejections into error state", () => {
+  it("allows a discarded drain with a two-argument rejection handler", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `fetch(url).then(
@@ -286,7 +286,7 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet when an enclosing try/catch surfaces the failure as error state", () => {
+  it("flags a body consume even when an enclosing try/catch handles rejection", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `async function load() {
@@ -299,7 +299,7 @@ describe("no-fetch-response-used-without-status-check", () => {
          }
        }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags an awaited consume whose enclosing catch only logs", () => {
@@ -353,7 +353,7 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet when an awaited .then chain sits in a try whose catch materializes the failure", () => {
+  it("flags an awaited body consume even when an enclosing catch handles rejection", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `async function download(url) {
@@ -365,7 +365,7 @@ describe("no-fetch-response-used-without-status-check", () => {
          }
        }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a non-awaited .then chain inside a materializing try (the try never sees the rejection)", () => {
@@ -477,7 +477,7 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet: dataUrlToBlob helper taking the data URL as a parameter", () => {
+  it("does not infer an inert URL from a parameter name", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `async function dataUrlToBlob(dataUrl: string) {
@@ -485,10 +485,10 @@ describe("no-fetch-response-used-without-status-check", () => {
   return response.blob();
 }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: Effect fetch via inner async load() with load().catch() materializing into error state", () => {
+  it("does not treat a helper call-site catch as an HTTP status check", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `function useUsers(url: string) {
@@ -511,10 +511,10 @@ describe("no-fetch-response-used-without-status-check", () => {
   return { users, error };
 }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: Promise.all of .then(json) chains inside a try whose catch materializes", () => {
+  it("flags every unchecked response inside an awaited Promise.all", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `async function loadAll() {
@@ -530,10 +530,10 @@ describe("no-fetch-response-used-without-status-check", () => {
   }
 }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(2);
   });
 
-  it("stays quiet: Promise.race timeout wrapper inside a materializing try/catch", () => {
+  it("flags an unchecked response inside an awaited Promise.race", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `async function loadWithTimeout(url: string) {
@@ -550,7 +550,7 @@ describe("no-fetch-response-used-without-status-check", () => {
   }
 }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet: Cache-warming prefetch that discards the body with an explicit error swallow", () => {
@@ -660,7 +660,7 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet when the status is checked on the parsed body (status-in-body API)", () => {
+  it("does not confuse parsed-body status with the HTTP response status", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `async function verifyTask(props) {
@@ -672,7 +672,7 @@ describe("no-fetch-response-used-without-status-check", () => {
          return jsonResponse;
        }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a parsed body whose non-status properties are the only reads", () => {
@@ -687,7 +687,7 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet when an enclosing try has a deliberately empty fail-open catch", () => {
+  it("flags an unchecked response inside an empty fail-open catch", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `async function moderate(text) {
@@ -703,10 +703,10 @@ describe("no-fetch-response-used-without-status-check", () => {
          return { blocked: false };
        }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet when a consuming chain ends in a deliberately empty .catch swallow", () => {
+  it("flags a value-producing chain even when a later catch swallows rejection", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `function loadTitle(endpoint) {
@@ -718,7 +718,7 @@ describe("no-fetch-response-used-without-status-check", () => {
            .catch(() => {});
        }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet: bundled asset fetched via new URL(..., import.meta.url)", () => {
@@ -741,6 +741,64 @@ describe("no-fetch-response-used-without-status-check", () => {
          const data = await fetch(new URL('/api/items', baseUrl)).then((res) => res.json());
          return data.items;
        }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("audit regressions", () => {
+  it("requires a status guard rather than a status read", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(flag) { const response = await fetch("/api"); if (flag) console.log(response.ok); return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires a status guard to dominate consumption", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(flag) { const response = await fetch("/api"); if (flag && !response.ok) throw new Error("bad"); return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows a compound status guard when consumption is inside its true branch", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(flag) { const response = await fetch("/api"); if (flag && response.ok) return response.json(); return null; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("resolves the exact response binding", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); { const response = { json: async () => ({}) }; await response.json(); } return 1; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat logging as status validation", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); console.log(response); return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not infer an inert URL from a parameter name", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(dataUrl) { const response = await fetch(dataUrl); return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not mistake a rejection catch for an HTTP status check", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { try { const response = await fetch("/api"); return response.json(); } catch (error) { setError(error); } }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

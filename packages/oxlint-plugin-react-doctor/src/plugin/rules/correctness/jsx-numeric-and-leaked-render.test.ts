@@ -419,3 +419,29 @@ describe("jsx-numeric-and-leaked-render", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("audit regressions", () => {
+  it("does not classify string concatenation as numeric", () => {
+    const result = runRule(
+      jsxNumericAndLeakedRender,
+      `const C = ({ label }) => <>{"prefix" + label && <X />}</>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a reassigned positive-guard alias", () => {
+    const result = runRule(
+      jsxNumericAndLeakedRender,
+      `const C = ({ items }) => { let hasItems = items.length > 0; hasItems = true; return <>{hasItems && items.length && <X />}</>; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not mistake number prototype reads for object evidence", () => {
+    const result = runRule(
+      jsxNumericAndLeakedRender,
+      `const C = ({ items }) => <>{items.length && <X>{items.length.toString()}</X>}</>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

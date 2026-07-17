@@ -86,13 +86,13 @@ describe("no-whole-object-default-losing-per-key-defaults", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet for an all-false boolean-flag bag (antd onReset idiom: undefined is truthiness-identical to the dropped false)", () => {
+  it("flags an all-false boolean-flag bag because false and undefined are observably different", () => {
     const result = runRule(
       noWholeObjectDefaultLosingPerKeyDefaults,
       `const onReset = ({ confirm, closeDropdown } = { confirm: false, closeDropdown: false }) => { if (confirm) {} if (closeDropdown) {} };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a flag bag when any dropped fallback is a truthy literal", () => {
@@ -202,7 +202,7 @@ describe("no-whole-object-default-losing-per-key-defaults", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet when every dropped fallback is undefined or false (gatsby createGraphQLRunner shape)", () => {
+  it("flags a false fallback even when neighboring fallbacks are undefined", () => {
     const result = runRule(
       noWholeObjectDefaultLosingPerKeyDefaults,
       `export const createGraphQLRunner = (
@@ -211,7 +211,7 @@ describe("no-whole-object-default-losing-per-key-defaults", () => {
       ) => use(store, parentSpan, graphqlTracing);`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags when an undefined fallback sits beside an observable one", () => {
@@ -294,6 +294,24 @@ describe("no-whole-object-default-losing-per-key-defaults", () => {
       export const useCreate = (
         { onSuccess }: Options = { onSuccess: () => {} }
       ) => onSuccess();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("audit regressions", () => {
+  it("treats explicit undefined like an omitted argument", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `const read = ({ value } = { value: 1 }) => value; read(undefined);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not assume false and undefined are behaviorally identical", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `export const read = ({ enabled } = { enabled: false }) => enabled === false;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

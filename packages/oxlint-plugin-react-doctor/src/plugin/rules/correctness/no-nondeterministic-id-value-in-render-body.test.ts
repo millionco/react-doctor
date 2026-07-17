@@ -282,3 +282,37 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("audit regressions", () => {
+  it("does not treat aria-label as an ID reference", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import { nanoid } from "nanoid"; const C = () => { const label = nanoid(); return <button aria-label={label} />; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires an exact generator import source", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import { nanoid } from "./deterministic"; const C = () => { const id = nanoid(); return <div id={id} />; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("follows direct aliases into identity sinks", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import { nanoid } from "nanoid"; const C = () => { const raw = nanoid(); const id = raw; return <div id={id} />; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an inline generator in an identity sink", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import { nanoid } from "nanoid"; const C = () => <div id={nanoid()} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

@@ -6,6 +6,7 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { getMeaningfulParent } from "../../utils/get-meaningful-parent.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -67,7 +68,6 @@ const resolveStaticUrlPrefix = (argument: EsTreeNode, depth: number): string | n
 // cannot 4xx/5xx in a consistent deployment.
 const INERT_URL_PRODUCER_METHOD_NAMES = new Set(["toDataURL", "createObjectURL"]);
 const INERT_URL_PRODUCER_CALLEE_NAMES = new Set(["createObjectURL", "require"]);
-const INERT_URL_BINDING_NAME_PATTERN = /^(?:data|object|blob)_?ur[il]$/i;
 
 const isBundledAssetRequireCall = (expression: EsTreeNode): boolean =>
   isNodeOfType(expression, "CallExpression") &&
@@ -133,7 +133,6 @@ const isInertUrlProducer = (argument: EsTreeNode, depth: number): boolean => {
     return isNodeOfType(callee, "Identifier") && INERT_URL_PRODUCER_CALLEE_NAMES.has(callee.name);
   }
   if (isNodeOfType(expression, "Identifier")) {
-    if (INERT_URL_BINDING_NAME_PATTERN.test(expression.name)) return true;
     if (bindingIsAssignedFromRequire(expression)) return true;
     const binding = findVariableInitializer(expression, expression.name);
     if (!binding?.initializer || binding.initializer === expression) return false;
@@ -150,28 +149,6 @@ const fetchesInertUrlScheme = (node: EsTreeNodeOfType<"CallExpression">): boolea
   return isInertUrlProducer(firstArgument as EsTreeNode, 0);
 };
 
-const nearestFunctionOrProgram = (node: EsTreeNode): EsTreeNode | null => {
-  let ancestor = node.parent ?? null;
-  while (ancestor) {
-    if (isFunctionLike(ancestor) || isNodeOfType(ancestor, "Program")) return ancestor;
-    ancestor = ancestor.parent ?? null;
-  }
-  return null;
-};
-
-// Walks only the current execution scope. A status read inside a nested
-// callback does not guard the outer scope's consumption merely because it
-// closes over the same Response binding.
-const walkOwnExecutionScope = (
-  scope: EsTreeNode,
-  visitor: (child: EsTreeNode) => boolean | void,
-): void => {
-  walkAst(scope, (child) => {
-    if (child !== scope && isFunctionLike(child)) return false;
-    return visitor(child);
-  });
-};
-
 const isBodyConsumeCall = (node: EsTreeNode, responseName: string): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = stripParenExpression(node.callee);
@@ -186,263 +163,6 @@ const isBodyConsumeCall = (node: EsTreeNode, responseName: string): boolean => {
     isNodeOfType(callee.property, "Identifier") &&
     BODY_CONSUMER_METHODS.has(callee.property.name)
   );
-};
-
-const isTruthinessTest = (node: EsTreeNode, responseName: string): boolean =>
-  isNodeOfType(node, "UnaryExpression") &&
-  node.operator === "!" &&
-  isNodeOfType(node.argument, "Identifier") &&
-  node.argument.name === responseName;
-
-const firstResponseConsumptionStart = (
-  scope: EsTreeNode,
-  responseName: string,
-  countTruthinessGuard: boolean,
-): number | null => {
-  let firstStart: number | null = null;
-  walkOwnExecutionScope(scope, (child) => {
-    if (
-      isBodyConsumeCall(child, responseName) ||
-      (countTruthinessGuard && isTruthinessTest(child, responseName))
-    ) {
-      const start = child.range?.[0];
-      if (start !== undefined && (firstStart === null || start < firstStart)) firstStart = start;
-    }
-  });
-  return firstStart;
-};
-
-const isStatusMemberAccess = (node: EsTreeNode, responseName: string): boolean =>
-  isNodeOfType(node, "MemberExpression") &&
-  !node.computed &&
-  isNodeOfType(node.object, "Identifier") &&
-  node.object.name === responseName &&
-  isNodeOfType(node.property, "Identifier") &&
-  STATUS_CHECK_PROPERTIES.has(node.property.name);
-
-// `const { ok, status } = response` is a status check performed through
-// destructuring rather than member access.
-const isStatusDestructuring = (node: EsTreeNode, responseName: string): boolean => {
-  if (!isNodeOfType(node, "VariableDeclarator") || !isNodeOfType(node.id, "ObjectPattern")) {
-    return false;
-  }
-  if (!node.init) return false;
-  const initializer = stripGroupingParens(node.init as EsTreeNode);
-  if (!isNodeOfType(initializer, "Identifier") || initializer.name !== responseName) return false;
-  return (node.id.properties ?? []).some(
-    (property) =>
-      isNodeOfType(property, "Property") &&
-      !property.computed &&
-      isNodeOfType(property.key, "Identifier") &&
-      STATUS_CHECK_PROPERTIES.has(property.key.name),
-  );
-};
-
-const scopeChecksStatusBefore = (
-  scope: EsTreeNode,
-  responseName: string,
-  beforeStart: number,
-): boolean => {
-  let found = false;
-  walkOwnExecutionScope(scope, (child) => {
-    if (found) return false;
-    const start = child.range?.[0];
-    if (
-      start !== undefined &&
-      start < beforeStart &&
-      (isStatusMemberAccess(child, responseName) || isStatusDestructuring(child, responseName))
-    ) {
-      found = true;
-      return false;
-    }
-  });
-  return found;
-};
-
-// APIs that tunnel the HTTP status through the body (`{ status: 201 }` /
-// `{ statusCode: 400 }`) get checked on the PARSED value instead of the
-// Response: `const parsed = await response.json(); if (parsed.status !== 201)
-// throw ...`. That is the ok-check, just one hop later.
-const PARSED_BODY_STATUS_PROPERTIES = new Set(["ok", "status", "statusCode"]);
-
-const isParsedBodyStatusAccess = (node: EsTreeNode, parsedName: string): boolean =>
-  isNodeOfType(node, "MemberExpression") &&
-  !node.computed &&
-  isNodeOfType(node.object, "Identifier") &&
-  node.object.name === parsedName &&
-  isNodeOfType(node.property, "Identifier") &&
-  PARSED_BODY_STATUS_PROPERTIES.has(node.property.name);
-
-const scopeChecksParsedBodyStatus = (scope: EsTreeNode, responseName: string): boolean => {
-  const parsedNames = new Set<string>();
-  walkOwnExecutionScope(scope, (child) => {
-    if (!isNodeOfType(child, "VariableDeclarator") || !isNodeOfType(child.id, "Identifier")) {
-      return;
-    }
-    if (!child.init) return;
-    let initializer = stripGroupingParens(child.init as EsTreeNode);
-    if (isNodeOfType(initializer, "AwaitExpression")) {
-      initializer = stripGroupingParens(initializer.argument as EsTreeNode);
-    }
-    if (isBodyConsumeCall(initializer, responseName)) parsedNames.add(child.id.name);
-  });
-  if (parsedNames.size === 0) return false;
-  let found = false;
-  walkOwnExecutionScope(scope, (child) => {
-    if (found) return false;
-    for (const parsedName of parsedNames) {
-      if (isParsedBodyStatusAccess(child, parsedName)) {
-        found = true;
-        return false;
-      }
-    }
-  });
-  return found;
-};
-
-const isConsumingReceiver = (identifier: EsTreeNode): boolean => {
-  const receiver = findTransparentExpressionRoot(identifier);
-  const parent = receiver.parent;
-  return Boolean(
-    parent &&
-    isNodeOfType(parent, "MemberExpression") &&
-    parent.object === receiver &&
-    !parent.computed &&
-    isNodeOfType(parent.property, "Identifier") &&
-    (BODY_CONSUMER_METHODS.has(parent.property.name) ||
-      STATUS_CHECK_PROPERTIES.has(parent.property.name)),
-  );
-};
-
-const isPassedAsCallArgument = (identifier: EsTreeNode): boolean => {
-  const parent = identifier.parent;
-  if (!parent) return false;
-  if (!isNodeOfType(parent, "CallExpression") && !isNodeOfType(parent, "NewExpression")) {
-    return false;
-  }
-  if (parent.callee === identifier) return false;
-  return (parent.arguments ?? []).some((argument) => argument === identifier);
-};
-
-// The Response escapes the scope — returned to a caller
-// (`return response` / `return { response }`) or handed to another
-// function (`assertOk(response)`, the throw-on-error validator idiom) —
-// so its status check is legitimately deferred to the receiver.
-const scopeResponseEscapes = (scope: EsTreeNode, responseName: string): boolean => {
-  let found = false;
-  walkOwnExecutionScope(scope, (child) => {
-    if (found) return false;
-    if (isNodeOfType(child, "ReturnStatement") && child.argument) {
-      walkAst(child.argument as EsTreeNode, (inner) => {
-        if (found) return false;
-        if (
-          isNodeOfType(inner, "Identifier") &&
-          inner.name === responseName &&
-          !isConsumingReceiver(inner)
-        ) {
-          found = true;
-          return false;
-        }
-      });
-      if (found) return false;
-      return;
-    }
-    if (
-      isNodeOfType(child, "Identifier") &&
-      child.name === responseName &&
-      isPassedAsCallArgument(child)
-    ) {
-      found = true;
-      return false;
-    }
-  });
-  return found;
-};
-
-const isConsoleCall = (expression: EsTreeNode): boolean => {
-  const call = stripGroupingParens(expression);
-  return (
-    isNodeOfType(call, "CallExpression") &&
-    isNodeOfType(call.callee, "MemberExpression") &&
-    isNodeOfType(call.callee.object, "Identifier") &&
-    call.callee.object.name === "console"
-  );
-};
-
-const isLoggingOnlyStatement = (statement: EsTreeNode): boolean =>
-  isNodeOfType(statement, "ExpressionStatement") &&
-  isConsoleCall(statement.expression as EsTreeNode);
-
-// An EMPTY handler (`catch {}`, `.catch(() => {})`) is a deliberate
-// fail-open swallow — unlike a log-only handler (probably an oversight),
-// nobody writes an empty handler expecting the failure to surface.
-const statementsMaterializeError = (statements: ReadonlyArray<EsTreeNode>): boolean =>
-  statements.length === 0 || statements.some((statement) => !isLoggingOnlyStatement(statement));
-
-// A rejection handler "materializes" the failure when it does more than
-// log — sets error state, returns a fallback value, rethrows. A named
-// handler reference is trusted the same way (its body is out of view but
-// it exists to handle the failure).
-const isErrorMaterializingHandler = (handlerExpression: EsTreeNode): boolean => {
-  const handler = stripGroupingParens(handlerExpression);
-  if (!isFunctionLike(handler)) {
-    return isNodeOfType(handler, "Identifier") || isNodeOfType(handler, "MemberExpression");
-  }
-  if (isNodeOfType(handler.body, "BlockStatement")) {
-    return statementsMaterializeError(handler.body.body ?? []);
-  }
-  return Boolean(handler.body) && !isConsoleCall(handler.body as EsTreeNode);
-};
-
-// Walks the member-call chain rooted at the fetch CallExpression looking
-// for a `.catch(fn)` link (or a two-argument `.then(fn, rejectionFn)`)
-// whose handler materializes the failure — the dominant real-world shape
-// where the author already routes fetch errors somewhere visible.
-const chainMaterializesRejection = (fetchCall: EsTreeNode): boolean => {
-  let chainLink: EsTreeNode = fetchCall;
-  while (true) {
-    const member = getTransparentExpressionParent(chainLink);
-    const methodName =
-      member &&
-      isNodeOfType(member, "MemberExpression") &&
-      isNodeOfType(member.property, "Identifier")
-        ? member.property.name
-        : null;
-    if (
-      !member ||
-      !isNodeOfType(member, "MemberExpression") ||
-      stripParenExpression(member.object as EsTreeNode) !== chainLink ||
-      member.computed ||
-      methodName === null ||
-      !PROMISE_CHAIN_METHODS.has(methodName)
-    ) {
-      return false;
-    }
-    const chainCall = getTransparentExpressionParent(member);
-    if (
-      !chainCall ||
-      !isNodeOfType(chainCall, "CallExpression") ||
-      stripGroupingParens(chainCall.callee as EsTreeNode) !== member
-    ) {
-      return false;
-    }
-    const chainArguments = chainCall.arguments ?? [];
-    if (
-      methodName === "catch" &&
-      chainArguments[0] &&
-      isErrorMaterializingHandler(chainArguments[0] as EsTreeNode)
-    ) {
-      return true;
-    }
-    if (
-      methodName === "then" &&
-      chainArguments[1] &&
-      isErrorMaterializingHandler(chainArguments[1] as EsTreeNode)
-    ) {
-      return true;
-    }
-    chainLink = chainCall;
-  }
 };
 
 const outermostPromiseChainCall = (fetchCall: EsTreeNode): EsTreeNode => {
@@ -469,107 +189,6 @@ const outermostPromiseChainCall = (fetchCall: EsTreeNode): EsTreeNode => {
     }
     chainLink = chainCall;
   }
-};
-
-// A `try { ... await fetch ... } catch` whose catch clause materializes
-// the failure covers the awaited Response the same way a `.catch` link
-// covers a promise chain.
-const enclosingTryMaterializesErrors = (node: EsTreeNode): boolean => {
-  let current: EsTreeNode = node;
-  let ancestor = node.parent ?? null;
-  while (ancestor && !isFunctionLike(ancestor)) {
-    if (
-      isNodeOfType(ancestor, "TryStatement") &&
-      ancestor.block === current &&
-      ancestor.handler &&
-      isNodeOfType(ancestor.handler, "CatchClause") &&
-      statementsMaterializeError(ancestor.handler.body?.body ?? [])
-    ) {
-      return true;
-    }
-    current = ancestor;
-    ancestor = ancestor.parent ?? null;
-  }
-  return false;
-};
-
-const PROMISE_COMBINATOR_NAMES = new Set(["all", "race", "any", "allSettled"]);
-
-// `await fetch(...).then(...)` inside a materializing try-catch: the
-// await routes the chain's rejection into the catch clause, so the
-// failure is covered the same way the awaited-declarator shapes are.
-// Without the await the try never sees the rejection, so it exempts
-// nothing. A chain sitting as an ELEMENT of `Promise.all([...])` /
-// `Promise.race([...])` is covered the same way when the combinator's
-// await sits under the materializing try — the combinator forwards the
-// element's rejection.
-const awaitedChainCoveredByMaterializingTry = (fetchCall: EsTreeNode): boolean => {
-  let chainConsumer = getMeaningfulParent(outermostPromiseChainCall(fetchCall));
-  if (chainConsumer && isNodeOfType(chainConsumer, "ArrayExpression")) {
-    const combinatorCall = getMeaningfulParent(chainConsumer);
-    if (
-      combinatorCall &&
-      isNodeOfType(combinatorCall, "CallExpression") &&
-      isNodeOfType(combinatorCall.callee, "MemberExpression") &&
-      !combinatorCall.callee.computed &&
-      isNodeOfType(combinatorCall.callee.object, "Identifier") &&
-      combinatorCall.callee.object.name === "Promise" &&
-      isNodeOfType(combinatorCall.callee.property, "Identifier") &&
-      PROMISE_COMBINATOR_NAMES.has(combinatorCall.callee.property.name)
-    ) {
-      chainConsumer = getMeaningfulParent(outermostPromiseChainCall(combinatorCall));
-    }
-  }
-  return Boolean(
-    chainConsumer &&
-    isNodeOfType(chainConsumer, "AwaitExpression") &&
-    enclosingTryMaterializesErrors(chainConsumer),
-  );
-};
-
-// The fetch lives in a named local async helper whose CALL SITE routes the
-// rejection — `load().catch((e) => setError(e))` or `await load()` under a
-// materializing try. The failure routing is identical to an inline .catch,
-// just one function hop away.
-const enclosingHelperCallSiteHandlesRejection = (fetchNode: EsTreeNode): boolean => {
-  const enclosing = nearestFunctionOrProgram(fetchNode);
-  if (!enclosing || !isFunctionLike(enclosing) || !enclosing.async) return false;
-  let helperName: string | null = null;
-  if (isNodeOfType(enclosing, "FunctionDeclaration") && isNodeOfType(enclosing.id, "Identifier")) {
-    helperName = enclosing.id.name;
-  } else {
-    const declarator = enclosing.parent;
-    if (
-      isNodeOfType(declarator, "VariableDeclarator") &&
-      isNodeOfType(declarator.id, "Identifier")
-    ) {
-      helperName = declarator.id.name;
-    }
-  }
-  if (!helperName) return false;
-  const outerScope = nearestFunctionOrProgram(enclosing);
-  if (!outerScope) return false;
-  let isHandled = false;
-  walkAst(outerScope, (child: EsTreeNode) => {
-    if (isHandled) return false;
-    if (!isNodeOfType(child, "CallExpression")) return;
-    const callee = stripGroupingParens(child.callee as EsTreeNode);
-    if (!isNodeOfType(callee, "Identifier") || callee.name !== helperName) return;
-    if (chainMaterializesRejection(child)) {
-      isHandled = true;
-      return false;
-    }
-    const consumer = getMeaningfulParent(outermostPromiseChainCall(child));
-    if (
-      consumer &&
-      isNodeOfType(consumer, "AwaitExpression") &&
-      enclosingTryMaterializesErrors(consumer)
-    ) {
-      isHandled = true;
-      return false;
-    }
-  });
-  return isHandled;
 };
 
 // A `.then` handler that only DRAINS the body — an expression-bodied arrow
@@ -638,8 +257,7 @@ const isDiscardedChainWithRejectionHandler = (fetchCall: EsTreeNode): boolean =>
 interface UnguardedReportInput {
   context: RuleContext;
   reportNode: EsTreeNode;
-  scope: EsTreeNode;
-  responseName: string;
+  responseBinding: EsTreeNodeOfType<"Identifier">;
   // `let response; try { response = await fetch(...) } catch {}` leaves the
   // binding undefined on network error, so a `!response` guard is live —
   // only count truthiness guards as dead when the binding is a declarator
@@ -650,19 +268,141 @@ interface UnguardedReportInput {
 const reportUnguarded = ({
   context,
   reportNode,
-  scope,
-  responseName,
+  responseBinding,
   responseBindingCanBeUndefined,
 }: UnguardedReportInput): void => {
-  const firstConsumptionStart = firstResponseConsumptionStart(
-    scope,
-    responseName,
-    !responseBindingCanBeUndefined,
-  );
-  if (firstConsumptionStart === null) return;
-  if (scopeChecksStatusBefore(scope, responseName, firstConsumptionStart)) return;
-  if (scopeChecksParsedBodyStatus(scope, responseName)) return;
-  if (scopeResponseEscapes(scope, responseName)) return;
+  const symbol = context.scopes.symbolFor(responseBinding);
+  if (!symbol) return;
+  const isConditionUse = (candidate: EsTreeNode): boolean => {
+    let current = findTransparentExpressionRoot(candidate);
+    while (current.parent) {
+      const parent = current.parent;
+      if (
+        (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") ||
+        isNodeOfType(parent, "BinaryExpression") ||
+        isNodeOfType(parent, "LogicalExpression")
+      ) {
+        current = parent;
+        continue;
+      }
+      return Boolean(
+        (isNodeOfType(parent, "IfStatement") && parent.test === current) ||
+        (isNodeOfType(parent, "ConditionalExpression") && parent.test === current) ||
+        ((isNodeOfType(parent, "WhileStatement") ||
+          isNodeOfType(parent, "DoWhileStatement") ||
+          isNodeOfType(parent, "ForStatement")) &&
+          parent.test === current) ||
+        (isNodeOfType(parent, "SwitchStatement") && parent.discriminant === current),
+      );
+    }
+    return false;
+  };
+  const consumeCallForReference = (identifier: EsTreeNode): EsTreeNode | null => {
+    const receiver = findTransparentExpressionRoot(identifier);
+    const member = receiver.parent;
+    if (
+      !member ||
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== receiver ||
+      member.computed ||
+      !isNodeOfType(member.property, "Identifier") ||
+      !BODY_CONSUMER_METHODS.has(member.property.name)
+    ) {
+      return null;
+    }
+    const call = getMeaningfulParent(member);
+    return call && isNodeOfType(call, "CallExpression") && call.callee === member ? call : null;
+  };
+  const consumptions = symbol.references
+    .map((reference) => consumeCallForReference(reference.identifier))
+    .filter((candidate): candidate is EsTreeNode => candidate !== null);
+  if (!responseBindingCanBeUndefined) {
+    for (const reference of symbol.references) {
+      const root = findTransparentExpressionRoot(reference.identifier);
+      const parent = root.parent;
+      if (
+        parent &&
+        isNodeOfType(parent, "UnaryExpression") &&
+        parent.operator === "!" &&
+        isConditionUse(parent)
+      ) {
+        consumptions.push(parent);
+      }
+    }
+  }
+  const firstConsumption = consumptions.toSorted(
+    (left, right) => left.range[0] - right.range[0],
+  )[0];
+  if (!firstConsumption) return;
+
+  const statusGuardDominates = symbol.references.some((reference) => {
+    const receiver = findTransparentExpressionRoot(reference.identifier);
+    const member = receiver.parent;
+    return Boolean(
+      member &&
+      isNodeOfType(member, "MemberExpression") &&
+      member.object === receiver &&
+      !member.computed &&
+      isNodeOfType(member.property, "Identifier") &&
+      STATUS_CHECK_PROPERTIES.has(member.property.name) &&
+      isConditionUse(member) &&
+      nodeDominatesNode(member, firstConsumption, context),
+    );
+  });
+  if (statusGuardDominates) return;
+
+  const destructuredStatusGuardDominates = symbol.references.some((reference) => {
+    const declarator = reference.identifier.parent;
+    if (
+      !declarator ||
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      declarator.init !== reference.identifier ||
+      !isNodeOfType(declarator.id, "ObjectPattern")
+    ) {
+      return false;
+    }
+    return declarator.id.properties.some((property) => {
+      if (
+        !isNodeOfType(property, "Property") ||
+        !isNodeOfType(property.key, "Identifier") ||
+        !STATUS_CHECK_PROPERTIES.has(property.key.name) ||
+        !isNodeOfType(property.value, "Identifier")
+      ) {
+        return false;
+      }
+      const statusSymbol = context.scopes.symbolFor(property.value);
+      return Boolean(
+        statusSymbol?.references.some(
+          (statusReference) =>
+            isConditionUse(statusReference.identifier) &&
+            nodeDominatesNode(statusReference.identifier, firstConsumption, context),
+        ),
+      );
+    });
+  });
+  if (destructuredStatusGuardDominates) return;
+
+  const validatorDominates = symbol.references.some((reference) => {
+    const parent = reference.identifier.parent;
+    if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
+    if (!parent.arguments.some((argument) => argument === reference.identifier)) return false;
+    const callee = stripGroupingParens(parent.callee as EsTreeNode);
+    let validatorName: string | null = null;
+    if (isNodeOfType(callee, "Identifier")) {
+      validatorName = callee.name;
+    } else if (
+      isNodeOfType(callee, "MemberExpression") &&
+      isNodeOfType(callee.property, "Identifier")
+    ) {
+      validatorName = callee.property.name;
+    }
+    return Boolean(
+      validatorName &&
+      /^(?:assert|check|ensure|require|throw|validate)/i.test(validatorName) &&
+      nodeDominatesNode(parent, firstConsumption, context),
+    );
+  });
+  if (validatorDominates) return;
   context.report({ node: reportNode, message: MESSAGE });
 };
 
@@ -670,16 +410,11 @@ const reportUnguarded = ({
 // check: `.json()`/`.text()`/`.blob()` (or a truthiness test on the
 // Response, which is always truthy) with no preceding `response.ok` /
 // `response.status`. `fetch` resolves on 4xx/5xx, so the error body is
-// parsed as success. Roots only at the literal global `fetch`, and stays
-// quiet when the Response escapes to a caller or validator, when a
-// `.catch` / two-arg `.then` / enclosing try-catch materializes the
-// failure beyond logging (or is a deliberately EMPTY fail-open swallow),
-// when the status is checked on the parsed body instead
-// (`parsed.status`/`parsed.statusCode`/`parsed.ok`), when the URL is a
-// `data:`/`blob:` scheme or a bundler-emitted `require(...)` asset URL
-// that can never yield a non-ok response, and in non-production files
-// (stories, docs demos, test utilities, build config, gatsby-node
-// scripts).
+// parsed as success. Roots only at the literal global `fetch`. A status
+// guard or validator must use the same binding and dominate consumption.
+// Local `data:`/`blob:` schemes and bundler-emitted asset URLs are inert,
+// and non-production files remain excluded by the rule's tags and build
+// script filter.
 export const noFetchResponseUsedWithoutStatusCheck = defineRule({
   id: "no-fetch-response-used-without-status-check",
   title: "fetch Response consumed without status check",
@@ -716,15 +451,11 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
           if (!callback || !isFunctionLike(callback)) return;
           const firstParam = callback.params?.[0];
           if (!firstParam || !isNodeOfType(firstParam as EsTreeNode, "Identifier")) return;
-          if (chainMaterializesRejection(node as EsTreeNode)) return;
-          if (awaitedChainCoveredByMaterializingTry(node as EsTreeNode)) return;
           if (isDiscardedChainWithRejectionHandler(node as EsTreeNode)) return;
-          if (enclosingHelperCallSiteHandlesRejection(node as EsTreeNode)) return;
           reportUnguarded({
             context,
             reportNode: node as EsTreeNode,
-            scope: callback,
-            responseName: (firstParam as EsTreeNodeOfType<"Identifier">).name,
+            responseBinding: firstParam as EsTreeNodeOfType<"Identifier">,
             responseBindingCanBeUndefined: false,
           });
           return;
@@ -754,37 +485,30 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
             isNodeOfType(afterAwait.property, "Identifier") &&
             BODY_CONSUMER_METHODS.has(afterAwait.property.name)
           ) {
-            if (enclosingTryMaterializesErrors(parent)) return;
-            if (enclosingHelperCallSiteHandlesRejection(node as EsTreeNode)) return;
             context.report({ node: node as EsTreeNode, message: MESSAGE });
             return;
           }
 
           // const response = await fetch(...)
-          let responseName: string | null = null;
+          let responseBinding: EsTreeNodeOfType<"Identifier"> | null = null;
           let responseBindingCanBeUndefined = false;
           if (
             isNodeOfType(afterAwait, "VariableDeclarator") &&
             isNodeOfType(afterAwait.id, "Identifier")
           ) {
-            responseName = afterAwait.id.name;
+            responseBinding = afterAwait.id;
           } else if (
             isNodeOfType(afterAwait, "AssignmentExpression") &&
             isNodeOfType(afterAwait.left, "Identifier")
           ) {
-            responseName = afterAwait.left.name;
+            responseBinding = afterAwait.left;
             responseBindingCanBeUndefined = true;
           }
-          if (!responseName) return;
-          if (enclosingTryMaterializesErrors(parent)) return;
-          if (enclosingHelperCallSiteHandlesRejection(node as EsTreeNode)) return;
-          const scope = nearestFunctionOrProgram(afterAwait);
-          if (!scope) return;
+          if (!responseBinding) return;
           reportUnguarded({
             context,
             reportNode: node as EsTreeNode,
-            scope,
-            responseName,
+            responseBinding,
             responseBindingCanBeUndefined,
           });
         }

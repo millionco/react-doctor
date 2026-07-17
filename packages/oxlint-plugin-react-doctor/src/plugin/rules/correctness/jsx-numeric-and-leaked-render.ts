@@ -4,14 +4,14 @@ import { walkAst } from "../../utils/walk-ast.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-const ARITHMETIC_BINARY_OPERATORS = new Set(["-", "+", "*", "/", "%"]);
+const ARITHMETIC_BINARY_OPERATORS = new Set(["-", "*", "/", "%"]);
 const NUMERIC_COERCION_CALLEE_NAMES = new Set(["Number", "parseInt", "parseFloat"]);
 const MAP_OR_SET_CONSTRUCTOR_NAMES = new Set(["Map", "Set"]);
 const PASSTHROUGH_WRAPPER_PARENT_TYPES = new Set<string>([
@@ -120,6 +120,14 @@ const memberPathOf = (node: EsTreeNode): string | null => {
 // follow before giving up (`isExpanded` → `isExpandable && …` →
 // `children.length > 0` is three).
 const PROVENANCE_HOP_LIMIT = 6;
+const NUMBER_MEMBER_NAMES = new Set([
+  "toExponential",
+  "toFixed",
+  "toLocaleString",
+  "toPrecision",
+  "toString",
+  "valueOf",
+]);
 
 const numericLiteralValue = (node: EsTreeNode): number | null => {
   const stripped = stripParenExpression(node);
@@ -166,6 +174,7 @@ const conditionProvesPositive = (
   condition: EsTreeNode,
   targetPath: string,
   remainingHops: number,
+  context: RuleContext,
 ): boolean => {
   if (remainingHops <= 0) return false;
   const stripped = stripParenExpression(condition);
@@ -174,14 +183,15 @@ const conditionProvesPositive = (
   }
   if (isNodeOfType(stripped, "LogicalExpression") && stripped.operator === "&&") {
     return (
-      conditionProvesPositive(stripped.left, targetPath, remainingHops - 1) ||
-      conditionProvesPositive(stripped.right, targetPath, remainingHops - 1)
+      conditionProvesPositive(stripped.left, targetPath, remainingHops - 1, context) ||
+      conditionProvesPositive(stripped.right, targetPath, remainingHops - 1, context)
     );
   }
   if (isNodeOfType(stripped, "Identifier")) {
-    const binding = findVariableInitializer(stripped, stripped.name);
-    if (!binding?.initializer) return false;
-    return conditionProvesPositive(binding.initializer, targetPath, remainingHops - 1);
+    const symbol = context.scopes.symbolFor(stripped);
+    const initializer = symbol ? getDirectUnreassignedInitializer(symbol) : null;
+    if (!initializer) return false;
+    return conditionProvesPositive(initializer, targetPath, remainingHops - 1, context);
   }
   return false;
 };
@@ -194,31 +204,13 @@ const isNonEmptyArrayLiteral = (node: EsTreeNode): boolean => {
   );
 };
 
-const isReferencedAnywhereBesidesBinding = (
-  bindingIdentifier: EsTreeNode,
-  name: string,
-): boolean => {
-  const programRoot = findProgramRoot(bindingIdentifier);
-  if (!programRoot) return true;
-  let isReferenced = false;
-  walkAst(programRoot, (child: EsTreeNode) => {
-    if (isReferenced) return false;
-    if (child === bindingIdentifier) return;
-    const isMatchingIdentifier =
-      (isNodeOfType(child, "Identifier") || isNodeOfType(child, "JSXIdentifier")) &&
-      child.name === name;
-    if (isMatchingIdentifier) {
-      isReferenced = true;
-      return false;
-    }
-  });
-  return isReferenced;
-};
-
 // `const [features, setFeatures] = useState([…nonEmpty…])` where the
 // setter is never referenced: the array can never change, so its length
 // is a constant positive number and no `0` can leak.
-const isConstantNonEmptyUseStateArray = (receiver: EsTreeNodeOfType<"Identifier">): boolean => {
+const isConstantNonEmptyUseStateArray = (
+  receiver: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
   const binding = findVariableInitializer(receiver, receiver.name);
   if (!binding) return false;
   const pattern = binding.bindingIdentifier.parent;
@@ -237,7 +229,7 @@ const isConstantNonEmptyUseStateArray = (receiver: EsTreeNodeOfType<"Identifier"
   const setterElement = pattern.elements[1];
   if (!setterElement) return true;
   if (!isNodeOfType(setterElement, "Identifier")) return false;
-  return !isReferencedAnywhereBesidesBinding(setterElement, setterElement.name);
+  return context.scopes.symbolFor(setterElement)?.references.length === 0;
 };
 
 // The function's own top-level returns — nested callbacks' returns are
@@ -284,14 +276,18 @@ const unwrapCallableFunction = (node: EsTreeNode): EsTreeNode | null => {
 // functions — the remix-forms `globalErrorsToDisplay?.length` shape,
 // where `?.length` is undefined or positive and a literal `0` can never
 // leak.
-const isProvablyNonEmptyOrNullish = (node: EsTreeNode, remainingHops: number): boolean => {
+const isProvablyNonEmptyOrNullish = (
+  node: EsTreeNode,
+  remainingHops: number,
+  context: RuleContext,
+): boolean => {
   if (remainingHops <= 0) return false;
   const stripped = stripParenExpression(node);
   if (isNullishExpression(stripped)) return true;
   if (isNonEmptyArrayLiteral(stripped)) return true;
   if (isNodeOfType(stripped, "ConditionalExpression")) {
     const branchIsProvable = (branch: EsTreeNode): boolean => {
-      if (isProvablyNonEmptyOrNullish(branch, remainingHops - 1)) return true;
+      if (isProvablyNonEmptyOrNullish(branch, remainingHops - 1, context)) return true;
       const branchPath = memberPathOf(branch);
       const test = stripParenExpression(stripped.test);
       return Boolean(
@@ -302,22 +298,23 @@ const isProvablyNonEmptyOrNullish = (node: EsTreeNode, remainingHops: number): b
     };
     return (
       branchIsProvable(stripped.consequent) &&
-      isProvablyNonEmptyOrNullish(stripped.alternate, remainingHops - 1)
+      isProvablyNonEmptyOrNullish(stripped.alternate, remainingHops - 1, context)
     );
   }
   if (isNodeOfType(stripped, "Identifier")) {
-    const binding = findVariableInitializer(stripped, stripped.name);
-    if (!binding?.initializer) return false;
-    const initializer = stripParenExpression(binding.initializer);
+    const symbol = context.scopes.symbolFor(stripped);
+    const directInitializer = symbol ? getDirectUnreassignedInitializer(symbol) : null;
+    if (!directInitializer) return false;
+    const initializer = stripParenExpression(directInitializer);
     if (isHookCallNamed(initializer, "useMemo") && isNodeOfType(initializer, "CallExpression")) {
       const memoCallback = initializer.arguments[0];
       if (!memoCallback) return false;
       const returnedExpressions = collectOwnReturnExpressions(stripParenExpression(memoCallback));
       return returnedExpressions.every((returned) =>
-        isProvablyNonEmptyOrNullish(returned, remainingHops - 1),
+        isProvablyNonEmptyOrNullish(returned, remainingHops - 1, context),
       );
     }
-    return isProvablyNonEmptyOrNullish(initializer, remainingHops - 1);
+    return isProvablyNonEmptyOrNullish(initializer, remainingHops - 1, context);
   }
   if (isNodeOfType(stripped, "CallExpression")) {
     const callee = stripParenExpression(stripped.callee);
@@ -328,7 +325,7 @@ const isProvablyNonEmptyOrNullish = (node: EsTreeNode, remainingHops: number): b
     if (!callableFunction) return false;
     const returnedExpressions = collectOwnReturnExpressions(callableFunction);
     return returnedExpressions.every((returned) =>
-      isProvablyNonEmptyOrNullish(returned, remainingHops - 1),
+      isProvablyNonEmptyOrNullish(returned, remainingHops - 1, context),
     );
   }
   return false;
@@ -340,6 +337,7 @@ const isProvablyNonEmptyOrNullish = (node: EsTreeNode, remainingHops: number): b
 const guardedCountCannotBeZero = (
   leakingOperand: EsTreeNode,
   precedingOperands: EsTreeNode[],
+  context: RuleContext,
 ): boolean => {
   const strippedOperand = stripParenExpression(leakingOperand);
   if (!isNodeOfType(strippedOperand, "MemberExpression")) return false;
@@ -347,15 +345,15 @@ const guardedCountCannotBeZero = (
   if (
     leakPath &&
     precedingOperands.some((preceding) =>
-      conditionProvesPositive(preceding, leakPath, PROVENANCE_HOP_LIMIT),
+      conditionProvesPositive(preceding, leakPath, PROVENANCE_HOP_LIMIT, context),
     )
   ) {
     return true;
   }
   const receiver = stripParenExpression(strippedOperand.object as EsTreeNode);
   if (!isNodeOfType(receiver, "Identifier")) return false;
-  if (isConstantNonEmptyUseStateArray(receiver)) return true;
-  return isProvablyNonEmptyOrNullish(receiver, PROVENANCE_HOP_LIMIT);
+  if (isConstantNonEmptyUseStateArray(receiver, context)) return true;
+  return isProvablyNonEmptyOrNullish(receiver, PROVENANCE_HOP_LIMIT, context);
 };
 
 // `{errors.length && <p>{errors.length.message}</p>}` — the render side
@@ -373,7 +371,8 @@ const renderSideReadsMemberOfGuardPath = (
     if (found) return false;
     if (!isNodeOfType(child, "MemberExpression") || child.computed) return;
     const objectPath = memberPathOf(child.object as EsTreeNode);
-    if (objectPath === guardPath) {
+    const propertyName = isNodeOfType(child.property, "Identifier") ? child.property.name : null;
+    if (objectPath === guardPath && propertyName && !NUMBER_MEMBER_NAMES.has(propertyName)) {
       found = true;
       return false;
     }
@@ -391,35 +390,36 @@ const inFileTypeDeclaresNonNumericLength = (receiverNode: EsTreeNode): boolean =
   if (!isNodeOfType(receiver, "Identifier")) return false;
   const typeName = resolveReceiverTypeName(receiver);
   if (!typeName) return false;
-  let declaresNonNumericLength = false;
   let cursor: EsTreeNode | null | undefined = receiver;
   while (cursor && !isNodeOfType(cursor, "Program")) cursor = cursor.parent ?? null;
   if (!cursor) return false;
-  walkAst(cursor, (child: EsTreeNode) => {
-    if (declaresNonNumericLength) return false;
-    if (
-      !isNodeOfType(child, "TSInterfaceDeclaration") ||
-      !isNodeOfType(child.id, "Identifier") ||
-      child.id.name !== typeName
-    ) {
-      return;
-    }
-    for (const member of child.body?.body ?? []) {
-      if (
-        isNodeOfType(member, "TSPropertySignature") &&
-        !member.computed &&
-        isNodeOfType(member.key, "Identifier") &&
-        member.key.name === "length" &&
-        isNodeOfType(member.typeAnnotation, "TSTypeAnnotation") &&
-        !isNodeOfType(member.typeAnnotation.typeAnnotation, "TSNumberKeyword")
-      ) {
-        declaresNonNumericLength = true;
-        return false;
+  let typeNames = nonNumericLengthTypeNamesByProgram.get(cursor);
+  if (!typeNames) {
+    typeNames = new Set<string>();
+    nonNumericLengthTypeNamesByProgram.set(cursor, typeNames);
+    walkAst(cursor, (child: EsTreeNode) => {
+      if (!isNodeOfType(child, "TSInterfaceDeclaration") || !isNodeOfType(child.id, "Identifier")) {
+        return;
       }
-    }
-  });
-  return declaresNonNumericLength;
+      for (const member of child.body?.body ?? []) {
+        if (
+          isNodeOfType(member, "TSPropertySignature") &&
+          !member.computed &&
+          isNodeOfType(member.key, "Identifier") &&
+          member.key.name === "length" &&
+          isNodeOfType(member.typeAnnotation, "TSTypeAnnotation") &&
+          !isNodeOfType(member.typeAnnotation.typeAnnotation, "TSNumberKeyword")
+        ) {
+          typeNames?.add(child.id.name);
+          return false;
+        }
+      }
+    });
+  }
+  return typeNames.has(typeName);
 };
+
+const nonNumericLengthTypeNamesByProgram = new WeakMap<EsTreeNode, Set<string>>();
 
 const resolveReceiverTypeName = (receiver: EsTreeNodeOfType<"Identifier">): string | null => {
   let cursor: EsTreeNode | null | undefined = receiver.parent;
@@ -486,7 +486,10 @@ const isSyntacticallyNumeric = (node: EsTreeNode): boolean => {
 
   if (
     isNodeOfType(stripped, "BinaryExpression") &&
-    ARITHMETIC_BINARY_OPERATORS.has(stripped.operator)
+    (ARITHMETIC_BINARY_OPERATORS.has(stripped.operator) ||
+      (stripped.operator === "+" &&
+        isSyntacticallyNumeric(stripped.left) &&
+        isSyntacticallyNumeric(stripped.right)))
   ) {
     return true;
   }
@@ -588,7 +591,7 @@ export const jsxNumericAndLeakedRender = defineRule({
       if (!leakingOperand) return;
       if (renderSideReadsMemberOfGuardPath(leakingOperand, renderOperand)) return;
       const precedingOperands = operands.slice(0, operands.indexOf(leakingOperand));
-      if (guardedCountCannotBeZero(leakingOperand, precedingOperands)) return;
+      if (guardedCountCannotBeZero(leakingOperand, precedingOperands, context)) return;
 
       context.report({
         node: leakingOperand,

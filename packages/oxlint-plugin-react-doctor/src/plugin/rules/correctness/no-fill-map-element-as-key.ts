@@ -5,9 +5,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { walkAst } from "../../utils/walk-ast.js";
 
 const STRING_COERCION_FUNCTIONS = new Set(["String", "Number"]);
 
@@ -29,7 +29,7 @@ const ARRAY_MUTATING_METHODS = new Set([
 // returns the identifier regardless of its name — after `.fill()` the sole
 // callback parameter IS the constant fill value whatever it is called, so
 // the caller matches it against the map callback's single parameter.
-const extractKeyIdentifierName = (node: EsTreeNode): string | null => {
+const extractKeyIdentifierName = (node: EsTreeNode, context: RuleContext): string | null => {
   if (isNodeOfType(node, "Identifier")) return node.name;
 
   if (isNodeOfType(node, "TemplateLiteral")) {
@@ -54,6 +54,7 @@ const extractKeyIdentifierName = (node: EsTreeNode): string | null => {
     isNodeOfType(node, "CallExpression") &&
     isNodeOfType(node.callee, "Identifier") &&
     STRING_COERCION_FUNCTIONS.has(node.callee.name) &&
+    context.scopes.isGlobalReference(node.callee) &&
     isNodeOfType(node.arguments?.[0], "Identifier")
   ) {
     return node.arguments[0].name;
@@ -64,20 +65,27 @@ const extractKeyIdentifierName = (node: EsTreeNode): string | null => {
 
 // `Array(n)` or `new Array(n)` — returns the length argument node so the
 // caller can suppress the harmless single-element case (`Array(1)`).
-const getArrayConstructorLengthArgument = (node: EsTreeNode): EsTreeNode | null => {
+const getArrayConstructorLengthArgument = (
+  node: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
   const unwrappedNode = stripParenExpression(node);
   const isArrayConstructor =
     (isNodeOfType(unwrappedNode, "CallExpression") ||
       isNodeOfType(unwrappedNode, "NewExpression")) &&
     isNodeOfType(unwrappedNode.callee, "Identifier") &&
-    unwrappedNode.callee.name === "Array";
+    unwrappedNode.callee.name === "Array" &&
+    context.scopes.isGlobalReference(unwrappedNode.callee);
   if (!isArrayConstructor) return null;
   return unwrappedNode.arguments?.[0] ?? null;
 };
 
 // Length argument of the `Array(n).fill(...)` / `new Array(n).fill(...)`
 // receiver, or null when the receiver is not that shape.
-const getFillReceiverLengthArgument = (receiver: EsTreeNode): EsTreeNode | null => {
+const getFillReceiverLengthArgument = (
+  receiver: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
   const unwrappedReceiver = stripParenExpression(receiver);
   if (!isNodeOfType(unwrappedReceiver, "CallExpression")) return null;
   const callee = stripParenExpression(unwrappedReceiver.callee);
@@ -88,7 +96,7 @@ const getFillReceiverLengthArgument = (receiver: EsTreeNode): EsTreeNode | null 
   ) {
     return null;
   }
-  return getArrayConstructorLengthArgument(stripParenExpression(callee.object));
+  return getArrayConstructorLengthArgument(stripParenExpression(callee.object), context);
 };
 
 const doesPatternBindName = (pattern: EsTreeNode | null | undefined, name: string): boolean => {
@@ -167,56 +175,53 @@ const isConstDeclaredBinding = (bindingIdentifier: EsTreeNode): boolean => {
 // mutating method anywhere in its scope — after that, elements may no
 // longer be the identical fill value, so a param bound to them can be a
 // legitimate key.
-const isFilledArrayMutatedInScope = (scopeOwner: EsTreeNode, arrayName: string): boolean => {
-  let didFindMutation = false;
-  walkAst(scopeOwner, (descendant) => {
-    if (didFindMutation) return false;
-    if (isNodeOfType(descendant, "AssignmentExpression")) {
-      const target = descendant.left;
-      if (isNodeOfType(target, "Identifier") && target.name === arrayName) {
-        didFindMutation = true;
-        return false;
-      }
-      if (
-        isNodeOfType(target, "MemberExpression") &&
-        isNodeOfType(target.object, "Identifier") &&
-        target.object.name === arrayName
-      ) {
-        didFindMutation = true;
-        return false;
-      }
-    }
+const isFilledArrayMutated = (
+  receiver: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const symbol = context.scopes.symbolFor(receiver);
+  if (!symbol) return true;
+  return symbol.references.some((reference) => {
+    if (reference.flag !== "read") return true;
+    const member = reference.identifier.parent;
     if (
-      isNodeOfType(descendant, "CallExpression") &&
-      isNodeOfType(descendant.callee, "MemberExpression") &&
-      isNodeOfType(descendant.callee.object, "Identifier") &&
-      descendant.callee.object.name === arrayName &&
-      isNodeOfType(descendant.callee.property, "Identifier") &&
-      ARRAY_MUTATING_METHODS.has(descendant.callee.property.name)
+      !member ||
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== reference.identifier
     ) {
-      didFindMutation = true;
       return false;
     }
-    return undefined;
+    const memberParent = member.parent;
+    if (isNodeOfType(memberParent, "AssignmentExpression") && memberParent.left === member) {
+      return true;
+    }
+    return Boolean(
+      isNodeOfType(memberParent, "CallExpression") &&
+      memberParent.callee === member &&
+      isNodeOfType(member.property, "Identifier") &&
+      ARRAY_MUTATING_METHODS.has(member.property.name),
+    );
   });
-  return didFindMutation;
 };
 
 // Length argument of the fill chain the `.map` receiver resolves to: the
 // inline `Array(n).fill(...).map(...)` chain, or an identifier whose sole
 // `const` initializer is that chain and which is never mutated afterwards
 // (`const slots = Array(n).fill(null); slots.map(...)`).
-const resolveFillReceiverLengthArgument = (receiver: EsTreeNode): EsTreeNode | null => {
-  const inlineLengthArgument = getFillReceiverLengthArgument(receiver);
+const resolveFillReceiverLengthArgument = (
+  receiver: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const inlineLengthArgument = getFillReceiverLengthArgument(receiver, context);
   if (inlineLengthArgument) return inlineLengthArgument;
 
   if (!isNodeOfType(receiver, "Identifier")) return null;
   const binding = findVariableInitializer(receiver, receiver.name);
   if (!binding || !binding.initializer) return null;
   if (!isConstDeclaredBinding(binding.bindingIdentifier)) return null;
-  const initializerLengthArgument = getFillReceiverLengthArgument(binding.initializer);
+  const initializerLengthArgument = getFillReceiverLengthArgument(binding.initializer, context);
   if (!initializerLengthArgument) return null;
-  if (isFilledArrayMutatedInScope(binding.scopeOwner, receiver.name)) return null;
+  if (isFilledArrayMutated(receiver, context)) return null;
   return initializerLengthArgument;
 };
 
@@ -231,6 +236,7 @@ const findEnclosingMapCall = (
     | EsTreeNodeOfType<"FunctionExpression">
     | EsTreeNodeOfType<"FunctionDeclaration">;
   receiver: EsTreeNode;
+  mapCall: EsTreeNodeOfType<"CallExpression">;
 } | null => {
   let current = node;
   while (current.parent) {
@@ -243,7 +249,11 @@ const findEnclosingMapCall = (
         isNodeOfType(parent.callee.property, "Identifier") &&
         parent.callee.property.name === "map"
       ) {
-        return { callback: current, receiver: stripParenExpression(parent.callee.object) };
+        return {
+          callback: current,
+          receiver: stripParenExpression(parent.callee.object),
+          mapCall: parent,
+        };
       }
       return null;
     }
@@ -256,29 +266,24 @@ const findEnclosingMapCall = (
 // `fillWithShuffledIndices(slots)`) may mutate its elements into distinct
 // values before the map — the fill-elements-are-identical premise no longer
 // holds.
-const fillBindingPassedToCall = (receiver: EsTreeNode): boolean => {
+const fillBindingPassedToDominatingCall = (
+  receiver: EsTreeNode,
+  mapCall: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   const stripped = stripParenExpression(receiver);
   if (!isNodeOfType(stripped, "Identifier")) return false;
-  const receiverName = stripped.name;
-  let scope: EsTreeNode | null | undefined = stripped.parent;
-  while (scope && !isFunctionLike(scope) && !isNodeOfType(scope, "Program")) {
-    scope = scope.parent ?? null;
-  }
-  if (!scope) return false;
-  let escapes = false;
-  walkAst(scope, (child: EsTreeNode) => {
-    if (escapes) return false;
-    if (!isNodeOfType(child, "CallExpression")) return;
-    if (
-      (child.arguments ?? []).some(
-        (argument) => isNodeOfType(argument, "Identifier") && argument.name === receiverName,
-      )
-    ) {
-      escapes = true;
-      return false;
-    }
+  const symbol = context.scopes.symbolFor(stripped);
+  if (!symbol) return false;
+  return symbol.references.some((reference) => {
+    const call = reference.identifier.parent;
+    return Boolean(
+      call &&
+      isNodeOfType(call, "CallExpression") &&
+      call.arguments.some((argument) => argument === reference.identifier) &&
+      nodeDominatesNode(call, mapCall, context),
+    );
   });
-  return escapes;
 };
 
 export const noFillMapElementAsKey = defineRule({
@@ -292,7 +297,7 @@ export const noFillMapElementAsKey = defineRule({
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
       if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
-      const keyName = extractKeyIdentifierName(node.value.expression);
+      const keyName = extractKeyIdentifierName(node.value.expression, context);
       if (!keyName) return;
 
       const enclosingMap = findEnclosingMapCall(node);
@@ -304,11 +309,28 @@ export const noFillMapElementAsKey = defineRule({
       if (!isNodeOfType(soleParameter, "Identifier") || soleParameter.name !== keyName) return;
 
       if (isKeyNameReboundBetween(node, enclosingMap.callback, keyName)) return;
+      const parameterSymbol = context.scopes.symbolFor(soleParameter);
+      if (
+        parameterSymbol?.references.some(
+          (reference) =>
+            reference.flag !== "read" && nodeDominatesNode(reference.identifier, node, context),
+        )
+      ) {
+        return;
+      }
 
-      const lengthArgument = resolveFillReceiverLengthArgument(enclosingMap.receiver);
+      const lengthArgument = resolveFillReceiverLengthArgument(enclosingMap.receiver, context);
       if (!lengthArgument) return;
-      if (isNodeOfType(lengthArgument, "Literal") && lengthArgument.value === 1) return;
-      if (fillBindingPassedToCall(enclosingMap.receiver)) return;
+      if (
+        isNodeOfType(lengthArgument, "Literal") &&
+        typeof lengthArgument.value === "number" &&
+        lengthArgument.value <= 1
+      ) {
+        return;
+      }
+      if (fillBindingPassedToDominatingCall(enclosingMap.receiver, enclosingMap.mapCall, context)) {
+        return;
+      }
 
       context.report({
         node,

@@ -112,36 +112,36 @@ describe("no-impure-call-at-module-scope", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a per-process-named binding (uptime/instance id)", () => {
+  it("flags a per-process-named binding", () => {
     const result = runRule(noImpureCallAtModuleScope, `const bootTime = Date.now();`);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag init/module-load per-process names (INIT_TIMESTAMP/moduleLoadTime)", () => {
+  it("flags init/module-load per-process names", () => {
     expect(
       runRule(noImpureCallAtModuleScope, `const INIT_TIMESTAMP = Date.now();`).diagnostics,
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(
       runRule(noImpureCallAtModuleScope, `const moduleLoadTime = performance.now();`).diagnostics,
-    ).toHaveLength(0);
+    ).toHaveLength(1);
   });
 
-  it("does not flag camelCase per-process uptime names (startTime/appBootTime/serverStartedAt)", () => {
+  it("flags camelCase per-process uptime names", () => {
     expect(
       runRule(noImpureCallAtModuleScope, `const startTime = Date.now();`).diagnostics,
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(
       runRule(noImpureCallAtModuleScope, `const appBootTime = Date.now();`).diagnostics,
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(
       runRule(noImpureCallAtModuleScope, `const serverStartedAt = Date.now();`).diagnostics,
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(
       runRule(noImpureCallAtModuleScope, `const SERVER_START_TIME = Date.now();`).diagnostics,
-    ).toHaveLength(0);
+    ).toHaveLength(1);
   });
 
-  it("does not flag a jotai atom seeded with Date.now() (TaskTrove refresh-trigger shape)", () => {
+  it("flags a jotai atom seeded with Date.now()", () => {
     const result = runRule(
       noImpureCallAtModuleScope,
       `
@@ -149,18 +149,18 @@ describe("no-impure-call-at-module-scope", () => {
       export const appRefreshTriggerAtom = atom<number>(Date.now());
       `,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag state-container factory seeds (svelte writable, rxjs BehaviorSubject)", () => {
+  it("flags state-container factory seeds", () => {
     expect(
       runRule(noImpureCallAtModuleScope, `export const lastUpdated = writable(Date.now());`)
         .diagnostics,
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(
       runRule(noImpureCallAtModuleScope, `const clock$ = new BehaviorSubject(Date.now());`)
         .diagnostics,
-    ).toHaveLength(0);
+    ).toHaveLength(1);
   });
 
   it("does not flag a static field of a class created inside a factory/mixin", () => {
@@ -189,7 +189,7 @@ describe("no-impure-call-at-module-scope", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet: Math.random()-based per-process tab/client id (the crypto.randomUUID idiom the rule explicitly spares)", () => {
+  it("flags a Math.random()-based per-process tab/client id", () => {
     const result = runRule(
       noImpureCallAtModuleScope,
       `const tabId = Math.random().toString(36).slice(2);
@@ -199,7 +199,7 @@ export const broadcastCartChange = (payload: unknown) => {
 };
 export const isOwnMessage = (message: { sourceId: string }) => message.sourceId === tabId;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet: Mutable external-store seed refreshed on demand (unkey query-time-provider — a literal wild hit)", () => {
@@ -229,16 +229,16 @@ export const timeSinceHydration = () => performance.now() - hydrationBaselineMs;
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet: Module epoch used only as an origin for elapsed-time deltas", () => {
+  it("flags a module epoch used as an origin for elapsed-time deltas", () => {
     const result = runRule(
       noImpureCallAtModuleScope,
       `const moduleEpoch = Date.now();
 export const uptimeMs = () => Date.now() - moduleEpoch;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: Per-process PRNG seed feeding a seeded generator (umami src/lib/generate.ts — a literal wild hit)", () => {
+  it("flags per-process seeds feeding a deterministic generator", () => {
     const result = runRule(
       noImpureCallAtModuleScope,
       `import prand from "pure-rand";
@@ -247,7 +247,7 @@ const rng = prand.xoroshiro128plus(seed);
 export const randomIntBetween = (min: number, max: number) =>
   prand.unsafeUniformIntDistribution(min, max, rng);`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("stays quiet: Module-level cache expiry seeded as already-expired", () => {
@@ -266,7 +266,7 @@ export const getExchangeRates = async () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet: Module-init duration telemetry — the measurement IS of module load", () => {
+  it("flags module-init duration telemetry", () => {
     const result = runRule(
       noImpureCallAtModuleScope,
       `const initStartMs = performance.now();
@@ -274,10 +274,10 @@ export const searchIndex = buildSearchIndex(documents);
 const indexInitDurationMs = performance.now() - initStartMs;
 reportTiming("search-index-init", indexInitDurationMs);`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(2);
   });
 
-  it("stays quiet: react-email PreviewProps fixture defaults (trigger.dev emails — a literal wild hit)", () => {
+  it("flags nondeterministic PreviewProps fixture defaults", () => {
     const result = runRule(
       noImpureCallAtModuleScope,
       `const previewDefaults = {
@@ -290,16 +290,16 @@ export const DeploymentFailureEmail = ({ failedAt, environment }: DeploymentFail
 );
 DeploymentFailureEmail.PreviewProps = previewDefaults;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag a NOW-named module-load timestamp (hyperdx stable-fallback idiom)", () => {
+  it("flags NOW-named module-load timestamps", () => {
     expect(
       runRule(noImpureCallAtModuleScope, `export const NOW = Date.now();`).diagnostics,
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(
       runRule(noImpureCallAtModuleScope, `const NOW_MS = new Date().getTime();`).diagnostics,
-    ).toHaveLength(0);
+    ).toHaveLength(1);
   });
 
   it("still flags new Date() inside a store's module-scope initialState (zustand calendar idiom)", () => {
@@ -328,5 +328,25 @@ DeploymentFailureEmail.PreviewProps = previewDefaults;`,
        export const Footer = () => <span>{copyrightDate}</span>;`,
     );
     expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("audit regressions", () => {
+  it("uses the server polarity of a typeof window conditional", () => {
+    const result = runRule(
+      noImpureCallAtModuleScope,
+      `const requestTime = typeof window === "undefined" ? Date.now() : 0;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("follows nondeterministic calls through factory arguments", () => {
+    const result = runRule(noImpureCallAtModuleScope, `const requestTime = identity(Date.now());`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an unreassigned module let", () => {
+    const result = runRule(noImpureCallAtModuleScope, `let requestTime = Date.now();`);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

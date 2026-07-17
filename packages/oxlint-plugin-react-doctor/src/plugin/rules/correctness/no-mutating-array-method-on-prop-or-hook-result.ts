@@ -8,6 +8,7 @@ import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -118,28 +119,25 @@ const isMutableStoreHookCall = (node: EsTreeNode | null): boolean => {
 // `timeline.play()`) somewhere in the file — it is a WAAPI Animation /
 // GSAP Timeline, not an array.
 const scopeShowsPlaybackSiblingCall = (
-  callNode: EsTreeNode,
-  rootIdentifierName: string,
+  rootIdentifier: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
 ): boolean => {
-  let programRoot: EsTreeNode = callNode;
-  while (programRoot.parent) programRoot = programRoot.parent;
-  let proven = false;
-  walkAst(programRoot, (child) => {
-    if (proven) return false;
-    if (
-      isNodeOfType(child, "CallExpression") &&
-      isNodeOfType(child.callee, "MemberExpression") &&
-      !child.callee.computed &&
-      isNodeOfType(child.callee.property, "Identifier") &&
-      PLAYBACK_SIBLING_METHOD_NAMES.has(child.callee.property.name) &&
-      rootIdentifierNode(stripParenExpression(child.callee.object as EsTreeNode))?.name ===
-        rootIdentifierName
-    ) {
-      proven = true;
-      return false;
-    }
-  });
-  return proven;
+  const symbol = context.scopes.symbolFor(rootIdentifier);
+  return Boolean(
+    symbol?.references.some((reference) => {
+      const member = reference.identifier.parent;
+      return Boolean(
+        member &&
+        isNodeOfType(member, "MemberExpression") &&
+        member.object === reference.identifier &&
+        !member.computed &&
+        isNodeOfType(member.property, "Identifier") &&
+        PLAYBACK_SIBLING_METHOD_NAMES.has(member.property.name) &&
+        isNodeOfType(member.parent, "CallExpression") &&
+        member.parent.callee === member,
+      );
+    }),
+  );
 };
 
 // `useEffect(() => { locks.push(id); return () => { locks.splice(...); }; })`
@@ -195,20 +193,6 @@ const isRegistryCleanupMutation = (callNode: EsTreeNode, rootIdentifierName: str
     }
   });
   return didRegister;
-};
-
-// Immutable.js codebases pass persistent `List`s through props and hooks;
-// their `.sort()`/`.reverse()`/`.splice()` are immutable by construction.
-// The engine is type-unaware, so abstain for the whole file when it
-// imports the library.
-const fileImportsImmutableJs = (node: EsTreeNode): boolean => {
-  let programRoot: EsTreeNode = node;
-  while (programRoot.parent) programRoot = programRoot.parent;
-  if (!isNodeOfType(programRoot, "Program")) return false;
-  return programRoot.body.some(
-    (statement) =>
-      isNodeOfType(statement, "ImportDeclaration") && statement.source.value === "immutable",
-  );
 };
 
 // Stops at function boundaries so a callback parameter nested inside a hook
@@ -361,17 +345,6 @@ const isParameterBinding = (binding: BindingInfo): boolean => {
   return false;
 };
 
-// oxlint runtime nodes carry `range`; the oxc-parser test AST carries
-// numeric `start`/`end` fields instead — accept either.
-const nodeSpan = (node: EsTreeNode): [number, number] | null => {
-  if (node.range) return [node.range[0], node.range[1]];
-  const nodeWithOffsets = node as { start?: number; end?: number };
-  if (typeof nodeWithOffsets.start === "number" && typeof nodeWithOffsets.end === "number") {
-    return [nodeWithOffsets.start, nodeWithOffsets.end];
-  }
-  return null;
-};
-
 // `events = events.filter(...)` before the flagged call rebinds the name to a
 // fresh array, so the mutating call no longer touches the prop / hook result.
 // The assignment must complete before the call starts, so `items = items.sort()`
@@ -380,32 +353,45 @@ const hasRebindBeforeCall = (
   binding: BindingInfo,
   identifierName: string,
   callNode: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
 ): boolean => {
-  const callSpan = nodeSpan(callNode);
-  const bindingSpan = nodeSpan(binding.bindingIdentifier);
-  if (!callSpan || !bindingSpan) return false;
-  let didFindRebind = false;
-  walkAst(binding.scopeOwner, (candidate) => {
-    if (didFindRebind) return false;
-    if (
-      isNodeOfType(candidate, "AssignmentExpression") &&
-      candidate.operator === "=" &&
-      isNodeOfType(candidate.left, "Identifier") &&
-      candidate.left.name === identifierName
-    ) {
-      const assignmentSpan = nodeSpan(candidate);
-      if (
-        assignmentSpan &&
-        assignmentSpan[0] > bindingSpan[0] &&
-        assignmentSpan[1] <= callSpan[0]
-      ) {
-        didFindRebind = true;
-        return false;
-      }
-    }
-    return undefined;
+  const symbol = context.scopes.symbolFor(binding.bindingIdentifier);
+  if (!symbol || symbol.name !== identifierName) return false;
+  return symbol.references.some((reference) => {
+    if (reference.flag === "read") return false;
+    const assignment = reference.identifier.parent;
+    return Boolean(
+      assignment &&
+      isNodeOfType(assignment, "AssignmentExpression") &&
+      assignment.operator === "=" &&
+      assignment.left === reference.identifier &&
+      isProvablyFreshOrAbsentValue(assignment.right as EsTreeNode) &&
+      nodeDominatesNode(assignment, callNode, context),
+    );
   });
-  return didFindRebind;
+};
+
+const isProvableArrayContainerHookBinding = (binding: BindingInfo): boolean => {
+  const initializer = binding.initializer ? stripParenExpression(binding.initializer) : null;
+  const declaratorInitializer = declaratorInitFor(binding);
+  let hookCall: EsTreeNode | null = null;
+  if (initializer && isNodeOfType(initializer, "CallExpression")) {
+    hookCall = initializer;
+  } else if (declaratorInitializer) {
+    const strippedDeclaratorInitializer = stripParenExpression(declaratorInitializer);
+    if (isNodeOfType(strippedDeclaratorInitializer, "CallExpression")) {
+      hookCall = strippedDeclaratorInitializer;
+    }
+  }
+  if (!hookCall || !isNodeOfType(hookCall, "CallExpression")) return false;
+  const hookName = getCalleeName(hookCall);
+  return (
+    hookName === "useContext" ||
+    hookName === "useMemo" ||
+    hookName === "useReducer" ||
+    hookName === "useState" ||
+    hookName === "useSyncExternalStore"
+  );
 };
 
 // Body-level prop aliases: `const { items } = props` / `const list = props.items`
@@ -439,14 +425,16 @@ const resolveSharedArraySource = (
   mutatingMethodName: string,
   reachesThroughMemberAccess: boolean,
   depth: number,
+  context: RuleContext,
 ): SharedArraySource | null => {
   if (depth > ALIAS_RESOLUTION_DEPTH_LIMIT) return null;
   if (hasMutationSafeWord(rootIdentifier.name)) return null;
   const binding = findVariableInitializer(rootIdentifier, rootIdentifier.name);
   if (!binding) return null;
-  if (hasRebindBeforeCall(binding, rootIdentifier.name, callNode)) return null;
+  if (hasRebindBeforeCall(binding, rootIdentifier.name, callNode, context)) return null;
   if (!reachesThroughMemberAccess && isBoundThroughRestElement(binding)) return null;
   if (isDerivedFromHookCall(binding)) {
+    if (!isProvableArrayContainerHookBinding(binding)) return null;
     if (
       isSetterlessUseStateBinding(binding) &&
       (reachesThroughMemberAccess || mutatingMethodName === "splice")
@@ -481,6 +469,7 @@ const resolveSharedArraySource = (
     mutatingMethodName,
     reachesThroughMemberAccess || aliasSource.isMemberAccess,
     depth + 1,
+    context,
   );
 };
 
@@ -510,15 +499,13 @@ export const noMutatingArrayMethodOnPropOrHookResult = defineRule({
       const rootIdentifier = rootIdentifierNode(receiver);
       if (!rootIdentifier) return;
       if (NON_ARRAY_RECEIVER_NAME_PATTERN.test(rootIdentifier.name)) return;
-      if (scopeShowsPlaybackSiblingCall(node as EsTreeNode, rootIdentifier.name)) return;
+      if (scopeShowsPlaybackSiblingCall(rootIdentifier, context)) return;
       if (
         callee.property.name === "splice" &&
         isRegistryCleanupMutation(node as EsTreeNode, rootIdentifier.name)
       ) {
         return;
       }
-      if (fileImportsImmutableJs(node as EsTreeNode)) return;
-
       const receiverIsMemberAccess = isNodeOfType(receiver, "MemberExpression");
       const source = resolveSharedArraySource(
         rootIdentifier,
@@ -526,6 +513,7 @@ export const noMutatingArrayMethodOnPropOrHookResult = defineRule({
         callee.property.name,
         receiverIsMemberAccess,
         0,
+        context,
       );
       if (!source) return;
       context.report({ node, message: messageFor(source) });

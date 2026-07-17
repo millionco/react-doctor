@@ -257,3 +257,29 @@ const QuizChoices = ({ choices }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("audit regressions", () => {
+  it("allows a statically empty filled array", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const C = () => Array(0).fill(null).map((item) => <X key={item} />);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows a callback parameter reassigned before the key", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const C = () => Array(3).fill(null).map((item) => { item = crypto.randomUUID(); return <X key={item} />; });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let a later benign call hide duplicate keys", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const C = () => { const slots = Array(3).fill(null); const out = slots.map((item) => <X key={item} />); console.log(slots); return out; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

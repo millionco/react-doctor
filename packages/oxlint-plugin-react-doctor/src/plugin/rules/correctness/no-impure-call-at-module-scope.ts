@@ -2,10 +2,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
@@ -18,60 +16,6 @@ const IMPURE_MEMBER_CALLS = new Map<string, ReadonlySet<string>>([
   ["Date", new Set(["now"])],
   ["performance", new Set(["now"])],
 ]);
-
-const TRANSPARENT_VALUE_WRAPPER_NAMES = new Set(["String", "Number", "Boolean", "BigInt"]);
-
-// Bindings whose name advertises an intentional per-process value
-// (instance/boot/startup/init ids, module-load timestamps). Applied from the
-// revision to spare those correct-by-design constants.
-const PER_PROCESS_NAME_KEYWORDS = new Set([
-  "instance",
-  "boot",
-  "startup",
-  "start",
-  "started",
-  "init",
-  "load",
-  "loaded",
-  "module",
-  "process",
-  "server",
-  "build",
-  // per-process ids and time origins (tabId, moduleEpoch, uptimeMs,
-  // hydrationBaselineMs, sessionSeed) — the correct-by-design class the
-  // crypto.* carve-out already spares
-  "uptime",
-  "epoch",
-  "origin",
-  "baseline",
-  "session",
-  "seed",
-  // `NOW` / `NOW_MS` — the name declares a deliberate module-load
-  // timestamp (hyperdx documents its `export const NOW = Date.now()` as
-  // "time captured at module load, use as a stable fallback")
-  "now",
-  "id",
-  "tab",
-  "client",
-  // mutable cache/refresh seeds (lastRefreshedAt, cacheExpiresAt)
-  "expires",
-  "expiry",
-  "refreshed",
-  // static preview/fixture data (react-email PreviewProps defaults)
-  "preview",
-  "fixture",
-  "mock",
-  "defaults",
-  "placeholder",
-]);
-
-const isPerProcessBindingName = (bindingName: string): boolean =>
-  bindingName
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
-    .toLowerCase()
-    .split(/[_-]+/)
-    .some((nameWord) => PER_PROCESS_NAME_KEYWORDS.has(nameWord));
 
 const impureBuiltinLabel = (node: EsTreeNode): string | null => {
   if (isNodeOfType(node, "NewExpression")) {
@@ -88,6 +32,14 @@ const impureBuiltinLabel = (node: EsTreeNode): string | null => {
     return null;
   }
   if (!isNodeOfType(node, "CallExpression")) return null;
+  if (
+    isNodeOfType(node.callee, "Identifier") &&
+    node.callee.name === "Date" &&
+    node.arguments.length === 0 &&
+    !findVariableInitializer(node.callee, "Date")
+  ) {
+    return "Date()";
+  }
   const callee = stripParenExpression(node.callee);
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
   const receiver = stripParenExpression(callee.object);
@@ -100,88 +52,76 @@ const impureBuiltinLabel = (node: EsTreeNode): string | null => {
   return `${receiver.name}.${callee.property.name}()`;
 };
 
-const testChecksTypeofWindow = (test: EsTreeNode): boolean => {
-  let found = false;
-  walkAst(test, (node: EsTreeNode) => {
-    if (found) return false;
-    if (
-      isNodeOfType(node, "UnaryExpression") &&
-      node.operator === "typeof" &&
-      isNodeOfType(node.argument, "Identifier") &&
-      (node.argument.name === "window" || node.argument.name === "document")
-    ) {
-      found = true;
-      return false;
-    }
-  });
-  return found;
+const serverValueOfTypeofBrowserGlobalTest = (test: EsTreeNode): boolean | null => {
+  const expression = stripParenExpression(test);
+  if (!isNodeOfType(expression, "BinaryExpression")) return null;
+  const isUndefinedTypeof = (candidate: EsTreeNode): boolean =>
+    isNodeOfType(candidate, "UnaryExpression") &&
+    candidate.operator === "typeof" &&
+    isNodeOfType(candidate.argument, "Identifier") &&
+    (candidate.argument.name === "window" || candidate.argument.name === "document");
+  const isUndefinedLiteral = (candidate: EsTreeNode): boolean =>
+    isNodeOfType(candidate, "Literal") && candidate.value === "undefined";
+  if (
+    !(
+      (isUndefinedTypeof(expression.left as EsTreeNode) && isUndefinedLiteral(expression.right)) ||
+      (isUndefinedTypeof(expression.right) && isUndefinedLiteral(expression.left as EsTreeNode))
+    )
+  ) {
+    return null;
+  }
+  if (expression.operator === "===" || expression.operator === "==") return true;
+  if (expression.operator === "!==" || expression.operator === "!=") return false;
+  return null;
 };
 
-interface ModuleScopeBinding {
-  readonly bindingName: string | null;
-}
-
-// Walks up from an impure call to decide whether it is evaluated once at
-// module load — either in a top-level variable initializer or a static
-// class-field initializer of a module-scope class — returning the bound
-// name, or null when a function boundary is crossed first or the impure
-// value is an argument to a factory call (`atom(Date.now())`,
-// `signal(Date.now())`), a deliberate mutable seed rather than a frozen
-// constant.
-const resolveModuleScopeBinding = (impureNode: EsTreeNode): ModuleScopeBinding | null => {
+const isModuleScopeEvaluation = (impureNode: EsTreeNode, context: RuleContext): boolean => {
   let child: EsTreeNode = impureNode;
   let cursor: EsTreeNode | null = impureNode.parent ?? null;
-  let staticFieldBinding: ModuleScopeBinding | null = null;
+  let isStaticField = false;
   while (cursor) {
-    if (isFunctionLike(cursor) || isNodeOfType(cursor, "MethodDefinition")) return null;
-
-    if (
-      (isNodeOfType(cursor, "CallExpression") || isNodeOfType(cursor, "NewExpression")) &&
-      cursor.arguments?.some((argumentNode) => argumentNode === child)
-    ) {
-      if (!TRANSPARENT_VALUE_WRAPPER_NAMES.has(getCalleeName(cursor) ?? "")) return null;
-    }
+    if (isFunctionLike(cursor) || isNodeOfType(cursor, "MethodDefinition")) return false;
 
     // `typeof window === "undefined" ? 0 : performance.now()` — the branch
     // visible to the server render is the deterministic constant; the
     // impure read only ever runs in the browser.
-    if (
-      isNodeOfType(cursor, "ConditionalExpression") &&
-      cursor.test !== child &&
-      testChecksTypeofWindow(cursor.test as EsTreeNode)
-    ) {
-      return null;
+    if (isNodeOfType(cursor, "ConditionalExpression") && cursor.test !== child) {
+      const serverTestValue = serverValueOfTypeofBrowserGlobalTest(cursor.test as EsTreeNode);
+      if (
+        serverTestValue !== null &&
+        ((cursor.consequent === child && !serverTestValue) ||
+          (cursor.alternate === child && serverTestValue))
+      ) {
+        return false;
+      }
     }
 
     if (isNodeOfType(cursor, "PropertyDefinition")) {
-      if (cursor.static !== true || cursor.key === child) return null;
-      staticFieldBinding = {
-        bindingName: isNodeOfType(cursor.key, "Identifier") ? cursor.key.name : null,
-      };
+      if (cursor.static !== true || cursor.key === child) return false;
+      isStaticField = true;
     }
 
     if (isNodeOfType(cursor, "VariableDeclarator")) {
       const declaration = cursor.parent;
-      if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return null;
-      // A `let`/`var` seed is a deliberate MUTABLE per-process value the
-      // module refreshes later (`let lastRefreshedAt = Date.now()`), the
-      // same intent the factory-argument exemption spares — the frozen-
-      // forever hazard is specific to `const`.
-      if (declaration.kind !== "const") return null;
+      if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return false;
+      if (declaration.kind !== "const") {
+        const symbol = context.scopes.symbolFor(cursor.id);
+        if (!symbol || symbol.references.some((reference) => reference.flag !== "read")) {
+          return false;
+        }
+      }
       let declarationParent = declaration.parent ?? null;
       if (declarationParent && isNodeOfType(declarationParent, "ExportNamedDeclaration")) {
         declarationParent = declarationParent.parent ?? null;
       }
-      if (!declarationParent || !isNodeOfType(declarationParent, "Program")) return null;
-      return {
-        bindingName: isNodeOfType(cursor.id, "Identifier") ? cursor.id.name : null,
-      };
+      if (!declarationParent || !isNodeOfType(declarationParent, "Program")) return false;
+      return true;
     }
 
     child = cursor;
     cursor = cursor.parent ?? null;
   }
-  return staticFieldBinding;
+  return isStaticField;
 };
 
 export const noImpureCallAtModuleScope = defineRule({
@@ -196,9 +136,7 @@ export const noImpureCallAtModuleScope = defineRule({
     const check = (node: EsTreeNode): void => {
       const label = impureBuiltinLabel(node);
       if (!label) return;
-      const binding = resolveModuleScopeBinding(node);
-      if (!binding) return;
-      if (binding.bindingName && isPerProcessBindingName(binding.bindingName)) return;
+      if (!isModuleScopeEvaluation(node, context)) return;
       context.report({
         node,
         message: `\`${label}\` runs once when this module loads, so the value is frozen for the whole server process and every SSR request reuses it — move it into a function or component so it evaluates per request.`,

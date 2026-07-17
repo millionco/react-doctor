@@ -1,10 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -47,6 +47,7 @@ const PROMISE_HANDLING_METHODS = new Set(["then", "catch"]);
 
 interface ChainRoot {
   readonly calleeName: string;
+  readonly callee: EsTreeNodeOfType<"Identifier">;
   readonly rootCall: EsTreeNodeOfType<"CallExpression">;
 }
 
@@ -57,7 +58,7 @@ const findChainRoot = (wrappedNode: EsTreeNode): ChainRoot | null => {
   const node = stripParenExpression(wrappedNode);
   if (isNodeOfType(node, "CallExpression")) {
     if (isNodeOfType(node.callee, "Identifier")) {
-      return { calleeName: node.callee.name, rootCall: node };
+      return { calleeName: node.callee.name, callee: node.callee, rootCall: node };
     }
     if (isNodeOfType(node.callee, "MemberExpression")) {
       return findChainRoot(node.callee.object);
@@ -71,27 +72,50 @@ const findChainRoot = (wrappedNode: EsTreeNode): ChainRoot | null => {
 // `expect(element(...))` / `expect(web(...))` is Detox; `expect(value)` is
 // Jest. We only treat the call as Detox when the first argument is itself
 // an `element(...)` / `web(...)` call.
-const isDetoxExpectSubject = (rootCall: EsTreeNodeOfType<"CallExpression">): boolean => {
+const isDetoxExpectSubject = (
+  rootCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
   const firstArgument = rootCall.arguments?.[0];
   if (!firstArgument || !isNodeOfType(firstArgument, "CallExpression")) return false;
-  if (!isNodeOfType(firstArgument.callee, "Identifier")) return false;
-  return firstArgument.callee.name === "element" || firstArgument.callee.name === "web";
+  const subjectRoot = findChainRoot(firstArgument);
+  if (!subjectRoot) return false;
+  const subjectName = canonicalDetoxRootName(subjectRoot, context);
+  return subjectName === "element" || subjectName === "web";
 };
 
-const isLocallyShadowedRoot = (root: ChainRoot): boolean => {
-  if (!isNodeOfType(root.rootCall.callee, "Identifier")) return false;
-  const binding = findVariableInitializer(root.rootCall.callee, root.calleeName);
-  if (!binding) return false;
-  return getImportSourceForName(root.rootCall, root.calleeName) !== "detox";
+const canonicalDetoxRootName = (root: ChainRoot, context: RuleContext): string | null => {
+  const importSource = getImportSourceForName(root.rootCall, root.calleeName);
+  if (importSource === "detox") {
+    const declaration = context.scopes.symbolFor(root.callee)?.declarationNode;
+    if (
+      declaration &&
+      isNodeOfType(declaration, "ImportSpecifier") &&
+      isNodeOfType(declaration.imported, "Identifier")
+    ) {
+      return declaration.imported.name;
+    }
+    return root.calleeName;
+  }
+  return context.scopes.isGlobalReference(root.callee) ? root.calleeName : null;
 };
 
 const getTerminalMethodName = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
 ): string | null => {
   const callee = callExpression.callee;
-  if (!isNodeOfType(callee, "MemberExpression")) return null;
-  if (callee.computed || !isNodeOfType(callee.property, "Identifier")) return null;
-  return callee.property.name;
+  return isNodeOfType(callee, "MemberExpression") ? getStaticPropertyName(callee) : null;
+};
+
+const isCallableHandler = (argument: EsTreeNode | undefined): boolean => {
+  if (!argument) return false;
+  const candidate = stripParenExpression(argument);
+  return (
+    isNodeOfType(candidate, "ArrowFunctionExpression") ||
+    isNodeOfType(candidate, "FunctionExpression") ||
+    isNodeOfType(candidate, "Identifier") ||
+    isNodeOfType(candidate, "MemberExpression")
+  );
 };
 
 const getDetoxOperationMethodName = (
@@ -101,8 +125,13 @@ const getDetoxOperationMethodName = (
   while (true) {
     const methodName = getTerminalMethodName(currentCall);
     if (methodName === null) return null;
-    if (PROMISE_HANDLING_METHODS.has(methodName)) return null;
-    if (methodName !== "finally") return methodName;
+    if (PROMISE_HANDLING_METHODS.has(methodName)) {
+      if (isCallableHandler(currentCall.arguments[0] as EsTreeNode | undefined)) {
+        return null;
+      }
+    } else if (methodName !== "finally") {
+      return methodName;
+    }
     const callee = currentCall.callee;
     if (!isNodeOfType(callee, "MemberExpression")) return null;
     const receiver = stripParenExpression(callee.object);
@@ -134,8 +163,10 @@ export const rnDetoxMissingAwait = defineRule({
 
     return {
       ExpressionStatement(node: EsTreeNodeOfType<"ExpressionStatement">) {
-        const expression = node.expression;
-        // Awaited / yielded calls aren't `CallExpression` here.
+        const expression =
+          isNodeOfType(node.expression, "UnaryExpression") && node.expression.operator === "void"
+            ? stripParenExpression(node.expression.argument)
+            : node.expression;
         if (!isNodeOfType(expression, "CallExpression")) return;
         const terminalMethod = getDetoxOperationMethodName(expression);
         // A bare `element(by.id('x'))` (callee is the `element` identifier,
@@ -143,9 +174,10 @@ export const rnDetoxMissingAwait = defineRule({
         if (terminalMethod === null) return;
         const root = findChainRoot(expression);
         if (!root) return;
-        if (isLocallyShadowedRoot(root)) return;
+        const rootName = canonicalDetoxRootName(root, context);
+        if (!rootName) return;
 
-        if (root.calleeName === "element") {
+        if (rootName === "element") {
           if (!DETOX_ELEMENT_ACTIONS.has(terminalMethod)) return;
           context.report({
             node,
@@ -154,7 +186,7 @@ export const rnDetoxMissingAwait = defineRule({
           return;
         }
 
-        if (root.calleeName === "waitFor") {
+        if (rootName === "waitFor") {
           context.report({
             node,
             message:
@@ -163,7 +195,7 @@ export const rnDetoxMissingAwait = defineRule({
           return;
         }
 
-        if (root.calleeName === "expect" && isDetoxExpectSubject(root.rootCall)) {
+        if (rootName === "expect" && isDetoxExpectSubject(root.rootCall, context)) {
           context.report({
             node,
             message:

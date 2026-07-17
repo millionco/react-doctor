@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noFloatingThenInJsxHandler } from "./no-floating-then-in-jsx-handler.js";
 
 describe("no-floating-then-in-jsx-handler", () => {
-  it("does not flag the Promise.resolve().then(...) microtask-scheduling idiom", () => {
+  it("flags Promise.resolve().then(...) because its fulfillment handler can throw", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const x = <button onMouseLeave={() => {
@@ -11,7 +11,7 @@ describe("no-floating-then-in-jsx-handler", () => {
       }} />;`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags a concise-arrow floating then", () => {
@@ -103,20 +103,20 @@ describe("no-floating-then-in-jsx-handler", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a two-argument then with onRejected", () => {
+  it("flags a two-argument then because onRejected cannot catch onFulfilled errors", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const el = <button onClick={() => save().then(onOk, onErr)} />;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag a chain whose rejection is handled by a mid-chain .then(null, onErr)", () => {
+  it("flags a trailing then after a mid-chain rejection handler", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const el = <button onClick={() => save().then(null, onErr).then(onOk)} />;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a bare .finally with no .then in the chain", () => {
@@ -175,7 +175,7 @@ describe("no-floating-then-in-jsx-handler", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet when the chain root is a same-file helper whose fetch chain ends in .catch (NextChat shape)", () => {
+  it("flags a trailing then even when a same-file helper catches earlier failures", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const upload = (code) => {
@@ -188,10 +188,10 @@ describe("no-floating-then-in-jsx-handler", () => {
          <button onClick={() => upload(code).then((res) => setShareUrl(res.id))}>Share</button>
        );`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet when the chain root is a same-file async helper with fully try/caught awaits", () => {
+  it("flags a trailing then over a same-file async helper", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const copyToClipboard = async (text) => {
@@ -207,10 +207,10 @@ describe("no-floating-then-in-jsx-handler", () => {
          <button onClick={() => copyToClipboard(value).then((ok) => ok && toastSuccess())}>Copy</button>
        );`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet on a synchronously-resolved new Promise sequencing wrapper", () => {
+  it("flags a then over a synchronously-resolved Promise because the handler can throw", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const Editor = ({ commit }) => (
@@ -226,7 +226,7 @@ describe("no-floating-then-in-jsx-handler", () => {
          </button>
        );`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags when the same-file helper's awaits are not all try/caught", () => {
@@ -266,12 +266,12 @@ describe("no-floating-then-in-jsx-handler", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: Promise.allSettled(...).then(...) — allSettled never rejects", () => {
+  it("flags Promise.allSettled(...).then(...) because the fulfillment handler can throw", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const el = <button onClick={() => { Promise.allSettled(files.map((file) => deleteFile(file.id))).then(setResults); }}>Delete all</button>;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet: Promise.resolve().then(cb) microtask deferral for focus", () => {
@@ -282,12 +282,12 @@ describe("no-floating-then-in-jsx-handler", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet: TanStack Query refetch() — documented to never reject", () => {
+  it("flags refetch().then(...) because the fulfillment handler can throw", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const el = <button onClick={() => refetch().then(({ data }) => setSelected(data?.rows[0] ?? null))}>Reload</button>;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet: Concise arrow returns the chain to an in-file consumer that awaits it in try/catch", () => {
@@ -311,7 +311,7 @@ const DeleteFlow = ({ removeItem, onRemoved }) => (
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet: In-file helper already swallows rejection with .catch — handler chains .then on it", () => {
+  it("flags a trailing then after an in-file helper swallows earlier rejection", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const loadPreview = (url) =>
@@ -322,10 +322,10 @@ const PreviewButton = ({ url, setPreview }) => (
   <button onMouseEnter={() => { loadPreview(url).then(setPreview); }}>Preview</button>
 );`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: Resolve-only new Promise bridge — image preloader resolves on both load and error", () => {
+  it("flags a then over a resolve-only bridge because the fulfillment handler can throw", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const preloadImage = (src) =>
@@ -339,15 +339,15 @@ const Thumb = ({ nextSrc, setReady }) => (
   <img onMouseEnter={() => { preloadImage(nextSrc).then(setReady); }} alt="" />
 );`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: navigator.serviceWorker.ready — spec-guaranteed to never reject", () => {
+  it("flags serviceWorker.ready.then because the fulfillment handler can throw", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const el = <button onClick={() => { navigator.serviceWorker.ready.then(() => setPwaReady(true)); }}>Enable offline</button>;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a floating then on a DOM handler over a rejectable call", () => {
@@ -356,6 +356,40 @@ const Thumb = ({ nextSrc, setReady }) => (
       `const Save = ({ save }) => (
          <button onClick={() => save().then((res) => setSaved(res))}>Save</button>
        );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("audit regressions", () => {
+  it("checks floating chains inside async handlers", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const C = () => <button onClick={async () => { save().then(done); }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not accept an empty catch call", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const C = () => <button onClick={() => { save().then(done).catch(); }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("checks callbacks after a never-rejecting root", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const C = () => <button onClick={() => { Promise.allSettled([]).then(() => { throw Error(); }); }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("walks loop and try statement bodies", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const C = () => <button onClick={() => { for (const item of items) { try { save(item).then(done); } finally {} } }} />;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

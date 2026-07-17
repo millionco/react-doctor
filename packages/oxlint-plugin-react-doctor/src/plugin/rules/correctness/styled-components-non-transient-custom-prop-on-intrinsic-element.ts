@@ -7,12 +7,13 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 
 const TYPE_RESOLUTION_DEPTH_LIMIT = 3;
+const jsxComponentNamesByProgram = new WeakMap<EsTreeNode, Set<string>>();
 
 // Attributes that live in the global known-attribute set but are only
 // valid on specific elements, and are NOT already scoped by
@@ -22,8 +23,6 @@ const TYPE_RESOLUTION_DEPTH_LIMIT = 3;
 const ELEMENT_RESTRICTED_ATTRIBUTES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["selected", new Set(["option"])],
 ]);
-
-const EVENT_HANDLER_PROP_PATTERN = /^on[A-Z]/;
 
 // Props styled-components consumes internally (v6 createStyledComponent
 // skips them when building the element's props), so they never reach the
@@ -61,10 +60,24 @@ const unwrapAttrsCalls = (tag: EsTreeNode): EsTreeNode => {
 // `styled(Component)` and `withConfig(...)` produce non-matching shapes,
 // so they never match here — matching the "only intrinsic, un-stripped"
 // scope.
-const readStyledIntrinsicTag = (tag: EsTreeNode): StyledIntrinsicTag | null => {
+const readStyledIntrinsicTag = (
+  tag: EsTreeNode,
+  context: RuleContext,
+): StyledIntrinsicTag | null => {
   const base = unwrapAttrsCalls(tag);
   if (!isNodeOfType(base, "MemberExpression") || base.computed) return null;
-  if (!isNodeOfType(base.object, "Identifier") || base.object.name !== "styled") return null;
+  if (!isNodeOfType(base.object, "Identifier")) return null;
+  const importSource = getImportSourceForName(base, base.object.name);
+  if (
+    importSource !== "styled-components" &&
+    !(
+      importSource === null &&
+      base.object.name === "styled" &&
+      context.scopes.isGlobalReference(base.object)
+    )
+  ) {
+    return null;
+  }
   if (!isNodeOfType(base.property, "Identifier")) return null;
   const firstCharacterCode = base.property.name.charCodeAt(0);
   if (firstCharacterCode < 97 || firstCharacterCode > 122) return null;
@@ -105,6 +118,13 @@ const resolvePropTypeMembers = (
 ): ReadonlyArray<EsTreeNode> | null => {
   if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return null;
   if (isNodeOfType(typeNode, "TSTypeLiteral")) return typeNode.members;
+  if (isNodeOfType(typeNode, "TSIntersectionType")) {
+    const memberGroups = typeNode.types.map((member) =>
+      resolvePropTypeMembers(member, referenceNode, depth + 1),
+    );
+    if (memberGroups.some((members) => members === null)) return null;
+    return memberGroups.flatMap((members) => members ?? []);
+  }
   if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) {
     return typeNode.typeParameters ? null : typeNode.body.body;
   }
@@ -148,7 +168,6 @@ const allowedTagsFor = (propName: string): ReadonlySet<string> | null =>
 const isForwardableToTag = (propName: string, tagName: string): boolean => {
   if (propName.startsWith("$")) return true;
   if (propName.startsWith("data-") || propName.startsWith("aria-")) return true;
-  if (EVENT_HANDLER_PROP_PATTERN.test(propName)) return true;
   if (STYLED_COMPONENTS_CONSUMED_PROPS.has(propName)) return true;
   if (!isKnownAttributeName(propName)) return false;
   const allowedTags = allowedTagsFor(propName);
@@ -158,8 +177,14 @@ const isForwardableToTag = (propName: string, tagName: string): boolean => {
 // A spread argument cannot carry the flagged prop when it is a rest binding
 // from an object pattern that destructured that prop away first, e.g.
 // `({ forwardedRef, ...passProps }) => <Styled {...passProps} />`.
-const spreadExcludesProp = (spreadArgument: EsTreeNode, propName: string): boolean => {
+const spreadExcludesProp = (
+  spreadArgument: EsTreeNode,
+  propName: string,
+  context: RuleContext,
+): boolean => {
   if (!isNodeOfType(spreadArgument, "Identifier")) return false;
+  const spreadSymbol = context.scopes.symbolFor(spreadArgument);
+  if (!spreadSymbol) return false;
   let currentScope: EsTreeNode | null = spreadArgument;
   while (currentScope) {
     const patterns: Array<EsTreeNode> = [];
@@ -181,7 +206,7 @@ const spreadExcludesProp = (spreadArgument: EsTreeNode, propName: string): boole
         if (
           isNodeOfType(property, "RestElement") &&
           isNodeOfType(property.argument, "Identifier") &&
-          property.argument.name === spreadArgument.name
+          context.scopes.symbolFor(property.argument)?.id === spreadSymbol.id
         ) {
           bindsSpreadAsRest = true;
         }
@@ -201,18 +226,17 @@ const spreadExcludesProp = (spreadArgument: EsTreeNode, propName: string): boole
   return false;
 };
 
-const jsxElementName = (openingElement: EsTreeNode): string | null => {
-  if (!isNodeOfType(openingElement, "JSXOpeningElement")) return null;
-  return isNodeOfType(openingElement.name, "JSXIdentifier") ? openingElement.name.name : null;
-};
-
 // A module-local (never-exported) styled component whose every same-file
 // JSX usage neither passes the flagged prop explicitly nor spreads an
 // object that could still contain it cannot leak that prop to the DOM —
 // the wrapper destructured it away (the `forwardedRef` reset-wrapper
 // idiom). Exported bindings and non-JSX references stay flagged because
 // outside callers can pass anything the generic permits.
-const localUsagesNeverPassProp = (taggedTemplate: EsTreeNode, propName: string): boolean => {
+const localUsagesNeverPassProp = (
+  taggedTemplate: EsTreeNode,
+  propName: string,
+  context: RuleContext,
+): boolean => {
   const declarator = taggedTemplate.parent;
   if (
     !isNodeOfType(declarator, "VariableDeclarator") ||
@@ -222,15 +246,33 @@ const localUsagesNeverPassProp = (taggedTemplate: EsTreeNode, propName: string):
   }
   const declaration = declarator.parent;
   if (!declaration || isNodeOfType(declaration.parent, "ExportNamedDeclaration")) return false;
-  const componentName = declarator.id.name;
-  const programRoot = findProgramRoot(taggedTemplate);
-  if (!programRoot) return false;
+  const componentSymbol = context.scopes.symbolFor(declarator.id);
+  if (!componentSymbol) return false;
+  if (componentSymbol.references.length === 0) {
+    const programRoot = findProgramRoot(taggedTemplate);
+    if (!programRoot) return false;
+    let jsxComponentNames = jsxComponentNamesByProgram.get(programRoot);
+    if (!jsxComponentNames) {
+      jsxComponentNames = new Set<string>();
+      jsxComponentNamesByProgram.set(programRoot, jsxComponentNames);
+      walkAst(programRoot, (candidate) => {
+        if (
+          isNodeOfType(candidate, "JSXOpeningElement") &&
+          isNodeOfType(candidate.name, "JSXIdentifier")
+        ) {
+          jsxComponentNames?.add(candidate.name.name);
+        }
+      });
+    }
+    return jsxComponentNames.has(declarator.id.name);
+  }
 
   let sawJsxUsage = false;
   let propCouldReachComponent = false;
   let sawEscapingReference = false;
-  walkAst(programRoot, (node) => {
-    if (isNodeOfType(node, "JSXOpeningElement") && jsxElementName(node) === componentName) {
+  for (const reference of componentSymbol.references) {
+    const node = reference.identifier.parent;
+    if (node && isNodeOfType(node, "JSXOpeningElement") && node.name === reference.identifier) {
       sawJsxUsage = true;
       for (const attribute of node.attributes) {
         if (
@@ -242,18 +284,15 @@ const localUsagesNeverPassProp = (taggedTemplate: EsTreeNode, propName: string):
         }
         if (
           isNodeOfType(attribute, "JSXSpreadAttribute") &&
-          !spreadExcludesProp(attribute.argument, propName)
+          !spreadExcludesProp(attribute.argument, propName, context)
         ) {
           propCouldReachComponent = true;
         }
       }
-      return false;
+      continue;
     }
-    if (isNodeOfType(node, "Identifier") && node.name === componentName && node !== declarator.id) {
-      sawEscapingReference = true;
-    }
-    return undefined;
-  });
+    sawEscapingReference = true;
+  }
   return sawJsxUsage && !propCouldReachComponent && !sawEscapingReference;
 };
 
@@ -278,19 +317,8 @@ export const styledComponentsNonTransientCustomPropOnIntrinsicElement = defineRu
     "Prefix custom styled-components props with `$` (e.g. `$active`) so styled-components v6 keeps them off the DOM node instead of forwarding them as invalid attributes.",
   create: (context) => ({
     TaggedTemplateExpression(node: EsTreeNodeOfType<"TaggedTemplateExpression">) {
-      const intrinsic = readStyledIntrinsicTag(node.tag);
+      const intrinsic = readStyledIntrinsicTag(node.tag, context);
       if (!intrinsic) return;
-      const styledImportSource = getImportSourceForName(node, "styled");
-      if (styledImportSource !== null && styledImportSource !== "styled-components") return;
-      const baseTag = unwrapAttrsCalls(node.tag);
-      if (
-        styledImportSource === null &&
-        isNodeOfType(baseTag, "MemberExpression") &&
-        isNodeOfType(baseTag.object, "Identifier") &&
-        findVariableInitializer(baseTag.object, "styled")
-      ) {
-        return;
-      }
       const typeArguments = node.typeArguments;
       if (!typeArguments || typeArguments.params.length === 0) return;
       const members = resolvePropTypeMembers(typeArguments.params[0], node, 0);
@@ -299,7 +327,7 @@ export const styledComponentsNonTransientCustomPropOnIntrinsicElement = defineRu
       for (const member of members) {
         const propName = getPropertySignatureName(member);
         if (!propName || isForwardableToTag(propName, intrinsic.tagName)) continue;
-        if (localUsagesNeverPassProp(node, propName)) continue;
+        if (localUsagesNeverPassProp(node, propName, context)) continue;
         context.report({
           node: member,
           message: `styled-components v6 forwards the custom prop \`${propName}\` to the <${intrinsic.tagName}> DOM node, producing a React unknown-prop warning — prefix it with \`$\` to make it transient.`,

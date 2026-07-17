@@ -85,13 +85,6 @@ const collectDroppedFallbacks = (
   return droppedFallbacks;
 };
 
-// `false` fallbacks feed truthiness checks where `undefined` behaves
-// identically, so dropping them is a runtime no-op.
-const isFalseLiteral = (value: EsTreeNode): boolean => {
-  const innerValue = stripParenExpression(value);
-  return isNodeOfType(innerValue, "Literal") && innerValue.value === false;
-};
-
 // An `undefined` fallback IS what the key resolves to when dropped, so
 // losing it changes nothing.
 const isUndefinedValue = (value: EsTreeNode): boolean => {
@@ -300,6 +293,7 @@ const resolveUnexportedFunctionBinding = (
 // at-risk key — such a call can never trigger the dropped fallbacks.
 const callArgumentCoversKeys = (argument: EsTreeNode, atRiskKeys: Set<string>): boolean => {
   const stripped = stripParenExpression(argument);
+  if (isUndefinedValue(stripped)) return true;
   if (!isNodeOfType(stripped, "ObjectExpression")) return false;
   const providedKeys = new Set<string>();
   for (const property of stripped.properties ?? []) {
@@ -319,25 +313,21 @@ const everyCallSitePassesAtRiskKeys = (
   functionNode: EsTreeNode,
   parameterIndex: number,
   atRiskKeys: Set<string>,
+  context: RuleContext,
 ): boolean => {
   const binding = resolveUnexportedFunctionBinding(functionNode);
   if (!binding) return false;
-  const programRoot = findProgramRoot(functionNode);
-  if (!programRoot) return false;
+  const symbol = context.scopes.symbolFor(binding.bindingIdentifier);
+  if (!symbol) return false;
   let sawCompleteCall = false;
   let sawUnknowableReference = false;
-  walkAst(programRoot, (child: EsTreeNode) => {
-    if (sawUnknowableReference) return false;
-    if (isNodeOfType(child, "JSXIdentifier") && child.name === binding.name) {
-      sawUnknowableReference = true;
-      return false;
-    }
-    if (!isNodeOfType(child, "Identifier") || child.name !== binding.name) return;
-    if (child === binding.bindingIdentifier) return;
+  for (const reference of symbol.references) {
+    if (sawUnknowableReference) break;
+    const child = reference.identifier;
     const parent = child.parent;
-    if (!parent) return;
+    if (!parent) continue;
     if (isNodeOfType(parent, "MemberExpression") && parent.property === child && !parent.computed) {
-      return;
+      continue;
     }
     if (
       isNodeOfType(parent, "Property") &&
@@ -345,18 +335,17 @@ const everyCallSitePassesAtRiskKeys = (
       !parent.computed &&
       !parent.shorthand
     ) {
-      return;
+      continue;
     }
     if (isNodeOfType(parent, "CallExpression") && parent.callee === child) {
       const argument = parent.arguments?.[parameterIndex];
       if (!isAstNode(argument) || callArgumentCoversKeys(argument, atRiskKeys)) {
         sawCompleteCall = true;
-        return;
+        continue;
       }
     }
     sawUnknowableReference = true;
-    return false;
-  });
+  }
   return sawCompleteCall && !sawUnknowableReference;
 };
 
@@ -381,7 +370,6 @@ export const noWholeObjectDefaultLosingPerKeyDefaults = defineRule({
       if (droppedFallbacks.length === 0) return;
       const observableDroppedFallbacks = droppedFallbacks.filter(
         (fallback) =>
-          !isFalseLiteral(fallback.value) &&
           !isUndefinedValue(fallback.value) &&
           !isNoOpOptionalCallbackFallback(fallback, pattern, context),
       );
@@ -395,7 +383,7 @@ export const noWholeObjectDefaultLosingPerKeyDefaults = defineRule({
         const atRiskKeys = new Set(observableDroppedFallbacks.map((fallback) => fallback.key));
         if (
           parameterIndex >= 0 &&
-          everyCallSitePassesAtRiskKeys(enclosingFunction, parameterIndex, atRiskKeys)
+          everyCallSitePassesAtRiskKeys(enclosingFunction, parameterIndex, atRiskKeys, context)
         ) {
           return;
         }

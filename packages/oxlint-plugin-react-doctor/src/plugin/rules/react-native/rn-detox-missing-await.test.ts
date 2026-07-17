@@ -119,3 +119,28 @@ describe("rn-detox-missing-await", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("audit regressions", () => {
+  it("flags an action followed by an empty then", () => {
+    const result = runRule(rnDetoxMissingAwait, `element(by.id("x")).tap().then();`, {
+      filename: "test.e2e.ts",
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an explicitly voided action", () => {
+    const result = runRule(rnDetoxMissingAwait, `void element(by.id("x")).tap();`, {
+      filename: "test.e2e.ts",
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves aliased Detox imports", () => {
+    const result = runRule(
+      rnDetoxMissingAwait,
+      `import { element as detoxElement, by } from "detox"; detoxElement(by.id("x")).tap();`,
+      { filename: "test.e2e.ts" },
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

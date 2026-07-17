@@ -61,6 +61,43 @@ const getModuleScopeCacheSymbolId = (node: EsTreeNode, scopes: ScopeAnalysis): n
 const isModuleScopeCacheReference = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
   getModuleScopeCacheSymbolId(node, scopes) !== null;
 
+const expressionRetainsCandidate = (
+  container: EsTreeNode,
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const storedExpression = stripParenExpression(container);
+  const candidateExpression = stripParenExpression(expression);
+  if (storedExpression === candidateExpression) return true;
+  if (
+    isNodeOfType(candidateExpression, "Identifier") &&
+    isNodeOfType(storedExpression, "Identifier") &&
+    scopes.symbolFor(storedExpression) === scopes.symbolFor(candidateExpression)
+  ) {
+    return true;
+  }
+  if (isNodeOfType(storedExpression, "ArrayExpression")) {
+    return storedExpression.elements.some((element) => {
+      if (!element) return false;
+      return expressionRetainsCandidate(
+        isNodeOfType(element, "SpreadElement") ? element.argument : element,
+        candidateExpression,
+        scopes,
+      );
+    });
+  }
+  if (!isNodeOfType(storedExpression, "ObjectExpression")) return false;
+  return storedExpression.properties.some((property) => {
+    if (isNodeOfType(property, "SpreadElement")) {
+      return expressionRetainsCandidate(property.argument, candidateExpression, scopes);
+    }
+    return (
+      isNodeOfType(property, "Property") &&
+      expressionRetainsCandidate(property.value, candidateExpression, scopes)
+    );
+  });
+};
+
 const isCacheStoreOfExpression = (
   call: EsTreeNodeOfType<"CallExpression">,
   expression: EsTreeNode,
@@ -76,37 +113,21 @@ const isCacheStoreOfExpression = (
   ) {
     return false;
   }
-  const candidateExpression = stripParenExpression(expression);
-  const expressionRetainsCandidate = (container: EsTreeNode): boolean => {
-    const storedExpression = stripParenExpression(container);
-    if (storedExpression === candidateExpression) return true;
-    if (
-      isNodeOfType(candidateExpression, "Identifier") &&
-      isNodeOfType(storedExpression, "Identifier") &&
-      scopes.symbolFor(storedExpression) === scopes.symbolFor(candidateExpression)
-    ) {
-      return true;
-    }
-    if (isNodeOfType(storedExpression, "ArrayExpression")) {
-      return storedExpression.elements.some((element) => {
-        if (!element) return false;
-        return expressionRetainsCandidate(
-          isNodeOfType(element, "SpreadElement") ? element.argument : element,
-        );
-      });
-    }
-    if (isNodeOfType(storedExpression, "ObjectExpression")) {
-      return storedExpression.properties.some((property) => {
-        if (isNodeOfType(property, "SpreadElement")) {
-          return expressionRetainsCandidate(property.argument);
-        }
-        return isNodeOfType(property, "Property") && expressionRetainsCandidate(property.value);
-      });
-    }
-    return false;
-  };
   return call.arguments.some(
-    (argument) => isAstNode(argument) && expressionRetainsCandidate(argument),
+    (argument) => isAstNode(argument) && expressionRetainsCandidate(argument, expression, scopes),
+  );
+};
+
+const isRevokeOfExpression = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const revokedUrl = call.arguments[0];
+  return (
+    isUrlMethodCall(call, "revokeObjectURL", scopes) &&
+    isAstNode(revokedUrl) &&
+    expressionRetainsCandidate(revokedUrl, expression, scopes)
   );
 };
 
@@ -208,7 +229,41 @@ const analyzeContainingExpression = (node: EsTreeNode): ContainingExpressionAnal
   return { expressionRoot, isGuarded };
 };
 
-const moduleCachesEveryReturnedResult = (
+const isReturnedCleanupFromBoundary = (
+  candidate: EsTreeNode,
+  executionBoundary: EsTreeNode | null,
+  context: RuleContext,
+): boolean => {
+  const cleanupFunction = findEnclosingFunction(candidate);
+  if (!cleanupFunction || cleanupFunction === executionBoundary) return false;
+  const cleanupRoot = findTransparentExpressionRoot(cleanupFunction);
+  const cleanupConsumer = cleanupRoot.parent;
+  if (
+    (isNodeOfType(cleanupConsumer, "ReturnStatement") &&
+      context.cfg.enclosingFunction(cleanupConsumer) === executionBoundary) ||
+    (isNodeOfType(executionBoundary, "ArrowFunctionExpression") &&
+      stripParenExpression(executionBoundary.body) === stripParenExpression(cleanupRoot))
+  ) {
+    return true;
+  }
+  if (
+    !isNodeOfType(cleanupConsumer, "VariableDeclarator") ||
+    cleanupConsumer.init !== cleanupRoot ||
+    !isNodeOfType(cleanupConsumer.id, "Identifier")
+  ) {
+    return false;
+  }
+  const cleanupSymbol = context.scopes.symbolFor(cleanupConsumer.id);
+  return Boolean(
+    cleanupSymbol?.references.some(
+      (reference) =>
+        isNodeOfType(reference.identifier.parent, "ReturnStatement") &&
+        context.cfg.enclosingFunction(reference.identifier.parent) === executionBoundary,
+    ),
+  );
+};
+
+const moduleDisposesEveryReturnedResult = (
   createCall: EsTreeNode,
   programRoot: EsTreeNode,
   context: RuleContext,
@@ -227,9 +282,22 @@ const moduleCachesEveryReturnedResult = (
   const callExpressions: EsTreeNodeOfType<"CallExpression">[] = [];
   const evictedCacheSymbolIds = new Set<number>();
   const cacheStoresByRetainedSymbolId = new Map<number, EsTreeNodeOfType<"CallExpression">[]>();
+  const revokeCallsByArgumentSymbolId = new Map<number, EsTreeNodeOfType<"CallExpression">[]>();
   walkAst(programRoot, (child) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     callExpressions.push(child);
+    if (isUrlMethodCall(child, "revokeObjectURL", scopes)) {
+      const revokedUrl = child.arguments[0];
+      if (!isAstNode(revokedUrl)) return;
+      const revokedSymbolIds = new Set<number>();
+      collectRetainedSymbolIds(revokedUrl, scopes, revokedSymbolIds);
+      for (const revokedSymbolId of revokedSymbolIds) {
+        const revokeCalls = revokeCallsByArgumentSymbolId.get(revokedSymbolId) ?? [];
+        revokeCalls.push(child);
+        revokeCallsByArgumentSymbolId.set(revokedSymbolId, revokeCalls);
+      }
+      return;
+    }
     const callee = stripParenExpression(child.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return;
     const methodName = getStaticPropertyName(callee) ?? "";
@@ -254,9 +322,9 @@ const moduleCachesEveryReturnedResult = (
     }
   });
   let didFindCall = false;
-  let didFindUncachedCall = false;
+  let didFindUndisposedCall = false;
   for (const child of callExpressions) {
-    if (didFindUncachedCall) break;
+    if (didFindUndisposedCall) break;
     if (!isNodeOfType(stripParenExpression(child.callee), "Identifier")) continue;
     const callee = stripParenExpression(child.callee);
     if (
@@ -267,14 +335,17 @@ const moduleCachesEveryReturnedResult = (
     }
     didFindCall = true;
     const resultExpression = findBoundCallResult(child) ?? findCallResultExpression(child);
-    let didCacheResult = false;
+    let didDisposeResult = false;
     const executionBoundary = context.cfg.enclosingFunction(child);
     const resultCandidate = stripParenExpression(resultExpression);
     const resultSymbol = isNodeOfType(resultCandidate, "Identifier")
       ? scopes.symbolFor(resultCandidate)
       : null;
-    const candidateStores = resultSymbol
-      ? (cacheStoresByRetainedSymbolId.get(resultSymbol.id) ?? [])
+    const candidateConsumers = resultSymbol
+      ? [
+          ...(cacheStoresByRetainedSymbolId.get(resultSymbol.id) ?? []),
+          ...(revokeCallsByArgumentSymbolId.get(resultSymbol.id) ?? []),
+        ]
       : (() => {
           const ancestors: EsTreeNodeOfType<"CallExpression">[] = [];
           let ancestor = resultExpression.parent ?? null;
@@ -284,26 +355,31 @@ const moduleCachesEveryReturnedResult = (
           }
           return ancestors;
         })();
-    for (const candidate of candidateStores) {
-      if (didCacheResult) break;
+    for (const candidate of candidateConsumers) {
+      if (didDisposeResult) break;
       if (
         isNodeReachableWithinFunction(candidate, context) &&
         context.cfg.isUnconditionalFromEntry(candidate) &&
-        context.cfg.enclosingFunction(candidate) === executionBoundary &&
-        isCacheStoreOfExpression(candidate, resultExpression, scopes)
+        (context.cfg.enclosingFunction(candidate) === executionBoundary ||
+          isReturnedCleanupFromBoundary(candidate, executionBoundary, context))
       ) {
+        if (isRevokeOfExpression(candidate, resultExpression, scopes)) {
+          didDisposeResult = true;
+          continue;
+        }
+        if (!isCacheStoreOfExpression(candidate, resultExpression, scopes)) continue;
         const candidateCallee = stripParenExpression(candidate.callee);
         if (isNodeOfType(candidateCallee, "MemberExpression")) {
           const cacheSymbolId = getModuleScopeCacheSymbolId(candidateCallee.object, scopes);
-          didCacheResult = cacheSymbolId !== null && !evictedCacheSymbolIds.has(cacheSymbolId);
+          didDisposeResult = cacheSymbolId !== null && !evictedCacheSymbolIds.has(cacheSymbolId);
         }
       }
     }
-    if (!didCacheResult) {
-      didFindUncachedCall = true;
+    if (!didDisposeResult) {
+      didFindUndisposedCall = true;
     }
   }
-  return didFindCall && !didFindUncachedCall;
+  return didFindCall && !didFindUndisposedCall;
 };
 
 const isStateSetterCallee = (callee: EsTreeNode): boolean =>
@@ -450,7 +526,7 @@ export const noCreateObjectUrlWithoutRevoke = defineRule({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isUrlMethodCall(node, "createObjectURL", context.scopes)) return;
         if (!escapeIsLeaky(node)) return;
-        if (programRoot && moduleCachesEveryReturnedResult(node, programRoot, context)) return;
+        if (programRoot && moduleDisposesEveryReturnedResult(node, programRoot, context)) return;
         context.report({ node, message: MESSAGE });
       },
     };

@@ -387,6 +387,33 @@ describe("no-create-object-url-without-revoke", () => {
     expect(nestedResult.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when every returned object URL is revoked", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const download = (blob) => {
+         const url = make(blob);
+         anchor.href = url;
+         anchor.click();
+         URL.revokeObjectURL(url);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes a returned cleanup closure that revokes the created URL", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const usePreview = (blob) => {
+         const url = make(blob);
+         setPreview(url);
+         return () => URL.revokeObjectURL(url);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not let an unrelated revoke suppress an escaping creation", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

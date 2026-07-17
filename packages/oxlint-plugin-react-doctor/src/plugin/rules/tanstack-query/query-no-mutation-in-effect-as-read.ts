@@ -262,8 +262,23 @@ const responseExpressionIsConsumed = (
     return false;
   }
   if (isInEffectDependencyArray(expression) || isGuardOnlyReference(expression)) return false;
-  const expressionRoot = findTransparentExpressionRoot(expression);
-  const parent = expressionRoot.parent;
+  let expressionRoot = findTransparentExpressionRoot(expression);
+  let parent = expressionRoot.parent;
+  while (
+    (isNodeOfType(parent, "SequenceExpression") && parent.expressions.at(-1) === expressionRoot) ||
+    (isNodeOfType(parent, "ConditionalExpression") &&
+      (parent.consequent === expressionRoot || parent.alternate === expressionRoot)) ||
+    (isNodeOfType(parent, "LogicalExpression") && parent.right === expressionRoot)
+  ) {
+    expressionRoot = findTransparentExpressionRoot(parent);
+    parent = expressionRoot.parent;
+  }
+  if (
+    (isNodeOfType(parent, "SequenceExpression") && parent.expressions.at(-1) !== expressionRoot) ||
+    (isNodeOfType(parent, "UnaryExpression") && parent.operator === "void")
+  ) {
+    return false;
+  }
   if (isNodeOfType(parent, "ExpressionStatement")) return false;
   if (isNodeOfType(parent, "MemberExpression") && parent.object === expressionRoot) {
     const propertyName = getStaticPropertyName(parent);

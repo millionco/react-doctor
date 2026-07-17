@@ -84,6 +84,36 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts awaited results discarded by void and sequence positions", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser } = useMutation(options);
+         useEffect(() => {
+           void (async () => {
+             void (await fetchUser(first));
+             (await fetchUser(second), recordAttempt());
+           })();
+         }, [first, second]);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags an awaited result consumed as the final sequence value", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser } = useMutation(options);
+         useEffect(() => {
+           void (async () => {
+             const response = (prepare(), await fetchUser(params));
+             setUser(response.user);
+           })();
+         }, [params]);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a named then handler that consumes the response", () => {
     const result = runMutationReadRule(
       `function Component() {

@@ -81,13 +81,13 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
     if (isNodeOfType(unwrappedLeft, "Literal") && isNodeOfType(unwrappedRight, "Literal")) {
       return unwrappedLeft.value === unwrappedRight.value;
     }
+    if (isNodeOfType(unwrappedLeft, "ThisExpression")) return true;
     if (
       isNodeOfType(unwrappedLeft, "MemberExpression") &&
       isNodeOfType(unwrappedRight, "MemberExpression")
     ) {
       return (
         unwrappedLeft.computed === unwrappedRight.computed &&
-        unwrappedLeft.optional === unwrappedRight.optional &&
         compare(unwrappedLeft.object, unwrappedRight.object) &&
         (unwrappedLeft.computed
           ? compare(unwrappedLeft.property, unwrappedRight.property)
@@ -121,7 +121,6 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
       isNodeOfType(unwrappedRight, "CallExpression")
     ) {
       return (
-        unwrappedLeft.optional === unwrappedRight.optional &&
         compare(unwrappedLeft.callee, unwrappedRight.callee) &&
         unwrappedLeft.arguments.length === unwrappedRight.arguments.length &&
         unwrappedLeft.arguments.every((argument, argumentIndex) =>
@@ -167,6 +166,7 @@ const collectTopLevelDeclarations = (
   let activeQuote: '"' | "'" | null = null;
   let isEscaped = false;
   let activeComment: "block" | "line" | null = null;
+  let parenthesisDepth = 0;
   const resetSegment = (): void => {
     currentText = "";
     currentTernaryTests = [];
@@ -214,16 +214,22 @@ const collectTopLevelDeclarations = (
         currentText += character;
         continue;
       }
-      if (character === "{") {
+      if (character === "(") {
+        parenthesisDepth += 1;
+        currentText += character;
+      } else if (character === ")") {
+        parenthesisDepth = Math.max(0, parenthesisDepth - 1);
+        currentText += character;
+      } else if (character === "{" && parenthesisDepth === 0) {
         if (braceDepth === 0) {
           finalizeDeclaration(currentText, currentTernaryTests, declarations);
         }
         braceDepth += 1;
         resetSegment();
-      } else if (character === "}") {
+      } else if (character === "}" && parenthesisDepth === 0) {
         braceDepth = Math.max(0, braceDepth - 1);
         resetSegment();
-      } else if (character === ";") {
+      } else if (character === ";" && parenthesisDepth === 0) {
         if (braceDepth === 0) finalizeDeclaration(currentText, currentTernaryTests, declarations);
         resetSegment();
       } else {
@@ -250,6 +256,9 @@ const isProvenCssHelperTag = (tag: EsTreeNode, scopes: ScopeAnalysis): boolean =
   if (!rootIdentifier) return false;
   const strippedTag = stripParenExpression(tag);
   const symbol = resolveConstIdentifierAlias(rootIdentifier, scopes);
+  if (symbol?.kind === "const" && symbol.initializer && strippedTag === rootIdentifier) {
+    return isProvenCssHelperTag(symbol.initializer, scopes);
+  }
   if (!symbol || symbol.kind !== "import") return false;
   const importDeclaration = symbol.declarationNode.parent;
   if (

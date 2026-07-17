@@ -134,6 +134,13 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not let separators inside CSS functions change declaration boundaries", () => {
+    const result = runStyledRule(
+      'const Button = styled.button`background: url(data:image/svg+xml;utf8,<svg>{}</svg>); color: ${p => p.$primary ? "blue" : "gray"}; color: ${p => p.$danger ? "red" : "black"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag equivalent helper-call conditions with renamed callback parameters", () => {
     const result = runStyledRule(
       'const Modal = styled.div`height: ${props => isFullHeight(props) ? "100vh" : "auto"}; height: ${state => isFullHeight(state) ? "100dvh" : "auto"};`;',
@@ -144,6 +151,34 @@ describe("styled-components-duplicate-css-property-in-block", () => {
   it("does not flag equivalent static property keys that match one parameter name", () => {
     const result = runStyledRule(
       'const Modal = styled.div`height: ${properties => properties.state ? "100vh" : "auto"}; height: ${state => state.state ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag equivalent renamed-parameter conditions with optional chaining", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${properties => properties?.$fullHeight ? "100vh" : "auto"}; height: ${state => state.$fullHeight ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag equivalent optional calls with renamed callback parameters", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${properties => properties.isFull?.() ? "100vh" : "auto"}; height: ${state => state.isFull() ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag equivalent computed and spread conditions with renamed parameters", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${properties => matches(properties[properties.key], ...properties.values) ? "100vh" : "auto"}; height: ${state => matches(state[state.key], ...state.values) ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag equivalent this conditions in function callbacks", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${function (properties) { return this.isFull ? "100vh" : "auto"; }}; height: ${function (state) { return this.isFull ? "100dvh" : "auto"; }};`;',
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -203,6 +238,14 @@ describe("styled-components-duplicate-css-property-in-block", () => {
       'const styleBlock = css; const shared = styleBlock`color: ${p => p.$primary ? "blue" : "gray"}; color: ${p => p.$danger ? "red" : "black"};`;',
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("supports namespace and namespace-member const aliases of css helpers", () => {
+    const result = runRule(
+      rule,
+      'import * as styles from "styled-components"; const namespaceAlias = styles; const first = namespaceAlias.css`color: ${p => p.$primary ? "blue" : "gray"}; color: ${p => p.$danger ? "red" : "black"};`; const styleBlock = styles.css; const second = styleBlock`opacity: ${p => p.$primary ? 1 : 0}; opacity: ${p => p.$danger ? 0.5 : 0};`; const third = styles["css"]`width: ${p => p.$wide ? "100%" : "auto"}; width: ${p => p.$narrow ? "50%" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(3);
   });
 
   it("does not flag the dvh-with-vh fallback under one condition", () => {

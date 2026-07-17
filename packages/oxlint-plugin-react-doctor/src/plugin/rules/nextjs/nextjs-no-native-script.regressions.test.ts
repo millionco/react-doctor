@@ -54,9 +54,21 @@ describe("nextjs/nextjs-no-native-script — regressions", () => {
   });
 
   it("still flags a bare script with neither src nor inline html", () => {
-    const result = runRule(nextjsNoNativeScript, `const C = () => <script async />;`);
+    const result = runRule(nextjsNoNativeScript, `const C = () => <script />;`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("ignores async, defer, and module scripts that never block rendering", () => {
+    for (const scriptJsx of [
+      `<script async src="https://widget.example.com/embed.js" />`,
+      `<script defer src="https://widget.example.com/embed.js" />`,
+      `<script type="module" src="https://widget.example.com/embed.js" />`,
+    ]) {
+      const result = runRule(nextjsNoNativeScript, `const C = () => ${scriptJsx};`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
   });
 
   it("still ignores non-executable script types", () => {

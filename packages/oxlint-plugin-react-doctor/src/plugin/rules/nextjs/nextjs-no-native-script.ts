@@ -23,6 +23,13 @@ export const nextjsNoNativeScript = defineRule({
         : null;
       if (typeof typeValue === "string" && !EXECUTABLE_SCRIPT_TYPES.has(typeValue)) return;
 
+      // `async` / `defer` / `type="module"` scripts never block rendering,
+      // so the message's premise doesn't hold — same exemptions as
+      // `no-undeferred-third-party`.
+      if (findJsxAttribute(node.attributes ?? [], "async")) return;
+      if (findJsxAttribute(node.attributes ?? [], "defer")) return;
+      if (typeValue === "module") return;
+
       // Inline scripts (dangerouslySetInnerHTML, no src) are render-blocking
       // by design — theme/env bootstraps must run before first paint, and
       // next/script cannot guarantee pre-paint execution. Only external

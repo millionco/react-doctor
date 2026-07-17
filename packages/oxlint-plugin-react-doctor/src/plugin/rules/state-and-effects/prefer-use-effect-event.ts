@@ -384,11 +384,11 @@ const classifyCallableReadsInsideEffect = (
 export const preferUseEffectEvent = defineRule({
   id: "prefer-use-effect-event",
   title: "Effect re-subscribes on a changing callback",
-  requires: ["react:19"],
+  requires: ["react:19.2"],
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Wrap the callback with `useEffectEvent(callback)` (React 19+) and call it inside the sub-handler. An Effect Event always sees the latest props and state but isn't a dependency, so the effect won't re-subscribe every time the parent redraws. See https://react.dev/reference/react/useEffectEvent",
+    "Wrap the callback with `useEffectEvent(callback)` (React 19.2+) and call it inside the sub-handler. An Effect Event always sees the latest props and state but isn't a dependency, so the effect won't re-subscribe every time the parent redraws. See https://react.dev/reference/react/useEffectEvent",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

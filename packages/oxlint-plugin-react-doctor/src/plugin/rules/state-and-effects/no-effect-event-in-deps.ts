@@ -95,7 +95,7 @@ export const noEffectEventInDeps = defineRule({
   tags: ["test-noise"],
   severity: "error",
   recommendation:
-    "Call the useEffectEvent function inside the effect body and don't list it in the deps. It changes on every render on purpose.",
+    "Call the useEffectEvent function inside the effect body and don't list it in the deps. It's non-reactive on purpose, so it must be omitted.",
   create: (context: RuleContext) => {
     const componentBindings = createComponentBindingStackTracker({
       onVariableDeclarator: (declaratorNode: EsTreeNode) => {
@@ -129,7 +129,7 @@ export const noEffectEventInDeps = defineRule({
           if (componentBindings.isBoundName(element.name)) {
             context.report({
               node: element,
-              message: `Listing "${element.name}" in the deps re-runs your effect every render & defeats useEffectEvent.`,
+              message: `Listing "${element.name}" in the deps defeats useEffectEvent — Effect Events are non-reactive and must be omitted from deps.`,
             });
           }
         }

@@ -95,4 +95,12 @@ describe("no-layout-property-animation", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not expand the rule to min/max size animations", () => {
+    const result = runRule(
+      noLayoutPropertyAnimation,
+      `const X = () => <motion.div animate={{ minHeight: 0, maxHeight: 200, minWidth: 0, maxWidth: 200 }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

@@ -241,6 +241,7 @@ import { noInlineHocOnComponent } from "./rules/architecture/no-inline-hoc-on-co
 import { noInlinePropOnMemoComponent } from "./rules/performance/no-inline-prop-on-memo-component.js";
 import { noInteractiveElementToNoninteractiveRole } from "./rules/a11y/no-interactive-element-to-noninteractive-role.js";
 import { noIsMounted } from "./rules/react-builtins/no-is-mounted.js";
+import { noItalicSerifDisplayHeading } from "./rules/design/no-italic-serif-display-heading.js";
 import { noJsonParseStringifyClone } from "./rules/js-performance/no-json-parse-stringify-clone.js";
 import { noJsxElementType } from "./rules/correctness/no-jsx-element-type.js";
 import { noJustifiedText } from "./rules/design/no-justified-text.js";
@@ -273,9 +274,11 @@ import { noNoninteractiveElementInteractions } from "./rules/a11y/no-noninteract
 import { noNoninteractiveElementToInteractiveRole } from "./rules/a11y/no-noninteractive-element-to-interactive-role.js";
 import { noNoninteractiveTabindex } from "./rules/a11y/no-noninteractive-tabindex.js";
 import { noNullishCoalescingArithmeticPrecedence } from "./rules/correctness/no-nullish-coalescing-arithmetic-precedence.js";
+import { noNumberedSectionMarkers } from "./rules/design/no-numbered-section-markers.js";
 import { noObjectKeysValuesEntriesOnMaybeUndefined } from "./rules/correctness/no-object-keys-values-entries-on-maybe-undefined.js";
 import { noObjectOrArrayCoercedToStringInTemplateLiteral } from "./rules/correctness/no-object-or-array-coerced-to-string-in-template-literal.js";
 import { noOutlineNone } from "./rules/design/no-outline-none.js";
+import { noOversizedLongHeading } from "./rules/design/no-oversized-long-heading.js";
 import { noOverwideTextMeasure } from "./rules/design/no-overwide-text-measure.js";
 import { noPassDataToParent } from "./rules/state-and-effects/no-pass-data-to-parent.js";
 import { noPassLiveStateToParent } from "./rules/state-and-effects/no-pass-live-state-to-parent.js";
@@ -301,6 +304,7 @@ import { noRefCurrentInRender } from "./rules/state-and-effects/no-ref-current-i
 import { noRenderInRender } from "./rules/architecture/no-render-in-render.js";
 import { noRenderPropChildren } from "./rules/architecture/no-render-prop-children.js";
 import { noRenderReturnValue } from "./rules/react-builtins/no-render-return-value.js";
+import { noRepeatedKickerLabels } from "./rules/design/no-repeated-kicker-labels.js";
 import { noResetAllStateOnPropChange } from "./rules/state-and-effects/no-reset-all-state-on-prop-change.js";
 import { noScaleFromZero } from "./rules/performance/no-scale-from-zero.js";
 import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-code.js";
@@ -310,6 +314,7 @@ import { noSetStateAfterAwaitInEffect } from "./rules/state-and-effects/no-set-s
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
 import { noSideEffectInStateUpdaterFunction } from "./rules/state-and-effects/no-side-effect-in-state-updater-function.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
+import { noSkippedHeadingLevel } from "./rules/a11y/no-skipped-heading-level.js";
 import { noSpreadAccumulatorInReduce } from "./rules/js-performance/no-spread-accumulator-in-reduce.js";
 import { noSpreadPropsOverDefaultsClobbersWithUndefined } from "./rules/state-and-effects/no-spread-props-over-defaults-clobbers-with-undefined.js";
 import { noStaleTimerRef } from "./rules/state-and-effects/no-stale-timer-ref.js";
@@ -2472,7 +2477,7 @@ export const reactDoctorRules = [
     key: "react-doctor/no-broken-image-source",
     id: "no-broken-image-source",
     source: "react-doctor",
-    originallyExternal: true,
+    originallyExternal: false,
     rule: {
       ...noBrokenImageSource,
       framework: "global",
@@ -3280,6 +3285,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-italic-serif-display-heading",
+    id: "no-italic-serif-display-heading",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noItalicSerifDisplayHeading,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-json-parse-stringify-clone",
     id: "no-json-parse-stringify-clone",
     source: "react-doctor",
@@ -3659,6 +3675,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-numbered-section-markers",
+    id: "no-numbered-section-markers",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noNumberedSectionMarkers,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-object-keys-values-entries-on-maybe-undefined",
     id: "no-object-keys-values-entries-on-maybe-undefined",
     source: "react-doctor",
@@ -3689,6 +3716,17 @@ export const reactDoctorRules = [
       ...noOutlineNone,
       framework: "global",
       category: "Accessibility",
+    },
+  },
+  {
+    key: "react-doctor/no-oversized-long-heading",
+    id: "no-oversized-long-heading",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noOversizedLongHeading,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {
@@ -3742,7 +3780,7 @@ export const reactDoctorRules = [
     key: "react-doctor/no-placeholder-only-field",
     id: "no-placeholder-only-field",
     source: "react-doctor",
-    originallyExternal: true,
+    originallyExternal: false,
     rule: {
       ...noPlaceholderOnlyField,
       framework: "global",
@@ -3986,6 +4024,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-repeated-kicker-labels",
+    id: "no-repeated-kicker-labels",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRepeatedKickerLabels,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
     key: "react-doctor/no-reset-all-state-on-prop-change",
     id: "no-reset-all-state-on-prop-change",
     source: "react-doctor",
@@ -4095,6 +4144,18 @@ export const reactDoctorRules = [
       ...noSideTabBorder,
       framework: "global",
       category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-skipped-heading-level",
+    id: "no-skipped-heading-level",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSkippedHeadingLevel,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(noSkippedHeadingLevel.requires ?? [])])],
     },
   },
   {

@@ -791,6 +791,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-is-mounted": {
     code: "class Hello extends React.Component { method() { if (!this.isMounted()) return; } render() { return <div />; } }",
   },
+  "no-italic-serif-display-heading": {
+    code: 'const Hero = () => <h1 className="font-serif italic text-7xl">A considered approach</h1>;',
+  },
   "no-json-parse-stringify-clone": {
     code: "const copy = JSON.parse(JSON.stringify(state));",
   },
@@ -905,6 +908,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-object-keys-values-entries-on-maybe-undefined": {
     code: "const list = Object.keys(response?.data);",
   },
+  "no-numbered-section-markers": {
+    code: "const Page = () => <main><span>01</span><h2>Principles</h2><span>02</span><h2>Process</h2><span>03</span><h2>Outcome</h2></main>;",
+  },
   "no-outline-none": {
     code: 'const T = () => <button style={{ outline: "none" }}>Save</button>;',
   },
@@ -913,6 +919,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-overwide-text-measure": {
     code: 'const Copy = () => <p style={{ maxWidth: "96ch" }}>Long-form copy</p>;',
+  },
+  "no-oversized-long-heading": {
+    code: 'const Hero = () => <h1 className="text-8xl">Build a better workflow for every team in your growing organization</h1>;',
   },
   "no-placeholder-only-field": {
     code: 'const Field = () => <input placeholder="Email address" />;',
@@ -991,6 +1000,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "\n\t\t\t        class Foo extends React.PureComponent {\n\t\t\t          shouldComponentUpdate() {\n\t\t\t            return true;\n\t\t\t          }\n\t\t\t        }\n\t\t\t      ",
     forceJsx: true,
   },
+  "no-repeated-kicker-labels": {
+    code: 'const Page = () => <main><section><p className="uppercase tracking-widest">Approach</p><h2>How</h2></section><section><p className="uppercase tracking-widest">Benefits</p><h2>Why</h2></section><section><p className="uppercase tracking-widest">Results</p><h2>What</h2></section></main>;',
+  },
   "no-render-in-render": {
     code: "const Foo = () => {\n        const renderRow = () => {\n          const [open] = useState(false);\n          return <div>{String(open)}</div>;\n        };\n        return <div>{renderRow()}</div>;\n      };",
   },
@@ -1037,6 +1049,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-spread-props-over-defaults-clobbers-with-undefined": {
     code: "interface Props{width?:number} const defaults={width:100};const Panel=(props:Props)=>{const merged={...defaults,...props};return merged.width*2};",
+  },
+  "no-skipped-heading-level": {
+    code: "const Page = () => <main><h1>Title</h1><h3>Details</h3></main>;",
   },
   "no-stale-timer-ref": {
     code: 'import { useRef } from "react";\nexport const useDelayedCallback = (callback) => {\n  const timerRef = useRef(null);\n  const schedule = () => {\n    if (timerRef.current) return;\n    timerRef.current = setTimeout(callback, 100);\n  };\n  const cancel = () => {\n    clearTimeout(timerRef.current);\n  };\n  return { schedule, cancel };\n};',

@@ -24,6 +24,7 @@ Add design-quality lint rules distilled from a cross-resource design reference, 
 - **`no-tight-body-leading`** — long body copy with a statically proven line-height ratio below 1.3, including precise inline values and Tailwind's tight leading utilities.
 - **`no-crushed-letter-spacing`** — static inline or arbitrary Tailwind tracking below -0.08em on text-bearing elements.
 - **`no-overwide-text-measure`** — explicit body-text widths above 80ch in inline styles or arbitrary Tailwind utilities.
+- **`no-skipped-heading-level`** — opt-in analysis of explicit heading sequences inside static page or article trees, without inferring across component boundaries.
 
 **Design / Tailwind hygiene**
 
@@ -34,6 +35,10 @@ Add design-quality lint rules distilled from a cross-resource design reference, 
 - **`no-clipped-overlay`** — absolute menus, listboxes, dialogs, and tooltips nested under `overflow-hidden` or `overflow-clip` containers.
 - **`no-nested-card-surface`** — opt-in detection for a complete rounded, bounded card treatment nested inside another card surface.
 - **`no-side-tab-border`** (extended) — also recognizes heavy top or bottom accents on rounded surfaces while preserving square dividers.
+- **`no-oversized-long-heading`** — opt-in detection for sentence-length `<h1>` copy set at an explicit hero display size.
+- **`no-italic-serif-display-heading`** — opt-in detection for oversized headings that combine serif and italic treatments.
+- **`no-repeated-kicker-labels`** — opt-in file-level detection for three or more short uppercase tracked labels immediately preceding headings.
+- **`no-numbered-section-markers`** — opt-in detection for consecutive decorative number labels preceding section headings.
 
 **Tailwind canonicalization** (distilled from ui.sh's canonicalize-tailwind guidance)
 

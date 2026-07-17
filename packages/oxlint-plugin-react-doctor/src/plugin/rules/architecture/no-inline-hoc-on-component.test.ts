@@ -69,6 +69,14 @@ describe("no-inline-hoc-on-component", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an inline HOC component nested inside an observer composition", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      "const Card = observer(withTheme(() => { useTheme(); return <div />; }));",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an inline HOC component whose result is cast before the binding", () => {
     const result = runRule(
       noInlineHocOnComponent,

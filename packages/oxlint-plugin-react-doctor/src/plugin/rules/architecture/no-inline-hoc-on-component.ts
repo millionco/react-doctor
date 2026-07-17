@@ -55,7 +55,7 @@ const RELAY_CONTAINER_CREATOR_NAMES = new Set([
 // of "does this produce a component binding": `memo(withTheme(fn))` still
 // assigns the HOC result to the outer binding, so the inline function inside
 // `withTheme` keeps every harm the rule describes.
-const TRANSPARENT_WRAPPER_CALLEE_NAMES = new Set(["memo", "forwardRef"]);
+const TRANSPARENT_WRAPPER_CALLEE_NAMES = new Set(["memo", "forwardRef", "observer"]);
 
 // Component *factory primitives* — Mantine's `factory` / `polymorphicFactory`,
 // any `createXFactory`, and codebase-local typed wrappers around the React

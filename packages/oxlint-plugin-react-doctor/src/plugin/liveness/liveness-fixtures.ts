@@ -131,6 +131,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { exec } from "node:child_process";\n\napp.post("/convert", (req, res) => {\n  exec("convert " + req.body.filename, handleResult);\n});\n',
     filePath: "src/server/convert.ts",
   },
+  "class-component-missing-component-will-unmount-teardown": {
+    code: "class Clock extends React.PureComponent { componentDidMount() { setInterval(() => this.tick(), 1000); } render() { return null; } }",
+  },
   "context-provider-value-from-unmemoized-local-literal": {
     code: 'import { createContext } from "react"; const Ctx = createContext(null); function App() { const value = {}; return <Ctx.Provider value={value} />; }',
   },
@@ -171,11 +174,26 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     settings: { "react-doctor": { displayName: { ignoreTranspilerName: true } } },
     forceJsx: true,
   },
+  "debounce-no-cleanup": {
+    code: "import { debounce } from 'lodash'; function Title({ title }) { const apply = useMemo(() => debounce((value) => { document.title = value; }, 300), []); useEffect(() => { apply(title); }, [title, apply]); }",
+  },
   "effect-listener-cleanup-mismatch": {
     code: 'import { useEffect } from "react";\nexport const Listener = () => {\n  useEffect(() => {\n    window.addEventListener("resize", () => resize());\n    return () => window.removeEventListener("resize", () => resize());\n  }, []);\n  return null;\n};',
   },
+  "effect-listener-cleanup-reference-mismatch": {
+    code: "useEffect(() => { appEvent.subscribe((event) => handle(event)); return () => appEvent.unsubscribe((event) => handle(event)); }, []);",
+  },
   "effect-needs-cleanup": {
     code: 'import { useEffect } from "react";\nexport const WatchForm = ({ form }) => {\n  useEffect(() => form.watch((value) => {\n    console.log(value);\n  }), [form]);\n  return null;\n};',
+  },
+  "effect-observer-needs-disconnect": {
+    code: "useEffect(() => { const observer = new ResizeObserver(() => measure()); observer.observe(element); }, []);",
+  },
+  "effect-raf-loop-needs-cancel": {
+    code: "useEffect(() => { requestAnimationFrame(function tick() { update(); requestAnimationFrame(tick); }); }, []);",
+  },
+  "effect-remove-listener-inline-handler": {
+    code: "emitter.on('data', handler); emitter.off('data', (data) => process(data));",
   },
   "exhaustive-deps": {
     code: "function MyComponent(props) {\n          useCallback(() => {\n            console.log(props.foo?.toString());\n          }, []);\n        }",
@@ -432,6 +450,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "mouse-events-have-key-events": {
     code: "<div onMouseOver={() => {}} />",
   },
+  "mobx-reaction-disposer-discarded": {
+    code: "import { autorun } from 'mobx'; class ViewState { start() { autorun(this.loadImages); } }",
+  },
   "nextjs-async-client-component": {
     code: '"use client";\nexport default async function Profile() {\n  const data = await loadProfile();\n  return <div>{data.name}</div>;\n}',
   },
@@ -620,6 +641,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-effect-event-in-deps": {
     code: '\n      import { useEffect, useEffectEvent } from "react";\n      const MyComponent = ({ value }) => {\n        const onTick = useEffectEvent(() => value);\n        useEffect(() => { onTick(); }, [onTick]);\n        return null;\n      };\n    ',
+  },
+  "no-effect-wrapper-discards-callback-cleanup-return": {
+    code: "const useWrapped = (effect: EffectCallback, deps: DependencyList) => { useEffect(() => { effect(); }, deps); };",
   },
   "no-effect-with-fresh-deps": {
     code: '\n      import { useEffect } from "react";\n\n      function Component({ a, b }) {\n        useEffect(() => {\n          // ...\n        }, [{ a, b }]);\n      }\n    ',

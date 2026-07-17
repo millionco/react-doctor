@@ -1,0 +1,135 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { effectRemoveListenerInlineHandler } from "./effect-remove-listener-inline-handler.js";
+
+describe("effect-remove-listener-inline-handler", () => {
+  it("flags removeEventListener with an inline arrow handler", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `el.removeEventListener('scroll', () => handle());`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags removeEventListener with an inline function expression", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `window.removeEventListener('resize', function () { onResize(); });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags removeEventListener with a .bind() handler", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `node.removeEventListener('click', this.handle.bind(this));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags emitter.off with an inline arrow handler", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `emitter.on('data', handler); emitter.off('data', (d) => process(d));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag two-arg unsubscribe since the second arg may be a completion callback", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `appEvent.unsubscribe('update', (e) => handle(e));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag mqtt-style unsubscribe with an inline ack callback", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `client.unsubscribe('presence/room', (err) => { if (err) console.error(err); });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag removeEventListener with a stable identifier handler", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `window.removeEventListener('resize', onResize);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag removeEventListener with a member-expression handler", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `el.removeEventListener('scroll', handlerRef.current);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag addEventListener with an inline arrow handler", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `window.addEventListener('resize', () => onResize(), { once: true });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag removeEventListener with a factory call result", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `el.removeEventListener('scroll', makeHandler());`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a single-arg unsubscribe idiom", () => {
+    const result = runRule(effectRemoveListenerInlineHandler, `store.unsubscribe(() => sync());`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag computed removal member access", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `el[removeName]('scroll', () => handle());`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet on a device API off(duration, completionCallback)", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `const LampPreview = ({ light }: LampPreviewProps) => {
+  const [isPreviewing, setIsPreviewing] = useState(false);
+
+  useEffect(() => {
+    light.on(0, () => setIsPreviewing(true));
+    return () => {
+      light.off(FADE_DURATION_MS, (error: Error | null) => {
+        if (error) console.error("failed to power down preview lamp", error);
+      });
+    };
+  }, [light]);
+
+  return <LampIndicator active={isPreviewing} />;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags off() with a string event name and inline handler", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `useEffect(() => {
+         emitter.on("change", handleChange);
+         return () => emitter.off("change", () => handleChange());
+       }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("carries the test-noise tag so unit tests asserting off() tolerance are pipeline-skipped", () => {
+    expect(effectRemoveListenerInlineHandler.tags).toContain("test-noise");
+  });
+});

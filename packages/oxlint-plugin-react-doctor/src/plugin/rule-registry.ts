@@ -33,6 +33,7 @@ import { autocompleteValid } from "./rules/a11y/autocomplete-valid.js";
 import { buildPipelineSecretBoundary } from "./rules/security-scan/build-pipeline-secret-boundary.js";
 import { buttonHasType } from "./rules/react-builtins/button-has-type.js";
 import { checkedRequiresOnchangeOrReadonly } from "./rules/react-builtins/checked-requires-onchange-or-readonly.js";
+import { classComponentMissingComponentWillUnmountTeardown } from "./rules/state-and-effects/class-component-missing-component-will-unmount-teardown.js";
 import { clickEventsHaveKeyEvents } from "./rules/a11y/click-events-have-key-events.js";
 import { clickjackingRedirectRisk } from "./rules/security-scan/clickjacking-redirect-risk.js";
 import { clientLocalstorageNoVersion } from "./rules/client/client-localstorage-no-version.js";
@@ -42,6 +43,7 @@ import { contextProviderValueFromUnmemoizedLocalLiteral } from "./rules/performa
 import { controlHasAssociatedLabel } from "./rules/a11y/control-has-associated-label.js";
 import { corsCookieTrustRisk } from "./rules/security-scan/cors-cookie-trust-risk.js";
 import { dangerousHtmlSink } from "./rules/security-scan/dangerous-html-sink.js";
+import { debounceNoCleanup } from "./rules/state-and-effects/debounce-no-cleanup.js";
 import { noEmDashInJsxText } from "./rules/react-ui/no-em-dash-in-jsx-text.js";
 import { noRedundantPaddingAxes } from "./rules/react-ui/no-redundant-padding-axes.js";
 import { noRedundantSizeAxes } from "./rules/react-ui/no-redundant-size-axes.js";
@@ -51,7 +53,11 @@ import { noVagueButtonLabel } from "./rules/react-ui/no-vague-button-label.js";
 import { dialogHasAccessibleName } from "./rules/a11y/dialog-has-accessible-name.js";
 import { displayName } from "./rules/react-builtins/display-name.js";
 import { effectListenerCleanupMismatch } from "./rules/state-and-effects/effect-listener-cleanup-mismatch.js";
+import { effectListenerCleanupReferenceMismatch } from "./rules/state-and-effects/effect-listener-cleanup-reference-mismatch.js";
 import { effectNeedsCleanup } from "./rules/state-and-effects/effect-needs-cleanup.js";
+import { effectObserverNeedsDisconnect } from "./rules/state-and-effects/effect-observer-needs-disconnect.js";
+import { effectRafLoopNeedsCancel } from "./rules/state-and-effects/effect-raf-loop-needs-cancel.js";
+import { effectRemoveListenerInlineHandler } from "./rules/state-and-effects/effect-remove-listener-inline-handler.js";
 import { exhaustiveDeps } from "./rules/react-builtins/exhaustive-deps.js";
 import { expoNoNonInlinedEnv } from "./rules/react-native/expo-no-non-inlined-env.js";
 import { firebaseClientOwnedAuthzField } from "./rules/security-scan/firebase-client-owned-authz-field.js";
@@ -123,6 +129,7 @@ import { localRpcNativeBridgeRisk } from "./rules/security-scan/local-rpc-native
 import { mcpToolCapabilityRisk } from "./rules/security-scan/mcp-tool-capability-risk.js";
 import { mdxSsrExecutionRisk } from "./rules/security-scan/mdx-ssr-execution-risk.js";
 import { mediaHasCaption } from "./rules/a11y/media-has-caption.js";
+import { mobxReactionDisposerDiscarded } from "./rules/state-and-effects/mobx-reaction-disposer-discarded.js";
 import { mouseEventsHaveKeyEvents } from "./rules/a11y/mouse-events-have-key-events.js";
 import { nextjsAsyncClientComponent } from "./rules/nextjs/nextjs-async-client-component.js";
 import { nextjsErrorBoundaryMissingUseClient } from "./rules/nextjs/nextjs-error-boundary-missing-use-client.js";
@@ -185,6 +192,7 @@ import { noEffectChain } from "./rules/state-and-effects/no-effect-chain.js";
 import { noEffectEventHandler } from "./rules/state-and-effects/no-effect-event-handler.js";
 import { noEffectEventInDeps } from "./rules/state-and-effects/no-effect-event-in-deps.js";
 import { noEffectWithFreshDeps } from "./rules/state-and-effects/no-effect-with-fresh-deps.js";
+import { noEffectWrapperDiscardsCallbackCleanupReturn } from "./rules/state-and-effects/no-effect-wrapper-discards-callback-cleanup-return.js";
 import { noEval } from "./rules/security/no-eval.js";
 import { noEventHandler } from "./rules/state-and-effects/no-event-handler.js";
 import { noEventTriggerState } from "./rules/state-and-effects/no-event-trigger-state.js";
@@ -713,6 +721,23 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/class-component-missing-component-will-unmount-teardown",
+    id: "class-component-missing-component-will-unmount-teardown",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...classComponentMissingComponentWillUnmountTeardown,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          ...(classComponentMissingComponentWillUnmountTeardown.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/click-events-have-key-events",
     id: "click-events-have-key-events",
     source: "react-doctor",
@@ -830,6 +855,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/debounce-no-cleanup",
+    id: "debounce-no-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...debounceNoCleanup,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(debounceNoCleanup.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/design-no-em-dash-in-jsx-text",
     id: "design-no-em-dash-in-jsx-text",
     source: "react-doctor",
@@ -940,6 +977,23 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/effect-listener-cleanup-reference-mismatch",
+    id: "effect-listener-cleanup-reference-mismatch",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectListenerCleanupReferenceMismatch,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          ...(effectListenerCleanupReferenceMismatch.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/effect-needs-cleanup",
     id: "effect-needs-cleanup",
     source: "react-doctor",
@@ -949,6 +1003,46 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(effectNeedsCleanup.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/effect-observer-needs-disconnect",
+    id: "effect-observer-needs-disconnect",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectObserverNeedsDisconnect,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(effectObserverNeedsDisconnect.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/effect-raf-loop-needs-cancel",
+    id: "effect-raf-loop-needs-cancel",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectRafLoopNeedsCancel,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(effectRafLoopNeedsCancel.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/effect-remove-listener-inline-handler",
+    id: "effect-remove-listener-inline-handler",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectRemoveListenerInlineHandler,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(effectRemoveListenerInlineHandler.requires ?? [])]),
+      ],
     },
   },
   {
@@ -1795,6 +1889,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/mobx-reaction-disposer-discarded",
+    id: "mobx-reaction-disposer-discarded",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...mobxReactionDisposerDiscarded,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(mobxReactionDisposerDiscarded.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/mouse-events-have-key-events",
     id: "mouse-events-have-key-events",
     source: "react-doctor",
@@ -2511,6 +2619,23 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noEffectWithFreshDeps.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-effect-wrapper-discards-callback-cleanup-return",
+    id: "no-effect-wrapper-discards-callback-cleanup-return",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noEffectWrapperDiscardsCallbackCleanupReturn,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          ...(noEffectWrapperDiscardsCallbackCleanupReturn.requires ?? []),
+        ]),
+      ],
     },
   },
   {

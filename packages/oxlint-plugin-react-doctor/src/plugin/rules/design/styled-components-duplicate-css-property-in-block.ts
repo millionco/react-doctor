@@ -44,15 +44,26 @@ const collectCallbackParameterBindings = (
     return collectCallbackParameterBindings(parameter.argument, sourcePath, bindings);
   }
   if (isNodeOfType(parameter, "ObjectPattern")) {
+    const propertyNames: string[] = [];
     for (const property of parameter.properties) {
-      if (!isNodeOfType(property, "Property")) return false;
+      if (!isNodeOfType(property, "Property")) continue;
       const propertyName = getStaticPropertyKeyName(property, {
         allowComputedString: true,
         stringifyNonStringLiterals: true,
       });
       if (propertyName === null) return false;
+      propertyNames.push(propertyName);
       if (
         !collectCallbackParameterBindings(property.value, `${sourcePath}.${propertyName}`, bindings)
+      ) {
+        return false;
+      }
+    }
+    const restSourcePath = `${sourcePath}.{rest-without:${propertyNames.toSorted().join(",")}}`;
+    for (const property of parameter.properties) {
+      if (
+        isNodeOfType(property, "RestElement") &&
+        !collectCallbackParameterBindings(property.argument, restSourcePath, bindings)
       ) {
         return false;
       }
@@ -63,7 +74,7 @@ const collectCallbackParameterBindings = (
     for (let elementIndex = 0; elementIndex < parameter.elements.length; elementIndex += 1) {
       const element = parameter.elements[elementIndex];
       if (!element) continue;
-      if (!collectCallbackParameterBindings(element, `${sourcePath}[${elementIndex}]`, bindings)) {
+      if (!collectCallbackParameterBindings(element, `${sourcePath}.${elementIndex}`, bindings)) {
         return false;
       }
     }
@@ -110,17 +121,29 @@ const getTernaryInterpolationTest = (expression: EsTreeNode | undefined): Ternar
   return null;
 };
 
+const getParameterSourcePath = (node: EsTreeNode, test: TernaryTest): string | null => {
+  const unwrapped = stripParenExpression(node);
+  if (isNodeOfType(unwrapped, "Identifier")) {
+    return test.parameterBindings?.get(unwrapped.name) ?? null;
+  }
+  if (!isNodeOfType(unwrapped, "MemberExpression")) return null;
+  const objectPath = getParameterSourcePath(unwrapped.object, test);
+  if (objectPath === null) return null;
+  const propertyName = getStaticPropertyName(unwrapped);
+  return propertyName === null ? null : `${objectPath}.${propertyName}`;
+};
+
 const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
   const compare = (leftNode: EsTreeNode, rightNode: EsTreeNode): boolean => {
     const unwrappedLeft = stripParenExpression(leftNode);
     const unwrappedRight = stripParenExpression(rightNode);
+    const leftParameterPath = getParameterSourcePath(unwrappedLeft, left);
+    const rightParameterPath = getParameterSourcePath(unwrappedRight, right);
+    if (leftParameterPath !== null || rightParameterPath !== null) {
+      return leftParameterPath !== null && leftParameterPath === rightParameterPath;
+    }
     if (unwrappedLeft.type !== unwrappedRight.type) return false;
     if (isNodeOfType(unwrappedLeft, "Identifier") && isNodeOfType(unwrappedRight, "Identifier")) {
-      const leftParameterPath = left.parameterBindings?.get(unwrappedLeft.name);
-      const rightParameterPath = right.parameterBindings?.get(unwrappedRight.name);
-      if (leftParameterPath !== undefined || rightParameterPath !== undefined) {
-        return leftParameterPath !== undefined && leftParameterPath === rightParameterPath;
-      }
       return unwrappedLeft.name === unwrappedRight.name;
     }
     if (isNodeOfType(unwrappedLeft, "Literal") && isNodeOfType(unwrappedRight, "Literal")) {
@@ -243,7 +266,6 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
         keysMatch &&
         unwrappedLeft.kind === unwrappedRight.kind &&
         unwrappedLeft.method === unwrappedRight.method &&
-        unwrappedLeft.shorthand === unwrappedRight.shorthand &&
         compare(unwrappedLeft.value, unwrappedRight.value)
       );
     }

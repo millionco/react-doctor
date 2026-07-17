@@ -268,6 +268,32 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(arrayResult.diagnostics).toHaveLength(1);
   });
 
+  it("matches member reads with equivalent destructured bindings", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${properties => properties.active ? "100vh" : "auto"}; height: ${({ active: enabled }) => enabled ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves bindings alongside object rest parameters", () => {
+    const directBindingResult = runStyledRule(
+      'const Modal = styled.div`height: ${properties => properties.active ? "100vh" : "auto"}; height: ${({ active: enabled, ...rest }) => enabled ? "100dvh" : "auto"};`;',
+    );
+    expect(directBindingResult.diagnostics).toHaveLength(0);
+
+    const restBindingResult = runStyledRule(
+      'const Modal = styled.div`height: ${({ active, ...remaining }) => remaining.disabled ? "100vh" : "auto"}; height: ${({ active: enabled, ...rest }) => rest.disabled ? "100dvh" : "auto"};`;',
+    );
+    expect(restBindingResult.diagnostics).toHaveLength(0);
+  });
+
+  it("does not distinguish shorthand from explicit object properties", () => {
+    const result = runStyledRule(
+      'const active = true; const Modal = styled.div`height: ${properties => matches({ active }) ? "100vh" : "auto"}; height: ${state => matches({ active: active }) ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("distinguishes different static property keys that match each parameter name", () => {
     const result = runStyledRule(
       'const Modal = styled.div`height: ${properties => properties.properties ? "100vh" : "auto"}; height: ${state => state.state ? "100dvh" : "auto"};`;',

@@ -1,12 +1,11 @@
 import type { PackageJson } from "../types/index.js";
+import { getPreferredDependencyVersion } from "./get-preferred-dependency-version.js";
+
+const STYLED_COMPONENTS_PACKAGES = ["styled-components"];
 
 export const getStyledComponentsVersion = (packageJson: PackageJson): string | null => {
-  // devDependencies lowest, runtime dependencies highest: a dev-only pin
-  // must not override the spec the shipped app actually resolves.
-  const allDependencies = {
-    ...packageJson.devDependencies,
-    ...packageJson.peerDependencies,
-    ...packageJson.dependencies,
-  };
-  return allDependencies["styled-components"] ?? null;
+  return getPreferredDependencyVersion({
+    packageJson,
+    packageNames: STYLED_COMPONENTS_PACKAGES,
+  });
 };

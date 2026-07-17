@@ -21,8 +21,12 @@ const isNoOpChangeHandler = (attribute: EsTreeNodeOfType<"JSXAttribute">): boole
   if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) return false;
   const handler = stripParenExpression(attribute.value.expression);
   if (!isFunctionLike(handler)) return false;
-  if (!isNodeOfType(handler.body, "BlockStatement")) return false;
-  return handler.body.body.length === 0;
+  if (isNodeOfType(handler.body, "BlockStatement")) return handler.body.body.length === 0;
+  const expression = stripParenExpression(handler.body);
+  return (
+    (isNodeOfType(expression, "Identifier") && expression.name === "undefined") ||
+    (isNodeOfType(expression, "Literal") && expression.value === null)
+  );
 };
 
 // True when the `value` JSXAttribute is a bare string/number literal —

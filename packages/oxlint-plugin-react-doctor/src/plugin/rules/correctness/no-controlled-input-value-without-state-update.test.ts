@@ -86,6 +86,27 @@ describe("no-controlled-input-value-without-state-update", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not infer editability from nullish expression-body handlers", () => {
+    const undefinedResult = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const C = () => <input value="Search..." onChange={() => undefined} />;`,
+    );
+    const nullResult = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const C = () => <textarea value="Search..." onChange={() => (null)} />;`,
+    );
+    expect(undefinedResult.diagnostics).toHaveLength(0);
+    expect(nullResult.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags effectful expression-body handlers", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const C = () => <input value="Search..." onChange={() => void log("change")} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a radio whose literal value is the submission token", () => {
     const result = runRule(
       noControlledInputValueWithoutStateUpdate,

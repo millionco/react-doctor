@@ -334,7 +334,38 @@ const consumerIsGuaranteedAfterResult = (
   if (resultBlock && resultBlock === consumerBlock && consumer.range[0] > resultCall.range[1]) {
     return true;
   }
-  return isPositiveGuardOnResult(consumer, resultExpression, executionBoundary, context.scopes);
+  return (
+    consumerRunsAfterResult &&
+    isPositiveGuardOnResult(consumer, resultExpression, executionBoundary, context.scopes)
+  );
+};
+
+const boundCreationIsDisposed = (
+  createCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const resultExpression = findBoundCallResult(createCall);
+  if (!resultExpression) return false;
+  const resultSymbol = context.scopes.symbolFor(resultExpression);
+  if (!resultSymbol) return false;
+  const executionBoundary = context.cfg.enclosingFunction(createCall);
+  return resultSymbol.references.some((reference) => {
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const consumer = referenceRoot.parent;
+    return Boolean(
+      consumer &&
+      isNodeOfType(consumer, "CallExpression") &&
+      isRevokeOfExpression(consumer, resultExpression, context.scopes) &&
+      isNodeReachableWithinFunction(consumer, context) &&
+      consumerIsGuaranteedAfterResult(
+        consumer,
+        createCall,
+        resultExpression,
+        executionBoundary,
+        context,
+      ),
+    );
+  });
 };
 
 const moduleDisposesEveryReturnedResult = (
@@ -482,9 +513,15 @@ const isUrlSetAttributeCall = (
   return stripParenExpression(attributeValue) === stripParenExpression(urlArgument);
 };
 
-const isDirectIfBranchStatement = (assignment: EsTreeNode): boolean => {
-  const statement = findTransparentExpressionRoot(assignment).parent ?? null;
-  if (!statement || !isNodeOfType(statement, "ExpressionStatement")) return false;
+const isDirectIfBranchStatement = (candidate: EsTreeNode): boolean => {
+  const statement = findTransparentExpressionRoot(candidate).parent ?? null;
+  if (
+    !statement ||
+    (!isNodeOfType(statement, "ExpressionStatement") &&
+      !isNodeOfType(statement, "VariableDeclaration"))
+  ) {
+    return false;
+  }
   let container = statement.parent ?? null;
   if (container && isNodeOfType(container, "BlockStatement")) container = container.parent ?? null;
   return container !== null && isNodeOfType(container, "IfStatement");
@@ -535,6 +572,7 @@ const escapeIsLeaky = (callNode: EsTreeNode): boolean => {
   const guarded = containingExpression.isGuarded;
   const parent = topNode.parent ?? null;
   if (!parent) return false;
+  const storedResultIsGuarded = guarded || isDirectIfBranchStatement(parent);
 
   if (
     isNodeOfType(parent, "AssignmentExpression") &&
@@ -550,7 +588,7 @@ const escapeIsLeaky = (callNode: EsTreeNode): boolean => {
     // The guarded creation assigned to a pre-declared variable is the same
     // "object URL for fetched data" leak as the guarded VariableDeclarator.
     if (isNodeOfType(target, "Identifier")) {
-      return guarded || isDirectIfBranchStatement(parent);
+      return storedResultIsGuarded;
     }
     return false;
   }
@@ -578,7 +616,7 @@ const escapeIsLeaky = (callNode: EsTreeNode): boolean => {
     parent.init &&
     stripParenExpression(parent.init) === stripParenExpression(topNode)
   ) {
-    return guarded;
+    return storedResultIsGuarded;
   }
 
   // Passed directly to a state setter (`setImageUrl(URL.createObjectURL(...))`)
@@ -614,6 +652,7 @@ export const noCreateObjectUrlWithoutRevoke = defineRule({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isUrlMethodCall(node, "createObjectURL", context.scopes)) return;
         if (!escapeIsLeaky(node)) return;
+        if (boundCreationIsDisposed(node, context)) return;
         if (programRoot && moduleDisposesEveryReturnedResult(node, programRoot, context)) return;
         context.report({ node, message: MESSAGE });
       },

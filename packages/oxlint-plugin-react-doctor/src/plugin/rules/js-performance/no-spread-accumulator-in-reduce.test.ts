@@ -373,6 +373,26 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("recognizes TypeScript-wrapped global Object receivers", () => {
+    const safeResult = runRule(
+      noSpreadAccumulatorInReduce,
+      `const bounded = { first: true, second: true };
+       const out = (Object!)["keys"](bounded)
+         .reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(safeResult.parseErrors).toEqual([]);
+    expect(safeResult.diagnostics).toHaveLength(0);
+
+    const grownResult = runRule(
+      noSpreadAccumulatorInReduce,
+      `const bounded = { first: true };
+       (Object as ObjectConstructor).assign(bounded, externalValues);
+       const out = Object.keys(bounded).reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(grownResult.parseErrors).toEqual([]);
+    expect(grownResult.diagnostics).toHaveLength(1);
+  });
+
   it("does not analyze a locally defined custom reducer method", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
@@ -560,6 +580,18 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("recognizes TypeScript-wrapped global Array constructions and receivers", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const constructed = (Array as ArrayConstructor)(4)
+         .reduce((acc, item) => [...acc, item], []);
+       const copied = (Array!)["from"]((Array as ArrayConstructor)(4))
+         .reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not treat a multi-argument Array construction as fixed length", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
@@ -646,5 +678,19 @@ describe("no-spread-accumulator-in-reduce", () => {
        const out = Array(4).fill(null).reduce((acc, item) => [...acc, item], []);`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust TypeScript-wrapped shadowed Array or Object receivers", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const Array = createArrayFactory();
+       const arrayOut = (Array as ArrayConstructor).from(Array(4))
+         .reduce((acc, item) => [...acc, item], []);
+       const Object = createObjectApi();
+       const objectOut = (Object!)["keys"]({ first: true })
+         .reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
   });
 });

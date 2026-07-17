@@ -11,6 +11,7 @@ import { isAstNode } from "../../utils/is-ast-node.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
@@ -79,9 +80,7 @@ const bindingMayHaveGrown = (expression: EsTreeNode, scopes: ScopeAnalysis): boo
       const directCallee = stripParenExpression(directConsumer.callee);
       if (
         isNodeOfType(directCallee, "MemberExpression") &&
-        isNodeOfType(directCallee.object, "Identifier") &&
-        directCallee.object.name === "Object" &&
-        scopes.isGlobalReference(directCallee.object) &&
+        isProvenGlobalNamespaceReference(directCallee.object, "Object", scopes) &&
         OBJECT_GROWING_MUTATION_METHOD_NAMES.has(getStaticPropertyName(directCallee) ?? "")
       ) {
         return true;
@@ -154,11 +153,7 @@ const isFixedLengthArrayConstruction = (expression: EsTreeNode, scopes: ScopeAna
     return false;
   }
   const callee = stripParenExpression(stripped.callee);
-  if (
-    !isNodeOfType(callee, "Identifier") ||
-    callee.name !== "Array" ||
-    !scopes.isGlobalReference(callee)
-  ) {
+  if (!isProvenGlobalNamespaceReference(callee, "Array", scopes)) {
     return false;
   }
   const lengthArgument = stripped.arguments[0];
@@ -217,12 +212,7 @@ const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnaly
     const callee = stripParenExpression(currentExpression.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return false;
     const methodName = getStaticPropertyName(callee);
-    if (
-      isNodeOfType(callee.object, "Identifier") &&
-      callee.object.name === "Array" &&
-      scopes.isGlobalReference(callee.object) &&
-      methodName === "from"
-    ) {
+    if (isProvenGlobalNamespaceReference(callee.object, "Array", scopes) && methodName === "from") {
       const sourceArgument = currentExpression.arguments[0];
       if (!isAstNode(sourceArgument)) return false;
       pendingExpressions.push(stripParenExpression(sourceArgument));
@@ -263,11 +253,7 @@ const isStaticallyBoundedReduceSource = (source: EsTreeNode, scopes: ScopeAnalys
   if (!isNodeOfType(stripped, "CallExpression")) return false;
   const enumerationCallee = stripParenExpression(stripped.callee);
   if (!isNodeOfType(enumerationCallee, "MemberExpression")) return false;
-  if (
-    !isNodeOfType(enumerationCallee.object, "Identifier") ||
-    enumerationCallee.object.name !== "Object" ||
-    !scopes.isGlobalReference(enumerationCallee.object)
-  ) {
+  if (!isProvenGlobalNamespaceReference(enumerationCallee.object, "Object", scopes)) {
     return false;
   }
   const enumerationMethodName = getStaticPropertyName(enumerationCallee);

@@ -51,6 +51,61 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags if-scoped object URL declarations that escape", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const useImage = (data, fallback) => {
+         if (data) {
+           const imageObjectUrl = URL.createObjectURL(data);
+           setImgObjectUrl(imageObjectUrl);
+         } else {
+           const fallbackObjectUrl = URL.createObjectURL(fallback);
+           image.src = fallbackObjectUrl;
+         }
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("recognizes guaranteed cleanup after if-scoped object URL declarations", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const useImages = (firstBlob, secondBlob) => {
+         if (firstBlob) {
+           const firstUrl = URL.createObjectURL(firstBlob);
+           setFirstUrl(firstUrl);
+           URL.revokeObjectURL(firstUrl);
+         }
+         if (secondBlob) {
+           const secondUrl = URL.createObjectURL(secondBlob);
+           setSecondUrl(secondUrl);
+           if (secondUrl) URL.revokeObjectURL(secondUrl);
+         }
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires if-scoped cleanup to follow creation and run on every path", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const useImages = (firstBlob, secondBlob, shouldRevoke) => {
+         if (firstBlob) {
+           let firstUrl;
+           URL.revokeObjectURL(firstUrl);
+           firstUrl = URL.createObjectURL(firstBlob);
+           setFirstUrl(firstUrl);
+         }
+         if (secondBlob) {
+           const secondUrl = URL.createObjectURL(secondBlob);
+           setSecondUrl(secondUrl);
+           if (shouldRevoke) URL.revokeObjectURL(secondUrl);
+         }
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("recognizes cleanup for an if-guarded pre-declared assignment", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

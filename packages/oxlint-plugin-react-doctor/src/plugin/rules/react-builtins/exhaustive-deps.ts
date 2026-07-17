@@ -687,6 +687,8 @@ const resolveDerivedExpressionSourceKeys = (
     if (
       sourceSymbol.kind === "const" &&
       sourceSymbol.initializer &&
+      isNodeOfType(sourceSymbol.declarationNode, "VariableDeclarator") &&
+      sourceSymbol.declarationNode.id === sourceSymbol.bindingIdentifier &&
       sourceSymbol.references.every((sourceReference) => sourceReference.flag === "read") &&
       !visitedSymbolIds.has(sourceSymbol.id)
     ) {

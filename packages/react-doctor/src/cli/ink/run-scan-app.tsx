@@ -34,7 +34,7 @@ import { findNearestPackageDirectory } from "../utils/install-doctor-script.js";
 import { setUpGitHubActions } from "../utils/set-up-github-actions.js";
 import { recordCount } from "../utils/record-metric.js";
 import { METRIC } from "../utils/constants.js";
-import { shouldShowShareLink } from "../utils/should-show-share-link.js";
+import { isShareOptedOut } from "../utils/is-share-opted-out.js";
 import { ProjectSelect } from "./components/project-select.js";
 import { ScanApp } from "./scan-app.js";
 import { progressLayerForStore, reporterLayerForStore } from "./scan-bridge-layers.js";
@@ -59,6 +59,11 @@ interface ResolvedProjectScan {
   readonly directory: string;
   readonly config: ReactDoctorConfig | null;
   readonly configSourceDirectory: string | null;
+}
+
+interface ScanPresentation {
+  readonly isOffline: boolean;
+  readonly noScoreMessage: string;
 }
 
 const resolveProjectScan = async (
@@ -111,12 +116,21 @@ const qualifyDiagnosticPaths = (
   );
 };
 
-const resolveIsOffline = (input: RunScanAppInput): boolean =>
-  !shouldShowShareLink({
-    noScore: input.options?.noScore === true,
-    share: input.share !== false,
-    isCi: isCiEnvironment(),
-  });
+const resolveScanPresentation = (
+  input: RunScanAppInput,
+  projectScans: ReadonlyArray<ResolvedProjectScan>,
+): ScanPresentation => {
+  const isScoreDisabled =
+    input.options?.noScore === true ||
+    projectScans.some((projectScan) => projectScan.config?.noScore === true);
+  return {
+    isOffline:
+      isCiEnvironment() ||
+      input.share === false ||
+      isShareOptedOut(projectScans, input.options?.noScore),
+    noScoreMessage: buildNoScoreMessage(isScoreDisabled),
+  };
+};
 
 const resolveSelectedDirectories = async (
   rootDirectory: string,
@@ -313,14 +327,13 @@ interface ExecuteTuiScan {
 
 const runMountedScan = async (
   rootDirectory: string,
-  input: RunScanAppInput,
+  presentation: ScanPresentation,
   executeScan: ExecuteTuiScan,
 ): Promise<RunScanAppResult> => {
   const { store, instance, settle } = await mountScanApp(rootDirectory);
   const context: ScanExecutionContext = {
     store,
-    isOffline: resolveIsOffline(input),
-    noScoreMessage: buildNoScoreMessage(input.options?.noScore === true),
+    ...presentation,
   };
 
   try {
@@ -349,7 +362,8 @@ const runSingleProjectScan = async (
   input: RunScanAppInput,
 ): Promise<RunScanAppResult> => {
   const projectScan = await resolveProjectScan(rootScanTarget, projectDirectory);
-  return runMountedScan(projectScan.directory, input, async (context) => {
+  const presentation = resolveScanPresentation(input, [projectScan]);
+  return runMountedScan(projectScan.directory, presentation, async (context) => {
     const result = await inspect(projectScan.directory, {
       ...input.options,
       isCi: isCiEnvironment(),
@@ -389,15 +403,20 @@ const runMultiProjectScan = async (
   input: RunScanAppInput,
 ): Promise<RunScanAppResult> => {
   const rootDirectory = rootScanTarget.resolvedDirectory;
-  return runMountedScan(rootDirectory, input, async (context) => {
+  const projectScans = await mapWithConcurrency(
+    [...directories],
+    DEFAULT_PROJECT_SCAN_CONCURRENCY,
+    (projectDirectory) => resolveProjectScan(rootScanTarget, projectDirectory),
+  );
+  const presentation = resolveScanPresentation(input, projectScans);
+  return runMountedScan(rootDirectory, presentation, async (context) => {
     const startTime = performance.now();
     let finishedCount = 0;
     context.store.setProgress(`Scanning ${directories.length} projects…`);
     const results = await mapWithConcurrency(
-      [...directories],
+      projectScans,
       DEFAULT_PROJECT_SCAN_CONCURRENCY,
-      async (projectDirectory) => {
-        const projectScan = await resolveProjectScan(rootScanTarget, projectDirectory);
+      async (projectScan) => {
         const result = await inspect(projectScan.directory, {
           ...input.options,
           isCi: isCiEnvironment(),
@@ -467,7 +486,6 @@ export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResu
     ...input,
     options: {
       ...input.options,
-      noScore: input.options?.noScore ?? scanTarget.userConfig?.noScore ?? false,
       deadlineEpochMs,
     },
     configProjects: input.configProjects ?? scanTarget.userConfig?.projects,

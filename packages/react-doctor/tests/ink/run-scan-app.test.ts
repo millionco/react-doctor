@@ -138,7 +138,7 @@ describe("runScanApp", () => {
       buildScanTarget(
         requestedAdminDirectory,
         requestedAdminDirectory,
-        { plugins: ["./plugin.js"] },
+        { noScore: true, plugins: ["./plugin.js"] },
         adminConfigDirectory,
       ),
     );
@@ -173,7 +173,11 @@ describe("runScanApp", () => {
       2,
       requestedAdminDirectory,
       expect.objectContaining({
-        configOverride: expect.objectContaining({ warnings: false, plugins: ["./plugin.js"] }),
+        configOverride: expect.objectContaining({
+          warnings: false,
+          noScore: true,
+          plugins: ["./plugin.js"],
+        }),
         configSourceDirectory: adminConfigDirectory,
       }),
     );
@@ -181,6 +185,8 @@ describe("runScanApp", () => {
     const secondOptions = vi.mocked(inspect).mock.calls[1]?.[1];
     expect(firstOptions?.uiLayers?.reporter).toBe(Reporter.layerNoop);
     expect(secondOptions?.uiLayers?.reporter).toBe(Reporter.layerNoop);
+    expect(firstOptions?.noScore).toBeUndefined();
+    expect(secondOptions?.noScore).toBeUndefined();
     expect(firstOptions?.deadlineEpochMs).toBe(secondOptions?.deadlineEpochMs);
     expect(firstOptions?.deadlineEpochMs).toBeTypeOf("number");
   });

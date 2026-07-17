@@ -3763,6 +3763,48 @@ export const Resolution = () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts matching modern and legacy media listener branches", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const MediaQuery = ({ breakpoint }) => {
+  useEffect(() => {
+    const media = window.matchMedia(breakpoint);
+    const handleMatch = () => update(media.matches);
+    handleMatch();
+    if (media.addEventListener) {
+      media.addEventListener("change", handleMatch);
+      return () => media.removeEventListener("change", handleMatch);
+    }
+    media.addListener(handleMatch);
+    return () => media.removeListener(handleMatch);
+  }, [breakpoint]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("rejects a legacy media listener cleanup with a changed handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const MediaQuery = ({ breakpoint }) => {
+  useEffect(() => {
+    const media = window.matchMedia(breakpoint);
+    const handleMatch = () => update(media.matches);
+    const otherHandler = () => update(false);
+    media.addListener(handleMatch);
+    return () => media.removeListener(otherHandler);
+  }, [breakpoint]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("rejects a listener disposer assigned on only one control-flow path", () => {
     const result = runRule(
       effectNeedsCleanup,

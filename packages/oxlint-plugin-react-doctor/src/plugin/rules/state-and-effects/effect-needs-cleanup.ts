@@ -2351,7 +2351,15 @@ const isSelfReleasingListenerRelease = (
   if (triggerRegistrations.some((triggerRegistration) => triggerRegistration === usage.node)) {
     return true;
   }
-  return doMatchingNodesCoverEveryPathAfterUsage(usage.node, triggerRegistrations, context);
+  return (
+    doMatchingNodesCoverEveryPathAfterUsage(usage.node, triggerRegistrations, context) ||
+    doMatchingNodesCoverEveryPathBeforeUsage(
+      usage.node,
+      triggerRegistrations,
+      ownerFunction,
+      context,
+    )
+  );
 };
 
 const isReleaseReachableForUsage = (

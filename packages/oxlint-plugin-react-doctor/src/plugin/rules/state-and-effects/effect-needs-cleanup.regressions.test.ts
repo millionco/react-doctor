@@ -751,6 +751,29 @@ export const useDrag = () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts the end listener registered before its peer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const useDrag = () => {
+  const onMouseDown = useCallback(() => {
+    function handleMouseMove() {
+      updatePosition();
+    }
+    function handleMouseUp() {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    }
+    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("mousemove", handleMouseMove);
+  }, []);
+  return onMouseDown;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it.each([
     {
       name: "a conditionally registered end listener",

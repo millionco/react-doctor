@@ -517,7 +517,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     // separate `effect/` namespace, no optional peer dependency.
     const config = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
-      project: buildTestProject({ rootDirectory: "/tmp/test" }),
+      project: buildTestProject({ rootDirectory: "/tmp/test", reactMajorVersion: 17 }),
     });
 
     // The whole derived-state family ships at `warn` — including

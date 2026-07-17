@@ -202,7 +202,10 @@ export const PUBLIC_ENV_SECRET_NAME_PATTERN =
   /\b(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC)_[A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE|DATABASE_URL|SERVICE_ROLE|AWS_ACCESS_KEY|AWS_SECRET)[A-Z0-9_]*\b/i;
 
 export const FULL_ENV_LEAK_CONTEXT_PATTERN =
-  /\b(?:process\.env|import\.meta\.env|window\.__[A-Z0-9_]*ENV[A-Z0-9_]*__|__[A-Z0-9_]*ENV[A-Z0-9_]*__)\b/;
+  /\b(?:process\s*\.\s*env|import\s*\.\s*meta\s*\.\s*env|window\.__[A-Z0-9_]*ENV[A-Z0-9_]*__|__[A-Z0-9_]*ENV[A-Z0-9_]*__)\b/;
+
+export const FULL_ENV_LEAK_COMMENT_TRIVIA_PATTERN =
+  /\b(?:(?:process|window)\s*(?:\/[*/]|<!--|-->|\.\s*(?:\/[*/]|<!--|-->))|import\s*(?:\/[*/]|<!--|-->|\.\s*(?:\/[*/]|<!--|-->|meta\s*(?:\/[*/]|<!--|-->|\.\s*(?:\/[*/]|<!--|-->)))))/;
 
 export const FULL_ENV_LEAK_SECRET_NAME_PATTERN =
   /\b(?:DATABASE_URL|AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID|MAILGUN_API_KEY|SALESFORCE_CLIENT_SECRET|OKTA_CLIENT_SECRET|SESSION_SECRET|COOKIE_SECRET|PRIVATE_KEY|SERVICE_ROLE)\b/;

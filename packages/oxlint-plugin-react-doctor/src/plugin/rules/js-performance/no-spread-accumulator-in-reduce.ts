@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
+import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -29,15 +30,6 @@ const isSpreadFreeObjectLiteral = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "ObjectExpression") &&
   node.properties.every((property) => !isNodeOfType(property, "SpreadElement"));
 
-const isConstDeclaredBinding = (bindingIdentifier: EsTreeNode): boolean => {
-  const declarator = bindingIdentifier.parent;
-  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
-  const declaration = declarator.parent;
-  return Boolean(
-    declaration && isNodeOfType(declaration, "VariableDeclaration") && declaration.kind === "const",
-  );
-};
-
 const isRestParameterBinding = (bindingIdentifier: EsTreeNode): boolean => {
   const restCandidate = bindingIdentifier.parent;
   return Boolean(
@@ -53,7 +45,7 @@ const isLocallyConstructedBoundedObject = (expression: EsTreeNode): boolean => {
   if (isSpreadFreeObjectLiteral(stripped)) return true;
   if (!isNodeOfType(stripped, "Identifier")) return false;
   const binding = findVariableInitializer(stripped, stripped.name);
-  if (!binding?.initializer || !isConstDeclaredBinding(binding.bindingIdentifier)) return false;
+  if (!binding?.initializer || !isConstDeclaredBinding(binding)) return false;
   return isSpreadFreeObjectLiteral(stripParenExpression(binding.initializer));
 };
 
@@ -125,7 +117,7 @@ const isStaticallyBoundedReduceSource = (source: EsTreeNode, scopes: ScopeAnalys
     if (isRestParameterBinding(binding.bindingIdentifier)) return true;
     return Boolean(
       binding.initializer &&
-      isConstDeclaredBinding(binding.bindingIdentifier) &&
+      isConstDeclaredBinding(binding) &&
       isBoundedArrayInitializer(binding.initializer),
     );
   }

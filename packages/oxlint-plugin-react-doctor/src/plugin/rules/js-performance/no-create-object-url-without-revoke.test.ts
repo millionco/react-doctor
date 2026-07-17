@@ -198,6 +198,37 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when a const arrow helper feeds a deliberate module cache", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const renderPreview = async (source) => {
+         const blob = await source.convertToBlob();
+         return URL.createObjectURL(blob);
+       };
+       async function generatePreview(source, id) {
+         const url = await renderPreview(source);
+         previewCache.set(id, url);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags escaped object URLs through TypeScript expression wrappers", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const assignUrl = (blob: Blob) => {
+         anchor.href = URL.createObjectURL(blob) as string;
+       };
+       const useUrl = (data?: Blob) => {
+         const url = data && (URL.createObjectURL(data) satisfies string);
+         setUrl(url);
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("flags a returned URL when one call site bypasses the module cache", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

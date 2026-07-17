@@ -7,7 +7,6 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
-import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -143,13 +142,7 @@ const moduleCachesEveryReturnedResult = (
     return false;
   }
   const enclosingFunction = findEnclosingFunction(createCall);
-  if (
-    !enclosingFunction ||
-    !isNodeOfType(enclosingFunction, "FunctionDeclaration") ||
-    !enclosingFunction.id
-  ) {
-    return false;
-  }
+  if (!enclosingFunction) return false;
   let didFindCall = false;
   let didFindUncachedCall = false;
   walkAst(programRoot, (child) => {
@@ -194,10 +187,11 @@ const moduleCachesEveryReturnedResult = (
 
 const isGuardBranchOf = (parent: EsTreeNode, node: EsTreeNode): boolean =>
   (isNodeOfType(parent, "LogicalExpression") &&
-    (stripGroupingParens(parent.left) === node || stripGroupingParens(parent.right) === node)) ||
+    (stripParenExpression(parent.left) === stripParenExpression(node) ||
+      stripParenExpression(parent.right) === stripParenExpression(node))) ||
   (isNodeOfType(parent, "ConditionalExpression") &&
-    (stripGroupingParens(parent.consequent) === node ||
-      stripGroupingParens(parent.alternate) === node));
+    (stripParenExpression(parent.consequent) === stripParenExpression(node) ||
+      stripParenExpression(parent.alternate) === stripParenExpression(node)));
 
 const isStateSetterCallee = (callee: EsTreeNode): boolean =>
   isNodeOfType(callee, "Identifier") && isSetterIdentifier(callee.name);
@@ -216,7 +210,7 @@ const isUrlSetAttributeCall = (
     return false;
   }
   if (!SET_ATTRIBUTE_URL_NAMES.has(attributeName.value)) return false;
-  return stripGroupingParens(attributeValue) === urlArgument;
+  return stripParenExpression(attributeValue) === stripParenExpression(urlArgument);
 };
 
 const isDirectIfBranchStatement = (assignment: EsTreeNode): boolean => {
@@ -240,7 +234,7 @@ const escapeIsLeaky = (callNode: EsTreeNode): boolean => {
 
   if (
     isNodeOfType(parent, "AssignmentExpression") &&
-    stripGroupingParens(parent.right) === topNode
+    stripParenExpression(parent.right) === stripParenExpression(topNode)
   ) {
     const target = parent.left;
     if (
@@ -263,7 +257,7 @@ const escapeIsLeaky = (callNode: EsTreeNode): boolean => {
 
   if (
     isNodeOfType(parent, "ArrowFunctionExpression") &&
-    stripGroupingParens(parent.body) === topNode
+    stripParenExpression(parent.body) === stripParenExpression(topNode)
   ) {
     return true;
   }
@@ -279,7 +273,7 @@ const escapeIsLeaky = (callNode: EsTreeNode): boolean => {
   if (
     isNodeOfType(parent, "VariableDeclarator") &&
     parent.init &&
-    stripGroupingParens(parent.init) === topNode
+    stripParenExpression(parent.init) === stripParenExpression(topNode)
   ) {
     return guarded;
   }

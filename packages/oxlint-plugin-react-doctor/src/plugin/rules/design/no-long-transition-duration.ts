@@ -1,11 +1,15 @@
 import { LONG_TRANSITION_DURATION_THRESHOLD_MS } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { getConflictingMotionSpringDurationProperty } from "../../utils/get-conflicting-motion-spring-duration-property.js";
+import { getStaticMotionTransitionObjects } from "../../utils/get-static-motion-transition-objects.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
+import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -80,6 +84,16 @@ const DURATION_SEGMENT_PATTERN = /^([\d.]+)(m?s)$/;
 
 // First time token inside a `transition` / `animation` shorthand segment.
 const FIRST_TIME_TOKEN_PATTERN = /(?<![a-zA-Z\d])([\d.]+)(m?s)(?![a-zA-Z\d-])/;
+
+const isInfiniteMotionRepeat = (properties: ReadonlyArray<EsTreeNode>): boolean => {
+  const repeatProperty = getEffectiveStyleProperty(properties, "repeat");
+  if (!repeatProperty) return false;
+  return (
+    (isNodeOfType(repeatProperty.value, "Identifier") &&
+      repeatProperty.value.name === "Infinity") ||
+    (isNodeOfType(repeatProperty.value, "Literal") && repeatProperty.value.value === Infinity)
+  );
+};
 
 export const noLongTransitionDuration = defineRule({
   id: "no-long-transition-duration",
@@ -158,6 +172,26 @@ export const noLongTransitionDuration = defineRule({
             message: `Your users wait through a sluggish ${durationMs}ms transition, so keep UI transitions under ${LONG_TRANSITION_DURATION_THRESHOLD_MS}ms & save longer ones for big page-load animations.`,
           });
         }
+      }
+    },
+    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+      if (isHiddenFromScreenReader(node, context.settings)) return;
+      for (const transitionObject of getStaticMotionTransitionObjects(node, context.scopes)) {
+        if (isInfiniteMotionRepeat(transitionObject.properties)) continue;
+        if (getConflictingMotionSpringDurationProperty(transitionObject.properties)) continue;
+        const durationProperty = getEffectiveStyleProperty(transitionObject.properties, "duration");
+        if (!durationProperty) continue;
+        const durationSeconds = getStylePropertyNumberValue(durationProperty);
+        if (
+          durationSeconds === null ||
+          durationSeconds * 1000 <= LONG_TRANSITION_DURATION_THRESHOLD_MS
+        ) {
+          continue;
+        }
+        context.report({
+          node: durationProperty,
+          message: `This Motion transition lasts ${durationSeconds}s, which makes routine UI feedback feel delayed. Keep ordinary interface motion under ${LONG_TRANSITION_DURATION_THRESHOLD_MS / 1000}s.`,
+        });
       }
     },
   }),

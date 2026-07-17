@@ -19,6 +19,14 @@ describe("no-ease-in-motion", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags ease-in nested in a Motion animation target", () => {
+    const result = runRule(
+      noEaseInMotion,
+      `import { motion } from "motion/react"; const Example = () => <motion.div animate={{ x: 20, transition: { ease: "easeIn" } }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags the exact Tailwind ease-in utility", () => {
     const result = runRule(
       noEaseInMotion,

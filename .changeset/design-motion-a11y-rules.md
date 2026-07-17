@@ -4,10 +4,13 @@
 "react-doctor": patch
 ---
 
-Add design-quality lint rules distilled from a cross-resource design reference, spanning motion performance, accessibility, and Tailwind/JSX hygiene.
+Add deterministic design-quality lint rules spanning motion performance, accessibility, and Tailwind/JSX hygiene.
 
 **Motion**
 
+- **`no-conflicting-spring-options`** — proven Motion transition objects that combine physics spring controls (`stiffness`, `damping`, or `mass`) with duration controls (`duration` or `bounce`) that Motion ignores. Handles direct and nested transition objects while skipping dynamic and spread-overridden configurations.
+- **`prefer-motion-transform-property`** — opt-in guidance for compositor-critical Motion animations that use individual transform keys instead of one directly accelerated `transform` value. Scope resolution limits findings to actual Motion components.
+- **`pointer-capture-needs-cancel-handler`** — manual intrinsic-element drags that capture their pointer and define move/up handling without a pointer-cancel or lost-capture cleanup path. Requires a proven local `event.currentTarget.setPointerCapture(event.pointerId)` call and skips spreads, custom components, nested callbacks, and uncertain handlers.
 - **`no-unthrottled-scroll-mutation`** — direct animation-style writes or `Element.animate()` calls from an unthrottled native scroll listener. Read-only handlers, small class toggles, non-animation style changes, timer throttles, and unknown emitters remain valid.
 - **`no-unbounded-animation-frame-loop`** — opt-in detection for a self-rescheduling `requestAnimationFrame` callback with no stop gate and no retained request ID.
 - **`no-layout-property-animation`** (extended) — now inspects statically provable Web Animations API keyframes in addition to Motion props.
@@ -16,11 +19,13 @@ Add design-quality lint rules distilled from a cross-resource design reference, 
 - **`no-global-css-variable-animation`** (narrowed) — reports animated variables only on the document root or body, avoiding false positives for variables deliberately scoped to one element.
 - **`no-transition-all`** (extended) — now also flags the Tailwind `transition-all` class (was inline-`style`-only). Animating every property that changes includes expensive layout properties and instant ones like focus rings; name the properties (`transition-colors`, `transition-transform`).
 - **`no-tailwind-layout-transition`** — Tailwind arbitrary `transition-[width|height|top|left|right|bottom|margin|padding]`, which animates layout properties the browser recomputes every frame. Animate `transform`/`opacity` instead.
-- **`no-ease-in-motion`** — exact inline, Motion, and Tailwind `ease-in` timing that delays the visible response; preserves `ease-in-out` and dynamic timing values.
+- **`no-ease-in-motion`** — exact inline, Motion, and Tailwind `ease-in` timing that delays the visible response, including transition configuration nested inside static Motion animation targets; preserves `ease-in-out` and dynamic timing values.
+- **`no-long-transition-duration`** (extended) — now covers static Motion transition objects, including nested transition configuration, while preserving perpetual loops, decorative hidden motion, dynamic values, unproven components, and duration values ignored by physics-based springs.
 - **`no-scale-from-zero`** (extended) — now covers inline transform transitions and Tailwind scale transitions in addition to proven Motion components.
 
 **Accessibility**
 
+- **`no-static-motion-config-never`** — root application Motion policies that permanently opt out of the user's reduced-motion setting. Subtree policies, dynamic user preferences, aliases, development conditionals, spreads, and non-Motion components remain valid.
 - **`no-blocked-paste`** — password, username, and one-time-code inputs whose paste handler definitely prevents the event, while preserving conditional policies, custom controls, spread-owned handlers, and non-authentication confirmation fields.
 - **`no-autoplay-without-muted`** — `<video autoPlay>` / `<audio autoPlay>` missing `muted` (sound-on autoplay is hostile to users and browser-blocked). Skips dynamic `autoPlay`, spreads, and truthy/dynamic `muted`.
 - **`no-uninformative-aria-label`** — an `aria-label` whose value is a content-free element-type word (`"icon"`, `"button"`, `"image"`, `"link"`, …) that tells screen-reader users nothing about the action.

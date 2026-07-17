@@ -96,6 +96,7 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "no-broken-image-source",
   "no-placeholder-only-field",
   "no-skipped-heading-level",
+  "no-static-motion-config-never",
   "no-uninformative-aria-label",
   "dialog-has-accessible-name",
   "no-create-ref-in-function-component",

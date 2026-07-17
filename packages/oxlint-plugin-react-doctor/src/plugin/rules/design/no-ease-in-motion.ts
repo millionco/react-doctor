@@ -1,9 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
+import { getStaticMotionTransitionObjects } from "../../utils/get-static-motion-transition-objects.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isProvenFramerMotionJsxElement } from "../../utils/is-proven-framer-motion-jsx-element.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
@@ -43,30 +41,20 @@ export const noEaseInMotion = defineRule({
           }
         }
       }
-
-      if (
-        !isNodeOfType(node.name, "JSXIdentifier") ||
-        node.name.name !== "transition" ||
-        !isNodeOfType(node.parent, "JSXOpeningElement") ||
-        !Object.is(getAuthoritativeJsxAttribute(node.parent.attributes, "transition"), node) ||
-        !isProvenFramerMotionJsxElement(node.parent, context.scopes) ||
-        !node.value ||
-        !isNodeOfType(node.value, "JSXExpressionContainer") ||
-        !isNodeOfType(node.value.expression, "ObjectExpression")
-      ) {
-        return;
-      }
-      const easeProperty = getEffectiveStyleProperty(node.value.expression.properties, "ease");
-      const easeValue = easeProperty ? getStylePropertyStringValue(easeProperty) : null;
-      if (easeProperty && (easeValue === "easeIn" || easeValue === "ease-in")) {
-        context.report({
-          node: easeProperty,
-          message:
-            "Ease-in makes the first part of this UI motion feel unresponsive. Prefer ease-out for state changes users trigger.",
-        });
-      }
     },
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+      for (const transitionObject of getStaticMotionTransitionObjects(node, context.scopes)) {
+        const easeProperty = getEffectiveStyleProperty(transitionObject.properties, "ease");
+        const easeValue = easeProperty ? getStylePropertyStringValue(easeProperty) : null;
+        if (easeProperty && (easeValue === "easeIn" || easeValue === "ease-in")) {
+          context.report({
+            node: easeProperty,
+            message:
+              "Ease-in makes the first part of this UI motion feel unresponsive. Prefer ease-out for state changes users trigger.",
+          });
+        }
+      }
+
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
       if (!getClassNameTokens(classNameValue).includes("ease-in")) return;

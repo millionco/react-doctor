@@ -620,6 +620,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-common-root-font": {
     code: 'const Page = () => <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;',
   },
+  "no-conflicting-spring-options": {
+    code: 'import { motion } from "motion/react";\nconst Card = () => <motion.div transition={{ type: "spring", stiffness: 200, duration: 0.4 }} />;',
+  },
   "no-clipped-overlay": {
     code: 'const Menu = () => <div className="overflow-hidden"><div role="menu" className="absolute">Items</div></div>;',
   },
@@ -1109,6 +1112,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-static-element-interactions": {
     code: "export const A = ({ onClick }) => <div role={'wat'} onClick={onClick} />;",
   },
+  "no-static-motion-config-never": {
+    code: 'import { MotionConfig } from "motion/react";\nconst App = () => <MotionConfig reducedMotion="never"><main /></MotionConfig>;',
+    filePath: "src/App.tsx",
+  },
   "no-string-false-on-boolean-attribute": {
     code: 'const a = <input disabled="false" />;',
   },
@@ -1253,6 +1260,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "preact-prefer-oninput": {
     code: '\n      import { useState } from "preact/hooks";\n\n      const Search = () => {\n        const [query, setQuery] = useState("");\n        return <input type="text" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />;\n      };\n      ',
   },
+  "pointer-capture-needs-cancel-handler": {
+    code: "const Slider = () => <div onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)} onPointerMove={move} onPointerUp={finish} />;",
+  },
   "prefer-dvh-over-vh": {
     code: 'const Page = () => <main className="min-h-screen" />;',
   },
@@ -1278,6 +1288,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "prefer-module-scope-static-value": {
     code: '\n      function App() {\n        const FILTER_OPTIONS = ["all", "active", "done"];\n        return null;\n      }\n    ',
+  },
+  "prefer-motion-transform-property": {
+    code: 'import { motion } from "motion/react";\nconst Card = () => <motion.div animate={{ x: 100 }} />;',
   },
   "prefer-stable-empty-fallback": {
     code: '\n      import { memo } from "react";\n\n      const PostList = memo(({ posts }) => null);\n\n      function App(props) {\n        return <PostList posts={props.posts || []} />;\n      }\n    ',

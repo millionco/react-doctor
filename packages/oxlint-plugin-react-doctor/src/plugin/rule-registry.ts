@@ -184,6 +184,7 @@ import { noClippedOverlay } from "./rules/design/no-clipped-overlay.js";
 import { noCloneElement } from "./rules/react-builtins/no-clone-element.js";
 import { noCollapsedLiteralOrChainAsValue } from "./rules/correctness/no-collapsed-literal-or-chain-as-value.js";
 import { noCommonRootFont } from "./rules/design/no-common-root-font.js";
+import { noConflictingSpringOptions } from "./rules/performance/no-conflicting-spring-options.js";
 import { noControlledInputValueWithoutStateUpdate } from "./rules/correctness/no-controlled-input-value-without-state-update.js";
 import { noCrampedContainerPadding } from "./rules/design/no-cramped-container-padding.js";
 import { noCreateContextInRender } from "./rules/state-and-effects/no-create-context-in-render.js";
@@ -335,6 +336,7 @@ import { noSpreadAccumulatorInReduce } from "./rules/js-performance/no-spread-ac
 import { noSpreadPropsOverDefaultsClobbersWithUndefined } from "./rules/state-and-effects/no-spread-props-over-defaults-clobbers-with-undefined.js";
 import { noStaleTimerRef } from "./rules/state-and-effects/no-stale-timer-ref.js";
 import { noStaticElementInteractions } from "./rules/a11y/no-static-element-interactions.js";
+import { noStaticMotionConfigNever } from "./rules/a11y/no-static-motion-config-never.js";
 import { noStringFalseOnBooleanAttribute } from "./rules/react-builtins/no-string-false-on-boolean-attribute.js";
 import { noStringRefs } from "./rules/react-builtins/no-string-refs.js";
 import { noSvgCurrentcolorWithFillClass } from "./rules/design/no-svg-currentcolor-with-fill-class.js";
@@ -370,6 +372,7 @@ import { onlyExportComponents } from "./rules/react-builtins/only-export-compone
 import { packageMetadataSecret } from "./rules/security-scan/package-metadata-secret.js";
 import { pathTraversalRisk } from "./rules/security-scan/path-traversal-risk.js";
 import { pluginUpdateTrustRisk } from "./rules/security-scan/plugin-update-trust-risk.js";
+import { pointerCaptureNeedsCancelHandler } from "./rules/correctness/pointer-capture-needs-cancel-handler.js";
 import { postmessageOriginRisk } from "./rules/security-scan/postmessage-origin-risk.js";
 import { preactNoChildrenLength } from "./rules/preact/preact-no-children-length.js";
 import { preactNoReactHooksImport } from "./rules/preact/preact-no-react-hooks-import.js";
@@ -384,6 +387,7 @@ import { preferFunctionComponent } from "./rules/react-builtins/prefer-function-
 import { preferHtmlDialog } from "./rules/a11y/prefer-html-dialog.js";
 import { preferModuleScopePureFunction } from "./rules/architecture/prefer-module-scope-pure-function.js";
 import { preferModuleScopeStaticValue } from "./rules/architecture/prefer-module-scope-static-value.js";
+import { preferMotionTransformProperty } from "./rules/performance/prefer-motion-transform-property.js";
 import { preferStableEmptyFallback } from "./rules/performance/prefer-stable-empty-fallback.js";
 import { preferTagOverRole } from "./rules/a11y/prefer-tag-over-role.js";
 import { preferTruncateShorthand } from "./rules/design/prefer-truncate-shorthand.js";
@@ -2620,6 +2624,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-conflicting-spring-options",
+    id: "no-conflicting-spring-options",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noConflictingSpringOptions,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noConflictingSpringOptions.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-controlled-input-value-without-state-update",
     id: "no-controlled-input-value-without-state-update",
     source: "react-doctor",
@@ -4408,6 +4424,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-static-motion-config-never",
+    id: "no-static-motion-config-never",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noStaticMotionConfigNever,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noStaticMotionConfigNever.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-string-false-on-boolean-attribute",
     id: "no-string-false-on-boolean-attribute",
     source: "react-doctor",
@@ -4826,6 +4854,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/pointer-capture-needs-cancel-handler",
+    id: "pointer-capture-needs-cancel-handler",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...pointerCaptureNeedsCancelHandler,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/postmessage-origin-risk",
     id: "postmessage-origin-risk",
     source: "react-doctor",
@@ -4981,6 +5020,20 @@ export const reactDoctorRules = [
       ...preferModuleScopeStaticValue,
       framework: "global",
       category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/prefer-motion-transform-property",
+    id: "prefer-motion-transform-property",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferMotionTransformProperty,
+      framework: "global",
+      category: "Performance",
+      requires: [
+        ...new Set<Capability>(["react", ...(preferMotionTransformProperty.requires ?? [])]),
+      ],
     },
   },
   {

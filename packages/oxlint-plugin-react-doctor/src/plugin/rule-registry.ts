@@ -163,6 +163,7 @@ import { noAsyncEffectCallback } from "./rules/state-and-effects/no-async-effect
 import { noAsyncEventHandlerWithoutReentryGuard } from "./rules/state-and-effects/no-async-event-handler-without-reentry-guard.js";
 import { noAutofocus } from "./rules/a11y/no-autofocus.js";
 import { noBarrelImport } from "./rules/bundle-size/no-barrel-import.js";
+import { noBooleanToggleWithoutFunctionalUpdate } from "./rules/state-and-effects/no-boolean-toggle-without-functional-update.js";
 import { noCallComponentAsFunction } from "./rules/react-builtins/no-call-component-as-function.js";
 import { noCascadingSetState } from "./rules/state-and-effects/no-cascading-set-state.js";
 import { noChainStateUpdates } from "./rules/state-and-effects/no-chain-state-updates.js";
@@ -234,6 +235,7 @@ import { noMirrorPropEffect } from "./rules/state-and-effects/no-mirror-prop-eff
 import { noMoment } from "./rules/bundle-size/no-moment.js";
 import { noMultiComp } from "./rules/react-builtins/no-multi-comp.js";
 import { noMutableInDeps } from "./rules/state-and-effects/no-mutable-in-deps.js";
+import { noMutateThenSetOrReturnSameReference } from "./rules/state-and-effects/no-mutate-then-set-or-return-same-reference.js";
 import { noMutatingReducerState } from "./rules/state-and-effects/no-mutating-reducer-state.js";
 import { noNamespace } from "./rules/react-builtins/no-namespace.js";
 import { noNestedComponentDefinition } from "./rules/architecture/no-nested-component-definition.js";
@@ -268,8 +270,10 @@ import { noSelfUpdatingEffect } from "./rules/state-and-effects/no-self-updating
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
 import { noSetStateAfterAwaitInEffect } from "./rules/state-and-effects/no-set-state-after-await-in-effect.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
+import { noSideEffectInStateUpdaterFunction } from "./rules/state-and-effects/no-side-effect-in-state-updater-function.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
 import { noSpreadAccumulatorInReduce } from "./rules/js-performance/no-spread-accumulator-in-reduce.js";
+import { noSpreadPropsOverDefaultsClobbersWithUndefined } from "./rules/state-and-effects/no-spread-props-over-defaults-clobbers-with-undefined.js";
 import { noStaleTimerRef } from "./rules/state-and-effects/no-stale-timer-ref.js";
 import { noStaticElementInteractions } from "./rules/a11y/no-static-element-interactions.js";
 import { noStringFalseOnBooleanAttribute } from "./rules/react-builtins/no-string-false-on-boolean-attribute.js";
@@ -286,6 +290,7 @@ import { noUnknownProperty } from "./rules/react-builtins/no-unknown-property.js
 import { noUnsafe } from "./rules/react-builtins/no-unsafe.js";
 import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-nested-components.js";
 import { noUsememoSimpleExpression } from "./rules/performance/no-usememo-simple-expression.js";
+import { noWholeObjectDepWithMemberReads } from "./rules/state-and-effects/no-whole-object-dep-with-member-reads.js";
 import { noWideLetterSpacing } from "./rules/design/no-wide-letter-spacing.js";
 import { noWillUpdateSetState } from "./rules/react-builtins/no-will-update-set-state.js";
 import { noZIndex9999 } from "./rules/design/no-z-index9999.js";
@@ -2283,6 +2288,23 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-boolean-toggle-without-functional-update",
+    id: "no-boolean-toggle-without-functional-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noBooleanToggleWithoutFunctionalUpdate,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          ...(noBooleanToggleWithoutFunctionalUpdate.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-call-component-as-function",
     id: "no-call-component-as-function",
     source: "react-doctor",
@@ -3138,6 +3160,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-mutate-then-set-or-return-same-reference",
+    id: "no-mutate-then-set-or-return-same-reference",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noMutateThenSetOrReturnSameReference,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(noMutateThenSetOrReturnSameReference.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-mutating-reducer-state",
     id: "no-mutating-reducer-state",
     source: "react-doctor",
@@ -3552,6 +3588,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-side-effect-in-state-updater-function",
+    id: "no-side-effect-in-state-updater-function",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSideEffectInStateUpdaterFunction,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(noSideEffectInStateUpdaterFunction.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-side-tab-border",
     id: "no-side-tab-border",
     source: "react-doctor",
@@ -3571,6 +3621,23 @@ export const reactDoctorRules = [
       ...noSpreadAccumulatorInReduce,
       framework: "global",
       category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/no-spread-props-over-defaults-clobbers-with-undefined",
+    id: "no-spread-props-over-defaults-clobbers-with-undefined",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSpreadPropsOverDefaultsClobbersWithUndefined,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          ...(noSpreadPropsOverDefaultsClobbersWithUndefined.requires ?? []),
+        ]),
+      ],
     },
   },
   {
@@ -3768,6 +3835,20 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set<Capability>(["react", ...(noUsememoSimpleExpression.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-whole-object-dep-with-member-reads",
+    id: "no-whole-object-dep-with-member-reads",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noWholeObjectDepWithMemberReads,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(noWholeObjectDepWithMemberReads.requires ?? [])]),
+      ],
     },
   },
   {

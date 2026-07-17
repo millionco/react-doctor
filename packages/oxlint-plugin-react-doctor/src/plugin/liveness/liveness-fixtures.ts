@@ -555,6 +555,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-async-event-handler-without-reentry-guard": {
     code: 'import { useState } from "react"; const Form = () => { const [, setDone] = useState(false); return <form onSubmit={async () => { await fetch("/api/reset", { method: "PATCH" }); setDone(true); }} />; };',
   },
+  "no-boolean-toggle-without-functional-update": {
+    code: "const Poller=()=>{const[on,setOn]=useState(false);setTimeout(()=>setOn(!on),500)};",
+  },
   "no-autofocus": {
     code: "export const SearchPage = () => (\n        <main>\n          <input autoFocus />\n        </main>\n      );",
   },
@@ -786,6 +789,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-mutating-reducer-state": {
     code: '\n      import { useReducer } from "react";\n\n      function reducer(state, action) {\n        state.age = state.age + 1;\n        return state;\n      }\n\n      useReducer(reducer, { age: 0 });\n    ',
   },
+  "no-mutate-then-set-or-return-same-reference": {
+    code: "const Table=()=>{const[rows,setRows]=useState([]);rows.sort();setRows(rows)};",
+  },
   "no-namespace": {
     code: "<ns:testcomponent />",
     forceJsx: true,
@@ -901,6 +907,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-set-state-after-await-in-effect": {
     code: 'import { useEffect, useState } from "react"; const C = ({ id }) => { const [, setUser] = useState(); useEffect(() => { const run = async () => { const user = await load(id); setUser(user); }; run(); }, [id]); };',
   },
+  "no-side-effect-in-state-updater-function": {
+    code: "const Counter=({onChange})=>{const[,setCount]=useState(0);setCount(previous=>{onChange(previous);return previous+1})};",
+  },
   "no-set-state-in-render": {
     code: 'import { useState } from "react";\nexport function C() {\n  const [count, setCount] = useState(0);\n  setCount(1);\n  return null;\n}',
   },
@@ -909,6 +918,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-spread-accumulator-in-reduce": {
     code: "const out = items.reduce((acc, item) => [...acc, item], []);",
+  },
+  "no-spread-props-over-defaults-clobbers-with-undefined": {
+    code: "interface Props{width?:number} const defaults={width:100};const Panel=(props:Props)=>{const merged={...defaults,...props};return merged.width*2};",
   },
   "no-stale-timer-ref": {
     code: 'import { useRef } from "react";\nexport const useDelayedCallback = (callback) => {\n  const timerRef = useRef(null);\n  const schedule = () => {\n    if (timerRef.current) return;\n    timerRef.current = setTimeout(callback, 100);\n  };\n  const cancel = () => {\n    clearTimeout(timerRef.current);\n  };\n  return { schedule, cancel };\n};',
@@ -968,6 +980,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-usememo-simple-expression": {
     code: "function C({ x }) { const v = useMemo(() => x + 1, [x]); return <p>{v}</p>; }",
+  },
+  "no-whole-object-dep-with-member-reads": {
+    code: 'import { useMemo } from "react";function FullName(props){return useMemo(()=>props.first,[props])}',
   },
   "no-wide-letter-spacing": {
     code: "\n      const Body = () => (\n        <p style={{ letterSpacing: 2 }}>Some long paragraph of body copy.</p>\n      );\n    ",

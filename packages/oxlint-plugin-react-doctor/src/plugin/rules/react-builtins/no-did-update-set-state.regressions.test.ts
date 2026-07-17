@@ -62,7 +62,7 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("stays silent on a snapshot-driven guard (getSnapshotBeforeUpdate)", () => {
+  it("still flags a truthy snapshot guard without a comparison", () => {
     const result = runRule(
       noDidUpdateSetState,
       `
@@ -77,7 +77,7 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
       `,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays silent on a diff of locals destructured from prevState/this.state", () => {
@@ -367,5 +367,279 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on the react-datepicker callback-ref convergence guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (
+            this.props.showTimeSelect &&
+            this.state.monthContainer !== this.monthContainer
+          ) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return (
+            <div ref={(div) => {
+              this.monthContainer = div ?? undefined;
+            }} />
+          );
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the callback-ref comparison operands are reversed", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.monthContainer !== this.state.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => (this.monthContainer = node)} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a named callback-ref convergence guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        setMonthContainer = (node) => {
+          this.monthContainer = node ?? undefined;
+        };
+
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={this.setMonthContainer} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a conditional named callback-ref convergence guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        setMonthContainer(node) {
+          this.monthContainer = node;
+        }
+
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={this.props.enabled ? this.setMonthContainer : null} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a second convergence branch clears the ref state", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.props.enabled && this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+          if (!this.props.enabled && this.state.monthContainer) {
+            this.setState({ monthContainer: undefined });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => (this.monthContainer = node ?? undefined)} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an ordinary class field without callback-ref provenance", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          this.monthContainer = getMutableValue();
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a callback-ref guard that assigns a different expression", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.otherContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => (this.monthContainer = node)} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a callback-ref guard that assigns a different state field", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ otherContainer: this.monthContainer });
+          }
+        }
+
+        render() {
+          return <div ref={(node) => (this.monthContainer = node)} />;
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a truthy prevProps guard without a comparison", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Counter extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (prevProps.enabled) {
+            this.setState({ count: this.state.count + 1 });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a negated state guard that writes undefined", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (!this.state.monthContainer) {
+            this.setState({ monthContainer: undefined });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects transformed and shadowed named callback-ref values", () => {
+    const transformed = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        setMonthContainer = (node) => {
+          this.monthContainer = normalize(node);
+        };
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+        render() {
+          return <div ref={this.setMonthContainer} />;
+        }
+      }
+      `,
+    );
+    const shadowed = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        setMonthContainer = (node) => {
+          {
+            const node = getFallback();
+            this.monthContainer = node;
+          }
+        };
+        componentDidUpdate() {
+          if (this.state.monthContainer !== this.monthContainer) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+        render() {
+          return <div ref={this.setMonthContainer} />;
+        }
+      }
+      `,
+    );
+
+    expect(transformed.parseErrors).toEqual([]);
+    expect(transformed.diagnostics).toHaveLength(1);
+    expect(shadowed.parseErrors).toEqual([]);
+    expect(shadowed.diagnostics).toHaveLength(1);
   });
 });

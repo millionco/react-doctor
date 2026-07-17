@@ -1,6 +1,7 @@
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -15,12 +16,14 @@ const LIFECYCLE_NAMES = new Set(["componentDidUpdate"]);
 const MESSAGE =
   "Calling setState in componentDidUpdate can trigger another update immediately, loop forever, and freeze the component.";
 
-const EQUALITY_OPERATORS = new Set(["==", "===", "!=", "!=="]);
+const DIFFERENCE_OPERATORS = new Set(["!=", "!=="]);
 const FUNCTION_NODE_TYPES = new Set<string>([
   "FunctionDeclaration",
   "FunctionExpression",
   "ArrowFunctionExpression",
 ]);
+const CLASS_NODE_TYPES = new Set<string>(["ClassDeclaration", "ClassExpression"]);
+const callbackRefFieldNamesByClass = new WeakMap<EsTreeNode, ReadonlySet<string>>();
 
 const isLifecycleMethodFunction = (node: EsTreeNode): boolean => {
   if (!FUNCTION_NODE_TYPES.has(node.type)) return false;
@@ -105,18 +108,170 @@ const collectDiffSourceLocalNames = (
   return derivedNames;
 };
 
-const isStatefulOperand = (
-  node: EsTreeNode,
-  paramNames: ReadonlySet<string>,
-  derivedNames: ReadonlySet<string>,
-): boolean =>
-  referencesAnyName(node, paramNames) ||
-  referencesAnyName(node, derivedNames) ||
-  containsThisStateOrProps(node);
-
 const getStaticMemberName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "MemberExpression") || node.computed === true) return null;
   return isNodeOfType(node.property, "Identifier") ? node.property.name : null;
+};
+
+const getThisFieldName = (node: EsTreeNode): string | null => {
+  const unwrappedNode = stripParenExpression(node);
+  if (
+    !isNodeOfType(unwrappedNode, "MemberExpression") ||
+    !isNodeOfType(stripParenExpression(unwrappedNode.object as EsTreeNode), "ThisExpression")
+  ) {
+    return null;
+  }
+  return getStaticMemberName(unwrappedNode);
+};
+
+const findEnclosingClass = (node: EsTreeNode): EsTreeNode | null => {
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor) {
+    if (CLASS_NODE_TYPES.has(ancestor.type)) return ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return null;
+};
+
+const isUndefinedIdentifier = (node: EsTreeNode): boolean => {
+  const unwrappedNode = stripParenExpression(node);
+  return isNodeOfType(unwrappedNode, "Identifier") && unwrappedNode.name === "undefined";
+};
+
+const isDirectRefParameterValue = (
+  node: EsTreeNode,
+  parameterSymbolId: number,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const unwrappedNode = stripParenExpression(node);
+  if (isNodeOfType(unwrappedNode, "Identifier")) {
+    return scopes.symbolFor(unwrappedNode)?.id === parameterSymbolId;
+  }
+  if (!isNodeOfType(unwrappedNode, "LogicalExpression") || unwrappedNode.operator !== "??") {
+    return false;
+  }
+  const left = stripParenExpression(unwrappedNode.left as EsTreeNode);
+  return (
+    isNodeOfType(left, "Identifier") &&
+    scopes.symbolFor(left)?.id === parameterSymbolId &&
+    isUndefinedIdentifier(unwrappedNode.right as EsTreeNode)
+  );
+};
+
+const getCallbackRefAssignedField = (
+  callback: EsTreeNode,
+  scopes: ScopeAnalysis,
+): string | null => {
+  const parameters = (callback as { params?: EsTreeNode[] }).params ?? [];
+  const firstParameter = parameters[0];
+  if (!firstParameter || !isNodeOfType(firstParameter, "Identifier")) return null;
+  const parameterSymbolId = scopes.symbolFor(firstParameter)?.id;
+  if (parameterSymbolId === undefined) return null;
+  const body = (callback as { body?: EsTreeNode }).body;
+  if (!body) return null;
+  let assignedFieldName: string | null = null;
+  walkAst(body, (node) => {
+    if (node !== body && (FUNCTION_NODE_TYPES.has(node.type) || CLASS_NODE_TYPES.has(node.type))) {
+      return false;
+    }
+    if (
+      !isNodeOfType(node, "AssignmentExpression") ||
+      node.operator !== "=" ||
+      !isDirectRefParameterValue(node.right as EsTreeNode, parameterSymbolId, scopes)
+    ) {
+      return;
+    }
+    const fieldName = getThisFieldName(node.left as EsTreeNode);
+    if (fieldName) assignedFieldName = fieldName;
+  });
+  return assignedFieldName;
+};
+
+const getClassMemberCallback = (classNode: EsTreeNode, memberName: string): EsTreeNode | null => {
+  const classBody = (classNode as { body?: { body?: EsTreeNode[] } }).body?.body ?? [];
+  for (const member of classBody) {
+    if (!isNodeOfType(member, "MethodDefinition") && !isNodeOfType(member, "PropertyDefinition")) {
+      continue;
+    }
+    const key = member.key as EsTreeNode;
+    const keyName =
+      (isNodeOfType(key, "Identifier") && key.name) ||
+      (isNodeOfType(key, "Literal") && typeof key.value === "string" && key.value) ||
+      null;
+    if (keyName !== memberName) continue;
+    const value = member.value as EsTreeNode | null | undefined;
+    return value && FUNCTION_NODE_TYPES.has(value.type) ? value : null;
+  }
+  return null;
+};
+
+const collectCallbackRefFieldsFromExpression = (
+  expression: EsTreeNode,
+  classNode: EsTreeNode,
+  fieldNames: Set<string>,
+  scopes: ScopeAnalysis,
+): void => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (FUNCTION_NODE_TYPES.has(unwrappedExpression.type)) {
+    const fieldName = getCallbackRefAssignedField(unwrappedExpression, scopes);
+    if (fieldName) fieldNames.add(fieldName);
+    return;
+  }
+  const handlerName = getThisFieldName(unwrappedExpression);
+  if (handlerName) {
+    const callback = getClassMemberCallback(classNode, handlerName);
+    const fieldName = callback && getCallbackRefAssignedField(callback, scopes);
+    if (fieldName) fieldNames.add(fieldName);
+    return;
+  }
+  if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
+    collectCallbackRefFieldsFromExpression(
+      unwrappedExpression.consequent as EsTreeNode,
+      classNode,
+      fieldNames,
+      scopes,
+    );
+    collectCallbackRefFieldsFromExpression(
+      unwrappedExpression.alternate as EsTreeNode,
+      classNode,
+      fieldNames,
+      scopes,
+    );
+  }
+};
+
+const getCallbackRefFieldNames = (
+  classNode: EsTreeNode | null,
+  scopes: ScopeAnalysis,
+): ReadonlySet<string> => {
+  if (!classNode) return new Set();
+  const cachedFieldNames = callbackRefFieldNamesByClass.get(classNode);
+  if (cachedFieldNames) return cachedFieldNames;
+  const fieldNames = new Set<string>();
+  const classBody = (classNode as { body?: EsTreeNode }).body;
+  if (classBody) {
+    walkAst(classBody, (node) => {
+      if (node !== classBody && CLASS_NODE_TYPES.has(node.type)) return false;
+      if (
+        !isNodeOfType(node, "JSXAttribute") ||
+        !isNodeOfType(node.name, "JSXIdentifier") ||
+        node.name.name !== "ref" ||
+        !node.value ||
+        !isNodeOfType(node.value, "JSXExpressionContainer") ||
+        !node.value.expression
+      ) {
+        return;
+      }
+      collectCallbackRefFieldsFromExpression(
+        node.value.expression as EsTreeNode,
+        classNode,
+        fieldNames,
+        scopes,
+      );
+    });
+  }
+  callbackRefFieldNamesByClass.set(classNode, fieldNames);
+  return fieldNames;
 };
 
 const getThisStateFieldName = (node: EsTreeNode): string | null => {
@@ -153,9 +308,12 @@ const collectLocalInitializers = (lifecycleFunction: EsTreeNode): Map<string, Es
 const derivesFromPostMountValue = (
   node: EsTreeNode,
   localInitializers: ReadonlyMap<string, EsTreeNode>,
+  callbackRefFieldNames: ReadonlySet<string>,
   visitedNames: ReadonlySet<string> = new Set(),
 ): boolean => {
   if (readsPostMountValue(node)) return true;
+  const fieldName = getThisFieldName(node);
+  if (fieldName && callbackRefFieldNames.has(fieldName)) return true;
   const referencedNames = new Set<string>();
   collectReferenceIdentifierNames(node, referencedNames);
   for (const referencedName of referencedNames) {
@@ -163,7 +321,16 @@ const derivesFromPostMountValue = (
     const initializer = localInitializers.get(referencedName);
     if (!initializer) continue;
     const nextVisitedNames = new Set([...visitedNames, referencedName]);
-    if (derivesFromPostMountValue(initializer, localInitializers, nextVisitedNames)) return true;
+    if (
+      derivesFromPostMountValue(
+        initializer,
+        localInitializers,
+        callbackRefFieldNames,
+        nextVisitedNames,
+      )
+    ) {
+      return true;
+    }
   }
   return false;
 };
@@ -189,11 +356,14 @@ const isConvergentPostMountGuard = (
   test: EsTreeNode,
   setStateCall: EsTreeNode,
   localInitializers: ReadonlyMap<string, EsTreeNode>,
+  callbackRefFieldNames: ReadonlySet<string>,
 ): boolean => {
   let qualifies = false;
   walkAst(test, (node) => {
     if (qualifies) return false;
-    if (!isNodeOfType(node, "BinaryExpression") || !EQUALITY_OPERATORS.has(node.operator)) return;
+    if (!isNodeOfType(node, "BinaryExpression") || !DIFFERENCE_OPERATORS.has(node.operator)) {
+      return;
+    }
     const leftFieldName = getThisStateFieldName(node.left as EsTreeNode);
     const rightFieldName = getThisStateFieldName(node.right as EsTreeNode);
     const fieldName = leftFieldName ?? rightFieldName;
@@ -201,31 +371,67 @@ const isConvergentPostMountGuard = (
     if (!fieldName || (!leftFieldName && !rightFieldName)) return;
     const assignedValue = getSetStateFieldValue(setStateCall, fieldName);
     if (!assignedValue || !areExpressionsStructurallyEqual(comparedValue, assignedValue)) return;
-    if (!derivesFromPostMountValue(comparedValue, localInitializers)) return;
+    if (
+      !isUndefinedIdentifier(comparedValue) &&
+      !derivesFromPostMountValue(comparedValue, localInitializers, callbackRefFieldNames)
+    ) {
+      return;
+    }
     qualifies = true;
     return false;
   });
   return qualifies;
 };
 
-// The doc's sanctioned escape hatch: `if (prevProps.x !== this.props.x)` and
-// equivalents (`snapshot.shouldUpdate`, `wasOpen !== isOpen` via locals
-// destructured from prevState/this.state, `newState !== this.state`).
+const containsPositiveStateFieldTest = (test: EsTreeNode, fieldName: string): boolean => {
+  const unwrappedTest = stripParenExpression(test);
+  if (getThisStateFieldName(unwrappedTest) === fieldName) return true;
+  return (
+    isNodeOfType(unwrappedTest, "LogicalExpression") &&
+    unwrappedTest.operator === "&&" &&
+    (containsPositiveStateFieldTest(unwrappedTest.left as EsTreeNode, fieldName) ||
+      containsPositiveStateFieldTest(unwrappedTest.right as EsTreeNode, fieldName))
+  );
+};
+
+const isConvergentUndefinedClearGuard = (test: EsTreeNode, setStateCall: EsTreeNode): boolean => {
+  if (!isNodeOfType(setStateCall, "CallExpression")) return false;
+  const argument = setStateCall.arguments?.[0];
+  if (!argument || !isNodeOfType(argument, "ObjectExpression")) return false;
+  for (const property of argument.properties ?? []) {
+    if (
+      !isNodeOfType(property, "Property") ||
+      property.computed === true ||
+      !isUndefinedIdentifier(property.value as EsTreeNode)
+    ) {
+      continue;
+    }
+    const fieldName =
+      (isNodeOfType(property.key, "Identifier") && property.key.name) ||
+      (isNodeOfType(property.key, "Literal") &&
+        typeof property.key.value === "string" &&
+        property.key.value) ||
+      null;
+    if (fieldName && containsPositiveStateFieldTest(test, fieldName)) return true;
+  }
+  return false;
+};
+
 const isDiffGuardTest = (
   test: EsTreeNode,
   paramNames: ReadonlySet<string>,
   derivedNames: ReadonlySet<string>,
 ): boolean => {
-  if (referencesAnyName(test, paramNames)) return true;
   let qualifies = false;
   walkAst(test, (node) => {
     if (qualifies) return false;
     if (!isNodeOfType(node, "BinaryExpression")) return;
-    if (!EQUALITY_OPERATORS.has(node.operator)) return;
+    if (!DIFFERENCE_OPERATORS.has(node.operator)) return;
     if (
-      isStatefulOperand(node.left, paramNames, derivedNames) &&
-      isStatefulOperand(node.right, paramNames, derivedNames) &&
-      (referencesAnyName(node.left, derivedNames) || referencesAnyName(node.right, derivedNames))
+      referencesAnyName(node.left, paramNames) ||
+      referencesAnyName(node.right, paramNames) ||
+      referencesAnyName(node.left, derivedNames) ||
+      referencesAnyName(node.right, derivedNames)
     ) {
       qualifies = true;
       return false;
@@ -234,7 +440,7 @@ const isDiffGuardTest = (
   return qualifies;
 };
 
-const isInsideDiffGuard = (setStateCall: EsTreeNode): boolean => {
+const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const lifecycleFunction = findEnclosingLifecycleFunction(setStateCall);
   if (!lifecycleFunction) return false;
   const paramNames = new Set<string>();
@@ -243,6 +449,10 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode): boolean => {
   }
   const derivedNames = collectDiffSourceLocalNames(lifecycleFunction, paramNames);
   const localInitializers = collectLocalInitializers(lifecycleFunction);
+  const callbackRefFieldNames = getCallbackRefFieldNames(
+    findEnclosingClass(lifecycleFunction),
+    scopes,
+  );
 
   let child: EsTreeNode = setStateCall;
   let ancestor: EsTreeNode | null | undefined = setStateCall.parent;
@@ -260,7 +470,13 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode): boolean => {
     if (
       guardTest &&
       (isDiffGuardTest(guardTest, paramNames, derivedNames) ||
-        isConvergentPostMountGuard(guardTest, setStateCall, localInitializers))
+        isConvergentPostMountGuard(
+          guardTest,
+          setStateCall,
+          localInitializers,
+          callbackRefFieldNames,
+        ) ||
+        isConvergentUndefinedClearGuard(guardTest, setStateCall))
     ) {
       return true;
     }
@@ -310,7 +526,7 @@ export const noDidUpdateSetState = defineRule({
           disallowInNestedFunctions: mode === "disallow-in-func",
         });
         if (!shouldFlag) return;
-        if (isInsideDiffGuard(node)) return;
+        if (isInsideDiffGuard(node, context.scopes)) return;
         context.report({ node: node.callee, message: MESSAGE });
       },
     };

@@ -3,6 +3,8 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { FETCH_TIMEOUT_MS, SCORE_API_URL } from "./constants.js";
 import type { Diagnostic, ProjectInfo, ScoreResult } from "./types/index.js";
+import { redactSensitiveText } from "./utils/redact-sensitive-text.js";
+import { scrubSensitivePaths } from "./utils/scrub-sensitive-paths.js";
 
 // Score API response shape, including the optional per-rule `priority`/`tier`
 // payload. `Schema.Struct` ignores unknown fields, so extra keys (e.g.
@@ -24,15 +26,13 @@ const ScoreApiResponseSchema = Schema.Struct({
 const parseScoreResult = (value: unknown): ScoreResult | null =>
   Option.getOrNull(Schema.decodeUnknownOption(ScoreApiResponseSchema)(value));
 
-// `filePath` never leaves the machine, and `fileContext` / `fixGroupId` are
-// derived from it — none of them ride the Score API payload, which keeps the
-// request shape identical to what the server has always received.
-const stripLocalFileFields = (
+const sanitizeScoreDiagnostics = (
   diagnostics: Diagnostic[],
-): Omit<Diagnostic, "filePath" | "fileContext" | "fixGroupId">[] =>
-  diagnostics.map(
-    ({ filePath: _filePath, fileContext: _fileContext, fixGroupId: _fixGroupId, ...rest }) => rest,
-  );
+): Omit<Diagnostic, "fileContext" | "fixGroupId">[] =>
+  diagnostics.map(({ filePath, fileContext: _fileContext, fixGroupId: _fixGroupId, ...rest }) => ({
+    ...rest,
+    filePath: redactSensitiveText(scrubSensitivePaths(filePath)),
+  }));
 
 const isAbortError = (error: unknown): boolean =>
   error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
@@ -73,7 +73,7 @@ export const calculateScore = async (
 
   try {
     const requestBody = JSON.stringify({
-      diagnostics: stripLocalFileFields(diagnostics),
+      diagnostics: sanitizeScoreDiagnostics(diagnostics),
       ...(options.metadata?.repo ? { repo: options.metadata.repo } : {}),
       ...(options.metadata?.sha ? { sha: options.metadata.sha } : {}),
       ...(options.metadata?.framework ? { framework: options.metadata.framework } : {}),

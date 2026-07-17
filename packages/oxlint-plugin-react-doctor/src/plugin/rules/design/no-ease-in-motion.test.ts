@@ -14,7 +14,7 @@ describe("no-ease-in-motion", () => {
   it("flags Motion easeIn configuration", () => {
     const result = runRule(
       noEaseInMotion,
-      `const Example = () => <motion.div transition={{ ease: "easeIn" }} />;`,
+      `import { motion } from "framer-motion"; const Example = () => <motion.div transition={{ ease: "easeIn" }} />;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -38,7 +38,23 @@ describe("no-ease-in-motion", () => {
   it("does not flag ease-out", () => {
     const result = runRule(
       noEaseInMotion,
-      `const Example = () => <motion.div transition={{ ease: "easeOut" }} />;`,
+      `import { motion } from "framer-motion"; const Example = () => <motion.div transition={{ ease: "easeOut" }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a custom transition prop as Motion configuration", () => {
+    const result = runRule(
+      noEaseInMotion,
+      `const Example = () => <Carousel transition={{ ease: "easeIn" }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not report a Motion transition overridden by a later spread", () => {
+    const result = runRule(
+      noEaseInMotion,
+      `import { motion } from "framer-motion"; const Example = ({ props }) => <motion.div transition={{ ease: "easeIn" }} {...props} />;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

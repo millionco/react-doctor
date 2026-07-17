@@ -1,10 +1,16 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 
-const HOVER_IMAGE_TRANSFORM_PATTERN = /^(?:group-)?hover:(?:scale-|rotate-)/;
+const HOVER_VARIANT_PATTERN = /(?:^|:)(?:(?:group|peer)-)?hover(?:\/[^:]+)?(?=:)/;
+const IMAGE_TRANSFORM_PATTERN = /^(?:scale|rotate)-/;
+
+const isHoverImageTransform = (token: string): boolean =>
+  HOVER_VARIANT_PATTERN.test(token) &&
+  getClassNameTokens(token).some((utility) => IMAGE_TRANSFORM_PATTERN.test(utility));
 
 export const noImageHoverTransform = defineRule({
   id: "no-image-hover-transform",
@@ -19,9 +25,7 @@ export const noImageHoverTransform = defineRule({
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "img") return;
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
-      const hoverTransform = classNameValue
-        .split(/\s+/)
-        .find((token) => HOVER_IMAGE_TRANSFORM_PATTERN.test(token));
+      const hoverTransform = classNameValue.split(/\s+/).find(isHoverImageTransform);
       if (!hoverTransform) return;
       context.report({
         node,

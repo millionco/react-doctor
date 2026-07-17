@@ -1,8 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenFramerMotionJsxElement } from "../../utils/is-proven-framer-motion-jsx-element.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
@@ -56,6 +58,9 @@ export const noEaseInMotion = defineRule({
       if (
         !isNodeOfType(node.name, "JSXIdentifier") ||
         node.name.name !== "transition" ||
+        !isNodeOfType(node.parent, "JSXOpeningElement") ||
+        !Object.is(getAuthoritativeJsxAttribute(node.parent.attributes, "transition"), node) ||
+        !isProvenFramerMotionJsxElement(node.parent, context.scopes) ||
         !node.value ||
         !isNodeOfType(node.value, "JSXExpressionContainer") ||
         !isNodeOfType(node.value.expression, "ObjectExpression")

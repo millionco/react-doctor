@@ -69,6 +69,40 @@ describe("no-cramped-container-padding", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("recognizes physical, logical, and axis padding utilities", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <>
+        <span className="border px-1">Horizontal</span>
+        <span className="border py-1">Vertical</span>
+        <span className="border pt-1">Top</span>
+        <span className="border pr-1">Right</span>
+        <span className="border pb-1">Bottom</span>
+        <span className="border pl-1">Left</span>
+        <span className="border ps-1">Start</span>
+        <span className="border pe-[0.25rem]">End</span>
+        <span className="border p-px">One pixel</span>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(9);
+  });
+
+  it("uses the smallest declared base padding regardless of token order", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <><span className="border p-4 px-1">First</span><span className="border px-1 p-4">Second</span></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not retain a shorthand value overridden on every axis", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Example = () => <span className="border p-1 px-4 py-4">Roomy</span>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("ignores zero-width inline boundaries", () => {
     const result = runRule(
       noCrampedContainerPadding,

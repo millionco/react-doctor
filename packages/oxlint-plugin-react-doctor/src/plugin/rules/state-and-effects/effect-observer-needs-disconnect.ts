@@ -55,13 +55,13 @@ const recordObserverUsage = (
     return;
   }
   if (isNodeOfType(parent, "MemberExpression") && parent.object === referenceRoot) {
-    if (parent.computed) {
+    const accessedMethodName = getStaticPropertyName(parent);
+    if (parent.computed && accessedMethodName === null) {
       tracked.didEscape = true;
       return;
     }
     const methodCall = parent.parent;
     if (!isNodeOfType(methodCall, "CallExpression") || methodCall.callee !== parent) return;
-    const accessedMethodName = getStaticPropertyName(parent);
     if (accessedMethodName === "observe") {
       tracked.didObserve = true;
       tracked.didReleaseAll = false;

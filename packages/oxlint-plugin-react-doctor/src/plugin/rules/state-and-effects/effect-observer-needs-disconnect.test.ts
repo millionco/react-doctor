@@ -460,7 +460,7 @@ describe("effect-observer-needs-disconnect", () => {
   });
 
   it("tracks static computed observer lifecycle methods", () => {
-    const result = runRule(
+    const released = runRule(
       effectObserverNeedsDisconnect,
       `useEffect(() => {
          const observer = new ResizeObserver(() => {});
@@ -468,6 +468,33 @@ describe("effect-observer-needs-disconnect", () => {
          return () => observer[\`disconnect\`]();
        }, [element]);`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    const leaked = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => {});
+         observer["observe"](element);
+       }, [element]);`,
+    );
+    const partialRelease = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => {});
+         observer["observe"](first);
+         observer[\`observe\`](second);
+         return () => observer["unobserve"](first);
+       }, [first, second]);`,
+    );
+    const wrongRelease = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => {});
+         observer["observe"](first);
+         return () => observer[\`unobserve\`](second);
+       }, [first, second]);`,
+    );
+    expect(released.diagnostics).toHaveLength(0);
+    expect(leaked.diagnostics).toHaveLength(1);
+    expect(partialRelease.diagnostics).toHaveLength(1);
+    expect(wrongRelease.diagnostics).toHaveLength(1);
   });
 });

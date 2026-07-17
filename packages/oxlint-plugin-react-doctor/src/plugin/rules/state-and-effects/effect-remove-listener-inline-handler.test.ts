@@ -162,10 +162,20 @@ describe("effect-remove-listener-inline-handler", () => {
   });
 
   it("flags a fresh bind reached through a static computed member", () => {
-    const result = runRule(
+    const freshBind = runRule(
       effectRemoveListenerInlineHandler,
       `window.removeEventListener("resize", handleResize["bind"](this));`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    const matchingReference = runRule(
+      effectRemoveListenerInlineHandler,
+      `window.removeEventListener("resize", handleResize);`,
+    );
+    const wrongMethod = runRule(
+      effectRemoveListenerInlineHandler,
+      `window.removeEventListener("resize", handleResize["call"](this));`,
+    );
+    expect(freshBind.diagnostics).toHaveLength(1);
+    expect(matchingReference.diagnostics).toHaveLength(0);
+    expect(wrongMethod.diagnostics).toHaveLength(0);
   });
 });

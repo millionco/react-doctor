@@ -562,13 +562,33 @@ describe("effect-raf-loop-needs-cancel", () => {
   });
 
   it("tracks static computed animation-frame lifecycle methods", () => {
-    const result = runRule(
+    const acquireOnly = runRule(
       effectRafLoopNeedsCancel,
       `useEffect(() => {
-         const frameId = window["requestAnimationFrame"](tick);
+         const loop = () => window["requestAnimationFrame"](loop);
+         window["requestAnimationFrame"](loop);
+       }, []);`,
+    );
+    const matchingRelease = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+         let frameId;
+         const loop = () => { frameId = window["requestAnimationFrame"](loop); };
+         frameId = window["requestAnimationFrame"](loop);
          return () => window[\`cancelAnimationFrame\`](frameId);
        }, []);`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    const wrongRelease = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+         let frameId;
+         const loop = () => { frameId = window["requestAnimationFrame"](loop); };
+         frameId = window["requestAnimationFrame"](loop);
+         return () => window[\`cancelAnimationFrame\`](otherFrameId);
+       }, []);`,
+    );
+    expect(acquireOnly.diagnostics).toHaveLength(1);
+    expect(matchingRelease.diagnostics).toHaveLength(0);
+    expect(wrongRelease.diagnostics).toHaveLength(1);
   });
 });

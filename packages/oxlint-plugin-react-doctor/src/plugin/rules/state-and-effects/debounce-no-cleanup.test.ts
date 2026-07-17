@@ -701,4 +701,42 @@ function SearchBox({ query }) {
     expect(mutatedAfter.diagnostics).toHaveLength(0);
     expect(shadowedOptions.diagnostics).toHaveLength(1);
   });
+
+  it("requires the matching computed debounce release", () => {
+    const acquireOnly = runRule(
+      debounceNoCleanup,
+      `import * as lodash from "lodash";
+       function Search({ query }) {
+         const search = useMemo(() => lodash["debounce"](async (value) => {
+           await fetchResults(value);
+         }, 250), []);
+         useEffect(() => search(query), [query, search]);
+       }`,
+    );
+    const matchingRelease = runRule(
+      debounceNoCleanup,
+      `import * as lodash from "lodash";
+       function Search({ query }) {
+         const search = useMemo(() => lodash["debounce"](async (value) => {
+           await fetchResults(value);
+         }, 250), []);
+         useEffect(() => search(query), [query, search]);
+         useEffect(() => () => search[\`cancel\`](), [search]);
+       }`,
+    );
+    const wrongRelease = runRule(
+      debounceNoCleanup,
+      `import * as lodash from "lodash";
+       function Search({ query, other }) {
+         const search = useMemo(() => lodash["debounce"](async (value) => {
+           await fetchResults(value);
+         }, 250), []);
+         useEffect(() => search(query), [query, search]);
+         useEffect(() => () => other[\`cancel\`](), [other]);
+       }`,
+    );
+    expect(acquireOnly.diagnostics).toHaveLength(1);
+    expect(matchingRelease.diagnostics).toHaveLength(0);
+    expect(wrongRelease.diagnostics).toHaveLength(1);
+  });
 });

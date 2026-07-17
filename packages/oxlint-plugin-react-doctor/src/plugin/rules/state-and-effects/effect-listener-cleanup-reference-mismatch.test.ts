@@ -265,13 +265,30 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
   });
 
   it("matches static computed listener method names", () => {
-    const result = runRule(
+    const mismatch = runRule(
       effectListenerCleanupReferenceMismatch,
       `useEffect(() => {
          source["subscribe"](() => onValue());
          return () => source[\`unsubscribe\`](() => onValue());
        }, []);`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    const matchingReference = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `useEffect(() => {
+         const onValue = () => update();
+         source["subscribe"](onValue);
+         return () => source[\`unsubscribe\`](onValue);
+       }, []);`,
+    );
+    const wrongReceiver = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `useEffect(() => {
+         source["subscribe"](() => onValue());
+         return () => other[\`unsubscribe\`](() => onValue());
+       }, []);`,
+    );
+    expect(mismatch.diagnostics).toHaveLength(1);
+    expect(matchingReference.diagnostics).toHaveLength(0);
+    expect(wrongReceiver.diagnostics).toHaveLength(0);
   });
 });

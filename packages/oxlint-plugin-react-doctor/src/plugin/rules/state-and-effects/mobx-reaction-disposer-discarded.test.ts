@@ -375,6 +375,12 @@ export const themeStore = new ThemeStore();`,
        function computedCall() {
          mobx["autorun"](() => sync());
        }
+       function computedSignal() {
+         mobx["autorun"](() => sync(), { [\`signal\`]: controller.signal });
+       }
+       function computedMissingSignal() {
+         mobx["autorun"](() => sync(), { [\`signal\`]: undefined });
+       }
        function signalBefore() {
          const options = {};
          options.signal = controller.signal;
@@ -390,6 +396,6 @@ export const themeStore = new ThemeStore();`,
          mobx.autorun(() => sync(), outerOptions);
        }`,
     );
-    expect(result.diagnostics).toHaveLength(3);
+    expect(result.diagnostics).toHaveLength(4);
   });
 });

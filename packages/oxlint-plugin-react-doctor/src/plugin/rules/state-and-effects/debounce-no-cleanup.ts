@@ -480,7 +480,6 @@ const hasAsyncOrDomWork = (wrappedFunction: FunctionEsTreeNode): boolean => {
       }
       if (
         isNodeOfType(callee, "MemberExpression") &&
-        !callee.computed &&
         isNodeOfType(callee.object, "Identifier") &&
         WEB_STORAGE_RECEIVER_NAMES.has(callee.object.name)
       ) {
@@ -502,12 +501,7 @@ const startsWithNullRefGuard = (wrappedFunction: FunctionEsTreeNode): boolean =>
     let found = false;
     walkAst(root, (child: EsTreeNode) => {
       if (found) return false;
-      if (
-        isNodeOfType(child, "MemberExpression") &&
-        !child.computed &&
-        isNodeOfType(child.property, "Identifier") &&
-        child.property.name === "current"
-      ) {
+      if (isNodeOfType(child, "MemberExpression") && getStaticPropertyName(child) === "current") {
         found = true;
         return false;
       }

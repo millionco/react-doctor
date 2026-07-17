@@ -725,9 +725,16 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
            window["setTimeout"](() => this["setState"]({ ready: true }), 100);
          }
          render() { return null; }
+       }
+       class ComputedWrongRemoval extends React.Component {
+         componentDidMount() {
+           window["addEventListener"]("resize", this.resize);
+           window[\`removeEventListener\`]("scroll", this.resize);
+         }
+         render() { return null; }
        }`,
     );
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(3);
   });
 
   it("resolves stable option bindings at the registration point", () => {

@@ -381,11 +381,7 @@ const isMountHazard = (
         for (const argument of receiverBase.arguments ?? []) {
           let argumentCursor: EsTreeNode = argument as EsTreeNode;
           while (isNodeOfType(argumentCursor, "MemberExpression")) {
-            if (
-              !argumentCursor.computed &&
-              isNodeOfType(argumentCursor.property, "Identifier") &&
-              argumentCursor.property.name === "current"
-            ) {
+            if (getStaticPropertyName(argumentCursor) === "current") {
               receiverIsRefOwnedNode = true;
             }
             argumentCursor = argumentCursor.object as EsTreeNode;
@@ -394,11 +390,7 @@ const isMountHazard = (
         receiverBase = receiverBase.callee as EsTreeNode;
         continue;
       }
-      if (
-        !receiverBase.computed &&
-        isNodeOfType(receiverBase.property, "Identifier") &&
-        receiverBase.property.name === "current"
-      ) {
+      if (getStaticPropertyName(receiverBase) === "current") {
         receiverIsRefOwnedNode = true;
       }
       receiverBase = receiverBase.object;

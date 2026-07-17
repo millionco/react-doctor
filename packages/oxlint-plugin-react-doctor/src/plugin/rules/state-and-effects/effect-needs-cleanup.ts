@@ -30,7 +30,10 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { readStaticBoolean } from "../../utils/read-static-boolean.js";
-import { hasReactRefCurrentOrigin, resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
+import {
+  resolveReactRefCurrentOriginSymbol,
+  resolveReactRefSymbol,
+} from "../../utils/react-ref-origin.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
@@ -2454,6 +2457,9 @@ const isReactRefListenerReplacementRelease = (
   }
   const registrationCallee = stripParenExpression(usage.node.callee);
   const releaseCallee = stripParenExpression(releaseCall.callee);
+  const releaseRefSymbol = isNodeOfType(releaseCallee, "MemberExpression")
+    ? resolveReactRefCurrentOriginSymbol(releaseCallee.object, context.scopes)
+    : null;
   if (
     !isNodeOfType(registrationCallee, "MemberExpression") ||
     registrationCallee.computed ||
@@ -2463,7 +2469,7 @@ const isReactRefListenerReplacementRelease = (
     releaseCallee.computed ||
     !isNodeOfType(releaseCallee.property, "Identifier") ||
     releaseCallee.property.name !== "removeEventListener" ||
-    !hasReactRefCurrentOrigin(releaseCallee.object, context.scopes)
+    !releaseRefSymbol
   ) {
     return false;
   }
@@ -2505,6 +2511,9 @@ const isReactRefListenerReplacementRelease = (
     if (child !== usageFunctionBody && isFunctionLike(child)) return false;
     if (
       isNodeOfType(child, "AssignmentExpression") &&
+      child.operator === "=" &&
+      resolveReactRefSymbol(stripParenExpression(child.left), context.scopes)?.id ===
+        releaseRefSymbol.id &&
       resolveExpressionKey(child.left, context) === releaseReceiverKey &&
       resolveExpressionKey(child.right, context) === registrationReceiverKey &&
       releaseStart !== null &&

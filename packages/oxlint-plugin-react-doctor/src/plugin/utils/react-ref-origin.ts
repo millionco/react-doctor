@@ -31,16 +31,20 @@ export const resolveReactRefSymbol = (
     : null;
 };
 
-export const hasReactRefCurrentOrigin = (
+export const resolveReactRefCurrentOriginSymbol = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number> = new Set(),
-): boolean => {
+): SymbolDescriptor | null => {
   const expression = stripParenExpression(node);
-  if (resolveReactRefSymbol(expression, scopes)) return true;
-  if (!isNodeOfType(expression, "Identifier")) return false;
+  const refSymbol = resolveReactRefSymbol(expression, scopes);
+  if (refSymbol) return refSymbol;
+  if (!isNodeOfType(expression, "Identifier")) return null;
   const symbol = resolveConstIdentifierAlias(expression, scopes);
-  if (!symbol?.initializer || visitedSymbolIds.has(symbol.id)) return false;
+  if (!symbol?.initializer || visitedSymbolIds.has(symbol.id)) return null;
   visitedSymbolIds.add(symbol.id);
-  return hasReactRefCurrentOrigin(symbol.initializer, scopes, visitedSymbolIds);
+  return resolveReactRefCurrentOriginSymbol(symbol.initializer, scopes, visitedSymbolIds);
 };
+
+export const hasReactRefCurrentOrigin = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  resolveReactRefCurrentOriginSymbol(node, scopes) !== null;

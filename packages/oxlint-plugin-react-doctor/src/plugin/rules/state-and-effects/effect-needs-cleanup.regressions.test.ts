@@ -7378,4 +7378,42 @@ export const Viewport = ({ onWheel, shouldRelease }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("rejects callback-ref ownership assigned only to a value alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    let previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    previous = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects callback-ref ownership through a logical assignment", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current ||= node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

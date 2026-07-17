@@ -361,6 +361,19 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("finds an outer result guard through nested unrelated conditions", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const renderPreview = (blob) => URL.createObjectURL(blob);
+       const url = renderPreview(blob);
+       if (url) {
+         if (shouldCache) previewCache.set("preview", url);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not trust an unrelated conditional cache store", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

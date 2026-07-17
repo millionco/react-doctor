@@ -285,10 +285,12 @@ const isPositiveGuardOnResult = (
           : null;
     if (guardExpression) {
       const guardCandidate = stripParenExpression(guardExpression);
-      return (
+      if (
         isNodeOfType(guardCandidate, "Identifier") &&
         scopes.symbolFor(guardCandidate) === resultSymbol
-      );
+      ) {
+        return true;
+      }
     }
     current = parent;
   }

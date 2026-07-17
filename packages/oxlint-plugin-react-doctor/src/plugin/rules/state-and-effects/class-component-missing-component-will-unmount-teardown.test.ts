@@ -65,6 +65,39 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags setTimeout whose callback invokes a local helper that calls this.setState", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class App extends React.Component {
+        componentDidMount() {
+          setTimeout(() => {
+            const updateReady = () => this.setState({ ready: true });
+            updateReady();
+          }, 500);
+        }
+        render() { return <div />; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags setTimeout whose callback invokes an aliased local state helper", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class App extends React.Component {
+        componentDidMount() {
+          setTimeout(() => {
+            const updateReady = () => this.setState({ ready: true });
+            const runUpdate = updateReady;
+            runUpdate();
+          }, 500);
+        }
+        render() { return <div />; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a subscribe registration in the constructor", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

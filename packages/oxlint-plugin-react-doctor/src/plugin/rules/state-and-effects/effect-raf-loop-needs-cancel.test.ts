@@ -495,6 +495,25 @@ describe("effect-raf-loop-needs-cancel", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags when cleanup calls an unrelated method on a guarded object", () => {
+    const result = runRule(
+      effectRafLoopNeedsCancel,
+      `function Ticker() {
+         useEffect(() => {
+           const state = { running: true, teardown() {} };
+           const loop = () => {
+             if (!state.running) return;
+             tick();
+             requestAnimationFrame(loop);
+           };
+           requestAnimationFrame(loop);
+           return () => state.teardown();
+         }, []);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet: RAF loop started from a later event callback", () => {
     const result = runRule(
       effectRafLoopNeedsCancel,

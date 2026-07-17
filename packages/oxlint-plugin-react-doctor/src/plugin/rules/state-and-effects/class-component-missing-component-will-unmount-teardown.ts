@@ -79,6 +79,7 @@ const walkSynchronousMountFlow = (
     if (walkedBodies.has(body)) return;
     walkedBodies.add(body);
     const helperBodies = new Map(helperBodiesInScope);
+    const helperAliases = new Map<string, string>();
     const synchronouslyInvokedNames = new Set<string>();
     walkAst(body, (child: EsTreeNode) => {
       if (child !== body && isFunctionLike(child)) {
@@ -86,11 +87,32 @@ const walkSynchronousMountFlow = (
         if (helperName && child.body) helperBodies.set(helperName, child.body);
         return false;
       }
+      if (
+        isNodeOfType(child, "VariableDeclarator") &&
+        isNodeOfType(child.id, "Identifier") &&
+        child.init &&
+        isNodeOfType(child.init, "Identifier") &&
+        child.parent &&
+        isNodeOfType(child.parent, "VariableDeclaration") &&
+        child.parent.kind === "const"
+      ) {
+        helperAliases.set(child.id.name, child.init.name);
+      }
       if (isNodeOfType(child, "CallExpression") && isNodeOfType(child.callee, "Identifier")) {
         synchronouslyInvokedNames.add(child.callee.name);
       }
       visit(child);
     });
+    for (const [aliasName, targetName] of helperAliases) {
+      let resolvedName = targetName;
+      const visitedNames = new Set([aliasName]);
+      while (helperAliases.has(resolvedName) && !visitedNames.has(resolvedName)) {
+        visitedNames.add(resolvedName);
+        resolvedName = helperAliases.get(resolvedName) ?? resolvedName;
+      }
+      const helperBody = helperBodies.get(resolvedName);
+      if (helperBody) helperBodies.set(aliasName, helperBody);
+    }
     for (const invokedName of synchronouslyInvokedNames) {
       const helperBody = helperBodies.get(invokedName);
       if (helperBody) walkBody(helperBody, helperBodies);
@@ -190,7 +212,7 @@ const timeoutCallbackMutatesComponent = (
   const body = resolvedCallback.body;
   if (!body) return false;
   let mutates = false;
-  walkMountBody(body, (node) => {
+  walkSynchronousMountFlow(body, (node) => {
     if (mutates) return;
     if (getBareCalleeName(node) === "runInAction") {
       mutates = true;

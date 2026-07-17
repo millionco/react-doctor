@@ -120,12 +120,6 @@ const findSelfReschedulingRafLoops = (effectCallback: EsTreeNode): SelfReschedul
   return foundLoops;
 };
 
-const memberChainBaseIdentifierName = (node: EsTreeNode): string | null => {
-  let cursor: EsTreeNode = node;
-  while (isNodeOfType(cursor, "MemberExpression")) cursor = cursor.object as EsTreeNode;
-  return isNodeOfType(cursor, "Identifier") ? cursor.name : null;
-};
-
 const serializeHandleKey = (node: EsTreeNode): string | null => {
   const expression = stripParenExpression(node);
   if (isNodeOfType(expression, "Identifier")) {
@@ -312,16 +306,19 @@ const collectCleanupWrittenNames = (
       return;
     }
     if (isNodeOfType(callee, "MemberExpression")) {
-      const rootName = memberChainBaseIdentifierName(callee as EsTreeNode);
-      if (!rootName) return;
-      writtenNames.add(rootName);
+      const calleeKey = serializeHandleKey(callee);
+      if (!calleeKey) return;
+      if (getStaticPropertyName(callee) === "abort") {
+        const receiverKey = serializeHandleKey(callee.object as EsTreeNode);
+        if (receiverKey) writtenNames.add(`${receiverKey}.signal.aborted`);
+      }
       // `stopRef.current()` — merge the writes of the function assigned to
       // `stopRef.current` inside the effect.
       walkAst(effectCallback, (candidate: EsTreeNode) => {
         if (
           isNodeOfType(candidate, "AssignmentExpression") &&
           isNodeOfType(candidate.left, "MemberExpression") &&
-          memberChainBaseIdentifierName(candidate.left as EsTreeNode) === rootName &&
+          serializeHandleKey(candidate.left as EsTreeNode) === calleeKey &&
           candidate.right &&
           isFunctionLike(candidate.right as EsTreeNode)
         ) {
@@ -351,11 +348,11 @@ const doesLoopGuardOnAnyName = (loopFunction: EsTreeNode, guardNames: Set<string
     if (guardTest) {
       walkAst(guardTest, (guardChild: EsTreeNode) => {
         if (didFindGuard) return false;
-        if (
-          (isNodeOfType(guardChild, "Identifier") ||
-            isNodeOfType(guardChild, "MemberExpression")) &&
-          guardNames.has(serializeHandleKey(guardChild) ?? "")
-        ) {
+        if (isNodeOfType(guardChild, "MemberExpression")) {
+          if (guardNames.has(serializeHandleKey(guardChild) ?? "")) didFindGuard = true;
+          return false;
+        }
+        if (isNodeOfType(guardChild, "Identifier") && guardNames.has(guardChild.name)) {
           didFindGuard = true;
           return false;
         }

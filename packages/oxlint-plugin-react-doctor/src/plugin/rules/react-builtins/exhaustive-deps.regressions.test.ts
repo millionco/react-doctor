@@ -2295,6 +2295,40 @@ describe("react-builtins/exhaustive-deps — upstream disable-comment suppressio
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics.length).toBeGreaterThan(0);
     });
+
+    it("keeps nested render-time mutable-local escapes reportable", () => {
+      const code = `
+        import { useEffect } from "react";
+        function Image({ value, retryError, setError }) {
+          let valueError;
+          if (!value) valueError = new Error("No value found for property.");
+          (() => attachRetryError(valueError, retryError))();
+          useEffect(() => {
+            setError(valueError);
+          }, [value]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+
+    it("keeps mutable initial-state expressions reportable", () => {
+      const code = `
+        import { useEffect, useState } from "react";
+        function Image({ value, retryError, setError }) {
+          let valueError;
+          if (!value) valueError = new Error("No value found for property.");
+          useState((valueError.retry = retryError));
+          useEffect(() => {
+            setError(valueError);
+          }, [value]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
   });
 
   it("does not suppress a report on a different line than the disable comment", () => {

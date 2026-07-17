@@ -400,7 +400,7 @@ const collectCaptureDepKeys = (
       }
       const identitySourceKeys =
         resolvePureCalledFunctionSourceKeys(reference, symbol, scopes) ??
-        resolveRenderDerivedMutableSourceKeys(symbol, scopes) ??
+        resolveRenderDerivedMutableSourceKeys(reference, symbol, scopes) ??
         resolveReactiveIdentitySourceKeys(symbol, scopes);
       if (identitySourceKeys) {
         if (identitySourceKeys.size === 0) stableCapturedNames.add(depKey);
@@ -778,26 +778,22 @@ const resolveWriteControlSourceKeys = (
   return currentNode.parent === boundaryFunction ? sourceKeys : null;
 };
 
-const isReadOnlyInitialStateUse = (
-  referenceNode: EsTreeNode,
-  boundaryFunction: EsTreeNode,
-  scopes: ScopeAnalysis,
-): boolean => {
-  let currentNode = referenceNode.parent;
-  while (currentNode && currentNode !== boundaryFunction) {
-    if (isNodeOfType(currentNode, "CallExpression")) {
-      return isReactApiCall(currentNode, "useState", scopes, {
-        allowGlobalReactNamespace: true,
-        allowUnboundBareCalls: true,
-        resolveNamedAliases: true,
-      });
-    }
-    currentNode = currentNode.parent ?? null;
-  }
-  return false;
+const isReadOnlyInitialStateUse = (referenceNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const referenceRoot = findTransparentExpressionRoot(referenceNode);
+  const callExpression = referenceRoot.parent;
+  return (
+    isNodeOfType(callExpression, "CallExpression") &&
+    callExpression.arguments.some((argument) => argument === referenceRoot) &&
+    isReactApiCall(callExpression, "useState", scopes, {
+      allowGlobalReactNamespace: true,
+      allowUnboundBareCalls: true,
+      resolveNamedAliases: true,
+    })
+  );
 };
 
 const resolveRenderDerivedMutableSourceKeys = (
+  capturedReference: ReferenceDescriptor,
   symbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
 ): Set<string> | null => {
@@ -810,6 +806,8 @@ const resolveRenderDerivedMutableSourceKeys = (
   }
   const boundaryFunction = findEnclosingFunction(symbol.bindingIdentifier);
   if (!boundaryFunction) return null;
+  const capturingFunction = findEnclosingFunction(capturedReference.identifier);
+  if (!capturingFunction || capturingFunction === boundaryFunction) return null;
   const sourceKeys = new Set<string>();
   if (symbol.initializer) {
     const initializerSourceKeys = resolveDerivedExpressionSourceKeys(
@@ -824,8 +822,8 @@ const resolveRenderDerivedMutableSourceKeys = (
   for (const symbolReference of symbol.references) {
     if (symbolReference.flag === "read") {
       if (
-        findEnclosingFunction(symbolReference.identifier) === boundaryFunction &&
-        !isReadOnlyInitialStateUse(symbolReference.identifier, boundaryFunction, scopes)
+        findEnclosingFunction(symbolReference.identifier) !== capturingFunction &&
+        !isReadOnlyInitialStateUse(symbolReference.identifier, scopes)
       ) {
         return null;
       }

@@ -816,28 +816,30 @@ export const styledComponentsDuplicateCssPropertyInBlock = defineRule({
           ) {
             return false;
           }
-          const priorOccurrences = occurrences.slice(0, laterIndex);
-          const priorImportantOccurrences = priorOccurrences.filter(
-            (occurrence) => occurrence.isImportant,
-          );
-          const effectivePriorOccurrence =
-            priorImportantOccurrences.at(-1) ?? priorOccurrences.at(-1);
-          const hasDifferentTests =
-            effectivePriorOccurrence?.ternaryTests.length !== laterOccurrence.ternaryTests.length ||
-            laterOccurrence.ternaryTests.some(
-              (test, testIndex) =>
-                effectivePriorOccurrence === undefined ||
-                !areTestsEquivalent(
-                  test,
-                  effectivePriorOccurrence.ternaryTests[testIndex],
-                  context.scopes,
-                ),
-            );
-          return (
-            effectivePriorOccurrence?.isConditional === true &&
-            hasDifferentTests &&
-            (laterOccurrence.isImportant || !effectivePriorOccurrence.isImportant)
-          );
+          for (let priorIndex = laterIndex - 1; priorIndex >= 0; priorIndex -= 1) {
+            const priorOccurrence = occurrences[priorIndex];
+            const priorAlwaysProducesCssValue =
+              !priorOccurrence.isConditional ||
+              priorOccurrence.ternaryTests.every((test) => test.alwaysProducesCssValue);
+            if (!priorAlwaysProducesCssValue) continue;
+            if (!laterOccurrence.isImportant && priorOccurrence.isImportant) {
+              return false;
+            }
+            if (!priorOccurrence.isConditional) return false;
+            const hasDifferentTests =
+              priorOccurrence.ternaryTests.length !== laterOccurrence.ternaryTests.length ||
+              laterOccurrence.ternaryTests.some(
+                (test, testIndex) =>
+                  !areTestsEquivalent(
+                    test,
+                    priorOccurrence.ternaryTests[testIndex],
+                    context.scopes,
+                  ),
+              );
+            if (hasDifferentTests) return true;
+            return false;
+          }
+          return false;
         });
         if (!hasConflictingOverride) continue;
         context.report({

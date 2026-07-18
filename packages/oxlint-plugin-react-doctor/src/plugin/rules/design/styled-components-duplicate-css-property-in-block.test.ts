@@ -557,6 +557,16 @@ describe("styled-components-duplicate-css-property-in-block", () => {
       'const Button = styled.button`color: ${properties => properties.primary ? "red" : "blue"}; color: ${properties => properties.secondary ? (properties.tertiary ? "green" : undefined) : undefined};`;',
     );
     expect(nestedFlattenedResult.diagnostics).toHaveLength(0);
+
+    const flattenedMiddleResult = runStyledRule(
+      'const Button = styled.button`height: ${properties => properties.full ? "100vh" : "auto"}; height: ${properties => properties.compact ? "50vh" : undefined}; height: ${properties => properties.full ? "100dvh" : "auto"};`;',
+    );
+    expect(flattenedMiddleResult.diagnostics).toHaveLength(0);
+
+    const flattenedImportantResult = runStyledRule(
+      'const Button = styled.button`height: ${properties => properties.full ? "100vh" : "auto"}; height: ${properties => properties.compact ? "50vh" : undefined} !important; height: ${properties => properties.tall ? "100dvh" : "auto"};`;',
+    );
+    expect(flattenedImportantResult.diagnostics).toHaveLength(1);
   });
 
   it("respects important declaration precedence", () => {

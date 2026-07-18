@@ -108,6 +108,23 @@ const isEventHandlerAttributeValue = (expression: EsTreeNode): boolean => {
   return Boolean(attributeName && /^on[A-Z]/.test(attributeName));
 };
 
+const isDiscardingTestPosition = (
+  expression: EsTreeNode,
+  parent: EsTreeNode,
+  shouldTreatVoidAsDiscarded: boolean,
+): boolean =>
+  (isNodeOfType(parent, "UnaryExpression") &&
+    parent.argument === expression &&
+    (shouldTreatVoidAsDiscarded || parent.operator !== "void")) ||
+  (isNodeOfType(parent, "BinaryExpression") &&
+    (parent.left === expression || parent.right === expression)) ||
+  ((isNodeOfType(parent, "IfStatement") ||
+    isNodeOfType(parent, "WhileStatement") ||
+    isNodeOfType(parent, "DoWhileStatement") ||
+    isNodeOfType(parent, "ForStatement")) &&
+    parent.test === expression) ||
+  (isNodeOfType(parent, "SwitchStatement") && parent.discriminant === expression);
+
 const isExpressionValueDiscarded = (expression: EsTreeNode): boolean => {
   let current = expression;
   let parent = current.parent ?? null;
@@ -129,7 +146,7 @@ const isExpressionValueDiscarded = (expression: EsTreeNode): boolean => {
       parent = current.parent ?? null;
       continue;
     }
-    if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "void") return true;
+    if (isDiscardingTestPosition(current, parent, true)) return true;
     if (isNodeOfType(parent, "SequenceExpression")) {
       if (parent.expressions.at(-1) !== current) return true;
       current = parent;
@@ -297,6 +314,7 @@ const isFloatingPromiseUse = (
       parent = current.parent ?? null;
       continue;
     }
+    if (isDiscardingTestPosition(current, parent, false)) return true;
     if (isNodeOfType(parent, "SequenceExpression")) {
       const finalExpression = parent.expressions.at(-1);
       if (finalExpression !== current) return true;

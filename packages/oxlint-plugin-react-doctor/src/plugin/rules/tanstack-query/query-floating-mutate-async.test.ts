@@ -406,6 +406,26 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("flags promises used only by statement, unary, and binary tests", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       if (mutation.mutateAsync(first)) consume(first);
+       const isMissing = !mutation.mutateAsync(second);
+       const isExpected = mutation.mutateAsync(third) === expected;`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("flags discarded map hosts used only by statement, unary, and binary tests", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       if (items.map((item) => mutation.mutateAsync(item))) consume(items);
+       const isMissing = !items.map((item) => mutation.mutateAsync(item));
+       const isExpected = items.map((item) => mutation.mutateAsync(item)) === expected;`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
   it("keeps conditional and logical result branches reachable", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);

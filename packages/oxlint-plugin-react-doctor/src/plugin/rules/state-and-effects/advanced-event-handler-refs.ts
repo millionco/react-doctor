@@ -1,10 +1,12 @@
 import { EFFECT_HOOK_NAMES, SUBSCRIPTION_METHOD_NAMES } from "../../constants/react.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -16,8 +18,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // the common userland stable-callback hooks (rc-util/ahooks `useEvent`,
 // MUI `useEventCallback`, ahooks `useMemoizedFn`, `useStableCallback`) —
 // they ARE the ref-based pattern this rule recommends.
-const STABLE_HANDLER_HOOK_NAMES = new Set([
-  "useCallback",
+const REACT_STABLE_HANDLER_HOOK_NAMES = new Set(["useCallback", "useEffectEvent"]);
+const CUSTOM_STABLE_HANDLER_HOOK_NAMES = new Set([
   "useEffectEvent",
   "useEvent",
   "useEventCallback",
@@ -39,8 +41,11 @@ const isThrottledHandlerHookCall = (callNode: EsTreeNodeOfType<"CallExpression">
   return calleeName !== null && THROTTLED_HANDLER_HOOK_PATTERN.test(calleeName);
 };
 
-const isEmptyDepsUseMemoCall = (callNode: EsTreeNodeOfType<"CallExpression">): boolean => {
-  if (!isHookCall(callNode, "useMemo")) return false;
+const isEmptyDepsUseMemoCall = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isReactHookCall(callNode, "useMemo", scopes)) return false;
   const memoDepsNode = callNode.arguments?.[1];
   return (
     isNodeOfType(memoDepsNode, "ArrayExpression") && (memoDepsNode.elements?.length ?? 0) === 0
@@ -51,11 +56,12 @@ const isEmptyDepsUseMemoCall = (callNode: EsTreeNodeOfType<"CallExpression">): b
 // `someRef.current` (a `useRef(...).current` read) all keep a stable
 // identity, so listing the handler in the deps does NOT cause real
 // re-subscription churn. `useMemo` with non-empty deps still churns.
-const isStableHandlerInitializer = (initializer: EsTreeNode): boolean => {
+const isStableHandlerInitializer = (initializer: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   if (isNodeOfType(initializer, "CallExpression")) {
     return (
-      isHookCall(initializer, STABLE_HANDLER_HOOK_NAMES) ||
-      isEmptyDepsUseMemoCall(initializer) ||
+      isReactHookCall(initializer, REACT_STABLE_HANDLER_HOOK_NAMES, scopes) ||
+      isHookCall(initializer, CUSTOM_STABLE_HANDLER_HOOK_NAMES) ||
+      isEmptyDepsUseMemoCall(initializer, scopes) ||
       isThrottledHandlerHookCall(initializer)
     );
   }
@@ -69,9 +75,15 @@ const isStableHandlerInitializer = (initializer: EsTreeNode): boolean => {
 // A subscription receiver backed by `useRef(...)` has a stable identity, so
 // its presence in the deps never forces re-subscription on its own — the
 // handler churn is still the only churn.
-const isStableRefReceiverDep = (referenceNode: EsTreeNode, receiverDepName: string): boolean => {
+const isStableRefReceiverDep = (
+  referenceNode: EsTreeNode,
+  receiverDepName: string,
+  scopes: ScopeAnalysis,
+): boolean => {
   const receiverBinding = findVariableInitializer(referenceNode, receiverDepName);
-  return Boolean(receiverBinding?.initializer && isHookCall(receiverBinding.initializer, "useRef"));
+  return Boolean(
+    receiverBinding?.initializer && isReactHookCall(receiverBinding.initializer, "useRef", scopes),
+  );
 };
 
 // HACK: `useEffect(() => { window.addEventListener(name, handler);
@@ -102,7 +114,7 @@ export const advancedEventHandlerRefs = defineRule({
     "Store the handler in a ref and have the listener read `handlerRef.current()`. The subscription stays put while the latest handler still runs.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
+      if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
       if ((node.arguments?.length ?? 0) < 2) return;
       const callback = getEffectCallback(node);
       if (
@@ -148,7 +160,10 @@ export const advancedEventHandlerRefs = defineRule({
       // lookup: a prop param shadowing an outer stable binding resolves
       // to the (unstable) param, not the outer const.
       const handlerBinding = findVariableInitializer(node, registeredHandlerName);
-      if (handlerBinding?.initializer && isStableHandlerInitializer(handlerBinding.initializer)) {
+      if (
+        handlerBinding?.initializer &&
+        isStableHandlerInitializer(handlerBinding.initializer, context.scopes)
+      ) {
         return;
       }
 
@@ -162,7 +177,7 @@ export const advancedEventHandlerRefs = defineRule({
         (depName) =>
           depName !== registeredHandlerName &&
           subscriptionReceiverNames.has(depName) &&
-          !isStableRefReceiverDep(node, depName),
+          !isStableRefReceiverDep(node, depName, context.scopes),
       );
       if (hasNonHandlerDepTarget) return;
 

@@ -20,22 +20,24 @@ import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreass
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getRequireCallSource } from "../../utils/get-require-call-source.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInlineIntrinsicRefCallback } from "../../utils/is-inline-intrinsic-ref-callback.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenBrowserApiReceiver } from "../../utils/is-proven-browser-api-receiver.js";
 import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx-element.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
@@ -63,7 +65,7 @@ import { isCleanupReturn } from "./utils/is-cleanup-return.js";
 //
 // Detector (per component body):
 //   1. Collect every top-level useEffect call and, for each:
-//        - depNames: Identifier names in the dep array
+//        - dependencyStateSymbolIds: state symbols referenced by the dep array
 //        - writtenStateNames: state names whose setter is called in the body,
 //          an ordinary local helper, or a stable callback graph proven to contain
 //          one state transition and no opaque work
@@ -82,28 +84,39 @@ import { isCleanupReturn } from "./utils/is-cleanup-return.js";
 // cascade where each effect re-fetches based on the previous step's
 // result. Those effects all have `isExternalSync = true` because they
 // contain `fetch`, so the rule won't fire.
-const findTopLevelEffectCalls = (componentBody: EsTreeNode): EsTreeNode[] => {
+const findTopLevelEffectCalls = (
+  componentBody: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode[] => {
   const effectCalls: EsTreeNode[] = [];
   if (!isNodeOfType(componentBody, "BlockStatement")) return effectCalls;
   for (const statement of componentBody.body ?? []) {
     if (!isNodeOfType(statement, "ExpressionStatement")) continue;
     const expression = unwrapDiscardedExpression(statement);
     if (!isNodeOfType(expression, "CallExpression")) continue;
-    if (!isHookCall(expression, EFFECT_HOOK_NAMES)) continue;
+    if (!isReactHookCall(expression, EFFECT_HOOK_NAMES, scopes)) continue;
     effectCalls.push(expression);
   }
   return effectCalls;
 };
 
-const collectDepIdentifierNames = (effectNode: EsTreeNode): Set<string> => {
-  const depNames = new Set<string>();
-  if (!isNodeOfType(effectNode, "CallExpression")) return depNames;
+const collectDependencyStateSymbolIds = (
+  effectNode: EsTreeNode,
+  stateSymbolIds: ReadonlySet<number>,
+  scopes: ScopeAnalysis,
+): Set<number> => {
+  const dependencyStateSymbolIds = new Set<number>();
+  if (!isNodeOfType(effectNode, "CallExpression")) return dependencyStateSymbolIds;
   const depsNode = effectNode.arguments?.[1];
-  if (!isNodeOfType(depsNode, "ArrayExpression")) return depNames;
+  if (!isNodeOfType(depsNode, "ArrayExpression")) return dependencyStateSymbolIds;
   for (const element of depsNode.elements ?? []) {
-    if (isNodeOfType(element, "Identifier")) depNames.add(element.name);
+    if (!element || isNodeOfType(element, "SpreadElement")) continue;
+    const rootIdentifier = getRootIdentifier(element);
+    if (!isNodeOfType(rootIdentifier, "Identifier")) continue;
+    const symbol = resolveConstIdentifierAlias(rootIdentifier, scopes, true);
+    if (symbol && stateSymbolIds.has(symbol.id)) dependencyStateSymbolIds.add(symbol.id);
   }
-  return depNames;
+  return dependencyStateSymbolIds;
 };
 
 const resolveSynchronouslyInvokedFunction = (
@@ -158,26 +171,20 @@ const visitSynchronousFunctionBodies = (
 
 const getStateNameForSetterCall = (
   node: EsTreeNode,
-  setterToStateName: ReadonlyMap<string, string>,
-  setterSymbolIds: ReadonlyMap<string, number>,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
   scopes: ScopeAnalysis,
 ): string | null => {
   if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "Identifier")) {
     return null;
   }
-  const stateName = setterToStateName.get(node.callee.name);
-  const setterSymbolId = setterSymbolIds.get(node.callee.name);
-  const calleeSymbol = scopes.symbolFor(node.callee);
-  return stateName && setterSymbolId !== undefined && calleeSymbol?.id === setterSymbolId
-    ? stateName
-    : null;
+  const setterSymbol = resolveConstIdentifierAlias(node.callee, scopes, true);
+  return setterSymbol ? (setterSymbolIdToStateName.get(setterSymbol.id) ?? null) : null;
 };
 
 const collectStateWriteAnalysisFunctions = (
   effectCallback: EsTreeNode,
   scopes: ScopeAnalysis,
-  setterToStateName: ReadonlyMap<string, string>,
-  setterSymbolIds: ReadonlyMap<string, number>,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
 ): ReadonlySet<EsTreeNode> => {
   const ordinaryAnalysisFunctions = collectSynchronouslyInvokedFunctions(
     effectCallback,
@@ -215,23 +222,13 @@ const collectStateWriteAnalysisFunctions = (
   const stableWrittenStateNames = new Set<string>();
   const allWrittenStateNames = new Set<string>();
   visitSynchronousFunctionBodies(fullAnalysisFunctions, (child) => {
-    const writtenStateName = getStateNameForSetterCall(
-      child,
-      setterToStateName,
-      setterSymbolIds,
-      scopes,
-    );
+    const writtenStateName = getStateNameForSetterCall(child, setterSymbolIdToStateName, scopes);
     if (writtenStateName) allWrittenStateNames.add(writtenStateName);
   });
   visitSynchronousFunctionBodies(new Set(stableAnalysisFunctions), (child) => {
     if (hasUnprovenObservableWork) return;
     if (isNodeOfType(child, "CallExpression")) {
-      const writtenStateName = getStateNameForSetterCall(
-        child,
-        setterToStateName,
-        setterSymbolIds,
-        scopes,
-      );
+      const writtenStateName = getStateNameForSetterCall(child, setterSymbolIdToStateName, scopes);
       if (writtenStateName) {
         stableWrittenStateNames.add(writtenStateName);
         return;
@@ -494,15 +491,14 @@ const readStaticSetterValue = (
 // async-fetch shape that real codebases use.
 const collectStateWritesInEffect = (
   analysisFunctions: ReadonlySet<EsTreeNode>,
-  setterToStateName: Map<string, string>,
-  setterSymbolIds: ReadonlyMap<string, number>,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
   scopes: ScopeAnalysis,
 ): Map<string, EffectStateWriteInfo> => {
   const stateWrites = new Map<string, EffectStateWriteInfo>();
   visitSynchronousFunctionBodies(analysisFunctions, (child) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier")) return;
-    const stateName = getStateNameForSetterCall(child, setterToStateName, setterSymbolIds, scopes);
+    const stateName = getStateNameForSetterCall(child, setterSymbolIdToStateName, scopes);
     if (!stateName) return;
     const writeInfo = stateWrites.get(stateName) ?? {
       values: new Set<boolean | number | string | null | undefined>(),
@@ -1595,8 +1591,9 @@ const getResolvedFunctionCleanupReturnProof = (
 const isFunctionShapedReturn = (
   returnedValue: EsTreeNode,
   setterToStateName: ReadonlyMap<string, string>,
-  isExplicitReturnStatement: boolean,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
   scopes: ScopeAnalysis,
+  isExplicitReturnStatement: boolean,
 ): boolean => {
   const unwrappedReturnedValue = stripParenExpression(returnedValue);
   if (
@@ -1614,7 +1611,13 @@ const isFunctionShapedReturn = (
   // state write (`return setSource(1)`) is never cleanup.
   if (isNodeOfType(unwrappedReturnedValue, "CallExpression")) {
     if (isNodeOfType(unwrappedReturnedValue.callee, "Identifier")) {
-      if (setterToStateName.has(unwrappedReturnedValue.callee.name)) return false;
+      const setterSymbol = resolveConstIdentifierAlias(unwrappedReturnedValue.callee, scopes, true);
+      if (
+        setterToStateName.has(unwrappedReturnedValue.callee.name) ||
+        (setterSymbol && setterSymbolIdToStateName.has(setterSymbol.id))
+      ) {
+        return false;
+      }
     }
     const invokedFunction = resolveSynchronouslyInvokedFunction(
       unwrappedReturnedValue.callee,
@@ -1737,13 +1740,17 @@ const callsOpaqueExternalSetter = (
   return didFindOpaqueSetterCall;
 };
 
-const isReactRefCall = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+const isReactUseRefCall = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean =>
   isNodeOfType(expression, "CallExpression") &&
-  (isReactApiCall(expression, "useRef", scopes, {
+  isReactApiCall(expression, "useRef", scopes, {
     allowGlobalReactNamespace: true,
     allowUnboundBareCalls: true,
     resolveNamedAliases: true,
-  }) ||
+  });
+
+const isReactRefCall = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  isReactUseRefCall(expression, scopes) ||
+  (isNodeOfType(expression, "CallExpression") &&
     isReactApiCall(expression, "createRef", scopes, {
       allowGlobalReactNamespace: true,
       allowUnboundBareCalls: true,
@@ -1839,7 +1846,28 @@ const isIntrinsicRefCallbackParameter = (
     ? rawFirstParameter.left
     : rawFirstParameter;
   const symbol = scopes.symbolFor(identifier);
-  return Boolean(firstParameter && symbol?.bindingIdentifier === firstParameter);
+  return Boolean(
+    firstParameter &&
+    symbol?.bindingIdentifier === firstParameter &&
+    symbol.references.every((reference) => {
+      if (reference.flag !== "read") return false;
+      let referenceRoot = reference.identifier;
+      while (referenceRoot.parent) {
+        const parent = referenceRoot.parent;
+        if (isNodeOfType(parent, "AssignmentExpression")) {
+          return parent.left !== referenceRoot;
+        }
+        if (isNodeOfType(parent, "UpdateExpression")) {
+          return parent.argument !== referenceRoot;
+        }
+        if (isNodeOfType(parent, "ForInStatement") || isNodeOfType(parent, "ForOfStatement")) {
+          return parent.left !== referenceRoot;
+        }
+        referenceRoot = parent;
+      }
+      return true;
+    }),
+  );
 };
 
 const getDirectReactRefCall = (
@@ -1854,24 +1882,71 @@ const getDirectReactRefCall = (
     : null;
 };
 
+const isEmptyGlobalMapConstruction = (
+  rawExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const expression = stripParenExpression(rawExpression);
+  return (
+    isNodeOfType(expression, "NewExpression") &&
+    isNodeOfType(expression.callee, "Identifier") &&
+    expression.callee.name === "Map" &&
+    scopes.isGlobalReference(expression.callee) &&
+    expression.arguments.length === 0
+  );
+};
+
+const hasEmptyRefSentinelInitializer = (
+  refCall: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isReactUseRefCall(refCall, scopes) || refCall.arguments.length > 1) return false;
+  const [initialValue] = refCall.arguments;
+  return (
+    !initialValue ||
+    (isNodeOfType(initialValue, "Literal") && initialValue.value === null) ||
+    (isNodeOfType(initialValue, "Identifier") &&
+      initialValue.name === "undefined" &&
+      scopes.isGlobalReference(initialValue))
+  );
+};
+
+const isDirectLazyEmptyMapInitialization = (
+  currentExpression: EsTreeNode,
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const assignment = currentExpression.parent;
+  if (
+    !isNodeOfType(assignment, "AssignmentExpression") ||
+    assignment.left !== currentExpression ||
+    assignment.operator !== "??=" ||
+    !isEmptyGlobalMapConstruction(assignment.right, scopes)
+  ) {
+    return false;
+  }
+  const refOwner = findEnclosingFunction(symbol.bindingIdentifier);
+  return refOwner !== null && findEnclosingFunction(assignment) === refOwner;
+};
+
 const storesOnlyIntrinsicRefCallbackValues = (
   symbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
 ): boolean => {
   const refCall = getDirectReactRefCall(symbol, scopes);
-  const initialValue = refCall?.arguments?.[0];
-  if (
-    !initialValue ||
-    !isNodeOfType(initialValue, "NewExpression") ||
-    !isNodeOfType(initialValue.callee, "Identifier") ||
-    initialValue.callee.name !== "Map" ||
-    !scopes.isGlobalReference(initialValue.callee) ||
-    initialValue.arguments.length !== 0
-  ) {
+  const initialValue = refCall?.arguments[0];
+  const hasDirectEmptyMapInitializer = Boolean(
+    initialValue && isEmptyGlobalMapConstruction(initialValue, scopes),
+  );
+  const hasLazyEmptyMapInitializer = Boolean(
+    refCall && hasEmptyRefSentinelInitializer(refCall, scopes),
+  );
+  if (!hasDirectEmptyMapInitializer && !hasLazyEmptyMapInitializer) {
     return false;
   }
 
   let intrinsicValueWriteCount = 0;
+  let lazyEmptyMapInitializationCount = 0;
   for (const reference of symbol.references) {
     const identifier = findTransparentExpressionRoot(reference.identifier);
     const currentMember = identifier.parent;
@@ -1883,6 +1958,13 @@ const storesOnlyIntrinsicRefCallbackValues = (
       return false;
     }
     const currentExpression = findTransparentExpressionRoot(currentMember);
+    if (
+      hasLazyEmptyMapInitializer &&
+      isDirectLazyEmptyMapInitialization(currentExpression, symbol, scopes)
+    ) {
+      lazyEmptyMapInitializationCount += 1;
+      continue;
+    }
     const methodMember = currentExpression.parent;
     if (
       !isNodeOfType(methodMember, "MemberExpression") ||
@@ -1906,7 +1988,10 @@ const storesOnlyIntrinsicRefCallbackValues = (
     }
     intrinsicValueWriteCount += 1;
   }
-  return intrinsicValueWriteCount > 0;
+  return (
+    intrinsicValueWriteCount > 0 &&
+    (hasDirectEmptyMapInitializer || lazyEmptyMapInitializationCount === 1)
+  );
 };
 
 const isDerivedFromProvenDomRefCurrent = (
@@ -2145,6 +2230,7 @@ const isExternalSyncEffect = (
   effectCallback: EsTreeNode,
   analysisFunctions: ReadonlySet<EsTreeNode>,
   setterToStateName: ReadonlyMap<string, string>,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
   scopes: ScopeAnalysis,
   allowCommittedDomSync: boolean,
 ): boolean => {
@@ -2153,13 +2239,29 @@ const isExternalSyncEffect = (
   // an external resource — once we see one, we don't need to inspect
   // the body for an external-sync call shape.
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
-    if (isFunctionShapedReturn(effectCallback.body, setterToStateName, false, scopes)) return true;
+    if (
+      isFunctionShapedReturn(
+        effectCallback.body,
+        setterToStateName,
+        setterSymbolIdToStateName,
+        scopes,
+        false,
+      )
+    ) {
+      return true;
+    }
   } else {
     for (const statement of effectCallback.body.body ?? []) {
       if (
         isNodeOfType(statement, "ReturnStatement") &&
         statement.argument &&
-        isFunctionShapedReturn(statement.argument, setterToStateName, true, scopes)
+        isFunctionShapedReturn(
+          statement.argument,
+          setterToStateName,
+          setterSymbolIdToStateName,
+          scopes,
+          true,
+        )
       ) {
         return true;
       }
@@ -2182,7 +2284,7 @@ const isExternalSyncEffect = (
 interface EffectInfo {
   node: EsTreeNode;
   callback: EsTreeNode;
-  depNames: Set<string>;
+  dependencyStateSymbolIds: Set<number>;
   stateWrites: Map<string, EffectStateWriteInfo>;
   analysisFunctions: ReadonlySet<EsTreeNode>;
   isExternalSync: boolean;
@@ -2199,11 +2301,11 @@ export const noEffectChain = defineRule({
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
 
-      const useStateBindings = collectUseStateBindings(componentBody);
+      const useStateBindings = collectUseStateBindings(componentBody, context.scopes);
       if (useStateBindings.length === 0) return;
       const setterToStateName = new Map<string, string>();
-      const setterSymbolIds = new Map<string, number>();
       const stateSymbolIds = new Map<string, number>();
+      const setterSymbolIdToStateName = new Map<number, string>();
       for (const binding of useStateBindings) {
         setterToStateName.set(binding.setterName, binding.valueName);
         if (!isNodeOfType(binding.declarator.id, "ArrayPattern")) continue;
@@ -2215,34 +2317,37 @@ export const noEffectChain = defineRule({
         }
         if (isNodeOfType(setterIdentifier, "Identifier")) {
           const setterSymbol = context.scopes.symbolFor(setterIdentifier);
-          if (setterSymbol) setterSymbolIds.set(binding.setterName, setterSymbol.id);
+          if (setterSymbol) setterSymbolIdToStateName.set(setterSymbol.id, binding.valueName);
         }
       }
 
       const storageSetterNames = collectStorageHookSetterNames(componentBody);
+      const stateSymbolIdSet = new Set(stateSymbolIds.values());
 
       const effectInfos: EffectInfo[] = [];
-      for (const effectCall of findTopLevelEffectCalls(componentBody)) {
+      for (const effectCall of findTopLevelEffectCalls(componentBody, context.scopes)) {
         const callback = getEffectCallback(effectCall, context.scopes);
         if (!callback || !isFunctionLike(callback) || callback.async) continue;
         const analysisFunctions = collectSynchronouslyInvokedFunctions(callback, context.scopes);
         const stateWriteAnalysisFunctions = collectStateWriteAnalysisFunctions(
           callback,
           context.scopes,
-          setterToStateName,
-          setterSymbolIds,
+          setterSymbolIdToStateName,
         );
         const stateWrites = collectStateWritesInEffect(
           stateWriteAnalysisFunctions,
-          setterToStateName,
-          setterSymbolIds,
+          setterSymbolIdToStateName,
           context.scopes,
         );
         const writtenStateNames = new Set(stateWrites.keys());
         effectInfos.push({
           node: effectCall,
           callback,
-          depNames: collectDepIdentifierNames(effectCall),
+          dependencyStateSymbolIds: collectDependencyStateSymbolIds(
+            effectCall,
+            stateSymbolIdSet,
+            context.scopes,
+          ),
           stateWrites,
           analysisFunctions,
           isExternalSync:
@@ -2250,6 +2355,7 @@ export const noEffectChain = defineRule({
               callback,
               analysisFunctions,
               setterToStateName,
+              setterSymbolIdToStateName,
               context.scopes,
               writtenStateNames.size === 0,
             ) ||
@@ -2267,11 +2373,17 @@ export const noEffectChain = defineRule({
         for (const readerEffect of effectInfos) {
           if (readerEffect === writerEffect) continue;
           if (readerEffect.isExternalSync) continue;
-          if (readerEffect.depNames.size === 0) continue;
+          if (readerEffect.dependencyStateSymbolIds.size === 0) continue;
 
           let chainedStateName: string | null = null;
           for (const writtenName of writerEffect.stateWrites.keys()) {
-            if (!readerEffect.depNames.has(writtenName)) continue;
+            const writtenStateSymbolId = stateSymbolIds.get(writtenName);
+            if (
+              writtenStateSymbolId === undefined ||
+              !readerEffect.dependencyStateSymbolIds.has(writtenStateSymbolId)
+            ) {
+              continue;
+            }
             if (
               !canStateWriteReachReaderWork(
                 writtenName,

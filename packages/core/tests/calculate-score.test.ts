@@ -89,8 +89,8 @@ describe("calculateScore", () => {
     const parsedBody: { diagnostics: Array<Record<string, unknown>> } =
       JSON.parse(decompressedJson);
     expect(parsedBody.diagnostics).toHaveLength(1);
-    expect(parsedBody.diagnostics[0]).not.toHaveProperty("filePath");
     expect(parsedBody.diagnostics[0]).toMatchObject({
+      filePath: "src/App.tsx",
       plugin: "react-doctor",
       rule: "example-rule",
       severity: "error",
@@ -109,7 +109,7 @@ describe("calculateScore", () => {
     });
   });
 
-  it("strips every locally-derived field from the request payload", async () => {
+  it("preserves scrubbed file paths and strips locally-derived fields", async () => {
     let capturedBody: BodyInit | null | undefined;
     stubFetch(async (_url, init) => {
       capturedBody = init?.body;
@@ -121,6 +121,7 @@ describe("calculateScore", () => {
 
     const localFieldsDiagnostic: Diagnostic = {
       ...sampleDiagnostics[0],
+      filePath: `/Users/jane/projects/ghp_${"a".repeat(36)}/src/App.tsx`,
       fileContext: "test",
       fixGroupId: "abcdef1234",
     };
@@ -129,7 +130,7 @@ describe("calculateScore", () => {
     const parsedBody: { diagnostics: Array<Record<string, unknown>> } = JSON.parse(
       gunzipSync(capturedBody as Uint8Array).toString("utf8"),
     );
-    expect(parsedBody.diagnostics[0]).not.toHaveProperty("filePath");
+    expect(parsedBody.diagnostics[0]?.filePath).toBe("~/projects/ghp_<redacted>/src/App.tsx");
     expect(parsedBody.diagnostics[0]).not.toHaveProperty("fileContext");
     expect(parsedBody.diagnostics[0]).not.toHaveProperty("fixGroupId");
   });

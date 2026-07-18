@@ -134,7 +134,7 @@ export const preferUseReducer = defineRule({
   create: (context: RuleContext) => {
     const reportCoUpdatedUseState = (body: EsTreeNode, componentName: string): void => {
       if (!isNodeOfType(body, "BlockStatement")) return;
-      const bindings = collectUseStateBindings(body);
+      const bindings = collectUseStateBindings(body, context.scopes);
       const setterNames = new Set(bindings.map((binding) => binding.setterName));
       if (setterNames.size < RELATED_USE_STATE_THRESHOLD) return;
       const initializersBySetterName = new Map<string, EsTreeNode | null>(

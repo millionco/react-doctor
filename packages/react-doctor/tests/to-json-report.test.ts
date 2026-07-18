@@ -89,4 +89,29 @@ describe("toJsonReport (Node API helper)", () => {
     const report = toJsonReport(buildDiagnoseResult(), { version: "9.9.9" });
     expect(report.version).toBe("9.9.9");
   });
+
+  it("preserves test ownership in raw JSON output", () => {
+    const result = buildDiagnoseResult();
+    result.diagnostics = [
+      {
+        ...result.diagnostics[0],
+        filePath:
+          "/virtual/packages/docusaurus-theme-classic/src/theme/Tabs/__tests__/index.test.tsx",
+        plugin: "react-compiler",
+        rule: "globals",
+        fileContext: "test",
+      },
+    ];
+
+    const report = toJsonReport(result, { version: "1.2.3" });
+
+    expect(report.diagnostics).toHaveLength(1);
+    expect(report.diagnostics[0]).toMatchObject({
+      filePath:
+        "/virtual/packages/docusaurus-theme-classic/src/theme/Tabs/__tests__/index.test.tsx",
+      fileContext: "test",
+      plugin: "react-compiler",
+      rule: "globals",
+    });
+  });
 });

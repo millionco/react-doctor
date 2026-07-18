@@ -49,6 +49,11 @@ export const renderingHoistJsx = defineRule({
   title: "Constant JSX rebuilt each render",
   tags: ["test-noise"],
   severity: "warn",
+  // React Compiler caches dependency-free JSX after the first render, so
+  // the per-render rebuild this rule flags doesn't happen on compiled
+  // code. Mirrors `prefer-module-scope-static-value`, which gates on the
+  // same capability for the same reason.
+  disabledWhen: ["react-compiler"],
   recommendation:
     "Move the static JSX out to the top of the file: `const ICON = <svg>...</svg>`, so it isn't rebuilt on every render",
   create: (context: RuleContext) => {

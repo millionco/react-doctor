@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
+import { VALID_ARIA_ROLES } from "../../constants/aria-roles.js";
+import { GLOBAL_ARIA_PROPERTIES } from "../../constants/global-aria-properties.js";
+import { PROHIBITED_ARIA_PROPERTIES_BY_ROLE } from "../../constants/prohibited-aria-properties-by-role.js";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { roleSupportsAriaProps } from "./role-supports-aria-props.js";
 
@@ -7,6 +10,83 @@ import { roleSupportsAriaProps } from "./role-supports-aria-props.js";
 // role="combobox". These cases pin the revert of the ARIA-1.2 combobox
 // heuristic in utils/get-implicit-role.ts (oxc parity).
 describe("a11y/role-supports-aria-props regressions", () => {
+  it("accepts the global ARIA properties supported by every role", () => {
+    const elements = [...VALID_ARIA_ROLES].map((role) => {
+      const properties = [...GLOBAL_ARIA_PROPERTIES]
+        .filter((property) => !PROHIBITED_ARIA_PROPERTIES_BY_ROLE[role]?.has(property))
+        .map((property) => `${property}="value"`)
+        .join(" ");
+      return `<div role="${role}" ${properties} />`;
+    });
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const GlobalProperties = () => <>${elements.join("\n")}</>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports global ARIA properties that a role explicitly prohibits", () => {
+    const elements = Object.entries(PROHIBITED_ARIA_PROPERTIES_BY_ROLE).flatMap(
+      ([role, properties]) =>
+        [...properties].map((property) => `<div role="${role}" ${property}="value" />`),
+    );
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const ProhibitedProperties = () => <>${elements.join("\n")}</>;`,
+    );
+    expect(result.diagnostics).toHaveLength(elements.length);
+  });
+
+  it("accepts the authentic Hightable global descriptions", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const HightableHeaders = ({ description, columnName, width }) => (
+        <>
+          <th
+            role="columnheader"
+            aria-label={columnName}
+            aria-description={description}
+            aria-sort="none"
+          />
+          <span
+            role="spinbutton"
+            aria-label="Resize column"
+            aria-description="Resize instructions"
+            aria-valuenow={width}
+          />
+        </>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts deprecated-but-supported global properties and synonymous presentational roles", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const GlobalProperties = () => (
+        <>
+          <input type="radio" aria-invalid="true" />
+          <div role="none" aria-hidden="true" />
+          <div role="presentation" aria-hidden="true" />
+        </>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("preserves unsupported role-specific property diagnostics", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const UnsupportedProperties = () => (
+        <>
+          <th role="columnheader" aria-checked="true" />
+          <button aria-selected="true" />
+        </>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("stays silent on range ARIA props supported by a native number input", () => {
     const result = runRule(
       roleSupportsAriaProps,

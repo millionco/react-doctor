@@ -149,4 +149,62 @@ describe("listSourceFilesWithSize", () => {
     fs.rmSync(path.join(temporaryDirectory, ".git"), { recursive: true, force: true });
     expect(listSourceFiles(temporaryDirectory)).toEqual(gitListing);
   });
+
+  const commitAll = (): void => {
+    runGit("add", "-A");
+    runGit(
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=test",
+      "commit",
+      "--quiet",
+      "-m",
+      "init",
+    );
+  };
+
+  const writeEmitQuartet = (): void => {
+    writeNestedFile("src/store.js", "export const store = 1;\n//# sourceMappingURL=store.js.map\n");
+    writeNestedFile(
+      "src/store.js.map",
+      JSON.stringify({ file: "store.js", sources: ["store.ts"] }),
+    );
+    writeNestedFile(
+      "src/store.d.ts",
+      "export declare const store: number;\n//# sourceMappingURL=store.d.ts.map\n",
+    );
+    writeNestedFile(
+      "src/store.d.ts.map",
+      JSON.stringify({ file: "store.d.ts", sources: ["store.ts"] }),
+    );
+  };
+
+  it("git discovery excludes an untracked TypeScript emit quartet duplicating tracked source", () => {
+    writeNestedFile("src/store.ts", "export const store = 1;\n");
+    writeNestedFile("src/app.tsx", "export const App = () => null;\n");
+    runGit("init", "--quiet");
+    commitAll();
+    writeEmitQuartet();
+
+    const filePaths = listSourceFiles(temporaryDirectory);
+
+    expect(filePaths).toContain("src/store.ts");
+    expect(filePaths).toContain("src/app.tsx");
+    expect(filePaths).not.toContain("src/store.js");
+  });
+
+  it("git discovery keeps a tracked .js file and an incomplete emit set", () => {
+    writeNestedFile("src/store.ts", "export const store = 1;\n");
+    writeEmitQuartet();
+    runGit("init", "--quiet");
+    commitAll();
+    writeNestedFile("src/other.ts", "export const other = 1;\n");
+    writeNestedFile("src/other.js", "export const other = 1;\n//# sourceMappingURL=other.js.map\n");
+
+    const filePaths = listSourceFiles(temporaryDirectory);
+
+    expect(filePaths).toContain("src/store.js");
+    expect(filePaths).toContain("src/other.js");
+  });
 });

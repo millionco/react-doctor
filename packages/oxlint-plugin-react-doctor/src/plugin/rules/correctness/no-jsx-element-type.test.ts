@@ -93,6 +93,29 @@ describe("no-jsx-element-type", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an anonymous default-exported component", () => {
+    const result = runRule(
+      noJsxElementType,
+      `
+      export default (): JSX.Element => <main />;
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a component callback wrapped in memo", () => {
+    const result = runRule(
+      noJsxElementType,
+      `
+      import { memo } from "react";
+      const App = memo((): JSX.Element => <main />);
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags function with parameters and JSX.Element return type", () => {
     const result = runRule(
       noJsxElementType,
@@ -206,6 +229,70 @@ describe("no-jsx-element-type", () => {
       noJsxElementType,
       `
       const element: JSX.Element = <div />;
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a private renderer factory with a concrete element contract", () => {
+    const result = runRule(
+      noJsxElementType,
+      `
+      import React from "react";
+
+      const defaultRenderComponent = (
+        props: React.HTMLProps<HTMLInputElement>,
+      ): JSX.Element => <input {...props} />;
+
+      export const ReactTransliterate = ({
+        renderComponent = defaultRenderComponent,
+      }): JSX.Element => renderComponent({});
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag lowercase renderer declarations and expressions", () => {
+    const result = runRule(
+      noJsxElementType,
+      `
+      function renderInput(): JSX.Element {
+        return <input />;
+      }
+
+      const renderButton = function (): JSX.Element {
+        return <button />;
+      };
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag inline renderer callbacks", () => {
+    const result = runRule(
+      noJsxElementType,
+      `
+      registerRenderer((props): JSX.Element => <input {...props} />);
+
+      const renderers = {
+        input: (props): JSX.Element => <input {...props} />,
+      };
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag method signatures that promise a concrete element", () => {
+    const result = runRule(
+      noJsxElementType,
+      `
+      interface Renderer {
+        renderInput(props: Record<string, unknown>): JSX.Element;
+      }
     `,
     );
 

@@ -16,6 +16,7 @@ const isPrimitiveComparisonBoundary = (node: EsTreeNode): boolean => {
   const candidate = stripParenExpression(node);
   return (
     isNodeOfType(candidate, "Literal") ||
+    (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "void") ||
     (isNodeOfType(candidate, "Identifier") &&
       (candidate.name === "undefined" || candidate.name === "NaN" || candidate.name === "Infinity"))
   );

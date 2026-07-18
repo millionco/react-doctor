@@ -107,6 +107,14 @@ describe("r3f-no-state-in-use-frame", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("keeps void threshold guards reportable", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [count, setCount] = useState(1); useFrame(() => { if (count !== void 0) setCount(count + 1); if (void (0) === count) setCount(count + 1); }); return count; };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("ignores comparisons inside nested predicate callbacks", () => {
     const result = runRule(
       r3fNoStateInUseFrame,

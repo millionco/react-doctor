@@ -124,4 +124,9 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     reason:
       "A native `<input type='checkbox' role='switch'>` supplies `aria-checked` from its DOM checked state; requiring the explicit prop is a false positive.",
   },
+  "role-supports-aria-props": {
+    failSkips: [20, 22, 23, 24, 25, 26, 27, 29, 30, 32, 33, 34],
+    reason:
+      "WAI-ARIA 1.3 defines aria-haspopup and aria-invalid as global properties supported by every role unless explicitly prohibited.",
+  },
 };

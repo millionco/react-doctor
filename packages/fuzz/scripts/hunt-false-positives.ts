@@ -30,6 +30,22 @@ const namedRulesFor = (code: string): Set<string> => {
   return new Set(match[1].split(",").map((name) => name.trim()));
 };
 
+const reactMajorFor = (code: string): number | null => {
+  const match = code.match(/^\/\/ react-major: (\d+)$/m);
+  return match ? Number.parseInt(match[1], 10) : null;
+};
+
+const isDisabledForReactMajor = (
+  entry: (typeof reactDoctorRules)[number],
+  reactMajor: number | null,
+): boolean => {
+  if (reactMajor === null) return false;
+  return (entry.rule.disabledWhen ?? []).some((capability) => {
+    const match = capability.match(/^react:(\d+)$/);
+    return match !== null && reactMajor >= Number.parseInt(match[1], 10);
+  });
+};
+
 // Seeds are modern-React programs with no framework context, so rules gated
 // on other capabilities (preact, react-native, nextjs, react-compiler,
 // version-pinned) would be pipeline-disabled — running them here is noise.
@@ -46,8 +62,10 @@ const seeds = loadFuzzCorpus(regressionsDirectory);
 const hits: SeedHit[] = [];
 for (const seed of seeds) {
   const namedRules = namedRulesFor(seed.code);
+  const reactMajor = reactMajorFor(seed.code);
   for (const entry of reactDoctorRules) {
     if (!isHuntableRule(entry)) continue;
+    if (namedRules.has(entry.id) && isDisabledForReactMajor(entry, reactMajor)) continue;
     let diagnostics: ReadonlyArray<{ message: string }> = [];
     try {
       diagnostics = runRule(entry.rule, seed.code, {

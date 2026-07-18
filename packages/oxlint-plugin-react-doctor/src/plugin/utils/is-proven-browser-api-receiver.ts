@@ -8,6 +8,7 @@ import { getStaticPropertyName } from "./get-static-property-name.js";
 import { getSymbolTypeAnnotation } from "./get-symbol-type-annotation.js";
 import { hasEnclosingTypeParameterNamed } from "./has-enclosing-type-parameter-named.js";
 import { hasVisibleBindingNamed } from "./has-visible-binding-named.js";
+import { isGlobalMatchMediaCall } from "./is-global-match-media-call.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isReactApiCall } from "./is-react-api-call.js";
@@ -196,10 +197,22 @@ export const getProvenDomEventTargetPrototypeOwnerNames = (
     }
   }
   if (isNodeOfType(expression, "CallExpression")) {
+    if (isGlobalMatchMediaCall(expression, scopes)) {
+      return getDomPrototypeOwnerNamesForType("MediaQueryList");
+    }
     const callee = stripParenExpression(expression.callee);
     const methodName = isNodeOfType(callee, "MemberExpression")
       ? getStaticPropertyName(callee)
       : null;
+    if (
+      methodName === "matchMedia" &&
+      isNodeOfType(callee, "MemberExpression") &&
+      getProvenDomEventTargetPrototypeOwnerNames(callee.object, scopes, visitedSymbolIds).includes(
+        "Window",
+      )
+    ) {
+      return getDomPrototypeOwnerNamesForType("MediaQueryList");
+    }
     if (methodName === "createElement") {
       return getDomPrototypeOwnerNamesForType("HTMLElement");
     }

@@ -8,6 +8,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { hasCustomMemoComparator } from "../../utils/has-custom-memo-comparator.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
 import { isJsxAttributeOnIntrinsicHtmlElement } from "../../utils/is-on-intrinsic-html-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -371,6 +372,10 @@ export const jsxNoJsxAsProp = defineRule({
             : null;
         const memoStatus = memoStatusForJsxOpeningName(memoRegistry, openingName);
         if (memoStatus !== "memoised") return;
+        // `memo(fn, arePropsEqual)` compares props with the author's own
+        // function, which routinely ignores reference identity — fresh JSX
+        // cannot break that bailout.
+        if (hasCustomMemoComparator(openingName, context.scopes)) return;
         const openingSymbol =
           openingName && isNodeOfType(openingName, "JSXIdentifier")
             ? context.scopes.symbolFor(openingName)

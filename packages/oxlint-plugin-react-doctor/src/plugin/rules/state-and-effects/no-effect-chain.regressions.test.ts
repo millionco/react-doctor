@@ -3,6 +3,95 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noEffectChain } from "./no-effect-chain.js";
 
 describe("no-effect-chain — regressions", () => {
+  it("reports effect chains through effect, setter, and dependency aliases", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      const runEffect = useEffect;
+      const Example = ({ source }) => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        const writeStep = setStep;
+        const writeReady = setReady;
+        const currentStep = step;
+        runEffect(() => writeStep(1), [source, writeStep]);
+        runEffect(() => {
+          if (currentStep > 0) writeReady(true);
+        }, [currentStep, writeReady]);
+        return ready;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an effect chain when the writer explicitly returns a setter alias call", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      const Example = ({ source }) => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        const writeStep = setStep;
+        useEffect(() => {
+          return writeStep(1);
+        }, [source]);
+        useEffect(() => setReady(step > 0), [step]);
+        return ready;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a chain through a member dependency of state", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      const Example = ({ source }) => {
+        const [state, setState] = useState({ step: 0 });
+        const [ready, setReady] = useState(false);
+        useEffect(() => setState({ step: 1 }), [source]);
+        useEffect(() => {
+          if (state.step > 0) setReady(true);
+        }, [state.step]);
+        return ready;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "a userland effect",
+      `const useEffect = (callback) => callback();
+      const Example = ({ source }) => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        useEffect(() => setStep(1), [source]);
+        useEffect(() => setReady(step > 0), [step]);
+        return ready;
+      };`,
+    ],
+    [
+      "a mutable setter alias",
+      `import { useEffect, useState } from "react";
+      const Example = ({ source }) => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        let writeStep = setStep;
+        writeStep = console.log;
+        useEffect(() => writeStep(1), [source]);
+        useEffect(() => setReady(step > 0), [step]);
+        return ready;
+      };`,
+    ],
+  ])("stays silent for %s", (_name, code) => {
+    const result = runRule(noEffectChain, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
   it("stays silent when a clear-only effect cannot satisfy the downstream truthy guard", () => {
     const result = runRule(
       noEffectChain,
@@ -996,6 +1085,278 @@ describe("no-effect-chain — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for the authentic lazy DOM ref Map focus sequence", () => {
+    const result = runRule(
+      noEffectChain,
+      `function AccessibleNavTree({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef<Map<string, HTMLButtonElement | null> | null>(null);
+        itemRefs.current ??= new Map();
+        useEffect(() => {
+          setExpanded(findAncestorPath(activeId));
+        }, [activeId]);
+        useEffect(() => {
+          itemRefs.current?.get(activeId)?.focus();
+        }, [activeId, expanded]);
+        return expanded.has(activeId) ? (
+          <button
+            ref={node => {
+              if (node) itemRefs.current?.set(activeId, node);
+              else itemRefs.current?.delete(activeId);
+            }}
+          />
+        ) : null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a read-only intrinsic ref callback parameter has TypeScript wrappers", () => {
+    const result = runRule(
+      noEffectChain,
+      `function CommittedDomSync({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef<Map<string, HTMLButtonElement> | null>(null);
+        itemRefs.current ??= new Map();
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => { itemRefs.current?.get(activeId)?.focus(); }, [expanded]);
+        return <button ref={node => itemRefs.current?.set(activeId, (node as HTMLButtonElement)!)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a reassigned intrinsic ref callback parameter conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function UserlandControllerChain({ activeId, controller }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const [status, setStatus] = useState("idle");
+        const itemRefs = useRef(null);
+        itemRefs.current ??= new Map();
+        const localController = { focus: () => setStatus("ready") };
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => { itemRefs.current?.get(activeId)?.focus(); }, [expanded]);
+        return <button ref={node => {
+          node = controller ?? localController;
+          itemRefs.current?.set(activeId, node);
+        }}>{status}</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a destructuring-reassigned intrinsic ref callback parameter conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function UserlandControllerChain({ activeId, controllerRef }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(null);
+        itemRefs.current ??= new Map();
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => { itemRefs.current?.get(activeId)?.focus(); }, [expanded]);
+        return <button ref={node => {
+          ({ current: node } = controllerRef);
+          itemRefs.current?.set(activeId, node);
+        }} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a lazily initialized Map seeded with a controller conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ImperativeControllerChain({ controller }) {
+        const [source, setSource] = useState(0);
+        const controllerRefs = useRef(null);
+        controllerRefs.current ??= new Map([["primary", controller]]);
+        useEffect(() => { setSource(1); }, []);
+        useEffect(() => { controllerRefs.current.get("primary")?.focus(); }, [source]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["scrollIntoView", "select", "getBoundingClientRect"])(
+    "treats lazy DOM ref Map %s calls as external synchronization",
+    (methodName) => {
+      const result = runRule(
+        noEffectChain,
+        `function CommittedDomSync({ activeId }) {
+          const [expanded, setExpanded] = useState(new Set());
+          const itemRefs = useRef<Map<string, HTMLButtonElement> | undefined>(undefined);
+          itemRefs.current ??= new Map();
+          useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+          useEffect(() => { itemRefs.current?.get(activeId)?.${methodName}(); }, [expanded]);
+          return expanded.has(activeId)
+            ? <button ref={node => itemRefs.current?.set(activeId, node)} />
+            : null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("follows transparent wrappers around a lazy DOM ref Map", () => {
+    const result = runRule(
+      noEffectChain,
+      `function CommittedDomSync({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef<Map<string, HTMLButtonElement> | null>(null);
+        itemRefs.current ??= (new Map() satisfies Map<string, HTMLButtonElement>);
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => { itemRefs.current?.get(activeId)?.focus(); }, [expanded]);
+        return expanded.has(activeId)
+          ? <button ref={node => itemRefs.current?.set(activeId, node)} />
+          : null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("treats an omitted useRef initial value as undefined", () => {
+    const result = runRule(
+      noEffectChain,
+      `function CommittedDomSync({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef();
+        itemRefs.current ??= new Map();
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => { itemRefs.current?.get(activeId)?.focus(); }, [expanded]);
+        return <button ref={node => itemRefs.current?.set(activeId, node)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a lazy DOM ref Map with a later reset conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ResettableDomMap({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(null);
+        itemRefs.current ??= new Map();
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => { itemRefs.current = null; }, [activeId]);
+        useEffect(() => { itemRefs.current?.get(activeId)?.focus(); }, [expanded]);
+        return <button ref={node => itemRefs.current?.set(activeId, node)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a lazy Map that stores a prop controller conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ImperativeControllerChain({ activeId, controller }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(null);
+        itemRefs.current ??= new Map();
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => { itemRefs.current?.get(activeId)?.focus(); }, [expanded]);
+        return <button ref={() => itemRefs.current?.set(activeId, controller)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a lazy Map populated by a custom component ref conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ImperativeControllerChain({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(null);
+        itemRefs.current ??= new Map();
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => { itemRefs.current?.get(activeId)?.focus(); }, [expanded]);
+        return <Controller ref={node => itemRefs.current?.set(activeId, node)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps an escaped lazy DOM ref Map conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function EscapedDomMap({ activeId, registerRefs }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(null);
+        itemRefs.current ??= new Map();
+        registerRefs(itemRefs);
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => { itemRefs.current?.get(activeId)?.focus(); }, [expanded]);
+        return <button ref={node => itemRefs.current?.set(activeId, node)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a lazy Map built from a shadowed constructor conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function ImperativeControllerChain({ activeId, Map }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(null);
+        itemRefs.current ??= new Map();
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => { itemRefs.current?.get(activeId)?.focus(); }, [expanded]);
+        return <button ref={node => itemRefs.current?.set(activeId, node)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps logical-or Map initialization conservative", () => {
+    const result = runRule(
+      noEffectChain,
+      `function CommittedDomSync({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const itemRefs = useRef(null);
+        itemRefs.current ||= new Map();
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => { itemRefs.current?.get(activeId)?.focus(); }, [expanded]);
+        return <button ref={node => itemRefs.current?.set(activeId, node)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a state-to-state chain beside a lazy DOM ref Map", () => {
+    const result = runRule(
+      noEffectChain,
+      `function MixedChain({ activeId }) {
+        const [expanded, setExpanded] = useState(new Set());
+        const [status, setStatus] = useState("idle");
+        const itemRefs = useRef(null);
+        itemRefs.current ??= new Map();
+        useEffect(() => { setExpanded(findAncestorPath(activeId)); }, [activeId]);
+        useEffect(() => {
+          itemRefs.current?.get(activeId)?.focus();
+          setStatus(expanded.has(activeId) ? "ready" : "idle");
+        }, [expanded]);
+        return <button ref={node => itemRefs.current?.set(activeId, node)}>{status}</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("follows transparent wrappers around a ref-backed DOM map", () => {

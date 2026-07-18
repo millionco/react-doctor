@@ -2,12 +2,14 @@ import { describe, expect, it } from "vite-plus/test";
 import type { SourceLocation } from "./get-location-at-index.js";
 import { getLocationAtIndex } from "./get-location-at-index.js";
 
-// Reference: the previous slice+split implementation whose outputs are the
-// pinned contract (line/column are 1-based; `\r?\n` is the line separator).
+// Reference: the slice+split implementation whose outputs pin one-based
+// line and column semantics for every ECMAScript line terminator.
 const referenceLocationAtIndex = (content: string, matchIndex: number): SourceLocation => {
   if (matchIndex < 0) return { line: 1, column: 1 };
   const prefix = content.slice(0, matchIndex);
-  const lines = prefix.split(/\r?\n/);
+  const comparablePrefix =
+    prefix.endsWith("\r") && content[matchIndex] === "\n" ? `${prefix.slice(0, -1)} ` : prefix;
+  const lines = comparablePrefix.split(/\r\n|[\r\n\u2028\u2029]/);
   return {
     line: lines.length,
     column: (lines[lines.length - 1]?.length ?? 0) + 1,
@@ -59,9 +61,30 @@ describe("security-scan/utils/get-location-at-index", () => {
     expect(getLocationAtIndex("ab\r\ncd", 4)).toEqual({ line: 2, column: 1 });
   });
 
-  it("does not treat a lone \\r as a line separator", () => {
-    expect(getLocationAtIndex("ab\rcd", 4)).toEqual({ line: 1, column: 5 });
+  it("locates an index after a lone \\r separator", () => {
+    expect(getLocationAtIndex("ab\rcd", 4)).toEqual({ line: 2, column: 2 });
   });
+
+  it.each(["\u2028", "\u2029"])(
+    "locates an index after an ECMAScript Unicode line separator",
+    (separator) => {
+      expect(getLocationAtIndex(`ab${separator}cd`, 4)).toEqual({ line: 2, column: 2 });
+    },
+  );
+
+  it.each(["\u2028", "\u2029"])(
+    "treats the index of an ECMAScript Unicode line separator as the end of its line",
+    (separator) => {
+      expect(getLocationAtIndex(`ab${separator}cd`, 2)).toEqual({ line: 1, column: 3 });
+    },
+  );
+
+  it.each(["\u2028", "\u2029"])(
+    "starts a line immediately after an ECMAScript Unicode line separator",
+    (separator) => {
+      expect(getLocationAtIndex(`ab${separator}cd`, 3)).toEqual({ line: 2, column: 1 });
+    },
+  );
 
   it("locates the end of content", () => {
     expect(getLocationAtIndex("ab\ncd", 5)).toEqual({ line: 2, column: 3 });
@@ -105,7 +128,7 @@ describe("security-scan/utils/get-location-at-index", () => {
       seedState = (seedState * 48271) % 0x7fffffff;
       return seedState / 0x7fffffff;
     };
-    const alphabet = ["a", "b", " ", "\n", "\r", "\r\n", "\t", "é", "x\ny"];
+    const alphabet = ["a", "b", " ", "\n", "\r", "\r\n", "\u2028", "\u2029", "\t", "é", "x\ny"];
     for (let contentRound = 0; contentRound < 60; contentRound += 1) {
       const pieceCount = Math.floor(nextRandom() * 40);
       let content = "";

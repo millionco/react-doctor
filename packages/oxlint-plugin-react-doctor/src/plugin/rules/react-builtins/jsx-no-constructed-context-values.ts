@@ -1,8 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import {
+  getImportedNameFromModule,
+  getImportSourceForName,
+} from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
@@ -112,9 +117,19 @@ const collectContextBindings = (programRoot: EsTreeNode): Set<string> => {
 const isCreateContextBindingJsxName = (
   node: EsTreeNode,
   contextBindings: ReadonlySet<string>,
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (!isNodeOfType(node, "JSXIdentifier")) return false;
-  if (!contextBindings.has(node.name)) return false;
+  if (!contextBindings.has(node.name)) {
+    const symbol = scopes.symbolFor(node);
+    if (!symbol || symbol.kind !== "import") return false;
+    const importedName = getImportedName(symbol.declarationNode);
+    const importSource = getImportSourceForName(node, node.name);
+    return (
+      importSource?.toLowerCase().includes("context") === true &&
+      (node.name.endsWith("Context") || importedName?.endsWith("Context") === true)
+    );
+  }
   const binding = findVariableInitializer(node, node.name);
   if (!binding) return false;
   return binding.scopeOwner.type === "Program";
@@ -151,7 +166,11 @@ export const jsxNoConstructedContextValues = defineRule({
         if (isTestlikeFile) return;
         const nameNode = node.name as EsTreeNode;
         const isLegacyProvider = isProviderMemberName(nameNode);
-        const isReact19Shorthand = isCreateContextBindingJsxName(nameNode, contextBindings);
+        const isReact19Shorthand = isCreateContextBindingJsxName(
+          nameNode,
+          contextBindings,
+          context.scopes,
+        );
         if (!isLegacyProvider && !isReact19Shorthand) return;
         if (!isInsideFunctionScope(node)) return;
         for (const attribute of node.attributes) {

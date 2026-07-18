@@ -5,6 +5,8 @@ import {
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
+export const OBSERVER_REGISTRATION_METHOD_NAME = "observe";
+
 const getSubscribeLikeMethodName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
   if (!isNodeOfType(node.callee, "MemberExpression")) return null;
@@ -16,6 +18,17 @@ export const isSubscribeLikeCallExpression = (node: EsTreeNode): boolean => {
   const methodName = getSubscribeLikeMethodName(node);
   return methodName !== null && SUBSCRIPTION_METHOD_NAMES.has(methodName);
 };
+
+export const getSubscribeOrObserveMethodName = (node: EsTreeNode): string | null => {
+  const methodName = getSubscribeLikeMethodName(node);
+  const isSubscribeOrObserve =
+    methodName !== null &&
+    (SUBSCRIPTION_METHOD_NAMES.has(methodName) || methodName === OBSERVER_REGISTRATION_METHOD_NAME);
+  return isSubscribeOrObserve ? methodName : null;
+};
+
+export const isSubscribeOrObserveCallExpression = (node: EsTreeNode): boolean =>
+  getSubscribeOrObserveMethodName(node) !== null;
 
 export const isCleanupReturningSubscribeLikeCallExpression = (node: EsTreeNode): boolean => {
   const methodName = getSubscribeLikeMethodName(node);

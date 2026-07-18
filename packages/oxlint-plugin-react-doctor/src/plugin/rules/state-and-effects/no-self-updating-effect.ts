@@ -3,7 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
@@ -786,7 +786,7 @@ export const noSelfUpdatingEffect = defineRule({
     const checkFunctionScope = (functionBody: EsTreeNode | null | undefined): void => {
       if (!functionBody || !isNodeOfType(functionBody, "BlockStatement")) return;
 
-      const useStateBindings = collectUseStateBindings(functionBody);
+      const useStateBindings = collectUseStateBindings(functionBody, context.scopes);
       if (useStateBindings.length === 0) return;
 
       const setterNameToStateName = new Map<string, string>();
@@ -799,7 +799,7 @@ export const noSelfUpdatingEffect = defineRule({
         if (!isNodeOfType(statement, "ExpressionStatement")) continue;
         const effectCall = unwrapDiscardedExpression(statement);
         if (!isNodeOfType(effectCall, "CallExpression")) continue;
-        if (!isHookCall(effectCall, EFFECT_HOOK_NAMES)) continue;
+        if (!isReactHookCall(effectCall, EFFECT_HOOK_NAMES, context.scopes)) continue;
         if ((effectCall.arguments?.length ?? 0) < 2) continue;
 
         const dependencyStateNames = collectDependencyStateNames(effectCall.arguments[1]);

@@ -22,6 +22,10 @@ const TEST_FILE_SUFFIX_PATTERN = new RegExp(
 );
 const TEST_FILE_DIRECTORY_PATTERN =
   /(?:^|\/)(?:__tests__|__test__|tests|test|__mocks__|cypress|e2e|playwright)\//;
+const AMBIGUOUS_TEST_ROUTE_DIRECTORY_PATTERN = /(?:^|\/)(?:tests|test)\//;
+const NEXT_APP_ROUTE_FILE_SUFFIX_PATTERN =
+  /\/(?:default|error|forbidden|global-error|layout|loading|not-found|page|route|template|unauthorized)\.[cm]?[jt]sx?$/;
+const SCRIPT_FILE_SUFFIX_PATTERN = /\.[cm]?[jt]sx?$/;
 
 // "Source root" markers — once a path contains `/src/`, `/app/`,
 // `/lib/`, `/pages/`, etc., everything BELOW that is production code
@@ -58,6 +62,19 @@ const stripAboveSourceRoot = (relativePath: string): string => {
   return relativePath.slice(fixtureMatch.index + fixtureMatch[0].length - 1);
 };
 
+const isFrameworkRouteBeforeAmbiguousTestDirectory = (relativePath: string): boolean => {
+  const testDirectoryMatch = AMBIGUOUS_TEST_ROUTE_DIRECTORY_PATTERN.exec(relativePath);
+  if (testDirectoryMatch === null) return false;
+  let nearestRouteRoot: string | undefined;
+  for (const pathSegment of relativePath.slice(0, testDirectoryMatch.index).split("/")) {
+    if (pathSegment === "app" || pathSegment === "pages") nearestRouteRoot = pathSegment;
+  }
+  if (nearestRouteRoot === undefined) return false;
+  return nearestRouteRoot === "pages"
+    ? SCRIPT_FILE_SUFFIX_PATTERN.test(relativePath)
+    : NEXT_APP_ROUTE_FILE_SUFFIX_PATTERN.test(relativePath);
+};
+
 /**
  * Classifies where a file sits relative to shipped code. A finding in a
  * `.stories.tsx` or `.spec.ts` file never runs in front of users, so
@@ -79,5 +96,6 @@ export const classifyFileContext = (relativePath: string): DiagnosticFileContext
   // scopes to the source-root-below path so that fixture-project
   // source files don't get falsely auto-suppressed.
   const scoped = stripAboveSourceRoot(forwardSlashed);
+  if (isFrameworkRouteBeforeAmbiguousTestDirectory(scoped)) return "production";
   return TEST_FILE_DIRECTORY_PATTERN.test(scoped) ? "test" : "production";
 };

@@ -1,6 +1,7 @@
 import type { Reference } from "eslint-scope";
 import type { ScopeAnalysis } from "../../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
+import { findTransparentExpressionRoot } from "../../../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyName } from "../../../../utils/get-static-property-name.js";
 import { getRootIdentifier } from "../../../../utils/get-root-identifier.js";
 import { hasPossibleStaticPropertyWriteBefore } from "../../../../utils/has-static-property-write-before.js";
@@ -187,6 +188,15 @@ const isReactNamespaceImportReference = (ref: Reference | null): boolean =>
     }),
   );
 
+const isReactNamespaceReceiver = (analysis: ProgramAnalysis, node: EsTreeNode): boolean => {
+  const receiver = stripParenExpression(node);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const namespaceReference = getRef(analysis, receiver);
+  return namespaceReference?.resolved
+    ? isReactNamespaceImportReference(namespaceReference)
+    : receiver.name === "React";
+};
+
 export const isGenuineReactHookDeclarator = (
   analysis: ProgramAnalysis,
   declarator: EsTreeNode,
@@ -207,15 +217,12 @@ export const isGenuineReactHookDeclarator = (
   if (
     !isNodeOfType(callee, "MemberExpression") ||
     callee.computed ||
-    !isNodeOfType(callee.object, "Identifier") ||
     !isNodeOfType(callee.property, "Identifier") ||
     callee.property.name !== hookName
   ) {
     return false;
   }
-  const namespaceReference = getRef(analysis, callee.object);
-  if (!namespaceReference?.resolved) return callee.object.name === "React";
-  return isReactNamespaceImportReference(namespaceReference);
+  return isReactNamespaceReceiver(analysis, callee.object);
 };
 
 const isHookCallee = (
@@ -227,12 +234,13 @@ const isHookCallee = (
   if (isNodeOfType(node, "Identifier")) {
     if (node.name === hookName) return true;
     if (isReactNamedImportReference(getRef(analysis, node), hookName)) return true;
-    const parent = (node as unknown as { parent?: EsTreeNode | null }).parent;
+    const receiverRoot = findTransparentExpressionRoot(node);
+    const parent = receiverRoot.parent;
     if (
       parent &&
       isNodeOfType(parent, "MemberExpression") &&
-      isNodeOfType(parent.object, "Identifier") &&
-      parent.object.name === "React" &&
+      parent.object === receiverRoot &&
+      isReactNamespaceReceiver(analysis, node) &&
       isNodeOfType(parent.property, "Identifier") &&
       parent.property.name === hookName
     ) {
@@ -241,29 +249,13 @@ const isHookCallee = (
     return false;
   }
   if (isNodeOfType(node, "MemberExpression")) {
-    const receiver = stripParenExpression(node.object);
     return (
-      isNodeOfType(receiver, "Identifier") &&
-      receiver.name === "React" &&
+      isReactNamespaceReceiver(analysis, node.object) &&
       isNodeOfType(node.property, "Identifier") &&
       node.property.name === hookName
     );
   }
   return false;
-};
-
-export const isUseEffect = (node: EsTreeNode | null | undefined): boolean => {
-  if (!node || !isNodeOfType(node, "CallExpression")) return false;
-  const callee = node.callee;
-  if (isNodeOfType(callee, "Identifier") && callee.name === "useEffect") return true;
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  const receiver = stripParenExpression(callee.object);
-  return (
-    isNodeOfType(receiver, "Identifier") &&
-    receiver.name === "React" &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === "useEffect"
-  );
 };
 
 export const getEffectFn = (analysis: ProgramAnalysis, node: EsTreeNode): EsTreeNode | null => {
@@ -442,8 +434,38 @@ export const isRefCurrent = (ref: Reference): boolean => {
   return parent.property.name === "current";
 };
 
+export const resolveStateSetterReference = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+): Reference | null => {
+  const visitedReferences = new Set<Reference>();
+  let currentReference: Reference | null = ref;
+  while (currentReference && !visitedReferences.has(currentReference)) {
+    if (isStateSetter(analysis, currentReference)) return currentReference;
+    visitedReferences.add(currentReference);
+    const definitions = currentReference.resolved?.defs ?? [];
+    if (definitions.length !== 1) return null;
+    const definitionNode = definitions[0].node as unknown as EsTreeNode;
+    if (!isNodeOfType(definitionNode, "VariableDeclarator")) return null;
+    if (!isNodeOfType(definitionNode.id, "Identifier")) return null;
+    const declaration = (definitionNode as unknown as { parent?: EsTreeNode | null }).parent;
+    if (!isNodeOfType(declaration, "VariableDeclaration") || declaration.kind !== "const") {
+      return null;
+    }
+    if (!definitionNode.init) return null;
+    const initializer = stripParenExpression(definitionNode.init);
+    if (!isNodeOfType(initializer, "Identifier")) return null;
+    currentReference = getRef(analysis, initializer);
+  }
+  return null;
+};
+
 export const isStateSetterCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
-  isEventualCallTo(analysis, ref, (innerRef) => isStateSetter(analysis, innerRef));
+  isEventualCallTo(
+    analysis,
+    ref,
+    (innerRef) => resolveStateSetterReference(analysis, innerRef) !== null,
+  );
 
 // The shared "is this a synchronous, hoistable state-setter call worth
 // reporting" filter for the mount-effect rules. A direct `setState()` at
@@ -726,14 +748,19 @@ export const isRefCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
   );
 
 export const getUseStateDecl = (analysis: ProgramAnalysis, ref: Reference): EsTreeNode | null => {
-  const useStateRef = getUpstreamRefs(analysis, ref).find((upRef) =>
-    isHookCallee(analysis, upRef.identifier as unknown as EsTreeNode, "useState"),
+  const stateBindingReference = getUpstreamRefs(analysis, ref).find(
+    (upstreamReference) =>
+      isState(analysis, upstreamReference) || isStateSetter(analysis, upstreamReference),
   );
-  let node: EsTreeNode | null | undefined = useStateRef?.identifier as unknown as EsTreeNode;
-  while (node && !isNodeOfType(node, "VariableDeclarator")) {
-    node = (node as unknown as { parent?: EsTreeNode | null }).parent;
-  }
-  return node ?? null;
+  const definition = stateBindingReference?.resolved?.defs.find((candidateDefinition) => {
+    const definitionNode = candidateDefinition.node as unknown as EsTreeNode;
+    return (
+      isNodeOfType(definitionNode, "VariableDeclarator") &&
+      isNodeOfType(definitionNode.init, "CallExpression") &&
+      isHookCallee(analysis, definitionNode.init.callee as EsTreeNode, "useState")
+    );
+  });
+  return definition ? (definition.node as unknown as EsTreeNode) : null;
 };
 
 const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): boolean => {

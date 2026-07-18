@@ -1,6 +1,5 @@
 import { ARIA_PROPERTIES } from "../../constants/aria-properties.js";
 import { VALID_ARIA_ROLES } from "../../constants/aria-roles.js";
-import { ROLE_SUPPORTS_ARIA_PROPS } from "../../constants/role-supports-aria-props.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -12,6 +11,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isLocalTestScaffoldJsx } from "../../utils/is-local-test-scaffold-jsx.js";
+import { isAriaPropertySupportedByRole } from "../../utils/is-aria-property-supported-by-role.js";
 
 const buildMessageDefault = (roles: ReadonlyArray<string>, propName: string): string => {
   const roleList = roles.map((role) => `\`${role}\``).join(" / ");
@@ -72,17 +72,13 @@ export const roleSupportsAriaProps = defineRule({
             (role): role is string => role !== null,
           );
       if (roleCandidates === null || roleCandidates.length === 0) return;
-      const supportedSets: Array<ReadonlySet<string>> = [];
       for (const role of roleCandidates) {
         if (!VALID_ARIA_ROLES.has(role)) return;
-        const supported = ROLE_SUPPORTS_ARIA_PROPS[role];
-        if (!supported) return;
-        supportedSets.push(supported);
       }
       const isImplicit = !roleAttribute;
 
       for (const { attribute, propName } of ariaAttributes) {
-        if (supportedSets.some((supported) => supported.has(propName))) continue;
+        if (roleCandidates.some((role) => isAriaPropertySupportedByRole(role, propName))) continue;
         context.report({
           node: attribute,
           message: isImplicit

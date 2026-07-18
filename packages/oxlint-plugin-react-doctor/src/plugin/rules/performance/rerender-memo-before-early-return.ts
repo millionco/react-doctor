@@ -168,7 +168,7 @@ export const rerenderMemoBeforeEarlyReturn = defineRule({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Move the JSX into a child component wrapped in memo, so the parent's early return skips it",
+    "Move the JSX into a child component rendered after the early return, so renders that take the early return never build it",
   create: (context: RuleContext) => {
     const inspectFunctionBody = (statements: EsTreeNode[]): void => {
       let memoNode: EsTreeNode | null = null;
@@ -217,7 +217,7 @@ export const rerenderMemoBeforeEarlyReturn = defineRule({
           context.report({
             node: memoNode,
             message:
-              "This runs even when the component bails out because the useMemo builds JSX before an early return, so move the JSX into a child wrapped in memo to skip it on the early return",
+              "This rebuilds the JSX whenever its dependencies change even on renders that take the early return, so move the JSX into a child component rendered after the early return to skip it",
           });
           return;
         }

@@ -120,6 +120,8 @@ const layersOf = (config: {
   deadCode?: ReadonlyArray<Diagnostic>;
   supplyChain?: ReadonlyArray<Diagnostic>;
   githubViewerPermission?: string | null;
+  reactDoctorConfig?: ReactDoctorConfig | null;
+  scoreLayer?: Layer.Layer<Score>;
   // Pins the dead-code/lint overlap mode. Defaults to "off" so emit-order
   // assertions stay deterministic regardless of the test box's free memory
   // (the "auto" gate reads `os.freemem()`); overlap tests opt into "on".
@@ -127,7 +129,11 @@ const layersOf = (config: {
 }) =>
   Layer.mergeAll(
     Project.layerOf(sampleProject),
-    Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
+    Config.layerOf({
+      config: config.reactDoctorConfig ?? null,
+      resolvedDirectory: "/repo",
+      configSourceDirectory: null,
+    }),
     Files.layerInMemory(new Map()),
     config.linter ?? Linter.layerOf(config.diagnostics ?? []),
     LintPartialFailures.layerLive,
@@ -138,7 +144,7 @@ const layersOf = (config: {
       defaultBranch: "main",
       githubViewerPermission: config.githubViewerPermission,
     }),
-    Score.layerOf({ score: 85, label: "Good" }),
+    config.scoreLayer ?? Score.layerOf({ score: 85, label: "Good" }),
     SupplyChain.layerOf(config.supplyChain ?? []),
     Progress.layerNoop,
     Reporter.layerCapture,
@@ -457,6 +463,77 @@ describe("runInspect — deterministic diagnostic ordering", () => {
 
     expect(reverseOrder.score).toEqual(forwardOrder.score);
     expect(reverseOrder.diagnostics).toEqual(forwardOrder.diagnostics);
+  });
+});
+
+describe("runInspect — production-health score scope", () => {
+  const docusaurusTestDiagnostic: Diagnostic = {
+    ...lintDiagnostic,
+    filePath: "packages/docusaurus-theme-classic/src/theme/Tabs/__tests__/context.test.tsx",
+    plugin: "react-compiler",
+    rule: "globals",
+    message: "InvalidReact: Unexpected reassignment of a variable",
+    fileContext: "test",
+  };
+
+  const storyDiagnostic: Diagnostic = {
+    ...lintDiagnostic,
+    filePath: "packages/components/src/Button.stories.tsx",
+    plugin: "eslint",
+    rule: "no-unused-vars",
+    fileContext: "story",
+  };
+
+  const runWithCapturedScore = (reactDoctorConfig: ReactDoctorConfig | null = null) =>
+    Effect.gen(function* () {
+      const capturedScoreDiagnostics = yield* Ref.make<ReadonlyArray<Diagnostic>>([]);
+      const scoreLayer = Layer.succeed(
+        Score,
+        Score.of({
+          compute: (input) =>
+            Ref.set(capturedScoreDiagnostics, input.diagnostics).pipe(
+              Effect.as({ score: 85, label: "Good" }),
+            ),
+        }),
+      );
+      const output = yield* runInspect(baseInput).pipe(
+        Effect.provide(
+          layersOf({
+            diagnostics: [docusaurusTestDiagnostic, storyDiagnostic],
+            deadCode: [],
+            reactDoctorConfig,
+            scoreLayer,
+          }),
+        ),
+      );
+      return {
+        output,
+        scoredDiagnostics: yield* Ref.get(capturedScoreDiagnostics),
+      };
+    });
+
+  it("returns test and story diagnostics through the API without sending them to the score", async () => {
+    const result = await Effect.runPromise(runWithCapturedScore());
+
+    expect(result.output.diagnostics).toHaveLength(2);
+    expect(result.output.diagnostics).toEqual(
+      expect.arrayContaining([docusaurusTestDiagnostic, storyDiagnostic]),
+    );
+    expect(result.scoredDiagnostics).toEqual([]);
+  });
+
+  it("restores an explicitly included test diagnostic to the score", async () => {
+    const result = await Effect.runPromise(
+      runWithCapturedScore({
+        surfaces: { score: { includeRules: ["react-compiler/globals"] } },
+      }),
+    );
+
+    expect(result.output.diagnostics).toHaveLength(2);
+    expect(result.output.diagnostics).toEqual(
+      expect.arrayContaining([docusaurusTestDiagnostic, storyDiagnostic]),
+    );
+    expect(result.scoredDiagnostics).toEqual([docusaurusTestDiagnostic]);
   });
 });
 

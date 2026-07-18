@@ -44,7 +44,7 @@ export const noSetStateInRender = defineRule({
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const setterNames = new Set(
-        collectUseStateBindings(componentBody).map((binding) => binding.setterName),
+        collectUseStateBindings(componentBody, context.scopes).map((binding) => binding.setterName),
       );
       if (setterNames.size === 0) return;
 

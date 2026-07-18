@@ -92,6 +92,8 @@ export interface InspectResult {
     fixedCount: number;
     /** Total findings at base (over the same files), for context. */
     baseTotalCount: number;
+    /** Pre-existing findings matched after moving to a different file. */
+    crossFileMatchCount?: number;
   };
 }
 
@@ -147,14 +149,20 @@ export interface InspectOptions {
   /**
    * Baseline comparison. When set (only meaningful alongside
    * `includePaths`, i.e. a diff scan), `inspect()` runs a second lint pass
-   * over the same files as they existed at `ref` and reports only the
+   * over the relevant base-side files as they existed at `ref` and reports only the
    * diagnostics the change *introduced* — pre-existing findings that merely
    * shifted lines are matched out. The returned `score` is still the head
    * scan's; `InspectResult.baselineDelta` carries the fixed / base counts.
    * `ref` should be a resolved commit (e.g. the merge-base) whose content
-   * `git show <ref>:<file>` can read.
+   * `git show <ref>:<file>` can read. `baseFiles` / `headFiles` may carry a
+   * side-aware Git diff plan; when omitted, React Doctor derives one from
+   * `ref` and the worktree.
    */
-  baseline?: { ref: string };
+  baseline?: {
+    ref: string;
+    baseFiles?: ReadonlyArray<string>;
+    headFiles?: ReadonlyArray<string>;
+  };
   /**
    * Restrict reported diagnostics to those whose source spans intersect the
    * lines the change touched (`--scope lines`). Each entry is one changed file with the

@@ -355,6 +355,21 @@ pnpm format       # use `format:check` to verify only
 pnpm smoke:json-report   # validates the built CLI's JSON output against the schema
 ```
 
+## Release authorization
+
+- MUST: Never merge a Changesets release PR, including any `changeset-release/*` branch, without
+  fresh, explicit user confirmation for that exact PR and version immediately before the merge.
+- General instructions to merge, ship, land, or babysit green PRs do not authorize merging a
+  release/version PR. Treat merging a PR that triggers publication as publishing the release.
+- MUST: Never publish packages, push or move release tags, or trigger, approve, rerun, or merge a
+  release/publish workflow without fresh, explicit user confirmation for the exact versions and
+  packages involved.
+- Agents may prepare, validate, and babysit a release candidate, but must stop before the first
+  publishing action and report the exact PR, versions, packages, tags, and workflows awaiting user
+  approval.
+- These confirmation requirements also apply to GitHub Action releases described below. Once the
+  user explicitly approves a specific release, follow all required versioning and tag steps.
+
 ## GitHub Action versioning
 
 The composite GitHub Action is **versioned independently from the npm packages**. "The action"

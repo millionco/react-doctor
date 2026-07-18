@@ -4,8 +4,10 @@
 declare const setPreview: (url: string) => void;
 declare const getFallback: () => string;
 
+const createPreview = (blob: Blob) => URL.createObjectURL(blob);
+
 export const showPreview = (blob: Blob) => {
-  let url = URL.createObjectURL(blob);
+  let url = createPreview(blob);
   setPreview(url);
   url = getFallback();
   URL.revokeObjectURL(url);

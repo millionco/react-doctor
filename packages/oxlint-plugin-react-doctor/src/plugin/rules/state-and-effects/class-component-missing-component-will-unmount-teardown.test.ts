@@ -226,8 +226,32 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
          render() { return null; }
        }`,
     );
+    const handlerOnlySubscription = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount } from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           this.store.subscribe(this.handleChange);
+           disposeOnUnmount(this, () => this.store.unsubscribe(this.handleChange));
+         }
+         render() { return null; }
+       }`,
+    );
+    const onceSubscription = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount } from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           this.bus.once("data", this.handleData);
+           disposeOnUnmount(this, () => this.bus.off("data", this.handleData));
+         }
+         render() { return null; }
+       }`,
+    );
     expect(aliasedImportListener.diagnostics).toHaveLength(0);
     expect(namespaceTimer.diagnostics).toHaveLength(0);
+    expect(handlerOnlySubscription.diagnostics).toHaveLength(0);
+    expect(onceSubscription.diagnostics).toHaveLength(0);
   });
 
   it("requires proven disposeOnUnmount provenance, owner, and matching cleanup", () => {
@@ -276,10 +300,58 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
          render() { return null; }
        }`,
     );
+    const wrongSubscribeArity = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount } from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           this.store.subscribe(this.handleChange);
+           disposeOnUnmount(this, () => this.store.unsubscribe("data", this.handleChange));
+         }
+         render() { return null; }
+       }`,
+    );
+    const wrongEvent = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount } from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           this.bus.on("data", this.handleData);
+           disposeOnUnmount(this, () => this.bus.off("other", this.handleData));
+         }
+         render() { return null; }
+       }`,
+    );
+    const wrongHandler = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount } from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           this.bus.once("data", this.handleData);
+           disposeOnUnmount(this, () => this.bus.off("data", this.handleOther));
+         }
+         render() { return null; }
+       }`,
+    );
+    const missingHandler = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount } from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           this.bus.on("data");
+           disposeOnUnmount(this, () => this.bus.off("data"));
+         }
+         render() { return null; }
+       }`,
+    );
     expect(localHomonym.diagnostics).toHaveLength(1);
     expect(wrongOwner.diagnostics).toHaveLength(1);
     expect(wrongListener.diagnostics).toHaveLength(1);
     expect(shadowedNamespace.diagnostics).toHaveLength(1);
+    expect(wrongSubscribeArity.diagnostics).toHaveLength(1);
+    expect(wrongEvent.diagnostics).toHaveLength(1);
+    expect(wrongHandler.diagnostics).toHaveLength(1);
+    expect(missingHandler.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a pure data-fetch mount with no resource to release", () => {

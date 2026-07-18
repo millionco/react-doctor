@@ -28,26 +28,51 @@ const MESSAGE =
 
 // Listener-registration methods that hand back a resource which must be
 // explicitly removed on unmount. Sound: each has a matching removal API.
-const LISTENER_REGISTRATION_METHODS = new Set([
-  "on",
-  "once",
-  "subscribe",
-  "addEventListener",
-  "addListener",
-]);
-
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "global", "self"]);
 const MOUNT_LOCAL_RESOURCE_FACTORY_NAMES = new Set(["initPlaces", "places"]);
 const COMPONENT_MUTATION_METHOD_NAMES = new Set(["forceUpdate", "setState"]);
 const MOBX_REACT_MODULE = "mobx-react";
 const DISPOSE_ON_UNMOUNT_NAME = "disposeOnUnmount";
-const LISTENER_RELEASE_METHODS = new Map([
-  ["addEventListener", "removeEventListener"],
-  ["addListener", "removeListener"],
-  ["on", "off"],
-  ["subscribe", "unsubscribe"],
+
+interface ListenerMethodSignature {
+  releaseMethodName: string;
+  identityArgumentKinds: ReadonlyArray<"event" | "handler">;
+  captureOptionsIndex?: number;
+}
+
+const LISTENER_REGISTRATION_SIGNATURES = new Map<string, ListenerMethodSignature>([
+  [
+    "addEventListener",
+    {
+      releaseMethodName: "removeEventListener",
+      identityArgumentKinds: ["event", "handler"],
+      captureOptionsIndex: 2,
+    },
+  ],
+  [
+    "addListener",
+    { releaseMethodName: "removeListener", identityArgumentKinds: ["event", "handler"] },
+  ],
+  ["on", { releaseMethodName: "off", identityArgumentKinds: ["event", "handler"] }],
+  ["once", { releaseMethodName: "off", identityArgumentKinds: ["event", "handler"] }],
+  ["subscribe", { releaseMethodName: "unsubscribe", identityArgumentKinds: ["handler"] }],
 ]);
-const LISTENER_RELEASE_METHOD_NAMES = new Set(LISTENER_RELEASE_METHODS.values());
+const LISTENER_RELEASE_SIGNATURES = new Map<string, ListenerMethodSignature>([
+  [
+    "removeEventListener",
+    {
+      releaseMethodName: "removeEventListener",
+      identityArgumentKinds: ["event", "handler"],
+      captureOptionsIndex: 2,
+    },
+  ],
+  [
+    "removeListener",
+    { releaseMethodName: "removeListener", identityArgumentKinds: ["event", "handler"] },
+  ],
+  ["off", { releaseMethodName: "off", identityArgumentKinds: ["event", "handler"] }],
+  ["unsubscribe", { releaseMethodName: "unsubscribe", identityArgumentKinds: ["handler"] }],
+]);
 
 interface MountHazard {
   node: EsTreeNodeOfType<"CallExpression">;
@@ -341,17 +366,38 @@ const opaqueCaptureOptionsKey = (options: EsTreeNode, scopes: ScopeAnalysis): st
 
 const listenerIdentityKey = (
   call: EsTreeNodeOfType<"CallExpression">,
+  signature: ListenerMethodSignature,
   scopes: ScopeAnalysis,
 ): string | null => {
   const callee = stripParenExpression(call.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return null;
+  const maximumArgumentCount =
+    signature.captureOptionsIndex === undefined
+      ? signature.identityArgumentKinds.length
+      : signature.captureOptionsIndex + 1;
+  if (
+    call.arguments.length < signature.identityArgumentKinds.length ||
+    call.arguments.length > maximumArgumentCount
+  ) {
+    return null;
+  }
   const receiverKey = serializeListenerIdentityPart(callee.object, scopes);
-  const eventKey = serializeEventKey(call.arguments?.[0], scopes);
-  const handlerKey = call.arguments?.[1]
-    ? serializeListenerIdentityPart(call.arguments[1] as EsTreeNode, scopes)
-    : null;
-  if (!receiverKey || !eventKey || !handlerKey) return null;
-  const options = call.arguments?.[2] as EsTreeNode | undefined;
+  if (!receiverKey) return null;
+  const identityArgumentKeys: string[] = [];
+  for (const [argumentIndex, argumentKind] of signature.identityArgumentKinds.entries()) {
+    const argument = call.arguments?.[argumentIndex];
+    if (!argument || isNodeOfType(argument, "SpreadElement")) return null;
+    const argumentKey =
+      argumentKind === "event"
+        ? serializeEventKey(argument, scopes)
+        : serializeListenerIdentityPart(argument, scopes);
+    if (!argumentKey) return null;
+    identityArgumentKeys.push(argumentKey);
+  }
+  const identityKey = `${receiverKey}|${identityArgumentKeys.join("|")}`;
+  if (signature.captureOptionsIndex === undefined) return identityKey;
+  const options = call.arguments?.[signature.captureOptionsIndex];
+  if (options && isNodeOfType(options, "SpreadElement")) return null;
   let captureKey = "false";
   if (options) {
     const unwrappedOptions = stripParenExpression(options);
@@ -360,10 +406,7 @@ const listenerIdentityKey = (
     } else {
       const optionsObject = resolveStableOptionsObject(options, ["capture"], scopes);
       const opaqueOptionsKey = opaqueCaptureOptionsKey(options, scopes);
-      if (!optionsObject)
-        return opaqueOptionsKey
-          ? `${receiverKey}|${eventKey}|${handlerKey}|${opaqueOptionsKey}`
-          : null;
+      if (!optionsObject) return opaqueOptionsKey ? `${identityKey}|${opaqueOptionsKey}` : null;
       if (
         optionsObject.properties.some(
           (property) =>
@@ -371,9 +414,7 @@ const listenerIdentityKey = (
             getStaticPropertyKeyName(property, { allowComputedString: true }) === null,
         )
       ) {
-        return opaqueOptionsKey
-          ? `${receiverKey}|${eventKey}|${handlerKey}|${opaqueOptionsKey}`
-          : null;
+        return opaqueOptionsKey ? `${identityKey}|${opaqueOptionsKey}` : null;
       }
       const captureProperty = optionsObject.properties.find(
         (property) =>
@@ -392,16 +433,16 @@ const listenerIdentityKey = (
       }
     }
   }
-  return `${receiverKey}|${eventKey}|${handlerKey}|${captureKey}`;
+  return `${identityKey}|${captureKey}`;
 };
 
 const listenerReleaseKey = (
   call: EsTreeNodeOfType<"CallExpression">,
-  releaseMethodName: string,
+  signature: ListenerMethodSignature,
   scopes: ScopeAnalysis,
 ): string | null => {
-  const identityKey = listenerIdentityKey(call, scopes);
-  return identityKey ? `listener:${releaseMethodName}:${identityKey}` : null;
+  const identityKey = listenerIdentityKey(call, signature, scopes);
+  return identityKey ? `listener:${signature.releaseMethodName}:${identityKey}` : null;
 };
 
 const storedTimerHandleKey = (
@@ -447,9 +488,8 @@ const cleanupReleaseKey = (
   const callee = stripParenExpression(call.callee);
   if (isNodeOfType(callee, "MemberExpression")) {
     const methodName = getStaticPropertyName(callee);
-    if (methodName && LISTENER_RELEASE_METHOD_NAMES.has(methodName)) {
-      return listenerReleaseKey(call, methodName, scopes);
-    }
+    const signature = methodName ? LISTENER_RELEASE_SIGNATURES.get(methodName) : undefined;
+    if (signature) return listenerReleaseKey(call, signature, scopes);
   }
   const timerCalleeName = getTimerCalleeName(call);
   const handleArgument = call.arguments?.[0];
@@ -506,7 +546,9 @@ const collectSynchronouslyRemovedListeners = (
     const callee = stripParenExpression(node.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return;
     if (getStaticPropertyName(callee) !== "removeEventListener") return;
-    const identityKey = listenerIdentityKey(node, scopes);
+    const signature = LISTENER_RELEASE_SIGNATURES.get("removeEventListener");
+    if (!signature) return;
+    const identityKey = listenerIdentityKey(node, signature, scopes);
     if (identityKey) removedListeners.set(identityKey, node.range[0]);
   });
   return removedListeners;
@@ -561,7 +603,7 @@ const isMountHazard = (
     : null;
   if (
     methodName &&
-    LISTENER_REGISTRATION_METHODS.has(methodName) &&
+    LISTENER_REGISTRATION_SIGNATURES.has(methodName) &&
     isNodeOfType(callee, "MemberExpression")
   ) {
     const callArguments = node.arguments ?? [];
@@ -584,8 +626,11 @@ const isMountHazard = (
       ? scopes.symbolFor(receiverBase)
       : null;
     const isLocalReceiver = receiverSymbol ? localReceiverSymbolIds.has(receiverSymbol.id) : false;
+    const addEventListenerSignature = LISTENER_REGISTRATION_SIGNATURES.get("addEventListener");
     const listenerKey =
-      methodName === "addEventListener" ? listenerIdentityKey(node, scopes) : null;
+      methodName === "addEventListener" && addEventListenerSignature
+        ? listenerIdentityKey(node, addEventListenerSignature, scopes)
+        : null;
     const removalPosition = listenerKey ? removedListeners.get(listenerKey) : undefined;
     const isSynchronouslyRemoved = removalPosition !== undefined && removalPosition > node.range[0];
     const isSelfRemovingListener =
@@ -597,10 +642,10 @@ const isMountHazard = (
       !isSelfRemovingListener &&
       !receiverIsRefOwnedNode;
     if (!isHazard) return null;
-    const releaseMethodName = LISTENER_RELEASE_METHODS.get(methodName);
+    const signature = LISTENER_REGISTRATION_SIGNATURES.get(methodName);
     return {
       node,
-      releaseKey: releaseMethodName ? listenerReleaseKey(node, releaseMethodName, scopes) : null,
+      releaseKey: signature ? listenerReleaseKey(node, signature, scopes) : null,
     };
   }
 

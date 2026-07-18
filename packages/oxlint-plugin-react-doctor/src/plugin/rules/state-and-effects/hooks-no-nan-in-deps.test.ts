@@ -71,6 +71,20 @@ describe("hooks-no-nan-in-deps", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags `NaN` in an aliased useImperativeHandle dependency array", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `import { useImperativeHandle as exposeHandle } from "react";
+      const Comp = ({ ref }) => {
+        exposeHandle(ref, () => ({ focus: () => {} }), [NaN]);
+        return null;
+      };`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not lint `useSignalEffect` (Preact signals — single-arg API, no deps array)", () => {
     const result = runRule(
       hooksNoNanInDeps,

@@ -99,6 +99,10 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
 
     const surfaceDiagnostics = filterScansForSurface(completedScans, "cli");
     const displayDiagnostics = filterDiagnosticsByCategories(surfaceDiagnostics, categoryFilters);
+    const scoreDiagnostics = new Set(filterScansForSurface(completedScans, "score"));
+    const displayedScoreDiagnostics = displayDiagnostics.filter((diagnostic) =>
+      scoreDiagnostics.has(diagnostic),
+    );
 
     // Each diagnostic's `filePath` is relative to its own project root,
     // so the code-frame renderer needs to resolve per-diagnostic rather
@@ -166,8 +170,8 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
     const potentialScore = lowestScoredScan
       ? yield* Effect.promise(() =>
           computeProjectedScore(
-            displayDiagnostics,
-            filterScansForSurface([lowestScoredScan], "cli"),
+            displayedScoreDiagnostics,
+            filterScansForSurface([lowestScoredScan], "score"),
             lowestScoredScan.result.score,
           ),
         )

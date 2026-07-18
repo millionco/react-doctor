@@ -5,7 +5,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -106,7 +106,7 @@ export const noMirrorPropEffect = defineRule({
             continue;
           }
           if (!isNodeOfType(declarator.init, "CallExpression")) continue;
-          if (!isHookCall(declarator.init, "useState")) continue;
+          if (!isReactHookCall(declarator.init, "useState", context.scopes)) continue;
           const initializer = declarator.init.arguments?.[0];
           if (!initializer) continue;
           const propRootName = getPropRootName(initializer, propNames);
@@ -131,7 +131,7 @@ export const noMirrorPropEffect = defineRule({
         if (!isNodeOfType(statement, "ExpressionStatement")) continue;
         const effectCall = unwrapDiscardedExpression(statement);
         if (!isNodeOfType(effectCall, "CallExpression")) continue;
-        if (!isHookCall(effectCall, EFFECT_HOOK_NAMES)) continue;
+        if (!isReactHookCall(effectCall, EFFECT_HOOK_NAMES, context.scopes)) continue;
         if ((effectCall.arguments?.length ?? 0) < 2) continue;
 
         const depsNode = effectCall.arguments[1];

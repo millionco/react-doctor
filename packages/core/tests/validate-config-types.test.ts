@@ -77,7 +77,11 @@ describe("validateConfigTypes", () => {
     it("passes through a well-formed surfaces config untouched", () => {
       const input: ReactDoctorConfig = {
         surfaces: {
-          prComment: { includeTags: ["design"], excludeCategories: ["Performance"] },
+          prComment: {
+            includeFileContexts: ["story"],
+            includeTags: ["design"],
+            excludeCategories: ["Performance"],
+          },
           ciFailure: { excludeRules: ["react-doctor/no-vague-button-label"] },
         },
       };
@@ -106,6 +110,18 @@ describe("validateConfigTypes", () => {
       });
       expect(result.surfaces).toEqual({ score: { excludeTags: ["design"] } });
       expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("excludeTags"));
+    });
+
+    it("drops unknown included file contexts with a stderr warning", () => {
+      const result = validateConfigTypes({
+        surfaces: {
+          score: {
+            includeFileContexts: ["test", "production"] as unknown as Array<"test">,
+          },
+        },
+      });
+      expect(result.surfaces).toEqual({ score: { includeFileContexts: ["test"] } });
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("production"));
     });
 
     it("drops the entire surfaces field if it isn't an object", () => {

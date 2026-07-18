@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import { isLintableSourceFile } from "./utils/is-lintable-source-file.js";
 import { Git } from "./services/git.js";
+import type { GitBaselineDiffPlan } from "./services/git.js";
 import type { ChangedFileLineRanges, DiffInfo } from "./types/index.js";
 
 /**
@@ -40,8 +41,19 @@ export const getDiffInfo = (
     }).pipe(Effect.provide(Git.layerNode)),
   );
 
-export const filterSourceFiles = (filePaths: string[]): string[] =>
+export const filterSourceFiles = (filePaths: ReadonlyArray<string>): string[] =>
   filePaths.filter(isLintableSourceFile);
+
+export const getBaselineDiffPlan = (
+  directory: string,
+  ref: string,
+): Promise<GitBaselineDiffPlan | null> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const git = yield* Git;
+      return yield* git.baselineDiffPlan({ directory, ref });
+    }).pipe(Effect.provide(Git.layerNode)),
+  );
 
 /**
  * Programmatic façade over `Git.changedLineRanges` (the `lines` scope). Diffs

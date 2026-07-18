@@ -193,11 +193,37 @@ export const Spy = ({ tag }: { tag: string }) => {
     expect(hits[0].message).toContain("setInterval");
   });
 
-  it("fires when reactMajorVersion is explicitly 19", async () => {
-    // useEffectEvent landed in React 19. The rule should still fire when
-    // the project is detected as React 19 — same diagnostic as the default
-    // (null) path.
-    const projectDir = setupReactProject(tempRoot, "prefer-use-effect-event-react-19", {
+  it("fires when the React version is explicitly 19.2", async () => {
+    // useEffectEvent shipped stable in React 19.2. The rule should still
+    // fire when the project is detected as React 19.2 — same diagnostic as
+    // the default path.
+    const projectDir = setupReactProject(tempRoot, "prefer-use-effect-event-react-19-2", {
+      reactVersion: "^19.2.0",
+      files: {
+        "src/SearchInput.tsx": `import { useEffect, useState } from "react";
+
+export const SearchInput = ({ onSearch }: { onSearch: (q: string) => void }) => {
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => onSearch(query), 300);
+    return () => clearTimeout(id);
+  }, [query, onSearch]);
+  return <input value={query} onChange={(event) => setQuery(event.target.value)} />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "prefer-use-effect-event", {
+      reactMajorVersion: 19,
+      reactVersion: "^19.2.0",
+    });
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("onSearch");
+  });
+
+  it("does NOT fire on React 19.0 (below the 19.2 useEffectEvent threshold)", async () => {
+    const projectDir = setupReactProject(tempRoot, "prefer-use-effect-event-react-19-0", {
       reactVersion: "^19.0.0",
       files: {
         "src/SearchInput.tsx": `import { useEffect, useState } from "react";
@@ -216,9 +242,9 @@ export const SearchInput = ({ onSearch }: { onSearch: (q: string) => void }) => 
 
     const hits = await collectRuleHits(projectDir, "prefer-use-effect-event", {
       reactMajorVersion: 19,
+      reactVersion: "^19.0.0",
     });
-    expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("onSearch");
+    expect(hits).toHaveLength(0);
   });
 
   it("does NOT fire when reactMajorVersion is below the useEffectEvent threshold (React 18)", async () => {

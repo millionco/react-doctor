@@ -59,6 +59,34 @@ function List() { return <Row onClick={() => doThing()} style={{ color: "red" }}
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it.each(["(React as any).memo", "(React!).memo"])(
+    "flags inline props through the %s receiver",
+    (memoCallee) => {
+      const result = runRule(
+        noInlinePropOnMemoComponent,
+        `import React from "react";
+const Row = ${memoCallee}(Inner);
+function List() { return <Row onClick={() => doThing()} />; }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    },
+  );
+
+  it.each(["undefined", "shallowEqual"])(
+    "stays silent when %s is a local custom comparator",
+    (comparatorName) => {
+      const result = runRule(
+        noInlinePropOnMemoComponent,
+        `const ${comparatorName} = (previous, next) => previous.id === next.id;
+const Row = memo(Inner, ${comparatorName});
+function List() { return <Row onClick={() => doThing()} />; }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
   it("stays silent when export default memo(Inner, customCompare) has a real comparator", () => {
     const result = runRule(
       noInlinePropOnMemoComponent,

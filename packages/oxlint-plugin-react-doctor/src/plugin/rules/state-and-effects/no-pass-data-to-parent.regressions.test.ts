@@ -735,6 +735,200 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("stays silent when notifying through a callback ref of a media-query hook transition", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useMediaQuery } from "../hooks/use-media-query";
+        const Sidebar = ({ onBreakPoint }) => {
+          const onBreakPointRef = useRef(onBreakPoint);
+          onBreakPointRef.current = onBreakPoint;
+          const broken = useMediaQuery("(max-width: 768px)");
+          const lastReportedBrokenRef = useRef(false);
+          useEffect(() => {
+            if (broken !== lastReportedBrokenRef.current) {
+              lastReportedBrokenRef.current = broken;
+              onBreakPointRef.current?.(broken);
+            }
+          }, [broken]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when destructured media-query state is externally owned", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useMediaQueryState } from "../hooks/use-media-query";
+        const Sidebar = ({ onBreakPoint }) => {
+          const { matches: broken, resolved } = useMediaQueryState("(max-width: 768px)");
+          const lastReportedBrokenRef = useRef(false);
+          useEffect(() => {
+            if (resolved && broken !== lastReportedBrokenRef.current) {
+              onBreakPoint?.(broken);
+              lastReportedBrokenRef.current = broken;
+            }
+          }, [broken, resolved, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when a local custom hook returns exclusively external state", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useSidebarMediaState = () => {
+          const [broken, setBroken] = useState(false);
+          useEffect(() => {
+            const query = window.matchMedia("(max-width: 768px)");
+            const update = (event) => setBroken(event.matches);
+            query.addEventListener("change", update);
+            return () => query.removeEventListener("change", update);
+          }, []);
+          return { matches: broken };
+        };
+        const Sidebar = ({ onBreakPoint }) => {
+          const { matches: broken } = useSidebarMediaState();
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a non-state value returned beside external hook state", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useSidebarMediaState = () => {
+          const [broken, setBroken] = useState(false);
+          useEffect(() => {
+            const query = window.matchMedia("(max-width: 768px)");
+            const update = (event) => setBroken(event.matches);
+            query.addEventListener("change", update);
+            return () => query.removeEventListener("change", update);
+          }, []);
+          const childValue = readChildValue();
+          return { broken, childValue };
+        };
+        const Sidebar = ({ onChildValue }) => {
+          const { childValue } = useSidebarMediaState();
+          useEffect(() => {
+            onChildValue(childValue);
+          }, [childValue, onChildValue]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags externally updated state when its setter escapes the hook", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useSidebarMediaState = () => {
+          const [broken, setBroken] = useState(false);
+          useEffect(() => {
+            const query = window.matchMedia("(max-width: 768px)");
+            const update = (event) => setBroken(event.matches);
+            query.addEventListener("change", update);
+            return () => query.removeEventListener("change", update);
+          }, []);
+          return [broken, setBroken];
+        };
+        const Sidebar = ({ onBreakPoint }) => {
+          const [broken, setBroken] = useSidebarMediaState();
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return <button onClick={() => setBroken(false)}>Reset</button>;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent when a local allowlisted hook delegates to useSyncExternalStore", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useMediaQuery = (query) =>
+          useSyncExternalStore(
+            (notify) => {
+              const mediaQuery = window.matchMedia(query);
+              mediaQuery.addEventListener("change", notify);
+              return () => mediaQuery.removeEventListener("change", notify);
+            },
+            () => window.matchMedia(query).matches,
+            () => false,
+          );
+        const Sidebar = ({ onBreakPoint }) => {
+          const broken = useMediaQuery("(max-width: 768px)");
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags an unknown local useSyncExternalStore wrapper", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useSidebarStatus = (query) =>
+          useSyncExternalStore(
+            (notify) => {
+              const mediaQuery = window.matchMedia(query);
+              mediaQuery.addEventListener("change", notify);
+              return () => mediaQuery.removeEventListener("change", notify);
+            },
+            () => window.matchMedia(query).matches,
+            () => false,
+          );
+        const Sidebar = ({ onBreakPoint }) => {
+          const broken = useSidebarStatus("(max-width: 768px)");
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags media-query state that a user handler can also update", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useMediaQueryState = () => {
+          const [broken, setBroken] = useState(false);
+          useEffect(() => {
+            const query = window.matchMedia("(max-width: 768px)");
+            const update = (event) => setBroken(event.matches);
+            query.addEventListener("change", update);
+            return () => query.removeEventListener("change", update);
+          }, []);
+          const reset = () => setBroken(false);
+          return { broken, reset };
+        };
+        const Sidebar = ({ onBreakPoint }) => {
+          const { broken, reset } = useMediaQueryState();
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return <button onClick={reset}>Reset</button>;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags ordinary child-owned form state passed to a parent", () => {
       const result = runRule(
         noPassDataToParent,
@@ -2072,6 +2266,98 @@ describe("no-pass-data-to-parent — regressions", () => {
       );
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("preserves a parent callback passed directly to React useEffectEvent", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useEffect, useEffectEvent } from "react";
+        function PhoneInput({ onChange, withCountryMeta }) {
+          const notify = useEffectEvent(onChange);
+          useEffect(() => {
+            const data = buildPhoneData(withCountryMeta);
+            notify(data);
+          }, [withCountryMeta]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("preserves a parent member callback passed directly to React.useEffectEvent", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import * as React from "react";
+        function PhoneInput(props) {
+          const notify = React.useEffectEvent(props.onChange);
+          React.useEffect(() => {
+            notify(buildValue());
+          }, [buildValue]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("preserves a parent callback passed directly to React useCallback", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useCallback, useEffect } from "react";
+        function PhoneInput({ onChange }) {
+          const notify = useCallback(onChange, [onChange]);
+          useEffect(() => {
+            notify(buildPhoneData());
+          }, [notify]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("does not trust userland or imported useEffectEvent lookalikes", () => {
+      const localResult = runRule(
+        noPassDataToParent,
+        `function useEffectEvent(callback) {
+          return callback;
+        }
+        function PhoneInput({ onChange, phoneNumber }) {
+          const notify = useEffectEvent(onChange);
+          useEffect(() => notify(phoneNumber), [notify, phoneNumber]);
+          return null;
+        }`,
+      );
+      const importedResult = runRule(
+        noPassDataToParent,
+        `import { useEffectEvent } from "effect-event-polyfill";
+        function PhoneInput({ onChange, phoneNumber }) {
+          const notify = useEffectEvent(onChange);
+          useEffect(() => notify(phoneNumber), [notify, phoneNumber]);
+          return null;
+        }`,
+      );
+      expect(localResult.parseErrors).toEqual([]);
+      expect(importedResult.parseErrors).toEqual([]);
+      expect(localResult.diagnostics).toEqual([]);
+      expect(importedResult.diagnostics).toEqual([]);
+    });
+
+    it("does not preserve direct wrapper provenance through a mutable callback alias", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useEffect, useEffectEvent } from "react";
+        function PhoneInput({ onChange, phoneNumber }) {
+          let callback = onChange;
+          callback = log;
+          const notify = useEffectEvent(callback);
+          useEffect(() => notify(phoneNumber), [notify, phoneNumber]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
     });
 
     it("stays silent for DOM refs and callback object bags", () => {

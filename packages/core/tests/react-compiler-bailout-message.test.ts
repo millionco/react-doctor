@@ -88,4 +88,16 @@ describe("parseOxlintOutput react-hooks-js bail-out reason in primary message", 
     );
     expect(diagnostic.message).not.toContain("Rewrite the flagged code");
   });
+
+  it("describes set-state-in-effect as render advice instead of a compiler bailout", () => {
+    const reason = "Calling setState synchronously within an effect can trigger cascading renders";
+    const stdout = buildOxlintStdout("react-hooks-js(set-state-in-effect)", reason);
+    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), TEST_ROOT_DIRECTORY);
+
+    expect(diagnostic.message).toContain(reason);
+    expect(diagnostic.message).toContain("extra render");
+    expect(diagnostic.message).toContain("browser API");
+    expect(diagnostic.message).not.toContain("React Compiler's automatic memoization");
+    expect(diagnostic.message).not.toContain("Rewrite the flagged code");
+  });
 });

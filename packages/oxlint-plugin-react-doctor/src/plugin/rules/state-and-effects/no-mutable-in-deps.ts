@@ -1,10 +1,11 @@
 import { MUTABLE_GLOBAL_ROOTS } from "../../constants/dom.js";
 import { HOOKS_WITH_DEPS } from "../../constants/react.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -30,7 +31,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // Bare `location` / bare `useRef`-returned identifiers are NOT
 // flagged — those are themselves stable references; only their
 // mutable property reads are the bug.
-const collectUseRefBindingNames = (componentBody: EsTreeNode): Set<string> => {
+const collectUseRefBindingNames = (
+  componentBody: EsTreeNode,
+  scopes: ScopeAnalysis,
+): Set<string> => {
   const useRefBindings = new Set<string>();
   if (!isNodeOfType(componentBody, "BlockStatement")) return useRefBindings;
   for (const statement of componentBody.body ?? []) {
@@ -38,7 +42,7 @@ const collectUseRefBindingNames = (componentBody: EsTreeNode): Set<string> => {
     for (const declarator of statement.declarations ?? []) {
       if (!isNodeOfType(declarator.id, "Identifier")) continue;
       if (!isNodeOfType(declarator.init, "CallExpression")) continue;
-      if (!isHookCall(declarator.init, "useRef")) continue;
+      if (!isReactHookCall(declarator.init, "useRef", scopes)) continue;
       useRefBindings.add(declarator.id.name);
     }
   }
@@ -108,13 +112,13 @@ export const noMutableInDeps = defineRule({
       componentParams: ReadonlyArray<EsTreeNode> = [],
     ): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
-      const useRefBindingNames = collectUseRefBindingNames(componentBody);
+      const useRefBindingNames = collectUseRefBindingNames(componentBody, context.scopes);
       const localBindingNames = collectLocalBindingNames(componentBody);
       for (const param of componentParams) collectPatternNames(param, localBindingNames);
 
       walkAst(componentBody, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "CallExpression")) return;
-        if (!isHookCall(child, HOOKS_WITH_DEPS)) return;
+        if (!isReactHookCall(child, HOOKS_WITH_DEPS, context.scopes)) return;
         if ((child.arguments?.length ?? 0) < 2) return;
         const depsNode = child.arguments[1];
         if (!isNodeOfType(depsNode, "ArrayExpression")) return;

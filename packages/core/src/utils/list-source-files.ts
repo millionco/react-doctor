@@ -1,7 +1,9 @@
 import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type { SourceFileEntry } from "../types/index.js";
 import { GIT_LS_FILES_MAX_BUFFER_BYTES } from "../constants.js";
+import { collectTypeScriptEmitDuplicateJsPaths } from "./collect-typescript-emit-duplicate-js-paths.js";
 import { hasIgnoredPathSegment } from "./has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";
 import { isLargeMinifiedFile, statSourceFileSize } from "./is-large-minified-file.js";
@@ -28,32 +30,41 @@ const collectSizedSourceFiles = (
   return entries;
 };
 
+const gitLsFiles = (rootDirectory: string, flags: ReadonlyArray<string>): string[] | null => {
+  const result = spawnSync("git", ["ls-files", "-z", ...flags], {
+    cwd: rootDirectory,
+    encoding: "utf-8",
+    maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
+  });
+  if (result.error || result.status !== 0) {
+    return null;
+  }
+  return result.stdout.split("\0").filter((filePath) => filePath.length > 0);
+};
+
 const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
   // HACK: --recurse-submodules is incompatible with --others /
   // --exclude-standard (git rejects the combination). Without this
   // match, every git-mode call silently exited non-zero and the scan
   // always fell back to the much slower filesystem walk below, also
   // skipping submodule files entirely.
-  const result = spawnSync(
-    "git",
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-    {
-      cwd: rootDirectory,
-      encoding: "utf-8",
-      maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
-    },
-  );
-
-  if (result.error || result.status !== 0) {
+  const trackedPaths = gitLsFiles(rootDirectory, ["--cached"]);
+  const untrackedPaths = gitLsFiles(rootDirectory, ["--others", "--exclude-standard"]);
+  if (trackedPaths === null || untrackedPaths === null) {
     return null;
   }
-
-  return result.stdout
-    .split("\0")
-    .filter(
-      (filePath) =>
-        filePath.length > 0 && isLintableSourceFile(filePath) && !hasIgnoredPathSegment(filePath),
-    );
+  const emitDuplicateJsPaths = collectTypeScriptEmitDuplicateJsPaths({
+    trackedPaths: new Set(trackedPaths),
+    untrackedPaths,
+    readFileText: (relativePath) =>
+      fs.readFileSync(path.resolve(rootDirectory, relativePath), "utf-8"),
+  });
+  return [...trackedPaths, ...untrackedPaths].filter(
+    (filePath) =>
+      isLintableSourceFile(filePath) &&
+      !hasIgnoredPathSegment(filePath) &&
+      !emitDuplicateJsPaths.has(filePath),
+  );
 };
 
 const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {

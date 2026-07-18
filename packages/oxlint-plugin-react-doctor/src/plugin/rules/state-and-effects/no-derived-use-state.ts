@@ -6,7 +6,7 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -450,7 +450,7 @@ export const noDerivedUseState = defineRule({
     return {
       ...propStackTracker.visitors,
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isHookCall(node, "useState") || !node.arguments?.length) return;
+        if (!isReactHookCall(node, "useState", context.scopes) || !node.arguments?.length) return;
         const seed = unwrapInitializerSeed(node.arguments[0]);
 
         const reportStalePropCopy = (propName: string): void => {

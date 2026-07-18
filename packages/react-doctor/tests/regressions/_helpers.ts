@@ -96,6 +96,8 @@ export const setupReactProject = (
 export interface CollectRuleHitsOptions {
   /** React major to forward to runOxlint (default: 19). Pass null to test the unresolvable-version path. */
   reactMajorVersion?: number | null;
+  /** Full React dependency spec (default: derived from the major) for minor-gated capabilities like `react:19.2`. */
+  reactVersion?: string | null;
   /**
    * Tailwind dependency spec to forward to runOxlint (default: omitted →
    * `null`, which optimistically assumes latest Tailwind so every
@@ -143,6 +145,7 @@ export interface BuildTestProjectOptions {
   hasTanStackQuery?: boolean;
   hasReanimated?: boolean;
   reactMajorVersion?: number | null;
+  reactVersion?: string | null;
   hasTypeScript?: boolean;
   tailwindVersion?: string | null;
   nextjsVersion?: string | null;
@@ -158,9 +161,19 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
   // unresolvable-version code path). A naive
   // `options.reactMajorVersion ?? 19` collapses both into 19 and
   // silently changes what null-version tests are testing.
-  const reactMajorVersion = Object.hasOwn(options, "reactMajorVersion")
-    ? (options.reactMajorVersion ?? null)
-    : 19;
+  const hasExplicitReactMajorVersion = Object.hasOwn(options, "reactMajorVersion");
+  const reactMajorVersion = hasExplicitReactMajorVersion ? (options.reactMajorVersion ?? null) : 19;
+  // The omitted-version default is optimistic "latest React" — include the
+  // minor so minor-gated capabilities (`react:19.2`) activate too. Explicit
+  // majors keep `.0` so callers can exercise the minor gate boundary.
+  const derivedReactVersion = hasExplicitReactMajorVersion
+    ? reactMajorVersion !== null
+      ? `^${reactMajorVersion}.0.0`
+      : null
+    : "^19.2.0";
+  const reactVersion = Object.hasOwn(options, "reactVersion")
+    ? (options.reactVersion ?? null)
+    : derivedReactVersion;
   const framework = options.framework ?? "unknown";
   const nextjsVersion = Object.hasOwn(options, "nextjsVersion")
     ? (options.nextjsVersion ?? null)
@@ -175,7 +188,7 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
   return {
     rootDirectory: options.rootDirectory,
     projectName: path.basename(options.rootDirectory),
-    reactVersion: reactMajorVersion !== null ? `^${reactMajorVersion}.0.0` : null,
+    reactVersion,
     reactMajorVersion,
     tailwindVersion: options.tailwindVersion ?? null,
     zodVersion: null,

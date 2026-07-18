@@ -2,6 +2,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analy
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
@@ -110,6 +111,7 @@ const isRegistrationReturnedWhenExecuted = (
   registration: EsTreeNode,
   effectCallback: EsTreeNode,
 ): boolean => {
+  if (findEnclosingFunction(registration) !== effectCallback) return false;
   let current = findTransparentExpressionRoot(registration);
   while (current.parent && current.parent !== effectCallback) {
     const parent = current.parent;

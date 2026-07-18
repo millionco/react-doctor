@@ -118,6 +118,37 @@ describe("r3f-require-global-effect-cleanup", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not treat nested returns as effect cleanup", () => {
+    const code = `
+      import { useEffect } from "react";
+      import { addEffect, addTail } from "@react-three/fiber";
+      function Scene({ callback, ready }) {
+        const registerTail = () => addTail(callback);
+        useEffect(() => {
+          ready.then(() => { return addEffect(callback); });
+          registerTail();
+        }, [callback, ready]);
+        return null;
+      }
+    `;
+    const result = runRule(r3fRequireGlobalEffectCleanup, code);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("allows an effect to return a local registration helper", () => {
+    const code = `
+      import { useEffect } from "react";
+      import { addTail } from "@react-three/fiber";
+      function Scene({ callback }) {
+        const registerTail = () => addTail(callback);
+        useEffect(() => registerTail(), [callback]);
+        return null;
+      }
+    `;
+    const result = runRule(r3fRequireGlobalEffectCleanup, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("allows a deferred disposer assigned for returned cleanup", () => {
     const code = `
       import { useEffect } from "react";

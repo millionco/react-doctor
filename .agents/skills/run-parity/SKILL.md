@@ -44,10 +44,11 @@ The baseline records resolved repository hashes. Reusing the baseline as the can
 Before the candidate run, confirm the baseline contains no unpinned records:
 
 ```sh
-! jq -e 'select(.repository.ref == "HEAD")' <absolute-run-directory>/baseline.ndjson >/dev/null
+jq -e -s 'length > 0 and all(.[]; .repository.ref != "HEAD")' \
+  <absolute-run-directory>/baseline.ndjson >/dev/null
 ```
 
-If the check fails, rerun the baseline at a sustainable concurrency. Candidate runs reject unpinned evaluation NDJSON.
+If the check fails, inspect the baseline for invalid JSON or unpinned records, then rerun it at a sustainable concurrency. Candidate runs reject unpinned evaluation NDJSON.
 
 Require both runs to report 100% completion. Otherwise, report the failed projects and stop the comparison.
 

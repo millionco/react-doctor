@@ -91,6 +91,7 @@ describe("loadCorpusRepositories", () => {
       JSON.stringify([
         { org: "example", name: "app", ref: "HEAD", rootDir: "packages/app" },
         { org: "example", name: "app", ref: "HEAD", rootDir: "packages/web/../app" },
+        { org: "example", name: "app", ref: "HEAD", rootDir: "packages/app/" },
       ]),
     );
 

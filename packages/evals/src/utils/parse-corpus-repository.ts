@@ -32,14 +32,15 @@ export const parseCorpusRepository = (value: unknown): CorpusRepository | null =
     return null;
   }
 
-  const rootDirectory = Path.posix.normalize(value.rootDir);
+  const normalizedRootDirectory = Path.posix.normalize(value.rootDir);
   if (
-    Path.posix.isAbsolute(rootDirectory) ||
-    rootDirectory === ".." ||
-    rootDirectory.startsWith("../")
+    Path.posix.isAbsolute(normalizedRootDirectory) ||
+    normalizedRootDirectory === ".." ||
+    normalizedRootDirectory.startsWith("../")
   ) {
     return null;
   }
+  const rootDirectory = normalizedRootDirectory.replace(/\/+$/, "") || ".";
 
   return {
     org: value.org,

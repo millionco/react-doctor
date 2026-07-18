@@ -68,13 +68,40 @@ describe("loadCorpusRepositories", () => {
       resultsPath,
       `${JSON.stringify({
         schemaVersion: 1,
-        repository: { org: "example", name: "app", ref: "abc123", rootDir: "." },
+        repository: {
+          org: "example",
+          name: "app",
+          ref: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          rootDir: ".",
+        },
         report: {},
       })}\n`,
     );
 
     await expect(loadCorpusRepositories([resultsPath])).resolves.toEqual([
-      { org: "example", name: "app", ref: "abc123", rootDir: "." },
+      {
+        org: "example",
+        name: "app",
+        ref: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        rootDir: ".",
+      },
     ]);
+  });
+
+  it("rejects unpinned repositories from evaluation NDJSON", async () => {
+    const directory = await makeTemporaryDirectory();
+    const resultsPath = Path.join(directory, "baseline.ndjson");
+    await writeFile(
+      resultsPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        repository: { org: "example", name: "app", ref: "HEAD", rootDir: "." },
+        error: "Sandbox failed",
+      })}\n`,
+    );
+
+    await expect(loadCorpusRepositories([resultsPath])).rejects.toThrow(
+      "contains an unpinned eval result",
+    );
   });
 });

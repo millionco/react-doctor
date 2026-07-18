@@ -4,6 +4,7 @@ export const DEFAULT_REPOSITORIES_SOURCES: ReadonlyArray<string> = ["./repositor
 export const DEFAULT_TARGET_REPOSITORY_REF = "HEAD";
 export const DEFAULT_TARGET_ROOT_DIRECTORY = ".";
 export const REPOSITORY_SOURCE_EXTENSIONS: ReadonlyArray<string> = [".json", ".ndjson", ".txt"];
+export const PINNED_REPOSITORY_REF_PATTERN = /^[0-9a-f]{40}$/i;
 export const DEFAULT_CORPUS_REPOSITORY_COUNT = 2_000;
 export const DEFAULT_CORPUS_CONCURRENCY = 500;
 
@@ -50,10 +51,10 @@ export const RESOLVE_TARGET_REPOSITORY_REF_COMMAND = "git -C /workspace/target r
 
 export const SCAN_COMMAND = `node /workspace/react-doctor/packages/react-doctor/bin/react-doctor.js \
   --json \
-  --offline \
   --diff false \
   --no-parallel \
   --no-dead-code \
+  --no-supply-chain \
   --no-telemetry \
   --no-score \
   "/workspace/target/$TARGET_ROOT_DIRECTORY"`;

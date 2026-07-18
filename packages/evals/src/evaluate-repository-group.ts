@@ -39,42 +39,54 @@ export const evaluateRepositoryGroup = async ({
   }));
   let sandbox: Sandbox | undefined;
   try {
-    sandbox = await daytona.create(
-      {
-        snapshot: snapshotName,
-        ephemeral: true,
-        autoStopInterval: SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
-        labels: {
-          evaluation: evaluationId,
-          project: "react-doctor",
-          purpose: "eval-repository",
+    try {
+      sandbox = await daytona.create(
+        {
+          snapshot: snapshotName,
+          ephemeral: true,
+          autoStopInterval: SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
+          labels: {
+            evaluation: evaluationId,
+            project: "react-doctor",
+            purpose: "eval-repository",
+          },
         },
-      },
-      { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
-    );
-    const repositoryUrl = `https://github.com/${repositoryGroup.org}/${repositoryGroup.name}.git`;
-    await executeSandboxCommand({
-      sandbox,
-      command: SETUP_TARGET_REPOSITORY_COMMAND,
-      environment: {
-        TARGET_REPOSITORY: repositoryUrl,
-        TARGET_REF: repositoryGroup.ref,
-      },
-      timeoutSeconds: SANDBOX_SETUP_TIMEOUT_SECONDS,
-      description: `Clone ${repositoryGroup.org}/${repositoryGroup.name}`,
-    });
-    const resolvedRef = (
+        { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
+      );
+      const repositoryUrl = `https://github.com/${repositoryGroup.org}/${repositoryGroup.name}.git`;
       await executeSandboxCommand({
         sandbox,
-        command: RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
-        environment: {},
+        command: SETUP_TARGET_REPOSITORY_COMMAND,
+        environment: {
+          TARGET_REPOSITORY: repositoryUrl,
+          TARGET_REF: repositoryGroup.ref,
+        },
         timeoutSeconds: SANDBOX_SETUP_TIMEOUT_SECONDS,
-        description: `Resolve ${repositoryGroup.org}/${repositoryGroup.name}`,
-      })
-    ).trim();
-    repositories = repositories.map((repository) => ({ ...repository, ref: resolvedRef }));
+        description: `Clone ${repositoryGroup.org}/${repositoryGroup.name}`,
+      });
+      const resolvedRef = (
+        await executeSandboxCommand({
+          sandbox,
+          command: RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
+          environment: {},
+          timeoutSeconds: SANDBOX_SETUP_TIMEOUT_SECONDS,
+          description: `Resolve ${repositoryGroup.org}/${repositoryGroup.name}`,
+        })
+      ).trim();
+      repositories = repositories.map((repository) => ({ ...repository, ref: resolvedRef }));
+    } catch (error) {
+      for (const repository of repositories) {
+        await onRecord({
+          schemaVersion: EVALUATION_SCHEMA_VERSION,
+          repository,
+          error: toErrorMessage(error),
+        });
+      }
+      return;
+    }
 
     for (const repository of repositories) {
+      let record: CorpusEvaluationRecord;
       try {
         const output = await executeSandboxCommand({
           sandbox,
@@ -89,26 +101,19 @@ export const evaluateRepositoryGroup = async ({
           acceptNonZeroExitCode: true,
         });
         const report = parseReactDoctorReport(output);
-        await onRecord({
+        record = {
           schemaVersion: EVALUATION_SCHEMA_VERSION,
           repository,
           report,
-        });
+        };
       } catch (error) {
-        await onRecord({
+        record = {
           schemaVersion: EVALUATION_SCHEMA_VERSION,
           repository,
           error: toErrorMessage(error),
-        });
+        };
       }
-    }
-  } catch (error) {
-    for (const repository of repositories) {
-      await onRecord({
-        schemaVersion: EVALUATION_SCHEMA_VERSION,
-        repository,
-        error: toErrorMessage(error),
-      });
+      await onRecord(record);
     }
   } finally {
     if (sandbox) {

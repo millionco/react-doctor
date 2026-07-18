@@ -4,6 +4,7 @@ import * as Path from "node:path";
 import {
   DEFAULT_TARGET_REPOSITORY_REF,
   DEFAULT_TARGET_ROOT_DIRECTORY,
+  PINNED_REPOSITORY_REF_PATTERN,
   REPOSITORY_SOURCE_EXTENSIONS,
 } from "./constants.js";
 import type { CorpusRepository } from "./corpus.js";
@@ -115,6 +116,9 @@ const parseEvaluationRecords = (
       !isCorpusRepository(record.repository)
     ) {
       throw new Error(`${source.source}:${lineIndex + 1} must be an eval result record`);
+    }
+    if (!PINNED_REPOSITORY_REF_PATTERN.test(record.repository.ref)) {
+      throw new Error(`${source.source}:${lineIndex + 1} contains an unpinned eval result`);
     }
     repositories.push(record.repository);
   }

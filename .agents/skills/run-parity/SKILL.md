@@ -41,6 +41,14 @@ nr eval \
 
 The baseline records resolved repository hashes. Reusing the baseline as the candidate corpus prevents default branches from moving between runs.
 
+Before the candidate run, confirm the baseline contains no unpinned records:
+
+```sh
+! jq -e 'select(.repository.ref == "HEAD")' <absolute-run-directory>/baseline.ndjson >/dev/null
+```
+
+If the check fails, rerun the baseline at a sustainable concurrency. Candidate runs reject unpinned evaluation NDJSON.
+
 Require both runs to report 100% completion. Otherwise, report the failed projects and stop the comparison.
 
 ## Compare results

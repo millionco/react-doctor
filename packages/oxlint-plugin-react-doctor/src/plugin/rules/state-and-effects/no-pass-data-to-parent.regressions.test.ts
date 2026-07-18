@@ -242,6 +242,25 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("still flags a reassigned expression derived from a primitive media-query result", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useMediaQuery } from "../hooks/use-media-query";
+
+        const Sidebar = ({ onBreakPoint }) => {
+          const broken = useMediaQuery("(max-width: 768px)");
+          let reportedValue = broken ? "narrow" : "wide";
+          reportedValue = readUserPreference();
+          useEffect(() => {
+            onBreakPoint(reportedValue);
+          }, [reportedValue, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it.each([
       [
         "named",
@@ -891,6 +910,41 @@ describe("no-pass-data-to-parent — regressions", () => {
             () => window.matchMedia(query).matches,
             () => false,
           );
+        const Sidebar = ({ onBreakPoint }) => {
+          const broken = useSidebarStatus("(max-width: 768px)");
+          useEffect(() => {
+            onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    const localExternalStoreCallSource = `useSyncExternalStore(
+      (notify) => {
+        const mediaQuery = window.matchMedia(query);
+        mediaQuery.addEventListener("change", notify);
+        return () => mediaQuery.removeEventListener("change", notify);
+      },
+      () => window.matchMedia(query).matches,
+      () => false,
+    )`;
+
+    it.each([
+      [
+        "a concise-body type cast",
+        `const useSidebarStatus = (query) => (${localExternalStoreCallSource} as boolean);`,
+      ],
+      [
+        "a block-body non-null assertion",
+        `const useSidebarStatus = (query) => { return ${localExternalStoreCallSource}!; };`,
+      ],
+    ])("stays silent when a local external-store hook uses %s", (_variant, hookDeclaration) => {
+      const result = runRule(
+        noPassDataToParent,
+        `${hookDeclaration}
         const Sidebar = ({ onBreakPoint }) => {
           const broken = useSidebarStatus("(max-width: 768px)");
           useEffect(() => {

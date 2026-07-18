@@ -1092,11 +1092,17 @@ const hasUnsafeExternalSubscriptionBindingUse = (
     let usageRoot = findTransparentExpressionRoot(
       candidateReference.identifier as unknown as EsTreeNode,
     );
-    if (
-      isNodeOfType(usageRoot.parent, "VariableDeclarator") &&
-      usageRoot.parent.init === usageRoot
+    let usageAncestor = usageRoot.parent;
+    while (
+      usageAncestor &&
+      !isNodeOfType(usageAncestor, "VariableDeclarator") &&
+      !isFunctionLike(usageAncestor) &&
+      !isNodeOfType(usageAncestor, "Program")
     ) {
-      const aliasVariables = getVariablesDefinedByDeclarator(analysis, usageRoot.parent);
+      usageAncestor = usageAncestor.parent;
+    }
+    if (isNodeOfType(usageAncestor, "VariableDeclarator") && usageAncestor.init) {
+      const aliasVariables = getVariablesDefinedByDeclarator(analysis, usageAncestor);
       return (
         aliasVariables.length === 0 ||
         aliasVariables.some((aliasVariable) =>
@@ -1331,7 +1337,7 @@ const getLocalHookExternalStateProof = (
   if (
     isNodeOfType(hookFunction, "ArrowFunctionExpression") &&
     !isNodeOfType(hookFunction.body, "BlockStatement") &&
-    isReactHookCall(hookFunction.body, "useSyncExternalStore", scopes)
+    isReactHookCall(stripParenExpression(hookFunction.body), "useSyncExternalStore", scopes)
   ) {
     return true;
   }
@@ -1341,7 +1347,11 @@ const getLocalHookExternalStateProof = (
     returnStatements.every(
       (returnStatement) =>
         returnStatement.argument &&
-        isReactHookCall(returnStatement.argument as EsTreeNode, "useSyncExternalStore", scopes),
+        isReactHookCall(
+          stripParenExpression(returnStatement.argument as EsTreeNode),
+          "useSyncExternalStore",
+          scopes,
+        ),
     )
   ) {
     return true;

@@ -47,6 +47,14 @@ describe("r3f-no-new-in-use-frame", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    `const Fiber = require("@react-three/fiber"); Fiber.useFrame = runOnce; const { useFrame } = Fiber; useFrame(() => new Vector3());`,
+    `import * as Fiber from "@react-three/fiber"; Fiber.useFrame = runOnce; const { useFrame } = Fiber; useFrame(() => new Vector3());`,
+  ])("ignores hooks destructured after a namespace mutation", (code) => {
+    const result = runRule(r3fNoNewInUseFrame, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("keeps calls before a later CommonJS namespace mutation reportable", () => {
     const result = runRule(
       r3fNoNewInUseFrame,
@@ -143,6 +151,44 @@ describe("r3f-no-new-in-use-frame", () => {
     const result = runRule(
       r3fNoNewInUseFrame,
       `const useFrame = (callback) => callback(); useFrame(() => { const later = () => new Event(); });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores allocations on conditional frame paths", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `import { useFrame } from "@react-three/fiber";
+       const resize = (geometry, buffers) => {
+         if (geometry.count !== buffers.length) {
+           geometry.attribute = new BufferAttribute(buffers, 3);
+         }
+       };
+       useFrame(() => {
+         if (needsResize) new BufferGeometry();
+         resize(geometry, buffers);
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags allocations in unconditionally called helpers", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `import { useFrame } from "@react-three/fiber";
+       const allocate = () => new BufferGeometry();
+       useFrame(() => allocate());`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores constructors inside generator callbacks and helpers", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `import { useFrame } from "@react-three/fiber";
+       function* allocateLater() { yield new Vector3(); }
+       useFrame(function* () { yield new Vector3(); });
+       useFrame(() => { allocateLater(); });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

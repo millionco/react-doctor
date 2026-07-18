@@ -45,6 +45,18 @@ describe("r3f-no-sync-readback-in-use-frame", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows readback in a conditionally called local helper", () => {
+    const result = runRule(
+      r3fNoSyncReadbackInUseFrame,
+      `import { useFrame } from "@react-three/fiber";
+       useFrame(({ gl }) => {
+         const capture = () => gl.readRenderTargetPixels(target, 0, 0, 1, 1, pixels);
+         if (captureRequested.current) capture();
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("ignores same-named methods without receiver provenance", () => {
     const result = runRule(
       r3fNoSyncReadbackInUseFrame,

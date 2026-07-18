@@ -3,7 +3,6 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -159,11 +158,11 @@ export const r3fRequireFrameDelta = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callback = resolveR3fCallback(node, "useFrame", context.scopes);
       if (!isFunctionLike(callback)) return;
-      walkFunctionExecution(callback, context.scopes, (candidate) => {
+      walkFunctionExecution(callback, context.scopes, (candidate, isConditionallyExecuted) => {
         if (
           isNodeOfType(candidate, "UpdateExpression") &&
           isTransformMember(candidate.argument) &&
-          !isNodeConditionallyExecuted(candidate, callback)
+          !isConditionallyExecuted
         ) {
           context.report({
             node: candidate,
@@ -177,7 +176,7 @@ export const r3fRequireFrameDelta = defineRule({
             (candidate.operator !== "+=" && candidate.operator !== "-=") ||
             !isTransformMember(candidate.left) ||
             expressionReferencesDelta(candidate.right, callback, context) ||
-            isNodeConditionallyExecuted(candidate, callback)
+            isConditionallyExecuted
           ) {
             return;
           }
@@ -193,7 +192,7 @@ export const r3fRequireFrameDelta = defineRule({
         if (
           !factor ||
           expressionReferencesDelta(factor, callback, context) ||
-          isNodeConditionallyExecuted(candidate, callback)
+          isConditionallyExecuted
         ) {
           return;
         }

@@ -93,6 +93,18 @@ describe("r3f-require-frame-delta", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows transform increments in a conditionally called local helper", () => {
+    const result = runRule(
+      r3fRequireFrameDelta,
+      `import { useFrame } from "@react-three/fiber";
+       useFrame(() => {
+         const advance = () => { mesh.current.position.x += 0.1; };
+         if (didStart) advance();
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("allows a defaulted callback delta parameter", () => {
     const result = runRule(
       r3fRequireFrameDelta,

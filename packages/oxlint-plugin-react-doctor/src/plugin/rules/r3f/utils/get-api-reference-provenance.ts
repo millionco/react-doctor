@@ -72,6 +72,18 @@ export const getApiReferenceProvenance = (
   if (symbol.kind !== "const" || !symbol.initializer) return null;
   const destructuredName = getDestructuredBindingPropertyName(symbol.bindingIdentifier);
   if (destructuredName) {
+    const namespaceReference = stripParenExpression(symbol.initializer);
+    if (
+      isNodeOfType(namespaceReference, "Identifier") &&
+      hasPossibleStaticPropertyWriteBefore(
+        namespaceReference,
+        destructuredName,
+        symbol.declarationNode,
+        scopes,
+      )
+    ) {
+      return null;
+    }
     const moduleSource = getModuleNamespaceSource(symbol.initializer, scopes);
     return moduleSource ? { apiName: destructuredName, moduleSource } : null;
   }

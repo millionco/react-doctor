@@ -3,7 +3,6 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -136,13 +135,11 @@ export const r3fNoSyncReadbackInUseFrame = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callback = resolveR3fCallback(node, "useFrame", context.scopes);
       if (!callback) return;
-      walkFunctionExecution(callback, context.scopes, (candidate) => {
+      walkFunctionExecution(callback, context.scopes, (candidate, isConditionallyExecuted) => {
         if (!isNodeOfType(candidate, "CallExpression")) return;
         const readbackKind = getReadbackKind(candidate, callback, context);
         if (!readbackKind) return;
-        if (isNodeConditionallyExecuted(candidate, callback)) {
-          return;
-        }
+        if (isConditionallyExecuted) return;
         context.report({
           node: candidate,
           message:

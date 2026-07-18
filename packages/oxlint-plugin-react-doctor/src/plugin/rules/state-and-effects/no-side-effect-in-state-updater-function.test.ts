@@ -116,6 +116,29 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(renamedCallback.diagnostics).toHaveLength(1);
   });
 
+  it("flags global object schedulers and fetch calls without matching shadowed objects", () => {
+    const globalTimer = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=()=>{const[,setX]=useState(0);setX(value=>{globalThis.setTimeout(()=>{},0);return value+1})}",
+    );
+    const windowFetch = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=()=>{const[,setX]=useState(0);setX(value=>{window.fetch('/api');return value+1})}",
+    );
+    const workerFetch = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=()=>{const[,setX]=useState(0);setX(value=>{self.fetch('/api');return value+1})}",
+    );
+    const shadowedGlobal = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const globalThis={setTimeout(){},fetch(){}};const C=()=>{const[,setX]=useState(0);setX(value=>{globalThis.setTimeout(()=>{},0);globalThis.fetch('/api');return value+1})}",
+    );
+    expect(globalTimer.diagnostics).toHaveLength(1);
+    expect(windowFetch.diagnostics).toHaveLength(1);
+    expect(workerFetch.diagnostics).toHaveLength(1);
+    expect(shadowedGlobal.diagnostics).toHaveLength(0);
+  });
+
   it("follows Promise and Array.from synchronous callbacks", () => {
     const promiseExecutor = runRule(
       noSideEffectInStateUpdaterFunction,

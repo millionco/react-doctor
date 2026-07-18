@@ -7,6 +7,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierRootSymbol } from "../../utils/resolve-const-identifier-root-symbol.js";
@@ -402,15 +403,6 @@ const containingBlock = (node: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
-const nodeIsInside = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current) {
-    if (current === ancestor) return true;
-    current = current.parent;
-  }
-  return false;
-};
-
 const expressionMatchesMember = (
   expression: EsTreeNode,
   symbol: SymbolDescriptor,
@@ -531,9 +523,9 @@ const memberUseIsGuarded = (
       if (
         guardPrecedesUnsafeWrite &&
         ((branchGuaranteesMemberDefined(parent.test, true, symbol, keyName, context) &&
-          nodeIsInside(member, parent.consequent)) ||
+          isAstDescendant(member, parent.consequent)) ||
           (branchGuaranteesMemberDefined(parent.test, false, symbol, keyName, context) &&
-            nodeIsInside(member, parent.alternate)))
+            isAstDescendant(member, parent.alternate)))
       ) {
         return true;
       }
@@ -544,10 +536,10 @@ const memberUseIsGuarded = (
       if (
         guardPrecedesUnsafeWrite &&
         ((branchGuaranteesMemberDefined(parent.test, true, symbol, keyName, context) &&
-          nodeIsInside(member, parent.consequent)) ||
+          isAstDescendant(member, parent.consequent)) ||
           (branchGuaranteesMemberDefined(parent.test, false, symbol, keyName, context) &&
             parent.alternate &&
-            nodeIsInside(member, parent.alternate)))
+            isAstDescendant(member, parent.alternate)))
       ) {
         return true;
       }

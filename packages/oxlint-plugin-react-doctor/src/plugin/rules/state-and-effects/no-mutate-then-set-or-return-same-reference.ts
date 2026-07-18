@@ -6,6 +6,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
@@ -453,15 +454,6 @@ const sameReferenceResultSymbol = (
     : null;
 };
 
-const nodeIsInside = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current) {
-    if (current === ancestor) return true;
-    current = current.parent;
-  }
-  return false;
-};
-
 const lastUnconditionalReassignmentBefore = (
   functionNode: EsTreeNode,
   expectedSymbol: SymbolDescriptor,
@@ -485,7 +477,9 @@ const lastUnconditionalReassignmentBefore = (
           if (isNodeOfType(ancestor, "TryStatement")) {
             const sharedRegion = [ancestor.block, ancestor.handler, ancestor.finalizer].some(
               (region) =>
-                region !== null && nodeIsInside(child, region) && nodeIsInside(targetNode, region),
+                region !== null &&
+                isAstDescendant(child, region) &&
+                isAstDescendant(targetNode, region),
             );
             if (!sharedRegion) return true;
             ancestor = ancestor.parent;
@@ -666,7 +660,7 @@ const updaterMutatesThenReturnsSameReference = (
   for (const resultExpression of resultExpressions) {
     const reachableMutationFacts = mutationFacts.filter(
       (mutationFact) =>
-        nodeIsInside(mutationFact.node, resultExpression) ||
+        isAstDescendant(mutationFact.node, resultExpression) ||
         nodePrecedesOnReachablePath(mutationFact.node, resultExpression, functionCfg, context),
     );
     if (reachableMutationFacts.length === 0) continue;

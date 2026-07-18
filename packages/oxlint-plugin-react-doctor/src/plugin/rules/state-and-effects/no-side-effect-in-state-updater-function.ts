@@ -61,6 +61,7 @@ const GLOBAL_SCHEDULER_CALL_NAMES = new Set([
   "setTimeout",
 ]);
 const GLOBAL_SIDE_EFFECT_CALL_NAMES = new Set(["fetch"]);
+const GLOBAL_OBJECT_RECEIVER_NAMES = new Set(["globalThis", "self", "window"]);
 
 const isReactStateSetterCall = (
   node: EsTreeNodeOfType<"CallExpression">,
@@ -519,15 +520,17 @@ const callHasSideEffectName = (
   const callName = getCallName(call);
   if (!callName) return false;
   const callee = stripParenExpression(call.callee);
-  if (
-    allowGlobalScheduler &&
-    GLOBAL_SCHEDULER_CALL_NAMES.has(callName) &&
-    isNodeOfType(callee, "MemberExpression")
-  ) {
-    const schedulerReceiver = baseReceiverIdentifier(callee.object);
+  if (isNodeOfType(callee, "MemberExpression")) {
+    const globalReceiver = baseReceiverIdentifier(callee.object);
+    const isGlobalObjectMember = Boolean(
+      globalReceiver &&
+      GLOBAL_OBJECT_RECEIVER_NAMES.has(globalReceiver.name) &&
+      context.scopes.isGlobalReference(globalReceiver),
+    );
     if (
-      schedulerReceiver?.name === "window" &&
-      context.scopes.isGlobalReference(schedulerReceiver)
+      isGlobalObjectMember &&
+      (GLOBAL_SIDE_EFFECT_CALL_NAMES.has(callName) ||
+        (allowGlobalScheduler && GLOBAL_SCHEDULER_CALL_NAMES.has(callName)))
     ) {
       return true;
     }

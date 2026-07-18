@@ -28,6 +28,20 @@ describe("r3f-no-object-pointer-capture", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports capture methods on destructured event objects", () => {
+    const result = runRule(
+      r3fNoObjectPointerCapture,
+      `import { Canvas } from "@react-three/fiber";
+       const direct = <mesh onPointerDown={({ object }) => object.setPointerCapture(1)} />;
+       const renamed = <mesh onPointerDown={({ eventObject: hitObject }) => hitObject.releasePointerCapture(1)} />;
+       const local = <mesh onPointerDown={(event) => { const { object } = event; object.hasPointerCapture(1); }} />;
+       const aliasedEvent = <mesh onPointerDown={(event) => { const pointerEvent = event; const { eventObject: hitObject } = pointerEvent; hitObject.setPointerCapture(1); }} />;
+       const computedMember = <mesh onPointerDown={(event) => { const hitObject = event["object"]; hitObject.releasePointerCapture(1); }} />;
+       const computedDestructure = <mesh onPointerDown={(event) => { const { ["eventObject"]: hitObject } = event; hitObject.setPointerCapture(1); }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(6);
+  });
+
   it("resolves pointer handlers wrapped by CommonJS React useCallback", () => {
     const result = runRule(
       r3fNoObjectPointerCapture,
@@ -66,6 +80,24 @@ describe("r3f-no-object-pointer-capture", () => {
          event.target.setPointerCapture(event.pointerId);
          event.currentTarget.releasePointerCapture(event.pointerId);
        }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores destructured objects from unrelated values", () => {
+    const result = runRule(
+      r3fNoObjectPointerCapture,
+      `import { Canvas } from "@react-three/fiber";
+       const scene = <mesh onPointerDown={(event) => { const { object } = otherEvent; object.setPointerCapture(1); }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores reassigned destructured parameter objects", () => {
+    const result = runRule(
+      r3fNoObjectPointerCapture,
+      `import { Canvas } from "@react-three/fiber";
+       const scene = <mesh onPointerDown={({ object }) => { object = domTarget; object.setPointerCapture(1); }} />;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

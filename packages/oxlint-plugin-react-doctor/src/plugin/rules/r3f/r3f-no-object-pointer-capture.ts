@@ -5,8 +5,10 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -21,6 +23,28 @@ const POINTER_CAPTURE_METHODS = new Set([
 ]);
 const R3F_OBJECT_EVENT_FIELDS = new Set(["eventObject", "object"]);
 
+const getDirectObjectPatternBindingPropertyName = (
+  bindingIdentifier: EsTreeNode,
+  objectPattern: EsTreeNode,
+): string | null => {
+  let bindingNode = bindingIdentifier;
+  if (
+    isNodeOfType(bindingNode.parent, "AssignmentPattern") &&
+    bindingNode.parent.left === bindingNode
+  ) {
+    bindingNode = bindingNode.parent;
+  }
+  const property = bindingNode.parent;
+  if (
+    !isNodeOfType(property, "Property") ||
+    property.value !== bindingNode ||
+    property.parent !== objectPattern
+  ) {
+    return null;
+  }
+  return getStaticPropertyKeyName(property, { allowComputedString: true });
+};
+
 const isR3fEventObject = (
   expression: EsTreeNode,
   eventParameter: EsTreeNode,
@@ -28,30 +52,63 @@ const isR3fEventObject = (
   visitedSymbolIds: Set<number> = new Set(),
 ): boolean => {
   const candidate = stripParenExpression(expression);
+  const candidateSymbol = isNodeOfType(candidate, "Identifier")
+    ? context.scopes.symbolFor(candidate)
+    : null;
   if (isNodeOfType(candidate, "Identifier")) {
-    const symbol = context.scopes.symbolFor(candidate);
+    if (!candidateSymbol) return false;
+    const parameterPropertyName = isNodeOfType(eventParameter, "ObjectPattern")
+      ? getDirectObjectPatternBindingPropertyName(candidateSymbol.bindingIdentifier, eventParameter)
+      : null;
     if (
-      symbol?.kind === "const" &&
-      symbol.initializer &&
-      !visitedSymbolIds.has(symbol.id) &&
-      symbol.references.every((reference) => reference.flag === "read")
+      parameterPropertyName &&
+      R3F_OBJECT_EVENT_FIELDS.has(parameterPropertyName) &&
+      candidateSymbol.references.every((reference) => reference.flag === "read")
     ) {
-      visitedSymbolIds.add(symbol.id);
-      return isR3fEventObject(symbol.initializer, eventParameter, context, visitedSymbolIds);
+      return true;
     }
-    return false;
+  }
+  if (!isNodeOfType(eventParameter, "Identifier")) return false;
+  const eventParameterKey = resolveExpressionKey(eventParameter, context);
+  if (!eventParameterKey) return false;
+  if (
+    candidateSymbol?.kind === "const" &&
+    candidateSymbol.initializer &&
+    isNodeOfType(candidateSymbol.declarationNode, "VariableDeclarator") &&
+    isNodeOfType(candidateSymbol.declarationNode.id, "ObjectPattern") &&
+    R3F_OBJECT_EVENT_FIELDS.has(
+      getDirectObjectPatternBindingPropertyName(
+        candidateSymbol.bindingIdentifier,
+        candidateSymbol.declarationNode.id,
+      ) ?? "",
+    ) &&
+    candidateSymbol.references.every((reference) => reference.flag === "read") &&
+    resolveExpressionKey(candidateSymbol.initializer, context) === eventParameterKey
+  ) {
+    return true;
+  }
+  const candidateKey = resolveExpressionKey(candidate, context);
+  if (candidateKey) {
+    for (const propertyName of R3F_OBJECT_EVENT_FIELDS) {
+      if (candidateKey === `${eventParameterKey}.${propertyName}`) return true;
+    }
   }
   if (
-    !isNodeOfType(candidate, "MemberExpression") ||
-    !R3F_OBJECT_EVENT_FIELDS.has(getStaticPropertyName(candidate) ?? "")
+    isNodeOfType(candidate, "Identifier") &&
+    candidateSymbol?.kind === "const" &&
+    candidateSymbol.initializer &&
+    isNodeOfType(candidateSymbol.declarationNode, "VariableDeclarator") &&
+    candidateSymbol.declarationNode.id === candidateSymbol.bindingIdentifier &&
+    !visitedSymbolIds.has(candidateSymbol.id) &&
+    candidateSymbol.references.every((reference) => reference.flag === "read")
   ) {
-    return false;
+    visitedSymbolIds.add(candidateSymbol.id);
+    return isR3fEventObject(candidateSymbol.initializer, eventParameter, context, visitedSymbolIds);
   }
-  const receiver = stripParenExpression(candidate.object);
   return (
-    isNodeOfType(receiver, "Identifier") &&
-    isNodeOfType(eventParameter, "Identifier") &&
-    context.scopes.symbolFor(receiver)?.id === context.scopes.symbolFor(eventParameter)?.id
+    isNodeOfType(candidate, "MemberExpression") &&
+    R3F_OBJECT_EVENT_FIELDS.has(getStaticPropertyName(candidate) ?? "") &&
+    resolveExpressionKey(candidate.object, context) === eventParameterKey
   );
 };
 
@@ -70,7 +127,12 @@ const findInvalidPointerCaptureCalls = (
   const eventParameter = isNodeOfType(rawEventParameter, "AssignmentPattern")
     ? rawEventParameter.left
     : rawEventParameter;
-  if (!isNodeOfType(eventParameter, "Identifier")) return [];
+  if (
+    !isNodeOfType(eventParameter, "Identifier") &&
+    !isNodeOfType(eventParameter, "ObjectPattern")
+  ) {
+    return [];
+  }
   const invalidCalls: EsTreeNode[] = [];
   walkFunctionExecution(handler, context.scopes, (candidate) => {
     if (

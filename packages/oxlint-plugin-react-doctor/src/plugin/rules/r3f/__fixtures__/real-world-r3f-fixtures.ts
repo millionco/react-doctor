@@ -205,7 +205,8 @@ export const r3fRealWorldFixtures: R3fRealWorldFixture[] = [
       "https://github.com/pmndrs/react-three-fiber/blob/7dfaeaaab270ebef2b176e8bcaa5819702c34794/packages/fiber/tests/renderer.test.tsx#L488-L497",
     rule: r3fNoDuplicatePrimitiveObject,
     expectedDiagnosticCount: 0,
-    code: `const Objects = ({ objects }) => <>{objects.map((object) => <primitive key={object.uuid} object={object} />)}</>;`,
+    code: `import { Canvas } from "@react-three/fiber";
+      const Objects = ({ objects }) => <>{objects.map((object) => <primitive key={object.uuid} object={object} />)}</>;`,
   },
   {
     name: "reports Drei's private event declaration import",

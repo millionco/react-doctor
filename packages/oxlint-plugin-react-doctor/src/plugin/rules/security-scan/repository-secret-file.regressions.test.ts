@@ -50,4 +50,13 @@ describe("security-scan/repository-secret-file — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("handles pathological multi-dot env filenames without ambiguous suffix parsing", () => {
+    const findings = runScanRule(repositorySecretFile, {
+      relativePath:
+        ".env.segment.segment.segment.segment.segment.segment.segment.segment.segment.segment.template",
+      content: `DATABASE_URL=postgres://app_prod:N7v!q2mXfA9z@db.internal.example.com:5432/app\n`,
+    });
+    expect(findings).toEqual([]);
+  });
 });

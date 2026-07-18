@@ -5,12 +5,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { getUpstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import {
-  getEffectDepsRefs,
-  hasCleanup,
-  isProp,
-  isState,
-} from "./utils/effect/react.js";
+import { getEffectDepsRefs, hasCleanup, isProp, isState } from "./utils/effect/react.js";
 import { hasDeferredOrExternalEffectWork } from "./utils/has-deferred-or-external-effect-work.js";
 
 export const noAdjustStateOnPropChange = defineRule({

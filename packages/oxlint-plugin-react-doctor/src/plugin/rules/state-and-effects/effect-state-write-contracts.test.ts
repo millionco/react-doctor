@@ -393,11 +393,17 @@ describe("derived-state family contracts", () => {
       };`,
     ],
   ])("recognizes %s by React binding identity", (_name, aliasCode) => {
-    for (const rule of [noDerivedState, noDerivedStateEffect, noAdjustStateOnPropChange]) {
+    for (const rule of [noDerivedState, noDerivedStateEffect]) {
       const result = runRule(rule, aliasCode);
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(1);
     }
+    const adjustmentResult = runRule(
+      noAdjustStateOnPropChange,
+      aliasCode.replace("setMirror(value)", "setMirror(null)"),
+    );
+    expect(adjustmentResult.parseErrors).toEqual([]);
+    expect(adjustmentResult.diagnostics).toHaveLength(1);
   });
 
   it.each([

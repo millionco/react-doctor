@@ -134,19 +134,6 @@ const isLocallyConstructedBoundedObject = (
   return isSpreadFreeObjectLiteral(stripParenExpression(binding.initializer));
 };
 
-// A `const IDS = cond ? ["a", "b"] : ["a", "b", "c"]` initializer is as
-// statically bounded as a plain array literal — both branches enumerate a
-// fixed key set.
-const isBoundedArrayInitializer = (initializer: EsTreeNode): boolean => {
-  const stripped = stripParenExpression(initializer);
-  if (isSpreadFreeArrayLiteral(stripped, true)) return true;
-  if (!isNodeOfType(stripped, "ConditionalExpression")) return false;
-  return (
-    isSpreadFreeArrayLiteral(stripParenExpression(stripped.consequent), true) &&
-    isSpreadFreeArrayLiteral(stripParenExpression(stripped.alternate), true)
-  );
-};
-
 const isFixedLengthArrayConstruction = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const stripped = stripParenExpression(expression);
   if (!isNodeOfType(stripped, "CallExpression") && !isNodeOfType(stripped, "NewExpression")) {
@@ -237,18 +224,7 @@ const isStaticallyBoundedReduceSource = (source: EsTreeNode, scopes: ScopeAnalys
   if (isFixedLengthArrayExpression(stripped, scopes)) return true;
   if (isNodeOfType(stripped, "Identifier")) {
     const binding = findVariableInitializer(stripped, stripped.name);
-    if (!binding) return false;
-    if (isRestParameterBinding(binding.bindingIdentifier)) return true;
-    const declarator = binding.bindingIdentifier.parent;
-    return Boolean(
-      binding.initializer &&
-      declarator &&
-      isNodeOfType(declarator, "VariableDeclarator") &&
-      declarator.init === binding.initializer &&
-      isConstDeclaredBinding(binding) &&
-      !bindingMayHaveGrown(stripped, scopes) &&
-      isBoundedArrayInitializer(binding.initializer),
-    );
+    return Boolean(binding && isRestParameterBinding(binding.bindingIdentifier));
   }
   if (!isNodeOfType(stripped, "CallExpression")) return false;
   const enumerationCallee = stripParenExpression(stripped.callee);

@@ -6,6 +6,7 @@ import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isDescendantOf } from "../../utils/is-descendant-of.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -97,15 +98,6 @@ const isNanGuardCall = (
     context.scopes.isGlobalReference(receiver) &&
     (NAN_GUARD_FUNCTION_NAMES.has(methodName) || methodName === "isInteger")
   );
-};
-
-const isDescendantOf = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
-  let cursor: EsTreeNode | null | undefined = node;
-  while (cursor) {
-    if (cursor === ancestor) return true;
-    cursor = cursor.parent;
-  }
-  return false;
 };
 
 const directlyExits = (statement: EsTreeNode): boolean => {

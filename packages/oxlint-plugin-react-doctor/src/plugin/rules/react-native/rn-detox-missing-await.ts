@@ -124,12 +124,11 @@ const getDetoxOperationMethodName = (
   while (true) {
     const methodName = getTerminalMethodName(currentCall);
     if (methodName === null) return null;
+    if (!PROMISE_SETTLE_METHODS.has(methodName)) return methodName;
     if (methodName === "catch") {
       if (isCallableHandler(currentCall.arguments[0] as EsTreeNode | undefined)) return null;
     } else if (methodName === "then") {
       if (isCallableHandler(currentCall.arguments[1] as EsTreeNode | undefined)) return null;
-    } else if (methodName !== "finally") {
-      return methodName;
     }
     const callee = currentCall.callee;
     if (!isNodeOfType(callee, "MemberExpression")) return null;

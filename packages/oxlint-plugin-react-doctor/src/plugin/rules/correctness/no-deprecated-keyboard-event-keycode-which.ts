@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { isDescendantOf } from "../../utils/is-descendant-of.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNonSourceFilename } from "../../utils/is-non-source-filename.js";
@@ -282,15 +283,6 @@ const functionIsKeyboardHandler = (fnNode: EsTreeNode): boolean => {
     ) {
       return true;
     }
-  }
-  return false;
-};
-
-const isDescendantOf = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current) {
-    if (current === ancestor) return true;
-    current = current.parent;
   }
   return false;
 };

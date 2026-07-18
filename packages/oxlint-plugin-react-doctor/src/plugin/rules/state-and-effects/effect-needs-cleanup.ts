@@ -5,8 +5,12 @@ import {
 } from "../../constants/dom.js";
 import {
   BOUND_RESOURCE_RELEASE_METHOD_NAMES,
+  EVENT_LISTENER_HANDLER_ARGUMENT_INDEX,
   EFFECT_HOOK_NAMES,
   GLOBAL_RELEASE_METHOD_NAMES,
+  UNARY_LISTENER_ARGUMENT_COUNT,
+  UNARY_LISTENER_HANDLER_ARGUMENT_INDEX,
+  WHOLE_RECEIVER_RELEASE_ARGUMENT_COUNT,
 } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import {
@@ -2949,6 +2953,14 @@ const hasCollectionMutationBeforeRelease = (
   return didFindMutation;
 };
 
+const usesUnaryListenerSignature = (
+  registrationCall: EsTreeNodeOfType<"CallExpression">,
+  releaseCall: EsTreeNodeOfType<"CallExpression">,
+): boolean =>
+  getCalleeName(registrationCall) === "addListener" &&
+  registrationCall.arguments?.length === UNARY_LISTENER_ARGUMENT_COUNT &&
+  releaseCall.arguments?.length === UNARY_LISTENER_ARGUMENT_COUNT;
+
 const hasSafeForEachProjectionCleanup = (
   registrationCall: EsTreeNodeOfType<"CallExpression">,
   releaseCall: EsTreeNodeOfType<"CallExpression">,
@@ -2964,6 +2976,33 @@ const hasSafeForEachProjectionCleanup = (
   }
   const registrationVerbName = getCalleeName(registrationCall);
   const releaseVerbName = getCalleeName(releaseCall);
+  const releaseHandler =
+    releaseCall.arguments?.[
+      usesUnaryListenerSignature(registrationCall, releaseCall)
+        ? UNARY_LISTENER_HANDLER_ARGUMENT_INDEX
+        : EVENT_LISTENER_HANDLER_ARGUMENT_INDEX
+    ];
+  const releaseFunction = findEnclosingFunction(releaseCall);
+  const registrationEventKey = resolveResourceIdentityKey(registrationCall.arguments?.[0], context);
+  const releaseEventKey = resolveResourceIdentityKey(releaseCall.arguments?.[0], context);
+  const doesHandlerlessOffReleaseEveryRegistration =
+    releaseVerbName === "off" &&
+    !releaseHandler &&
+    (releaseCall.arguments?.length === WHOLE_RECEIVER_RELEASE_ARGUMENT_COUNT ||
+      (registrationEventKey !== null && registrationEventKey === releaseEventKey));
+  const doesReleaseCoverEveryCleanupPath = Boolean(
+    releaseFunction &&
+    isFunctionLike(releaseFunction) &&
+    isReturnedEffectCleanupFunction(releaseFunction, context) &&
+    doMatchingNodesCoverEveryPathFromFunctionEntry(releaseFunction, [releaseCall], context),
+  );
+  if (
+    doesReleaseCoverEveryCleanupPath &&
+    ((releaseVerbName !== null && UNIVERSAL_RELEASE_VERB_NAMES.has(releaseVerbName)) ||
+      doesHandlerlessOffReleaseEveryRegistration)
+  ) {
+    return true;
+  }
   const projectionExpressions = [
     registrationCallee.object,
     registrationCall.arguments?.[0],
@@ -3233,18 +3272,22 @@ const doesReleaseCallMatchUsage = (
     releaseVerbName === "removeListener" ||
     releaseVerbName === "off"
   ) {
-    const usesUnaryListenerSignature =
-      usage.registrationVerbName === "addListener" &&
+    const usesUnaryListenerSignatureForCalls =
       isNodeOfType(usage.node, "CallExpression") &&
-      usage.node.arguments?.length === 1 &&
-      callNode.arguments?.length === 1;
-    const releaseHandler = usesUnaryListenerSignature
-      ? callNode.arguments?.[0]
-      : callNode.arguments?.[1];
+      usesUnaryListenerSignature(usage.node, callNode);
+    const releaseHandler = usesUnaryListenerSignatureForCalls
+      ? callNode.arguments?.[UNARY_LISTENER_HANDLER_ARGUMENT_INDEX]
+      : callNode.arguments?.[EVENT_LISTENER_HANDLER_ARGUMENT_INDEX];
     if (!releaseHandler) return releaseVerbName === "off";
-    const expectedHandlerKey = usesUnaryListenerSignature ? usage.eventKey : usage.handlerKey;
+    const expectedHandlerKey = usesUnaryListenerSignatureForCalls
+      ? usage.eventKey
+      : usage.handlerKey;
     const registrationHandler = isNodeOfType(usage.node, "CallExpression")
-      ? usage.node.arguments?.[usesUnaryListenerSignature ? 0 : 1]
+      ? usage.node.arguments?.[
+          usesUnaryListenerSignatureForCalls
+            ? UNARY_LISTENER_HANDLER_ARGUMENT_INDEX
+            : EVENT_LISTENER_HANDLER_ARGUMENT_INDEX
+        ]
       : null;
     return (
       (expectedHandlerKey !== null &&

@@ -4916,6 +4916,143 @@ export const MediaQuery = ({ breakpoint }) => {
     },
   );
 
+  it.each(["emitter.off();", "emitter.dispose();"])(
+    "accepts projected registrations followed by whole-receiver cleanup with %s",
+    (cleanup) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+          function Subscriptions({ emitter, subscriptions }) {
+            useEffect(() => {
+              subscriptions.forEach(({ event, handler }) => {
+                emitter.on(event, handler);
+              });
+
+              return () => {
+                ${cleanup}
+              };
+            }, [emitter, subscriptions]);
+
+            return null;
+          }
+        `,
+        { filename: "Subscriptions.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("accepts projected handlers followed by handlerless event cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+        function Subscriptions({ emitter, handlers }) {
+          useEffect(() => {
+            handlers.forEach((handler) => {
+              emitter.on("update", handler);
+            });
+
+            return () => {
+              emitter.off("update");
+            };
+          }, [emitter, handlers]);
+
+          return null;
+        }
+      `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    'emitter.off("other");',
+    'emitter.off("update", handlers[0]);',
+    "emitter.off(getEvent());",
+    "emitter.off(null);",
+    'if (shouldCleanup) emitter.off("update");',
+  ])("rejects projected handlers followed by incomplete event cleanup with %s", (cleanup) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+          function Subscriptions({ emitter, handlers }) {
+            useEffect(() => {
+              handlers.forEach((handler) => {
+                emitter.on("update", handler);
+              });
+
+              return () => {
+                ${cleanup}
+              };
+            }, [emitter, handlers]);
+
+            return null;
+          }
+        `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not mistake a unary addListener release for handlerless cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+        function Subscriptions({ source, handlers }) {
+          useEffect(() => {
+            handlers.forEach((handler) => {
+              source.addListener(handler);
+            });
+
+            return () => {
+              source.off(handlers[0]);
+            };
+          }, [handlers, source]);
+
+          return null;
+        }
+      `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["otherEmitter.off();", "otherEmitter.dispose();", 'emitter.off("focus");'])(
+    "rejects projected registrations followed by incomplete whole-receiver cleanup with %s",
+    (cleanup) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+          function Subscriptions({ emitter, otherEmitter, subscriptions }) {
+            useEffect(() => {
+              subscriptions.forEach(({ event, handler }) => {
+                emitter.on(event, handler);
+              });
+
+              return () => {
+                ${cleanup}
+              };
+            }, [emitter, otherEmitter, subscriptions]);
+
+            return null;
+          }
+        `,
+        { filename: "Subscriptions.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it.each([
     {
       name: "a different receiver collection",

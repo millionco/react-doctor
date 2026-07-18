@@ -563,11 +563,20 @@ const isInsideFilteredIterationCallback = (node: EsTreeNode, splitCall: EsTreeNo
   return false;
 };
 
-// `e.touches.length` (or any read off the same TouchList) in a dominating
-// condition proves the list non-empty on this branch.
+// A positive `e.touches.length` check in a dominating condition proves the
+// list non-empty on this branch. Normalized early-exit tests retain the
+// original member parent, which distinguishes them from `if (e.touches)`.
 const testPositivelyHasTouchRead = (test: EsTreeNode, touchListAccess: EsTreeNode): boolean => {
   const expression = resolveTestExpression(test);
-  if (areGuardExpressionsEqual(expression, touchListAccess)) return true;
+  if (
+    areGuardExpressionsEqual(expression, touchListAccess) &&
+    expression.parent &&
+    isNodeOfType(expression.parent, "MemberExpression") &&
+    expression.parent.object === expression &&
+    getStaticPropertyName(expression.parent) === "length"
+  ) {
+    return true;
+  }
   if (unwrapNegativeGuardForm(expression)) return false;
   if (isNodeOfType(expression, "LogicalExpression")) {
     if (expression.operator === "&&") {

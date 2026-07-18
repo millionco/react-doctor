@@ -342,6 +342,18 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat TouchList truthiness as a non-empty guard", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `element.addEventListener('touchend', (event) => {
+         if (event.touches) {
+           setLastY(event.touches[0].clientY);
+         }
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet when a repeated-split length check guards the part read", () => {
     const result = runRule(
       noArrayIndexDerefWithoutBoundsOrEmptyGuard,

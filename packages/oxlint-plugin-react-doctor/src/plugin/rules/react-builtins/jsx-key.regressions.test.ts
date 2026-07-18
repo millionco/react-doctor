@@ -59,6 +59,70 @@ describe("react-builtins/jsx-key — regressions", () => {
     expectFail(`root.render([<Item value="one" />, <Item value="two" />]);`);
   });
 
+  it("flags keyless JSX arrays passed as React.createElement children", () => {
+    expectFail(`
+      import React from "react";
+      React.createElement(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("flags keyless JSX arrays passed as imported createElement children", () => {
+    expectFail(`
+      import { createElement } from "react";
+      createElement(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("flags keyless JSX arrays passed as aliased createElement children", () => {
+    expectFail(`
+      import { createElement as h } from "react";
+      h(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("flags keyless JSX arrays passed through a React namespace alias", () => {
+    expectFail(`
+      import * as ReactRuntime from "react";
+      ReactRuntime.createElement(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("flags keyless JSX arrays passed as unbound createElement children", () => {
+    expectFail(`createElement(List, null, [<Item value="one" />, <Item value="two" />]);`);
+  });
+
+  it("does not treat unrelated createElement calls as rendering APIs", () => {
+    expectPass(`factory.createElement(List, null, [<Item value="one" />, <Item value="two" />]);`);
+  });
+
+  it("does not treat non-React createElement imports as rendering APIs", () => {
+    expectPass(`
+      import { createElement } from "widget-factory";
+      createElement(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("does not treat shadowed createElement bindings as rendering APIs", () => {
+    expectPass(`
+      const createElement = factory.createElement;
+      createElement(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("does not analyze JSX arrays used as createElement props", () => {
+    expectPass(`
+      import { createElement } from "react";
+      createElement(List, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("does not analyze JSX arrays used as the createElement element type", () => {
+    expectPass(`
+      import React from "react";
+      React.createElement([<Item value="one" />, <Item value="two" />], null);
+    `);
+  });
+
   it("does not guess that a destructured component field carries a key", () => {
     expectPass(`const Row = ({ options }) => <Item key="row" {...options} />;`);
   });

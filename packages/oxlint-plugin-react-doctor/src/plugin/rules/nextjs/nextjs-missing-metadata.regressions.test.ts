@@ -55,6 +55,43 @@ export default function LegacyPage() {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on async arrow pages awaiting redirects", () => {
+    const result = runRule(
+      nextjsMissingMetadata,
+      `import { redirect } from "next/navigation";
+export default async () => await redirect("/docs");`,
+      { filename: "app/legacy/page.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on redirect-only blocks with awaited statements", () => {
+    const result = runRule(
+      nextjsMissingMetadata,
+      `import { permanentRedirect as movePermanently } from "next/navigation";
+export default async function LegacyPage() {
+  await movePermanently("/docs");
+}`,
+      { filename: "app/legacy/page.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on redirect-only blocks returning awaited redirects", () => {
+    const result = runRule(
+      nextjsMissingMetadata,
+      `import { redirect } from "next/navigation";
+export default async function LegacyPage() {
+  return await redirect("/docs");
+}`,
+      { filename: "app/legacy/page.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags a page that can render after a conditional redirect", () => {
     const result = runRule(
       nextjsMissingMetadata,
@@ -75,6 +112,46 @@ export default function AccountPage({ user }) {
       `const redirect = (path) => <main>{path}</main>;
 export default function Page() {
   return redirect("/dashboard");
+}`,
+      { filename: "app/products/page.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust an awaited redirect imported from another module", () => {
+    const result = runRule(
+      nextjsMissingMetadata,
+      `import { redirect } from "./navigation";
+export default async function Page() {
+  return await redirect("/dashboard");
+}`,
+      { filename: "app/products/page.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a shadowed redirect import", () => {
+    const result = runRule(
+      nextjsMissingMetadata,
+      `import { redirect } from "next/navigation";
+export default async function Page(redirect) {
+  return await redirect("/dashboard");
+}`,
+      { filename: "app/products/page.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags async pages that can render after a conditional redirect", () => {
+    const result = runRule(
+      nextjsMissingMetadata,
+      `import { redirect } from "next/navigation";
+export default async function Page(user) {
+  if (!user) await redirect("/login");
+  return <main>Account</main>;
 }`,
       { filename: "app/products/page.tsx" },
     );

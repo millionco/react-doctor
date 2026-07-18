@@ -1,4 +1,5 @@
 import { SPREAD_KEY_RESOLUTION_DEPTH } from "../../constants/thresholds.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -13,6 +14,7 @@ import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNonChildrenJsxAttributeValue } from "../../utils/is-non-children-jsx-attribute-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { Rule } from "../../utils/rule.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -79,7 +81,10 @@ const isArrayNestedInObjectProperty = (arrayExpression: EsTreeNode): boolean => 
   return false;
 };
 
-const isArrayPassedToNonRenderingCall = (arrayExpression: EsTreeNode): boolean => {
+const isArrayPassedToNonRenderingCall = (
+  arrayExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   const transparentArray = findTransparentExpressionRoot(arrayExpression);
   const callExpression = transparentArray.parent;
   if (
@@ -88,6 +93,18 @@ const isArrayPassedToNonRenderingCall = (arrayExpression: EsTreeNode): boolean =
     !callExpression.arguments.some((argument) => argument === transparentArray)
   ) {
     return false;
+  }
+  const argumentIndex = callExpression.arguments.findIndex(
+    (argument) => argument === transparentArray,
+  );
+  if (
+    isReactApiCall(callExpression, "createElement", scopes, {
+      allowGlobalReactNamespace: true,
+      allowUnboundBareCalls: true,
+      resolveNamedAliases: true,
+    })
+  ) {
+    return argumentIndex < 2;
   }
   const callee = stripParenExpression(callExpression.callee);
   if (isNodeOfType(callee, "Identifier")) return !RENDERING_CALL_NAMES.has(callee.name);
@@ -269,7 +286,10 @@ const findNamedCallbackIteratorCall = (functionNode: EsTreeNode): EsTreeNode | n
   return iteratorCall;
 };
 
-const findEnclosingIteratorContext = (jsxNode: EsTreeNode): IteratorContext | null => {
+const findEnclosingIteratorContext = (
+  jsxNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): IteratorContext | null => {
   let current: EsTreeNode | null | undefined = jsxNode;
   let isOutsideContainingFunction = false;
   let didSeeReturnStatement = false;
@@ -300,7 +320,7 @@ const findEnclosingIteratorContext = (jsxNode: EsTreeNode): IteratorContext | nu
     } else if (isNodeOfType(parent, "ArrayExpression")) {
       if (isOutsideContainingFunction) return null;
       if (isArrayNestedInObjectProperty(parent)) return null;
-      if (isArrayPassedToNonRenderingCall(parent)) return null;
+      if (isArrayPassedToNonRenderingCall(parent, scopes)) return null;
       // Config arrays — `description: [<>...</>]`, `messages: [<Foo />]`,
       // `tooltip: [...]`, Map entry tuples `[[key, <X />], ...]` — aren't
       // iterated for rendering; they're data assigned to a property.
@@ -721,7 +741,7 @@ export const jsxKey = defineRule({
           }
         }
         // Missing key check: only on top-level JSX in an array/iterator.
-        const enclosingContext = findEnclosingIteratorContext(node);
+        const enclosingContext = findEnclosingIteratorContext(node, context.scopes);
         if (!enclosingContext) return;
         if (isWithinChildrenToArray(node)) return;
         if (hasJsxKeyAttribute(openingElement)) return;

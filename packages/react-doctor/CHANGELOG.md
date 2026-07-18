@@ -1,5 +1,15 @@
 # react-doctor
 
+## 0.8.1
+
+### Patch Changes
+
+- [#1377](https://github.com/millionco/react-doctor/pull/1377) [`eb2d687`](https://github.com/millionco/react-doctor/commit/eb2d687503168b06bdda4737b9d3b443527bddf4) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve production routes named test or tests in scoring and CI, and add file-context controls for restoring test or story diagnostics.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.8.1
+  - deslop-js@0.8.1
+
 ## 0.8.0
 
 ### Minor Changes

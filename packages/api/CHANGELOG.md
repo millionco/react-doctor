@@ -1,5 +1,12 @@
 # @react-doctor/api
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @react-doctor/core@0.8.1
+
 ## 0.8.0
 
 ### Patch Changes

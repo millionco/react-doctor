@@ -125,11 +125,14 @@ const serializeHandleKey = (node: EsTreeNode): string | null => {
   const expression = stripParenExpression(node);
   if (isNodeOfType(expression, "Identifier")) {
     const binding = findVariableInitializer(expression, expression.name);
+    const bindingKey = binding
+      ? `${expression.name}#${binding.bindingIdentifier.range[0]}`
+      : expression.name;
     if (binding?.initializer) {
       const initializerKey = serializeHandleKey(binding.initializer);
-      if (initializerKey && initializerKey !== expression.name) return initializerKey;
+      if (initializerKey && initializerKey !== bindingKey) return initializerKey;
     }
-    return expression.name;
+    return bindingKey;
   }
   if (!isNodeOfType(expression, "MemberExpression")) return null;
   const receiverKey = serializeHandleKey(expression.object);
@@ -148,7 +151,7 @@ const storedHandleKeyForCall = (call: EsTreeNodeOfType<"CallExpression">): strin
     parent.init === expressionRoot &&
     isNodeOfType(parent.id, "Identifier")
   ) {
-    return parent.id.name;
+    return serializeHandleKey(parent.id);
   }
   if (isNodeOfType(parent, "CallExpression") && isNodeOfType(parent.callee, "MemberExpression")) {
     const storageMethodName = getStaticPropertyName(parent.callee);

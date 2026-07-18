@@ -100,6 +100,28 @@ describe("effect-raf-loop-needs-cancel", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not match cancellation of a shadowed handle binding", () => {
+    const result = runRule(
+      effectRafLoopNeedsCancel,
+      `function Clock() {
+         useEffect(() => {
+           let requestId;
+           const loop = () => {
+             requestId = requestAnimationFrame(loop);
+           };
+           requestId = requestAnimationFrame(loop);
+           return () => {
+             const requestId = unrelatedFrameId;
+             cancelAnimationFrame(requestId);
+           };
+         }, []);
+         return null;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a throttle that schedules a non-rescheduling frame", () => {
     const result = runRule(
       effectRafLoopNeedsCancel,

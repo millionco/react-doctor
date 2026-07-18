@@ -195,6 +195,10 @@ const timeoutCallbackMutatesComponent = (
       // that never calls setState/runInAction mutates nothing when it
       // fires after unmount.
       const memberName = getStaticPropertyName(callee);
+      if (memberName && COMPONENT_MUTATION_METHOD_NAMES.has(memberName)) {
+        mutates = true;
+        return;
+      }
       const memberFunction = memberName ? classMemberFunction(classBody, memberName) : null;
       if (memberFunction && !functionSetsComponentState(memberFunction, classBody)) return;
       mutates = true;

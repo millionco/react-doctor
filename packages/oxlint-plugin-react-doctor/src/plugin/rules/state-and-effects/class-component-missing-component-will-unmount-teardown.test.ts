@@ -1063,6 +1063,22 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("treats owned setState wrappers as component mutations", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Banner extends React.Component {
+         setState(nextState) {
+           super.setState(nextState);
+         }
+         componentDidMount() {
+           setTimeout(() => this.setState({ ready: true }), 100);
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("tracks forceUpdate helpers and transparent bound this arguments", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

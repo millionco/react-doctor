@@ -13,6 +13,7 @@ import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -556,6 +557,7 @@ const collectSynchronouslyRemovedListeners = (
 
 const isRefOwnedReceiver = (
   expression: EsTreeNode,
+  classBody: EsTreeNode | null,
   scopes: ScopeAnalysis,
   visitedSymbolIds = new Set<number>(),
 ): boolean => {
@@ -572,21 +574,65 @@ const isRefOwnedReceiver = (
     const initializer = findVariableInitializer(receiver, receiver.name)?.initializer;
     if (!initializer) return false;
     visitedSymbolIds.add(symbol.id);
-    return isRefOwnedReceiver(initializer, scopes, visitedSymbolIds);
+    return isRefOwnedReceiver(initializer, classBody, scopes, visitedSymbolIds);
   }
   if (isNodeOfType(receiver, "MemberExpression")) {
-    return (
-      getStaticPropertyName(receiver) === "current" ||
-      isRefOwnedReceiver(receiver.object, scopes, visitedSymbolIds)
+    const propertyName = getStaticPropertyName(receiver);
+    const owner = stripParenExpression(receiver.object);
+    if (propertyName !== "current") {
+      return isRefOwnedReceiver(owner, classBody, scopes, visitedSymbolIds);
+    }
+    if (!isNodeOfType(classBody, "ClassBody") || !isNodeOfType(owner, "MemberExpression")) {
+      return false;
+    }
+    const refPropertyName = getStaticPropertyName(owner);
+    const refOwner = stripParenExpression(owner.object);
+    if (!refPropertyName || !isNodeOfType(refOwner, "ThisExpression")) return false;
+    const refMember = classBody.body?.find(
+      (member) => getClassMemberName(member) === refPropertyName,
     );
+    if (
+      !refMember ||
+      !isNodeOfType(refMember, "PropertyDefinition") ||
+      refMember.static ||
+      !isNodeOfType(refMember.value, "CallExpression") ||
+      !isReactApiCall(refMember.value, "createRef", scopes, {
+        allowGlobalReactNamespace: true,
+        allowUnboundBareCalls: false,
+        resolveNamedAliases: true,
+      })
+    ) {
+      return false;
+    }
+    let enclosingMember: EsTreeNode | null | undefined = receiver;
+    while (enclosingMember && enclosingMember.parent !== classBody) {
+      enclosingMember = enclosingMember.parent;
+    }
+    const enclosingBody = enclosingMember ? getMemberFunctionBody(enclosingMember) : null;
+    let wasReassigned = false;
+    if (enclosingBody) {
+      walkSynchronousCallbackFlow(enclosingBody, (candidate) => {
+        if (
+          wasReassigned ||
+          candidate.range[0] >= receiver.range[0] ||
+          !isNodeOfType(candidate, "AssignmentExpression")
+        ) {
+          return;
+        }
+        const target = stripParenExpression(candidate.left);
+        if (!isNodeOfType(target, "MemberExpression")) return;
+        const targetOwner = stripParenExpression(target.object);
+        if (
+          isNodeOfType(targetOwner, "ThisExpression") &&
+          getStaticPropertyName(target) === refPropertyName
+        ) {
+          wasReassigned = true;
+        }
+      });
+    }
+    return !wasReassigned;
   }
-  if (!isNodeOfType(receiver, "CallExpression")) return false;
-  return (
-    isRefOwnedReceiver(receiver.callee, scopes, visitedSymbolIds) ||
-    (receiver.arguments ?? []).some((argument) =>
-      isRefOwnedReceiver(argument, scopes, new Set(visitedSymbolIds)),
-    )
-  );
+  return false;
 };
 
 const isMountHazard = (
@@ -609,7 +655,7 @@ const isMountHazard = (
     const callArguments = node.arguments ?? [];
     const isFunctionFactoryOnce = methodName === "once" && callArguments.length < 2;
     let receiverBase = stripParenExpression(callee.object);
-    const receiverIsRefOwnedNode = isRefOwnedReceiver(receiverBase, scopes);
+    const receiverIsRefOwnedNode = isRefOwnedReceiver(receiverBase, classBody, scopes);
     while (true) {
       receiverBase = stripParenExpression(receiverBase);
       if (isNodeOfType(receiverBase, "CallExpression")) {

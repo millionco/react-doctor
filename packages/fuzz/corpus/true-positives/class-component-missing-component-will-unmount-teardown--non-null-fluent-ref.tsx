@@ -1,3 +1,7 @@
+// rule: class-component-missing-component-will-unmount-teardown
+// weakness: ref-owner-provenance
+// source: Cursor Bugbot review of PR #1365
+
 import React from "react";
 
 export class NonNullFluentRef extends React.Component {

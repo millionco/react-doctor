@@ -733,6 +733,83 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(reassignedRefAlias.diagnostics).toHaveLength(1);
   });
 
+  it("requires ref-owned listener receivers to originate from a stable class createRef field", () => {
+    const importedCreateRef = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { createRef as makeRef } from "react";
+      class Chart extends React.Component {
+        containerRef = makeRef();
+        componentDidMount() {
+          const container = this.containerRef.current;
+          container.addEventListener("wheel", this.handleWheel);
+        }
+        handleWheel = () => {};
+        render() { return <div ref={this.containerRef} />; }
+      }`,
+    );
+    const propRef = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Chart extends React.Component {
+        componentDidMount() {
+          this.props.containerRef.current.addEventListener("wheel", this.handleWheel);
+        }
+        handleWheel = () => {};
+        render() { return null; }
+      }`,
+    );
+    const externalRef = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `const externalRef = { current: window };
+      class Chart extends React.Component {
+        componentDidMount() {
+          externalRef.current.addEventListener("wheel", this.handleWheel);
+        }
+        handleWheel = () => {};
+        render() { return null; }
+      }`,
+    );
+    const arbitraryCurrentField = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Chart extends React.Component {
+        containerRef = { current: window };
+        componentDidMount() {
+          this.containerRef.current.addEventListener("wheel", this.handleWheel);
+        }
+        handleWheel = () => {};
+        render() { return null; }
+      }`,
+    );
+    const callDerivedReceiver = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Chart extends React.Component {
+        containerRef = React.createRef();
+        componentDidMount() {
+          wrap(this.containerRef.current).on("change", this.handleChange);
+        }
+        handleChange = () => {};
+        render() { return <div ref={this.containerRef} />; }
+      }`,
+    );
+    const reassignedClassRef = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Chart extends React.Component {
+        containerRef = React.createRef();
+        componentDidMount() {
+          this.containerRef = this.props.containerRef;
+          this.containerRef.current.addEventListener("wheel", this.handleWheel);
+        }
+        handleWheel = () => {};
+        render() { return null; }
+      }`,
+    );
+    expect(importedCreateRef.diagnostics).toHaveLength(0);
+    expect(propRef.diagnostics).toHaveLength(1);
+    expect(externalRef.diagnostics).toHaveLength(1);
+    expect(arbitraryCurrentField.diagnostics).toHaveLength(1);
+    expect(callDerivedReceiver.diagnostics).toHaveLength(1);
+    expect(reassignedClassRef.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a non-null asserted mount-local listener receiver", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
@@ -820,7 +897,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet: d3 fluent chain binding DOM events inside the component's own svg", () => {
+  it("flags call-derived d3 selections even when they receive a class-owned ref", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
       `class BarChart extends React.Component {
@@ -839,10 +916,10 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
 }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: d3 fluent chain rooted at a non-null asserted ref", () => {
+  it("flags call-derived d3 selections rooted at a non-null asserted ref", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
       `class BarChart extends React.Component {
@@ -858,7 +935,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
 }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet: Destructured mount-local emitter that never escapes", () => {

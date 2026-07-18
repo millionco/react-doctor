@@ -229,31 +229,46 @@ const isOneShotListenerOptions = (
 // escape it (never assigned onto `this` or another object): a listener
 // registered on such a locally constructed emitter dies with the component,
 // so it needs no teardown.
-const collectMountLocalReceiverNames = (mountBody: EsTreeNode): Set<string> => {
-  const declaredNames = new Set<string>();
-  const escapedNames = new Set<string>();
+const collectMountLocalReceiverSymbolIds = (
+  mountBody: EsTreeNode,
+  scopes: ScopeAnalysis,
+): Set<number> => {
+  const declaredSymbolIds = new Set<number>();
+  const escapedSymbolIds = new Set<number>();
   walkSynchronousCallbackFlow(mountBody, (node) => {
     if (isNodeOfType(node, "VariableDeclarator")) {
       const initializer = node.init ? stripParenExpression(node.init as EsTreeNode) : null;
+      const initializerCallee = isNodeOfType(initializer, "CallExpression")
+        ? stripParenExpression(initializer.callee)
+        : null;
       if (
         initializer &&
         (isNodeOfType(initializer, "NewExpression") ||
           isNodeOfType(initializer, "ObjectExpression") ||
           isNodeOfType(initializer, "ArrayExpression") ||
           (isNodeOfType(initializer, "CallExpression") &&
-            isNodeOfType(initializer.callee, "Identifier") &&
-            MOUNT_LOCAL_RESOURCE_FACTORY_NAMES.has(initializer.callee.name)))
+            isNodeOfType(initializerCallee, "Identifier") &&
+            MOUNT_LOCAL_RESOURCE_FACTORY_NAMES.has(initializerCallee.name)))
       ) {
+        const declaredNames = new Set<string>();
         collectPatternNames(node.id as EsTreeNode, declaredNames);
+        const declarationScope = scopes.scopeFor(node);
+        for (const declaredName of declaredNames) {
+          const symbol = declarationScope.symbolsByName.get(declaredName);
+          if (symbol) declaredSymbolIds.add(symbol.id);
+        }
       }
     }
     if (isNodeOfType(node, "AssignmentExpression") && isNodeOfType(node.left, "MemberExpression")) {
       const assignedValue = stripParenExpression(node.right);
-      if (isNodeOfType(assignedValue, "Identifier")) escapedNames.add(assignedValue.name);
+      const assignedSymbol = isNodeOfType(assignedValue, "Identifier")
+        ? scopes.symbolFor(assignedValue)
+        : null;
+      if (assignedSymbol) escapedSymbolIds.add(assignedSymbol.id);
     }
   });
-  for (const escapedName of escapedNames) declaredNames.delete(escapedName);
-  return declaredNames;
+  for (const escapedSymbolId of escapedSymbolIds) declaredSymbolIds.delete(escapedSymbolId);
+  return declaredSymbolIds;
 };
 
 // `addEventListener` immediately paired with `removeEventListener` for the
@@ -354,7 +369,7 @@ const collectSynchronouslyRemovedListeners = (
 
 const isMountHazard = (
   node: EsTreeNode,
-  localReceiverNames: Set<string>,
+  localReceiverSymbolIds: Set<number>,
   removedListeners: Map<string, number>,
   classBody: EsTreeNode | null,
   scopes: ScopeAnalysis,
@@ -401,8 +416,10 @@ const isMountHazard = (
       }
       break;
     }
-    const isLocalReceiver =
-      isNodeOfType(receiverBase, "Identifier") && localReceiverNames.has(receiverBase.name);
+    const receiverSymbol = isNodeOfType(receiverBase, "Identifier")
+      ? scopes.symbolFor(receiverBase)
+      : null;
+    const isLocalReceiver = receiverSymbol ? localReceiverSymbolIds.has(receiverSymbol.id) : false;
     const listenerKey =
       methodName === "addEventListener" ? listenerIdentityKey(node, scopes) : null;
     const removalPosition = listenerKey ? removedListeners.get(listenerKey) : undefined;
@@ -488,13 +505,13 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
         const body = getMemberFunctionBody(member);
         if (!body) continue;
 
-        const localReceiverNames = collectMountLocalReceiverNames(body);
+        const localReceiverSymbolIds = collectMountLocalReceiverSymbolIds(body, context.scopes);
         const removedListeners = collectSynchronouslyRemovedListeners(body, context.scopes);
         let hazardNode: EsTreeNode | null = null;
         walkSynchronousCallbackFlow(body, (candidate) => {
           if (hazardNode) return;
           if (
-            isMountHazard(candidate, localReceiverNames, removedListeners, node, context.scopes)
+            isMountHazard(candidate, localReceiverSymbolIds, removedListeners, node, context.scopes)
           ) {
             hazardNode = candidate;
           }

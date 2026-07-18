@@ -386,6 +386,33 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(unrelatedAssignment.diagnostics).toHaveLength(0);
   });
 
+  it("tracks mount-local receivers and escapes by binding identity", () => {
+    const shadowedLocalReceiver = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Legend extends React.Component {
+         componentDidMount() {
+           const network = externalNetwork;
+           { const network = new Network(); void network; }
+           network.on("draw", this.draw);
+         }
+         render() { return null; }
+       }`,
+    );
+    const shadowedEscape = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Legend extends React.Component {
+         componentDidMount() {
+           const network = new Network();
+           { const network = externalNetwork; this.network = network; }
+           network.on("draw", this.draw);
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(shadowedLocalReceiver.diagnostics).toHaveLength(1);
+    expect(shadowedEscape.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a listener on an emitter constructed locally in the mount body (Algolia places idiom)", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
@@ -398,6 +425,20 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         render() { return null; }
       }
       `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("tracks transparent wrappers around mount-local factory callees", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Search extends React.Component {
+         componentDidMount() {
+           const autocomplete = (places as typeof places)({ container: this.input });
+           autocomplete.on("change", this.onChange);
+         }
+         render() { return null; }
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

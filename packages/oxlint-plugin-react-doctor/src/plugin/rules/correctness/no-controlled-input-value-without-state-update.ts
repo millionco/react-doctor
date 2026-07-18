@@ -1,8 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isLiteralVoidExpression } from "../../utils/is-literal-void-expression.js";
 import { isJsxAttributePotentiallyTruthy } from "../../utils/is-jsx-attribute-potentially-truthy.js";
@@ -144,27 +146,74 @@ const findReturnStatementAncestor = (
   return null;
 };
 
-const returnsAreAlternativeBranches = (
+const returnsAreOppositeIfBranches = (
   flaggedReturn: EsTreeNodeOfType<"ReturnStatement">,
   siblingReturn: EsTreeNodeOfType<"ReturnStatement">,
 ): boolean => {
-  const flaggedBlock = flaggedReturn.parent;
-  if (!flaggedBlock || !isNodeOfType(flaggedBlock, "BlockStatement")) return false;
-  const flaggedIndex = flaggedBlock.body.findIndex((statement) => statement === flaggedReturn);
-  if (flaggedIndex < 0) return false;
-  let siblingAncestor: EsTreeNode = siblingReturn;
-  while (siblingAncestor.parent && siblingAncestor.parent !== flaggedBlock) {
-    siblingAncestor = siblingAncestor.parent;
+  let ancestor = flaggedReturn.parent ?? null;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "IfStatement") && ancestor.alternate) {
+      const flaggedIsConsequent = isAstDescendant(flaggedReturn, ancestor.consequent);
+      const flaggedIsAlternate = isAstDescendant(flaggedReturn, ancestor.alternate);
+      const siblingIsConsequent = isAstDescendant(siblingReturn, ancestor.consequent);
+      const siblingIsAlternate = isAstDescendant(siblingReturn, ancestor.alternate);
+      if (
+        (flaggedIsConsequent && siblingIsAlternate) ||
+        (flaggedIsAlternate && siblingIsConsequent)
+      ) {
+        return true;
+      }
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
+const conditionalReturnPrecedesFallback = (
+  conditionalReturn: EsTreeNodeOfType<"ReturnStatement">,
+  fallbackReturn: EsTreeNodeOfType<"ReturnStatement">,
+): boolean => {
+  let conditionalAncestor = conditionalReturn.parent ?? null;
+  while (conditionalAncestor) {
+    if (isNodeOfType(conditionalAncestor, "IfStatement")) {
+      const containingBlock = conditionalAncestor.parent;
+      if (
+        containingBlock &&
+        isNodeOfType(containingBlock, "BlockStatement") &&
+        fallbackReturn.parent === containingBlock
+      ) {
+        const conditionalIndex = containingBlock.body.findIndex(
+          (statement) => statement === conditionalAncestor,
+        );
+        const fallbackIndex = containingBlock.body.findIndex(
+          (statement) => statement === fallbackReturn,
+        );
+        if (conditionalIndex >= 0 && conditionalIndex < fallbackIndex) return true;
+      }
+    }
+    conditionalAncestor = conditionalAncestor.parent ?? null;
+  }
+  return false;
+};
+
+const resultsAreAlternativeBranches = (
+  flaggedElement: EsTreeNode,
+  siblingElement: EsTreeNode,
+  flaggedReturn: EsTreeNodeOfType<"ReturnStatement">,
+  siblingReturn: EsTreeNodeOfType<"ReturnStatement">,
+): boolean => {
+  if (flaggedReturn === siblingReturn) {
+    return areNodesOnExclusiveConditionalBranches(flaggedElement, siblingElement, flaggedReturn);
   }
   return (
-    isNodeOfType(siblingAncestor, "IfStatement") &&
-    flaggedBlock.body.findIndex((statement) => statement === siblingAncestor) < flaggedIndex
+    returnsAreOppositeIfBranches(flaggedReturn, siblingReturn) ||
+    conditionalReturnPrecedesFallback(flaggedReturn, siblingReturn) ||
+    conditionalReturnPrecedesFallback(siblingReturn, flaggedReturn)
   );
 };
 
 const componentRendersStateDrivenAlternative = (
   flaggedElement: EsTreeNodeOfType<"JSXOpeningElement">,
-  alternativeResultByReturn: WeakMap<EsTreeNode, boolean>,
 ): boolean => {
   let enclosingFunction: EsTreeNode | null = flaggedElement.parent ?? null;
   while (enclosingFunction && !isFunctionLike(enclosingFunction)) {
@@ -173,8 +222,6 @@ const componentRendersStateDrivenAlternative = (
   if (!enclosingFunction) return false;
   const flaggedReturn = findReturnStatementAncestor(flaggedElement, enclosingFunction);
   if (!flaggedReturn) return false;
-  const cachedResult = alternativeResultByReturn.get(flaggedReturn);
-  if (cachedResult !== undefined) return cachedResult;
   let foundSibling = false;
   walkAst(enclosingFunction, (child) => {
     if (foundSibling) return false;
@@ -189,13 +236,12 @@ const componentRendersStateDrivenAlternative = (
       siblingValue &&
       !isLiteralValueAttribute(siblingValue) &&
       siblingReturn &&
-      returnsAreAlternativeBranches(flaggedReturn, siblingReturn)
+      resultsAreAlternativeBranches(flaggedElement, child, flaggedReturn, siblingReturn)
     ) {
       foundSibling = true;
       return false;
     }
   });
-  alternativeResultByReturn.set(flaggedReturn, foundSibling);
   return foundSibling;
 };
 
@@ -207,7 +253,6 @@ export const noControlledInputValueWithoutStateUpdate = defineRule({
   recommendation:
     "Drive the input's `value` from state (`const [value, setValue] = useState(...)`) that `onChange` updates, or drop `value` if the field is meant to be read-only.",
   create: (context: RuleContext) => {
-    const alternativeResultByReturn = new WeakMap<EsTreeNode, boolean>();
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
@@ -239,7 +284,7 @@ export const noControlledInputValueWithoutStateUpdate = defineRule({
         }
 
         if (hasHiddenOrDecoySignal(attributes)) return;
-        if (componentRendersStateDrivenAlternative(node, alternativeResultByReturn)) return;
+        if (componentRendersStateDrivenAlternative(node)) return;
 
         context.report({
           node,

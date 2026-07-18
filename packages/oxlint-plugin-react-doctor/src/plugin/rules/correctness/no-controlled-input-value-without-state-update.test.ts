@@ -221,6 +221,150 @@ const C = () => <input value="" onChange={(e) => setQuery(e.currentTarget.value)
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("recognizes a literal direct consequent and state-driven fallback return", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, setDraft }) => {
+         if (draft === null) return <input value="" onChange={(event) => setDraft(event.target.value)} />;
+         return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes state-driven and literal returns in direct if/else branches", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, setDraft }) => {
+         if (draft !== null) return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+         else return <input value="" onChange={(event) => setDraft(event.target.value)} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes state-driven and literal returns across an else-if chain", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, setDraft }) => {
+         if (draft === null) return <input value="" onChange={(event) => setDraft(event.target.value)} />;
+         else if (draft.length > 0) return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes a nested terminating state-driven branch and literal fallback", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, setDraft, isEditing }) => {
+         if (isEditing) {
+           if (draft !== null) {
+             return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+           }
+         }
+         return <input value="" onChange={(event) => setDraft(event.target.value)} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes state-driven and literal results in a conditional expression", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, setDraft }) => {
+         return draft === null
+           ? <input value="" onChange={(event) => setDraft(event.target.value)} />
+           : <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not infer alternative results from a logical fallback expression", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, setDraft }) => {
+         return (draft !== null && <input value={draft} onChange={(event) => setDraft(event.target.value)} />) ||
+           <input value="" onChange={(event) => setDraft(event.target.value)} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not use non-returning conditional JSX as a state-driven alternative", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, setDraft, showPreview }) => {
+         showPreview && <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+         return <input value="fixed" onChange={submit} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat an unreachable right side of a JSX logical expression as an alternative", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, setDraft }) => {
+         return <input value="fixed" onChange={submit} /> ||
+           <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["<span />", "true", "false", '"always"'])(
+    "does not treat a sibling behind the static logical condition %s as an alternative",
+    (condition) => {
+      const result = runRule(
+        noControlledInputValueWithoutStateUpdate,
+        `const Field = ({ draft, setDraft }) => {
+           return (${condition} && <input value={draft} onChange={(event) => setDraft(event.target.value)} />) ||
+             <input value="fixed" onChange={submit} />;
+         };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("does not use an unrelated dynamic input in another render region as an alternative", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, setDraft, showPreview }) => {
+         if (showPreview) {
+           const preview = <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+           void preview;
+         }
+         return <input value="fixed" onChange={submit} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat an empty conditional return as a state-driven alternative", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ isHidden }) => {
+         if (isHidden) return null;
+         return <input value="fixed" onChange={submit} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet on a visually-hidden typing-capture proxy input", () => {
     const result = runRule(
       noControlledInputValueWithoutStateUpdate,

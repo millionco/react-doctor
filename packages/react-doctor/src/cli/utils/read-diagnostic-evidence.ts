@@ -2,126 +2,405 @@ import fs from "node:fs";
 import path from "node:path";
 import { listSourceFiles } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
+import ts from "typescript";
 
 interface CreateDiagnosticEvidenceReaderOptions {
   readonly resolveForwardedHandlers?: boolean;
 }
 
-interface DiagnosticEvidenceReaderState {
-  readonly sourceByFilePath: Map<string, string | null>;
-  readonly aliasesByComponentName: Map<string, ReadonlyMap<string, string>>;
-  componentCallsitePaths: ReadonlyMap<string, ReadonlySet<string>> | null;
+interface SourceRecord {
+  readonly absolutePath: string;
+  readonly filePath: string;
+  readonly sourceFile: ts.SourceFile;
+  readonly sourceText: string;
 }
 
-const readSource = (
-  rootDirectory: string,
-  filePath: string,
-  sourceByFilePath: Map<string, string | null>,
-): string | null => {
-  if (sourceByFilePath.has(filePath)) return sourceByFilePath.get(filePath) ?? null;
+interface ComponentDeclaration {
+  readonly isDefaultExport: boolean;
+  readonly name: string;
+  readonly record: SourceRecord;
+}
+
+interface DiagnosticEvidenceReaderState {
+  readonly aliasesByComponent: Map<string, ReadonlyMap<string, string>>;
+  readonly recordByFilePath: Map<string, SourceRecord | null>;
+  sourceRecords: ReadonlyArray<SourceRecord> | null;
+}
+
+const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"];
+
+const getScriptKind = (filePath: string): ts.ScriptKind => {
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension === ".tsx") return ts.ScriptKind.TSX;
+  if (extension === ".jsx") return ts.ScriptKind.JSX;
+  if (extension === ".js" || extension === ".mjs" || extension === ".cjs") {
+    return ts.ScriptKind.JS;
+  }
+  return ts.ScriptKind.TS;
+};
+
+const resolveSafeSourcePath = (rootDirectory: string, filePath: string): string | null => {
   try {
-    const source = fs.readFileSync(path.resolve(rootDirectory, filePath), "utf-8");
-    sourceByFilePath.set(filePath, source);
-    return source;
+    const resolvedRootDirectory = fs.realpathSync(rootDirectory);
+    const absolutePath = path.resolve(resolvedRootDirectory, filePath);
+    const relativePath = path.relative(resolvedRootDirectory, absolutePath);
+    if (
+      relativePath.length === 0 ||
+      relativePath === ".." ||
+      relativePath.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativePath)
+    ) {
+      return null;
+    }
+    const stats = fs.lstatSync(absolutePath);
+    if (!stats.isFile() || stats.isSymbolicLink()) return null;
+    const realPath = fs.realpathSync(absolutePath);
+    const realRelativePath = path.relative(resolvedRootDirectory, realPath);
+    return realRelativePath !== ".." &&
+      !realRelativePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(realRelativePath)
+      ? realPath
+      : null;
   } catch {
-    sourceByFilePath.set(filePath, null);
     return null;
   }
 };
 
-const getEnclosingComponentName = (source: string, diagnostic: Diagnostic): string | null => {
-  const sourceBeforeDiagnostic = source
-    .split(/\r?\n/)
-    .slice(0, diagnostic.line - 1)
-    .join("\n");
-  const componentPattern = /\bfunction\s+([A-Z][\w$]*)\b[^{]*\{/g;
-  let componentName: string | null = null;
-  for (const match of sourceBeforeDiagnostic.matchAll(componentPattern)) {
-    const functionSource = sourceBeforeDiagnostic.slice(match.index);
-    const openingBraceCount = functionSource.match(/\{/g)?.length ?? 0;
-    const closingBraceCount = functionSource.match(/\}/g)?.length ?? 0;
-    if (openingBraceCount > closingBraceCount) componentName = match[1] ?? null;
-  }
-  return componentName;
-};
-
-const resolveForwardingCallback = (source: string, bindingName: string): string => {
-  const callbackPattern = new RegExp(
-    `\\bconst\\s+${bindingName}\\s*=\\s*(?:useCallback\\s*\\()?[^=;]*=>\\s*\\{?\\s*(?:return\\s+|void\\s+)?([A-Za-z_$][\\w$]*)\\s*\\(`,
-  );
-  return source.match(callbackPattern)?.[1] ?? bindingName;
-};
-
-const buildComponentCallsitePaths = (
+const readSourceRecord = (
   rootDirectory: string,
-  sourceByFilePath: Map<string, string | null>,
-): ReadonlyMap<string, ReadonlySet<string>> => {
-  const pathsByComponentName = new Map<string, Set<string>>();
-  for (const filePath of listSourceFiles(rootDirectory)) {
-    const source = readSource(rootDirectory, filePath, sourceByFilePath);
-    if (source === null) continue;
-    for (const match of source.matchAll(/<([A-Z][\w$]*)\b/g)) {
-      const componentName = match[1];
-      if (componentName === undefined) continue;
-      const matchingPaths = pathsByComponentName.get(componentName) ?? new Set<string>();
-      matchingPaths.add(filePath);
-      pathsByComponentName.set(componentName, matchingPaths);
-    }
-  }
-  return pathsByComponentName;
-};
-
-const getForwardedHandlerAliases = (
-  rootDirectory: string,
-  source: string,
-  diagnostic: Diagnostic,
+  filePath: string,
   state: DiagnosticEvidenceReaderState,
-): ReadonlyMap<string, string> => {
-  const componentName = getEnclosingComponentName(source, diagnostic);
-  if (componentName === null) return new Map();
-  const cachedAliases = state.aliasesByComponentName.get(componentName);
-  if (cachedAliases !== undefined) return cachedAliases;
+): SourceRecord | null => {
+  const normalizedFilePath = filePath.replace(/\\/g, "/");
+  if (state.recordByFilePath.has(normalizedFilePath)) {
+    return state.recordByFilePath.get(normalizedFilePath) ?? null;
+  }
+  const absolutePath = resolveSafeSourcePath(rootDirectory, normalizedFilePath);
+  if (absolutePath === null) {
+    state.recordByFilePath.set(normalizedFilePath, null);
+    return null;
+  }
+  try {
+    const sourceText = fs.readFileSync(absolutePath, "utf-8");
+    const record = {
+      absolutePath,
+      filePath: normalizedFilePath,
+      sourceFile: ts.createSourceFile(
+        absolutePath,
+        sourceText,
+        ts.ScriptTarget.Latest,
+        true,
+        getScriptKind(absolutePath),
+      ),
+      sourceText,
+    } satisfies SourceRecord;
+    state.recordByFilePath.set(normalizedFilePath, record);
+    return record;
+  } catch {
+    state.recordByFilePath.set(normalizedFilePath, null);
+    return null;
+  }
+};
 
-  state.componentCallsitePaths ??= buildComponentCallsitePaths(
-    rootDirectory,
-    state.sourceByFilePath,
+const listSourceRecords = (
+  rootDirectory: string,
+  state: DiagnosticEvidenceReaderState,
+): ReadonlyArray<SourceRecord> => {
+  if (state.sourceRecords !== null) return state.sourceRecords;
+  state.sourceRecords = listSourceFiles(rootDirectory).flatMap((filePath) => {
+    const record = readSourceRecord(rootDirectory, filePath, state);
+    return record === null ? [] : [record];
+  });
+  return state.sourceRecords;
+};
+
+const getFunctionName = (node: ts.FunctionLikeDeclaration): string | null => {
+  if (ts.isFunctionDeclaration(node) && node.name !== undefined) return node.name.text;
+  if (
+    (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) &&
+    ts.isVariableDeclaration(node.parent) &&
+    ts.isIdentifier(node.parent.name)
+  ) {
+    return node.parent.name.text;
+  }
+  return null;
+};
+
+const isComponentFunction = (node: ts.Node): node is ts.FunctionLikeDeclaration =>
+  ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node);
+
+const isDefaultExportedComponent = (
+  record: SourceRecord,
+  node: ts.FunctionLikeDeclaration,
+  componentName: string,
+): boolean => {
+  if (
+    ts.canHaveModifiers(node) &&
+    ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)
+  ) {
+    return true;
+  }
+  return record.sourceFile.statements.some(
+    (statement) =>
+      ts.isExportAssignment(statement) &&
+      ts.isIdentifier(statement.expression) &&
+      statement.expression.text === componentName,
   );
-  const bindingsByPropName = new Map<string, Set<string>>();
-  const unresolvedPropNames = new Set<string>();
-  const componentPattern = new RegExp(`<${componentName}\\b[\\s\\S]*?>`, "g");
-  const propPattern = /\b(on[A-Z]\w*)\s*=\s*\{\s*([A-Za-z_$][\w$]*)\s*\}/g;
-  const propNamePattern = /\b(on[A-Z]\w*)\s*=/g;
-  for (const callsitePath of state.componentCallsitePaths.get(componentName) ?? []) {
-    const callsiteSource = readSource(rootDirectory, callsitePath, state.sourceByFilePath);
-    if (callsiteSource === null) continue;
-    for (const componentMatch of callsiteSource.matchAll(componentPattern)) {
-      const componentCallsite = componentMatch[0];
-      const resolvedPropNames = new Set<string>();
-      for (const propMatch of componentCallsite.matchAll(propPattern)) {
-        const propName = propMatch[1];
-        const bindingName = propMatch[2];
-        if (propName === undefined || bindingName === undefined) continue;
-        resolvedPropNames.add(propName);
-        const bindings = bindingsByPropName.get(propName) ?? new Set<string>();
-        bindings.add(resolveForwardingCallback(callsiteSource, bindingName));
-        bindingsByPropName.set(propName, bindings);
+};
+
+const findEnclosingComponent = (
+  record: SourceRecord,
+  diagnostic: Diagnostic,
+): ComponentDeclaration | null => {
+  if (!Number.isInteger(diagnostic.line) || diagnostic.line < 1) return null;
+  const lineIndex = diagnostic.line - 1;
+  if (lineIndex >= record.sourceFile.getLineStarts().length) return null;
+  const diagnosticPosition = record.sourceFile.getPositionOfLineAndCharacter(lineIndex, 0);
+  let component: ComponentDeclaration | null = null;
+  let componentWidth = Number.POSITIVE_INFINITY;
+  const visit = (node: ts.Node): void => {
+    if (diagnosticPosition < node.getStart(record.sourceFile) || diagnosticPosition > node.end) {
+      return;
+    }
+    if (isComponentFunction(node)) {
+      const name = getFunctionName(node);
+      const width = node.end - node.getStart(record.sourceFile);
+      if (name !== null && /^[A-Z]/.test(name) && width < componentWidth) {
+        component = {
+          isDefaultExport: isDefaultExportedComponent(record, node, name),
+          name,
+          record,
+        };
+        componentWidth = width;
       }
-      for (const propNameMatch of componentCallsite.matchAll(propNamePattern)) {
-        const propName = propNameMatch[1];
-        if (propName !== undefined && !resolvedPropNames.has(propName)) {
-          unresolvedPropNames.add(propName);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(record.sourceFile);
+  return component;
+};
+
+const moduleSpecifierTargetsComponent = (
+  callerRecord: SourceRecord,
+  moduleSpecifier: string,
+  componentRecord: SourceRecord,
+): boolean => {
+  if (!moduleSpecifier.startsWith(".")) return false;
+  const unresolvedPath = path.resolve(path.dirname(callerRecord.absolutePath), moduleSpecifier);
+  const candidatePaths = [
+    unresolvedPath,
+    ...SOURCE_EXTENSIONS.map((extension) => `${unresolvedPath}${extension}`),
+    ...SOURCE_EXTENSIONS.map((extension) => path.join(unresolvedPath, `index${extension}`)),
+  ];
+  return candidatePaths.includes(componentRecord.absolutePath);
+};
+
+const getComponentTagNames = (
+  record: SourceRecord,
+  component: ComponentDeclaration,
+): ReadonlySet<string> => {
+  if (record.absolutePath === component.record.absolutePath) return new Set([component.name]);
+  const tagNames = new Set<string>();
+  for (const statement of record.sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      !moduleSpecifierTargetsComponent(record, statement.moduleSpecifier.text, component.record)
+    ) {
+      continue;
+    }
+    const importClause = statement.importClause;
+    if (component.isDefaultExport && importClause?.name !== undefined) {
+      tagNames.add(importClause.name.text);
+    }
+    const namedBindings = importClause?.namedBindings;
+    if (namedBindings !== undefined && ts.isNamedImports(namedBindings)) {
+      for (const element of namedBindings.elements) {
+        if ((element.propertyName?.text ?? element.name.text) === component.name) {
+          tagNames.add(element.name.text);
         }
       }
     }
   }
+  return tagNames;
+};
+
+const unwrapExpression = (expression: ts.Expression): ts.Expression => {
+  let currentExpression = expression;
+  while (
+    ts.isParenthesizedExpression(currentExpression) ||
+    ts.isAsExpression(currentExpression) ||
+    ts.isTypeAssertionExpression(currentExpression) ||
+    ts.isNonNullExpression(currentExpression) ||
+    ts.isSatisfiesExpression(currentExpression)
+  ) {
+    currentExpression = currentExpression.expression;
+  }
+  return currentExpression;
+};
+
+const getTransparentCall = (functionNode: ts.FunctionLikeDeclaration): ts.CallExpression | null => {
+  if (functionNode.body === undefined) return null;
+  if (!ts.isBlock(functionNode.body)) {
+    const expression = unwrapExpression(functionNode.body);
+    return ts.isCallExpression(expression) ? expression : null;
+  }
+  if (functionNode.body.statements.length !== 1) return null;
+  const statement = functionNode.body.statements[0];
+  if (statement === undefined) return null;
+  const expression =
+    ts.isExpressionStatement(statement) || ts.isReturnStatement(statement)
+      ? statement.expression
+      : undefined;
+  if (expression === undefined) return null;
+  const unwrappedExpression = unwrapExpression(expression);
+  return ts.isCallExpression(unwrappedExpression) ? unwrappedExpression : null;
+};
+
+const resolveTransparentTarget = (functionNode: ts.FunctionLikeDeclaration): string | null => {
+  const call = getTransparentCall(functionNode);
+  if (call === null) return null;
+  const target = unwrapExpression(call.expression);
+  if (!ts.isIdentifier(target) || call.arguments.length !== functionNode.parameters.length) {
+    return null;
+  }
+  for (const [parameterIndex, parameter] of functionNode.parameters.entries()) {
+    const argument = call.arguments[parameterIndex];
+    const unwrappedArgument = argument === undefined ? null : unwrapExpression(argument);
+    if (
+      !ts.isIdentifier(parameter.name) ||
+      unwrappedArgument === null ||
+      !ts.isIdentifier(unwrappedArgument) ||
+      unwrappedArgument.text !== parameter.name.text
+    ) {
+      return null;
+    }
+  }
+  return target.text;
+};
+
+const getForwardingFunction = (declaration: ts.Declaration): ts.FunctionLikeDeclaration | null => {
+  if (ts.isFunctionDeclaration(declaration)) return declaration;
+  if (!ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) return null;
+  const initializer = unwrapExpression(declaration.initializer);
+  if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) return initializer;
+  if (
+    ts.isCallExpression(initializer) &&
+    ts.isIdentifier(initializer.expression) &&
+    initializer.expression.text === "useCallback"
+  ) {
+    const callback = initializer.arguments[0];
+    if (
+      callback !== undefined &&
+      (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))
+    ) {
+      return callback;
+    }
+  }
+  return null;
+};
+
+const findBindingDeclaration = (
+  record: SourceRecord,
+  bindingName: string,
+  usagePosition: number,
+): ts.Declaration | null => {
+  const declarations: ts.Declaration[] = [];
+  const visit = (node: ts.Node): void => {
+    if (node.getStart(record.sourceFile) >= usagePosition) return;
+    if (
+      (ts.isVariableDeclaration(node) || ts.isFunctionDeclaration(node)) &&
+      node.name !== undefined &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === bindingName
+    ) {
+      declarations.push(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(record.sourceFile);
+  return declarations.length === 1 ? (declarations[0] ?? null) : null;
+};
+
+const resolveHandlerBinding = (
+  record: SourceRecord,
+  bindingName: string,
+  usagePosition: number,
+): string => {
+  const declaration = findBindingDeclaration(record, bindingName, usagePosition);
+  if (declaration === null) return bindingName;
+  const forwardingFunction = getForwardingFunction(declaration);
+  const target = forwardingFunction === null ? null : resolveTransparentTarget(forwardingFunction);
+  return target === null || target === bindingName ? bindingName : target;
+};
+
+const getJsxTagName = (node: ts.JsxOpeningLikeElement): string | null =>
+  ts.isIdentifier(node.tagName) ? node.tagName.text : null;
+
+const getHandlerBinding = (
+  node: ts.JsxOpeningLikeElement,
+  propName: string,
+): ts.Identifier | null => {
+  for (const property of node.attributes.properties) {
+    if (!ts.isJsxAttribute(property) || property.name.getText() !== propName) continue;
+    const initializer = property.initializer;
+    if (initializer === undefined || !ts.isJsxExpression(initializer)) return null;
+    return initializer.expression !== undefined && ts.isIdentifier(initializer.expression)
+      ? initializer.expression
+      : null;
+  }
+  return null;
+};
+
+const getForwardedHandlerAliases = (
+  rootDirectory: string,
+  component: ComponentDeclaration,
+  propNames: ReadonlySet<string>,
+  state: DiagnosticEvidenceReaderState,
+): ReadonlyMap<string, string> => {
+  const cacheKey = `${component.record.filePath}\0${component.name}\0${[...propNames].sort().join("\0")}`;
+  const cachedAliases = state.aliasesByComponent.get(cacheKey);
+  if (cachedAliases !== undefined) return cachedAliases;
+
+  const bindingsByPropName = new Map<string, Set<string>>();
+  const unresolvedPropNames = new Set<string>();
+  let callsiteCount = 0;
+  for (const record of listSourceRecords(rootDirectory, state)) {
+    const tagNames = getComponentTagNames(record, component);
+    if (tagNames.size === 0) continue;
+    const visit = (node: ts.Node): void => {
+      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+        const tagName = getJsxTagName(node);
+        if (tagName !== null && tagNames.has(tagName)) {
+          callsiteCount += 1;
+          for (const propName of propNames) {
+            const binding = getHandlerBinding(node, propName);
+            if (binding === null) {
+              unresolvedPropNames.add(propName);
+              continue;
+            }
+            const bindings = bindingsByPropName.get(propName) ?? new Set<string>();
+            bindings.add(
+              resolveHandlerBinding(record, binding.text, binding.getStart(record.sourceFile)),
+            );
+            bindingsByPropName.set(propName, bindings);
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(record.sourceFile);
+  }
 
   const aliases = new Map<string, string>();
-  for (const [propName, bindings] of bindingsByPropName) {
-    if (bindings.size !== 1 || unresolvedPropNames.has(propName)) continue;
-    const [bindingName] = bindings;
-    if (bindingName !== undefined) aliases.set(propName, bindingName);
+  if (callsiteCount > 0) {
+    for (const [propName, bindings] of bindingsByPropName) {
+      if (bindings.size !== 1 || unresolvedPropNames.has(propName)) continue;
+      const [bindingName] = bindings;
+      if (bindingName !== undefined) aliases.set(propName, bindingName);
+    }
   }
-  state.aliasesByComponentName.set(componentName, aliases);
+  state.aliasesByComponent.set(cacheKey, aliases);
   return aliases;
 };
 
@@ -143,22 +422,26 @@ export const createDiagnosticEvidenceReader = (
   options: CreateDiagnosticEvidenceReaderOptions = {},
 ): ((diagnostic: Diagnostic) => string | null) => {
   const state: DiagnosticEvidenceReaderState = {
-    sourceByFilePath: new Map(),
-    aliasesByComponentName: new Map(),
-    componentCallsitePaths: null,
+    aliasesByComponent: new Map(),
+    recordByFilePath: new Map(),
+    sourceRecords: null,
   };
 
   return (diagnostic) => {
-    const source = readSource(rootDirectory, diagnostic.filePath, state.sourceByFilePath);
-    if (source === null || !Number.isInteger(diagnostic.line)) return null;
-    const sourceLines = source.split(/\r?\n/);
+    const record = readSourceRecord(rootDirectory, diagnostic.filePath, state);
+    if (record === null || !Number.isInteger(diagnostic.line)) return null;
+    const sourceLines = record.sourceText.split(/\r?\n/);
     const startLineIndex = Math.max(0, diagnostic.line - 1);
     const endLineIndex = Math.max(startLineIndex, (diagnostic.endLine ?? diagnostic.line) - 1);
     const evidence = sourceLines.slice(startLineIndex, endLineIndex + 1).join("\n");
-    if (!options.resolveForwardedHandlers || !/\bon[A-Z]\w*\b/.test(evidence)) return evidence;
+    if (!options.resolveForwardedHandlers) return evidence;
+    const propNames = new Set(evidence.match(/\bon[A-Z]\w*\b/g) ?? []);
+    if (propNames.size === 0) return evidence;
+    const component = findEnclosingComponent(record, diagnostic);
+    if (component === null) return evidence;
     return normalizeForwardedHandlers(
       evidence,
-      getForwardedHandlerAliases(rootDirectory, source, diagnostic, state),
+      getForwardedHandlerAliases(rootDirectory, component, propNames, state),
     );
   };
 };

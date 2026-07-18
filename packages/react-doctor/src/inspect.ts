@@ -9,6 +9,7 @@ import {
   computeDiagnosticDelta,
   DEFAULT_SHOW_WARNINGS,
   filterDiagnosticsForSurface,
+  filterSourceFiles,
   highlighter,
   OXLINT_NODE_REQUIREMENT,
   PerFileLintCacheEnabled,
@@ -182,7 +183,11 @@ export interface ResolvedInspectOptions {
   /** Scan time budget in milliseconds, or `null` for no budget. */
   maxDurationMs: number | null;
   /** Baseline ref to subtract (new-only mode), or `null` for a plain scan. */
-  baseline: { ref: string } | null;
+  baseline: {
+    ref: string;
+    baseFiles?: ReadonlyArray<string>;
+    headFiles?: ReadonlyArray<string>;
+  } | null;
   /**
    * `--scope lines`: changed line ranges to restrict reported diagnostics to,
    * or `null` for any other scope. An empty array still filters (a `lines`
@@ -421,6 +426,9 @@ interface RunBaselineComparisonInput {
   headDiagnostics: ReadonlyArray<Diagnostic>;
   resolvedNodeBinaryPath: string | null;
   baselineRef: string;
+  baseFiles?: ReadonlyArray<string>;
+  headFiles?: ReadonlyArray<string>;
+  headAnalyzedFiles: ReadonlyArray<string>;
   /** Shared invocation deadline; bounds the base-ref lint like the head scan. */
   deadlineEpochMs: number | null;
 }
@@ -442,12 +450,30 @@ const runBaselineComparison = async (
     directory: params.directory,
     ref: params.baselineRef,
     files: params.options.includePaths,
+    baseFiles: params.baseFiles,
+    headFiles: params.headFiles,
     tempDirectory,
   }).catch((error: unknown) => {
     rmSync(tempDirectory, { recursive: true, force: true });
     throw error;
   });
+  if (snapshot === null) {
+    rmSync(tempDirectory, { recursive: true, force: true });
+    return null;
+  }
   try {
+    if (!snapshot.isComplete) return null;
+    const analyzedHeadFiles = new Set(params.headAnalyzedFiles);
+    const baseFiles = new Set(snapshot.baseFiles);
+    const expectedHeadFiles = new Set([
+      ...snapshot.headFiles,
+      ...params.options.includePaths.filter((filePath) => !baseFiles.has(filePath)),
+    ]);
+    if (
+      filterSourceFiles([...expectedHeadFiles]).some((filePath) => !analyzedHeadFiles.has(filePath))
+    ) {
+      return null;
+    }
     const baseLayers = buildRuntimeLayers({
       directory: snapshot.tempDirectory,
       hasConfigOverride: true,
@@ -464,7 +490,7 @@ const runBaselineComparison = async (
     const baseProgram = runInspectEffect(
       {
         directory: snapshot.tempDirectory,
-        includePaths: params.options.includePaths,
+        includePaths: snapshot.materializedFiles,
         customRulesOnly: params.options.customRulesOnly,
         respectInlineDisables: params.options.respectInlineDisables,
         warnings: params.options.warnings,
@@ -741,6 +767,9 @@ const runInspectWithRuntime = async (
       headDiagnostics: output.diagnostics,
       resolvedNodeBinaryPath,
       baselineRef: options.baseline.ref,
+      baseFiles: options.baseline.baseFiles,
+      headFiles: options.baseline.headFiles,
+      headAnalyzedFiles: output.analyzedFiles,
       deadlineEpochMs,
     });
     if (comparison) {

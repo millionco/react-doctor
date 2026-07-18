@@ -23,12 +23,12 @@ export interface ComputeDiagnosticDeltaInput {
 
 interface DiagnosticMatchKeys {
   readonly stableEvidenceKey: string | null;
+  readonly sameFileStableEvidenceKey: string | null;
   readonly sameFileFallbackKey: string | null;
 }
 
-interface DiagnosticIndexBucket {
-  readonly diagnosticIndexes: number[];
-  nextCandidateIndex: number;
+interface DiagnosticMatchCandidate extends DiagnosticMatchKeys {
+  readonly diagnosticIndex: number;
 }
 
 const fingerprintText = (text: string): string => createHash("sha256").update(text).digest("hex");
@@ -42,11 +42,14 @@ const getDiagnosticMatchKeys = (
   const ruleKey = `${diagnostic.plugin}/${diagnostic.rule}`;
   const messageFingerprint = fingerprintText(`${diagnostic.title ?? ""}\0${diagnostic.message}`);
   const normalizedEvidence = evidence === null ? "" : normalizeEvidence(evidence);
+  const stableEvidenceKey =
+    normalizedEvidence.length > 0
+      ? `evidence\0${ruleKey}\0${messageFingerprint}\0${fingerprintText(normalizedEvidence)}`
+      : null;
   return {
-    stableEvidenceKey:
-      normalizedEvidence.length > 0
-        ? `evidence\0${ruleKey}\0${messageFingerprint}\0${fingerprintText(normalizedEvidence)}`
-        : null,
+    stableEvidenceKey,
+    sameFileStableEvidenceKey:
+      stableEvidenceKey === null ? null : `${diagnostic.filePath}\0${stableEvidenceKey}`,
     sameFileFallbackKey:
       diagnostic.matchByOccurrence || normalizedEvidence.length === 0
         ? `fallback\0${diagnostic.filePath}\0${ruleKey}\0${messageFingerprint}`
@@ -55,30 +58,24 @@ const getDiagnosticMatchKeys = (
 };
 
 const addDiagnosticIndex = (
-  buckets: Map<string, DiagnosticIndexBucket>,
+  buckets: Map<string, number[]>,
   key: string | null,
   diagnosticIndex: number,
 ): void => {
   if (key === null) return;
-  const bucket = buckets.get(key) ?? { diagnosticIndexes: [], nextCandidateIndex: 0 };
-  bucket.diagnosticIndexes.push(diagnosticIndex);
-  buckets.set(key, bucket);
+  const diagnosticIndexes = buckets.get(key) ?? [];
+  diagnosticIndexes.push(diagnosticIndex);
+  buckets.set(key, diagnosticIndexes);
 };
 
 const takeMatchingDiagnosticIndex = (
-  buckets: Map<string, DiagnosticIndexBucket>,
+  buckets: ReadonlyMap<string, ReadonlyArray<number>>,
   key: string | null,
   matchedDiagnosticIndexes: ReadonlySet<number>,
 ): number | null => {
   if (key === null) return null;
-  const bucket = buckets.get(key);
-  if (bucket === undefined) return null;
-  while (bucket.nextCandidateIndex < bucket.diagnosticIndexes.length) {
-    const diagnosticIndex = bucket.diagnosticIndexes[bucket.nextCandidateIndex];
-    bucket.nextCandidateIndex += 1;
-    if (diagnosticIndex !== undefined && !matchedDiagnosticIndexes.has(diagnosticIndex)) {
-      return diagnosticIndex;
-    }
+  for (const diagnosticIndex of buckets.get(key) ?? []) {
+    if (!matchedDiagnosticIndexes.has(diagnosticIndex)) return diagnosticIndex;
   }
   return null;
 };
@@ -88,6 +85,19 @@ const readDiagnosticEvidence = (
   readEvidence: ComputeDiagnosticDeltaInput["readHeadEvidence"],
   readLine: ComputeDiagnosticDeltaInput["readHeadLine"],
 ): string | null => readEvidence?.(diagnostic) ?? readLine(diagnostic.filePath, diagnostic.line);
+
+const buildMatchCandidates = (
+  diagnostics: ReadonlyArray<Diagnostic>,
+  readEvidence: ComputeDiagnosticDeltaInput["readHeadEvidence"],
+  readLine: ComputeDiagnosticDeltaInput["readHeadLine"],
+): DiagnosticMatchCandidate[] =>
+  diagnostics.map((diagnostic, diagnosticIndex) => ({
+    diagnosticIndex,
+    ...getDiagnosticMatchKeys(
+      diagnostic,
+      readDiagnosticEvidence(diagnostic, readEvidence, readLine),
+    ),
+  }));
 
 /**
  * Diffs a head scan against a base scan using a multiset of construct-level
@@ -101,45 +111,74 @@ const readDiagnosticEvidence = (
  * same conservative fallback rather than matching across files without proof.
  */
 export const computeDiagnosticDelta = (input: ComputeDiagnosticDeltaInput): DiagnosticDelta => {
-  const baseByStableEvidence = new Map<string, DiagnosticIndexBucket>();
-  const baseBySameFileFallback = new Map<string, DiagnosticIndexBucket>();
-  for (const [diagnosticIndex, diagnostic] of input.baseDiagnostics.entries()) {
-    const evidence = readDiagnosticEvidence(diagnostic, input.readBaseEvidence, input.readBaseLine);
-    const matchKeys = getDiagnosticMatchKeys(diagnostic, evidence);
-    addDiagnosticIndex(baseByStableEvidence, matchKeys.stableEvidenceKey, diagnosticIndex);
-    addDiagnosticIndex(baseBySameFileFallback, matchKeys.sameFileFallbackKey, diagnosticIndex);
+  const baseCandidates = buildMatchCandidates(
+    input.baseDiagnostics,
+    input.readBaseEvidence,
+    input.readBaseLine,
+  );
+  const headCandidates = buildMatchCandidates(
+    input.headDiagnostics,
+    input.readHeadEvidence,
+    input.readHeadLine,
+  );
+  const baseByStableEvidence = new Map<string, number[]>();
+  const baseBySameFileStableEvidence = new Map<string, number[]>();
+  const baseBySameFileFallback = new Map<string, number[]>();
+  for (const candidate of baseCandidates) {
+    addDiagnosticIndex(
+      baseByStableEvidence,
+      candidate.stableEvidenceKey,
+      candidate.diagnosticIndex,
+    );
+    addDiagnosticIndex(
+      baseBySameFileStableEvidence,
+      candidate.sameFileStableEvidenceKey,
+      candidate.diagnosticIndex,
+    );
+    addDiagnosticIndex(
+      baseBySameFileFallback,
+      candidate.sameFileFallbackKey,
+      candidate.diagnosticIndex,
+    );
   }
 
-  const newDiagnostics: Diagnostic[] = [];
+  const matchedHeadDiagnosticIndexes = new Set<number>();
   const matchedBaseDiagnosticIndexes = new Set<number>();
-  let crossFileMatchCount = 0;
-  for (const diagnostic of input.headDiagnostics) {
-    const evidence = readDiagnosticEvidence(diagnostic, input.readHeadEvidence, input.readHeadLine);
-    const matchKeys = getDiagnosticMatchKeys(diagnostic, evidence);
-    const stableMatchIndex = takeMatchingDiagnosticIndex(
-      baseByStableEvidence,
-      matchKeys.stableEvidenceKey,
-      matchedBaseDiagnosticIndexes,
-    );
-    const matchingDiagnosticIndex =
-      stableMatchIndex ??
-      takeMatchingDiagnosticIndex(
-        baseBySameFileFallback,
-        matchKeys.sameFileFallbackKey,
+  const matchCandidates = (
+    baseBuckets: ReadonlyMap<string, ReadonlyArray<number>>,
+    getKey: (candidate: DiagnosticMatchCandidate) => string | null,
+    onMatch?: (headDiagnosticIndex: number, baseDiagnosticIndex: number) => void,
+  ): void => {
+    for (const candidate of headCandidates) {
+      if (matchedHeadDiagnosticIndexes.has(candidate.diagnosticIndex)) continue;
+      const baseDiagnosticIndex = takeMatchingDiagnosticIndex(
+        baseBuckets,
+        getKey(candidate),
         matchedBaseDiagnosticIndexes,
       );
-    const matchingBaseDiagnostic =
-      matchingDiagnosticIndex === null ? undefined : input.baseDiagnostics[matchingDiagnosticIndex];
-    if (matchingDiagnosticIndex !== null && matchingBaseDiagnostic !== undefined) {
-      matchedBaseDiagnosticIndexes.add(matchingDiagnosticIndex);
-      if (stableMatchIndex !== null && matchingBaseDiagnostic.filePath !== diagnostic.filePath) {
+      if (baseDiagnosticIndex === null) continue;
+      matchedHeadDiagnosticIndexes.add(candidate.diagnosticIndex);
+      matchedBaseDiagnosticIndexes.add(baseDiagnosticIndex);
+      onMatch?.(candidate.diagnosticIndex, baseDiagnosticIndex);
+    }
+  };
+
+  matchCandidates(baseBySameFileStableEvidence, (candidate) => candidate.sameFileStableEvidenceKey);
+  let crossFileMatchCount = 0;
+  matchCandidates(
+    baseByStableEvidence,
+    (candidate) => candidate.stableEvidenceKey,
+    (head, base) => {
+      if (input.headDiagnostics[head]?.filePath !== input.baseDiagnostics[base]?.filePath) {
         crossFileMatchCount += 1;
       }
-    } else {
-      newDiagnostics.push(diagnostic);
-    }
-  }
+    },
+  );
+  matchCandidates(baseBySameFileFallback, (candidate) => candidate.sameFileFallbackKey);
 
+  const newDiagnostics = input.headDiagnostics.filter(
+    (_diagnostic, diagnosticIndex) => !matchedHeadDiagnosticIndexes.has(diagnosticIndex),
+  );
   const fixedCount = input.baseDiagnostics.length - matchedBaseDiagnosticIndexes.size;
 
   return { newDiagnostics, fixedCount, crossFileMatchCount };

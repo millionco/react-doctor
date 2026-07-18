@@ -7,6 +7,7 @@ import type { ReactDoctorError } from "./errors.js";
 export interface MaterializedTree {
   readonly tempDirectory: string;
   readonly materializedFiles: ReadonlyArray<string>;
+  readonly unmaterializedFiles: ReadonlyArray<string>;
   readonly cleanup: () => void;
 }
 
@@ -39,12 +40,19 @@ export const materializeSourceTree = (input: {
 }): Effect.Effect<MaterializedTree, ReactDoctorError> =>
   Effect.gen(function* () {
     const materializedFiles: string[] = [];
+    const unmaterializedFiles: string[] = [];
     const resolvedTempDirectory = path.resolve(input.tempDirectory);
     for (const relativePath of input.files) {
       const content = yield* input.readContent(relativePath).pipe(Effect.orElseSucceed(() => null));
-      if (content === null) continue;
+      if (content === null) {
+        unmaterializedFiles.push(relativePath);
+        continue;
+      }
       const candidateTargetPath = path.resolve(resolvedTempDirectory, relativePath);
-      if (!isPathInsideDirectory(candidateTargetPath, resolvedTempDirectory)) continue;
+      if (!isPathInsideDirectory(candidateTargetPath, resolvedTempDirectory)) {
+        unmaterializedFiles.push(relativePath);
+        continue;
+      }
       yield* Effect.sync(() => {
         fs.mkdirSync(path.dirname(candidateTargetPath), { recursive: true });
         fs.writeFileSync(candidateTargetPath, content);
@@ -63,6 +71,7 @@ export const materializeSourceTree = (input: {
     return {
       tempDirectory: input.tempDirectory,
       materializedFiles,
+      unmaterializedFiles,
       cleanup: () => {
         try {
           fs.rmSync(input.tempDirectory, { recursive: true, force: true });

@@ -106,6 +106,27 @@ describe("computeDiagnosticDelta", () => {
     expect(delta.fixedCount).toBe(0);
   });
 
+  it("prefers the same-file occurrence when identical evidence is copied", () => {
+    const flagged = "items.map((item, index) => <Row key={index} />)";
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [
+        makeDiagnostic({ filePath: "src/CopiedRows.tsx" }),
+        makeDiagnostic({ filePath: "src/App.tsx" }),
+      ],
+      baseDiagnostics: [makeDiagnostic({ filePath: "src/App.tsx" })],
+      readHeadLine: lineReaderFrom({
+        "src/CopiedRows.tsx:10": flagged,
+        "src/App.tsx:10": flagged,
+      }),
+      readBaseLine: lineReaderFrom({ "src/App.tsx:10": flagged }),
+    });
+
+    expect(delta.newDiagnostics.map((diagnostic) => diagnostic.filePath)).toEqual([
+      "src/CopiedRows.tsx",
+    ]);
+    expect(delta.crossFileMatchCount).toBe(0);
+  });
+
   it("distinguishes the same rule on different line content", () => {
     const base = [makeDiagnostic({ line: 10 })];
     const head = [makeDiagnostic({ line: 10 })];

@@ -41,11 +41,11 @@ describe("createDiagnosticEvidenceReader", () => {
     );
     fs.writeFileSync(
       path.join(rootDirectory, "src/chat-message-bubble.tsx"),
-      "function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
+      "export function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
     );
     fs.writeFileSync(
       path.join(rootDirectory, "src/chat-page.tsx"),
-      "const handleSuggestion = useCallback((text) => {\n  handleSendMessage(text);\n}, [handleSendMessage]);\n<ChatMessageBubble onSuggestion={handleSuggestion} />;\n",
+      'import { ChatMessageBubble } from "./chat-message-bubble";\nconst handleSuggestion = useCallback((text) => {\n  handleSendMessage(text);\n}, [handleSendMessage]);\n<ChatMessageBubble onSuggestion={handleSuggestion} />;\n',
     );
 
     const delta = computeDiagnosticDelta({
@@ -66,6 +66,67 @@ describe("createDiagnosticEvidenceReader", () => {
     expect(delta.crossFileMatchCount).toBe(1);
   });
 
+  it("resolves a default-exported arrow component through an aliased import", () => {
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/wrapper-before.tsx"),
+      "function WrapperBefore() {\n  return <span onClick={() => handleSendMessage(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-message-bubble.tsx"),
+      "const ChatMessageBubble = ({ onSuggestion }) => {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n};\nexport default ChatMessageBubble;\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-page.tsx"),
+      'import Bubble from "./chat-message-bubble";\n<Bubble onSuggestion={handleSendMessage} />;\n',
+    );
+
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [
+        makeDiagnostic({ filePath: "src/chat-message-bubble.tsx", line: 2, endLine: 4 }),
+      ],
+      baseDiagnostics: [makeDiagnostic({ line: 2, endLine: 4 })],
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+      readHeadEvidence: createDiagnosticEvidenceReader(rootDirectory, {
+        resolveForwardedHandlers: true,
+      }),
+      readBaseEvidence: createDiagnosticEvidenceReader(rootDirectory),
+    });
+
+    expect(delta.newDiagnostics).toHaveLength(0);
+    expect(delta.crossFileMatchCount).toBe(1);
+  });
+
+  it("does not treat a default import as a named diagnosed component", () => {
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/wrapper-before.tsx"),
+      "function WrapperBefore() {\n  return <span onClick={() => handleSendMessage(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-message-bubble.tsx"),
+      "export default function OtherBubble() { return null; }\nexport function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-page.tsx"),
+      'import Bubble from "./chat-message-bubble";\n<Bubble onSuggestion={handleSendMessage} />;\n',
+    );
+
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [
+        makeDiagnostic({ filePath: "src/chat-message-bubble.tsx", line: 3, endLine: 5 }),
+      ],
+      baseDiagnostics: [makeDiagnostic({ line: 2, endLine: 4 })],
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+      readHeadEvidence: createDiagnosticEvidenceReader(rootDirectory, {
+        resolveForwardedHandlers: true,
+      }),
+      readBaseEvidence: createDiagnosticEvidenceReader(rootDirectory),
+    });
+
+    expect(delta.newDiagnostics).toHaveLength(1);
+  });
+
   it("refuses to equate a forwarded prop with ambiguous callsite bindings", () => {
     fs.writeFileSync(
       path.join(rootDirectory, "src/wrapper-before.tsx"),
@@ -73,11 +134,11 @@ describe("createDiagnosticEvidenceReader", () => {
     );
     fs.writeFileSync(
       path.join(rootDirectory, "src/chat-message-bubble.tsx"),
-      "function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
+      "export function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
     );
     fs.writeFileSync(
       path.join(rootDirectory, "src/chat-page.tsx"),
-      "<ChatMessageBubble onSuggestion={handleSendMessage} />;\n<ChatMessageBubble onSuggestion={discardMessage} />;\n",
+      'import { ChatMessageBubble } from "./chat-message-bubble";\n<ChatMessageBubble onSuggestion={handleSendMessage} />;\n<ChatMessageBubble onSuggestion={discardMessage} />;\n',
     );
 
     const delta = computeDiagnosticDelta({
@@ -105,11 +166,11 @@ describe("createDiagnosticEvidenceReader", () => {
     );
     fs.writeFileSync(
       path.join(rootDirectory, "src/chat-message-bubble.tsx"),
-      "function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
+      "export function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
     );
     fs.writeFileSync(
       path.join(rootDirectory, "src/chat-page.tsx"),
-      "<ChatMessageBubble onSuggestion={handleSendMessage} />;\n<ChatMessageBubble onSuggestion={() => discardMessage()} />;\n",
+      'import { ChatMessageBubble } from "./chat-message-bubble";\n<ChatMessageBubble onSuggestion={handleSendMessage} />;\n<ChatMessageBubble onSuggestion={() => discardMessage()} />;\n',
     );
 
     const delta = computeDiagnosticDelta({
@@ -127,5 +188,107 @@ describe("createDiagnosticEvidenceReader", () => {
 
     expect(delta.newDiagnostics).toHaveLength(1);
     expect(delta.fixedCount).toBe(1);
+  });
+
+  it("ignores same-named components that do not import the diagnosed component", () => {
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/wrapper-before.tsx"),
+      "function WrapperBefore() {\n  return <span onClick={() => handleSendMessage(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-message-bubble.tsx"),
+      "export function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-page.tsx"),
+      'import { ChatMessageBubble } from "./chat-message-bubble";\n<ChatMessageBubble onSuggestion={handleSendMessage} />;\n',
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/unrelated.tsx"),
+      "const ChatMessageBubble = ({ onSuggestion }) => null;\n<ChatMessageBubble onSuggestion={discardMessage} />;\n",
+    );
+
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [
+        makeDiagnostic({ filePath: "src/chat-message-bubble.tsx", line: 2, endLine: 4 }),
+      ],
+      baseDiagnostics: [makeDiagnostic({ line: 2, endLine: 4 })],
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+      readHeadEvidence: createDiagnosticEvidenceReader(rootDirectory, {
+        resolveForwardedHandlers: true,
+      }),
+      readBaseEvidence: createDiagnosticEvidenceReader(rootDirectory),
+    });
+
+    expect(delta.newDiagnostics).toHaveLength(0);
+    expect(delta.crossFileMatchCount).toBe(1);
+  });
+
+  it("rejects a wrapper that changes forwarded arguments", () => {
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/wrapper-before.tsx"),
+      "function WrapperBefore() {\n  return <span onClick={() => handleSendMessage(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-message-bubble.tsx"),
+      "export function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-page.tsx"),
+      'import { ChatMessageBubble } from "./chat-message-bubble";\nconst handleSuggestion = (text) => handleSendMessage(text.trim());\n<ChatMessageBubble onSuggestion={handleSuggestion} />;\n',
+    );
+
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [
+        makeDiagnostic({ filePath: "src/chat-message-bubble.tsx", line: 2, endLine: 4 }),
+      ],
+      baseDiagnostics: [makeDiagnostic({ line: 2, endLine: 4 })],
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+      readHeadEvidence: createDiagnosticEvidenceReader(rootDirectory, {
+        resolveForwardedHandlers: true,
+      }),
+      readBaseEvidence: createDiagnosticEvidenceReader(rootDirectory),
+    });
+
+    expect(delta.newDiagnostics).toHaveLength(1);
+  });
+
+  it("does not read diagnostic paths outside the project", () => {
+    const outsideDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-outside-"));
+    const outsidePath = path.join(outsideDirectory, "outside.tsx");
+    fs.writeFileSync(outsidePath, "const secret = 'not evidence';\n");
+    const reader = createDiagnosticEvidenceReader(rootDirectory);
+
+    expect(reader(makeDiagnostic({ filePath: outsidePath }))).toBeNull();
+
+    fs.rmSync(outsideDirectory, { recursive: true, force: true });
+  });
+
+  it("does not follow diagnostic symlinks", () => {
+    const outsideDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-outside-"));
+    const outsidePath = path.join(outsideDirectory, "outside.tsx");
+    fs.writeFileSync(outsidePath, "const secret = 'not evidence';\n");
+    fs.symlinkSync(outsidePath, path.join(rootDirectory, "src/linked.tsx"));
+    const reader = createDiagnosticEvidenceReader(rootDirectory);
+
+    expect(reader(makeDiagnostic({ filePath: "src/linked.tsx" }))).toBeNull();
+
+    fs.rmSync(outsideDirectory, { recursive: true, force: true });
+  });
+
+  it("does not follow ancestor symlinks outside the project", () => {
+    const outsideDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-outside-"));
+    fs.writeFileSync(
+      path.join(outsideDirectory, "outside.tsx"),
+      "const secret = 'not evidence';\n",
+    );
+    fs.symlinkSync(outsideDirectory, path.join(rootDirectory, "src/linked-directory"));
+    const reader = createDiagnosticEvidenceReader(rootDirectory);
+
+    expect(reader(makeDiagnostic({ filePath: "src/linked-directory/outside.tsx" }))).toBeNull();
+
+    fs.rmSync(outsideDirectory, { recursive: true, force: true });
   });
 });

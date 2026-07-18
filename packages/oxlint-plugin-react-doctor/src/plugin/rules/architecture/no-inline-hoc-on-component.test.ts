@@ -340,12 +340,17 @@ describe("no-inline-hoc-on-component", () => {
 
   it.each([
     ["an array map callback", `items.map((item) => <Row key={item.id} item={item} />)`],
+    ["an optional array map callback", `items?.map((item) => <Row key={item.id} item={item} />)`],
     [
       "an array flatMap callback with a block body",
       `items.flatMap((item) => {
         if (!item.visible) return [];
         return [<Row key={item.id} item={item} />];
       })`,
+    ],
+    [
+      "an optional array flatMap callback",
+      `items?.flatMap((item) => [<Row key={item.id} item={item} />])`,
     ],
     [
       "a global Array.from mapper",

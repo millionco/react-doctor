@@ -97,11 +97,10 @@ const isSynchronousRenderOutputMappingCallback = (
   scopes: ScopeAnalysis,
 ): boolean => {
   const callbackExpression = findTransparentExpressionRoot(functionNode);
-  if (!executesDuringRender(callbackExpression, scopes)) return false;
   const call = callbackExpression.parent;
   if (!call || !isNodeOfType(call, "CallExpression")) return false;
   const isArrayFromMapper = call.arguments[1] === callbackExpression;
-  if (isArrayFromMapper) return true;
+  if (isArrayFromMapper) return executesDuringRender(callbackExpression, scopes);
   if (call.arguments[0] !== callbackExpression) return false;
   const callee = stripParenExpression(call.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;

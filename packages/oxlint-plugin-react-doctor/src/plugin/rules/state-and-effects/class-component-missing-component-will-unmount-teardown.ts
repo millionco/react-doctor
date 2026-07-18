@@ -39,23 +39,25 @@ const COMPONENT_MUTATION_METHOD_NAMES = new Set(["forceUpdate", "setState"]);
 
 const getBareCalleeName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
-  return isNodeOfType(node.callee, "Identifier") ? node.callee.name : null;
+  const callee = stripParenExpression(node.callee);
+  return isNodeOfType(callee, "Identifier") ? callee.name : null;
 };
 
 // Timers are registered either bare (`setInterval(...)`) or via the global
 // object (`window.setInterval(...)`, the TS idiom for a `number` timer id).
 const getTimerCalleeName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
+  const callee = stripParenExpression(node.callee);
   const bareName = getBareCalleeName(node);
   if (
     bareName &&
-    isNodeOfType(node.callee, "Identifier") &&
-    !findVariableInitializer(node.callee, bareName)
+    isNodeOfType(callee, "Identifier") &&
+    !findVariableInitializer(callee, bareName)
   ) {
     return bareName;
   }
-  if (!isNodeOfType(node.callee, "MemberExpression")) return null;
-  const receiver = stripParenExpression(node.callee.object);
+  if (!isNodeOfType(callee, "MemberExpression")) return null;
+  const receiver = stripParenExpression(callee.object);
   if (
     !isNodeOfType(receiver, "Identifier") ||
     !GLOBAL_OBJECT_NAMES.has(receiver.name) ||
@@ -63,7 +65,7 @@ const getTimerCalleeName = (node: EsTreeNode): string | null => {
   ) {
     return null;
   }
-  return getStaticPropertyName(node.callee);
+  return getStaticPropertyName(callee);
 };
 
 const getClassMemberName = (member: EsTreeNode): string | null => {

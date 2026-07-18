@@ -292,6 +292,29 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(unrelatedReceiver.diagnostics).toHaveLength(0);
   });
 
+  it("tracks transparent wrappers around timer callees", () => {
+    const wrappedBareTimer = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Clock extends React.Component {
+        componentDidMount() {
+          (setInterval as typeof setInterval)(() => this.tick(), 1000);
+        }
+        render() { return null; }
+      }`,
+    );
+    const wrappedGlobalTimer = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Clock extends React.Component {
+        componentDidMount() {
+          (window.setInterval as typeof window.setInterval)(() => this.tick(), 1000);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(wrappedBareTimer.diagnostics).toHaveLength(1);
+    expect(wrappedGlobalTimer.diagnostics).toHaveLength(1);
+  });
+
   it("flags addListener on a module-scope emitter (React Native Keyboard idiom)", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

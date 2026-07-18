@@ -3,10 +3,10 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
+import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const STATE_HOOKS = new Set(["useState", "useReducer"]);
@@ -143,7 +143,7 @@ export const r3fNoStateInUseFrame = defineRule({
           declaration.init &&
           isNodeOfType(declaration.id, "ArrayPattern") &&
           declaration.id.elements[1] === symbol.bindingIdentifier &&
-          isReactApiCall(declaration.init, STATE_HOOKS, context.scopes, {
+          isR3fReactApiCall(declaration.init, STATE_HOOKS, context.scopes, {
             resolveNamedAliases: true,
           })
         ) {

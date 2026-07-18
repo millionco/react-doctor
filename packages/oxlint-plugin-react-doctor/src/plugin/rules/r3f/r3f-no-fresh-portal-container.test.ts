@@ -91,4 +91,22 @@ describe("r3f-no-fresh-portal-container", () => {
     const result = runRule(r3fNoFreshPortalContainer, code);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it.each([
+    `const Fiber = require("@react-three/fiber"); const React = require("react"); const THREE = require("three"); const World = () => React.useMemo(() => Fiber.createPortal(<mesh />, new THREE.Scene()), []);`,
+    `const { createPortal } = require("@react-three/fiber"); const { useState } = require("react"); const { Scene } = require("three"); const World = () => useState(() => createPortal(<mesh />, new Scene()))[0];`,
+    `const Fiber = require("@react-three/fiber"); const React = require("react"); const THREE = require("three"); const World = () => React.useRef(Fiber.createPortal(<mesh />, new THREE.Scene())).current;`,
+    `import Fiber = require("@react-three/fiber"); import React = require("react"); import THREE = require("three"); const World = () => React.useMemo(() => Fiber.createPortal(<mesh />, new THREE.Scene()), []);`,
+  ])("allows portals retained by CommonJS React hooks", (code) => {
+    const result = runRule(r3fNoFreshPortalContainer, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports portals passed to a mutated CommonJS React hook", () => {
+    const result = runRule(
+      r3fNoFreshPortalContainer,
+      `const Fiber = require("@react-three/fiber"); const React = require("react"); const THREE = require("three"); React.useState = createState; const World = () => React.useState(Fiber.createPortal(<mesh />, new THREE.Scene()))[0];`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

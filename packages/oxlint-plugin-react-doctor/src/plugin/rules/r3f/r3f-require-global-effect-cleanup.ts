@@ -9,10 +9,10 @@ import { functionReturnsMatchingExpression } from "../../utils/function-returns-
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
+import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
@@ -195,7 +195,7 @@ export const r3fRequireGlobalEffectCleanup = defineRule({
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (isReactApiCall(node, EFFECT_HOOK_NAMES, context.scopes)) {
+        if (isR3fReactApiCall(node, EFFECT_HOOK_NAMES, context.scopes)) {
           const effectCallback = getEffectCallback(node, context.scopes);
           if (!effectCallback) return;
           for (const registration of collectExecutedRegistrations(

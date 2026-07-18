@@ -11,6 +11,33 @@ describe("r3f-no-state-in-use-frame", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    `const Fiber = require("@react-three/fiber"); const React = require("react"); const [, setCount] = React.useState(0); Fiber.useFrame(() => setCount(1));`,
+    `const { useFrame } = require("@react-three/fiber"); const { useReducer } = require("react"); const [, dispatch] = useReducer(reducer, 0); useFrame(() => dispatch(action));`,
+    `const { useFrame } = require("@react-three/fiber"); const [, setCount] = require("react").useState(0); useFrame(() => setCount(1));`,
+    `import Fiber = require("@react-three/fiber"); import React = require("react"); const [, setCount] = React.useState(0); Fiber.useFrame(() => setCount(1));`,
+    `import Fiber = require("@react-three/fiber"); import React = require("react"); import state = React.useState; const [, setCount] = state(0); Fiber.useFrame(() => setCount(1));`,
+  ])("flags CommonJS React state setters called each frame", (code) => {
+    const result = runRule(r3fNoStateInUseFrame, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores state hooks from shadowed CommonJS loaders", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `const Fiber = require("@react-three/fiber"); const Scene = (require) => { const React = require("react"); const [, setCount] = React.useState(0); Fiber.useFrame(() => setCount(1)); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores CommonJS state hooks called after namespace mutation", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `const Fiber = require("@react-three/fiber"); const React = require("react"); React.useState = createState; const [, setCount] = React.useState(0); Fiber.useFrame(() => setCount(1));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags state and reducer setters when the value slot is elided", () => {
     const result = runRule(
       r3fNoStateInUseFrame,

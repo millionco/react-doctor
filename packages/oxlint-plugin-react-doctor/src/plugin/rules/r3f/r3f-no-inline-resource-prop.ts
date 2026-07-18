@@ -5,11 +5,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { isInsideStableReactHookInitializer } from "../../utils/is-inside-stable-react-hook-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
+import { isInsideStableR3fReactHookInitializer } from "./utils/is-inside-stable-r3f-react-hook-initializer.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 
 const GEOMETRY_RESOURCE_HOST_NAMES = new Set([
@@ -319,7 +319,7 @@ export const r3fNoInlineResourceProp = defineRule({
           !importsReactThreeFiber ||
           !isNodeOfType(node.name, "JSXIdentifier") ||
           !findRenderPhaseComponentOrHook(node, context.scopes) ||
-          isInsideStableReactHookInitializer(node, context.scopes)
+          isInsideStableR3fReactHookInitializer(node, context.scopes)
         ) {
           return;
         }

@@ -59,4 +59,12 @@ describe("r3f-no-inline-primitive-object", () => {
     );
     expect(result.diagnostics).toHaveLength(2);
   });
+
+  it("allows JSX stabilized by CommonJS React useMemo", () => {
+    const result = runRule(
+      r3fNoInlinePrimitiveObject,
+      `const Fiber = require("@react-three/fiber"); const React = require("react"); const Scene = () => React.useMemo(() => <primitive object={model.clone()} />, [model]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

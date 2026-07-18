@@ -17,6 +17,33 @@ describe("r3f-require-global-effect-cleanup", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
+  it.each([
+    `const Fiber = require("@react-three/fiber"); const React = require("react"); React.useEffect(() => { Fiber.addEffect(callback); }, []);`,
+    `const { addAfterEffect } = require("@react-three/fiber"); const { useLayoutEffect } = require("react"); useLayoutEffect(() => { addAfterEffect(callback); }, []);`,
+    `require("react").useEffect(() => { require("@react-three/fiber").addTail(callback); }, []);`,
+    `import Fiber = require("@react-three/fiber"); import React = require("react"); React.useEffect(() => { Fiber.addEffect(callback); }, []);`,
+    `import Fiber = require("@react-three/fiber"); import React = require("react"); import effect = React.useEffect; import register = Fiber.addEffect; effect(() => { register(callback); }, []);`,
+  ])("reports discarded registrations in CommonJS React effects", (code) => {
+    const result = runRule(r3fRequireGlobalEffectCleanup, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores shadowed CommonJS React effects", () => {
+    const result = runRule(
+      r3fRequireGlobalEffectCleanup,
+      `const Fiber = require("@react-three/fiber"); const Scene = (require) => { const React = require("react"); React.useEffect(() => { Fiber.addEffect(callback); }, []); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores CommonJS React effects called after namespace mutation", () => {
+    const result = runRule(
+      r3fRequireGlobalEffectCleanup,
+      `const Fiber = require("@react-three/fiber"); const React = require("react"); React.useEffect = runEffect; React.useEffect(() => { Fiber.addEffect(callback); }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("allows direct returns and exact captured disposer cleanup", () => {
     const code = `
       import { useEffect } from "react";

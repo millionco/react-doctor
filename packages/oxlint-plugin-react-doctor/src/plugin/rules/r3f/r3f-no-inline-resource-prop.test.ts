@@ -213,4 +213,12 @@ describe("r3f-no-inline-resource-prop", () => {
     const result = runRule(r3fNoInlineResourceProp, code);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("allows JSX stabilized by CommonJS React useMemo", () => {
+    const result = runRule(
+      r3fNoInlineResourceProp,
+      `const Fiber = require("@react-three/fiber"); const React = require("react"); const THREE = require("three"); const Scene = () => React.useMemo(() => <mesh material={new THREE.MeshBasicMaterial()} />, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

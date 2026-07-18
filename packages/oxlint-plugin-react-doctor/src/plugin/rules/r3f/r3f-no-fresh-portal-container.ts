@@ -3,11 +3,11 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
-import { isInsideStableReactHookInitializer } from "../../utils/is-inside-stable-react-hook-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
+import { isInsideStableR3fReactHookInitializer } from "./utils/is-inside-stable-r3f-react-hook-initializer.js";
+import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
 import { resolveR3fFreshValue } from "./utils/resolve-r3f-fresh-value.js";
 
 const FRESH_PORTAL_CONTAINER_KINDS = new Set(["instance", "clone"]);
@@ -18,8 +18,12 @@ const isStableHookValue = (node: EsTreeNode, context: RuleContext): boolean => {
   return Boolean(
     isNodeOfType(hookCall, "CallExpression") &&
     hookCall.arguments[0] === expressionRoot &&
-    (isReactApiCall(hookCall, "useRef", context.scopes, { allowGlobalReactNamespace: true }) ||
-      isReactApiCall(hookCall, "useState", context.scopes, { allowGlobalReactNamespace: true })),
+    (isR3fReactApiCall(hookCall, "useRef", context.scopes, {
+      allowGlobalReactNamespace: true,
+    }) ||
+      isR3fReactApiCall(hookCall, "useState", context.scopes, {
+        allowGlobalReactNamespace: true,
+      })),
   );
 };
 
@@ -36,7 +40,7 @@ export const r3fNoFreshPortalContainer = defineRule({
         !isR3fApiCall(node, "createPortal", context.scopes) ||
         !findRenderPhaseComponentOrHook(node, context.scopes) ||
         isStableHookValue(node, context) ||
-        isInsideStableReactHookInitializer(node, context.scopes)
+        isInsideStableR3fReactHookInitializer(node, context.scopes)
       ) {
         return;
       }

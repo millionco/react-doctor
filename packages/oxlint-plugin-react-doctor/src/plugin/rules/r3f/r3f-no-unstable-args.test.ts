@@ -94,4 +94,12 @@ describe("r3f-no-unstable-args", () => {
     );
     expect(result.diagnostics).toHaveLength(2);
   });
+
+  it("allows JSX stabilized by CommonJS React useMemo", () => {
+    const result = runRule(
+      r3fNoUnstableArgs,
+      `const Fiber = require("@react-three/fiber"); const React = require("react"); const THREE = require("three"); const Scene = () => React.useMemo(() => <shapeGeometry args={[new THREE.Vector3()]} />, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

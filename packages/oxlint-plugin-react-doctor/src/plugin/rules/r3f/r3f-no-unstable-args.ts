@@ -4,10 +4,10 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
-import { isInsideStableReactHookInitializer } from "../../utils/is-inside-stable-react-hook-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
+import { isInsideStableR3fReactHookInitializer } from "./utils/is-inside-stable-r3f-react-hook-initializer.js";
 import { resolveR3fUnstableArgsElement } from "./utils/resolve-r3f-unstable-args-element.js";
 
 export const r3fNoUnstableArgs = defineRule({
@@ -27,7 +27,7 @@ export const r3fNoUnstableArgs = defineRule({
         if (
           !importsReactThreeFiber ||
           !findRenderPhaseComponentOrHook(node, context.scopes) ||
-          isInsideStableReactHookInitializer(node, context.scopes) ||
+          isInsideStableR3fReactHookInitializer(node, context.scopes) ||
           !isNodeOfType(node.name, "JSXIdentifier") ||
           node.name.name.includes("-") ||
           node.name.name[0] !== node.name.name[0]?.toLowerCase() ||

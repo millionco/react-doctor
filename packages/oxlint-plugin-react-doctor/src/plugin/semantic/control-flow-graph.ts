@@ -135,8 +135,17 @@ const hasInternalControlFlow = (node: EsTreeNode): boolean => {
   }
 };
 
+const getStaticBooleanValue = (expression: EsTreeNode): boolean | null => {
+  if (isNodeOfType(expression, "Literal")) return Boolean(expression.value);
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+    const argumentValue = getStaticBooleanValue(expression.argument);
+    return argumentValue === null ? null : !argumentValue;
+  }
+  return null;
+};
+
 const isStaticallyTrueLoopTest = (test: EsTreeNode | null): boolean =>
-  test === null || (isNodeOfType(test, "Literal") && Boolean(test.value));
+  test === null || getStaticBooleanValue(test) === true;
 
 const findLabel = (
   builder: CfgBuilder,

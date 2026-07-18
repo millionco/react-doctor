@@ -3,6 +3,7 @@
 // source: PR #1000 independent audit
 
 export default async function Page(props) {
-  props.params = await props.params;
+  const alias = props;
+  alias.params = await alias.params;
   return props.params.slug;
 }

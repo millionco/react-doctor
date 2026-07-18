@@ -102,10 +102,15 @@ describe("control-flow-graph", () => {
       ).toBe(true);
     });
 
-    it.each(["while (true)", "while (1)", 'while ("run")', "while (1n)", "for (;;)"])(
-      "%s enters its body before a reachable break",
-      (loopHeader) => {
-        const analysis = analyze(`
+    it.each([
+      "while (true)",
+      "while (1)",
+      'while ("run")',
+      "while (1n)",
+      "while (!false)",
+      "for (;;)",
+    ])("%s enters its body before a reachable break", (loopHeader) => {
+      const analysis = analyze(`
           function fn() {
             ${loopHeader} {
               beforeBreak();
@@ -114,14 +119,13 @@ describe("control-flow-graph", () => {
             afterLoop();
           }
         `);
-        expect(
-          analysis.isUnconditionalFromEntry(findCalleeNode(analysis.program, "beforeBreak")!),
-        ).toBe(true);
-        expect(
-          analysis.isUnconditionalFromEntry(findCalleeNode(analysis.program, "afterLoop")!),
-        ).toBe(true);
-      },
-    );
+      expect(
+        analysis.isUnconditionalFromEntry(findCalleeNode(analysis.program, "beforeBreak")!),
+      ).toBe(true);
+      expect(
+        analysis.isUnconditionalFromEntry(findCalleeNode(analysis.program, "afterLoop")!),
+      ).toBe(true);
+    });
 
     it.each(["while (false)", "while (0)", 'while ("")'])("%s can skip its body", (loopHeader) => {
       const analysis = analyze(`

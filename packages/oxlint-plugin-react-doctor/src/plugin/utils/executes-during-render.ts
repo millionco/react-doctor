@@ -84,6 +84,14 @@ const isProvenArrayReceiver = (
       isProvenArrayReceiver(symbol.initializer, scopes, referenceNode, methodName),
     );
   }
+  if (isNodeOfType(receiver, "NewExpression")) {
+    const callee = stripParenExpression(receiver.callee);
+    return Boolean(
+      isNodeOfType(callee, "Identifier") &&
+      callee.name === "Array" &&
+      scopes.isGlobalReference(callee),
+    );
+  }
   if (!isNodeOfType(receiver, "CallExpression")) return false;
   const callee = stripParenExpression(receiver.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;

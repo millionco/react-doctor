@@ -479,6 +479,44 @@ describe("query-no-mutation-in-effect-as-read", () => {
   });
 
   it.each([
+    ["direct positive", "handled.current", true],
+    ["unary negative", "!handled.current", false],
+    ["loose equality with true", "handled.current == true", true],
+    ["strict equality with true", "true === handled.current", true],
+    ["loose inequality with false", "handled.current != false", true],
+    ["strict inequality with false", "false !== handled.current", true],
+    ["loose equality with false", "handled.current == false", false],
+    ["strict equality with false", "false === handled.current", false],
+    ["loose inequality with true", "handled.current != true", false],
+    ["strict inequality with true", "true !== handled.current", false],
+  ])("recognizes %s ref latch polarity", (_caseName, guard, isPositiveGuard) => {
+    const earlyExitResult = runMutationReadRule(
+      `import { useRef } from "react";
+         const { mutateAsync: fetchUser } = useMutation(options);
+         const handled = useRef(false);
+         useEffect(() => {
+           if (${guard}) return;
+           handled.current = true;
+           void fetchUser(params).then((response) => setUser(response.user));
+         }, [params]);`,
+    );
+    expect(earlyExitResult.diagnostics).toHaveLength(isPositiveGuard ? 0 : 1);
+
+    const blockResult = runMutationReadRule(
+      `import { useRef } from "react";
+         const { mutateAsync: fetchUser } = useMutation(options);
+         const handled = useRef(false);
+         useEffect(() => {
+           if (${guard}) {
+             handled.current = true;
+             void fetchUser(params).then((response) => setUser(response.user));
+           }
+         }, [params]);`,
+    );
+    expect(blockResult.diagnostics).toHaveLength(isPositiveGuard ? 1 : 0);
+  });
+
+  it.each([
     [
       "missing assignment",
       `if (!handled.current) {

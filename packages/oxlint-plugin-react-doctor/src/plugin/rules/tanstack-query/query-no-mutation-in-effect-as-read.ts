@@ -512,37 +512,36 @@ const getRefCurrentSymbol = (
   context: RuleContext,
 ): SymbolDescriptor | null => resolveReactRefSymbol(expression, context.scopes);
 
-const getPositiveRefGuardSymbol = (
+const getRefGuardSymbolForValue = (
   test: EsTreeNode,
+  guardedValue: boolean,
   context: RuleContext,
 ): SymbolDescriptor | null => {
   const candidate = stripParenExpression(test);
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
+    return guardedValue
+      ? null
+      : getRefCurrentSymbol(stripParenExpression(candidate.argument), context);
+  }
   const directSymbol = getRefCurrentSymbol(candidate, context);
-  if (directSymbol) return directSymbol;
-  if (!isNodeOfType(candidate, "BinaryExpression") || !["==", "==="].includes(candidate.operator)) {
+  if (directSymbol) return guardedValue ? directSymbol : null;
+  if (
+    !isNodeOfType(candidate, "BinaryExpression") ||
+    !["==", "===", "!=", "!=="].includes(candidate.operator)
+  ) {
     return null;
   }
   const leftValue = stripParenExpression(candidate.left);
   const rightValue = stripParenExpression(candidate.right);
   const leftSymbol = getRefCurrentSymbol(leftValue, context);
   const rightSymbol = getRefCurrentSymbol(rightValue, context);
-  if (leftSymbol && isNodeOfType(rightValue, "Literal") && rightValue.value === true) {
-    return leftSymbol;
-  }
-  if (rightSymbol && isNodeOfType(leftValue, "Literal") && leftValue.value === true) {
-    return rightSymbol;
-  }
-  return null;
-};
-
-const getNegativeRefGuardSymbol = (
-  test: EsTreeNode,
-  context: RuleContext,
-): SymbolDescriptor | null => {
-  const candidate = stripParenExpression(test);
-  return isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!"
-    ? getRefCurrentSymbol(stripParenExpression(candidate.argument), context)
-    : null;
+  const refSymbol = leftSymbol ?? rightSymbol;
+  const booleanValue = leftSymbol ? rightValue : rightSymbol ? leftValue : null;
+  if (!refSymbol || !isNodeOfType(booleanValue, "Literal")) return null;
+  if (typeof booleanValue.value !== "boolean") return null;
+  const isEquality = ["==", "==="].includes(candidate.operator);
+  const valueWhenTestPasses = isEquality ? booleanValue.value : !booleanValue.value;
+  return valueWhenTestPasses === guardedValue ? refSymbol : null;
 };
 
 const getAssignedTrueRefSymbol = (
@@ -599,7 +598,7 @@ const pathHasRunOnceRefLatch = (pathNode: EsTreeNode, context: RuleContext): boo
   let branchParent = branchChild.parent;
   while (branchParent && !isFunctionLike(branchParent)) {
     if (isNodeOfType(branchParent, "IfStatement") && branchParent.consequent === branchChild) {
-      const guardedSymbol = getNegativeRefGuardSymbol(branchParent.test, context);
+      const guardedSymbol = getRefGuardSymbolForValue(branchParent.test, false, context);
       if (guardedSymbol) guardedAt.set(guardedSymbol.id, branchChild.range[0]);
     }
     branchChild = branchParent;
@@ -607,7 +606,7 @@ const pathHasRunOnceRefLatch = (pathNode: EsTreeNode, context: RuleContext): boo
   }
   for (const statement of statements) {
     if (isNodeOfType(statement, "IfStatement") && isEarlyExitStatement(statement.consequent)) {
-      const guardedSymbol = getPositiveRefGuardSymbol(statement.test, context);
+      const guardedSymbol = getRefGuardSymbolForValue(statement.test, true, context);
       if (guardedSymbol) guardedAt.set(guardedSymbol.id, statement.range[0]);
     }
     const assignedSymbol = getAssignedTrueRefSymbol(statement, context);

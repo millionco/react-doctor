@@ -245,7 +245,11 @@ const isStaticallyBoundedReduceSource = (source: EsTreeNode, scopes: ScopeAnalys
   if (isStaticallyBoundedCollectionExpression(stripped, "array", scopes)) return true;
   if (isNodeOfType(stripped, "Identifier")) {
     const binding = findVariableInitializer(stripped, stripped.name);
-    return Boolean(binding && isRestParameterBinding(binding.bindingIdentifier));
+    return Boolean(
+      binding &&
+      isRestParameterBinding(binding.bindingIdentifier) &&
+      !bindingMayHaveGrown(stripped, scopes),
+    );
   }
   if (!isNodeOfType(stripped, "CallExpression")) return false;
   const enumerationCallee = stripParenExpression(stripped.callee);

@@ -152,6 +152,19 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags object URLs passed through wrapped setter and setAttribute calls", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const assignPreview = (firstBlob: Blob, secondBlob: Blob, thirdBlob: Blob) => {
+         (setUrl as (url: string) => void)(URL.createObjectURL(firstBlob));
+         setPreview!(URL.createObjectURL(secondBlob));
+         element["setAttribute"]("href" as string, URL.createObjectURL(thirdBlob));
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
   it("flags a returned object URL", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

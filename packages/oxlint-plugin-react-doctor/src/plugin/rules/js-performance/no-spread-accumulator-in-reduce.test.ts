@@ -267,6 +267,27 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags rest parameters that grow before reduce, including through aliases and wrappers", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const append = (...items) => {
+         items.push(...externalItems);
+         return items.reduce((acc, item) => [...acc, item], []);
+       };
+       const spliceAlias = (...items) => {
+         const alias = condition ? items : items;
+         alias.splice(0, 0, ...externalItems);
+         return items.reduce((acc, item) => [...acc, item], []);
+       };
+       const prepend = (...items) => {
+         (items as unknown[]).unshift(...externalItems);
+         return items.reduce((acc, item) => [...acc, item], []);
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
   it("does not flag a reduce over an inline array literal (fixed tiny collection of UI flags)", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,

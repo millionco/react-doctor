@@ -526,8 +526,10 @@ const moduleDisposesEveryReturnedResult = (
   return didFindCall && !didFindUndisposedCall;
 };
 
-const isStateSetterCallee = (callee: EsTreeNode): boolean =>
-  isNodeOfType(callee, "Identifier") && isSetterIdentifier(callee.name);
+const isStateSetterCallee = (callee: EsTreeNode): boolean => {
+  const candidate = stripParenExpression(callee);
+  return isNodeOfType(candidate, "Identifier") && isSetterIdentifier(candidate.name);
+};
 
 const SET_ATTRIBUTE_URL_NAMES = new Set(["href", "src"]);
 
@@ -539,11 +541,15 @@ const isUrlSetAttributeCall = (
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   if (getStaticPropertyName(callee) !== "setAttribute") return false;
   const [attributeName, attributeValue] = call.arguments;
-  if (!attributeName || !attributeValue) return false;
-  if (!isNodeOfType(attributeName, "Literal") || typeof attributeName.value !== "string") {
+  if (!isAstNode(attributeName) || !isAstNode(attributeValue)) return false;
+  const attributeNameCandidate = stripParenExpression(attributeName);
+  if (
+    !isNodeOfType(attributeNameCandidate, "Literal") ||
+    typeof attributeNameCandidate.value !== "string"
+  ) {
     return false;
   }
-  if (!SET_ATTRIBUTE_URL_NAMES.has(attributeName.value)) return false;
+  if (!SET_ATTRIBUTE_URL_NAMES.has(attributeNameCandidate.value)) return false;
   return stripParenExpression(attributeValue) === stripParenExpression(urlArgument);
 };
 

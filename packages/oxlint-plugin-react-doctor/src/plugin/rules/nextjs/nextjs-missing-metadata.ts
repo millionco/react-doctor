@@ -9,6 +9,35 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { hasAncestorMetadataLayout } from "../../utils/find-ancestor-metadata-layout.js";
+import { findExportedValue } from "../../utils/find-exported-value.js";
+import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+
+const isNextNavigationRedirectCall = (node: unknown): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = stripParenExpression(node.callee);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const importedName = getImportedNameFromModule(node, callee.name, "next/navigation");
+  return importedName === "redirect" || importedName === "permanentRedirect";
+};
+
+const isRedirectOnlyDefaultExport = (programNode: EsTreeNodeOfType<"Program">): boolean => {
+  const defaultExport = findExportedValue(programNode, "default");
+  if (!defaultExport || !isFunctionLike(defaultExport)) return false;
+  if (!isNodeOfType(defaultExport.body, "BlockStatement")) {
+    return isNextNavigationRedirectCall(stripParenExpression(defaultExport.body));
+  }
+  if (defaultExport.body.body.length !== 1) return false;
+  const onlyStatement = defaultExport.body.body[0];
+  if (isNodeOfType(onlyStatement, "ExpressionStatement")) {
+    return isNextNavigationRedirectCall(onlyStatement.expression);
+  }
+  if (isNodeOfType(onlyStatement, "ReturnStatement") && onlyStatement.argument) {
+    return isNextNavigationRedirectCall(onlyStatement.argument);
+  }
+  return false;
+};
 
 export const nextjsMissingMetadata = defineRule({
   id: "nextjs-missing-metadata",
@@ -58,6 +87,7 @@ export const nextjsMissingMetadata = defineRule({
       });
 
       if (hasMetadataExport) return;
+      if (isRedirectOnlyDefaultExport(programNode)) return;
       // A page inherits metadata merged down the segment chain, so skip the
       // directory walk only once the cheap in-file check comes up empty.
       if (hasAncestorMetadataLayout(context.filename ?? "")) return;

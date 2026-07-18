@@ -374,9 +374,6 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "jsx-no-script-url": {
     code: 'const A = () => <a href="javascript:void(0)">x</a>;',
   },
-  "jsx-no-target-blank": {
-    code: 'const AuthFooter = () => (\n        <a href="https://internxt.com/legal" target="_blank" className="auth-footer-link">\n          legal\n        </a>\n      );',
-  },
   "jsx-no-undef": {
     code: "\n        interface Foo {}\n        type Bar = {};\n        const App = () => <><Foo /><Bar /></>;\n      ",
   },

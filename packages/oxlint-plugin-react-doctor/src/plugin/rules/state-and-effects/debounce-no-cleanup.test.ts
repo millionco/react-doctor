@@ -889,4 +889,35 @@ function SearchBox({ query }) {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("treats a returned debounce alias as caller-owned cleanup", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `${LODASH_DEBOUNCE_IMPORT}
+       function useSearch() {
+         const search = useMemo(() => debounce(() => {
+           document.title = "late";
+         }, 100), []);
+         const exposedSearch = search;
+         useEffect(() => exposedSearch(), [exposedSearch]);
+         return exposedSearch;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("tracks hook calls through transparent type wrappers", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `${LODASH_DEBOUNCE_IMPORT}
+       function Search() {
+         const search = (useMemo(() => debounce(() => {
+           document.title = "late";
+         }, 100), []) as any)!;
+         useEffect(() => search(), [search]);
+         return null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

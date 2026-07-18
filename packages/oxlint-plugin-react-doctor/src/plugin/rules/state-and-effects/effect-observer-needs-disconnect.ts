@@ -1,4 +1,5 @@
 import { EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS } from "../../constants/dom.js";
+import { collectBindingAliases } from "../../utils/collect-binding-aliases.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -22,6 +23,7 @@ const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "self"]);
 interface TrackedObserver {
   construction: EsTreeNodeOfType<"NewExpression">;
   bindingIdentifier: EsTreeNode;
+  bindingIdentifiers: Set<EsTreeNode>;
   didObserve: boolean;
   didObserveUnknownTarget: boolean;
   didReleaseAll: boolean;
@@ -43,10 +45,11 @@ const recordObserverUsage = (
   context: RuleContext,
 ): void => {
   const binding = findVariableInitializer(identifier, identifier.name);
-  if (binding && binding.bindingIdentifier !== tracked.bindingIdentifier) return;
+  if (binding && !tracked.bindingIdentifiers.has(binding.bindingIdentifier)) return;
   const referenceRoot = findTransparentExpressionRoot(identifier);
   const parent = referenceRoot.parent;
   if (isNodeOfType(parent, "VariableDeclarator") && parent.id === identifier) return;
+  if (isNodeOfType(parent, "VariableDeclarator") && parent.init === referenceRoot) return;
   if (
     isNodeOfType(parent, "MemberExpression") &&
     parent.property === identifier &&
@@ -351,6 +354,7 @@ export const effectObserverNeedsDisconnect = defineRule({
         trackedObserversByBinding.set(declarator.id, {
           construction: child,
           bindingIdentifier: declarator.id,
+          bindingIdentifiers: new Set([declarator.id]),
           didObserve: false,
           didObserveUnknownTarget: false,
           didReleaseAll: false,
@@ -362,6 +366,15 @@ export const effectObserverNeedsDisconnect = defineRule({
         });
       });
       if (trackedObserversByBinding.size === 0) return;
+
+      for (const tracked of [...trackedObserversByBinding.values()]) {
+        const bindingIdentifiers = collectBindingAliases(tracked.bindingIdentifier, context.scopes);
+        tracked.bindingIdentifiers = new Set(bindingIdentifiers);
+        for (const bindingIdentifier of bindingIdentifiers) {
+          trackedObserversByBinding.set(bindingIdentifier, tracked);
+        }
+      }
+      const trackedObservers = new Set(trackedObserversByBinding.values());
 
       walkSynchronousCallbackFlow(callback, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "Identifier")) return;
@@ -383,19 +396,17 @@ export const effectObserverNeedsDisconnect = defineRule({
         });
       }
 
-      for (const tracked of trackedObserversByBinding.values()) {
+      for (const tracked of trackedObservers) {
         for (const releasedTargetKey of tracked.callbackReleasedTargetKeys) {
           tracked.observedTargetKeys.delete(releasedTargetKey);
         }
-        const bindingName = isNodeOfType(tracked.bindingIdentifier, "Identifier")
-          ? tracked.bindingIdentifier.name
-          : null;
-        if (!bindingName) continue;
         const observerCallback = tracked.construction.arguments?.[0];
         if (!observerCallback || !isFunctionLike(stripParenExpression(observerCallback))) continue;
         const callbackFunction = stripParenExpression(observerCallback);
         walkSynchronousCallbackFlow(callbackFunction, (child: EsTreeNode) => {
-          if (isNodeOfType(child, "Identifier") && child.name === bindingName) {
+          if (!isNodeOfType(child, "Identifier")) return;
+          const bindingIdentifier = findVariableInitializer(child, child.name)?.bindingIdentifier;
+          if (bindingIdentifier && trackedObserversByBinding.get(bindingIdentifier) === tracked) {
             recordObserverUsage(child, tracked, context);
           }
         });
@@ -406,7 +417,7 @@ export const effectObserverNeedsDisconnect = defineRule({
             returnStatement.argument ? [returnStatement.argument] : [],
           )
         : [callback.body];
-      for (const tracked of trackedObserversByBinding.values()) {
+      for (const tracked of trackedObservers) {
         if (
           returnedExpressions.some((returnExpression) =>
             isBoundObserverDisconnect(returnExpression, tracked.bindingIdentifier),

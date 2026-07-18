@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
+import { collectBindingAliases } from "../../utils/collect-binding-aliases.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
@@ -132,61 +133,6 @@ const hasTrailingFalseOption = (
       isNodeOfType(property.value, "Literal") &&
       property.value.value === false,
   );
-};
-
-const collectBindingAliases = (
-  bindingIdentifier: EsTreeNode,
-  scopes: ScopeAnalysis,
-): EsTreeNode[] => {
-  const initialSymbol = scopes.symbolFor(bindingIdentifier);
-  if (!initialSymbol) return [];
-  const aliases = [initialSymbol.bindingIdentifier];
-  const pendingSymbols = [initialSymbol];
-  const visitedSymbolIds = new Set<number>();
-  const discoveredSymbolIds = new Set([initialSymbol.id]);
-  while (pendingSymbols.length > 0) {
-    const symbol = pendingSymbols.pop();
-    if (!symbol || visitedSymbolIds.has(symbol.id)) continue;
-    visitedSymbolIds.add(symbol.id);
-    for (const reference of symbol.references) {
-      if (reference.flag !== "read") continue;
-      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-      let aliasInitializerRoot = referenceRoot;
-      let declarator: EsTreeNode | null | undefined = aliasInitializerRoot.parent;
-      while (
-        isNodeOfType(declarator, "MemberExpression") &&
-        declarator.object === aliasInitializerRoot
-      ) {
-        aliasInitializerRoot = findTransparentExpressionRoot(declarator);
-        declarator = aliasInitializerRoot.parent;
-      }
-      const callCallee = isNodeOfType(declarator, "CallExpression")
-        ? stripParenExpression(declarator.callee)
-        : null;
-      if (
-        isNodeOfType(declarator, "CallExpression") &&
-        declarator.arguments.some((argument) => argument === referenceRoot) &&
-        isNodeOfType(callCallee, "Identifier") &&
-        callCallee.name === "useRef"
-      ) {
-        aliasInitializerRoot = findTransparentExpressionRoot(declarator);
-        declarator = aliasInitializerRoot.parent;
-      }
-      if (
-        !isNodeOfType(declarator, "VariableDeclarator") ||
-        declarator.init !== aliasInitializerRoot ||
-        !isNodeOfType(declarator.id, "Identifier")
-      ) {
-        continue;
-      }
-      const aliasSymbol = scopes.symbolFor(declarator.id);
-      if (!aliasSymbol || discoveredSymbolIds.has(aliasSymbol.id)) continue;
-      discoveredSymbolIds.add(aliasSymbol.id);
-      aliases.push(aliasSymbol.bindingIdentifier);
-      pendingSymbols.push(aliasSymbol);
-    }
-  }
-  return aliases;
 };
 
 const baseReferenceIdentifier = (expression: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
@@ -608,9 +554,11 @@ export const debounceNoCleanup = defineRule({
         if (!debounceCall) return;
         if (hasTrailingFalseOption(debounceCall, context.scopes, node)) return;
 
-        const declarator = node.parent;
+        const initializerRoot = findTransparentExpressionRoot(node);
+        const declarator = initializerRoot.parent;
         if (
           !isNodeOfType(declarator, "VariableDeclarator") ||
+          declarator.init !== initializerRoot ||
           !isNodeOfType(declarator.id, "Identifier")
         ) {
           return;
@@ -638,10 +586,8 @@ export const debounceNoCleanup = defineRule({
         ) {
           return;
         }
-        const bindingSymbolId = context.scopes.symbolFor(declarator.id)?.id;
         if (
-          bindingSymbolId !== undefined &&
-          functionUsageIndex.escapedSymbolIds.has(bindingSymbolId)
+          [...aliasSymbolIds].some((symbolId) => functionUsageIndex.escapedSymbolIds.has(symbolId))
         ) {
           return;
         }

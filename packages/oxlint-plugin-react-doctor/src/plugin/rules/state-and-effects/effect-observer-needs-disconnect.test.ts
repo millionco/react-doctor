@@ -763,4 +763,29 @@ describe("effect-observer-needs-disconnect", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("tracks observe calls through a local observer alias", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => {});
+         const localObserver = observer;
+         localObserver.observe(element);
+       }, [element]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks disconnect calls through a local observer alias", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => {});
+         const localObserver = observer;
+         localObserver.observe(element);
+         return () => localObserver.disconnect();
+       }, [element]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

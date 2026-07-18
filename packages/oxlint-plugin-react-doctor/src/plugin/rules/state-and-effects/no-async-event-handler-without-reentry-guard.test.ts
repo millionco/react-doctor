@@ -672,4 +672,25 @@ describe("no-async-event-handler-without-reentry-guard audit regressions", () =>
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("keeps ternary branches separate and recognizes mutateAsync writes", () => {
+    const exclusiveTernary = runRule(
+      noAsyncEventHandlerWithoutReentryGuard,
+      `const C = ({ shouldPost }) => { const [, setSaved] = useState(false); return <button onClick={async () => { shouldPost ? await api.post() : setSaved(true); }} />; };`,
+    );
+    const mutateAsync = runRule(
+      noAsyncEventHandlerWithoutReentryGuard,
+      `const C = () => { const [, setSaved] = useState(false); return <button onClick={async () => { await mutation.mutateAsync({ value: 1 }); setSaved(true); }} />; };`,
+    );
+    expect(exclusiveTernary.diagnostics).toHaveLength(0);
+    expect(mutateAsync.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps contradictory try and catch guards on separate paths", () => {
+    const result = runRule(
+      noAsyncEventHandlerWithoutReentryGuard,
+      `const C = ({ shouldPost }) => { const [, setError] = useState(null); return <button onClick={async () => { try { if (shouldPost) await api.post(); else throw new Error("local"); } catch (error) { if (!shouldPost) setError(error); } }} />; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

@@ -534,4 +534,17 @@ describe("no-promise-then-side-effect-in-effect-without-catch audit regressions"
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not choose an arbitrary object property for a dynamic promise helper lookup", () => {
+    const dynamicLookup = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = ({ helperName }) => { const [, setValue] = useState(); const helpers = { safe: () => Promise.resolve(null), unsafe: async () => fetch("/value") }; const load = helpers[helperName]; useEffect(() => { load().then(setValue); }, [load]); };`,
+    );
+    const staticLookup = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = () => { const [, setValue] = useState(); const helpers = { safe: () => Promise.resolve(null), unsafe: async () => fetch("/value") }; const load = helpers["unsafe"]; useEffect(() => { load().then(setValue); }, [load]); };`,
+    );
+    expect(dynamicLookup.diagnostics).toHaveLength(0);
+    expect(staticLookup.diagnostics).toHaveLength(1);
+  });
 });

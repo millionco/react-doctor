@@ -1,4 +1,6 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
+import { areNodesOnContradictoryGuardBranches } from "../../utils/are-nodes-on-contradictory-guard-branches.js";
 import { collectEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -10,6 +12,7 @@ import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
@@ -148,15 +151,6 @@ const findFirstSuspensionStart = (asyncFunction: EsTreeNode): number | null => {
   });
   return earliestSuspensionStart;
 };
-const serializeGuardTarget = (node: EsTreeNode): string | null => {
-  const inner = stripParenExpression(node);
-  if (isNodeOfType(inner, "Identifier")) return inner.name;
-  if (!isNodeOfType(inner, "MemberExpression")) return null;
-  const receiverKey = serializeGuardTarget(inner.object);
-  const propertyName = getStaticPropertyName(inner);
-  return receiverKey && propertyName ? `${receiverKey}.${propertyName}` : null;
-};
-
 const walkWithoutNestedFunctions = (
   root: EsTreeNode,
   visitor: (node: EsTreeNode) => boolean | void,
@@ -167,7 +161,10 @@ const walkWithoutNestedFunctions = (
   });
 };
 
-const collectCleanupGuardWrites = (effectCallback: EsTreeNode): Map<string, boolean> => {
+const collectCleanupGuardWrites = (
+  effectCallback: EsTreeNode,
+  context: RuleContext,
+): Map<string, boolean> => {
   const writes = new Map<string, boolean>();
   const recordAssignment = (candidate: EsTreeNode): void => {
     const expression = isNodeOfType(candidate, "ExpressionStatement")
@@ -184,7 +181,7 @@ const collectCleanupGuardWrites = (effectCallback: EsTreeNode): Map<string, bool
     ) {
       return;
     }
-    const targetKey = serializeGuardTarget(expression.left);
+    const targetKey = serializeReferenceKey({ node: expression.left, scopes: context.scopes });
     if (targetKey) writes.set(targetKey, assignedValue.value);
   };
   const collectUnconditionalWrites = (statements: EsTreeNode[]): void => {
@@ -210,8 +207,11 @@ const collectCleanupGuardWrites = (effectCallback: EsTreeNode): Map<string, bool
   return writes;
 };
 
-const collectCleanupAbortedControllers = (effectCallback: EsTreeNode): Set<string> => {
-  const controllerNames = new Set<string>();
+const collectCleanupAbortedControllers = (
+  effectCallback: EsTreeNode,
+  context: RuleContext,
+): Set<string> => {
+  const controllerKeys = new Set<string>();
   for (const cleanupFunction of collectReturnedCleanupFunctions(effectCallback)) {
     walkOwnFunctionScope(cleanupFunction, (child: EsTreeNode) => {
       if (!isNodeOfType(child, "CallExpression")) return;
@@ -220,17 +220,18 @@ const collectCleanupAbortedControllers = (effectCallback: EsTreeNode): Set<strin
         return;
       }
       const receiver = stripParenExpression(callee.object);
-      if (isNodeOfType(receiver, "Identifier")) controllerNames.add(receiver.name);
+      const receiverKey = serializeReferenceKey({ node: receiver, scopes: context.scopes });
+      if (receiverKey) controllerKeys.add(receiverKey);
     });
   }
-  return controllerNames;
+  return controllerKeys;
 };
 
-const collectAbortControllerNames = (
+const collectAbortControllerKeys = (
   effectCallback: EsTreeNode,
   context: RuleContext,
 ): Set<string> => {
-  const controllerNames = new Set<string>();
+  const controllerKeys = new Set<string>();
   walkOwnFunctionScope(effectCallback, (child: EsTreeNode) => {
     if (
       !isNodeOfType(child, "VariableDeclarator") ||
@@ -246,26 +247,31 @@ const collectAbortControllerNames = (
       construction.callee.name === "AbortController" &&
       context.scopes.isGlobalReference(construction.callee)
     ) {
-      controllerNames.add(child.id.name);
+      const controllerKey = serializeReferenceKey({ node: child.id, scopes: context.scopes });
+      if (controllerKey) controllerKeys.add(controllerKey);
     }
   });
-  return controllerNames;
+  return controllerKeys;
 };
 
 const awaitUsesAbortedControllerSignal = (
   awaitNode: EsTreeNodeOfType<"AwaitExpression">,
-  controllerNames: ReadonlySet<string>,
+  controllerKeys: ReadonlySet<string>,
+  context: RuleContext,
 ): boolean => {
   let usesSignal = false;
   walkWithoutNestedFunctions(awaitNode.argument, (child: EsTreeNode) => {
     const receiver = isNodeOfType(child, "MemberExpression")
       ? stripParenExpression(child.object)
       : null;
+    const receiverKey = receiver
+      ? serializeReferenceKey({ node: receiver, scopes: context.scopes })
+      : null;
     if (
       isNodeOfType(child, "MemberExpression") &&
       getStaticPropertyName(child) === "signal" &&
-      isNodeOfType(receiver, "Identifier") &&
-      controllerNames.has(receiver.name)
+      receiverKey !== null &&
+      controllerKeys.has(receiverKey)
     ) {
       usesSignal = true;
       return false;
@@ -277,11 +283,12 @@ const awaitUsesAbortedControllerSignal = (
 const getCleanupBackedGuard = (
   test: EsTreeNode,
   cleanupWrites: ReadonlyMap<string, boolean>,
+  context: RuleContext,
 ): string | null => {
   const inner = stripParenExpression(test);
   const isNegated = isNodeOfType(inner, "UnaryExpression") && inner.operator === "!";
   const target = isNegated ? stripParenExpression(inner.argument) : inner;
-  const targetKey = serializeGuardTarget(target);
+  const targetKey = serializeReferenceKey({ node: target, scopes: context.scopes });
   if (!targetKey) return null;
   const cleanupValue = cleanupWrites.get(targetKey);
   if (cleanupValue === undefined) return null;
@@ -292,11 +299,12 @@ const getCleanupBackedGuard = (
 const getCleanupBackedProceedGuard = (
   test: EsTreeNode,
   cleanupWrites: ReadonlyMap<string, boolean>,
+  context: RuleContext,
 ): string | null => {
   const inner = stripParenExpression(test);
   const isNegated = isNodeOfType(inner, "UnaryExpression") && inner.operator === "!";
   const target = isNegated ? stripParenExpression(inner.argument) : inner;
-  const targetKey = serializeGuardTarget(target);
+  const targetKey = serializeReferenceKey({ node: target, scopes: context.scopes });
   if (!targetKey) return null;
   const cleanupValue = cleanupWrites.get(targetKey);
   if (cleanupValue === undefined) return null;
@@ -312,6 +320,7 @@ interface SequenceSnapshot {
 const collectSequenceSnapshots = (
   root: EsTreeNode,
   firstSuspensionStart: number,
+  context: RuleContext,
 ): Map<string, SequenceSnapshot> => {
   const snapshots = new Map<string, SequenceSnapshot>();
   walkWithoutNestedFunctions(root, (child: EsTreeNode) => {
@@ -327,7 +336,10 @@ const collectSequenceSnapshots = (
     ) {
       return;
     }
-    const counterKey = serializeGuardTarget(initializer.argument);
+    const counterKey = serializeReferenceKey({
+      node: initializer.argument,
+      scopes: context.scopes,
+    });
     const start = (child as { start?: unknown }).start;
     if (counterKey && typeof start === "number" && start < firstSuspensionStart) {
       snapshots.set(child.id.name, { counterKey, start });
@@ -339,6 +351,7 @@ const collectSequenceSnapshots = (
 const isSequenceGuard = (
   test: EsTreeNode,
   sequenceSnapshots: ReadonlyMap<string, SequenceSnapshot>,
+  context: RuleContext,
 ): boolean => {
   const inner = stripParenExpression(test);
   if (
@@ -351,11 +364,15 @@ const isSequenceGuard = (
   const right = stripParenExpression(inner.right);
   if (isNodeOfType(left, "Identifier")) {
     const snapshot = sequenceSnapshots.get(left.name);
-    if (snapshot?.counterKey === serializeGuardTarget(right)) return true;
+    if (snapshot?.counterKey === serializeReferenceKey({ node: right, scopes: context.scopes })) {
+      return true;
+    }
   }
   if (isNodeOfType(right, "Identifier")) {
     const snapshot = sequenceSnapshots.get(right.name);
-    if (snapshot?.counterKey === serializeGuardTarget(left)) return true;
+    if (snapshot?.counterKey === serializeReferenceKey({ node: left, scopes: context.scopes })) {
+      return true;
+    }
   }
   return false;
 };
@@ -364,12 +381,14 @@ interface AsyncPathState {
   didSuspend: boolean;
   hasDominatingGuard: boolean;
   isAbortProtected: boolean;
+  suspensionNode: EsTreeNode | null;
 }
 
 const dedupeAsyncPathStates = (states: AsyncPathState[]): AsyncPathState[] => {
   const dedupedStates = new Map<string, AsyncPathState>();
   for (const state of states) {
-    const key = `${String(state.didSuspend)}:${String(state.hasDominatingGuard)}:${String(state.isAbortProtected)}`;
+    const suspensionStart = state.suspensionNode?.range?.[0] ?? "none";
+    const key = `${String(state.didSuspend)}:${String(state.hasDominatingGuard)}:${String(state.isAbortProtected)}:${String(suspensionStart)}`;
     if (!dedupedStates.has(key)) dedupedStates.set(key, state);
   }
   return [...dedupedStates.values()];
@@ -414,12 +433,17 @@ const analyzeAsyncEvents = (
   let states = initialStates;
   for (const event of collectOrderedAsyncEvents(root, context)) {
     if (isNodeOfType(event, "AwaitExpression")) {
-      const isAbortProtected = awaitUsesAbortedControllerSignal(event, abortProtectedControllers);
+      const isAbortProtected = awaitUsesAbortedControllerSignal(
+        event,
+        abortProtectedControllers,
+        context,
+      );
       states = states.map((state) => ({
         ...state,
         didSuspend: true,
         hasDominatingGuard: false,
         isAbortProtected,
+        suspensionNode: event,
       }));
       continue;
     }
@@ -429,13 +453,20 @@ const analyzeAsyncEvents = (
         didSuspend: true,
         hasDominatingGuard: false,
         isAbortProtected: false,
+        suspensionNode: event,
       }));
       continue;
     }
     if (
       isNodeOfType(event, "CallExpression") &&
       states.some(
-        (state) => state.didSuspend && !state.hasDominatingGuard && !state.isAbortProtected,
+        (state) =>
+          state.didSuspend &&
+          !state.hasDominatingGuard &&
+          !state.isAbortProtected &&
+          (!state.suspensionNode ||
+            (!areNodesOnExclusiveConditionalBranches(state.suspensionNode, event, root) &&
+              !areNodesOnContradictoryGuardBranches(state.suspensionNode, event, context.scopes))),
       )
     ) {
       return { states, hasUnsafeSetter: true };
@@ -477,8 +508,8 @@ const analyzeAsyncStatements = (
       if (tested.hasUnsafeSetter) return tested;
       states = tested.states;
       if (!statement.alternate && isEarlyExitStatement(statement.consequent)) {
-        const guardKey = getCleanupBackedGuard(statement.test, cleanupWrites);
-        const isLatestSequenceGuard = isSequenceGuard(statement.test, sequenceSnapshots);
+        const guardKey = getCleanupBackedGuard(statement.test, cleanupWrites, context);
+        const isLatestSequenceGuard = isSequenceGuard(statement.test, sequenceSnapshots, context);
         if (guardKey || isLatestSequenceGuard) {
           states = states.map((state) => ({
             ...state,
@@ -489,7 +520,7 @@ const analyzeAsyncStatements = (
           continue;
         }
       }
-      const proceedGuard = getCleanupBackedProceedGuard(statement.test, cleanupWrites);
+      const proceedGuard = getCleanupBackedProceedGuard(statement.test, cleanupWrites, context);
       const consequent = analyzeAsyncStatements(
         isNodeOfType(statement.consequent, "BlockStatement")
           ? (statement.consequent.body as EsTreeNode[])
@@ -555,6 +586,7 @@ const analyzeAsyncStatements = (
         didSuspend: true,
         hasDominatingGuard: false,
         isAbortProtected: false,
+        suspensionNode: statement,
       }));
       const body = analyzeAsyncStatements(
         isNodeOfType(statement.body, "BlockStatement")
@@ -580,7 +612,7 @@ const analyzeAsyncStatements = (
         sequenceSnapshots,
       );
       if (tried.hasUnsafeSetter) return tried;
-      const tryCanSuspend = collectOrderedAsyncEvents(statement.block, context).some(
+      const trySuspension = collectOrderedAsyncEvents(statement.block, context).find(
         (event) =>
           isNodeOfType(event, "AwaitExpression") ||
           (isNodeOfType(event, "ForOfStatement") && event.await === true),
@@ -589,12 +621,13 @@ const analyzeAsyncStatements = (
         ? analyzeAsyncStatements(
             statement.handler.body.body as EsTreeNode[],
             states.map((state) =>
-              tryCanSuspend
+              trySuspension
                 ? {
                     ...state,
                     didSuspend: true,
                     hasDominatingGuard: false,
                     isAbortProtected: false,
+                    suspensionNode: trySuspension,
                   }
                 : { ...state },
             ),
@@ -637,7 +670,7 @@ const collectInvokedAsyncFunctions = (
   effectCallback: EsTreeNode,
   context: RuleContext,
 ): Set<EsTreeNode> => {
-  const invokedFunctions = collectEffectInvokedFunctions(effectCallback);
+  const invokedFunctions = collectEffectInvokedFunctions(effectCallback, context.scopes);
   const pendingFunctions = [...invokedFunctions];
   while (pendingFunctions.length > 0) {
     const currentFunction = pendingFunctions.pop();
@@ -667,17 +700,17 @@ const hasUnsafePostAwaitSetter = (
   context: RuleContext,
 ): boolean => {
   if (!isFunctionLike(asyncFunction) || !asyncFunction.async) return false;
-  const cleanupWrites = collectCleanupGuardWrites(effectCallback);
-  const declaredControllers = collectAbortControllerNames(effectCallback, context);
-  const abortedControllers = collectCleanupAbortedControllers(effectCallback);
+  const cleanupWrites = collectCleanupGuardWrites(effectCallback, context);
+  const declaredControllers = collectAbortControllerKeys(effectCallback, context);
+  const abortedControllers = collectCleanupAbortedControllers(effectCallback, context);
   const abortProtectedControllers = new Set(
     [...declaredControllers].filter((controllerName) => abortedControllers.has(controllerName)),
   );
   const firstSuspensionStart = findFirstSuspensionStart(asyncFunction);
   if (firstSuspensionStart === null) return false;
   const sequenceSnapshots = new Map([
-    ...collectSequenceSnapshots(effectCallback, firstSuspensionStart),
-    ...collectSequenceSnapshots(asyncFunction, firstSuspensionStart),
+    ...collectSequenceSnapshots(effectCallback, firstSuspensionStart, context),
+    ...collectSequenceSnapshots(asyncFunction, firstSuspensionStart, context),
   ]);
   const body = asyncFunction.body;
   const statements = isNodeOfType(body, "BlockStatement")
@@ -685,7 +718,14 @@ const hasUnsafePostAwaitSetter = (
     : [body as EsTreeNode];
   return analyzeAsyncStatements(
     statements,
-    [{ didSuspend: false, hasDominatingGuard: false, isAbortProtected: false }],
+    [
+      {
+        didSuspend: false,
+        hasDominatingGuard: false,
+        isAbortProtected: false,
+        suspensionNode: null,
+      },
+    ],
     context,
     cleanupWrites,
     abortProtectedControllers,

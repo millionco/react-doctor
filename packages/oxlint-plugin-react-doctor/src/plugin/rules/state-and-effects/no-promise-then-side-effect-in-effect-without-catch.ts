@@ -123,18 +123,18 @@ const memberLookupResolvesToRejectableFunction = (
     ? stripParenExpression(boundInitializer)
     : strippedObject;
   if (!isNodeOfType(objectExpression, "ObjectExpression")) return false;
-  const lookedUpName =
-    !memberNode.computed && isNodeOfType(memberNode.property, "Identifier")
-      ? memberNode.property.name
-      : null;
-  return objectExpression.properties.some((property) => {
+  const lookedUpName = getStaticPropertyName(memberNode);
+  const candidateProperties = objectExpression.properties.filter((property) => {
     if (!isNodeOfType(property, "Property")) return false;
-    if (lookedUpName !== null) {
-      const keyMatches = isNodeOfType(property.key, "Identifier")
-        ? property.key.name === lookedUpName
-        : isNodeOfType(property.key, "Literal") && property.key.value === lookedUpName;
-      if (!keyMatches) return false;
-    }
+    if (lookedUpName === null) return true;
+    const keyMatches = isNodeOfType(property.key, "Identifier")
+      ? property.key.name === lookedUpName
+      : isNodeOfType(property.key, "Literal") && property.key.value === lookedUpName;
+    return keyMatches;
+  });
+  if (candidateProperties.length === 0) return false;
+  return candidateProperties.every((property) => {
+    if (!isNodeOfType(property, "Property")) return false;
     const value = stripParenExpression(property.value);
     return (
       isFunctionLike(value) && functionHasUnhandledRejectableSource(value, remainingDepth, context)

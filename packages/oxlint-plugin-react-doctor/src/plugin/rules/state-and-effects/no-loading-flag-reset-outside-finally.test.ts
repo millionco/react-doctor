@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { __clearParseSourceFileCacheForTests } from "../../utils/parse-source-file.js";
-import { __clearResolveImportWithOxcCacheForTests } from "../../utils/resolve-import-with-oxc.js";
 import { noLoadingFlagResetOutsideFinally } from "./no-loading-flag-reset-outside-finally.js";
 
 const STRESS_SITE_COUNT = 1_600;
@@ -1039,7 +1038,6 @@ describe("no-loading-flag-reset-outside-finally cross-file helpers", () => {
       path.join(temporaryDirectory, "package.json"),
       JSON.stringify({ name: "fixture", type: "module" }),
     );
-    __clearResolveImportWithOxcCacheForTests();
     __clearParseSourceFileCacheForTests();
   });
 
@@ -1617,6 +1615,116 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
           setLoading(true);
           try { ${awaits} ${resets} }
           finally { setLoading(false); }
+        };
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust shadowed Promise constructors or methods as fulfillment proof", () => {
+    const shadowedResolve = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const Promise = { resolve: fetch }; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); await Promise.resolve("/value"); setLoading(false); }; };`,
+    );
+    const shadowedConstructor = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const Promise = class { constructor() { return fetch("/value"); } }; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); await new Promise((resolve) => resolve(null)); setLoading(false); }; };`,
+    );
+    expect(shadowedResolve.diagnostics).toHaveLength(1);
+    expect(shadowedConstructor.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes rejection from Promise executors, async helpers, and invalid allSettled inputs", () => {
+    const executorCall = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const fail = () => { throw new Error("failed"); }; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); await new Promise((resolve) => { fail(); resolve(null); }); setLoading(false); }; };`,
+    );
+    const asyncHelperCall = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const fail = () => { throw new Error("failed"); }; const request = async () => { fail(); return null; }; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); await request(); setLoading(false); }; };`,
+    );
+    const invalidAllSettledInput = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); await Promise.allSettled(null); setLoading(false); }; };`,
+    );
+    const iterableAllSettledInput = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); await Promise.allSettled({ *[Symbol.iterator]() { yield fetch("/value"); } }); setLoading(false); }; };`,
+    );
+    expect(executorCall.diagnostics).toHaveLength(1);
+    expect(asyncHelperCall.diagnostics).toHaveLength(1);
+    expect(invalidAllSettledInput.diagnostics).toHaveLength(1);
+    expect(iterableAllSettledInput.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes an unconditional call to a known-throwing catch helper", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const rethrow = () => { throw new Error("failed"); }; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); try { await fetch("/value"); } catch { rethrow(); } setLoading(false); }; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts catch exits only when every exiting path clears the flag first", () => {
+    const allPathsClear = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); try { await fetch("/value"); } catch (error) { if (shouldRetry) { setLoading(false); return; } setLoading(false); throw error; } setLoading(false); }; };`,
+    );
+    const onePathSkipsClear = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); try { await fetch("/value"); } catch (error) { if (shouldRetry) return; setLoading(false); throw error; } setLoading(false); }; };`,
+    );
+    expect(allPathsClear.diagnostics).toHaveLength(0);
+    expect(onePathSkipsClear.diagnostics).toHaveLength(1);
+  });
+
+  it("distinguishes throwing calls before and after a catch reset", () => {
+    const throwBeforeClear = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const fail = () => { throw new Error("failed"); }; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); try { await fetch("/value"); } catch { fail(); setLoading(false); } setLoading(false); }; };`,
+    );
+    const throwAfterClear = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const fail = () => { throw new Error("failed"); }; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); try { await fetch("/value"); } catch { setLoading(false); fail(); } setLoading(false); }; };`,
+    );
+    expect(throwBeforeClear.diagnostics).toHaveLength(1);
+    expect(throwAfterClear.diagnostics).toHaveLength(0);
+  });
+
+  it("tracks throwing catch conditions and initializers before the reset", () => {
+    const throwingCondition = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const fail = () => { throw new Error("failed"); }; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); try { await fetch("/value"); } catch { if (fail()) return; setLoading(false); } setLoading(false); }; };`,
+    );
+    const throwingInitializer = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const fail = () => { throw new Error("failed"); }; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); try { await fetch("/value"); } catch { const reason = fail(); setLoading(false); } setLoading(false); }; };`,
+    );
+    const clearingReturnArgument = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react"; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); try { await fetch("/value"); } catch { return setLoading(false); } setLoading(false); }; };`,
+    );
+    expect(throwingCondition.diagnostics).toHaveLength(1);
+    expect(throwingInitializer.diagnostics).toHaveLength(1);
+    expect(clearingReturnArgument.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps catch-path analysis bounded across many conditional branches", () => {
+    const conditionalStatements = Array.from(
+      { length: STRESS_SITE_COUNT },
+      (_, conditionIndex) => `if (conditions[${conditionIndex}]) report(${conditionIndex});`,
+    ).join("\n");
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const C = () => {
+        const [, setLoading] = useState(false);
+        const run = async () => {
+          setLoading(true);
+          try { await fetch("/value"); }
+          catch { ${conditionalStatements} }
+          setLoading(false);
         };
       };`,
     );

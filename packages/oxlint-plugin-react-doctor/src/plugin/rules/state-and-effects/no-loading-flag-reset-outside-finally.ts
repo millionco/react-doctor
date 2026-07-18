@@ -12,6 +12,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
@@ -19,6 +20,7 @@ import type { ResolvedCrossFileExport } from "../../utils/resolve-cross-file-exp
 import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { subtreeCanThrowSynchronously } from "../../utils/subtree-can-throw-synchronously.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -177,10 +179,12 @@ const isArrayBindingOfNeverRejectingPromises = (
 
 const getPromiseCombinatorMethodName = (
   callNode: EsTreeNodeOfType<"CallExpression">,
+  scopes?: ScopeAnalysis,
 ): string | null => {
   const callee = stripParenExpression(callNode.callee);
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
   if (!isNodeOfType(callee.object, "Identifier") || callee.object.name !== "Promise") return null;
+  if (scopes && !scopes.isGlobalReference(callee.object)) return null;
   return isNodeOfType(callee.property, "Identifier") ? callee.property.name : null;
 };
 const isNeverRejectingPromiseCombinatorCall = (
@@ -188,8 +192,39 @@ const isNeverRejectingPromiseCombinatorCall = (
   depth: number,
   scopes?: ScopeAnalysis,
 ): boolean => {
-  const methodName = getPromiseCombinatorMethodName(callNode);
-  if (methodName === "allSettled") return true;
+  const methodName = getPromiseCombinatorMethodName(callNode, scopes);
+  if (methodName === "allSettled") {
+    const argument = callNode.arguments[0] ? stripParenExpression(callNode.arguments[0]) : null;
+    const isDefinitelyNonIterableObjectLiteral =
+      isNodeOfType(argument, "ObjectExpression") &&
+      argument.properties.every((property) => {
+        if (!isNodeOfType(property, "Property")) return false;
+        if (!property.computed) return true;
+        const key = stripParenExpression(property.key);
+        if (isNodeOfType(key, "Literal")) return true;
+        if (!isNodeOfType(key, "MemberExpression")) return false;
+        const receiver = stripParenExpression(key.object);
+        if (
+          !isNodeOfType(receiver, "Identifier") ||
+          receiver.name !== "Symbol" ||
+          (scopes && !scopes.isGlobalReference(receiver))
+        ) {
+          return false;
+        }
+        return (
+          getStaticPropertyName(key) !== "iterator" ||
+          !isFunctionLike(stripParenExpression(property.value))
+        );
+      });
+    return !(
+      !argument ||
+      (isNodeOfType(argument, "Literal") &&
+        (argument.value === null ||
+          typeof argument.value === "number" ||
+          typeof argument.value === "boolean")) ||
+      isDefinitelyNonIterableObjectLiteral
+    );
+  }
   if (methodName !== "all") return false;
   const argument = callNode.arguments[0];
   if (!argument) return false;
@@ -249,7 +284,7 @@ const returnedExpressionCanReject = (
   if (isNodeOfType(returned, "NewExpression")) {
     const isPromiseConstruction =
       isNodeOfType(returned.callee, "Identifier") && returned.callee.name === "Promise";
-    return isPromiseConstruction && !isNonRejectingPromiseConstruction(returned);
+    return isPromiseConstruction && !isNonRejectingPromiseConstruction(returned, scopes);
   }
   return false;
 };
@@ -317,6 +352,7 @@ const isRejectionProofAsyncHelperBody = (
   depth: number,
   scopes?: ScopeAnalysis,
 ): boolean => {
+  if (scopes && subtreeCanThrowSynchronously(helper, helper, scopes)) return false;
   let isRejectionProof = true;
   walkOwnFunctionScope(helper, (child: EsTreeNode) => {
     if (!isRejectionProof) return false;
@@ -557,9 +593,9 @@ const isNeverRejectingExpression = (
   scopes?: ScopeAnalysis,
 ): boolean => {
   const inner = stripParenExpression(expression);
-  if (isNonRejectingPromiseConstruction(inner)) return true;
+  if (isNonRejectingPromiseConstruction(inner, scopes)) return true;
   if (!isNodeOfType(inner, "CallExpression")) return false;
-  if (isPromiseResolveCall(inner)) return true;
+  if (isPromiseResolveCall(inner, scopes)) return true;
   if (isThunkActionDispatchCall(inner)) return true;
   if (chainCarriesRejectionHandler(inner, scopes)) return true;
   if (isNeverRejectingPromiseCombinatorCall(inner, depth, scopes)) return true;
@@ -595,40 +631,214 @@ const isCancellationGuardTest = (test: EsTreeNode): boolean => {
   });
   return matches;
 };
-const catchHandlerEscapes = (handler: EsTreeNode): boolean => {
-  let didFindEscape = false;
-  walkAst(handler, (child: EsTreeNode) => {
-    if (didFindEscape) return false;
-    if (child !== handler && isFunctionLike(child)) return false;
-    if (isNodeOfType(child, "ThrowStatement") || isNodeOfType(child, "ReturnStatement")) {
-      let cursor: EsTreeNode | null | undefined = child.parent;
-      let isCancellationGuarded = false;
-      while (cursor && cursor !== handler) {
+
+interface CatchPathState {
+  isCleared: boolean;
+  isCancellationPath: boolean;
+}
+
+interface CatchPathAnalysis {
+  states: CatchPathState[];
+  hasUnsafeExit: boolean;
+}
+
+const dedupeCatchPathStates = (states: CatchPathState[]): CatchPathState[] => {
+  const statesByKey = new Map<string, CatchPathState>();
+  for (const state of states) {
+    statesByKey.set(`${Number(state.isCleared)}:${Number(state.isCancellationPath)}`, state);
+  }
+  return [...statesByKey.values()];
+};
+
+const catchHandlerCanBypassReset = (
+  handler: EsTreeNode,
+  functionNode: EsTreeNode,
+  setterName: string,
+  context: RuleContext,
+  doesContinuingPathReachReset: boolean,
+): boolean => {
+  const expressionUnconditionallyClearsFlag = (expression: EsTreeNode): boolean => {
+    const stripped = stripParenExpression(expression);
+    if (isNodeOfType(stripped, "CallExpression")) {
+      const setter = getSetterBooleanValue(stripped, context);
+      if (setter?.setterName === setterName && !setter.value) return true;
+      const helper = resolveSameFileHelperFunction(stripped, context.scopes);
+      if (!helper || !isFunctionLike(helper) || helper.async) return false;
+      let clearsUnconditionally = false;
+      walkOwnFunctionScope(helper, (child: EsTreeNode) => {
+        if (!isNodeOfType(child, "CallExpression")) return;
+        const helperSetter = getSetterBooleanValue(child, context);
         if (
-          isNodeOfType(cursor, "IfStatement") &&
-          isCancellationGuardTest(cursor.test as EsTreeNode)
+          helperSetter?.setterName === setterName &&
+          !helperSetter.value &&
+          isUnconditionallyExecutedWithinFunction(child, helper, context)
         ) {
-          isCancellationGuarded = true;
-          break;
+          clearsUnconditionally = true;
+          return false;
         }
-        cursor = cursor.parent ?? null;
-      }
-      if (!isCancellationGuarded) didFindEscape = true;
+      });
+      return clearsUnconditionally;
     }
-  });
-  return didFindEscape;
+    return false;
+  };
+
+  const analyzeExpression = (
+    expression: EsTreeNode,
+    states: CatchPathState[],
+  ): CatchPathAnalysis => {
+    const stripped = stripParenExpression(expression);
+    if (isNodeOfType(stripped, "ConditionalExpression")) {
+      const consequent = analyzeExpression(
+        stripped.consequent,
+        states.map((state) => ({ ...state })),
+      );
+      if (consequent.hasUnsafeExit) return consequent;
+      const alternate = analyzeExpression(
+        stripped.alternate,
+        states.map((state) => ({ ...state })),
+      );
+      return {
+        states: dedupeCatchPathStates([...consequent.states, ...alternate.states]),
+        hasUnsafeExit: alternate.hasUnsafeExit,
+      };
+    }
+    if (isNodeOfType(stripped, "SequenceExpression")) {
+      let sequenceStates = states;
+      for (const sequenceExpression of stripped.expressions) {
+        const analyzed = analyzeExpression(sequenceExpression, sequenceStates);
+        if (analyzed.hasUnsafeExit) return analyzed;
+        sequenceStates = analyzed.states;
+      }
+      return { states: sequenceStates, hasUnsafeExit: false };
+    }
+    if (isNodeOfType(stripped, "LogicalExpression")) {
+      const left = analyzeExpression(stripped.left, states);
+      if (left.hasUnsafeExit) return left;
+      const right = analyzeExpression(
+        stripped.right,
+        left.states.map((state) => ({ ...state })),
+      );
+      return {
+        states: dedupeCatchPathStates([...left.states, ...right.states]),
+        hasUnsafeExit: right.hasUnsafeExit,
+      };
+    }
+    if (
+      subtreeCanThrowSynchronously(stripped, functionNode, context.scopes) &&
+      states.some(
+        (state) => !state.isCleared && !(doesContinuingPathReachReset && state.isCancellationPath),
+      )
+    ) {
+      return { states: [], hasUnsafeExit: true };
+    }
+    if (!expressionUnconditionallyClearsFlag(stripped)) {
+      return { states, hasUnsafeExit: false };
+    }
+    return {
+      states: states.map((state) => ({ ...state, isCleared: true })),
+      hasUnsafeExit: false,
+    };
+  };
+
+  const analyzeStatements = (
+    statements: EsTreeNode[],
+    initialStates: CatchPathState[],
+  ): CatchPathAnalysis => {
+    let states = initialStates;
+    for (const statement of statements) {
+      if (states.length === 0) break;
+      if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
+        if (statement.argument) {
+          const argumentAnalysis = analyzeExpression(statement.argument, states);
+          if (argumentAnalysis.hasUnsafeExit) return argumentAnalysis;
+          states = argumentAnalysis.states;
+        }
+        const hasUnsafeExit = states.some(
+          (state) =>
+            !state.isCleared && !(doesContinuingPathReachReset && state.isCancellationPath),
+        );
+        if (hasUnsafeExit) return { states: [], hasUnsafeExit: true };
+        states = [];
+        continue;
+      }
+      if (isNodeOfType(statement, "BlockStatement")) {
+        const nested = analyzeStatements(statement.body as EsTreeNode[], states);
+        if (nested.hasUnsafeExit) return nested;
+        states = nested.states;
+        continue;
+      }
+      if (isNodeOfType(statement, "IfStatement")) {
+        const testAnalysis = analyzeExpression(statement.test, states);
+        if (testAnalysis.hasUnsafeExit) return testAnalysis;
+        states = testAnalysis.states;
+        const isCancellationPath = isCancellationGuardTest(statement.test as EsTreeNode);
+        const consequent = analyzeStatements(
+          isNodeOfType(statement.consequent, "BlockStatement")
+            ? (statement.consequent.body as EsTreeNode[])
+            : [statement.consequent as EsTreeNode],
+          states.map((state) => ({
+            ...state,
+            isCancellationPath: state.isCancellationPath || isCancellationPath,
+          })),
+        );
+        if (consequent.hasUnsafeExit) return consequent;
+        const alternate = statement.alternate
+          ? analyzeStatements(
+              isNodeOfType(statement.alternate, "BlockStatement")
+                ? (statement.alternate.body as EsTreeNode[])
+                : [statement.alternate as EsTreeNode],
+              states.map((state) => ({ ...state })),
+            )
+          : { states: states.map((state) => ({ ...state })), hasUnsafeExit: false };
+        if (alternate.hasUnsafeExit) return alternate;
+        states = dedupeCatchPathStates([...consequent.states, ...alternate.states]);
+        continue;
+      }
+      if (isNodeOfType(statement, "VariableDeclaration")) {
+        for (const declaration of statement.declarations) {
+          if (!declaration.init) continue;
+          const initializerAnalysis = analyzeExpression(declaration.init, states);
+          if (initializerAnalysis.hasUnsafeExit) return initializerAnalysis;
+          states = initializerAnalysis.states;
+        }
+        continue;
+      }
+      if (isNodeOfType(statement, "ExpressionStatement")) {
+        const analyzed = analyzeExpression(statement.expression as EsTreeNode, states);
+        if (analyzed.hasUnsafeExit) return analyzed;
+        states = analyzed.states;
+      }
+    }
+    return { states, hasUnsafeExit: false };
+  };
+
+  const body = isNodeOfType(handler, "CatchClause") ? handler.body : handler;
+  const statements = isNodeOfType(body, "BlockStatement")
+    ? (body.body as EsTreeNode[])
+    : [body as EsTreeNode];
+  const analysis = analyzeStatements(statements, [{ isCleared: false, isCancellationPath: false }]);
+  return (
+    analysis.hasUnsafeExit ||
+    (!doesContinuingPathReachReset && analysis.states.some((state) => !state.isCleared))
+  );
 };
 const isRejectionSwallowedBeforeReset = (
   awaitNode: EsTreeNode,
   functionNode: EsTreeNode,
   resetStart: number,
+  setterName: string,
+  context: RuleContext,
 ): boolean => {
   let child: EsTreeNode = awaitNode;
   let cursor: EsTreeNode | null | undefined = awaitNode.parent;
   while (cursor && cursor !== functionNode) {
     if (isNodeOfType(cursor, "TryStatement") && cursor.block === child && cursor.handler) {
       const tryEnd = getNodeEnd(cursor);
-      if (tryEnd !== null && tryEnd < resetStart && !catchHandlerEscapes(cursor.handler)) {
+      if (
+        tryEnd !== null &&
+        tryEnd < resetStart &&
+        !catchHandlerCanBypassReset(cursor.handler, functionNode, setterName, context, true)
+      ) {
         return true;
       }
     }
@@ -744,7 +954,11 @@ interface AwaitSite {
   start: number;
 }
 
-const hasAbruptCompletionBefore = (boundary: EsTreeNode, node: EsTreeNode): boolean => {
+const hasAbruptCompletionBefore = (
+  boundary: EsTreeNode,
+  node: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   const nodeStart = getNodeStart(node);
   if (nodeStart === null) return true;
   let hasAbruptCompletion = false;
@@ -757,6 +971,13 @@ const hasAbruptCompletionBefore = (boundary: EsTreeNode, node: EsTreeNode): bool
       hasAbruptCompletion = true;
       return false;
     }
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      subtreeCanThrowSynchronously(child, boundary, context.scopes)
+    ) {
+      hasAbruptCompletion = true;
+      return false;
+    }
   });
   return hasAbruptCompletion;
 };
@@ -764,6 +985,7 @@ const hasAbruptCompletionBefore = (boundary: EsTreeNode, node: EsTreeNode): bool
 const isUnconditionallyExecutedWithinFunction = (
   node: EsTreeNode,
   functionNode: EsTreeNode,
+  context: RuleContext,
 ): boolean => {
   let cursor: EsTreeNode | null | undefined = node.parent;
   while (cursor && cursor !== functionNode) {
@@ -782,12 +1004,13 @@ const isUnconditionallyExecutedWithinFunction = (
     }
     cursor = cursor.parent ?? null;
   }
-  return cursor === functionNode && !hasAbruptCompletionBefore(functionNode, node);
+  return cursor === functionNode && !hasAbruptCompletionBefore(functionNode, node, context);
 };
 
 const getExceptionalResetProtection = (
   callNode: EsTreeNode,
   functionNode: EsTreeNode,
+  context: RuleContext,
 ): Pick<SetterCall, "protectingTry" | "isUnconditional"> => {
   let child = callNode;
   let cursor: EsTreeNode | null | undefined = callNode.parent;
@@ -810,7 +1033,8 @@ const getExceptionalResetProtection = (
       const tryStatement = cursor.parent;
       return {
         protectingTry: isNodeOfType(tryStatement, "TryStatement") ? tryStatement : null,
-        isUnconditional: isUnconditional && !hasAbruptCompletionBefore(cursor.body, callNode),
+        isUnconditional:
+          isUnconditional && !hasAbruptCompletionBefore(cursor.body, callNode, context),
       };
     }
     if (isNodeOfType(cursor, "TryStatement") && cursor.finalizer === child) {
@@ -819,7 +1043,7 @@ const getExceptionalResetProtection = (
         isUnconditional:
           isUnconditional &&
           Boolean(cursor.finalizer) &&
-          !hasAbruptCompletionBefore(cursor.finalizer, callNode),
+          !hasAbruptCompletionBefore(cursor.finalizer, callNode, context),
       };
     }
     child = cursor;
@@ -900,7 +1124,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       if (!helperSetter || helperSetter.value) return;
       if (!LOADING_FLAG_SETTER_PATTERN.test(helperSetter.setterName)) return;
       const list = settersByName.get(helperSetter.setterName) ?? [];
-      const protection = getExceptionalResetProtection(callNode, functionNode);
+      const protection = getExceptionalResetProtection(callNode, functionNode, context);
       list.push({
         value: false,
         start,
@@ -908,7 +1132,8 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
         node: callNode,
         ...protection,
         isUnconditional:
-          protection.isUnconditional && isUnconditionallyExecutedWithinFunction(child, helper),
+          protection.isUnconditional &&
+          isUnconditionallyExecutedWithinFunction(child, helper, context),
       });
       settersByName.set(helperSetter.setterName, list);
     });
@@ -930,7 +1155,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
     const start = getNodeStart(node);
     if (start === null) return;
     const list = settersByName.get(setter.setterName) ?? [];
-    const protection = getExceptionalResetProtection(node, functionNode);
+    const protection = getExceptionalResetProtection(node, functionNode, context);
     list.push({
       value: setter.value,
       start,
@@ -948,7 +1173,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       .map((awaitSite) => awaitSite.node),
   );
 
-  for (const calls of settersByName.values()) {
+  for (const [setterName, calls] of settersByName) {
     const truthySets = calls.filter((call) => call.value);
     if (truthySets.length === 0) continue;
     const exceptionallyProtectedAwaits = collectExceptionallyProtectedAwaits(awaitSites, calls);
@@ -971,6 +1196,13 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
         call.protectingTry !== null,
     );
     for (const reset of conditionalExceptionalResets) {
+      const catchHandler = reset.protectingTry?.handler;
+      if (
+        catchHandler &&
+        !catchHandlerCanBypassReset(catchHandler, functionNode, setterName, context, false)
+      ) {
+        continue;
+      }
       const riskyAwait = riskyAwaitsWithTruthySet.find(
         (awaitSite) =>
           reset.protectingTry !== null &&
@@ -997,7 +1229,13 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
             areOnExclusiveBranches(awaitSite.node, reset.node, functionNode) ||
             !rejectingAwaitNodes.has(awaitSite.node) ||
             exceptionallyProtectedAwaits.has(awaitSite.node) ||
-            isRejectionSwallowedBeforeReset(awaitSite.node, functionNode, reset.start)
+            isRejectionSwallowedBeforeReset(
+              awaitSite.node,
+              functionNode,
+              reset.start,
+              setterName,
+              context,
+            )
           ) {
             continue;
           }

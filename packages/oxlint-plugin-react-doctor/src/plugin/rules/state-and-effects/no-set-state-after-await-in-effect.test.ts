@@ -1154,4 +1154,43 @@ describe("no-set-state-after-await-in-effect audit regressions", () => {
     expect(outerHelper.diagnostics).toHaveLength(0);
     expect(effectLocalHelper.diagnostics).toHaveLength(0);
   });
+
+  it("keeps ternary suspension and setter branches separate", () => {
+    const sources = [
+      `const C = ({ id, shouldLoad }) => { const [, setValue] = useState(); useEffect(() => { const run = async () => { shouldLoad ? await load(id) : setValue(id); }; run(); }, [id, shouldLoad]); };`,
+      `const C = ({ id, shouldLoad }) => { const [, setValue] = useState(); useEffect(() => { const run = async () => (shouldLoad ? await load(id) : setValue(id)); void run(); }, [id, shouldLoad]); };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noSetStateAfterAwaitInEffect, source).diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("does not let shadowed cleanup bindings prove cancellation", () => {
+    const shadowedFlag = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ id }) => { const [, setValue] = useState(); useEffect(() => { let cancelled = false; const run = async () => { await load(id); if (cancelled) return; setValue(id); }; run(); return (cancelled) => { cancelled = true; }; }, [id]); };`,
+    );
+    const shadowedController = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ id }) => { const [, setValue] = useState(); useEffect(() => { const controller = new AbortController(); const run = async () => { await load(id, { signal: controller.signal }); setValue(id); }; run(); return () => { const controller = new AbortController(); controller.abort(); }; }, [id]); };`,
+    );
+    expect(shadowedFlag.diagnostics).toHaveLength(1);
+    expect(shadowedController.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves invoked helpers by binding instead of name", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ id, enabled }) => { const [, setValue] = useState(); useEffect(() => { const load = async () => { await fetch("/value"); setValue(id); }; if (enabled) { const load = () => {}; load(); } }, [id, enabled]); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps contradictory try and catch guards on separate paths", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ id, shouldLoad }) => { const [, setValue] = useState(); useEffect(() => { const run = async () => { try { if (shouldLoad) await load(id); else throw new Error("local"); } catch { if (!shouldLoad) setValue(id); } }; run(); }, [id, shouldLoad]); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

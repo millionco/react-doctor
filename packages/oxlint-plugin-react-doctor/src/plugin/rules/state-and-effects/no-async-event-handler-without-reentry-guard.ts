@@ -1,4 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
+import { areNodesOnContradictoryGuardBranches } from "../../utils/are-nodes-on-contradictory-guard-branches.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -16,7 +18,14 @@ const MESSAGE =
   "This async handler awaits a mutating request and only flips state after the await, so a fast double-click or double Enter fires the request twice. Add a leading `if (busy) return` guard (or set a flag before the await and disable the control) to close the re-entry window.";
 
 const REENTRY_GUARDED_EVENT_HANDLER_NAMES = new Set(["onClick", "onSubmit", "onPress"]);
-const MUTATING_REQUEST_METHOD_NAMES = new Set(["post", "put", "patch", "delete", "mutate"]);
+const MUTATING_REQUEST_METHOD_NAMES = new Set([
+  "post",
+  "put",
+  "patch",
+  "delete",
+  "mutate",
+  "mutateAsync",
+]);
 const MUTATING_FETCH_HTTP_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const STATE_SETTER_NAME_PATTERN = /^set[A-Z]/;
 const LOCAL_STORAGE_RECEIVER_NAME_PATTERN = /^(?:db|idb|database|caches?|store)$/i;
@@ -378,10 +387,23 @@ const analyzeHandlerStatements = (
         }
         continue;
       }
-      if (states.some((state) => state.mutatingAwait)) {
+      if (
+        states.some(
+          (state) =>
+            state.mutatingAwait &&
+            !areNodesOnExclusiveConditionalBranches(state.mutatingAwait, event, statement) &&
+            !areNodesOnContradictoryGuardBranches(state.mutatingAwait, event, context.scopes),
+        )
+      ) {
         return {
           states,
-          unsafeAwait: states.find((state) => state.mutatingAwait)?.mutatingAwait ?? null,
+          unsafeAwait:
+            states.find(
+              (state) =>
+                state.mutatingAwait &&
+                !areNodesOnExclusiveConditionalBranches(state.mutatingAwait, event, statement) &&
+                !areNodesOnContradictoryGuardBranches(state.mutatingAwait, event, context.scopes),
+            )?.mutatingAwait ?? null,
         };
       }
     }

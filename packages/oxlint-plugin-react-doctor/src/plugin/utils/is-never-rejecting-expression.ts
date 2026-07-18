@@ -7,6 +7,7 @@ import { isInsideTryStatement } from "./is-inside-try-statement.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+import { subtreeCanThrowSynchronously } from "./subtree-can-throw-synchronously.js";
 import { walkAst } from "./walk-ast.js";
 import { walkOwnFunctionScope } from "./walk-own-function-scope.js";
 
@@ -63,10 +64,14 @@ const isDefinitelyNonThenableValue = (node: EsTreeNode): boolean => {
   return false;
 };
 
-export const isNonRejectingPromiseConstruction = (root: EsTreeNode): boolean => {
+export const isNonRejectingPromiseConstruction = (
+  root: EsTreeNode,
+  scopes?: ScopeAnalysis,
+): boolean => {
   const inner = stripParenExpression(root);
   if (!isNodeOfType(inner, "NewExpression")) return false;
   if (!isNodeOfType(inner.callee, "Identifier") || inner.callee.name !== "Promise") return false;
+  if (scopes && !scopes.isGlobalReference(inner.callee)) return false;
   const executor = inner.arguments?.[0]
     ? stripParenExpression(inner.arguments[0] as EsTreeNode)
     : null;
@@ -80,7 +85,9 @@ export const isNonRejectingPromiseConstruction = (root: EsTreeNode): boolean => 
   if ((executor.params?.length ?? 0) >= 2) return false;
   const resolveParameter = executor.params[0];
   const resolveName = isNodeOfType(resolveParameter, "Identifier") ? resolveParameter.name : null;
-  let canReject = subtreeContainsThrow(executor, false);
+  let canReject = scopes
+    ? subtreeCanThrowSynchronously(executor, executor, scopes)
+    : subtreeContainsThrow(executor, false);
   if (!canReject && resolveName) {
     walkAst(executor, (child: EsTreeNode) => {
       if (canReject) return false;
@@ -101,12 +108,13 @@ export const isNonRejectingPromiseConstruction = (root: EsTreeNode): boolean => 
   return !canReject;
 };
 
-export const isPromiseResolveCall = (node: EsTreeNode): boolean => {
+export const isPromiseResolveCall = (node: EsTreeNode, scopes?: ScopeAnalysis): boolean => {
   const inner = stripParenExpression(node);
   if (!isNodeOfType(inner, "CallExpression")) return false;
   if (!isNodeOfType(inner.callee, "MemberExpression") || inner.callee.computed) return false;
   if (!isNodeOfType(inner.callee.object, "Identifier")) return false;
   if (inner.callee.object.name !== "Promise") return false;
+  if (scopes && !scopes.isGlobalReference(inner.callee.object)) return false;
   if (!isNodeOfType(inner.callee.property, "Identifier")) return false;
   if (inner.callee.property.name !== "resolve") return false;
   const argument = inner.arguments[0];
@@ -124,8 +132,8 @@ export const chainCarriesRejectionHandler = (node: EsTreeNode, scopes?: ScopeAna
     if (!resolvedCandidate || !isFunctionLike(resolvedCandidate)) return false;
     const resultCanReject = (result: EsTreeNode): boolean =>
       !isDefinitelyNonThenableValue(result) &&
-      !isPromiseResolveCall(result) &&
-      !isNonRejectingPromiseConstruction(result) &&
+      !isPromiseResolveCall(result, scopes) &&
+      !isNonRejectingPromiseConstruction(result, scopes) &&
       !chainCarriesRejectionHandler(result, scopes);
     let canReject = false;
     walkOwnFunctionScope(resolvedCandidate, (child: EsTreeNode) => {
@@ -222,8 +230,8 @@ export const isNeverRejectingHelperCall = (root: EsTreeNode, scopes?: ScopeAnaly
         if (
           !isNodeOfType(returned, "AwaitExpression") &&
           !isDefinitelyNonThenableValue(returned) &&
-          !isPromiseResolveCall(returned) &&
-          !isNonRejectingPromiseConstruction(returned) &&
+          !isPromiseResolveCall(returned, scopes) &&
+          !isNonRejectingPromiseConstruction(returned, scopes) &&
           !chainCarriesRejectionHandler(returned, scopes)
         ) {
           isRejectionProof = false;
@@ -251,8 +259,8 @@ export const isNeverRejectingHelperCall = (root: EsTreeNode, scopes?: ScopeAnaly
     returnedExpressions.every(
       (returned) =>
         chainCarriesRejectionHandler(returned, scopes) ||
-        isPromiseResolveCall(returned) ||
-        isNonRejectingPromiseConstruction(returned),
+        isPromiseResolveCall(returned, scopes) ||
+        isNonRejectingPromiseConstruction(returned, scopes),
     )
   );
 };

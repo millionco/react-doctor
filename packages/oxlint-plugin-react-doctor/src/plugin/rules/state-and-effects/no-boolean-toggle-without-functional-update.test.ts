@@ -367,6 +367,42 @@ describe("no-boolean-toggle-without-functional-update", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts latest-ref guards after unconditional state mirror writes", () => {
+    const booleanInitializer = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);const ref=useRef(false);ref.current=open;setTimeout(()=>{if(ref.current===open)setOpen(!open)},1)}",
+    );
+    const numericInitializer = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);const ref=useRef(0);ref.current=open;setTimeout(()=>{if(ref.current===open)setOpen(!open)},1)}",
+    );
+    expect(booleanInitializer.diagnostics).toHaveLength(0);
+    expect(numericInitializer.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects latest-ref guards without a stable unconditional mirror write", () => {
+    const conditionalWrite = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=({ready})=>{const[open,setOpen]=useState(false);const ref=useRef(false);if(ready)ref.current=open;setTimeout(()=>{if(ref.current===open)setOpen(!open)},1)}",
+    );
+    const writeAfterUse = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);const ref=useRef(false);setTimeout(()=>{if(ref.current===open)setOpen(!open);ref.current=open},1)}",
+    );
+    const wrongState = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);const[ready]=useState(false);const ref=useRef(false);ref.current=ready;setTimeout(()=>{if(ref.current===open)setOpen(!open)},1)}",
+    );
+    const reassignedRef = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);let ref=useRef(false);ref.current=open;ref={current:open};setTimeout(()=>{if(ref.current===open)setOpen(!open)},1)}",
+    );
+    expect(conditionalWrite.diagnostics).toHaveLength(1);
+    expect(writeAfterUse.diagnostics).toHaveLength(1);
+    expect(wrongState.diagnostics).toHaveLength(1);
+    expect(reassignedRef.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a toggle in a deferred callback of a mount-only effect", () => {
     const result = runRule(
       noBooleanToggleWithoutFunctionalUpdate,

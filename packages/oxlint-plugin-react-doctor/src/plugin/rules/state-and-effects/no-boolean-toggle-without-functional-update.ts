@@ -602,18 +602,14 @@ const refMemberIsFreshStateMirror = (
   const declarator = refSymbol?.declarationNode;
   if (
     !refSymbol ||
+    refSymbol.kind !== "const" ||
     !isNodeOfType(declarator, "VariableDeclarator") ||
     !isNodeOfType(declarator.init, "CallExpression") ||
     !isReactApiCall(declarator.init, "useRef", context.scopes, {
       allowGlobalReactNamespace: true,
       allowUnboundBareCalls: true,
       resolveNamedAliases: true,
-    }) ||
-    !isNodeOfType(stripParenExpression(declarator.init.arguments?.[0]), "Identifier") ||
-    resolveConstIdentifierRootSymbol(
-      stripParenExpression(declarator.init.arguments?.[0]),
-      context.scopes,
-    )?.id !== stateSymbolId
+    })
   ) {
     return false;
   }

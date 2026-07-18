@@ -470,6 +470,42 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("accepts try-block copies when catch paths cannot continue stale", () => {
+    const catchReturns = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=()=>{const[,setRows]=useState([]);setRows(rows=>{try{rows=[...rows]}catch{return []}rows.push(1);return rows})}",
+    );
+    const catchCopies = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=()=>{const[,setRows]=useState([]);setRows(rows=>{try{rows=[...rows]}catch{rows=[]}rows.push(1);return rows})}",
+    );
+    const nonThrowingCopy = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=()=>{const[,setRows]=useState([]);setRows(rows=>{try{rows=[]}catch{}rows.push(1);return rows})}",
+    );
+    expect(catchReturns.diagnostics).toHaveLength(0);
+    expect(catchCopies.diagnostics).toHaveLength(0);
+    expect(nonThrowingCopy.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects try-block copies when a catch path can continue stale", () => {
+    const spreadCanThrow = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=()=>{const[,setRows]=useState([]);setRows(rows=>{try{rows=[...rows]}catch{}rows.push(1);return rows})}",
+    );
+    const methodCanThrow = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=()=>{const[,setRows]=useState([]);setRows(rows=>{try{rows=rows.slice()}catch{}rows.push(1);return rows})}",
+    );
+    const conditionalCatchCopy = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=({recover})=>{const[,setRows]=useState([]);setRows(rows=>{try{rows=[...rows]}catch{if(recover)rows=[]}rows.push(1);return rows})}",
+    );
+    expect(spreadCanThrow.diagnostics).toHaveLength(1);
+    expect(methodCanThrow.diagnostics).toHaveLength(1);
+    expect(conditionalCatchCopy.diagnostics).toHaveLength(1);
+  });
+
   it("does not infer mutation methods on opaque immutable state", () => {
     const result = runRule(
       noMutateThenSetOrReturnSameReference,

@@ -454,11 +454,184 @@ const sameReferenceResultSymbol = (
     : null;
 };
 
+const assignmentTargetsSymbol = (
+  assignment: EsTreeNodeOfType<"AssignmentExpression">,
+  expectedSymbol: SymbolDescriptor,
+  context: RuleContext,
+): boolean => {
+  const left = stripParenExpression(assignment.left);
+  return Boolean(
+    assignment.operator === "=" &&
+    isNodeOfType(left, "Identifier") &&
+    resolveConstIdentifierRootSymbol(left, context.scopes)?.id === expectedSymbol.id,
+  );
+};
+
+const statementMayAssignSymbol = (
+  statement: EsTreeNode,
+  expectedSymbol: SymbolDescriptor,
+  context: RuleContext,
+): boolean => {
+  let mayAssignSymbol = false;
+  walkAst(statement, (child: EsTreeNode) => {
+    if (mayAssignSymbol || (child !== statement && isFunctionLike(child))) return false;
+    if (
+      isNodeOfType(child, "AssignmentExpression") &&
+      assignmentTargetsSymbol(child, expectedSymbol, context)
+    ) {
+      mayAssignSymbol = true;
+      return false;
+    }
+  });
+  return mayAssignSymbol;
+};
+
+const continuingCatchFreshness = (
+  statement: EsTreeNode,
+  incomingFreshness: ReadonlySet<boolean>,
+  expectedSymbol: SymbolDescriptor,
+  collectionKind: string | null,
+  context: RuleContext,
+): ReadonlySet<boolean> => {
+  if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
+    return new Set();
+  }
+  if (isNodeOfType(statement, "BlockStatement")) {
+    let continuingFreshness = incomingFreshness;
+    for (const childStatement of statement.body) {
+      continuingFreshness = continuingCatchFreshness(
+        childStatement,
+        continuingFreshness,
+        expectedSymbol,
+        collectionKind,
+        context,
+      );
+      if (continuingFreshness.size === 0) break;
+    }
+    return continuingFreshness;
+  }
+  if (isNodeOfType(statement, "IfStatement")) {
+    const consequentFreshness = continuingCatchFreshness(
+      statement.consequent,
+      incomingFreshness,
+      expectedSymbol,
+      collectionKind,
+      context,
+    );
+    const alternateFreshness = statement.alternate
+      ? continuingCatchFreshness(
+          statement.alternate,
+          incomingFreshness,
+          expectedSymbol,
+          collectionKind,
+          context,
+        )
+      : incomingFreshness;
+    return new Set([...consequentFreshness, ...alternateFreshness]);
+  }
+  if (isNodeOfType(statement, "ExpressionStatement")) {
+    const expression = stripParenExpression(statement.expression);
+    if (
+      isNodeOfType(expression, "AssignmentExpression") &&
+      assignmentTargetsSymbol(expression, expectedSymbol, context)
+    ) {
+      return new Set([
+        expressionIsDefinitelyFreshReference(
+          expression.right,
+          expectedSymbol,
+          collectionKind,
+          context,
+        ),
+      ]);
+    }
+  }
+  return statementMayAssignSymbol(statement, expectedSymbol, context)
+    ? new Set([false])
+    : incomingFreshness;
+};
+
+const catchPreservesFreshReference = (
+  handler: EsTreeNodeOfType<"CatchClause">,
+  expectedSymbol: SymbolDescriptor,
+  collectionKind: string | null,
+  context: RuleContext,
+): boolean => {
+  const continuingFreshness = continuingCatchFreshness(
+    handler.body,
+    new Set([false]),
+    expectedSymbol,
+    collectionKind,
+    context,
+  );
+  return [...continuingFreshness].every(Boolean);
+};
+
+const expressionIsDefinitelyNonThrowingFreshReference = (expression: EsTreeNode): boolean => {
+  const value = stripParenExpression(expression);
+  if (isNodeOfType(value, "ArrayExpression")) {
+    return value.elements.every(
+      (element) =>
+        element === null ||
+        (!isNodeOfType(element, "SpreadElement") &&
+          isNodeOfType(stripParenExpression(element), "Literal")),
+    );
+  }
+  return isNodeOfType(value, "ObjectExpression") && value.properties.length === 0;
+};
+
+const tryRegionsPreserveReassignment = (
+  reassignment: EsTreeNodeOfType<"AssignmentExpression">,
+  targetNode: EsTreeNode,
+  functionNode: EsTreeNode,
+  expectedSymbol: SymbolDescriptor,
+  collectionKind: string | null,
+  context: RuleContext,
+): boolean => {
+  let ancestor: EsTreeNode | null | undefined = reassignment.parent;
+  while (ancestor && ancestor !== functionNode) {
+    if (!isNodeOfType(ancestor, "TryStatement")) {
+      ancestor = ancestor.parent;
+      continue;
+    }
+    const sharedRegion = [ancestor.block, ancestor.handler, ancestor.finalizer].some(
+      (region) =>
+        region !== null &&
+        isAstDescendant(reassignment, region) &&
+        isAstDescendant(targetNode, region),
+    );
+    if (sharedRegion) {
+      ancestor = ancestor.parent;
+      continue;
+    }
+    if (
+      !isAstDescendant(reassignment, ancestor.block) ||
+      isAstDescendant(targetNode, ancestor) ||
+      ancestor.finalizer
+    ) {
+      return false;
+    }
+    const isOnlyTryStatement =
+      ancestor.block.body.length === 1 &&
+      isNodeOfType(ancestor.block.body[0], "ExpressionStatement") &&
+      stripParenExpression(ancestor.block.body[0].expression) === reassignment;
+    if (
+      ancestor.handler &&
+      !catchPreservesFreshReference(ancestor.handler, expectedSymbol, collectionKind, context) &&
+      !(isOnlyTryStatement && expressionIsDefinitelyNonThrowingFreshReference(reassignment.right))
+    ) {
+      return false;
+    }
+    ancestor = ancestor.parent;
+  }
+  return true;
+};
+
 const lastUnconditionalReassignmentBefore = (
   functionNode: EsTreeNode,
   expectedSymbol: SymbolDescriptor,
   targetNode: EsTreeNode,
   functionCfg: FunctionCfg,
+  collectionKind: string | null,
   context: RuleContext,
   lowerBoundNode: EsTreeNode | null = null,
 ): EsTreeNodeOfType<"AssignmentExpression"> | null => {
@@ -474,17 +647,6 @@ const lastUnconditionalReassignmentBefore = (
       (() => {
         let ancestor: EsTreeNode | null | undefined = child.parent;
         while (ancestor && ancestor !== functionNode) {
-          if (isNodeOfType(ancestor, "TryStatement")) {
-            const sharedRegion = [ancestor.block, ancestor.handler, ancestor.finalizer].some(
-              (region) =>
-                region !== null &&
-                isAstDescendant(child, region) &&
-                isAstDescendant(targetNode, region),
-            );
-            if (!sharedRegion) return true;
-            ancestor = ancestor.parent;
-            continue;
-          }
           if (
             isNodeOfType(ancestor, "IfStatement") ||
             isNodeOfType(ancestor, "ConditionalExpression") ||
@@ -500,7 +662,14 @@ const lastUnconditionalReassignmentBefore = (
           }
           ancestor = ancestor.parent;
         }
-        return false;
+        return !tryRegionsPreserveReassignment(
+          child,
+          targetNode,
+          functionNode,
+          expectedSymbol,
+          collectionKind,
+          context,
+        );
       })() ||
       (lowerBoundNode !== null &&
         !nodePrecedesOnReachablePath(lowerBoundNode, child, functionCfg, context)) ||
@@ -542,6 +711,7 @@ const hasFreshReassignmentBefore = (
     expectedSymbol,
     targetNode,
     functionCfg,
+    collectionKind,
     context,
   );
   return Boolean(
@@ -571,6 +741,7 @@ const hasFreshReassignmentBetween = (
     expectedSymbol,
     targetNode,
     functionCfg,
+    collectionKind,
     context,
     sourceNode,
   );

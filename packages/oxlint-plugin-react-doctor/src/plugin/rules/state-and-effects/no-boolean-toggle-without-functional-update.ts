@@ -3,6 +3,7 @@ import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cl
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findContainingBlock } from "../../utils/find-containing-block.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -16,6 +17,7 @@ import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import type { ReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { statementTerminates } from "../../utils/statement-terminates.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
@@ -582,7 +584,6 @@ const hasPromiseCommandNegation = (
 
 const refMemberIsFreshStateMirror = (
   refMember: EsTreeNodeOfType<"MemberExpression">,
-  node: EsTreeNode,
   stateSymbolId: number,
   context: RuleContext,
 ): boolean => {
@@ -634,24 +635,6 @@ const refMemberIsFreshStateMirror = (
   );
 };
 
-const containingBlock = (node: EsTreeNode): EsTreeNodeOfType<"BlockStatement"> | null => {
-  let current: EsTreeNode | null | undefined = node.parent;
-  while (current) {
-    if (isNodeOfType(current, "BlockStatement")) return current;
-    current = current.parent;
-  }
-  return null;
-};
-
-const statementTerminates = (statement: EsTreeNode): boolean => {
-  if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
-    return true;
-  }
-  if (!isNodeOfType(statement, "BlockStatement")) return false;
-  const lastStatement = statement.body.at(-1);
-  return Boolean(lastStatement && statementTerminates(lastStatement));
-};
-
 const hasLatestRefEqualityGuard = (
   node: EsTreeNode,
   stateSymbolId: number,
@@ -689,13 +672,13 @@ const hasLatestRefEqualityGuard = (
             isNodeOfType(stripParenExpression(operand.object), "Identifier"),
         );
         if (stateOperand && refOperand && isNodeOfType(refOperand, "MemberExpression")) {
-          if (refMemberIsFreshStateMirror(refOperand, node, stateSymbolId, context)) return true;
+          if (refMemberIsFreshStateMirror(refOperand, stateSymbolId, context)) return true;
         }
       }
     }
     current = current.parent;
   }
-  const block = containingBlock(node);
+  const block = findContainingBlock(node);
   if (!block) return false;
   let containingStatement: EsTreeNode = node;
   while (containingStatement.parent && containingStatement.parent !== block) {
@@ -734,7 +717,7 @@ const hasLatestRefEqualityGuard = (
       stateOperand &&
       refOperand &&
       isNodeOfType(refOperand, "MemberExpression") &&
-      refMemberIsFreshStateMirror(refOperand, node, stateSymbolId, context)
+      refMemberIsFreshStateMirror(refOperand, stateSymbolId, context)
     ) {
       return true;
     }

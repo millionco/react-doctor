@@ -3,6 +3,7 @@ import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-ana
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findContainingBlock } from "../../utils/find-containing-block.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
@@ -12,6 +13,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierRootSymbol } from "../../utils/resolve-const-identifier-root-symbol.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { statementTerminates } from "../../utils/statement-terminates.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const MESSAGE =
@@ -394,15 +396,6 @@ const referenceFeedsComputation = (reference: EsTreeNode, context: RuleContext):
   return false;
 };
 
-const containingBlock = (node: EsTreeNode): EsTreeNode | null => {
-  let current: EsTreeNode | null | undefined = node.parent;
-  while (current) {
-    if (isNodeOfType(current, "BlockStatement")) return current;
-    current = current.parent;
-  }
-  return null;
-};
-
 const expressionMatchesMember = (
   expression: EsTreeNode,
   symbol: SymbolDescriptor,
@@ -467,15 +460,6 @@ const branchGuaranteesMemberDefined = (
     expressionMatchesMember(test.argument, symbol, keyName, context) &&
     !isTruthyBranch,
   );
-};
-
-const statementTerminates = (statement: EsTreeNode): boolean => {
-  if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
-    return true;
-  }
-  if (!isNodeOfType(statement, "BlockStatement")) return false;
-  const lastStatement = statement.body.at(-1);
-  return Boolean(lastStatement && statementTerminates(lastStatement));
 };
 
 const statementRepairsMember = (
@@ -546,7 +530,7 @@ const memberUseIsGuarded = (
     }
     current = parent;
   }
-  const block = containingBlock(member);
+  const block = findContainingBlock(member);
   if (!block || !isNodeOfType(block, "BlockStatement")) return false;
   let containingStatement: EsTreeNode = member;
   while (containingStatement.parent && containingStatement.parent !== block) {
@@ -583,7 +567,7 @@ const getMemberPriorWrite = (
   repairStartsBySymbolAndBlock: Map<number, WeakMap<EsTreeNode, Map<string, RepairWrite[]>>>,
 ): RepairWrite | null => {
   const keyName = getStaticPropertyName(member);
-  const useBlock = containingBlock(member);
+  const useBlock = findContainingBlock(member);
   if (!keyName || !useBlock) return null;
   let repairStartsByBlock = repairStartsBySymbolAndBlock.get(symbol.id);
   if (!repairStartsByBlock) {
@@ -612,7 +596,7 @@ const getMemberPriorWrite = (
       }
       const isSafe = expressionIsDefinitelyNonUndefined(assignment.right, context);
       if (isSafe && !context.cfg.isUnconditionalFromEntry(assignment)) continue;
-      const repairBlock = containingBlock(assignment);
+      const repairBlock = findContainingBlock(assignment);
       if (!repairBlock) continue;
       const repairStartsByKey = repairStartsByBlock.get(repairBlock) ?? new Map();
       const repairWrites = repairStartsByKey.get(repairKeyName) ?? [];

@@ -421,6 +421,33 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports direct createObjectURL cache stores without replacement cleanup", () => {
+    const unsafeResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const MapConstructor = globalThis.Map;
+       const previewCache = new MapConstructor();
+       const cachePreview = (blob, id) => {
+         previewCache.set(id, URL.createObjectURL(blob));
+       };`,
+    );
+    expect(unsafeResult.diagnostics).toHaveLength(1);
+
+    const safeResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       previewCache.set("initial", URL.createObjectURL(initialBlob));
+       const cachePreview = (blob, id) => {
+         const previousUrl = previewCache.get(id);
+         if (previousUrl) URL.revokeObjectURL(previousUrl);
+         previewCache.set(id, URL.createObjectURL(blob));
+       };
+       const cacheUniquePreview = (blob) => {
+         previewCache.set(URL.createObjectURL(blob), metadata);
+       };`,
+    );
+    expect(safeResult.diagnostics).toHaveLength(0);
+  });
+
   it("reports guarded helper results stored without replacement cleanup", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
@@ -1003,7 +1030,7 @@ describe("no-create-object-url-without-revoke", () => {
   });
 
   it("does not accept a cache sweep that runs before the retained URL is stored", () => {
-    const result = runRule(
+    const forEachResult = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const previewCache = new Map();
        const make = (blob) => URL.createObjectURL(blob);
@@ -1013,7 +1040,35 @@ describe("no-create-object-url-without-revoke", () => {
          previewCache.clear();
        };`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(forEachResult.diagnostics).toHaveLength(1);
+
+    const forOfResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const use = (blob, id) => {
+         const previousUrl = previewCache.get(id);
+         if (previousUrl) URL.revokeObjectURL(previousUrl);
+         for (const url of previewCache.values()) URL.revokeObjectURL(url);
+         previewCache.set(id, make(blob));
+         previewCache.clear();
+       };`,
+    );
+    expect(forOfResult.diagnostics).toHaveLength(1);
+
+    const reorderedForOfResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const use = (blob, id) => {
+         const previousUrl = previewCache.get(id);
+         if (previousUrl) URL.revokeObjectURL(previousUrl);
+         previewCache.set(id, make(blob));
+         for (const url of previewCache.values()) URL.revokeObjectURL(url);
+         previewCache.clear();
+       };`,
+    );
+    expect(reorderedForOfResult.diagnostics).toHaveLength(0);
   });
 
   it("matches cache sweeps to the retained Map slot", () => {

@@ -1209,6 +1209,7 @@ const cacheClearIsSafe = (
   if (hasForEachProtocol) return true;
   return index.forOfStatements.some((loop) => {
     if (
+      loop.range[0] <= store.range[1] ||
       loop.range[0] >= clearCall.range[0] ||
       context.cfg.enclosingFunction(loop) !== executionBoundary ||
       !context.cfg.isUnconditionalFromEntry(loop) ||
@@ -1404,6 +1405,29 @@ const moduleDisposesEveryReturnedResult = (
     }
   }
   return didFindCall && !didFindUndisposedCall;
+};
+
+const directCacheStoreHasSafeOwnership = (
+  createCall: EsTreeNode,
+  index: ProgramDisposalIndex,
+  context: RuleContext,
+): boolean => {
+  const storedExpression = analyzeContainingExpression(createCall).expressionRoot;
+  const store = storedExpression.parent;
+  if (
+    !store ||
+    !isNodeOfType(store, "CallExpression") ||
+    !isCacheStoreOfExpression(store, storedExpression, context.scopes)
+  ) {
+    return false;
+  }
+  const callee = stripParenExpression(store.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const cacheSymbolId = getModuleScopeCacheSymbolId(callee.object, context.scopes);
+  return (
+    cacheSymbolId !== null &&
+    cacheStoreHasSafeOwnership(store, storedExpression, cacheSymbolId, index, context)
+  );
 };
 
 const isStateSetterCallee = (
@@ -1625,6 +1649,7 @@ const escapeIsLeaky = (callNode: EsTreeNode, context: RuleContext): boolean => {
   if (isNodeOfType(parent, "CallExpression")) {
     if (isStateSetterCallee(parent.callee, context.scopes)) return true;
     if (isUrlSetAttributeCall(parent, topNode, context.scopes)) return true;
+    if (isCacheStoreOfExpression(parent, topNode, context.scopes)) return true;
   }
 
   return false;
@@ -1657,6 +1682,7 @@ export const noCreateObjectUrlWithoutRevoke = defineRule({
         if (boundCreationIsDisposed(node, context)) return;
         if (programRoot) {
           programDisposalIndex ??= buildProgramDisposalIndex(programRoot, context);
+          if (directCacheStoreHasSafeOwnership(node, programDisposalIndex, context)) return;
           if (moduleDisposesEveryReturnedResult(node, programDisposalIndex, context)) return;
         }
         context.report({ node, message: MESSAGE });

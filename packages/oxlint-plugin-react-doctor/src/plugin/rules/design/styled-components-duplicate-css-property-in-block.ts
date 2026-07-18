@@ -351,13 +351,35 @@ const isObviouslyStatefulCall = (
   scopes: ScopeAnalysis,
 ): boolean => {
   const callee = stripParenExpression(callExpression.callee);
-  if (!isNodeOfType(callee, "Identifier")) return false;
-  const symbol = resolveConstIdentifierAlias(callee, scopes);
-  const initializer = symbol?.initializer ? stripParenExpression(symbol.initializer) : null;
+  const rootIdentifier = getRootIdentifier(callee);
+  if (!rootIdentifier) return false;
+  const symbol = resolveConstIdentifierAlias(rootIdentifier, scopes);
+  const symbolInitializer = symbol?.initializer ? stripParenExpression(symbol.initializer) : null;
+  let initializer = symbolInitializer;
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(symbolInitializer, "ObjectExpression")
+  ) {
+    const propertyName = getStaticPropertyKeyName(callee, {
+      allowComputedString: true,
+      stringifyNonStringLiterals: true,
+    });
+    const property = symbolInitializer.properties.find(
+      (candidate) =>
+        propertyName !== null &&
+        isNodeOfType(candidate, "Property") &&
+        getStaticPropertyKeyName(candidate, {
+          allowComputedString: true,
+          stringifyNonStringLiterals: true,
+        }) === propertyName,
+    );
+    initializer = property && isNodeOfType(property, "Property") ? property.value : null;
+  }
   if (
     !initializer ||
     (!isNodeOfType(initializer, "ArrowFunctionExpression") &&
-      !isNodeOfType(initializer, "FunctionExpression"))
+      !isNodeOfType(initializer, "FunctionExpression") &&
+      !isNodeOfType(initializer, "FunctionDeclaration"))
   ) {
     return false;
   }

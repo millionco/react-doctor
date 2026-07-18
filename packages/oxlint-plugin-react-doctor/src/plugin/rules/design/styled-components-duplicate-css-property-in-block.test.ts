@@ -165,6 +165,16 @@ describe("styled-components-duplicate-css-property-in-block", () => {
       'let flip = false; const next = (value) => (flip = !flip) && value; const Modal = styled.div`height: ${(properties) => next(properties.active) ? "100vh" : "auto"}; height: ${(state) => next(state.active) ? "100dvh" : "auto"};`;',
     );
     expect(parameterResult.diagnostics).toHaveLength(1);
+
+    const declarationResult = runStyledRule(
+      'let flip = false; function next(value) { flip = !flip; return flip && value; } const Modal = styled.div`height: ${(properties) => next(properties.active) ? "100vh" : "auto"}; height: ${(state) => next(state.active) ? "100dvh" : "auto"};`;',
+    );
+    expect(declarationResult.diagnostics).toHaveLength(1);
+
+    const methodResult = runStyledRule(
+      'let flip = false; const helper = { next(value) { flip = !flip; return flip && value; } }; const Modal = styled.div`height: ${(properties) => helper.next(properties.active) ? "100vh" : "auto"}; height: ${(state) => helper.next(state.active) ? "100dvh" : "auto"};`;',
+    );
+    expect(methodResult.diagnostics).toHaveLength(1);
   });
 
   it("does not flag equivalent static property keys that match one parameter name", () => {

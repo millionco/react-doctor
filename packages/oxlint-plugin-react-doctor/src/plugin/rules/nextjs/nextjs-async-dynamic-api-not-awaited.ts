@@ -4,6 +4,7 @@ import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { executesDuringRender } from "../../utils/executes-during-render.js";
 import {
   getImportedNameFromModule,
   isNamespaceImportFromModule,
@@ -38,8 +39,10 @@ const OBJECT_ENUMERATION_METHOD_NAMES: ReadonlySet<string> = new Set([
   "values",
 ]);
 const ITERABLE_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
+  "Headers",
   "Map",
   "Set",
+  "URLSearchParams",
   "WeakMap",
   "WeakSet",
 ]);
@@ -56,9 +59,14 @@ interface PendingSymbolFlow {
   isClearedBefore: (referenceIdentifier: EsTreeNode) => boolean;
 }
 
-interface ExitingCatchAssignment {
-  assignment: EsTreeNodeOfType<"AssignmentExpression">;
+interface ExitingCatchClearing {
+  clearingNode: EsTreeNode;
   tryStatement: EsTreeNode;
+}
+
+interface ConditionalClearingBranches {
+  hasAlternate: boolean;
+  hasConsequent: boolean;
 }
 
 const resolvesToImportBinding = (context: RuleContext, identifier: EsTreeNode): boolean =>
@@ -148,10 +156,75 @@ interface StaticLogicalValue {
   isTruthy: boolean;
 }
 
-const getStaticLogicalValue = (expression: EsTreeNode): StaticLogicalValue | null => {
-  const node = stripParenExpression(expression);
-  if (!isNodeOfType(node, "Literal")) return null;
-  return { isNullish: node.value === null, isTruthy: Boolean(node.value) };
+interface RetainedExpressionFrame {
+  expression: EsTreeNode;
+  isExpanded: boolean;
+}
+
+interface RetainedSourceMatcher {
+  (expression: EsTreeNode): EsTreeNode | null;
+}
+
+interface PatternAssignedValue {
+  expression: EsTreeNode | null;
+}
+
+interface FunctionAliasCandidate {
+  sourceNode: EsTreeNode;
+  symbol: SymbolDescriptor;
+}
+
+const getStaticLogicalValue = (
+  context: RuleContext,
+  expression: EsTreeNode,
+): StaticLogicalValue | null => {
+  let node = stripParenExpression(expression);
+  let hasBooleanNegation = false;
+  let shouldInvertTruthy = false;
+  while (isNodeOfType(node, "UnaryExpression") && node.operator === "!") {
+    hasBooleanNegation = true;
+    shouldInvertTruthy = !shouldInvertTruthy;
+    node = stripParenExpression(node.argument);
+  }
+
+  let value: StaticLogicalValue | null = null;
+  if (isNodeOfType(node, "Literal")) {
+    value = { isNullish: node.value === null, isTruthy: Boolean(node.value) };
+  } else if (
+    isNodeOfType(node, "ArrayExpression") ||
+    isNodeOfType(node, "ObjectExpression") ||
+    isNodeOfType(node, "ArrowFunctionExpression") ||
+    isNodeOfType(node, "FunctionExpression") ||
+    isNodeOfType(node, "ClassExpression") ||
+    isNodeOfType(node, "NewExpression")
+  ) {
+    value = { isNullish: false, isTruthy: true };
+  } else if (isNodeOfType(node, "TemplateLiteral")) {
+    const hasStaticContent = node.quasis.some(
+      (quasi) => (quasi.value.cooked ?? quasi.value.raw).length > 0,
+    );
+    if (hasStaticContent || node.expressions.length === 0) {
+      value = { isNullish: false, isTruthy: hasStaticContent };
+    }
+  } else if (isNodeOfType(node, "UnaryExpression") && node.operator === "void") {
+    value = { isNullish: true, isTruthy: false };
+  } else if (isNodeOfType(node, "UnaryExpression") && node.operator === "typeof") {
+    value = { isNullish: false, isTruthy: true };
+  } else if (
+    isNodeOfType(node, "Identifier") &&
+    context.scopes.isGlobalReference(node) &&
+    (node.name === "undefined" || node.name === "NaN" || node.name === "Infinity")
+  ) {
+    value = {
+      isNullish: node.name === "undefined",
+      isTruthy: node.name === "Infinity",
+    };
+  }
+  if (!value || !hasBooleanNegation) return value;
+  return {
+    isNullish: false,
+    isTruthy: shouldInvertTruthy ? !value.isTruthy : value.isTruthy,
+  };
 };
 
 const logicalRightCanBecomeResult = (
@@ -163,60 +236,106 @@ const logicalRightCanBecomeResult = (
   return leftValue.isNullish;
 };
 
+const findRetainedExpressionSource = (
+  context: RuleContext,
+  expression: EsTreeNode,
+  matchSource: RetainedSourceMatcher,
+): EsTreeNode | null => {
+  const sourceByExpression = new Map<EsTreeNode, EsTreeNode | null>();
+  const pendingFrames: RetainedExpressionFrame[] = [{ expression, isExpanded: false }];
+
+  while (pendingFrames.length > 0) {
+    const frame = pendingFrames.pop();
+    if (!frame) continue;
+    if (castChainAssertsUnsafeUnwrapped(context, frame.expression)) {
+      sourceByExpression.set(frame.expression, null);
+      continue;
+    }
+    const node = stripParenExpression(frame.expression);
+    if (!frame.isExpanded) {
+      pendingFrames.push({ expression: frame.expression, isExpanded: true });
+      if (isNodeOfType(node, "ConditionalExpression")) {
+        const staticTestValue = getStaticLogicalValue(context, node.test);
+        if (staticTestValue) {
+          pendingFrames.push({
+            expression: staticTestValue.isTruthy ? node.consequent : node.alternate,
+            isExpanded: false,
+          });
+        } else {
+          pendingFrames.push({ expression: node.consequent, isExpanded: false });
+          pendingFrames.push({ expression: node.alternate, isExpanded: false });
+        }
+      } else if (isNodeOfType(node, "LogicalExpression")) {
+        pendingFrames.push({ expression: node.left, isExpanded: false });
+        pendingFrames.push({ expression: node.right, isExpanded: false });
+      } else if (isNodeOfType(node, "SequenceExpression")) {
+        const finalExpression = node.expressions.at(-1);
+        if (finalExpression) {
+          pendingFrames.push({ expression: finalExpression, isExpanded: false });
+        }
+      } else if (isNodeOfType(node, "AssignmentExpression")) {
+        pendingFrames.push({ expression: node.right, isExpanded: false });
+      } else if (isNodeOfType(node, "CallExpression")) {
+        const callee = stripParenExpression(node.callee);
+        if (isNodeOfType(callee, "MemberExpression") && isPromiseSettleAccess(callee)) {
+          pendingFrames.push({ expression: callee.object, isExpanded: false });
+        }
+      }
+      continue;
+    }
+
+    const directSource = matchSource(node);
+    if (directSource) {
+      sourceByExpression.set(frame.expression, directSource);
+      continue;
+    }
+
+    let retainedSource: EsTreeNode | null = null;
+    if (isNodeOfType(node, "ConditionalExpression")) {
+      const staticTestValue = getStaticLogicalValue(context, node.test);
+      if (staticTestValue) {
+        retainedSource =
+          sourceByExpression.get(staticTestValue.isTruthy ? node.consequent : node.alternate) ??
+          null;
+      } else {
+        retainedSource =
+          sourceByExpression.get(node.alternate) ?? sourceByExpression.get(node.consequent) ?? null;
+      }
+    } else if (isNodeOfType(node, "LogicalExpression")) {
+      const leftSource = sourceByExpression.get(node.left) ?? null;
+      const rightSource = sourceByExpression.get(node.right) ?? null;
+      if (leftSource) {
+        retainedSource = node.operator === "&&" ? rightSource : leftSource;
+      } else {
+        const staticLeftValue = getStaticLogicalValue(context, node.left);
+        retainedSource =
+          !staticLeftValue || logicalRightCanBecomeResult(node.operator, staticLeftValue)
+            ? rightSource
+            : null;
+      }
+    } else if (isNodeOfType(node, "SequenceExpression")) {
+      const finalExpression = node.expressions.at(-1);
+      retainedSource = finalExpression ? (sourceByExpression.get(finalExpression) ?? null) : null;
+    } else if (isNodeOfType(node, "AssignmentExpression")) {
+      retainedSource = sourceByExpression.get(node.right) ?? null;
+    } else if (isNodeOfType(node, "CallExpression")) {
+      const callee = stripParenExpression(node.callee);
+      if (isNodeOfType(callee, "MemberExpression") && isPromiseSettleAccess(callee)) {
+        retainedSource = sourceByExpression.get(callee.object) ?? null;
+      }
+    }
+    sourceByExpression.set(frame.expression, retainedSource);
+  }
+  return sourceByExpression.get(expression) ?? null;
+};
+
 const findPendingDynamicApiSource = (
   context: RuleContext,
   expression: EsTreeNode,
-): EsTreeNode | null => {
-  if (castChainAssertsUnsafeUnwrapped(context, expression)) return null;
-  const pendingExpressions: EsTreeNode[] = [expression];
-  while (pendingExpressions.length > 0) {
-    const currentExpression = pendingExpressions.pop();
-    if (!currentExpression) continue;
-    const node = stripParenExpression(currentExpression);
-    if (isNextHeadersDynamicCall(context, node)) return node;
-    if (isNodeOfType(node, "ConditionalExpression")) {
-      const staticTestValue = getStaticLogicalValue(node.test);
-      if (staticTestValue) {
-        pendingExpressions.push(staticTestValue.isTruthy ? node.consequent : node.alternate);
-        continue;
-      }
-      pendingExpressions.push(node.consequent, node.alternate);
-      continue;
-    }
-    if (isNodeOfType(node, "LogicalExpression")) {
-      const leftSource = findPendingDynamicApiSource(context, node.left);
-      if (leftSource) {
-        if (node.operator !== "&&") return leftSource;
-        pendingExpressions.push(node.right);
-        continue;
-      }
-      const staticLeftValue = getStaticLogicalValue(node.left);
-      if (staticLeftValue) {
-        pendingExpressions.push(
-          logicalRightCanBecomeResult(node.operator, staticLeftValue) ? node.right : node.left,
-        );
-        continue;
-      }
-      pendingExpressions.push(node.left, node.right);
-      continue;
-    }
-    if (isNodeOfType(node, "SequenceExpression")) {
-      const finalExpression = node.expressions.at(-1);
-      if (finalExpression) pendingExpressions.push(finalExpression);
-      continue;
-    }
-    if (isNodeOfType(node, "AssignmentExpression")) {
-      pendingExpressions.push(node.right);
-      continue;
-    }
-    if (!isNodeOfType(node, "CallExpression")) continue;
-    const callee = stripParenExpression(node.callee);
-    if (isNodeOfType(callee, "MemberExpression") && isPromiseSettleAccess(callee)) {
-      pendingExpressions.push(callee.object);
-    }
-  }
-  return null;
-};
+): EsTreeNode | null =>
+  findRetainedExpressionSource(context, expression, (candidateExpression) =>
+    isNextHeadersDynamicCall(context, candidateExpression) ? candidateExpression : null,
+  );
 
 const patternReadsDynamicApiValue = (pattern: EsTreeNode): boolean => {
   if (isNodeOfType(pattern, "ArrayPattern")) return true;
@@ -251,61 +370,15 @@ const expressionMayRetainPendingSymbol = (
   context: RuleContext,
   expression: EsTreeNode,
   symbol: SymbolDescriptor,
-): boolean => {
-  if (castChainAssertsUnsafeUnwrapped(context, expression)) return false;
-  const pendingExpressions: EsTreeNode[] = [expression];
-  while (pendingExpressions.length > 0) {
-    const currentExpression = pendingExpressions.pop();
-    if (!currentExpression) continue;
-    const node = stripParenExpression(currentExpression);
-    if (isNodeOfType(node, "Identifier")) {
-      if (context.scopes.symbolFor(node)?.id === symbol.id) return true;
-      continue;
-    }
-    if (isNodeOfType(node, "ConditionalExpression")) {
-      const staticTestValue = getStaticLogicalValue(node.test);
-      if (staticTestValue) {
-        pendingExpressions.push(staticTestValue.isTruthy ? node.consequent : node.alternate);
-        continue;
-      }
-      pendingExpressions.push(node.consequent, node.alternate);
-      continue;
-    }
-    if (isNodeOfType(node, "LogicalExpression")) {
-      const leftMayRetain = expressionMayRetainPendingSymbol(context, node.left, symbol);
-      if (leftMayRetain) {
-        if (node.operator !== "&&") return true;
-        pendingExpressions.push(node.right);
-        continue;
-      }
-      const staticLeftValue = getStaticLogicalValue(node.left);
-      if (staticLeftValue) {
-        pendingExpressions.push(
-          logicalRightCanBecomeResult(node.operator, staticLeftValue) ? node.right : node.left,
-        );
-        continue;
-      }
-      pendingExpressions.push(node.left, node.right);
-      continue;
-    }
-    if (isNodeOfType(node, "SequenceExpression")) {
-      const finalExpression = node.expressions.at(-1);
-      if (finalExpression) pendingExpressions.push(finalExpression);
-      continue;
-    }
-    if (isNodeOfType(node, "AssignmentExpression")) {
-      pendingExpressions.push(node.right);
-      continue;
-    }
-    if (isNodeOfType(node, "CallExpression")) {
-      const callee = stripParenExpression(node.callee);
-      if (isNodeOfType(callee, "MemberExpression") && isPromiseSettleAccess(callee)) {
-        pendingExpressions.push(callee.object);
-      }
-    }
-  }
-  return false;
-};
+): boolean =>
+  Boolean(
+    findRetainedExpressionSource(context, expression, (candidateExpression) =>
+      isNodeOfType(candidateExpression, "Identifier") &&
+      context.scopes.symbolFor(candidateExpression)?.id === symbol.id
+        ? candidateExpression
+        : null,
+    ),
+  );
 
 const isGlobalEnumerationCallForArgument = (
   context: RuleContext,
@@ -457,19 +530,130 @@ const findRetainingAliasCandidate = (
   return null;
 };
 
+const isDefinitelyUndefinedExpression = (context: RuleContext, expression: EsTreeNode): boolean => {
+  const node = stripParenExpression(expression);
+  return (
+    (isNodeOfType(node, "Identifier") &&
+      node.name === "undefined" &&
+      context.scopes.isGlobalReference(node)) ||
+    (isNodeOfType(node, "UnaryExpression") && node.operator === "void")
+  );
+};
+
+const findPatternAssignedValue = (
+  context: RuleContext,
+  pattern: EsTreeNode,
+  sourceExpression: EsTreeNode | null,
+  targetSymbol: SymbolDescriptor,
+): PatternAssignedValue | null => {
+  if (isNodeOfType(pattern, "Identifier")) {
+    return context.scopes.symbolFor(pattern)?.id === targetSymbol.id
+      ? { expression: sourceExpression }
+      : null;
+  }
+  if (isNodeOfType(pattern, "AssignmentPattern")) {
+    const assignedExpression =
+      sourceExpression === null || isDefinitelyUndefinedExpression(context, sourceExpression)
+        ? pattern.right
+        : sourceExpression;
+    return findPatternAssignedValue(context, pattern.left, assignedExpression, targetSymbol);
+  }
+  if (isNodeOfType(pattern, "ObjectPattern")) {
+    if (sourceExpression === null) return null;
+    const source = stripParenExpression(sourceExpression);
+    if (!isNodeOfType(source, "ObjectExpression")) return null;
+    const hasUnknownSourceProperties = source.properties.some(
+      (property) =>
+        isNodeOfType(property, "SpreadElement") ||
+        (isNodeOfType(property, "Property") &&
+          getStaticPropertyKeyName(property, { allowComputedString: true }) === null),
+    );
+    for (const patternProperty of pattern.properties) {
+      if (!isNodeOfType(patternProperty, "Property")) continue;
+      const propertyName = getStaticPropertyKeyName(patternProperty, { allowComputedString: true });
+      if (propertyName === null) continue;
+      const sourceProperty = source.properties.find(
+        (property) =>
+          isNodeOfType(property, "Property") &&
+          getStaticPropertyKeyName(property, { allowComputedString: true }) === propertyName,
+      );
+      if (!isNodeOfType(sourceProperty, "Property") && hasUnknownSourceProperties) continue;
+      const assignedValue = findPatternAssignedValue(
+        context,
+        patternProperty.value,
+        isNodeOfType(sourceProperty, "Property") ? sourceProperty.value : null,
+        targetSymbol,
+      );
+      if (assignedValue) return assignedValue;
+    }
+    return null;
+  }
+  if (isNodeOfType(pattern, "ArrayPattern")) {
+    if (sourceExpression === null) return null;
+    const source = stripParenExpression(sourceExpression);
+    if (!isNodeOfType(source, "ArrayExpression")) return null;
+    for (const [elementIndex, patternElement] of pattern.elements.entries()) {
+      const sourceElement = source.elements[elementIndex];
+      if (!patternElement) continue;
+      if (
+        source.elements
+          .slice(0, elementIndex + 1)
+          .some((element) => isNodeOfType(element, "SpreadElement"))
+      )
+        continue;
+      const assignedValue = findPatternAssignedValue(
+        context,
+        patternElement,
+        sourceElement && !isNodeOfType(sourceElement, "SpreadElement") ? sourceElement : null,
+        targetSymbol,
+      );
+      if (assignedValue) return assignedValue;
+    }
+  }
+  return null;
+};
+
+const findPatternAssignmentForIdentifier = (
+  identifier: EsTreeNode,
+): EsTreeNodeOfType<"AssignmentExpression"> | null => {
+  let assignmentTarget = findTransparentExpressionRoot(identifier);
+  while (
+    assignmentTarget.parent &&
+    (isNodeOfType(assignmentTarget.parent, "Property") ||
+      isNodeOfType(assignmentTarget.parent, "ObjectPattern") ||
+      isNodeOfType(assignmentTarget.parent, "ArrayPattern") ||
+      isNodeOfType(assignmentTarget.parent, "AssignmentPattern") ||
+      isNodeOfType(assignmentTarget.parent, "RestElement"))
+  ) {
+    assignmentTarget = assignmentTarget.parent;
+  }
+  const assignment = assignmentTarget.parent;
+  return assignment &&
+    isNodeOfType(assignment, "AssignmentExpression") &&
+    assignment.left === assignmentTarget
+    ? assignment
+    : null;
+};
+
 const getProvenanceClearingAssignment = (
   context: RuleContext,
   symbol: SymbolDescriptor,
   writeIdentifier: EsTreeNode,
 ): EsTreeNodeOfType<"AssignmentExpression"> | null => {
-  const assignmentTarget = findTransparentExpressionRoot(writeIdentifier);
-  const assignment = assignmentTarget.parent;
+  const assignment = findPatternAssignmentForIdentifier(writeIdentifier);
+  if (!assignment || assignment.operator !== "=") {
+    return null;
+  }
+  const assignedValue = findPatternAssignedValue(
+    context,
+    assignment.left,
+    assignment.right,
+    symbol,
+  );
   if (
-    !assignment ||
-    !isNodeOfType(assignment, "AssignmentExpression") ||
-    assignment.operator !== "=" ||
-    assignment.left !== assignmentTarget ||
-    expressionMayRetainPendingSymbol(context, assignment.right, symbol)
+    !assignedValue ||
+    (assignedValue.expression &&
+      expressionMayRetainPendingSymbol(context, assignedValue.expression, symbol))
   ) {
     return null;
   }
@@ -512,6 +696,20 @@ const isConditionallyExecutedWithinExpression = (node: EsTreeNode): boolean => {
   return false;
 };
 
+const findDirectConditionalBranch = (
+  assignment: EsTreeNodeOfType<"AssignmentExpression">,
+): { conditionalExpression: EsTreeNode; isConsequent: boolean } | null => {
+  const assignmentRoot = findTransparentExpressionRoot(assignment);
+  const parent = assignmentRoot.parent;
+  if (!parent || !isNodeOfType(parent, "ConditionalExpression")) return null;
+  if (parent.consequent === assignmentRoot) {
+    return { conditionalExpression: parent, isConsequent: true };
+  }
+  return parent.alternate === assignmentRoot
+    ? { conditionalExpression: parent, isConsequent: false }
+    : null;
+};
+
 const findCaughtTryStatement = (node: EsTreeNode): EsTreeNode | null => {
   let current = node;
   while (current.parent) {
@@ -531,6 +729,40 @@ const findCaughtTryStatement = (node: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
+const aliasIsOverwrittenBeforeInvocation = (
+  context: RuleContext,
+  candidate: FunctionAliasCandidate,
+  invocation: EsTreeNode,
+): boolean => {
+  const sourceStart = getNodeStartIndex(candidate.sourceNode);
+  const invocationStart = getNodeStartIndex(invocation);
+  const invocationOwner = context.cfg.enclosingFunction(invocation);
+  return candidate.symbol.references.some((reference) => {
+    if (reference.flag === "read") return false;
+    const patternAssignment = findPatternAssignmentForIdentifier(reference.identifier);
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const directAssignment = referenceRoot.parent;
+    let writeNode = reference.identifier;
+    if (patternAssignment) {
+      writeNode = patternAssignment;
+    } else if (
+      directAssignment &&
+      isNodeOfType(directAssignment, "AssignmentExpression") &&
+      directAssignment.left === referenceRoot
+    ) {
+      writeNode = directAssignment;
+    }
+    const writeStart = getNodeStartIndex(writeNode);
+    return (
+      writeNode !== candidate.sourceNode &&
+      writeStart > sourceStart &&
+      writeStart < invocationStart &&
+      context.cfg.enclosingFunction(writeNode) === invocationOwner &&
+      context.cfg.isUnconditionalFromEntry(writeNode)
+    );
+  });
+};
+
 const edgeKey = (from: BasicBlock, to: BasicBlock): string => `${from.id}:${to.id}`;
 
 const createPendingSymbolFlow = (
@@ -542,24 +774,44 @@ const createPendingSymbolFlow = (
   const sourceStart = getNodeStartIndex(sourceExpression);
   if (sourceStart < 0) return { isClearedBefore: () => false };
 
-  const clearingAssignments: EsTreeNodeOfType<"AssignmentExpression">[] = [];
+  const clearingAssignmentSet = new Set<EsTreeNodeOfType<"AssignmentExpression">>();
   for (const reference of symbol.references) {
-    if (reference.flag === "read") continue;
     if (context.cfg.enclosingFunction(reference.identifier) !== owner) continue;
     const assignment = getProvenanceClearingAssignment(context, symbol, reference.identifier);
-    if (!assignment || isConditionallyExecutedWithinExpression(assignment)) {
-      continue;
-    }
+    if (!assignment) continue;
     const assignmentStart = getNodeStartIndex(assignment);
     if (assignmentStart <= sourceStart) continue;
-    clearingAssignments.push(assignment);
+    clearingAssignmentSet.add(assignment);
   }
-  if (clearingAssignments.length === 0) return { isClearedBefore: () => false };
+  const clearingNodes = new Set<EsTreeNode>();
+  const conditionalClearingBranches = new Map<EsTreeNode, ConditionalClearingBranches>();
+  for (const assignment of clearingAssignmentSet) {
+    if (!isConditionallyExecutedWithinExpression(assignment)) {
+      clearingNodes.add(assignment);
+      continue;
+    }
+    const conditionalBranch = findDirectConditionalBranch(assignment);
+    if (!conditionalBranch) continue;
+    const branches = conditionalClearingBranches.get(conditionalBranch.conditionalExpression) ?? {
+      hasAlternate: false,
+      hasConsequent: false,
+    };
+    if (conditionalBranch.isConsequent) branches.hasConsequent = true;
+    else branches.hasAlternate = true;
+    conditionalClearingBranches.set(conditionalBranch.conditionalExpression, branches);
+  }
+  for (const [conditionalExpression, branches] of conditionalClearingBranches) {
+    if (branches.hasConsequent && branches.hasAlternate) clearingNodes.add(conditionalExpression);
+  }
+  if (clearingNodes.size === 0) return { isClearedBefore: () => false };
 
   if (!owner) {
-    const unconditionalAssignmentStarts = clearingAssignments
-      .filter((assignment) => context.cfg.isUnconditionalFromEntry(assignment))
-      .map(getNodeStartIndex);
+    const unconditionalAssignmentStarts: number[] = [];
+    for (const clearingNode of clearingNodes) {
+      if (context.cfg.isUnconditionalFromEntry(clearingNode)) {
+        unconditionalAssignmentStarts.push(getNodeStartIndex(clearingNode));
+      }
+    }
     return {
       isClearedBefore: (referenceIdentifier) => {
         const referenceStart = getNodeStartIndex(referenceIdentifier);
@@ -573,15 +825,15 @@ const createPendingSymbolFlow = (
 
   const clearingStartsByBlock = new Map<BasicBlock, number[]>();
   const exceptionalCatchEdgeKeys = new Set<string>();
-  const exitingCatchAssignments: ExitingCatchAssignment[] = [];
-  for (const assignment of clearingAssignments) {
-    const assignmentBlock = functionCfg.blockOf(assignment);
-    if (!assignmentBlock) continue;
-    const starts = clearingStartsByBlock.get(assignmentBlock) ?? [];
-    starts.push(getNodeStartIndex(assignment));
-    clearingStartsByBlock.set(assignmentBlock, starts);
+  const exitingCatchClearings: ExitingCatchClearing[] = [];
+  for (const clearingNode of clearingNodes) {
+    const clearingBlock = functionCfg.blockOf(clearingNode);
+    if (!clearingBlock) continue;
+    const starts = clearingStartsByBlock.get(clearingBlock) ?? [];
+    starts.push(getNodeStartIndex(clearingNode));
+    clearingStartsByBlock.set(clearingBlock, starts);
 
-    const caughtTryStatement = findCaughtTryStatement(assignment);
+    const caughtTryStatement = findCaughtTryStatement(clearingNode);
     if (!caughtTryStatement || !isNodeOfType(caughtTryStatement, "TryStatement")) continue;
     const catchBlock = functionCfg.blockOf(caughtTryStatement.handler?.body ?? caughtTryStatement);
     if (catchBlock) {
@@ -592,7 +844,7 @@ const createPendingSymbolFlow = (
       }
     }
     if (caughtTryStatement.handler && statementAlwaysExits(caughtTryStatement.handler.body)) {
-      exitingCatchAssignments.push({ assignment, tryStatement: caughtTryStatement });
+      exitingCatchClearings.push({ clearingNode, tryStatement: caughtTryStatement });
     }
   }
 
@@ -661,11 +913,11 @@ const createPendingSymbolFlow = (
       const referenceBlock = functionCfg.blockOf(referenceIdentifier);
       if (referenceStart <= sourceStart || !referenceBlock) return false;
       if (
-        exitingCatchAssignments.some(
-          ({ assignment, tryStatement }) =>
-            getNodeStartIndex(assignment) < referenceStart &&
+        exitingCatchClearings.some(
+          ({ clearingNode, tryStatement }) =>
+            getNodeStartIndex(clearingNode) < referenceStart &&
             !isDescendantOf(referenceIdentifier, tryStatement) &&
-            context.cfg.isUnconditionalFromEntry(assignment),
+            context.cfg.isUnconditionalFromEntry(clearingNode),
         )
       ) {
         return true;
@@ -682,10 +934,7 @@ const createPendingSymbolFlow = (
   };
 };
 
-const getDirectInvocationSites = (
-  context: RuleContext,
-  functionNode: EsTreeNode,
-): EsTreeNodeOfType<"CallExpression">[] => {
+const getDirectInvocationSites = (context: RuleContext, functionNode: EsTreeNode): EsTreeNode[] => {
   const functionRoot = findTransparentExpressionRoot(functionNode);
   const directParent = functionRoot.parent;
   if (
@@ -693,6 +942,9 @@ const getDirectInvocationSites = (
     isNodeOfType(directParent, "CallExpression") &&
     directParent.callee === functionRoot
   ) {
+    return [directParent];
+  }
+  if (directParent && executesDuringRender(functionRoot, context.scopes)) {
     return [directParent];
   }
 
@@ -712,13 +964,46 @@ const getDirectInvocationSites = (
   }
   if (!functionSymbol) return [];
 
-  const invocationSites: EsTreeNodeOfType<"CallExpression">[] = [];
-  for (const reference of functionSymbol.references) {
-    if (reference.flag === "write") continue;
-    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-    const parent = referenceRoot.parent;
-    if (parent && isNodeOfType(parent, "CallExpression") && parent.callee === referenceRoot) {
-      invocationSites.push(parent);
+  const invocationSites: EsTreeNode[] = [];
+  const pendingFunctionAliases: FunctionAliasCandidate[] = [
+    { sourceNode: functionNode, symbol: functionSymbol },
+  ];
+  const visitedFunctionSymbolIds = new Set<number>();
+  while (pendingFunctionAliases.length > 0) {
+    const candidate = pendingFunctionAliases.pop();
+    if (!candidate || visitedFunctionSymbolIds.has(candidate.symbol.id)) continue;
+    visitedFunctionSymbolIds.add(candidate.symbol.id);
+    for (const reference of candidate.symbol.references) {
+      if (reference.flag === "write") continue;
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const parent = referenceRoot.parent;
+      if (parent && isNodeOfType(parent, "CallExpression") && parent.callee === referenceRoot) {
+        if (!aliasIsOverwrittenBeforeInvocation(context, candidate, parent)) {
+          invocationSites.push(parent);
+        }
+        continue;
+      }
+      if (
+        parent &&
+        isNodeOfType(parent, "VariableDeclarator") &&
+        parent.init === referenceRoot &&
+        isNodeOfType(parent.id, "Identifier")
+      ) {
+        const aliasSymbol = context.scopes.symbolFor(parent.id);
+        if (aliasSymbol) pendingFunctionAliases.push({ sourceNode: parent, symbol: aliasSymbol });
+        continue;
+      }
+      if (
+        parent &&
+        isNodeOfType(parent, "AssignmentExpression") &&
+        parent.operator === "=" &&
+        parent.right === referenceRoot
+      ) {
+        const assignmentTarget = stripParenExpression(parent.left);
+        if (!isNodeOfType(assignmentTarget, "Identifier")) continue;
+        const aliasSymbol = context.scopes.symbolFor(assignmentTarget);
+        if (aliasSymbol) pendingFunctionAliases.push({ sourceNode: parent, symbol: aliasSymbol });
+      }
     }
   }
   return invocationSites;
@@ -739,12 +1024,18 @@ const symbolHasSynchronousAccess = (
     if (!candidate || visitedSymbolIds.has(candidate.symbol.id)) continue;
     visitedSymbolIds.add(candidate.symbol.id);
     const owner = context.cfg.enclosingFunction(candidate.sourceExpression);
-    const hasAnyWrite = candidate.symbol.references.some((reference) => reference.flag !== "read");
+    const hasAnyWrite = candidate.symbol.references.some(
+      (reference) =>
+        reference.flag !== "read" ||
+        Boolean(findPatternAssignmentForIdentifier(reference.identifier)),
+    );
     const flow = createPendingSymbolFlow(context, candidate.symbol, candidate.sourceExpression);
     const sourceStart = getNodeStartIndex(candidate.sourceExpression);
 
     for (const reference of candidate.symbol.references) {
-      if (reference.flag === "write") continue;
+      if (reference.flag === "write" || findPatternAssignmentForIdentifier(reference.identifier)) {
+        continue;
+      }
       const referenceStart = getNodeStartIndex(reference.identifier);
       if (referenceStart <= sourceStart) continue;
       const referenceOwner = context.cfg.enclosingFunction(reference.identifier);
@@ -752,7 +1043,8 @@ const symbolHasSynchronousAccess = (
         if (!referenceOwner) continue;
         const hasWriteInReferenceOwner = candidate.symbol.references.some(
           (innerReference) =>
-            innerReference.flag !== "read" &&
+            (innerReference.flag !== "read" ||
+              Boolean(findPatternAssignmentForIdentifier(innerReference.identifier))) &&
             context.cfg.enclosingFunction(innerReference.identifier) === referenceOwner,
         );
         if (hasWriteInReferenceOwner) continue;

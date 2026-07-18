@@ -131,7 +131,7 @@ export const loadCorpusRepositories = async (
       .map((repository) => `${repository.org}/${repository.name}`.toLowerCase()),
   );
   const seenProjects = new Set<string>();
-  return loadedRepositories.filter((repository) => {
+  const repositories = loadedRepositories.filter((repository) => {
     const repositoryKey = `${repository.org}/${repository.name}`.toLowerCase();
     if (
       repository.ref === DEFAULT_TARGET_REPOSITORY_REF &&
@@ -144,4 +144,6 @@ export const loadCorpusRepositories = async (
     seenProjects.add(projectKey);
     return true;
   });
+  if (repositories.length === 0) throw new Error("Corpus contains no repositories");
+  return repositories;
 };

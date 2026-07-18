@@ -42,4 +42,10 @@ describe("parseReactDoctorReport", () => {
       "React Doctor returned an invalid JSON report",
     );
   });
+
+  it("preserves the exit code and output from crashed scans", () => {
+    expect(() => parseReactDoctorReport("Killed", 137)).toThrow(
+      /React Doctor exited with code 137:[\s\S]*Killed/,
+    );
+  });
 });

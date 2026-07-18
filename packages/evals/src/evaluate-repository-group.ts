@@ -72,7 +72,7 @@ export const evaluateRepositoryGroup = async ({
           timeoutSeconds: SANDBOX_SETUP_TIMEOUT_SECONDS,
           description: `Resolve ${repositoryGroup.org}/${repositoryGroup.name}`,
         })
-      ).trim();
+      ).output.trim();
       repositories = repositories.map((repository) => ({ ...repository, ref: resolvedRef }));
     } catch (error) {
       for (const repository of repositories) {
@@ -88,7 +88,7 @@ export const evaluateRepositoryGroup = async ({
     for (const repository of repositories) {
       let record: CorpusEvaluationRecord;
       try {
-        const output = await executeSandboxCommand({
+        const commandResult = await executeSandboxCommand({
           sandbox,
           command: SCAN_COMMAND,
           environment: {
@@ -100,7 +100,7 @@ export const evaluateRepositoryGroup = async ({
           description: `Scan ${repository.org}/${repository.name}:${repository.rootDir}`,
           acceptNonZeroExitCode: true,
         });
-        const report = parseReactDoctorReport(output);
+        const report = parseReactDoctorReport(commandResult.output, commandResult.exitCode);
         record = {
           schemaVersion: EVALUATION_SCHEMA_VERSION,
           repository,

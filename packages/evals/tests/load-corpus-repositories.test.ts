@@ -45,6 +45,16 @@ describe("loadCorpusRepositories", () => {
     ]);
   });
 
+  it("rejects an empty corpus", async () => {
+    const directory = await makeTemporaryDirectory();
+    const repositoriesPath = Path.join(directory, "repositories.txt");
+    await writeFile(repositoriesPath, "# no repositories\n");
+
+    await expect(loadCorpusRepositories([repositoriesPath])).rejects.toThrow(
+      "Corpus contains no repositories",
+    );
+  });
+
   it("prefers pinned corpus projects over matching default-branch entries", async () => {
     const directory = await makeTemporaryDirectory();
     const jsonPath = Path.join(directory, "pinned.json");

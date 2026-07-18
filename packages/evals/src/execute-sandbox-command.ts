@@ -1,5 +1,7 @@
 import type { Sandbox } from "@daytona/sdk";
 
+import { SUCCESS_EXIT_CODE } from "./constants.js";
+
 export interface ExecuteSandboxCommandInput {
   sandbox: Sandbox;
   command: string;
@@ -9,6 +11,11 @@ export interface ExecuteSandboxCommandInput {
   acceptNonZeroExitCode?: boolean;
 }
 
+export interface ExecuteSandboxCommandResult {
+  exitCode: number;
+  output: string;
+}
+
 export const executeSandboxCommand = async ({
   sandbox,
   command,
@@ -16,18 +23,18 @@ export const executeSandboxCommand = async ({
   timeoutSeconds,
   description,
   acceptNonZeroExitCode = false,
-}: ExecuteSandboxCommandInput): Promise<string> => {
+}: ExecuteSandboxCommandInput): Promise<ExecuteSandboxCommandResult> => {
   const response = await sandbox.process.executeCommand(
     command,
     undefined,
     environment,
     timeoutSeconds,
   );
-  if (response.exitCode !== 0 && !acceptNonZeroExitCode) {
+  if (response.exitCode !== SUCCESS_EXIT_CODE && !acceptNonZeroExitCode) {
     const output = response.result.trim();
     throw new Error(
       output === "" ? `${description} failed with exit code ${response.exitCode}` : output,
     );
   }
-  return response.result;
+  return { exitCode: response.exitCode, output: response.result };
 };

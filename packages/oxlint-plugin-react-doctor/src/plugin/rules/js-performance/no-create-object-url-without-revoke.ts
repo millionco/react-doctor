@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { resolveStaticLocalCallFunction } from "../../utils/get-order-independent-local-function.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
@@ -979,26 +980,6 @@ interface ProgramDisposalIndex {
   readonly revokeCallsByArgumentSymbolId: Map<number, EsTreeNodeOfType<"CallExpression">[]>;
 }
 
-const resolveConstInitializer = (
-  expression: EsTreeNode,
-  scopes: ScopeAnalysis,
-  visitedSymbolIds = new Set<number>(),
-): EsTreeNode | null => {
-  const candidate = stripParenExpression(expression);
-  if (!isNodeOfType(candidate, "Identifier")) return candidate;
-  const symbol = scopes.symbolFor(candidate);
-  if (!symbol?.initializer || visitedSymbolIds.has(symbol.id)) return null;
-  if (symbol.kind !== "const" && !FUNCTION_LIKE_TYPES.has(symbol.initializer.type)) {
-    return symbol.initializer;
-  }
-  const nextVisitedSymbolIds = new Set(visitedSymbolIds);
-  nextVisitedSymbolIds.add(symbol.id);
-  const initializer = stripParenExpression(symbol.initializer);
-  return isNodeOfType(initializer, "Identifier")
-    ? resolveConstInitializer(initializer, scopes, nextVisitedSymbolIds)
-    : initializer;
-};
-
 const buildProgramDisposalIndex = (
   programRoot: EsTreeNode,
   context: RuleContext,
@@ -1016,7 +997,7 @@ const buildProgramDisposalIndex = (
     if (isNodeOfType(child, "ForOfStatement")) index.forOfStatements.push(child);
     if (!isNodeOfType(child, "CallExpression")) return;
     index.callExpressions.push(child);
-    const resolvedInitializer = resolveConstInitializer(child.callee, scopes);
+    const resolvedInitializer = resolveStaticLocalCallFunction(child, scopes);
     if (resolvedInitializer && FUNCTION_LIKE_TYPES.has(resolvedInitializer.type)) {
       const calls = index.callsByInitializer.get(resolvedInitializer) ?? [];
       calls.push(child);
@@ -1163,7 +1144,8 @@ const bindingPathIsRevokedBefore = (
       consumer.init !== candidate ||
       !consumer.parent ||
       !isNodeOfType(consumer.parent, "VariableDeclaration") ||
-      consumer.parent.kind !== "const"
+      consumer.parent.kind !== "const" ||
+      !bindingValueRemainsCurrentAtConsumer(currentValue, resultCall, consumer, context.scopes)
     ) {
       return false;
     }

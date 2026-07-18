@@ -403,9 +403,34 @@ describe("no-spread-accumulator-in-reduce", () => {
        Object.keys(firstItems);
        firstItems.slice();
        firstItems.forEach(visit);
-       firstItems.reduce((acc, item) => [...acc, item], []);`,
+       firstItems.reduce((acc, item) => [...acc, item], []);
+
+       const secondItems = [];
+       const method = \`merge\`;
+       const api = { [method]() {} };
+       const methodAlias = method;
+       api[methodAlias](secondItems, externalItems);
+       secondItems.reduce((acc, item) => [...acc, item], []);`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust reassigned local member handlers", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const firstItems = [];
+       const firstApi = { merge() {} };
+       firstApi.merge = externalMerge;
+       firstApi.merge(firstItems, externalItems);
+       firstItems.reduce((acc, item) => [...acc, item], []);
+
+       const secondItems = [];
+       let secondApi = { merge() {} };
+       secondApi = externalApi;
+       secondApi.merge(secondItems, externalItems);
+       secondItems.reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("does not trust mutated global Object and Array aliases", () => {
@@ -816,6 +841,25 @@ describe("no-spread-accumulator-in-reduce", () => {
       "const out = Array.from(Array(4)).reduce((acc, item) => [...acc, item], []);",
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag Array.from with a fixed-length array-like object", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const shape = { length: 4 };
+       const direct = Array.from({ length: 4 }).reduce((acc, item) => [...acc, item], []);
+       const aliased = Array.from(shape).reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat dynamic or spread-overridden array-like lengths as fixed", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const dynamic = Array.from({ length: itemCount }).reduce((acc, item) => [...acc, item], []);
+       const overridden = Array.from({ length: 4, ...externalShape }).reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("recognizes TypeScript-wrapped global Array constructions and receivers", () => {

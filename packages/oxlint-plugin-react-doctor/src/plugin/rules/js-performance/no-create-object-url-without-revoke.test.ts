@@ -822,6 +822,98 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("indexes disposed calls through object methods and immutable aliases", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const createMethod = \`create\`;
+       const helpers = {
+         [createMethod](blob) { return URL.createObjectURL(blob); },
+         createArrow: (blob) => URL.createObjectURL(blob),
+       };
+       const helperAlias = helpers;
+       const nestedAlias = helperAlias;
+       const method = \`create\`;
+       const methodAlias = method;
+       helpers.other = externalOther;
+       const usePreview = async (blob) => {
+         const firstUrl = helpers.create(blob);
+         URL.revokeObjectURL(firstUrl);
+         const secondUrl = helperAlias.createArrow(blob);
+         URL.revokeObjectURL(secondUrl);
+         const thirdUrl = await nestedAlias[methodAlias](blob);
+         URL.revokeObjectURL(thirdUrl);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports an object method helper when any returned URL is not disposed", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const helpers = { create: (blob) => URL.createObjectURL(blob) };
+       const usePreview = (blob, shouldRevoke) => {
+         const url = helpers.create(blob);
+         if (shouldRevoke) URL.revokeObjectURL(url);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not index reassigned direct helpers through stale initializers", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `let make = (blob) => URL.createObjectURL(blob);
+       make = externalCreate;
+       const url = make(blob);
+       URL.revokeObjectURL(url);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not index object method helpers through mutable call targets", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const firstHelpers = { create: (blob) => URL.createObjectURL(blob) };
+       firstHelpers.create = externalCreate;
+       const firstUrl = firstHelpers.create(blob);
+       URL.revokeObjectURL(firstUrl);
+
+       let secondHelpers = { create: (blob) => URL.createObjectURL(blob) };
+       secondHelpers = externalHelpers;
+       const secondUrl = secondHelpers.create(blob);
+       URL.revokeObjectURL(secondUrl);
+
+       const thirdHelpers = { create: (blob) => URL.createObjectURL(blob) };
+       const thirdAlias = thirdHelpers;
+       thirdAlias.create = externalCreate;
+       const thirdUrl = thirdHelpers.create(blob);
+       URL.revokeObjectURL(thirdUrl);
+
+       const fourthHelpers = { create: (blob) => URL.createObjectURL(blob) };
+       fourthHelpers[getKey()] = externalCreate;
+       const fourthUrl = fourthHelpers.create(blob);
+       URL.revokeObjectURL(fourthUrl);
+
+       const fifthHelpers = { create: (blob) => URL.createObjectURL(blob) };
+       install(fifthHelpers);
+       const fifthUrl = fifthHelpers.create(blob);
+       URL.revokeObjectURL(fifthUrl);`,
+    );
+    expect(result.diagnostics).toHaveLength(5);
+  });
+
+  it("does not resolve mutable computed method keys", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const helpers = { create: (blob) => URL.createObjectURL(blob) };
+       let method = "create";
+       method = getMethod();
+       const url = helpers[method](blob);
+       URL.revokeObjectURL(url);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("recognizes a returned cleanup closure that revokes the created URL", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
@@ -1196,6 +1288,26 @@ describe("no-create-object-url-without-revoke", () => {
        };`,
     );
     expect(nestedValueResult.diagnostics).toHaveLength(0);
+
+    const reassignedEntryResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const cachePreview = (blob, id) => {
+         const previous = previewCache.get(id);
+         if (previous) URL.revokeObjectURL(previous.preview.url);
+         previewCache.set(id, { preview: { url: make(blob) } });
+       };
+       const evictPreview = (id, replacement) => {
+         let entry = previewCache.get(id);
+         if (!entry) return;
+         entry = replacement;
+         const url = entry.preview.url;
+         URL.revokeObjectURL(url);
+         previewCache.delete(id);
+       };`,
+    );
+    expect(reassignedEntryResult.diagnostics).toHaveLength(1);
 
     const mapKeyResult = runRule(
       noCreateObjectUrlWithoutRevoke,

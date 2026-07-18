@@ -5,15 +5,16 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { resolveStaticLocalCallFunction } from "../../utils/get-order-independent-local-function.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
-import { resolveMemberHandlerFunction } from "../../utils/resolve-member-handler-function.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -176,9 +177,10 @@ const bindingMayHaveGrown = (
         return false;
       }
       if (isNodeOfType(directCallee, "MemberExpression")) {
-        const localFunction = resolveMemberHandlerFunction(directCallee);
+        const localFunction = resolveStaticLocalCallFunction(directConsumer, scopes);
         if (
           localFunction &&
+          isFunctionLike(localFunction) &&
           isNodeOfType(localFunction.body, "BlockStatement") &&
           localFunction.body.body.length === 0
         ) {
@@ -236,6 +238,26 @@ const isFixedLengthArrayConstruction = (expression: EsTreeNode, scopes: ScopeAna
   );
 };
 
+const isFixedLengthArrayLikeObject = (expression: EsTreeNode): boolean => {
+  if (!isNodeOfType(expression, "ObjectExpression")) return false;
+  const lengthProperties = expression.properties.filter(
+    (property) =>
+      isNodeOfType(property, "Property") &&
+      property.kind === "init" &&
+      getStaticPropertyKeyName(property, { allowComputedString: true }) === "length",
+  );
+  if (
+    lengthProperties.length !== 1 ||
+    expression.properties.some((property) => isNodeOfType(property, "SpreadElement"))
+  ) {
+    return false;
+  }
+  const lengthProperty = lengthProperties[0];
+  if (!isNodeOfType(lengthProperty, "Property")) return false;
+  const lengthValue = stripParenExpression(lengthProperty.value);
+  return isNodeOfType(lengthValue, "Literal") && typeof lengthValue.value === "number";
+};
+
 const isStaticallyBoundedCollectionExpression = (
   expression: EsTreeNode,
   collectionKind: "array" | "object",
@@ -250,6 +272,7 @@ const isStaticallyBoundedCollectionExpression = (
     if (!currentExpression || !visitedSymbolIds) return false;
     if (
       (collectionKind === "array" && isFixedLengthArrayConstruction(currentExpression, scopes)) ||
+      (collectionKind === "array" && isFixedLengthArrayLikeObject(currentExpression)) ||
       (collectionKind === "array" && isSpreadFreeArrayLiteral(currentExpression, false)) ||
       (collectionKind === "object" && isSpreadFreeObjectLiteral(currentExpression))
     ) {

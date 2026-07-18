@@ -553,32 +553,41 @@ const hasPromiseCommandNegation = (
   node: EsTreeNode,
   stateSymbolId: number,
   deferredFunctions: ReadonlySet<EsTreeNode>,
+  registrationCallsByCallback: ReadonlyMap<EsTreeNode, EsTreeNodeOfType<"CallExpression">[]>,
   context: RuleContext,
 ): boolean => {
   const deferredFunction = findEnclosingDeferredFunction(node, deferredFunctions);
-  const thenCall = deferredFunction?.parent;
-  if (!isNodeOfType(thenCall, "CallExpression")) return false;
-  const callee = stripParenExpression(thenCall.callee);
-  if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "then") {
-    return false;
-  }
-  const commandCall = stripParenExpression(callee.object);
-  if (!isNodeOfType(commandCall, "CallExpression")) return false;
-  const commandCallee = stripParenExpression(commandCall.callee);
-  if (!isNodeOfType(commandCallee, "MemberExpression")) return false;
-  const commandName = getStaticPropertyName(commandCallee);
-  if (!commandName || !/^set[A-Z]/.test(commandName) || commandCall.arguments.length !== 1) {
-    return false;
-  }
-  const argument = commandCall.arguments[0];
-  if (!argument || isNodeOfType(argument, "SpreadElement")) return false;
-  const expression = stripParenExpression(argument);
-  return Boolean(
-    isNodeOfType(expression, "UnaryExpression") &&
-    expression.operator === "!" &&
-    isNodeOfType(stripParenExpression(expression.argument), "Identifier") &&
-    resolveConstIdentifierRootSymbol(stripParenExpression(expression.argument), context.scopes)
-      ?.id === stateSymbolId,
+  if (!deferredFunction) return false;
+  const registrationCalls = callbackRegistrationCalls(
+    deferredFunction,
+    registrationCallsByCallback,
+  );
+  return (
+    registrationCalls.length > 0 &&
+    registrationCalls.every((thenCall) => {
+      const callee = stripParenExpression(thenCall.callee);
+      if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "then") {
+        return false;
+      }
+      const commandCall = stripParenExpression(callee.object);
+      if (!isNodeOfType(commandCall, "CallExpression")) return false;
+      const commandCallee = stripParenExpression(commandCall.callee);
+      if (!isNodeOfType(commandCallee, "MemberExpression")) return false;
+      const commandName = getStaticPropertyName(commandCallee);
+      if (!commandName || !/^set[A-Z]/.test(commandName) || commandCall.arguments.length !== 1) {
+        return false;
+      }
+      const argument = commandCall.arguments[0];
+      if (!argument || isNodeOfType(argument, "SpreadElement")) return false;
+      const expression = stripParenExpression(argument);
+      return Boolean(
+        isNodeOfType(expression, "UnaryExpression") &&
+        expression.operator === "!" &&
+        isNodeOfType(stripParenExpression(expression.argument), "Identifier") &&
+        resolveConstIdentifierRootSymbol(stripParenExpression(expression.argument), context.scopes)
+          ?.id === stateSymbolId,
+      );
+    })
   );
 };
 
@@ -784,7 +793,13 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
             registrationCallsByCallback,
             context,
           ) ||
-          hasPromiseCommandNegation(node, pair.stateSymbol.id, deferredFunctions, context) ||
+          hasPromiseCommandNegation(
+            node,
+            pair.stateSymbol.id,
+            deferredFunctions,
+            registrationCallsByCallback,
+            context,
+          ) ||
           hasLatestRefEqualityGuard(node, pair.stateSymbol.id, context, earlyGuardCandidatesByBlock)
         ) {
           return;

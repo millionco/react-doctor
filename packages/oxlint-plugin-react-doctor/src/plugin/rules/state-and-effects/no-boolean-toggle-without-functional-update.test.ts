@@ -306,6 +306,47 @@ describe("no-boolean-toggle-without-functional-update", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts aliased write-through mirrors of absolute promise commands", () => {
+    const constAlias = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=({player})=>{const[muted,setMuted]=useState(false);const mirror=()=>setMuted(!muted);player.setMuted(!muted).then(mirror)}",
+    );
+    const declarationAlias = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=({player})=>{const[muted,setMuted]=useState(false);function mirror(){setMuted(!muted)}player.setMuted(!muted).then(mirror)}",
+    );
+    expect(constAlias.diagnostics).toHaveLength(0);
+    expect(declarationAlias.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects aliased promise mirrors without exclusively qualifying registrations", () => {
+    const reusedForLoad = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=({player})=>{const[muted,setMuted]=useState(false);const mirror=()=>setMuted(!muted);player.setMuted(!muted).then(mirror);load().then(mirror)}",
+    );
+    const reusedForTimer = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=({player})=>{const[muted,setMuted]=useState(false);const mirror=()=>setMuted(!muted);player.setMuted(!muted).then(mirror);setTimeout(mirror,0)}",
+    );
+    const reassignedAlias = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=({player})=>{const[muted,setMuted]=useState(false);const mirror=()=>setMuted(!muted);let callback=mirror;player.setMuted(!muted).then(callback);callback=()=>{};setTimeout(mirror,0)}",
+    );
+    const unregisteredAlias = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=({player})=>{const[muted,setMuted]=useState(false);const mirror=()=>setMuted(!muted);player.setMuted(!muted).then(()=>{});setTimeout(mirror,0)}",
+    );
+    const wrongPromiseMethod = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=({player})=>{const[muted,setMuted]=useState(false);const mirror=()=>setMuted(!muted);player.setMuted(!muted).catch(mirror)}",
+    );
+    expect(reusedForLoad.diagnostics).toHaveLength(1);
+    expect(reusedForTimer.diagnostics).toHaveLength(1);
+    expect(reassignedAlias.diagnostics).toHaveLength(1);
+    expect(unregisteredAlias.diagnostics).toHaveLength(1);
+    expect(wrongPromiseMethod.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet: Latest-ref equality guard proving the captured value is still current before toggling", () => {
     const result = runRule(
       noBooleanToggleWithoutFunctionalUpdate,

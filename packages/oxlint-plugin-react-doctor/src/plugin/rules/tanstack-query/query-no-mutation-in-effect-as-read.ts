@@ -535,6 +535,16 @@ const getPositiveRefGuardSymbol = (
   return null;
 };
 
+const getNegativeRefGuardSymbol = (
+  test: EsTreeNode,
+  context: RuleContext,
+): SymbolDescriptor | null => {
+  const candidate = stripParenExpression(test);
+  return isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!"
+    ? getRefCurrentSymbol(candidate.argument, context)
+    : null;
+};
+
 const getAssignedTrueRefSymbol = (
   statement: EsTreeNode,
   context: RuleContext,
@@ -585,6 +595,16 @@ const refSymbolHasResettingWrite = (refSymbol: SymbolDescriptor, context: RuleCo
 const pathHasRunOnceRefLatch = (pathNode: EsTreeNode, context: RuleContext): boolean => {
   const statements = collectDominatingStatements(pathNode);
   const guardedAt = new Map<number, number>();
+  let branchChild = pathNode;
+  let branchParent = branchChild.parent;
+  while (branchParent && !isFunctionLike(branchParent)) {
+    if (isNodeOfType(branchParent, "IfStatement") && branchParent.consequent === branchChild) {
+      const guardedSymbol = getNegativeRefGuardSymbol(branchParent.test, context);
+      if (guardedSymbol) guardedAt.set(guardedSymbol.id, branchChild.range[0]);
+    }
+    branchChild = branchParent;
+    branchParent = branchChild.parent;
+  }
   for (const statement of statements) {
     if (isNodeOfType(statement, "IfStatement") && isEarlyExitStatement(statement.consequent)) {
       const guardedSymbol = getPositiveRefGuardSymbol(statement.test, context);

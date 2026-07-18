@@ -460,6 +460,53 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts a dominating block-form run-once ref latch", () => {
+    const result = runMutationReadRule(
+      `import { useRef } from "react";
+       const { mutateAsync: fetchUser } = useMutation(options);
+       const handled = useRef(false);
+       useEffect(() => {
+         if (!(handled as RefObject<boolean>).current) {
+           (handled as RefObject<boolean>).current = true as boolean;
+           void fetchUser(params).then((response) => setUser(response.user));
+         }
+       }, [params]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "missing assignment",
+      `if (!handled.current) {
+         void fetchUser(params).then((response) => setUser(response.user));
+       }`,
+    ],
+    [
+      "assignment after the mutation",
+      `if (!handled.current) {
+         void fetchUser(params).then((response) => setUser(response.user));
+         handled.current = true;
+       }`,
+    ],
+    [
+      "mutation in the alternate branch",
+      `if (!handled.current) {
+         handled.current = true;
+       } else {
+         void fetchUser(params).then((response) => setUser(response.user));
+       }`,
+    ],
+  ])("does not accept a block-form latch with %s", (_caseName, effectBody) => {
+    const result = runMutationReadRule(
+      `import { useRef } from "react";
+       const { mutateAsync: fetchUser } = useMutation(options);
+       const handled = useRef(false);
+       useEffect(() => { ${effectBody} }, [params]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not accept a run-once ref latch reset by cleanup", () => {
     const result = runMutationReadRule(
       `import { useRef } from "react";

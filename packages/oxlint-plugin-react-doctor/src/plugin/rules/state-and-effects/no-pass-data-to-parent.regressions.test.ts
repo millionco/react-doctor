@@ -294,6 +294,56 @@ describe("no-pass-data-to-parent — regressions", () => {
     });
 
     it.each([
+      [
+        "a reassigned result",
+        `let broken = useSidebarStatus("(max-width: 768px)");
+        broken = readUserPreference();`,
+        "broken",
+      ],
+      [
+        "a reassigned result alias",
+        `const broken = useSidebarStatus("(max-width: 768px)");
+        let reportedValue = broken;
+        reportedValue = readUserPreference();
+        const brokenForReport = reportedValue;`,
+        "brokenForReport",
+      ],
+    ])("still flags %s from a local external-store hook", (_variant, resultSetup, reportedName) => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useSidebarStatus = (query) => ${localExternalStoreCallSource};
+        const Sidebar = ({ onBreakPoint }) => {
+          ${resultSetup}
+          useEffect(() => {
+            onBreakPoint(${reportedName});
+          }, [${reportedName}, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a local external-store object mutated inside another initializer", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useSidebarState = () =>
+          useSyncExternalStore(subscribe, readSnapshot, readSnapshot);
+        const Sidebar = ({ onBreakPoint }) => {
+          const snapshot = useSidebarState();
+          const assignedValue = (snapshot.matches = readUserPreference());
+          void assignedValue;
+          useEffect(() => {
+            onBreakPoint(snapshot.matches);
+          }, [snapshot, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it.each([
       ["unbound", ""],
       ["local", `const useMediaQueryState = () => readMediaQueryState();`],
       [

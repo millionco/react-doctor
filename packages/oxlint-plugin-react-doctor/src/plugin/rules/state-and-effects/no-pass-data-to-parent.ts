@@ -1092,6 +1092,22 @@ const hasUnsafeExternalSubscriptionBindingUse = (
     let usageRoot = findTransparentExpressionRoot(
       candidateReference.identifier as unknown as EsTreeNode,
     );
+    while (
+      isNodeOfType(usageRoot.parent, "MemberExpression") &&
+      usageRoot.parent.object === usageRoot
+    ) {
+      usageRoot = findTransparentExpressionRoot(usageRoot.parent);
+    }
+    const usageParent = usageRoot.parent;
+    if (
+      (isNodeOfType(usageParent, "AssignmentExpression") && usageParent.left === usageRoot) ||
+      (isNodeOfType(usageParent, "UpdateExpression") && usageParent.argument === usageRoot) ||
+      (isNodeOfType(usageParent, "UnaryExpression") &&
+        usageParent.operator === "delete" &&
+        usageParent.argument === usageRoot)
+    ) {
+      return true;
+    }
     let usageAncestor = usageRoot.parent;
     while (
       usageAncestor &&
@@ -1110,20 +1126,7 @@ const hasUnsafeExternalSubscriptionBindingUse = (
         )
       );
     }
-    while (
-      isNodeOfType(usageRoot.parent, "MemberExpression") &&
-      usageRoot.parent.object === usageRoot
-    ) {
-      usageRoot = findTransparentExpressionRoot(usageRoot.parent);
-    }
-    const parent = usageRoot.parent;
-    return Boolean(
-      (isNodeOfType(parent, "AssignmentExpression") && parent.left === usageRoot) ||
-      (isNodeOfType(parent, "UpdateExpression") && parent.argument === usageRoot) ||
-      (isNodeOfType(parent, "UnaryExpression") &&
-        parent.operator === "delete" &&
-        parent.argument === usageRoot),
-    );
+    return false;
   });
 };
 
@@ -1149,13 +1152,12 @@ const hasOnlySafeExternalSubscriptionResultBindings = (
   );
 };
 
-const isImmutableImportedExternalSubscriptionHookCallee = (
+const hasImmutableExternalSubscriptionCallResult = (
   analysis: ProgramAnalysis,
   rawCallee: EsTreeNode,
   relatedRefs: Reference[],
+  allowWholeResult: boolean,
 ): boolean => {
-  const hookName = getImportedExternalSubscriptionHookName(analysis, rawCallee);
-  if (!hookName) return false;
   const callee = stripParenExpression(rawCallee);
   const callExpression = callee.parent;
   if (
@@ -1181,11 +1183,28 @@ const isImmutableImportedExternalSubscriptionHookCallee = (
   );
   if (relatedVariables.length === 0) return false;
   return isNodeOfType(declarator.id, "Identifier")
-    ? EXTERNAL_SUBSCRIPTION_PRIMITIVE_RESULT_HOOK_NAMES.has(hookName) &&
+    ? allowWholeResult &&
         relatedVariables.every(
           (variable) => !hasUnsafeExternalSubscriptionBindingUse(analysis, variable),
         )
     : hasOnlySafeExternalSubscriptionResultBindings(analysis, declarator, relatedVariables);
+};
+
+const isImmutableImportedExternalSubscriptionHookCallee = (
+  analysis: ProgramAnalysis,
+  rawCallee: EsTreeNode,
+  relatedRefs: Reference[],
+): boolean => {
+  const hookName = getImportedExternalSubscriptionHookName(analysis, rawCallee);
+  return Boolean(
+    hookName &&
+    hasImmutableExternalSubscriptionCallResult(
+      analysis,
+      rawCallee,
+      relatedRefs,
+      EXTERNAL_SUBSCRIPTION_PRIMITIVE_RESULT_HOOK_NAMES.has(hookName),
+    ),
+  );
 };
 
 const isExternalSubscriptionHookResultRef = (analysis: ProgramAnalysis, ref: Reference): boolean =>
@@ -1319,6 +1338,7 @@ const getLocalHookExternalStateProof = (
   scopes: ScopeAnalysis,
 ): boolean | null => {
   let hookFunction = resolveToFunction(ref);
+  let didResolveThroughResultBinding = false;
   if (!hookFunction) {
     for (const definition of ref.resolved?.defs ?? []) {
       const definitionNode = definition.node as unknown as EsTreeNode;
@@ -1330,10 +1350,19 @@ const getLocalHookExternalStateProof = (
       const calleeReference = getRef(analysis, callee);
       if (!calleeReference) continue;
       hookFunction = resolveToFunction(calleeReference);
-      if (hookFunction) break;
+      if (hookFunction) {
+        didResolveThroughResultBinding = true;
+        break;
+      }
     }
   }
   if (!hookFunction) return null;
+  if (
+    didResolveThroughResultBinding &&
+    (!ref.resolved || hasUnsafeExternalSubscriptionBindingUse(analysis, ref.resolved))
+  ) {
+    return false;
+  }
   if (
     isNodeOfType(hookFunction, "ArrowFunctionExpression") &&
     !isNodeOfType(hookFunction.body, "BlockStatement") &&
@@ -1367,6 +1396,25 @@ const getLocalHookExternalStateProof = (
       isState(analysis, returnedReference) && isExternallyDrivenState(analysis, returnedReference),
   );
 };
+
+const isImmutableLocalExternalStoreHookCallee = (
+  analysis: ProgramAnalysis,
+  rawCallee: EsTreeNode,
+  relatedRefs: Reference[],
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callee = stripParenExpression(rawCallee);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const calleeReference = getRef(analysis, callee);
+  if (
+    !calleeReference ||
+    getLocalHookExternalStateProof(analysis, calleeReference, scopes) !== true
+  ) {
+    return false;
+  }
+  return hasImmutableExternalSubscriptionCallResult(analysis, callee, relatedRefs, true);
+};
+
 const isCalleePosition = (identifier: EsTreeNode): boolean => {
   const parent = (identifier as unknown as { parent?: EsTreeNode | null }).parent;
   return Boolean(
@@ -1542,10 +1590,18 @@ export const noPassDataToParent = defineRule({
               const upstreamRefs = getUpstreamRefs(analysis, argumentRef);
               return upstreamRefs.filter((upstreamRef) => {
                 if (!isLeafRef(upstreamRef)) return false;
-                return !isImmutableImportedExternalSubscriptionHookCallee(
-                  analysis,
-                  upstreamRef.identifier as unknown as EsTreeNode,
-                  upstreamRefs,
+                return (
+                  !isImmutableImportedExternalSubscriptionHookCallee(
+                    analysis,
+                    upstreamRef.identifier as unknown as EsTreeNode,
+                    upstreamRefs,
+                  ) &&
+                  !isImmutableLocalExternalStoreHookCallee(
+                    analysis,
+                    upstreamRef.identifier as unknown as EsTreeNode,
+                    upstreamRefs,
+                    context.scopes,
+                  )
                 );
               });
             });
@@ -1565,6 +1621,12 @@ export const noPassDataToParent = defineRule({
                     analysis,
                     upstreamRef.identifier as unknown as EsTreeNode,
                     wrapperUpstreamRefs,
+                  ) &&
+                  !isImmutableLocalExternalStoreHookCallee(
+                    analysis,
+                    upstreamRef.identifier as unknown as EsTreeNode,
+                    wrapperUpstreamRefs,
+                    context.scopes,
                   ),
               ),
             );
@@ -1573,9 +1635,6 @@ export const noPassDataToParent = defineRule({
           const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
             const argIdentifier = argRef.identifier as unknown as EsTreeNode;
             if (isUseStateIdentifier(argIdentifier)) return false;
-            if (getLocalHookExternalStateProof(analysis, argRef, context.scopes) === true) {
-              return false;
-            }
             if (isProp(analysis, argRef)) return false;
             if (isUseRefIdentifier(argIdentifier)) return false;
             if (isRefCurrent(argRef)) return false;

@@ -1947,4 +1947,51 @@ window.open(deltaPage, '_blank');
     );
     expect(opaqueReceiver.diagnostics).toHaveLength(0);
   });
+
+  it("rejects concatenations whose static prefix does not pin the destination", () => {
+    for (const code of [
+      `window.open("https://" + userControlledHost);`,
+      `window.open("//" + userControlledHost);`,
+      `window.open("" + userControlledUrl);`,
+      `window.open("https://example.com" + userControlledSuffix);`,
+      `window.open("/" + userControlledPath);`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+    for (const code of [
+      `window.open("https://example.com/" + userControlledPath);`,
+      `window.open("/safe/" + userControlledPath);`,
+      `window.open("./" + userControlledPath);`,
+      `window.open("mailto:" + userControlledAddress);`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("trusts href reads from unmodified URL instances", () => {
+    const trusted = runRule(
+      windowOpenWithoutNoopener,
+      `const popupUrl = new URL("/safe", window.origin);
+       window.open(popupUrl.href);`,
+    );
+    expect(trusted.diagnostics).toHaveLength(0);
+    for (const code of [
+      `const popupUrl = new URL("/safe", window.origin);
+       popupUrl.href = userControlledUrl;
+       window.open(popupUrl.href);`,
+      `const URL = FakeURL;
+       const popupUrl = new URL("/safe", window.origin);
+       window.open(popupUrl.href);`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("keeps bare pathname reads diagnostic because they can be protocol-relative", () => {
+    const result = runRule(windowOpenWithoutNoopener, `window.open(window.location.pathname);`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -169,10 +169,10 @@ const isTrustedStaticDestination = (urlArgument: EsTreeNode | null | undefined):
 // recursion.
 const MAX_BINDING_RESOLUTION_DEPTH = 8;
 
-// `.pathname` values are path strings, which `window.open` resolves against
-// the current origin. `.origin`/`.href` are only same-origin when read off a
-// location-shaped receiver (`location`, `window.location`, `getLocation()`)
-// — an arbitrary `.origin` (e.g. a postMessage event's) is attacker data.
+// `.origin`/`.href` are only same-origin when read off a location-shaped
+// receiver (`location`, `window.location`, `getLocation()`). Bare `.pathname`
+// stays opaque because a value beginning with `//` becomes protocol-relative
+// when passed back to `window.open`.
 const isLocationShapedReceiver = (
   receiver: EsTreeNode,
   visitedFunctionNodes = new Set<EsTreeNode>(),
@@ -1302,6 +1302,22 @@ const leftmostConcatOperand = (node: EsTreeNode): EsTreeNode => {
   return cursor;
 };
 
+const staticTextPinsConcatDestination = (urlText: string): boolean => {
+  const trimmedText = urlText.trimStart();
+  if (trimmedText.length === 0) return false;
+  const loweredText = trimmedText.toLowerCase();
+  if (NON_BROWSING_URL_SCHEMES.some((scheme) => loweredText.startsWith(scheme))) return true;
+  if (!isAnalyzingForeignExport && COMPLETE_ORIGIN_PATTERN.test(trimmedText)) return true;
+  return startsUnambiguouslySameOriginTemplatePath(trimmedText);
+};
+
+const isTrustedConcatPrefix = (node: EsTreeNode): boolean => {
+  if (isStringLiteral(node)) return staticTextPinsConcatDestination(node.value);
+  if (!isNodeOfType(node, "TemplateLiteral")) return false;
+  if ((node.expressions?.length ?? 0) > 0) return isTrustedStaticDestination(node);
+  return staticTextPinsConcatDestination(node.quasis?.[0]?.value?.raw ?? "");
+};
+
 // Cross-file resolutions per linted file are capped: oxc-resolver +
 // re-parsing foreign modules is filesystem work, and a file rarely opens
 // more than a couple of imported destinations.
@@ -1602,6 +1618,21 @@ const hasUrlOriginMutationBefore = (
   );
 };
 
+const isTrustedUrlInstanceHrefRead = (
+  memberNode: EsTreeNodeOfType<"MemberExpression">,
+  depth: number,
+): boolean => {
+  if (memberNode.computed || getStaticPropertyName(memberNode) !== "href") return false;
+  const receiver = stripParenExpression(memberNode.object);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const initializer = resolveConstInitializer(receiver);
+  if (!initializer || !isNodeOfType(stripParenExpression(initializer), "NewExpression")) {
+    return false;
+  }
+  if (hasUrlOriginMutationBefore(receiver, memberNode)) return false;
+  return isTrustedDestination(initializer, depth + 1);
+};
+
 const isSafeInterpolatedDestinationSuffix = (suffixText: string): boolean => {
   if (suffixText.length === 0 || suffixText.startsWith("?") || suffixText.startsWith("#")) {
     return true;
@@ -1676,7 +1707,7 @@ const isTrustedDestination = (
     );
   }
   if (isNodeOfType(urlArgument, "BinaryExpression") && urlArgument.operator === "+") {
-    return isTrustedStaticDestination(leftmostConcatOperand(urlArgument));
+    return isTrustedConcatPrefix(leftmostConcatOperand(urlArgument));
   }
   if (isCreateObjectUrlCall(urlArgument)) return true;
   // `shareUrl.toString()` / `shareUrl.href` where shareUrl is a const
@@ -1717,6 +1748,7 @@ const isTrustedDestination = (
   // an index read off a const array of trusted destinations.
   // Non-terminal: location-shaped member reads are handled below.
   if (isNodeOfType(urlArgument, "MemberExpression")) {
+    if (!urlArgument.computed && isTrustedUrlInstanceHrefRead(urlArgument, depth + 1)) return true;
     if (!urlArgument.computed && isTrustedConstConfigMember(urlArgument, depth + 1)) return true;
     if (!urlArgument.computed && isTrustedAnchorParamHrefRead(urlArgument, depth + 1)) return true;
     if (urlArgument.computed && isTrustedConstArrayIndexRead(urlArgument, depth + 1)) return true;
@@ -1761,9 +1793,9 @@ const isTrustedDestination = (
     }
     return false;
   }
-  // `location.pathname` / `location.origin` / `getLocation().href` reads
-  // are same-origin values by construction (the dtale "open in new tab"
-  // idiom re-opens the current page under a different route).
+  // `location.origin` / `getLocation().href` reads are same-origin values by
+  // construction. Bare pathname reads stay opaque because `//host` is a valid
+  // pathname shape and becomes a protocol-relative destination when reopened.
   if (isSameOriginLocationRead(urlArgument)) return true;
   if (isNodeOfType(urlArgument, "CallExpression")) {
     if (isTrustedLocalFunctionCall(urlArgument, depth + 1)) return true;

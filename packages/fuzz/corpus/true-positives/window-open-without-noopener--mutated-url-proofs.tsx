@@ -16,4 +16,17 @@ export const openMutatedUrl = (blob: Blob, userControlledUrl: string) => {
   URL.prototype.toString = () => userControlledUrl;
   const serializedPopupUrl = new URL("/safe", window.origin);
   window.open(serializedPopupUrl.toString());
+
+  const lateMutatedPopupUrl = new URL("/safe", window.origin);
+  URL.prototype.toJSON = () => userControlledUrl;
+  window.open(lateMutatedPopupUrl.toJSON());
+
+  const implicitlySerializedPopupUrl = new URL("/safe", window.origin);
+  URL.prototype.toString = () => userControlledUrl;
+  window.open(`${implicitlySerializedPopupUrl}`);
+
+  const aliasedPopupUrl = new URL("/safe", window.origin);
+  const popupUrlAlias = aliasedPopupUrl;
+  URL.prototype.toString = () => userControlledUrl;
+  window.open(popupUrlAlias);
 };

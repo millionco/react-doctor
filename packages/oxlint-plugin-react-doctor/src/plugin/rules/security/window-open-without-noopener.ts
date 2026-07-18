@@ -32,6 +32,8 @@ const NAVIGATING_TARGETS = new Set(["_self", "_top", "_parent"]);
 let currentScopes: ScopeAnalysis | undefined;
 let currentRuleContext: RuleContext | undefined;
 let currentWindowOpenCall: EsTreeNode | undefined;
+let currentDestinationCoercionReference: EsTreeNode | undefined;
+let currentLocalFunctionInvocationReference: EsTreeNode | undefined;
 let trustedTopLevelDestinationMemo = new WeakMap<EsTreeNode, boolean>();
 let symbolHasNonReadReferenceMemo = new WeakMap<SymbolDescriptor, boolean>();
 let localFunctionCallArgumentsMemo = new WeakMap<
@@ -43,6 +45,7 @@ let routerCallsByFunctionMemo = new WeakMap<
   Array<EsTreeNodeOfType<"CallExpression">>
 >();
 let globalNamespaceMutationNodesMemo = new WeakMap<ScopeAnalysis, Map<string, EsTreeNode[]>>();
+let objectMutationCallsBySymbolMemo = new WeakMap<SymbolDescriptor, EsTreeNode[]>();
 
 const writeExecutesBeforeDestinationReference = (
   writeNode: EsTreeNode,
@@ -1612,7 +1615,7 @@ const isTrustedLocalFunctionReturn = (
       }
     }
   }
-  return isTrustedOrNullishDestination(returned, depth + 1);
+  return isTrustedOrNullishDestination(returned, depth);
 };
 
 const isTrustedLocalFunctionCall = (
@@ -1625,13 +1628,106 @@ const isTrustedLocalFunctionCall = (
   const returnedExpressions = localFunction
     ? collectLocalFunctionReturnExpressions(localFunction)
     : null;
-  return Boolean(
-    localFunction &&
-    returnedExpressions &&
-    returnedExpressions.length > 0 &&
-    returnedExpressions.every((returnedExpression) =>
-      isTrustedLocalFunctionReturn(returnedExpression, localFunction, callExpression, depth + 1),
-    ),
+  if (!localFunction || !returnedExpressions || returnedExpressions.length === 0) return false;
+  const previousInvocationReference = currentLocalFunctionInvocationReference;
+  currentLocalFunctionInvocationReference ??= callExpression;
+  try {
+    return returnedExpressions.every((returnedExpression) =>
+      isTrustedLocalFunctionReturn(returnedExpression, localFunction, callExpression, depth),
+    );
+  } finally {
+    currentLocalFunctionInvocationReference = previousInvocationReference;
+  }
+};
+
+const OBJECT_MUTATION_METHOD_NAMES = new Set([
+  "assign",
+  "defineProperties",
+  "defineProperty",
+  "setPrototypeOf",
+]);
+
+const REFLECT_MUTATION_METHOD_NAMES = new Set(["defineProperty", "set", "setPrototypeOf"]);
+
+const destructuredGlobalNamespacePropertyName = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  namespaceName: string,
+  scopes: ScopeAnalysis,
+): string | null => {
+  const binding = findVariableInitializer(identifier, identifier.name);
+  let propertyNode = binding?.bindingIdentifier.parent;
+  if (propertyNode && isNodeOfType(propertyNode, "AssignmentPattern")) {
+    propertyNode = propertyNode.parent;
+  }
+  if (!propertyNode || !isNodeOfType(propertyNode, "Property")) return null;
+  const objectPattern = propertyNode.parent;
+  if (!objectPattern || !isNodeOfType(objectPattern, "ObjectPattern")) return null;
+  const declarator = objectPattern.parent;
+  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return null;
+  const declaration = declarator.parent;
+  if (
+    !declaration ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    !declarator.init ||
+    !isProvenGlobalNamespaceReference(declarator.init, namespaceName, scopes)
+  ) {
+    return null;
+  }
+  return getStaticPropertyKeyName(propertyNode, { allowComputedString: true });
+};
+
+const calleeResolvesToGlobalMutationMethod = (
+  calleeNode: EsTreeNode,
+  namespaceName: string,
+  methodNames: Set<string>,
+  scopes: ScopeAnalysis,
+  depth: number,
+): boolean => {
+  if (depth > MAX_BINDING_RESOLUTION_DEPTH) return false;
+  const callee = stripParenExpression(calleeNode);
+  if (isNodeOfType(callee, "MemberExpression")) {
+    const methodName = getStaticPropertyName(callee);
+    return Boolean(
+      methodName &&
+      methodNames.has(methodName) &&
+      isProvenGlobalNamespaceReference(callee.object, namespaceName, scopes),
+    );
+  }
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const initializer = resolveConstInitializer(callee);
+  if (initializer) {
+    return calleeResolvesToGlobalMutationMethod(
+      initializer,
+      namespaceName,
+      methodNames,
+      scopes,
+      depth + 1,
+    );
+  }
+  const propertyName = destructuredGlobalNamespacePropertyName(callee, namespaceName, scopes);
+  return Boolean(propertyName && methodNames.has(propertyName));
+};
+
+const isGlobalObjectMutationCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  return (
+    calleeResolvesToGlobalMutationMethod(
+      callExpression.callee as EsTreeNode,
+      "Object",
+      OBJECT_MUTATION_METHOD_NAMES,
+      scopes,
+      0,
+    ) ||
+    calleeResolvesToGlobalMutationMethod(
+      callExpression.callee as EsTreeNode,
+      "Reflect",
+      REFLECT_MUTATION_METHOD_NAMES,
+      scopes,
+      0,
+    )
   );
 };
 
@@ -1662,13 +1758,20 @@ const globalNamespaceBindingIsUnmodifiedBefore = (
     return !memoizedMutationNodes.some(mutationExecutesBeforeReference);
   }
   const mutationNodes: EsTreeNode[] = [];
-  const mutationTargetsNamespace = (mutationTarget: EsTreeNode): boolean => {
-    let namespaceCandidate = stripParenExpression(mutationTarget);
+  const mutationTargetsNamespace = (mutationTarget: EsTreeNode, depth = 0): boolean => {
+    if (depth > MAX_BINDING_RESOLUTION_DEPTH) return false;
+    const namespaceCandidate = stripParenExpression(mutationTarget);
     if (isProvenGlobalNamespaceReference(namespaceCandidate, namespaceName, scopes)) return true;
-    while (isNodeOfType(namespaceCandidate, "MemberExpression")) {
-      namespaceCandidate = stripParenExpression(namespaceCandidate.object);
+    if (isNodeOfType(namespaceCandidate, "MemberExpression")) {
+      return mutationTargetsNamespace(namespaceCandidate.object, depth + 1);
     }
-    return isProvenGlobalNamespaceReference(namespaceCandidate, namespaceName, scopes);
+    if (!isNodeOfType(namespaceCandidate, "Identifier")) return false;
+    const initializer = resolveConstInitializer(namespaceCandidate);
+    if (initializer && mutationTargetsNamespace(initializer, depth + 1)) return true;
+    return (
+      destructuredGlobalNamespacePropertyName(namespaceCandidate, namespaceName, scopes) ===
+      "prototype"
+    );
   };
   walkAst(program, (node: EsTreeNode) => {
     let mutationTarget: EsTreeNode | null = null;
@@ -1676,6 +1779,9 @@ const globalNamespaceBindingIsUnmodifiedBefore = (
     if (isNodeOfType(node, "UpdateExpression")) mutationTarget = node.argument;
     if (isNodeOfType(node, "UnaryExpression") && node.operator === "delete") {
       mutationTarget = node.argument;
+    }
+    if (isNodeOfType(node, "CallExpression") && isGlobalObjectMutationCall(node, scopes)) {
+      mutationTarget = (node.arguments?.[0] as EsTreeNode | undefined) ?? null;
     }
     if (mutationTarget && mutationTargetsNamespace(mutationTarget)) {
       mutationNodes.push(node);
@@ -1722,10 +1828,76 @@ const hasUrlOriginMutationBefore = (
 ): boolean => {
   const scopes = currentScopes;
   if (!scopes) return false;
-  return URL_ORIGIN_PROPERTY_NAMES.some((propertyName) =>
+  const hasPropertyMutation = URL_ORIGIN_PROPERTY_NAMES.some((propertyName) =>
     hasPossibleStaticPropertyWriteBefore(identifier, propertyName, referenceNode, scopes),
   );
+  if (hasPropertyMutation) return true;
+  const identifierSymbol = scopes.symbolFor(identifier);
+  if (!identifierSymbol) return false;
+  let mutationCalls = objectMutationCallsBySymbolMemo.get(identifierSymbol);
+  if (!mutationCalls) {
+    mutationCalls = [];
+    const program = findProgramRoot(identifier);
+    const targetResolvesToIdentifier = (targetNode: EsTreeNode, depth: number): boolean => {
+      if (depth > MAX_BINDING_RESOLUTION_DEPTH) return false;
+      const unwrappedTarget = stripParenExpression(targetNode);
+      if (!isNodeOfType(unwrappedTarget, "Identifier")) return false;
+      if (scopes.symbolFor(unwrappedTarget) === identifierSymbol) return true;
+      const initializer = resolveConstInitializer(unwrappedTarget);
+      return Boolean(initializer && targetResolvesToIdentifier(initializer, depth + 1));
+    };
+    if (program) {
+      walkAst(program, (node: EsTreeNode) => {
+        if (!isNodeOfType(node, "CallExpression") || !isGlobalObjectMutationCall(node, scopes)) {
+          return;
+        }
+        const mutationTarget = node.arguments?.[0] as EsTreeNode | undefined;
+        if (mutationTarget && targetResolvesToIdentifier(mutationTarget, 0)) {
+          mutationCalls?.push(node);
+        }
+      });
+    }
+    objectMutationCallsBySymbolMemo.set(identifierSymbol, mutationCalls);
+  }
+  return mutationCalls.some((mutationCall) =>
+    writeExecutesBeforeDestinationReference(mutationCall, referenceNode, scopes),
+  );
 };
+
+const isGlobalUrlConstruction = (node: EsTreeNode): boolean => {
+  const unwrappedNode = stripParenExpression(node);
+  return Boolean(
+    currentScopes &&
+    isNodeOfType(unwrappedNode, "NewExpression") &&
+    isProvenGlobalNamespaceReference(unwrappedNode.callee as EsTreeNode, "URL", currentScopes),
+  );
+};
+
+const isGlobalUrlInstanceExpression = (node: EsTreeNode): boolean => {
+  const unwrappedNode = stripParenExpression(node);
+  if (isGlobalUrlConstruction(unwrappedNode)) return true;
+  if (!isNodeOfType(unwrappedNode, "Identifier")) return false;
+  const initializer = resolveConstInitializer(unwrappedNode);
+  return Boolean(initializer && isGlobalUrlConstruction(initializer));
+};
+
+const withDestinationCoercionReference = <Value>(
+  referenceNode: EsTreeNode,
+  operation: () => Value,
+): Value => {
+  const previousReference = currentDestinationCoercionReference;
+  currentDestinationCoercionReference = referenceNode;
+  try {
+    return operation();
+  } finally {
+    currentDestinationCoercionReference = previousReference;
+  }
+};
+
+const destinationSerializationReference = (boundaryNode: EsTreeNode): EsTreeNode =>
+  currentLocalFunctionInvocationReference ??
+  (isAnalyzingDeferredForeignExport ? currentDestinationCoercionReference : undefined) ??
+  boundaryNode;
 
 const isTrustedUrlInstanceHrefRead = (
   memberNode: EsTreeNodeOfType<"MemberExpression">,
@@ -1738,8 +1910,12 @@ const isTrustedUrlInstanceHrefRead = (
   if (!initializer || !isNodeOfType(stripParenExpression(initializer), "NewExpression")) {
     return false;
   }
-  if (hasUrlOriginMutationBefore(receiver, memberNode)) return false;
-  return isTrustedDestination(initializer, depth + 1);
+  const serializationReference = destinationSerializationReference(memberNode);
+  if (!globalNamespaceBindingIsUnmodifiedBefore("URL", serializationReference)) return false;
+  if (hasUrlOriginMutationBefore(receiver, serializationReference)) return false;
+  return withDestinationCoercionReference(serializationReference, () =>
+    isTrustedDestination(initializer, depth + 1),
+  );
 };
 
 const isSafeInterpolatedDestinationSuffix = (suffixText: string): boolean => {
@@ -1830,13 +2006,29 @@ const isTrustedDestination = (
     (urlArgument.callee.property.name === "toString" ||
       urlArgument.callee.property.name === "toJSON")
   ) {
-    return isTrustedDestination(urlArgument.callee.object as EsTreeNode, depth + 1);
+    const urlReceiver = urlArgument.callee.object as EsTreeNode;
+    const serializationReference = destinationSerializationReference(urlArgument);
+    if (
+      isGlobalUrlInstanceExpression(urlReceiver) &&
+      !globalNamespaceBindingIsUnmodifiedBefore("URL", serializationReference)
+    ) {
+      return false;
+    }
+    return withDestinationCoercionReference(serializationReference, () =>
+      isTrustedDestination(urlReceiver, depth + 1),
+    );
   }
   if (isNodeOfType(urlArgument, "NewExpression")) {
+    const coercionReference = currentDestinationCoercionReference ?? urlArgument;
+    const constructionProgram = findProgramRoot(urlArgument);
+    const coercionProgram = findProgramRoot(coercionReference);
     if (
       !currentScopes ||
+      !constructionProgram ||
+      constructionProgram !== coercionProgram ||
       !isProvenGlobalNamespaceReference(urlArgument.callee as EsTreeNode, "URL", currentScopes) ||
-      !globalNamespaceBindingIsUnmodifiedBefore("URL", urlArgument)
+      !globalNamespaceBindingIsUnmodifiedBefore("URL", urlArgument) ||
+      !globalNamespaceBindingIsUnmodifiedBefore("URL", coercionReference)
     ) {
       return false;
     }
@@ -1869,7 +2061,14 @@ const isTrustedDestination = (
     if (constInitializer != null) {
       if (
         isNodeOfType(stripParenExpression(constInitializer), "NewExpression") &&
-        hasUrlOriginMutationBefore(urlArgument, urlArgument)
+        (hasUrlOriginMutationBefore(
+          urlArgument,
+          currentDestinationCoercionReference ?? urlArgument,
+        ) ||
+          !globalNamespaceBindingIsUnmodifiedBefore(
+            "URL",
+            currentDestinationCoercionReference ?? urlArgument,
+          ))
       ) {
         return false;
       }
@@ -1893,11 +2092,13 @@ const isTrustedDestination = (
     const firstExpression = urlArgument.expressions?.[0];
     if (firstQuasiText.length === 0 && firstExpression) {
       const followingQuasiText = urlArgument.quasis?.[1]?.value?.raw ?? "";
-      return (
-        isSafeInterpolatedDestinationSuffix(followingQuasiText) &&
-        (!followingQuasiText.startsWith("/") ||
-          isProvenNonSlashTerminatedDestination(firstExpression as EsTreeNode, depth + 1)) &&
-        isTrustedDestination(firstExpression as EsTreeNode, depth + 1)
+      return withDestinationCoercionReference(destinationSerializationReference(urlArgument), () =>
+        Boolean(
+          isSafeInterpolatedDestinationSuffix(followingQuasiText) &&
+          (!followingQuasiText.startsWith("/") ||
+            isProvenNonSlashTerminatedDestination(firstExpression as EsTreeNode, depth + 1)) &&
+          isTrustedDestination(firstExpression as EsTreeNode, depth + 1),
+        ),
       );
     }
     return false;
@@ -1934,22 +2135,9 @@ const isTrustedDestination = (
       const crossFileVerdict = crossFileUrlHelperDestinationVerdict(urlArgument.callee);
       if (crossFileVerdict !== null) return crossFileVerdict;
     }
-    // A string method on a trusted same-origin base keeps the leading `/`
-    // (`getLocation().pathname.replace('/iframe/', '/main/')`).
     const callee = urlArgument.callee as EsTreeNode;
     if (isNodeOfType(callee, "MemberExpression")) {
       const methodName = getStaticPropertyName(callee);
-      const replacementArgument = urlArgument.arguments?.[1] as EsTreeNode | undefined;
-      if (
-        methodName === "replace" &&
-        isNodeOfType(callee.object, "MemberExpression") &&
-        getStaticPropertyName(callee.object) === "pathname" &&
-        isLocationShapedReceiver(callee.object.object) &&
-        isStringLiteral(replacementArgument) &&
-        startsSameOriginPath(replacementArgument.value)
-      ) {
-        return true;
-      }
       return (
         methodName !== null &&
         ORIGIN_PRESERVING_STRING_METHOD_NAMES.has(methodName) &&
@@ -1972,7 +2160,9 @@ const isTrustedTopLevelDestination = (urlExpression: EsTreeNode | null | undefin
   const memoKey = strippedExpression;
   const memoizedVerdict = trustedTopLevelDestinationMemo.get(memoKey);
   if (memoizedVerdict !== undefined) return memoizedVerdict;
-  const verdict = isTrustedOrNullishDestination(urlExpression, 0);
+  const verdict = withDestinationCoercionReference(strippedExpression, () =>
+    isTrustedOrNullishDestination(urlExpression, 0),
+  );
   trustedTopLevelDestinationMemo.set(memoKey, verdict);
   return verdict;
 };
@@ -2244,11 +2434,14 @@ export const windowOpenWithoutNoopener = defineRule({
   create: (context) => {
     currentRuleContext = context;
     currentWindowOpenCall = undefined;
+    currentDestinationCoercionReference = undefined;
+    currentLocalFunctionInvocationReference = undefined;
     trustedTopLevelDestinationMemo = new WeakMap();
     symbolHasNonReadReferenceMemo = new WeakMap();
     localFunctionCallArgumentsMemo = new WeakMap();
     routerCallsByFunctionMemo = new WeakMap();
     globalNamespaceMutationNodesMemo = new WeakMap();
+    objectMutationCallsBySymbolMemo = new WeakMap();
     currentLintedFilename =
       typeof context.filename === "string" && path.isAbsolute(context.filename)
         ? context.filename

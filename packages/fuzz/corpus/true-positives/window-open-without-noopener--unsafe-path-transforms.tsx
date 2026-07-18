@@ -2,4 +2,5 @@
 // weakness: path-normalization
 export const openUnsafePath = () => {
   window.open(window.location.pathname.slice(1));
+  window.open(window.location.pathname.replace("safe", "/"));
 };

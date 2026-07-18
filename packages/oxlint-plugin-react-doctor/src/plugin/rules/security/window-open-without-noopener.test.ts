@@ -252,13 +252,13 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a location.pathname-derived URL (open-in-new-tab idiom)", () => {
+  it("flags a pathname replacement that can remain protocol-relative", () => {
     const result = runRule(
       windowOpenWithoutNoopener,
       `const getLocation = () => window.location;
        window.open(getLocation().pathname?.replace('/iframe/', '/main/') ?? '', '_blank');`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a template led by window.location.origin", () => {
@@ -1255,6 +1255,36 @@ describe("window-open-without-noopener — cross-file imported destinations", ()
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("fails closed for a foreign raw URL object coerced in the consumer", () => {
+    writeFile(
+      "src/config.ts",
+      "export const storeUrl = new URL('/store', window.location.origin);\n",
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      `import { storeUrl } from './config';
+URL.prototype.toString = () => userControlledUrl;
+window.open(storeUrl, '_blank');
+`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves a foreign URL template snapshot made before consumer mutations", () => {
+    writeFile(
+      "src/config.ts",
+      "export const storeUrl = `${new URL('/store', window.location.origin)}`;\n",
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      `import { storeUrl } from './config';
+URL.prototype.toString = () => userControlledUrl;
+window.open(storeUrl, '_blank');
+`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("still flags when a barrel hides a re-export behind a same-named local decoy helper", () => {
     writeFile(
       "src/impl.ts",
@@ -1822,6 +1852,8 @@ window.open(deltaPage, '_blank');
       `window.open(window.location.pathname.substring(1));`,
       `window.open(window.location.pathname.substr(1));`,
       `window.open(window.location.pathname.replace("/safe", "https://evil.com"));`,
+      `window.open(window.location.pathname.replace("safe", "/"));`,
+      `window.open(window.location.pathname.replace("/iframe/", "/main/"));`,
     ]) {
       const result = runRule(windowOpenWithoutNoopener, code);
       expect(result.diagnostics).toHaveLength(1);
@@ -2152,13 +2184,198 @@ window.open(deltaPage, '_blank');
   });
 
   it("rejects URL prototype serializer mutations", () => {
-    const result = runRule(
-      windowOpenWithoutNoopener,
+    for (const code of [
       `URL.prototype.toString = () => userControlledUrl;
        const popupUrl = new URL("/safe", window.origin);
        window.open(popupUrl.toString());`,
+      `const popupUrl = new URL("/safe", window.origin);
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(popupUrl.toString());`,
+      `const popupUrl = new URL("/safe", window.origin);
+       URL.prototype.toJSON = () => userControlledUrl;
+       window.open(popupUrl.toJSON());`,
+      `const popupUrl = new URL("/safe", window.origin);
+       URL.prototype.href = userControlledUrl;
+       window.open(popupUrl.href);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(\`\${popupUrl}\`);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const popupAlias = popupUrl;
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(popupAlias);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const popupAlias = popupUrl;
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(\`\${popupAlias}\`);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const popupAlias = condition ? popupUrl : null;
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(popupAlias);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const popupUrls = [popupUrl];
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(popupUrls[0]);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const popupUrls = { safe: popupUrl };
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(popupUrls.safe);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const getShareUrl = () => popupUrl;
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(getShareUrl());`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const getShareUrl = () => popupUrl.toString();
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(getShareUrl());`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const getShareUrl = () => popupUrl.toJSON();
+       URL.prototype.toJSON = () => userControlledUrl;
+       window.open(getShareUrl());`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const getShareUrl = () => popupUrl.href;
+       URL.prototype.href = userControlledUrl;
+       window.open(getShareUrl());`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const getShareUrl = () => \`\${popupUrl}\`;
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(getShareUrl());`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const popupAlias = popupUrl;
+       popupUrl.href = userControlledUrl;
+       window.open(popupAlias);`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("preserves URL serialization snapshots made before prototype mutations", () => {
+    for (const code of [
+      `const popupUrl = new URL("/safe", window.origin);
+       const serializedPopupUrl = popupUrl.toString();
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(serializedPopupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const popupHref = popupUrl.href;
+       URL.prototype.href = userControlledUrl;
+       window.open(popupHref);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const serializedPopupUrl = \`\${popupUrl}\`;
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(serializedPopupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const getShareUrl = () => popupUrl.toString();
+       const serializedPopupUrl = getShareUrl();
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(serializedPopupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const getShareUrl = () => popupUrl.toJSON();
+       const serializedPopupUrl = getShareUrl();
+       URL.prototype.toJSON = () => userControlledUrl;
+       window.open(serializedPopupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const getShareUrl = () => popupUrl.href;
+       const popupHref = getShareUrl();
+       URL.prototype.href = userControlledUrl;
+       window.open(popupHref);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const getShareUrl = () => \`\${popupUrl}\`;
+       const serializedPopupUrl = getShareUrl();
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(serializedPopupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const serializePopupUrl = () => popupUrl.toString();
+       const getShareUrl = () => serializePopupUrl();
+       const serializedPopupUrl = getShareUrl();
+       window.open(serializedPopupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const serializedPopupUrl = getShareUrl();
+       URL.prototype.toString = () => userControlledUrl;
+       function getShareUrl() {
+         return popupUrl.toString();
+       }
+       window.open(serializedPopupUrl);`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("does not let URL prototype writes invalidate unrelated string serialization", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const popupPath = "/safe";
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(popupPath.toString());`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat mutations on unrelated destructured URL members as prototype writes", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const popupUrl = new URL("/safe", window.origin);
+       const { canParse } = URL;
+       canParse.metadata = userControlledValue;
+       window.open(popupUrl);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects indirect URL prototype and instance mutation APIs", () => {
+    for (const code of [
+      `const popupUrl = new URL("/safe", window.origin);
+       Object.defineProperty(URL.prototype, "toString", { value: () => userControlledUrl });
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       Object.defineProperties(URL.prototype, {
+         toString: { value: () => userControlledUrl },
+       });
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       Reflect.defineProperty(URL.prototype, "toJSON", { value: () => userControlledUrl });
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       Object.assign(URL.prototype, { toString: () => userControlledUrl });
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       Object.setPrototypeOf(popupUrl, { toString: () => userControlledUrl });
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       Object.assign(popupUrl, { href: userControlledUrl });
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const popupAlias = popupUrl;
+       Object.defineProperty(popupAlias, "toString", { value: () => userControlledUrl });
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const popupAlias = popupUrl;
+       Reflect.setPrototypeOf(popupAlias, { toString: () => userControlledUrl });
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const urlPrototype = URL.prototype;
+       urlPrototype.toString = () => userControlledUrl;
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const { prototype: urlPrototype } = URL;
+       urlPrototype.toString = () => userControlledUrl;
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const defineProperty = Object.defineProperty;
+       defineProperty(URL.prototype, "toString", { value: () => userControlledUrl });
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const { defineProperty } = Object;
+       defineProperty(URL.prototype, "toString", { value: () => userControlledUrl });
+       window.open(popupUrl);`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics).toHaveLength(1);
+    }
   });
 
   it("does not assume custom JSX handlers discard callback returns", () => {

@@ -49,6 +49,8 @@ const REACT_COMPILER_ACTION = "Rewrite the flagged code so the compiler can opti
 // users off mature libraries (#950), so this rule names the real fix instead.
 const REACT_COMPILER_INCOMPATIBLE_LIBRARY_ACTION =
   "It's how the library works, not a bug in your code. Memoize values you pass from it into other memoized components, or suppress it with `// react-doctor-disable-next-line react-hooks-js/incompatible-library`.";
+const SET_STATE_IN_EFFECT_ACTION =
+  "Prefer deriving or initializing the value before render. If the effect must read a browser API after mount, treat this as advisory or suppress it with `// react-doctor-disable-next-line react-hooks-js/set-state-in-effect`.";
 const REACT_COMPILER_GENERIC_MESSAGE = `${REACT_COMPILER_IMPACT}. ${REACT_COMPILER_ACTION}`;
 
 const buildReactCompilerMessage = (
@@ -58,6 +60,12 @@ const buildReactCompilerMessage = (
   const normalizedSummary = reasonSummary.replace(TRAILING_PERIOD_PATTERN, "");
   if (!normalizedSummary) return `${REACT_COMPILER_IMPACT}. ${action}`;
   return `${REACT_COMPILER_IMPACT}: ${normalizedSummary}. ${action}`;
+};
+
+const buildSetStateInEffectMessage = (reasonSummary: string): string => {
+  const normalizedSummary = reasonSummary.replace(TRAILING_PERIOD_PATTERN, "");
+  const reason = normalizedSummary ? `: ${normalizedSummary}` : "";
+  return `This synchronous effect update causes an extra render${reason}. ${SET_STATE_IN_EFFECT_ACTION}`;
 };
 
 // Adopted third-party plugins (not in the react-doctor registry) → the
@@ -194,6 +202,12 @@ const resolveCleanedDiagnostic = (
     if (rule === "error-boundaries") {
       return {
         message: REACT_ERROR_BOUNDARY_MESSAGE,
+        help: reasonDetail || help,
+      };
+    }
+    if (rule === "set-state-in-effect") {
+      return {
+        message: buildSetStateInEffectMessage(reasonSummary.trim()),
         help: reasonDetail || help,
       };
     }

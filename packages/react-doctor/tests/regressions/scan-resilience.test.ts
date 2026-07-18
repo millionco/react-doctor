@@ -424,7 +424,6 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
 
     expect(hasReactHooksJsPluginEntry).toBe(true);
     expect(reactHooksJsRuleKeys.length).toBeGreaterThan(0);
-    expect(reactHooksJsRuleKeys.every((ruleKey) => config.rules[ruleKey] === "error")).toBe(true);
   });
 
   it("emits no react-hooks-js rules when customRulesOnly skips the plugin", () => {
@@ -463,15 +462,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     );
   });
 
-  it("emits every react-hooks-js rule at error severity (so they block CI by default)", () => {
-    // Regression for the silent severity downgrade introduced in PR
-    // #140: every `react-hooks-js/*` entry got mass-converted from
-    // `"error"` to `"warn"`, which made "React Compiler can't optimize
-    // this code" diagnostics stop counting toward `errorCount` and
-    // stop blocking CI (react-doctor blocks on error-severity diagnostics
-    // by default unless `--blocking none` is set). Each compiler diagnostic
-    // represents an unoptimizable component shape — surfacing as warnings
-    // hid real perf regressions.
+  it("keeps compiler bailouts blocking while set-state-in-effect remains advisory", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
@@ -482,7 +473,14 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       .map(([ruleKey, severity]) => ({ ruleKey, severity }));
 
     expect(compilerSeverities.length).toBeGreaterThan(0);
-    const nonErrorEntries = compilerSeverities.filter((entry) => entry.severity !== "error");
+    const setStateInEffectEntry = compilerSeverities.find(
+      (entry) => entry.ruleKey === "react-hooks-js/set-state-in-effect",
+    );
+    const nonErrorEntries = compilerSeverities.filter(
+      (entry) =>
+        entry.ruleKey !== "react-hooks-js/set-state-in-effect" && entry.severity !== "error",
+    );
+    expect(setStateInEffectEntry?.severity).toBe("warn");
     expect(nonErrorEntries).toEqual([]);
   });
 

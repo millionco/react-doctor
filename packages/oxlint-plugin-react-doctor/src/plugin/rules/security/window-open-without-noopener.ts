@@ -1938,8 +1938,7 @@ const isTrustedLocalFunctionReturn = (
           followingQuasiText,
           (returned.expressions?.length ?? 0) > 1,
         ) &&
-        (!followingQuasiText.startsWith("/") ||
-          isProvenNonSlashTerminatedDestination(argument, depth + 1))
+        (!followingQuasiText.startsWith("/") || isProvenSafeSlashJoinedBase(argument, depth + 1))
       ) {
         return isTrustedDestination(argument, depth + 1);
       }
@@ -2333,16 +2332,81 @@ const isSafeInterpolatedDestinationSuffix = (
   return suffixText.startsWith("/") && suffixText[1] !== "/" && suffixText[1] !== "\\";
 };
 
-const isProvenNonSlashTerminatedDestination = (destination: EsTreeNode, depth: number): boolean => {
+const INCOMPLETE_BROWSING_SCHEME_BASE_PATTERN = /^(?:https?|ftp|wss?):\/*$/iu;
+
+const staticPrimitiveTruthiness = (node: EsTreeNode): boolean | null => {
+  const unwrappedNode = stripParenExpression(node);
+  if (isNullishExpression(unwrappedNode)) return false;
+  if (!isNodeOfType(unwrappedNode, "Literal")) return null;
+  if (typeof unwrappedNode.value === "boolean") return unwrappedNode.value;
+  if (typeof unwrappedNode.value === "string") return unwrappedNode.value.length > 0;
+  if (typeof unwrappedNode.value === "number") {
+    return unwrappedNode.value !== 0 && !Number.isNaN(unwrappedNode.value);
+  }
+  if (typeof unwrappedNode.value === "bigint") return unwrappedNode.value !== 0n;
+  return null;
+};
+
+const isProvenSafeSlashJoinedBase = (destination: EsTreeNode, depth: number): boolean => {
   if (depth > MAX_BINDING_RESOLUTION_DEPTH) return false;
   const unwrappedDestination = stripParenExpression(destination);
-  if (isStringLiteral(unwrappedDestination)) {
-    return !unwrappedDestination.value.endsWith("/") && !unwrappedDestination.value.endsWith("\\");
+  if (isNodeOfType(unwrappedDestination, "Literal")) {
+    if (typeof unwrappedDestination.value !== "string") {
+      return staticPrimitiveTruthiness(unwrappedDestination) !== null;
+    }
+    const normalizedValue = unwrappedDestination.value.trim().replaceAll("\\", "/");
+    return (
+      !/^\/+$/u.test(normalizedValue) &&
+      !INCOMPLETE_BROWSING_SCHEME_BASE_PATTERN.test(normalizedValue)
+    );
   }
   if (isSameOriginLocationRead(unwrappedDestination)) return true;
+  if (isNodeOfType(unwrappedDestination, "ConditionalExpression")) {
+    const testTruthiness = staticPrimitiveTruthiness(unwrappedDestination.test);
+    if (testTruthiness !== null) {
+      return isProvenSafeSlashJoinedBase(
+        testTruthiness ? unwrappedDestination.consequent : unwrappedDestination.alternate,
+        depth + 1,
+      );
+    }
+    return (
+      isProvenSafeSlashJoinedBase(unwrappedDestination.consequent, depth + 1) &&
+      isProvenSafeSlashJoinedBase(unwrappedDestination.alternate, depth + 1)
+    );
+  }
+  if (isNodeOfType(unwrappedDestination, "LogicalExpression")) {
+    const leftTruthiness = staticPrimitiveTruthiness(unwrappedDestination.left);
+    if (unwrappedDestination.operator === "&&") {
+      return (
+        leftTruthiness === false ||
+        isProvenSafeSlashJoinedBase(unwrappedDestination.right, depth + 1)
+      );
+    }
+    if (unwrappedDestination.operator === "??") {
+      if (isNullishExpression(unwrappedDestination.left)) {
+        return isProvenSafeSlashJoinedBase(unwrappedDestination.right, depth + 1);
+      }
+      if (leftTruthiness !== null) {
+        return isProvenSafeSlashJoinedBase(unwrappedDestination.left, depth + 1);
+      }
+    }
+    if (unwrappedDestination.operator === "||" && leftTruthiness !== null) {
+      return isProvenSafeSlashJoinedBase(
+        leftTruthiness ? unwrappedDestination.left : unwrappedDestination.right,
+        depth + 1,
+      );
+    }
+    return (
+      isProvenSafeSlashJoinedBase(unwrappedDestination.left, depth + 1) &&
+      isProvenSafeSlashJoinedBase(unwrappedDestination.right, depth + 1)
+    );
+  }
   if (isNodeOfType(unwrappedDestination, "Identifier")) {
-    const initializer = resolveConstInitializer(unwrappedDestination);
-    return Boolean(initializer && isProvenNonSlashTerminatedDestination(initializer, depth + 1));
+    const resolvedSymbol = currentScopes
+      ? resolveConstIdentifierAlias(unwrappedDestination, currentScopes)
+      : null;
+    const initializer = resolvedSymbol?.kind === "const" ? resolvedSymbol.initializer : null;
+    return Boolean(initializer && isProvenSafeSlashJoinedBase(initializer, depth + 1));
   }
   if (
     isNodeOfType(unwrappedDestination, "CallExpression") &&
@@ -2356,11 +2420,59 @@ const isProvenNonSlashTerminatedDestination = (destination: EsTreeNode, depth: n
       returnedExpressions &&
       returnedExpressions.length > 0 &&
       returnedExpressions.every((returnedExpression) =>
-        isProvenNonSlashTerminatedDestination(returnedExpression, depth + 1),
+        isProvenSafeSlashJoinedBase(returnedExpression, depth + 1),
       ),
     );
   }
   return false;
+};
+
+const isTrustedInterpolatedDestinationBase = (destination: EsTreeNode, depth: number): boolean => {
+  const unwrappedDestination = stripParenExpression(destination);
+  if (
+    isNodeOfType(unwrappedDestination, "Literal") &&
+    typeof unwrappedDestination.value !== "string"
+  ) {
+    return staticPrimitiveTruthiness(unwrappedDestination) !== null;
+  }
+  if (isNodeOfType(unwrappedDestination, "ConditionalExpression")) {
+    const testTruthiness = staticPrimitiveTruthiness(unwrappedDestination.test);
+    if (testTruthiness !== null) {
+      return isTrustedInterpolatedDestinationBase(
+        testTruthiness ? unwrappedDestination.consequent : unwrappedDestination.alternate,
+        depth + 1,
+      );
+    }
+    return (
+      isTrustedInterpolatedDestinationBase(unwrappedDestination.consequent, depth + 1) &&
+      isTrustedInterpolatedDestinationBase(unwrappedDestination.alternate, depth + 1)
+    );
+  }
+  if (isNodeOfType(unwrappedDestination, "LogicalExpression")) {
+    const leftTruthiness = staticPrimitiveTruthiness(unwrappedDestination.left);
+    if (unwrappedDestination.operator === "&&") {
+      return (
+        leftTruthiness === false ||
+        isTrustedInterpolatedDestinationBase(unwrappedDestination.right, depth + 1)
+      );
+    }
+    if (unwrappedDestination.operator === "??" && isNullishExpression(unwrappedDestination.left)) {
+      return isTrustedInterpolatedDestinationBase(unwrappedDestination.right, depth + 1);
+    }
+    if (leftTruthiness !== null) {
+      return isTrustedInterpolatedDestinationBase(
+        unwrappedDestination.operator === "||" && !leftTruthiness
+          ? unwrappedDestination.right
+          : unwrappedDestination.left,
+        depth + 1,
+      );
+    }
+    return (
+      isTrustedInterpolatedDestinationBase(unwrappedDestination.left, depth + 1) &&
+      isTrustedInterpolatedDestinationBase(unwrappedDestination.right, depth + 1)
+    );
+  }
+  return isTrustedDestination(unwrappedDestination, depth + 1);
 };
 
 const isTrustedDestination = (
@@ -2503,6 +2615,15 @@ const isTrustedDestination = (
     const firstQuasiText = (urlArgument.quasis?.[0]?.value?.raw ?? "").trimStart();
     const firstExpression = urlArgument.expressions?.[0];
     if (firstQuasiText.length === 0 && firstExpression) {
+      const firstExpressionNode = firstExpression as EsTreeNode;
+      const resolvedFirstExpressionSymbol =
+        currentScopes && isNodeOfType(stripParenExpression(firstExpressionNode), "Identifier")
+          ? resolveConstIdentifierAlias(stripParenExpression(firstExpressionNode), currentScopes)
+          : null;
+      const trustedFirstExpression =
+        resolvedFirstExpressionSymbol?.kind === "const" && resolvedFirstExpressionSymbol.initializer
+          ? resolvedFirstExpressionSymbol.initializer
+          : firstExpressionNode;
       const followingQuasiText = urlArgument.quasis?.[1]?.value?.raw ?? "";
       return withDestinationCoercionReference(destinationSerializationReference(urlArgument), () =>
         Boolean(
@@ -2511,8 +2632,8 @@ const isTrustedDestination = (
             (urlArgument.expressions?.length ?? 0) > 1,
           ) &&
           (!followingQuasiText.startsWith("/") ||
-            isProvenNonSlashTerminatedDestination(firstExpression as EsTreeNode, depth + 1)) &&
-          isTrustedDestination(firstExpression as EsTreeNode, depth + 1),
+            isProvenSafeSlashJoinedBase(trustedFirstExpression, depth + 1)) &&
+          isTrustedInterpolatedDestinationBase(trustedFirstExpression, depth + 1),
         ),
       );
     }

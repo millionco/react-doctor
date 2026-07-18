@@ -2276,9 +2276,47 @@ window.open(deltaPage, '_blank');
     for (const code of [
       'const prefix = "/"; window.open(`${prefix}/evil.com`);',
       'const getPrefix = () => "/"; window.open(`${getPrefix()}/evil.com`);',
+      'const prefix = "  /  "; window.open(`${prefix}/evil.com`);',
+      'const prefix = "\\\\"; window.open(`${prefix}/evil.com`);',
+      'const prefix = condition ? "/api/v1/" : "/"; window.open(`${prefix}/users`);',
+      'const getPrefix = () => condition ? "/api/v1/" : "/"; window.open(`${getPrefix()}/users`);',
+      'const prefix = "https://"; window.open(`${prefix}/users`);',
+      'const prefix = "  WSS:\\\\  "; window.open(`${prefix}/users`);',
+      "const prefix = /\\//; window.open(`${prefix}/evil.com`);",
+      "const prefix = /\\\\/; window.open(`${prefix}/evil.com`);",
+      'const prefix = ["/"]; window.open(`${prefix}/evil.com`);',
+      'const prefix = { toString: () => "/" }; window.open(`${prefix}/evil.com`);',
+      'const prefix = dynamicPrefix || "/api/v1/"; window.open(`${prefix}/users`);',
+      'const prefix = dynamicPrefix ?? "/api/v1/"; window.open(`${prefix}/users`);',
+      "window.open(`${dynamicPrefix}/users`);",
     ]) {
       const result = runRule(windowOpenWithoutNoopener, code);
       expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("accepts slash-joined bases that cannot collapse to a protocol-relative URL", () => {
+    for (const code of [
+      'const prefix = "/api/v1/"; window.open(`${prefix}/users`);',
+      'const getPrefix = () => "/api/v1/"; window.open(`${getPrefix()}/users`);',
+      'const prefix = "/api/v1/" as const; window.open(`${prefix}/users`);',
+      'const prefix = condition ? "/api/v1/" : "/api/v2/"; window.open(`${prefix}/users`);',
+      'const getPrefix = () => condition ? "/api/v1/" : "/api/v2/"; window.open(`${getPrefix()}/users`);',
+      'const prefix = "https://example.com/"; window.open(`${prefix}/users`);',
+      'const prefix = condition && "/api/v1/"; window.open(`${prefix}/users`);',
+      'const prefix = false && "/"; window.open(`${prefix}/users`);',
+      'const prefix = null ?? "/api/v1/"; window.open(`${prefix}/users`);',
+      'const prefix = true || "/"; window.open(`${prefix}/users`);',
+      'const prefix = false ?? "/"; window.open(`${prefix}/users`);',
+      'const prefix = 0 ?? "/"; window.open(`${prefix}/users`);',
+      "const prefix = false; window.open(`${prefix}/users`);",
+      "const prefix = 0; window.open(`${prefix}/users`);",
+      "const prefix = null; window.open(`${prefix}/users`);",
+      'const prefix = true ? "/api/v1/" : "/"; window.open(`${prefix}/users`);',
+      'const root = "/api/v1/"; const a1 = root; const a2 = a1; const a3 = a2; const a4 = a3; const a5 = a4; const a6 = a5; const a7 = a6; const a8 = a7; const a9 = a8; window.open(`${a9}/users`);',
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(0);
     }
   });
 

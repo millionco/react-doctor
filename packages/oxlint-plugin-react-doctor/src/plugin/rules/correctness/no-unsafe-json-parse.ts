@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -12,23 +13,29 @@ import { isObjectOfMemberAccess } from "../../utils/is-object-of-member-access.j
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const MESSAGE =
   "Reading a property straight off `JSON.parse(...)` combines a throwing parse with an unchecked result: malformed or empty input throws `SyntaxError`, while missing fields silently become `undefined`. Wrap the parse in try/catch and validate its shape before accessing fields.";
 
-const isJsonMethodCallee = (calleeNode: EsTreeNode, method: string): boolean => {
+const isJsonMethodCallee = (
+  calleeNode: EsTreeNode,
+  method: string,
+  scopes?: ScopeAnalysis,
+): boolean => {
   const callee = stripParenExpression(calleeNode);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const receiver = stripParenExpression(callee.object);
   return (
     isNodeOfType(receiver, "Identifier") &&
     receiver.name === "JSON" &&
-    getStaticPropertyName(callee) === method
+    getStaticPropertyName(callee) === method &&
+    (!scopes || scopes.isGlobalReference(receiver))
   );
 };
 
-const isJsonMethodCall = (node: EsTreeNode, method: string): boolean =>
-  isNodeOfType(node, "CallExpression") && isJsonMethodCallee(node.callee, method);
+const isJsonMethodCall = (node: EsTreeNode, method: string, scopes?: ScopeAnalysis): boolean =>
+  isNodeOfType(node, "CallExpression") && isJsonMethodCallee(node.callee, method, scopes);
 
 // A string/template literal that parses at lint time cannot throw at
 // runtime (`JSON.parse('{"version":"1.0.0"}')` inline fixtures).
@@ -50,11 +57,6 @@ const isStaticallyValidJsonLiteral = (argument: EsTreeNode): boolean => {
     return false;
   }
 };
-
-const hasValidJsonFallbackArgument = (argument: EsTreeNode): boolean =>
-  isNodeOfType(argument, "LogicalExpression") &&
-  (argument.operator === "??" || argument.operator === "||") &&
-  isStaticallyValidJsonLiteral(stripParenExpression(argument.right as EsTreeNode));
 
 const skipParenthesizedParents = (node: EsTreeNode): EsTreeNode =>
   findTransparentExpressionRoot(node);
@@ -78,86 +80,231 @@ const isResultImmediatelyRead = (call: EsTreeNode): boolean => {
   return isObjectOfMemberAccess(unwrapped) || isDestructuredDeclaratorInit(unwrapped);
 };
 
-// A function passed straight to a call (`items.map(item => ...)`, an IIFE) can
-// run synchronously inside an enclosing `try`, so the try still guards it; a
-// function that is merely defined there (assigned to `socket.onmessage`,
-// stored, returned) runs later, outside the try.
-const isInvokedAtDefinitionSite = (functionNode: EsTreeNode): boolean => {
-  const parent = skipParenthesizedParents(functionNode).parent;
-  return Boolean(
-    parent && (isNodeOfType(parent, "CallExpression") || isNodeOfType(parent, "NewExpression")),
-  );
-};
-
-// The nearest enclosing function whose execution is deferred past its
-// definition site — an enclosing `try` beyond it wraps only the definition,
-// not the parse, so the try-walk must stop there.
-const findDeferredExecutionBoundary = (node: EsTreeNode): EsTreeNode | null => {
-  let ancestor: EsTreeNode | null | undefined = node.parent;
-  while (ancestor) {
-    if (isFunctionLike(ancestor) && !isInvokedAtDefinitionSite(ancestor)) return ancestor;
-    ancestor = ancestor.parent;
-  }
-  return null;
-};
-
 const NODE_SCRIPT_FILENAME_PATTERN =
   /(^|\/)(scripts?|tools?|tokens?)(\/|$)|(?:^|[/.-])(release|build|generate)(?:[-.]|$)/i;
 
 const SERIALIZER_CALL_NAME_PATTERN =
   /stringify|serializ|^(?:get|build|create).*(?:json|datasetKey)$/i;
 
-const isKnownSerializerCall = (node: EsTreeNode): boolean => {
+const isKnownSerializerCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const inner = stripParenExpression(node);
   if (!isNodeOfType(inner, "CallExpression")) return false;
-  if (isJsonMethodCall(inner, "stringify")) return true;
+  if (isJsonMethodCall(inner, "stringify", scopes)) return true;
   const callee = stripParenExpression(inner.callee as EsTreeNode);
   return isNodeOfType(callee, "Identifier") && SERIALIZER_CALL_NAME_PATTERN.test(callee.name);
 };
 
-const jsonValidatorCallPolarity = (node: EsTreeNode, argumentName: string): boolean | null => {
-  const inner = stripParenExpression(node);
-  if (isNodeOfType(inner, "UnaryExpression") && inner.operator === "!") {
-    const nestedPolarity = jsonValidatorCallPolarity(inner.argument as EsTreeNode, argumentName);
-    return nestedPolarity === null ? null : !nestedPolarity;
-  }
-  let didFindValidator = false;
-  walkAst(inner, (candidate: EsTreeNode) => {
-    if (didFindValidator) return false;
-    if (!isNodeOfType(candidate, "CallExpression")) return;
-    const callee = stripParenExpression(candidate.callee as EsTreeNode);
-    if (!isNodeOfType(callee, "Identifier") || !/valid.*json|json.*valid/i.test(callee.name)) {
-      return;
-    }
-    const firstArgument = candidate.arguments[0];
-    if (!firstArgument || !isNodeOfType(firstArgument, "Identifier")) return;
-    if (firstArgument.name !== argumentName) return;
-    const binding = findVariableInitializer(callee, callee.name);
-    if (!binding?.initializer) return;
-    let containsGuardedParse = false;
-    walkAst(binding.initializer, (helperNode: EsTreeNode) => {
-      if (
-        isJsonMethodCall(helperNode, "parse") &&
-        isInsideTryStatement(helperNode, { region: "block" })
-      ) {
-        containsGuardedParse = true;
-        return false;
-      }
-    });
-    didFindValidator = containsGuardedParse;
-  });
-  return didFindValidator ? true : null;
+const referencesSameBinding = (
+  left: EsTreeNodeOfType<"Identifier">,
+  right: EsTreeNodeOfType<"Identifier">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const leftSymbol = scopes.symbolFor(left);
+  const rightSymbol = scopes.symbolFor(right);
+  return leftSymbol ? leftSymbol === rightSymbol : rightSymbol === null && left.name === right.name;
 };
 
-const findJsonValidatorSourceName = (argument: EsTreeNode): string | null => {
+const JSON_VALIDATOR_CONTROL_FLOW_BARRIER_TYPES = new Set([
+  "ConditionalExpression",
+  "IfStatement",
+  "LogicalExpression",
+  "SwitchStatement",
+]);
+
+const expressionUnconditionallyParsesParameter = (
+  root: EsTreeNode,
+  parameter: EsTreeNodeOfType<"Identifier">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let didFindParse = false;
+  walkAst(root, (candidate: EsTreeNode) => {
+    if (didFindParse) return false;
+    if (candidate !== root && isFunctionLike(candidate)) return false;
+    if (
+      !isJsonMethodCall(candidate, "parse", scopes) ||
+      !isNodeOfType(candidate, "CallExpression")
+    ) {
+      return;
+    }
+    const parsedArgument = candidate.arguments[0];
+    if (
+      !parsedArgument ||
+      !isNodeOfType(parsedArgument, "Identifier") ||
+      !referencesSameBinding(parsedArgument, parameter, scopes)
+    ) {
+      return;
+    }
+    let ancestor: EsTreeNode | null | undefined = candidate.parent;
+    while (ancestor) {
+      if (
+        isFunctionLike(ancestor) ||
+        JSON_VALIDATOR_CONTROL_FLOW_BARRIER_TYPES.has(ancestor.type)
+      ) {
+        return;
+      }
+      if (ancestor === root) {
+        didFindParse = true;
+        return false;
+      }
+      ancestor = ancestor.parent ?? null;
+    }
+  });
+  return didFindParse;
+};
+
+const findDirectBlockStatementChild = (
+  node: EsTreeNode,
+  block: EsTreeNodeOfType<"BlockStatement">,
+): EsTreeNode | null => {
+  let child = node;
+  let ancestor = node.parent;
+  while (ancestor && ancestor !== block) {
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return ancestor === block ? child : null;
+};
+
+const validatorSafelyParsesFirstParameter = (
+  validator: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const inner = stripParenExpression(validator);
+  if (!isFunctionLike(inner)) return false;
+  const firstParameter = inner.params?.[0];
+  if (!firstParameter || !isNodeOfType(firstParameter, "Identifier")) return false;
+  let hasSafeTry = false;
+  walkAst(inner.body as EsTreeNode, (helperNode: EsTreeNode) => {
+    if (hasSafeTry) return false;
+    if (isFunctionLike(helperNode) && helperNode !== inner) return false;
+    if (!isNodeOfType(helperNode, "TryStatement") || !helperNode.handler) return;
+    const returnStatements: EsTreeNodeOfType<"ReturnStatement">[] = [];
+    walkAst(helperNode.block, (tryNode: EsTreeNode) => {
+      if (isFunctionLike(tryNode)) return false;
+      if (isNodeOfType(tryNode, "ReturnStatement")) returnStatements.push(tryNode);
+    });
+    let hasValidatedSuccessReturn = false;
+    const everySuccessReturnIsValidated = returnStatements.every((returnStatement) => {
+      const returnedValue = returnStatement.argument;
+      if (isNodeOfType(returnedValue, "Literal") && returnedValue.value === false) return true;
+      if (
+        returnedValue &&
+        expressionUnconditionallyParsesParameter(returnedValue, firstParameter, scopes)
+      ) {
+        hasValidatedSuccessReturn = true;
+        return true;
+      }
+      const topLevelStatement = findDirectBlockStatementChild(returnStatement, helperNode.block);
+      if (!topLevelStatement) return false;
+      const statementIndex = helperNode.block.body.findIndex(
+        (statement) => statement === topLevelStatement,
+      );
+      const isDominatedByParse = helperNode.block.body
+        .slice(0, Math.max(statementIndex, 0))
+        .some((statement) =>
+          expressionUnconditionallyParsesParameter(statement, firstParameter, scopes),
+        );
+      if (isDominatedByParse) hasValidatedSuccessReturn = true;
+      return isDominatedByParse;
+    });
+    let catchReturnCount = 0;
+    let everyCatchReturnIsFalse = true;
+    walkAst(helperNode.handler.body, (catchNode: EsTreeNode) => {
+      if (isFunctionLike(catchNode)) return false;
+      if (!isNodeOfType(catchNode, "ReturnStatement")) return;
+      catchReturnCount += 1;
+      if (!isNodeOfType(catchNode.argument, "Literal") || catchNode.argument.value !== false) {
+        everyCatchReturnIsFalse = false;
+      }
+    });
+    hasSafeTry =
+      hasValidatedSuccessReturn &&
+      everySuccessReturnIsValidated &&
+      catchReturnCount > 0 &&
+      everyCatchReturnIsFalse;
+  });
+  return hasSafeTry;
+};
+
+const jsonValidatorCallPolarity = (
+  node: EsTreeNode,
+  sourceIdentifier: EsTreeNodeOfType<"Identifier">,
+  scopes: ScopeAnalysis,
+): boolean | null => {
+  const inner = stripParenExpression(node);
+  if (isNodeOfType(inner, "UnaryExpression") && inner.operator === "!") {
+    const nestedPolarity = jsonValidatorCallPolarity(
+      inner.argument as EsTreeNode,
+      sourceIdentifier,
+      scopes,
+    );
+    return nestedPolarity === null ? null : !nestedPolarity;
+  }
+  if (!isNodeOfType(inner, "CallExpression")) return null;
+  const callee = stripParenExpression(inner.callee as EsTreeNode);
+  if (!isNodeOfType(callee, "Identifier") || !/valid.*json|json.*valid/i.test(callee.name)) {
+    return null;
+  }
+  const firstArgument = inner.arguments[0];
+  if (!firstArgument || !isNodeOfType(firstArgument, "Identifier")) return null;
+  if (!referencesSameBinding(firstArgument, sourceIdentifier, scopes)) return null;
+  const binding = findVariableInitializer(callee, callee.name);
+  return binding?.initializer && validatorSafelyParsesFirstParameter(binding.initializer, scopes)
+    ? true
+    : null;
+};
+
+const expressionGuaranteesJsonValidity = (
+  node: EsTreeNode,
+  branchRunsWhenTruthy: boolean,
+  sourceIdentifier: EsTreeNodeOfType<"Identifier">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const inner = stripParenExpression(node);
+  if (isNodeOfType(inner, "UnaryExpression") && inner.operator === "!") {
+    return expressionGuaranteesJsonValidity(
+      inner.argument as EsTreeNode,
+      !branchRunsWhenTruthy,
+      sourceIdentifier,
+      scopes,
+    );
+  }
+  if (isNodeOfType(inner, "LogicalExpression")) {
+    const leftGuarantees = expressionGuaranteesJsonValidity(
+      inner.left as EsTreeNode,
+      branchRunsWhenTruthy,
+      sourceIdentifier,
+      scopes,
+    );
+    const rightGuarantees = expressionGuaranteesJsonValidity(
+      inner.right as EsTreeNode,
+      branchRunsWhenTruthy,
+      sourceIdentifier,
+      scopes,
+    );
+    if (inner.operator === "&&") {
+      return branchRunsWhenTruthy
+        ? leftGuarantees || rightGuarantees
+        : leftGuarantees && rightGuarantees;
+    }
+    if (inner.operator === "||") {
+      return branchRunsWhenTruthy
+        ? leftGuarantees && rightGuarantees
+        : leftGuarantees || rightGuarantees;
+    }
+  }
+  return jsonValidatorCallPolarity(inner, sourceIdentifier, scopes) === branchRunsWhenTruthy;
+};
+
+const findJsonValidatorSource = (argument: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
   const innerArgument = stripParenExpression(argument);
   if (!isNodeOfType(innerArgument, "Identifier")) return null;
   const argumentBinding = findVariableInitializer(innerArgument, innerArgument.name);
-  if (!argumentBinding?.initializer) return innerArgument.name;
+  if (!argumentBinding?.initializer) return innerArgument;
   const initializer = stripParenExpression(argumentBinding.initializer);
-  if (!isNodeOfType(initializer, "CallExpression")) return innerArgument.name;
+  if (!isNodeOfType(initializer, "CallExpression")) return innerArgument;
   const callee = stripParenExpression(initializer.callee as EsTreeNode);
-  if (!isNodeOfType(callee, "MemberExpression")) return innerArgument.name;
+  if (!isNodeOfType(callee, "MemberExpression")) return innerArgument;
   const receiver = stripParenExpression(callee.object);
   const [matchPattern, replacement] = initializer.arguments;
   if (
@@ -171,21 +318,25 @@ const findJsonValidatorSourceName = (argument: EsTreeNode): string | null => {
     !isNodeOfType(replacement, "Literal") ||
     replacement.value !== "null"
   ) {
-    return innerArgument.name;
+    return innerArgument;
   }
-  return receiver.name;
+  return receiver;
 };
 
-const isGuardedByJsonValidator = (parseCall: EsTreeNode, argument: EsTreeNode): boolean => {
-  const validatedSourceName = findJsonValidatorSourceName(argument);
-  if (!validatedSourceName) return false;
+const isGuardedByJsonValidator = (
+  parseCall: EsTreeNode,
+  argument: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const validatedSource = findJsonValidatorSource(argument);
+  if (!validatedSource) return false;
   let child = parseCall;
   let ancestor = parseCall.parent;
   while (ancestor) {
     if (
       isNodeOfType(ancestor, "IfStatement") &&
       ancestor.consequent === child &&
-      jsonValidatorCallPolarity(ancestor.test, validatedSourceName) === true
+      expressionGuaranteesJsonValidity(ancestor.test, true, validatedSource, scopes)
     ) {
       return true;
     }
@@ -195,7 +346,7 @@ const isGuardedByJsonValidator = (parseCall: EsTreeNode, argument: EsTreeNode): 
         if (
           isNodeOfType(statement, "IfStatement") &&
           isEarlyExitStatement(statement.consequent) &&
-          jsonValidatorCallPolarity(statement.test, validatedSourceName) === false
+          expressionGuaranteesJsonValidity(statement.test, false, validatedSource, scopes)
         ) {
           return true;
         }
@@ -228,11 +379,11 @@ const nameOfEnclosingFunction = (node: EsTreeNode): string | null => {
   return null;
 };
 
-const containsJsonStringifyCall = (node: EsTreeNode): boolean => {
+const containsJsonStringifyCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let didFindStringify = false;
   walkAst(node, (child: EsTreeNode) => {
     if (didFindStringify) return false;
-    if (isJsonMethodCall(child, "stringify")) {
+    if (isJsonMethodCall(child, "stringify", scopes)) {
       didFindStringify = true;
       return false;
     }
@@ -244,7 +395,11 @@ const containsJsonStringifyCall = (node: EsTreeNode): boolean => {
 // `serializeKeyPair` in the same module returning `JSON.stringify(...)`, is a
 // same-module round-trip pair: the only producer of the input is the
 // serializer, so the string is valid JSON by construction.
-const isRoundTripDeserializerParse = (parseCall: EsTreeNode, argument: EsTreeNode): boolean => {
+const isRoundTripDeserializerParse = (
+  parseCall: EsTreeNode,
+  argument: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   const inner = stripParenExpression(argument);
   if (!isNodeOfType(inner, "Identifier")) return false;
   const argumentBinding = findVariableInitializer(inner, inner.name);
@@ -255,7 +410,8 @@ const isRoundTripDeserializerParse = (parseCall: EsTreeNode, argument: EsTreeNod
   const serializerName = functionName.replace(/^deserialize/i, "serialize");
   const serializerBinding = findVariableInitializer(parseCall, serializerName);
   return Boolean(
-    serializerBinding?.initializer && containsJsonStringifyCall(serializerBinding.initializer),
+    serializerBinding?.initializer &&
+    containsJsonStringifyCall(serializerBinding.initializer, scopes),
   );
 };
 
@@ -278,16 +434,21 @@ const PRIOR_PARSE_CONTROL_FLOW_BARRIER_TYPES = new Set([
 
 const statementUnconditionallyParsesIdentifier = (
   statement: EsTreeNode,
-  identifierName: string,
+  identifier: EsTreeNodeOfType<"Identifier">,
+  scopes: ScopeAnalysis,
 ): boolean => {
   let didFindDominatingParse = false;
   walkAst(statement, (child: EsTreeNode) => {
     if (didFindDominatingParse) return false;
-    if (!isJsonMethodCall(child, "parse") || !isNodeOfType(child, "CallExpression")) return;
+    if (child !== statement && isFunctionLike(child)) return false;
+    if (!isJsonMethodCall(child, "parse", scopes) || !isNodeOfType(child, "CallExpression")) return;
     const parsedArgument = child.arguments?.[0];
     if (!parsedArgument) return;
     const innerArgument = stripParenExpression(parsedArgument);
-    if (!isNodeOfType(innerArgument, "Identifier") || innerArgument.name !== identifierName) {
+    if (
+      !isNodeOfType(innerArgument, "Identifier") ||
+      !referencesSameBinding(innerArgument, identifier, scopes)
+    ) {
       return;
     }
     let pathAncestor: EsTreeNode | null | undefined = child.parent;
@@ -311,17 +472,22 @@ const statementUnconditionallyParsesIdentifier = (
   return didFindDominatingParse;
 };
 
-const statementWritesIdentifier = (statement: EsTreeNode, identifierName: string): boolean => {
+const statementWritesIdentifier = (
+  statement: EsTreeNode,
+  identifier: EsTreeNodeOfType<"Identifier">,
+  scopes: ScopeAnalysis,
+): boolean => {
   let didFindWrite = false;
   walkAst(statement, (child: EsTreeNode) => {
     if (didFindWrite) return false;
+    if (child !== statement && isFunctionLike(child)) return false;
     const assignmentTarget = isNodeOfType(child, "AssignmentExpression")
       ? stripParenExpression(child.left as EsTreeNode)
       : null;
     if (
       assignmentTarget &&
       isNodeOfType(assignmentTarget, "Identifier") &&
-      assignmentTarget.name === identifierName
+      referencesSameBinding(assignmentTarget, identifier, scopes)
     ) {
       didFindWrite = true;
       return false;
@@ -332,7 +498,7 @@ const statementWritesIdentifier = (statement: EsTreeNode, identifierName: string
     if (
       updateTarget &&
       isNodeOfType(updateTarget, "Identifier") &&
-      updateTarget.name === identifierName
+      referencesSameBinding(updateTarget, identifier, scopes)
     ) {
       didFindWrite = true;
       return false;
@@ -348,10 +514,10 @@ const statementWritesIdentifier = (statement: EsTreeNode, identifierName: string
 const isDominatedByPriorParseOfSameIdentifier = (
   parseCall: EsTreeNode,
   argument: EsTreeNode,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const inner = stripParenExpression(argument);
   if (!isNodeOfType(inner, "Identifier")) return false;
-  const argumentName = inner.name;
   let cursor: EsTreeNode = parseCall;
   let ancestor: EsTreeNode | null | undefined = parseCall.parent;
   while (ancestor) {
@@ -360,8 +526,8 @@ const isDominatedByPriorParseOfSameIdentifier = (
       const cursorStatementIndex = statements.findIndex((statement) => statement === cursor);
       const precedingStatements = statements.slice(0, Math.max(cursorStatementIndex, 0));
       for (const precedingStatement of precedingStatements.toReversed()) {
-        if (statementWritesIdentifier(precedingStatement, argumentName)) return false;
-        if (statementUnconditionallyParsesIdentifier(precedingStatement, argumentName)) {
+        if (statementWritesIdentifier(precedingStatement, inner, scopes)) return false;
+        if (statementUnconditionallyParsesIdentifier(precedingStatement, inner, scopes)) {
           return true;
         }
       }
@@ -386,20 +552,18 @@ export const noUnsafeJsonParse = defineRule({
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (fileIsNodeScript) return;
-        if (!isJsonMethodCall(node as EsTreeNode, "parse")) return;
-        // A same-file binding named `JSON` shadows the global — bail out.
+        if (!isJsonMethodCall(node as EsTreeNode, "parse", context.scopes)) return;
         const callee = stripParenExpression(node.callee);
         if (!isNodeOfType(callee, "MemberExpression")) return;
         const receiver = stripParenExpression(callee.object);
         if (!isNodeOfType(receiver, "Identifier")) return;
-        if (findVariableInitializer(receiver, "JSON")) return;
         const firstArgument = node.arguments?.[0];
         if (firstArgument) {
           const unwrappedArgument = stripParenExpression(firstArgument);
           // `JSON.parse(JSON.stringify(x))` is the deep-clone idiom; stringify
           // output is always valid JSON — directly or through a one-hop
           // binding (`const snapshot = JSON.stringify(state)`).
-          if (isKnownSerializerCall(unwrappedArgument)) return;
+          if (isKnownSerializerCall(unwrappedArgument, context.scopes)) return;
           if (isNodeOfType(unwrappedArgument, "Identifier")) {
             const argumentBinding = findVariableInitializer(
               unwrappedArgument,
@@ -407,16 +571,24 @@ export const noUnsafeJsonParse = defineRule({
             );
             if (
               argumentBinding?.initializer &&
-              isKnownSerializerCall(argumentBinding.initializer)
+              isKnownSerializerCall(argumentBinding.initializer, context.scopes)
             ) {
               return;
             }
           }
-          if (hasValidJsonFallbackArgument(unwrappedArgument)) return;
           if (isStaticallyValidJsonLiteral(unwrappedArgument)) return;
-          if (isRoundTripDeserializerParse(node as EsTreeNode, firstArgument)) return;
-          if (isDominatedByPriorParseOfSameIdentifier(node as EsTreeNode, firstArgument)) return;
-          if (isGuardedByJsonValidator(node as EsTreeNode, firstArgument)) return;
+          if (isRoundTripDeserializerParse(node as EsTreeNode, firstArgument, context.scopes))
+            return;
+          if (
+            isDominatedByPriorParseOfSameIdentifier(
+              node as EsTreeNode,
+              firstArgument,
+              context.scopes,
+            )
+          ) {
+            return;
+          }
+          if (isGuardedByJsonValidator(node as EsTreeNode, firstArgument, context.scopes)) return;
         }
         if (!isResultImmediatelyRead(node as EsTreeNode)) return;
         if (

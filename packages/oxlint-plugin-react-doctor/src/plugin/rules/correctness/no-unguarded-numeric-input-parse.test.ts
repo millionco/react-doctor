@@ -332,4 +332,28 @@ describe("no-unguarded-numeric-input-parse", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags when the parsed value is consumed before a later NaN guard", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const Field = ({ submit }) => <input onChange={(event) => {
+        const value = Number(event.target.value);
+        submit(value);
+        if (Number.isNaN(value)) return;
+      }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a shadowed isNaN helper as a numeric guard", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const Field = ({ submit }) => <input onChange={(event) => {
+        const value = Number(event.target.value);
+        const isNaN = () => false;
+        if (!isNaN(value)) submit(value);
+      }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -1,10 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 // String-search methods whose single argument, when written as an
@@ -41,20 +42,31 @@ const classifyCollapsibleLiteral = (node: EsTreeNode): LiteralKind | null => {
   return null;
 };
 
-// Walks a `||`/`&&` chain and returns the single literal kind shared by
-// every operand, or null when any operand is non-literal, a nested `??`
-// chain, or the operands mix string and number types.
 const collectSharedLiteralKind = (rawNode: EsTreeNode): LiteralKind | null => {
-  const node = stripGroupingParens(rawNode);
-  if (isNodeOfType(node, "LogicalExpression")) {
-    if (node.operator !== "||" && node.operator !== "&&") return null;
-    const leftKind = collectSharedLiteralKind(node.left as EsTreeNode);
-    if (!leftKind) return null;
-    const rightKind = collectSharedLiteralKind(node.right as EsTreeNode);
-    if (!rightKind) return null;
-    return leftKind === rightKind ? leftKind : null;
+  const pendingOperands: EsTreeNode[] = [rawNode];
+  let sharedKind: LiteralKind | null = null;
+  while (pendingOperands.length > 0) {
+    const operand = stripParenExpression(pendingOperands.pop()!);
+    if (isNodeOfType(operand, "LogicalExpression")) {
+      if (operand.operator !== "||" && operand.operator !== "&&") return null;
+      pendingOperands.push(operand.left as EsTreeNode, operand.right as EsTreeNode);
+      continue;
+    }
+    const operandKind = classifyCollapsibleLiteral(operand);
+    if (!operandKind) return null;
+    if (sharedKind && sharedKind !== operandKind) return null;
+    sharedKind = operandKind;
   }
-  return classifyCollapsibleLiteral(node);
+  return sharedKind;
+};
+
+const isNestedInLogicalChain = (node: EsTreeNode): boolean => {
+  const wrapper = findTransparentExpressionRoot(node);
+  const parent = wrapper.parent ?? null;
+  return (
+    isNodeOfType(parent, "LogicalExpression") &&
+    (parent.operator === "||" || parent.operator === "&&")
+  );
 };
 
 const isConsumedByStringSearchCall = (chainOrWrapper: EsTreeNode, parent: EsTreeNode): boolean => {
@@ -103,17 +115,14 @@ export const noCollapsedLiteralOrChainAsValue = defineRule({
   create: (context: RuleContext) => ({
     LogicalExpression(node: EsTreeNodeOfType<"LogicalExpression">) {
       if (node.operator !== "||" && node.operator !== "&&") return;
+      if (isNestedInLogicalChain(node)) return;
       if (!collectSharedLiteralKind(node)) return;
 
       // Climb through grouping parentheses to find the consuming node,
       // then confirm this chain is the DIRECT argument / operand there. A
       // grouping paren is identified by `stripGroupingParens` peeling it.
-      let wrapper: EsTreeNode = node;
-      let parent = node.parent ?? null;
-      while (parent && stripGroupingParens(parent) !== parent) {
-        wrapper = parent;
-        parent = parent.parent ?? null;
-      }
+      const wrapper = findTransparentExpressionRoot(node);
+      const parent = wrapper.parent ?? null;
       if (!parent) return;
 
       if (

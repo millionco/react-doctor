@@ -1,14 +1,17 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 // Static property name of a member access (`a.b` / `a["b"]`), or null for a
 // dynamic computed access (`a[key]`).
@@ -46,8 +49,6 @@ const SHAPE_VALIDATION_METHOD_NAMES = new Set([
   "match",
   "test",
   "exec",
-  "startsWith",
-  "endsWith",
   "indexOf",
   "includes",
   "has",
@@ -55,6 +56,12 @@ const SHAPE_VALIDATION_METHOD_NAMES = new Set([
   "every",
 ]);
 const REGEX_VALIDATION_METHOD_NAMES = new Set(["match", "test", "exec"]);
+const SAFE_HASH_SELECTOR_PATTERNS = new Set([
+  "^#[A-Za-z][\\w-]*$",
+  "^#[a-zA-Z][\\w-]*$",
+  "^[A-Za-z][\\w-]*$",
+  "^[a-zA-Z][\\w-]*$",
+]);
 const STRING_DERIVATION_METHOD_NAMES = new Set([
   "slice",
   "substring",
@@ -71,15 +78,16 @@ const STRING_DERIVATION_METHOD_NAMES = new Set([
 ]);
 const PREDICATE_CALLEE_NAME_PATTERN = /^(?:is|has|can|check|validate?)|valid/i;
 const NON_DOM_RECEIVER_NAME_PATTERN = /rout(?:e|er)|pattern|history|matcher/i;
-const DEFERRED_CALLBACK_REGISTRAR_NAMES = new Set([
-  "addEventListener",
-  "setTimeout",
-  "setInterval",
-  "requestAnimationFrame",
-  "requestIdleCallback",
-  "queueMicrotask",
-  "setImmediate",
-]);
+const SAFE_HASH_SELECTOR_LITERAL_PATTERN = /^#[A-Za-z][\w-]*$/;
+
+const isSafeHashSelectorLiteral = (node: EsTreeNode): boolean => {
+  const literal = stripParenExpression(node);
+  return (
+    isNodeOfType(literal, "Literal") &&
+    typeof literal.value === "string" &&
+    SAFE_HASH_SELECTOR_LITERAL_PATTERN.test(literal.value)
+  );
+};
 const DOM_ELEMENT_NAME_SEGMENTS = new Set([
   "el",
   "elem",
@@ -155,8 +163,8 @@ const isRegexValidationCall = (node: EsTreeNode): boolean => {
   return Boolean(
     isNodeOfType(receiver, "Literal") &&
     "regex" in receiver &&
-    receiver.regex?.pattern.startsWith("^#") &&
-    receiver.regex.pattern.endsWith("$"),
+    receiver.regex &&
+    SAFE_HASH_SELECTOR_PATTERNS.has(receiver.regex.pattern),
   );
 };
 
@@ -318,18 +326,22 @@ const isLikelyDomElementReceiver = (node: EsTreeNode): boolean => {
 // — a shape check on the derivation pins the source just as soundly.
 const makeTaintedReferenceMatcher = (
   selectorArgument: EsTreeNode,
+  scopes: ScopeAnalysis,
 ): ((candidate: EsTreeNode) => boolean) => {
   const stripped = stripParenExpression(selectorArgument);
-  const taintedName = isNodeOfType(stripped, "Identifier") ? stripped.name : null;
+  const taintedIdentifier = isNodeOfType(stripped, "Identifier") ? stripped : null;
+  const taintedSymbol = taintedIdentifier ? scopes.symbolFor(taintedIdentifier) : null;
   const referencesTaintDirectly = (candidate: EsTreeNode): boolean => {
-    if (taintedName && isNodeOfType(candidate, "Identifier") && candidate.name === taintedName) {
-      return true;
+    if (taintedIdentifier && isNodeOfType(candidate, "Identifier")) {
+      const candidateSymbol = scopes.symbolFor(candidate);
+      if (taintedSymbol) return candidateSymbol === taintedSymbol;
+      if (candidateSymbol === null && candidate.name === taintedIdentifier.name) return true;
     }
     return isHrefHashDerivedExpression(candidate);
   };
   return (candidate: EsTreeNode): boolean => {
     if (referencesTaintDirectly(candidate)) return true;
-    if (!isNodeOfType(candidate, "Identifier") || candidate.name === taintedName) return false;
+    if (!isNodeOfType(candidate, "Identifier") || candidate === taintedIdentifier) return false;
     const binding = findVariableInitializer(candidate, candidate.name);
     return Boolean(
       binding?.initializer && someNodeInSubtree(binding.initializer, referencesTaintDirectly),
@@ -362,8 +374,13 @@ const isShapeValidatingCall = (
   if (!isNodeOfType(node.callee, "MemberExpression")) return false;
   const methodName = getStaticMemberPropertyName(node.callee);
   if (!methodName || !SHAPE_VALIDATION_METHOD_NAMES.has(methodName)) return false;
-  if (someNodeInSubtree(node.callee.object, referencesTaintedValue)) return true;
-  return taintedInArguments;
+  if (REGEX_VALIDATION_METHOD_NAMES.has(methodName)) {
+    return (
+      isRegexValidationCall(node) &&
+      (taintedInArguments || someNodeInSubtree(node.callee.object, referencesTaintedValue))
+    );
+  }
+  return taintedInArguments && !someNodeInSubtree(node.callee.object, referencesTaintedValue);
 };
 
 // The root `expect(...)` call of an assertion chain (`expect(hash).toBe(…)`),
@@ -411,9 +428,11 @@ const isTaintPinningComparison = (
   const right = node.right as EsTreeNode;
   if (node.operator === "in") return someNodeInSubtree(left, referencesTaintedValue);
   if (node.operator !== "===" && node.operator !== "==") return false;
-  const pins = (valueSide: EsTreeNode, literalSide: EsTreeNode): boolean =>
-    someNodeInSubtree(valueSide, referencesTaintedValue) &&
-    isNodeOfType(stripParenExpression(literalSide), "Literal");
+  const pins = (valueSide: EsTreeNode, literalSide: EsTreeNode): boolean => {
+    return (
+      someNodeInSubtree(valueSide, referencesTaintedValue) && isSafeHashSelectorLiteral(literalSide)
+    );
+  };
   return pins(left, right) || pins(right, left);
 };
 
@@ -425,64 +444,86 @@ const isShapeValidatingExpression = (
   isTaintPinningComparison(node, referencesTaintedValue) ||
   isTaintPinningAssertion(node, referencesTaintedValue);
 
+const isNegativeOneLiteral = (node: EsTreeNode): boolean => {
+  const inner = stripParenExpression(node);
+  return (
+    isNodeOfType(inner, "UnaryExpression") &&
+    inner.operator === "-" &&
+    isNodeOfType(inner.argument, "Literal") &&
+    inner.argument.value === 1
+  );
+};
+
+const containmentComparisonGuaranteesValidSelector = (
+  node: EsTreeNode,
+  branchRunsWhenTruthy: boolean,
+  referencesTaintedValue: (candidate: EsTreeNode) => boolean,
+): boolean => {
+  const inner = stripParenExpression(node);
+  if (!isNodeOfType(inner, "BinaryExpression")) return false;
+  const left = inner.left as EsTreeNode;
+  const right = inner.right as EsTreeNode;
+  let validationCall: EsTreeNode | null = null;
+  if (isNegativeOneLiteral(right)) validationCall = left;
+  else if (isNegativeOneLiteral(left)) validationCall = right;
+  if (!validationCall || !isShapeValidatingCall(validationCall, referencesTaintedValue)) {
+    return false;
+  }
+  if (inner.operator === "!==" || inner.operator === "!=") return branchRunsWhenTruthy;
+  if (inner.operator === "===" || inner.operator === "==") return !branchRunsWhenTruthy;
+  return false;
+};
+
 // Every conditional test that dominates the query call: enclosing
 // if/ternary/logical-&& tests, preceding early-exit guards (`if (…)
 // return;`), and preceding `expect(...)` assertion statements (a failed
 // assertion throws, dominating everything after it) in the statement lists
 // between the call and the root.
-const positiveValidationExpression = (
+const expressionGuaranteesValidSelector = (
   test: EsTreeNode,
   branchRunsWhenTruthy: boolean,
-): EsTreeNode | null => {
+  referencesTaintedValue: (candidate: EsTreeNode) => boolean,
+): boolean => {
   const inner = stripParenExpression(test);
-  if (branchRunsWhenTruthy) {
-    return isNodeOfType(inner, "UnaryExpression") && inner.operator === "!" ? null : inner;
+  if (isNodeOfType(inner, "UnaryExpression") && inner.operator === "!") {
+    return expressionGuaranteesValidSelector(
+      inner.argument as EsTreeNode,
+      !branchRunsWhenTruthy,
+      referencesTaintedValue,
+    );
   }
-  return isNodeOfType(inner, "UnaryExpression") && inner.operator === "!"
-    ? (inner.argument as EsTreeNode)
-    : null;
-};
-
-const collectDominatingGuardTests = (callNode: EsTreeNode): EsTreeNode[] => {
-  const guardTests: EsTreeNode[] = [];
-  let child: EsTreeNode = callNode;
-  let ancestor: EsTreeNode | null | undefined = callNode.parent;
-  while (ancestor) {
-    if (isNodeOfType(ancestor, "IfStatement") && ancestor.test !== child) {
-      const validationExpression = positiveValidationExpression(
-        ancestor.test,
-        ancestor.consequent === child,
-      );
-      if (validationExpression) guardTests.push(validationExpression);
-    } else if (isNodeOfType(ancestor, "ConditionalExpression") && ancestor.test !== child) {
-      const validationExpression = positiveValidationExpression(
-        ancestor.test,
-        ancestor.consequent === child,
-      );
-      if (validationExpression) guardTests.push(validationExpression);
-    } else if (isNodeOfType(ancestor, "LogicalExpression") && ancestor.right === child) {
-      guardTests.push(ancestor.left);
-    } else if (isNodeOfType(ancestor, "BlockStatement") || isNodeOfType(ancestor, "Program")) {
-      const statements = ancestor.body;
-      const childStatementIndex = statements.findIndex((statement) => statement === child);
-      for (let statementIndex = 0; statementIndex < childStatementIndex; statementIndex += 1) {
-        const statement = statements[statementIndex];
-        if (isNodeOfType(statement, "IfStatement") && isEarlyExitStatement(statement.consequent)) {
-          const validationExpression = positiveValidationExpression(statement.test, false);
-          if (validationExpression) guardTests.push(validationExpression);
-        }
-        if (
-          isNodeOfType(statement, "ExpressionStatement") &&
-          getExpectChainRootCall(stripParenExpression(statement.expression))
-        ) {
-          guardTests.push(statement.expression);
-        }
-      }
+  if (isNodeOfType(inner, "LogicalExpression")) {
+    const leftGuarantees = expressionGuaranteesValidSelector(
+      inner.left as EsTreeNode,
+      branchRunsWhenTruthy,
+      referencesTaintedValue,
+    );
+    const rightGuarantees = expressionGuaranteesValidSelector(
+      inner.right as EsTreeNode,
+      branchRunsWhenTruthy,
+      referencesTaintedValue,
+    );
+    if (inner.operator === "&&") {
+      return branchRunsWhenTruthy
+        ? leftGuarantees || rightGuarantees
+        : leftGuarantees && rightGuarantees;
     }
-    child = ancestor;
-    ancestor = ancestor.parent ?? null;
+    if (inner.operator === "||") {
+      return branchRunsWhenTruthy
+        ? leftGuarantees && rightGuarantees
+        : leftGuarantees || rightGuarantees;
+    }
   }
-  return guardTests;
+  if (
+    containmentComparisonGuaranteesValidSelector(
+      inner,
+      branchRunsWhenTruthy,
+      referencesTaintedValue,
+    )
+  ) {
+    return true;
+  }
+  return branchRunsWhenTruthy && isShapeValidatingExpression(inner, referencesTaintedValue);
 };
 
 // A non-default `case` pins the tainted discriminant to its literal:
@@ -499,7 +540,8 @@ const isPinnedByEnclosingSwitchCase = (
       ancestor.test !== null &&
       ancestor.parent &&
       isNodeOfType(ancestor.parent, "SwitchStatement") &&
-      someNodeInSubtree(ancestor.parent.discriminant, referencesTaintedValue)
+      someNodeInSubtree(ancestor.parent.discriminant, referencesTaintedValue) &&
+      isSafeHashSelectorLiteral(ancestor.test)
     ) {
       return true;
     }
@@ -516,50 +558,57 @@ const isPinnedByEnclosingSwitchCase = (
 const isShapeValidatedByDominatingGuard = (
   callNode: EsTreeNode,
   selectorArgument: EsTreeNode,
+  scopes: ScopeAnalysis,
 ): boolean => {
-  const referencesTaintedValue = makeTaintedReferenceMatcher(selectorArgument);
+  const referencesTaintedValue = makeTaintedReferenceMatcher(selectorArgument, scopes);
   if (isPinnedByEnclosingSwitchCase(callNode, referencesTaintedValue)) return true;
-  return collectDominatingGuardTests(callNode).some((guardTest) =>
-    someNodeInSubtree(guardTest, (candidate) =>
-      isShapeValidatingExpression(candidate, referencesTaintedValue),
-    ),
-  );
-};
-
-const isFunctionLikeNode = (node: EsTreeNode): boolean =>
-  node.type === "FunctionDeclaration" ||
-  node.type === "FunctionExpression" ||
-  node.type === "ArrowFunctionExpression";
-
-const getCalleeStaticName = (callNode: EsTreeNodeOfType<"CallExpression">): string | null => {
-  const callee = stripParenExpression(callNode.callee);
-  if (isNodeOfType(callee, "Identifier")) return callee.name;
-  return getStaticMemberPropertyName(callee);
-};
-
-// The nearest enclosing function that is passed to a deferred-callback
-// registrar (addEventListener, setTimeout, …). A try block around the
-// registration does NOT guard the callback body — it runs after the try
-// frame is gone — so the try walk must stop there.
-const findDeferredCallbackBoundary = (node: EsTreeNode): EsTreeNode | null => {
-  let ancestor: EsTreeNode | null | undefined = node.parent;
+  let child: EsTreeNode = callNode;
+  let ancestor: EsTreeNode | null | undefined = callNode.parent;
   while (ancestor) {
-    if (isFunctionLikeNode(ancestor)) {
-      const enclosingCall = ancestor.parent;
-      if (
-        enclosingCall &&
-        isNodeOfType(enclosingCall, "CallExpression") &&
-        enclosingCall.arguments?.some((argument) => argument === ancestor)
-      ) {
-        const registrarName = getCalleeStaticName(enclosingCall);
-        if (registrarName && DEFERRED_CALLBACK_REGISTRAR_NAMES.has(registrarName)) {
-          return ancestor;
+    if (
+      (isNodeOfType(ancestor, "IfStatement") || isNodeOfType(ancestor, "ConditionalExpression")) &&
+      ancestor.test !== child &&
+      expressionGuaranteesValidSelector(
+        ancestor.test,
+        ancestor.consequent === child,
+        referencesTaintedValue,
+      )
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(ancestor, "LogicalExpression") &&
+      ancestor.right === child &&
+      expressionGuaranteesValidSelector(
+        ancestor.left as EsTreeNode,
+        ancestor.operator === "&&",
+        referencesTaintedValue,
+      )
+    ) {
+      return true;
+    }
+    if (isNodeOfType(ancestor, "BlockStatement") || isNodeOfType(ancestor, "Program")) {
+      for (const statement of ancestor.body) {
+        if (statement === child) break;
+        if (
+          isNodeOfType(statement, "IfStatement") &&
+          isEarlyExitStatement(statement.consequent) &&
+          expressionGuaranteesValidSelector(statement.test, false, referencesTaintedValue)
+        ) {
+          return true;
+        }
+        if (
+          isNodeOfType(statement, "ExpressionStatement") &&
+          isTaintPinningAssertion(statement.expression, referencesTaintedValue)
+        ) {
+          return true;
         }
       }
     }
+    child = ancestor;
     ancestor = ancestor.parent ?? null;
   }
-  return null;
+  return false;
 };
 
 // The query sits in a callback of a promise chain that carries a rejection
@@ -569,7 +618,7 @@ const findDeferredCallbackBoundary = (node: EsTreeNode): EsTreeNode | null => {
 const isInsideCatchGuardedPromiseCallback = (node: EsTreeNode): boolean => {
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor) {
-    if (isFunctionLikeNode(ancestor)) {
+    if (isFunctionLike(ancestor)) {
       const enclosingCall = ancestor.parent;
       if (
         enclosingCall &&
@@ -601,17 +650,24 @@ const isInsideCatchGuardedPromiseCallback = (node: EsTreeNode): boolean => {
 // The query lives in a named same-file helper whose every call site is
 // inside a try block — the rule's recommended try/catch applied one frame
 // up. Any non-call reference (passed as a callback) disqualifies.
-const isInHelperOnlyInvokedInsideTry = (node: EsTreeNode): boolean => {
+const isInHelperOnlyInvokedInsideTry = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  helperTryGuardCache: WeakMap<EsTreeNode, boolean>,
+): boolean => {
   let helperFunction: EsTreeNode | null = null;
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor) {
-    if (isFunctionLikeNode(ancestor)) {
+    if (isFunctionLike(ancestor)) {
       helperFunction = ancestor;
       break;
     }
     ancestor = ancestor.parent ?? null;
   }
   if (!helperFunction) return false;
+  if ("async" in helperFunction && helperFunction.async === true) return false;
+  const cachedResult = helperTryGuardCache.get(helperFunction);
+  if (cachedResult !== undefined) return cachedResult;
   let helperDefinitionIdentifier: EsTreeNode | null = null;
   if (
     isNodeOfType(helperFunction, "FunctionDeclaration") &&
@@ -627,33 +683,21 @@ const isInHelperOnlyInvokedInsideTry = (node: EsTreeNode): boolean => {
     helperDefinitionIdentifier = helperFunction.parent.id;
   }
   if (!helperDefinitionIdentifier || !isNodeOfType(helperDefinitionIdentifier, "Identifier")) {
+    helperTryGuardCache.set(helperFunction, false);
     return false;
   }
   const helperName = helperDefinitionIdentifier.name;
-  let programRoot: EsTreeNode = helperFunction;
-  while (programRoot.parent) programRoot = programRoot.parent;
+  const helperSymbol = isNodeOfType(helperFunction, "FunctionDeclaration")
+    ? scopes.scopeFor(helperDefinitionIdentifier).symbolsByName.get(helperName)
+    : scopes.symbolFor(helperDefinitionIdentifier);
+  if (!helperSymbol) {
+    helperTryGuardCache.set(helperFunction, false);
+    return false;
+  }
   let callSiteCount = 0;
   let sawUnguardedOrNonCallReference = false;
-  someNodeInSubtree(programRoot, (candidate) => {
-    if (sawUnguardedOrNonCallReference) return true;
-    if (!isNodeOfType(candidate, "Identifier") || candidate.name !== helperName) return false;
-    if (candidate === helperDefinitionIdentifier) return false;
-    if (
-      candidate.parent &&
-      isNodeOfType(candidate.parent, "VariableDeclarator") &&
-      candidate.parent.id === candidate
-    ) {
-      return false;
-    }
-    // A non-computed member property (`foo.helperName`) is not a reference.
-    if (
-      candidate.parent &&
-      isNodeOfType(candidate.parent, "MemberExpression") &&
-      candidate.parent.property === candidate &&
-      !candidate.parent.computed
-    ) {
-      return false;
-    }
+  for (const reference of helperSymbol.references) {
+    const candidate = reference.identifier;
     const isDirectCallSite =
       candidate.parent &&
       isNodeOfType(candidate.parent, "CallExpression") &&
@@ -662,16 +706,17 @@ const isInHelperOnlyInvokedInsideTry = (node: EsTreeNode): boolean => {
       !isDirectCallSite ||
       !isInsideTryStatement(candidate.parent as EsTreeNode, {
         region: "block",
-        boundary: findDeferredCallbackBoundary(candidate.parent as EsTreeNode),
+        boundary: findDeferredExecutionBoundary(candidate.parent as EsTreeNode),
       })
     ) {
       sawUnguardedOrNonCallReference = true;
-      return true;
+      break;
     }
     callSiteCount += 1;
-    return false;
-  });
-  return !sawUnguardedOrNonCallReference && callSiteCount > 0;
+  }
+  const isGuarded = !sawUnguardedOrNonCallReference && callSiteCount > 0;
+  helperTryGuardCache.set(helperFunction, isGuarded);
+  return isGuarded;
 };
 
 // Flags `document.querySelector(x)` / `querySelectorAll` / `Element.matches` /
@@ -697,35 +742,38 @@ export const noNonLiteralSelectorQueryWithoutTryCatch = defineRule({
   category: "Correctness",
   recommendation:
     "`querySelector`/`querySelectorAll`/`matches`/`closest` throw a `DOMException` on an invalid CSS selector, and href/hash fragments are frequently invalid. Wrap the call in try/catch or normalize the value with `CSS.escape`.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const callee = node.callee;
-      if (!isNodeOfType(callee, "MemberExpression")) return;
-      const methodName = getStaticMemberPropertyName(callee);
-      if (!methodName || !SELECTOR_QUERY_METHOD_NAMES.has(methodName)) return;
-      if (
-        ELEMENT_RECEIVER_METHOD_NAMES.has(methodName) &&
-        !isLikelyDomElementReceiver(callee.object)
-      ) {
-        return;
-      }
-      const selectorArgument = node.arguments?.[0];
-      if (!selectorArgument || isNodeOfType(selectorArgument, "SpreadElement")) return;
-      if (isStringLiteralSelector(selectorArgument)) return;
-      if (!selectorArgumentTaintsToHref(selectorArgument)) return;
-      if (selectorComesFromLiteralHrefTable(selectorArgument)) return;
-      if (isShapeValidatedByDominatingGuard(node, selectorArgument)) return;
-      if (
-        isInsideTryStatement(node as EsTreeNode, {
-          region: "block",
-          boundary: findDeferredCallbackBoundary(node),
-        })
-      ) {
-        return;
-      }
-      if (isInsideCatchGuardedPromiseCallback(node)) return;
-      if (isInHelperOnlyInvokedInsideTry(node)) return;
-      context.report({ node, message: MESSAGE });
-    },
-  }),
+  create: (context: RuleContext) => {
+    const helperTryGuardCache = new WeakMap<EsTreeNode, boolean>();
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const callee = stripParenExpression(node.callee as EsTreeNode);
+        if (!isNodeOfType(callee, "MemberExpression")) return;
+        const methodName = getStaticMemberPropertyName(callee);
+        if (!methodName || !SELECTOR_QUERY_METHOD_NAMES.has(methodName)) return;
+        if (
+          ELEMENT_RECEIVER_METHOD_NAMES.has(methodName) &&
+          !isLikelyDomElementReceiver(callee.object)
+        ) {
+          return;
+        }
+        const selectorArgument = node.arguments?.[0];
+        if (!selectorArgument || isNodeOfType(selectorArgument, "SpreadElement")) return;
+        if (isStringLiteralSelector(selectorArgument)) return;
+        if (!selectorArgumentTaintsToHref(selectorArgument)) return;
+        if (selectorComesFromLiteralHrefTable(selectorArgument)) return;
+        if (isShapeValidatedByDominatingGuard(node, selectorArgument, context.scopes)) return;
+        if (
+          isInsideTryStatement(node as EsTreeNode, {
+            region: "block",
+            boundary: findDeferredExecutionBoundary(node),
+          })
+        ) {
+          return;
+        }
+        if (isInsideCatchGuardedPromiseCallback(node)) return;
+        if (isInHelperOnlyInvokedInsideTry(node, context.scopes, helperTryGuardCache)) return;
+        context.report({ node, message: MESSAGE });
+      },
+    };
+  },
 });

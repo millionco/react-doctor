@@ -542,14 +542,38 @@ describe("no-unguarded-throwing-parse-call", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet when routed through a safe* helper", () => {
+  it("does not let an outer try suppress a deferred decode callback", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `try { Promise.resolve().then(() => decodeURIComponent(window.location.hash)); } catch { recover(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps synchronous array callbacks protected by an outer try", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `try { values.map(() => decodeURIComponent(window.location.hash)); } catch { recover(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat the same try statement as protection inside its catch", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `try { work(); } catch { decodeURIComponent(window.location.hash); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a safe-named helper that does not actually catch parser errors", () => {
     const result = runRule(
       noUnguardedThrowingParseCall,
       `function safeReadableColor(color) {
         return readableColor(color);
       }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet for color parse work in a scripts/ file", () => {
@@ -868,7 +892,7 @@ describe("no-unguarded-throwing-parse-call", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet for a proxy gated by an exact-equality allowlist filter in the same call (gatsby partytown shape)", () => {
+  it("flags proxy callbacks whose sibling equality check does not control their execution", () => {
     const result = runRule(
       noUnguardedThrowingParseCall,
       `export function partytownProxy(partytownProxiedURLs) {
@@ -881,7 +905,26 @@ describe("no-unguarded-throwing-parse-call", () => {
         });
       }`,
     );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not treat a local encoded params object as route input solely because of its name", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function decodeFixedPath(value) {
+        const params = { path: encodeURIComponent(value) };
+        return decodeURIComponent(params.path);
+      }`,
+    );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a theme-named parameter because it may contain a CSS custom property", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function Badge(theme) { return chroma(theme.colorPrimary).hex(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags new URL of a client-controlled referer header (webstudio shape)", () => {

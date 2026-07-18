@@ -37,7 +37,16 @@ describe("no-unescaped-dynamic-string-in-regexp", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag a try/catch-guarded regex-input UI", () => {
+  it("flags TypeScript-wrapped RegExp constructors and calls", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const first = new (RegExp as RegExpConstructor)(searchTerm, "i");
+      const second = (RegExp as RegExpConstructor)(filterQuery, "i");`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags a try/catch-guarded regex-input UI because catching syntax errors does not prevent over-matching", () => {
     const result = runRule(
       noUnescapedDynamicStringInRegexp,
       `try {
@@ -47,7 +56,7 @@ describe("no-unescaped-dynamic-string-in-regexp", () => {
         setError('Invalid pattern');
       }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a shadowed local RegExp constructor", () => {
@@ -287,6 +296,26 @@ describe("no-unescaped-dynamic-string-in-regexp", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a raw query when an unrelated shadowed binding with the same name is a RegExp object", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const build = (searchPattern) => new RegExp(searchPattern, "i");
+      const readFlags = () => {
+        const searchPattern = /fixed/;
+        return searchPattern.flags;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an arbitrary replace call that does not escape regex metacharacters", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const matcher = new RegExp(searchTerm.replaceAll(" ", "-"), "i");`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag per-element escapeRegExp inside a .map callback", () => {
     const result = runRule(
       noUnescapedDynamicStringInRegexp,
@@ -307,7 +336,7 @@ describe("no-unescaped-dynamic-string-in-regexp", () => {
   it("does not flag the MDN replace-escape inside a .map callback", () => {
     const result = runRule(
       noUnescapedDynamicStringInRegexp,
-      `const buildKeywordFilter = (keywords) =>
+      String.raw`const buildKeywordFilter = (keywords) =>
         new RegExp(
           keywords
             .map((keyword) => {
@@ -344,8 +373,64 @@ describe("no-unescaped-dynamic-string-in-regexp", () => {
   it("does not flag an in-file escape helper with a non-matching name", () => {
     const result = runRule(
       noUnescapedDynamicStringInRegexp,
-      `const escapeSpecialChars = (value) => value.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, "\\$&");
+      String.raw`const escapeSpecialChars = (value) => value.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, "\\$&");
       const parts = text.split(new RegExp("(" + escapeSpecialChars(query) + ")", "gi"));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a helper that escapes an unrelated value before returning its raw parameter", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const buildPattern = (value) => {
+        escapeRegExp("unused");
+        return value;
+      };
+      const matcher = new RegExp(buildPattern(searchTerm), "i");`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a helper with one raw return path", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const buildPattern = (value, shouldEscape) => {
+        if (shouldEscape) return escapeRegExp(value);
+        return value;
+      };
+      const matcher = new RegExp(buildPattern(searchTerm, enabled), "i");`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a self-recursive helper without overflowing", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const sanitize = (value) => sanitize(value);
+      const matcher = new RegExp(sanitize(searchTerm), "i");`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags mutually recursive helpers without overflowing", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const sanitizeFirst = (value) => sanitizeSecond(value);
+      const sanitizeSecond = (value) => sanitizeFirst(value);
+      const matcher = new RegExp(sanitizeFirst(searchTerm), "i");`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a block helper whose returned parameter is escaped", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const quotePattern = (value) => {
+        const escapedValue = escapeRegExp(value);
+        return "^" + escapedValue + "$";
+      };
+      const first = new RegExp(quotePattern(searchTerm), "i");
+      const second = new RegExp(quotePattern(filterQuery), "i");`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

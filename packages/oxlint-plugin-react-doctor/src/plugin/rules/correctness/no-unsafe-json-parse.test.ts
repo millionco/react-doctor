@@ -119,14 +119,14 @@ describe("no-unsafe-json-parse", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it('does not flag a `?? "{}"` fallback argument', () => {
+  it('flags a `?? "{}"` fallback because malformed non-null input can still throw', () => {
     const result = runRule(noUnsafeJsonParse, `const value = JSON.parse(input ?? "{}").value;`);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it('does not flag a `|| "[]"` fallback argument', () => {
+  it('flags a `|| "[]"` fallback because malformed truthy input can still throw', () => {
     const result = runRule(noUnsafeJsonParse, `const length = JSON.parse(input || "[]").length;`);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a dynamic fallback whose JSON validity is unknown", () => {
@@ -335,6 +335,36 @@ describe("no-unsafe-json-parse", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags when a prior parse only parsed a shadowed binding with the same name", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `function read(raw) {
+        { const raw = "{}"; JSON.parse(raw); }
+        return JSON.parse(raw).value;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a parse dereference in an event callback registered inside try", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `try {
+        button.addEventListener("click", () => JSON.parse(raw).value);
+      } catch (error) { handle(error); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags behind a validator that parses a different binding", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `const isValidJson = (value) => { try { JSON.parse(knownGood); return true; } catch { return false; } };
+      if (isValidJson(raw)) { JSON.parse(raw).value; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags sibling switch-case parses that do not dominate each other (glific AuthService shape)", () => {
     const result = runRule(
       noUnsafeJsonParse,
@@ -350,5 +380,37 @@ describe("no-unsafe-json-parse", () => {
       };`,
     );
     expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not trust a validator inside a disjunction", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `const validJson = (value) => { try { JSON.parse(value); return true; } catch { return false; } }; if (validJson(raw) || enabled) use(JSON.parse(raw).id);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires the validating parse and false return to belong to the same try/catch", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `const validJson = (value) => { try { JSON.parse(value); } catch { recover(); } try { work(); return true; } catch { return false; } }; if (validJson(raw)) use(JSON.parse(raw).id);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a validator with a truthy path that bypasses parsing", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `const validJson = (value, enabled) => { try { if (enabled) return true; JSON.parse(value); return true; } catch { return false; } }; if (validJson(raw, enabled)) use(JSON.parse(raw).id);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a deferred write invalidate a prior parse proof", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `JSON.parse(raw); const later = () => { raw = other; }; use(JSON.parse(raw).id);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 });

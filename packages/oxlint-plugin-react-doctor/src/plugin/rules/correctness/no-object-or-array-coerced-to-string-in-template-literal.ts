@@ -4,9 +4,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingDeclarator } from "../../utils/find-enclosing-declarator.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenReactHookCall } from "../../utils/is-proven-effect-hook-call.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 type LiteralKind = "object" | "array";
 
@@ -47,15 +49,8 @@ const objectOrArrayKind = (node: EsTreeNode): LiteralKind | null => {
   return null;
 };
 
-const isHookCallee = (callee: EsTreeNode, hookName: string): boolean => {
-  if (isNodeOfType(callee, "Identifier")) return callee.name === hookName;
-  return (
-    isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === hookName
-  );
-};
+const USE_REF_HOOK_NAMES = new Set(["useRef"]);
+const USE_STATE_HOOK_NAMES = new Set(["useState"]);
 
 const firstArgumentLiteralKind = (call: EsTreeNodeOfType<"CallExpression">): LiteralKind | null => {
   const firstArgument = call.arguments[0];
@@ -77,7 +72,10 @@ const isConstDeclarator = (declarator: EsTreeNodeOfType<"VariableDeclarator">): 
 // literal in scope (imports, params, reassigned/unknown values) —
 // `var`/`let` bindings are skipped because a later reassignment (e.g.
 // `lines = lines.join("\n")`) can replace the literal with a string.
-const resolveInterpolatedLiteralKind = (identifier: EsTreeNode): LiteralKind | null => {
+const resolveInterpolatedLiteralKind = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): LiteralKind | null => {
   if (!isNodeOfType(identifier, "Identifier")) return null;
   const binding = findVariableInitializer(identifier, identifier.name);
   if (!binding) return null;
@@ -90,7 +88,10 @@ const resolveInterpolatedLiteralKind = (identifier: EsTreeNode): LiteralKind | n
   if (declarator.id === binding.bindingIdentifier) {
     const directKind = objectOrArrayKind(init);
     if (directKind) return directKind;
-    if (isNodeOfType(init, "CallExpression") && isHookCallee(init.callee as EsTreeNode, "useRef")) {
+    if (
+      isNodeOfType(init, "CallExpression") &&
+      isProvenReactHookCall(init, USE_REF_HOOK_NAMES, scopes)
+    ) {
       return firstArgumentLiteralKind(init);
     }
     return null;
@@ -101,7 +102,7 @@ const resolveInterpolatedLiteralKind = (identifier: EsTreeNode): LiteralKind | n
     isNodeOfType(id, "ArrayPattern") &&
     id.elements[0] === binding.bindingIdentifier &&
     isNodeOfType(init, "CallExpression") &&
-    isHookCallee(init.callee as EsTreeNode, "useState")
+    isProvenReactHookCall(init, USE_STATE_HOOK_NAMES, scopes)
   ) {
     return firstArgumentLiteralKind(init);
   }
@@ -113,9 +114,19 @@ const messageFor = (kind: LiteralKind): string =>
     ? "Interpolating this object runs its default `toString()`, which produces `[object Object]` and hides the real value — read a specific property or wrap it in `JSON.stringify`."
     : "Interpolating this array runs its default `toString()`, which comma-joins the values into unreadable output — read a specific element or use `.join`/`JSON.stringify`.";
 
-const isStringConcatSibling = (node: EsTreeNode): boolean =>
-  (isNodeOfType(node, "Literal") && typeof node.value === "string") ||
-  isNodeOfType(node, "TemplateLiteral");
+const INTENTIONAL_ARRAY_JOIN_FUNCTION_NAMES = new Set([
+  "rgb",
+  "rgba",
+  "hsl",
+  "hsla",
+  "matrix",
+  "matrix3d",
+]);
+
+const isIntentionalArrayJoinInterpolation = (precedingText: string): boolean => {
+  const functionName = precedingText.match(/([a-zA-Z][\w-]*)\(\s*$/)?.[1];
+  return Boolean(functionName && INTENTIONAL_ARRAY_JOIN_FUNCTION_NAMES.has(functionName));
+};
 
 // `throw new Error(\`Invalid path ${path}\`)` — an array comma-joined into
 // an error message reads as legible dev-facing output (`project,create`),
@@ -151,10 +162,20 @@ export const noObjectOrArrayCoercedToStringInTemplateLiteral = defineRule({
     "Interpolating an object/array runs its default `toString()` (`[object Object]` / comma-joined garbage); read a specific property/element or wrap the value in `JSON.stringify`.",
   create: (context: RuleContext) => {
     const skipTestlikeFile = isTestlikeFilename(context.filename);
+    const isKnownAdditionOperand = (expression: EsTreeNode): boolean => {
+      const inner = stripParenExpression(expression);
+      return (
+        isNodeOfType(inner, "Literal") ||
+        isNodeOfType(inner, "TemplateLiteral") ||
+        objectOrArrayKind(inner) !== null ||
+        resolveInterpolatedLiteralKind(inner, context.scopes) !== null
+      );
+    };
     const reportIfCoercedLiteral = (expression: EsTreeNode, isErrorMessage = false): void => {
       const strippedExpression = stripParenExpression(expression);
       const kind =
-        objectOrArrayKind(strippedExpression) ?? resolveInterpolatedLiteralKind(strippedExpression);
+        objectOrArrayKind(strippedExpression) ??
+        resolveInterpolatedLiteralKind(strippedExpression, context.scopes);
       if (!kind) return;
       if (kind === "array" && isErrorMessage) return;
       context.report({ node: expression, message: messageFor(kind) });
@@ -170,7 +191,7 @@ export const noObjectOrArrayCoercedToStringInTemplateLiteral = defineRule({
           // sits inside functional syntax whose separator IS the comma, so
           // an array's comma-join is the intended output.
           const precedingText = node.quasis[expressionIndex]?.value.cooked ?? "";
-          if (/[a-zA-Z-]\(\s*$/.test(precedingText)) return;
+          if (isIntentionalArrayJoinInterpolation(precedingText)) return;
           reportIfCoercedLiteral(expression as EsTreeNode, isErrorMessage);
         });
       },
@@ -179,12 +200,8 @@ export const noObjectOrArrayCoercedToStringInTemplateLiteral = defineRule({
         if (node.operator !== "+") return;
         const left = node.left as EsTreeNode;
         const right = node.right as EsTreeNode;
-        if (isNodeOfType(left, "Identifier") && isStringConcatSibling(right)) {
-          reportIfCoercedLiteral(left);
-        }
-        if (isNodeOfType(right, "Identifier") && isStringConcatSibling(left)) {
-          reportIfCoercedLiteral(right);
-        }
+        if (isKnownAdditionOperand(right)) reportIfCoercedLiteral(left);
+        if (isKnownAdditionOperand(left)) reportIfCoercedLiteral(right);
       },
     };
   },

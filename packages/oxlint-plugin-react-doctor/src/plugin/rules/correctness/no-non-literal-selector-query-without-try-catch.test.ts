@@ -137,12 +137,23 @@ describe("no-non-literal-selector-query-without-try-catch", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a hash query behind an early-return startsWith guard", () => {
+  it("flags a hash query behind a startsWith guard that does not validate the rest of the selector", () => {
     const result = runRule(
       noNonLiteralSelectorQueryWithoutTryCatch,
       `const scrollToHash = () => { const hash = location.hash; if (!hash.startsWith('#')) return; document.querySelector(hash); };`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags when a selector guard only validates a shadowed binding with the same name", () => {
+    const result = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `const hash = location.hash;
+      if (["#safe"].some((hash) => /^#[A-Za-z][\\w-]*$/.test(hash))) {
+        document.querySelector(hash);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a bare truthiness guard over an href prop (design-react-kit idiom)", () => {
@@ -473,5 +484,52 @@ describe("no-non-literal-selector-query-without-try-catch", () => {
       { filename: "navbar.tsx" },
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a literal equality or switch case with an unsafe selector shape", () => {
+    const equalityResult = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `const hash = location.hash; if (hash === "#bad space") document.querySelector(hash);`,
+    );
+    const switchResult = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `const hash = location.hash; switch (hash) { case "#bad space": document.querySelector(hash); }`,
+    );
+    expect(equalityResult.diagnostics).toHaveLength(1);
+    expect(switchResult.diagnostics).toHaveLength(1);
+  });
+
+  it("respects logical guard polarity", () => {
+    const unsafeOrResult = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `const hash = location.hash; const isValidHash = (value) => /^#[A-Za-z][\\w-]*$/.test(value); isValidHash(hash) || document.querySelector(hash);`,
+    );
+    const mixedOrResult = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `const hash = location.hash; const isValidHash = (value) => /^#[A-Za-z][\\w-]*$/.test(value); if (isValidHash(hash) || enabled) document.querySelector(hash);`,
+    );
+    const safeAndResult = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `const hash = location.hash; const isValidHash = (value) => /^#[A-Za-z][\\w-]*$/.test(value); isValidHash(hash) && document.querySelector(hash);`,
+    );
+    expect(unsafeOrResult.diagnostics).toHaveLength(1);
+    expect(mixedOrResult.diagnostics).toHaveLength(1);
+    expect(safeAndResult.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let an outer try suppress a deferred promise callback", () => {
+    const result = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `try { Promise.resolve().then(() => document.querySelector(location.hash)); } catch { recover(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes a TypeScript-wrapped selector method", () => {
+    const result = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `(document.querySelector as typeof document.querySelector)(location.hash);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

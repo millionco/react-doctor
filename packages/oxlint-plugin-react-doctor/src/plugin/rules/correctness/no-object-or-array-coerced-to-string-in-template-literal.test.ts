@@ -231,4 +231,33 @@ describe("no-object-or-array-coerced-to-string-in-template-literal", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not trust a shadowed local useState helper", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      `const useState = () => ["safe"]; function C() { const [value] = useState({}); return \`${"${value}"}\`; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a directly concatenated object literal", () => {
+    const result = runRule(noObjectOrArrayCoercedToStringInTemplateLiteral, `"value=" + {};`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags object and array coercion with non-string addition operands", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      `const objectValue = 1 + { answer: 42 }; const arrayValue = [1, 2] + 3;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not treat arbitrary function-looking template text as an intentional array join", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      `const items = ["a", "b"]; const text = \`warning(\${items})\`;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

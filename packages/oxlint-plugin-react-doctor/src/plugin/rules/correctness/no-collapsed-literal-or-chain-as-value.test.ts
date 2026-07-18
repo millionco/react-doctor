@@ -143,4 +143,12 @@ describe("no-collapsed-literal-or-chain-as-value", () => {
     const result = runRule(noCollapsedLiteralOrChainAsValue, `const length = ("a" || "b").length;`);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags a literal chain through a TypeScript assertion wrapper", () => {
+    const result = runRule(
+      noCollapsedLiteralOrChainAsValue,
+      `const found = text.includes((("a" || "b") as string));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

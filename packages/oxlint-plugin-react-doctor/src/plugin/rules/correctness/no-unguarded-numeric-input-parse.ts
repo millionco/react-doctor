@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
@@ -21,27 +22,36 @@ const NAN_GUARD_FUNCTION_NAMES: ReadonlySet<string> = new Set(["isNaN", "isFinit
 
 const FIXED_VALUE_INPUT_TYPES: ReadonlySet<string> = new Set(["checkbox", "radio"]);
 
+interface NumericHandlerAnalysis {
+  readonly nanGuardCallsBySymbolId: Map<number, EsTreeNodeOfType<"CallExpression">[]>;
+}
+
 const isNumericParseCallee = (callee: EsTreeNode, context: RuleContext): boolean => {
+  const unwrappedCallee = stripParenExpression(callee);
   if (
-    isNodeOfType(callee, "Identifier") &&
-    (callee.name === "Number" || callee.name === "parseInt" || callee.name === "parseFloat") &&
-    context.scopes.isGlobalReference(callee)
+    isNodeOfType(unwrappedCallee, "Identifier") &&
+    (unwrappedCallee.name === "Number" ||
+      unwrappedCallee.name === "parseInt" ||
+      unwrappedCallee.name === "parseFloat") &&
+    context.scopes.isGlobalReference(unwrappedCallee)
   ) {
     return true;
   }
+  if (!isNodeOfType(unwrappedCallee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(unwrappedCallee.object);
   return (
-    isNodeOfType(callee, "MemberExpression") &&
-    isNodeOfType(callee.object, "Identifier") &&
-    callee.object.name === "Number" &&
-    context.scopes.isGlobalReference(callee.object) &&
-    (getStaticPropertyName(callee) === "parseInt" || getStaticPropertyName(callee) === "parseFloat")
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "Number" &&
+    context.scopes.isGlobalReference(receiver) &&
+    (getStaticPropertyName(unwrappedCallee) === "parseInt" ||
+      getStaticPropertyName(unwrappedCallee) === "parseFloat")
   );
 };
 
 // Returns the root identifier name (the event parameter, e.g. `e`) when
 // `argument` is an event-input value read: `e.target.value`,
 // `e.currentTarget.value`, `e.target.valueAsNumber`. Otherwise null.
-const getEventValueRootName = (argument: EsTreeNode): string | null => {
+const getEventValueRoot = (argument: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
   const valueAccess = stripParenExpression(argument);
   if (
     !isNodeOfType(valueAccess, "MemberExpression") ||
@@ -57,7 +67,7 @@ const getEventValueRootName = (argument: EsTreeNode): string | null => {
     return null;
   }
   const root = stripParenExpression(targetAccess.object);
-  return isNodeOfType(root, "Identifier") ? root.name : null;
+  return isNodeOfType(root, "Identifier") ? root : null;
 };
 
 const findEnclosingHandler = (call: EsTreeNode): EsTreeNode | null => {
@@ -69,54 +79,232 @@ const findEnclosingHandler = (call: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
-const isNanGuardCall = (node: EsTreeNode): node is EsTreeNodeOfType<"CallExpression"> => {
+const isNanGuardCall = (
+  node: EsTreeNode,
+  context: RuleContext,
+): node is EsTreeNodeOfType<"CallExpression"> => {
   if (!isNodeOfType(node, "CallExpression")) return false;
-  const callee = node.callee;
-  if (isNodeOfType(callee, "Identifier")) return NAN_GUARD_FUNCTION_NAMES.has(callee.name);
+  const callee = stripParenExpression(node.callee);
+  if (isNodeOfType(callee, "Identifier")) {
+    return NAN_GUARD_FUNCTION_NAMES.has(callee.name) && context.scopes.isGlobalReference(callee);
+  }
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object);
+  const methodName = getStaticPropertyName(callee) ?? "";
   return (
-    isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.object, "Identifier") &&
-    callee.object.name === "Number" &&
-    isNodeOfType(callee.property, "Identifier") &&
-    (NAN_GUARD_FUNCTION_NAMES.has(callee.property.name) || callee.property.name === "isInteger")
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "Number" &&
+    context.scopes.isGlobalReference(receiver) &&
+    (NAN_GUARD_FUNCTION_NAMES.has(methodName) || methodName === "isInteger")
   );
 };
 
-const subtreeReferencesParsedValue = (
-  subtree: EsTreeNode,
-  eventRootName: string,
-  parseResultName: string | null,
-): boolean => {
-  let didFindReference = false;
-  walkAst(subtree, (child) => {
-    if (didFindReference) return false;
-    if (getEventValueRootName(child) === eventRootName) {
-      didFindReference = true;
-      return false;
-    }
-    if (
-      parseResultName !== null &&
-      isNodeOfType(child, "Identifier") &&
-      child.name === parseResultName
-    ) {
-      didFindReference = true;
-      return false;
-    }
-  });
-  return didFindReference;
+const isDescendantOf = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
+  let cursor: EsTreeNode | null | undefined = node;
+  while (cursor) {
+    if (cursor === ancestor) return true;
+    cursor = cursor.parent;
+  }
+  return false;
 };
 
-const isGuardedByRelatedAncestor = (call: EsTreeNode, eventRootName: string): boolean => {
+const directlyExits = (statement: EsTreeNode): boolean => {
+  if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
+    return true;
+  }
+  if (!isNodeOfType(statement, "BlockStatement")) return false;
+  const finalStatement = statement.body.at(-1);
+  return Boolean(
+    finalStatement &&
+    (isNodeOfType(finalStatement, "ReturnStatement") ||
+      isNodeOfType(finalStatement, "ThrowStatement")),
+  );
+};
+
+const guardCallReferencesBinding = (
+  guardCall: EsTreeNodeOfType<"CallExpression">,
+  bindingIdentifier: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const expectedSymbol = context.scopes.symbolFor(bindingIdentifier);
+  if (!expectedSymbol) return false;
+  let didReference = false;
+  for (const argument of guardCall.arguments) {
+    walkAst(argument as EsTreeNode, (child: EsTreeNode) => {
+      if (
+        isNodeOfType(child, "Identifier") &&
+        context.scopes.symbolFor(child)?.id === expectedSymbol.id
+      ) {
+        didReference = true;
+        return false;
+      }
+    });
+    if (didReference) return true;
+  }
+  return false;
+};
+
+const guardProtectsEveryUse = (
+  guardCall: EsTreeNodeOfType<"CallExpression">,
+  bindingIdentifier: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const symbol = context.scopes.symbolFor(bindingIdentifier);
+  if (!symbol) return false;
+  const callee = stripParenExpression(guardCall.callee);
+  let methodName: string | null = null;
+  if (isNodeOfType(callee, "Identifier")) methodName = callee.name;
+  else if (isNodeOfType(callee, "MemberExpression")) methodName = getStaticPropertyName(callee);
+  if (!methodName) return false;
+  let testExpression = findTransparentExpressionRoot(guardCall);
+  let validWhenTestTruthy = methodName !== "isNaN";
+  if (
+    testExpression.parent &&
+    isNodeOfType(testExpression.parent, "UnaryExpression") &&
+    testExpression.parent.operator === "!"
+  ) {
+    testExpression = testExpression.parent;
+    validWhenTestTruthy = !validWhenTestTruthy;
+  }
+  const guardParent = testExpression.parent;
+  if (
+    (!isNodeOfType(guardParent, "IfStatement") &&
+      !isNodeOfType(guardParent, "ConditionalExpression")) ||
+    guardParent.test !== testExpression
+  ) {
+    return false;
+  }
+  const valueReferences = symbol.references.filter(
+    (reference) =>
+      reference.flag === "read" &&
+      reference.identifier.range[0] > bindingIdentifier.range[1] &&
+      !isDescendantOf(reference.identifier, testExpression),
+  );
+  if (validWhenTestTruthy) {
+    return (
+      valueReferences.length > 0 &&
+      valueReferences.every((reference) =>
+        isDescendantOf(reference.identifier, guardParent.consequent),
+      )
+    );
+  }
+  if (!isNodeOfType(guardParent, "IfStatement") || !directlyExits(guardParent.consequent)) {
+    return false;
+  }
+  return valueReferences.every((reference) => reference.identifier.range[0] > guardParent.range[1]);
+};
+
+const isSameBinding = (
+  leftIdentifier: EsTreeNode,
+  rightIdentifier: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const leftSymbol = context.scopes.symbolFor(leftIdentifier);
+  const rightSymbol = context.scopes.symbolFor(rightIdentifier);
+  return Boolean(leftSymbol && rightSymbol && leftSymbol.id === rightSymbol.id);
+};
+
+const isSameEventValueAccess = (
+  candidate: EsTreeNode,
+  eventRoot: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const candidateRoot = getEventValueRoot(candidate);
+  return Boolean(candidateRoot && isSameBinding(candidateRoot, eventRoot, context));
+};
+
+const branchProvesEventValueState = (
+  rawTest: EsTreeNode,
+  eventRoot: EsTreeNodeOfType<"Identifier">,
+  branchWhenTruthy: boolean,
+  expectedNonEmpty: boolean,
+  context: RuleContext,
+): boolean => {
+  const test = stripParenExpression(rawTest);
+  if (isSameEventValueAccess(test, eventRoot, context)) {
+    return branchWhenTruthy === expectedNonEmpty;
+  }
+  if (isNodeOfType(test, "UnaryExpression") && test.operator === "!") {
+    return branchProvesEventValueState(
+      test.argument,
+      eventRoot,
+      !branchWhenTruthy,
+      expectedNonEmpty,
+      context,
+    );
+  }
+  if (isNodeOfType(test, "LogicalExpression")) {
+    if (
+      (branchWhenTruthy && test.operator === "&&") ||
+      (!branchWhenTruthy && test.operator === "||")
+    ) {
+      return (
+        branchProvesEventValueState(
+          test.left,
+          eventRoot,
+          branchWhenTruthy,
+          expectedNonEmpty,
+          context,
+        ) ||
+        branchProvesEventValueState(
+          test.right,
+          eventRoot,
+          branchWhenTruthy,
+          expectedNonEmpty,
+          context,
+        )
+      );
+    }
+    return false;
+  }
+  if (isNanGuardCall(test, context)) {
+    if (!expectedNonEmpty) return false;
+    const callee = stripParenExpression(test.callee);
+    let guardName: string | null = null;
+    if (isNodeOfType(callee, "Identifier")) guardName = callee.name;
+    else if (isNodeOfType(callee, "MemberExpression")) {
+      guardName = getStaticPropertyName(callee);
+    }
+    const guardedEventValue = test.arguments.some(
+      (argument) =>
+        !isNodeOfType(argument, "SpreadElement") &&
+        isSameEventValueAccess(argument as EsTreeNode, eventRoot, context),
+    );
+    return Boolean(guardedEventValue && guardName && branchWhenTruthy === (guardName !== "isNaN"));
+  }
+  if (!isNodeOfType(test, "BinaryExpression")) return false;
+  if (!["===", "!==", "==", "!="].includes(test.operator)) return false;
+  const left = stripParenExpression(test.left);
+  const right = stripParenExpression(test.right);
+  const hasEventValueAndEmptyLiteral =
+    (isSameEventValueAccess(left, eventRoot, context) &&
+      isNodeOfType(right, "Literal") &&
+      right.value === "") ||
+    (isSameEventValueAccess(right, eventRoot, context) &&
+      isNodeOfType(left, "Literal") &&
+      left.value === "");
+  if (!hasEventValueAndEmptyLiteral) return false;
+  const isEquality = test.operator === "===" || test.operator === "==";
+  const branchProvesEmpty = branchWhenTruthy === isEquality;
+  return branchProvesEmpty !== expectedNonEmpty;
+};
+
+const isGuardedByRelatedAncestor = (
+  call: EsTreeNode,
+  eventRoot: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
   let child = call;
   let ancestor = call.parent;
   while (ancestor && !isFunctionLike(ancestor)) {
-    if (
-      isNodeOfType(ancestor, "ConditionalExpression") &&
-      ancestor.test !== child &&
-      subtreeReferencesParsedValue(ancestor.test, eventRootName, null)
-    ) {
-      return true;
+    if (isNodeOfType(ancestor, "ConditionalExpression") && ancestor.test !== child) {
+      const branchWhenTruthy = ancestor.consequent === child;
+      if (
+        (branchWhenTruthy || ancestor.alternate === child) &&
+        branchProvesEventValueState(ancestor.test, eventRoot, branchWhenTruthy, true, context)
+      ) {
+        return true;
+      }
     }
     if (isNodeOfType(ancestor, "LogicalExpression")) {
       if (ancestor.left === child && (ancestor.operator === "||" || ancestor.operator === "??")) {
@@ -124,7 +312,14 @@ const isGuardedByRelatedAncestor = (call: EsTreeNode, eventRootName: string): bo
       }
       if (
         ancestor.right === child &&
-        subtreeReferencesParsedValue(ancestor.left, eventRootName, null)
+        ancestor.operator !== "??" &&
+        branchProvesEventValueState(
+          ancestor.left,
+          eventRoot,
+          ancestor.operator === "&&",
+          true,
+          context,
+        )
       ) {
         return true;
       }
@@ -141,51 +336,112 @@ const isGuardedByRelatedAncestor = (call: EsTreeNode, eventRootName: string): bo
 // produces (`const next = Number(e.target.value); if (!Number.isNaN(next))
 // setX(next);`). A guard counts only when its test actually reads the event
 // value or the variable holding the parse result.
-const handlerGuardsParsedValue = (
-  handler: EsTreeNode,
+const blockHasPriorEmptyExitGuard = (
+  block: EsTreeNodeOfType<"BlockStatement">,
   call: EsTreeNode,
-  eventRootName: string,
-  parseResultName: string | null,
+  eventRoot: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+  emptyExitGuardOffsetsByBlock: WeakMap<EsTreeNode, number[]>,
 ): boolean => {
-  let didFindGuard = false;
-  walkAst(handler, (node) => {
-    if (didFindGuard) return false;
-    if (
-      isNodeOfType(node, "IfStatement") &&
-      node.range[1] <= call.range[0] &&
-      subtreeReferencesParsedValue(node.test, eventRootName, null) &&
-      (isNodeOfType(node.consequent, "ReturnStatement") ||
-        isNodeOfType(node.consequent, "ThrowStatement") ||
-        (isNodeOfType(node.consequent, "BlockStatement") &&
-          node.consequent.body.some(
-            (statement) =>
-              isNodeOfType(statement, "ReturnStatement") ||
-              isNodeOfType(statement, "ThrowStatement"),
-          )))
-    ) {
-      didFindGuard = true;
-      return false;
-    }
-    if (parseResultName !== null && isNanGuardCall(node) && node.range[0] > call.range[1]) {
-      const guardArgument = node.arguments[0];
-      if (guardArgument && subtreeReferencesParsedValue(guardArgument, "", parseResultName)) {
-        didFindGuard = true;
-        return false;
+  let guardEndOffsets = emptyExitGuardOffsetsByBlock.get(block);
+  if (!guardEndOffsets) {
+    guardEndOffsets = block.body.flatMap((statement) => {
+      if (
+        !isNodeOfType(statement, "IfStatement") ||
+        !directlyExits(statement.consequent) ||
+        !branchProvesEventValueState(statement.test, eventRoot, true, false, context)
+      ) {
+        return [];
       }
+      return [statement.range[1]];
+    });
+    emptyExitGuardOffsetsByBlock.set(block, guardEndOffsets);
+  }
+  let lowerIndex = 0;
+  let upperIndex = guardEndOffsets.length;
+  while (lowerIndex < upperIndex) {
+    const middleIndex = Math.floor((lowerIndex + upperIndex) / 2);
+    if (guardEndOffsets[middleIndex]! <= call.range[0]) lowerIndex = middleIndex + 1;
+    else upperIndex = middleIndex;
+  }
+  return lowerIndex > 0;
+};
+
+const handlerGuardsParsedValue = (
+  call: EsTreeNode,
+  eventRoot: EsTreeNodeOfType<"Identifier">,
+  parseResultBinding: EsTreeNode | null,
+  handlerAnalysis: NumericHandlerAnalysis,
+  context: RuleContext,
+  emptyExitGuardOffsetsByBlock: WeakMap<EsTreeNode, number[]>,
+  guardProtectionByBinding: WeakMap<EsTreeNode, boolean>,
+): boolean => {
+  let ancestor = call.parent;
+  while (ancestor && !isFunctionLike(ancestor)) {
+    if (
+      isNodeOfType(ancestor, "BlockStatement") &&
+      blockHasPriorEmptyExitGuard(ancestor, call, eventRoot, context, emptyExitGuardOffsetsByBlock)
+    ) {
+      return true;
+    }
+    ancestor = ancestor.parent;
+  }
+  if (!parseResultBinding) return false;
+  const cachedProtection = guardProtectionByBinding.get(parseResultBinding);
+  if (cachedProtection !== undefined) return cachedProtection;
+  const symbol = context.scopes.symbolFor(parseResultBinding);
+  const nanGuardCalls = symbol
+    ? (handlerAnalysis.nanGuardCallsBySymbolId.get(symbol.id) ?? [])
+    : [];
+  const isProtected = nanGuardCalls.some(
+    (guardCall) =>
+      guardCall.range[0] > call.range[1] &&
+      guardCallReferencesBinding(guardCall, parseResultBinding, context) &&
+      guardProtectsEveryUse(guardCall, parseResultBinding, context),
+  );
+  guardProtectionByBinding.set(parseResultBinding, isProtected);
+  return isProtected;
+};
+
+const analyzeNumericHandler = (
+  handler: EsTreeNode,
+  context: RuleContext,
+): NumericHandlerAnalysis => {
+  const nanGuardCallsBySymbolId = new Map<number, EsTreeNodeOfType<"CallExpression">[]>();
+  walkAst(handler, (candidate: EsTreeNode) => {
+    if (candidate !== handler && isFunctionLike(candidate)) return false;
+    if (!isNanGuardCall(candidate, context)) return;
+    const referencedSymbolIds = new Set<number>();
+    for (const argument of candidate.arguments) {
+      walkAst(argument as EsTreeNode, (argumentNode: EsTreeNode) => {
+        if (!isNodeOfType(argumentNode, "Identifier")) return;
+        const symbol = context.scopes.symbolFor(argumentNode);
+        if (symbol) referencedSymbolIds.add(symbol.id);
+      });
+    }
+    for (const symbolId of referencedSymbolIds) {
+      const calls = nanGuardCallsBySymbolId.get(symbolId) ?? [];
+      calls.push(candidate);
+      nanGuardCallsBySymbolId.set(symbolId, calls);
     }
   });
-  return didFindGuard;
+  return { nanGuardCallsBySymbolId };
 };
 
 // Resolves the variable the parse result lands in, walking up through pure
 // wrapper calls so `const v = Math.floor(Number(e.target.value))` still binds
 // `v` and a later `if (!isNaN(v))` counts as a guard.
-const getParseResultBindingName = (call: EsTreeNode): string | null => {
+const getParseResultBinding = (call: EsTreeNode): EsTreeNode | null => {
   let wrappedExpression: EsTreeNode = call;
   let ancestor = call.parent;
   while (ancestor) {
     if (isNodeOfType(ancestor, "VariableDeclarator")) {
-      return isNodeOfType(ancestor.id, "Identifier") ? ancestor.id.name : null;
+      return isNodeOfType(ancestor.id, "Identifier") ? ancestor.id : null;
+    }
+    if (stripParenExpression(ancestor) === wrappedExpression) {
+      wrappedExpression = ancestor;
+      ancestor = ancestor.parent ?? null;
+      continue;
     }
     const isCallArgumentWrapper =
       isNodeOfType(ancestor, "CallExpression") &&
@@ -223,10 +479,10 @@ const getStaticInputType = (
   return null;
 };
 
-const firstParameterName = (handler: EsTreeNode): string | null => {
+const getFirstParameter = (handler: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
   const params = (handler as EsTreeNodeOfType<"ArrowFunctionExpression">).params ?? [];
   const first = params[0];
-  return first && isNodeOfType(first, "Identifier") ? first.name : null;
+  return first && isNodeOfType(first, "Identifier") ? first : null;
 };
 
 // True only when the inline handler is bound to an intrinsic `<input>` whose
@@ -264,24 +520,47 @@ export const noUnguardedNumericInputParse = defineRule({
   category: "Correctness",
   recommendation:
     "Guard `Number(e.target.value)` / `parseInt(e.target.value)` against empty and NaN before storing it. `Number('')` is `0` and `Number('abc')` is `NaN`, both of which silently ship a wrong value.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isNumericParseCallee(node.callee as EsTreeNode, context)) return;
-      const argumentList = (node.arguments ?? []) as EsTreeNode[];
-      const firstArgument = argumentList[0];
-      if (!firstArgument) return;
-      const rootName = getEventValueRootName(firstArgument);
-      if (!rootName) return;
+  create: (context: RuleContext) => {
+    const handlerAnalysisByHandler = new WeakMap<EsTreeNode, NumericHandlerAnalysis>();
+    const emptyExitGuardOffsetsByBlock = new WeakMap<EsTreeNode, number[]>();
+    const guardProtectionByBinding = new WeakMap<EsTreeNode, boolean>();
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isNumericParseCallee(node.callee as EsTreeNode, context)) return;
+        const argumentList = (node.arguments ?? []) as EsTreeNode[];
+        const firstArgument = argumentList[0];
+        if (!firstArgument) return;
+        const eventRoot = getEventValueRoot(firstArgument);
+        if (!eventRoot) return;
 
-      const handler = findEnclosingHandler(node as EsTreeNode);
-      if (!handler) return;
-      if (isGuardedByRelatedAncestor(node as EsTreeNode, rootName)) return;
-      if (firstParameterName(handler) !== rootName) return;
-      if (!isTextualInputElementHandler(handler)) return;
-      const parseResultName = getParseResultBindingName(node as EsTreeNode);
-      if (handlerGuardsParsedValue(handler, node as EsTreeNode, rootName, parseResultName)) return;
+        const handler = findEnclosingHandler(node as EsTreeNode);
+        if (!handler) return;
+        const firstParameter = getFirstParameter(handler);
+        if (!firstParameter || !isSameBinding(firstParameter, eventRoot, context)) return;
+        if (isGuardedByRelatedAncestor(node as EsTreeNode, eventRoot, context)) return;
+        if (!isTextualInputElementHandler(handler)) return;
+        let handlerAnalysis = handlerAnalysisByHandler.get(handler);
+        if (!handlerAnalysis) {
+          handlerAnalysis = analyzeNumericHandler(handler, context);
+          handlerAnalysisByHandler.set(handler, handlerAnalysis);
+        }
+        const parseResultBinding = getParseResultBinding(node as EsTreeNode);
+        if (
+          handlerGuardsParsedValue(
+            node as EsTreeNode,
+            eventRoot,
+            parseResultBinding,
+            handlerAnalysis,
+            context,
+            emptyExitGuardOffsetsByBlock,
+            guardProtectionByBinding,
+          )
+        ) {
+          return;
+        }
 
-      context.report({ node, message: MESSAGE });
-    },
-  }),
+        context.report({ node, message: MESSAGE });
+      },
+    };
+  },
 });

@@ -1,5 +1,6 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
 import { getDestructuredBindingPropertyName } from "./get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -94,7 +95,8 @@ export const isProvenGlobalNamespaceReference = (
     ) {
       return isProvenGlobalObjectReference(declaration.init, scopes);
     }
-    if (!symbol.initializer) return false;
-    currentExpression = symbol.initializer;
+    const directInitializer = getDirectConstInitializer(symbol);
+    if (!directInitializer) return false;
+    currentExpression = directInitializer;
   }
 };

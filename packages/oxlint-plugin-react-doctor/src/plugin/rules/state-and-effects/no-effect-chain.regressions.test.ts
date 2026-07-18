@@ -1932,6 +1932,11 @@ describe("no-effect-chain — regressions", () => {
       work: "schedule(consume);",
     },
     {
+      name: "global timer default from an unknown object property",
+      componentSetup: "const { schedule = setTimeout } = getScheduler();",
+      work: "schedule(consume);",
+    },
+    {
       name: "rest-copied global timer root",
       componentSetup: "const { ...scheduler } = globalThis; const schedule = scheduler.setTimeout;",
       work: "schedule(consume);",

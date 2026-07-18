@@ -360,7 +360,7 @@ export const registerReactions = (stores: StoreMapping) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it.each(["startTracking", "installTracking", "setupTracking", "registerTracker"])(
+  it.each(["startTracking", "installTracking", "setupTracking", "registerTracker", "bootstrap"])(
     "flags an ordinary module-scoped %s helper",
     (helperName) => {
       const result = runRule(

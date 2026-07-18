@@ -28,7 +28,7 @@ const DEBOUNCE_FACTORY_NAMES = new Set(["debounce", "throttle"]);
 const DEBOUNCE_RELEASE_METHOD_NAMES = new Set(["cancel", "flush"]);
 const BROWSER_GLOBAL_NAMES = new Set(["document", "window"]);
 const PROMISE_CHAIN_METHOD_NAMES = new Set(["then", "catch", "finally"]);
-const SAVE_LIKE_BINDING_NAME_PATTERN = /save|persist|submit|commit|sync/i;
+const SAVE_LIKE_BINDING_NAME_PATTERN = /save|persist|submit|commit|(?:^|[^a])sync/i;
 
 type FunctionEsTreeNode = EsTreeNodeOfType<
   "ArrowFunctionExpression" | "FunctionExpression" | "FunctionDeclaration"

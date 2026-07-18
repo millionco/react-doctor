@@ -353,6 +353,23 @@ describe("debounce-no-cleanup", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat async binding names as save-like teardown", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `${LODASH_DEBOUNCE_IMPORT}
+      function Search({ query }) {
+        const asyncSearch = useMemo(() => debounce(async () => {
+          await fetchResults(query);
+        }, 300), [query]);
+        useEffect(() => {
+          asyncSearch();
+        }, [asyncSearch]);
+        return null;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a debounced body guarded by a null ref early return (unmount-guarded work)", () => {
     const result = runRule(
       debounceNoCleanup,

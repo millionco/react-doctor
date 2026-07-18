@@ -4562,6 +4562,74 @@ export const MediaQuery = ({ breakpoint }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not collide opaque listener options with an inline capture value", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function OutsideAction({ listenerOptions, onOutsideAction }) {
+        useEffect(() => {
+          document.addEventListener("focusin", onOutsideAction, listenerOptions);
+          return () => {
+            document.removeEventListener("focusin", onOutsideAction, {
+              capture: listenerOptions,
+            });
+          };
+        }, [listenerOptions, onOutsideAction]);
+
+        return null;
+      }
+    `,
+      { filename: "OutsideAction.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "conditional cleanup",
+      beforeCleanup: "",
+      cleanup: `
+        if (shouldCleanup) {
+          document.removeEventListener(event, handler, { capture });
+        }
+      `,
+    },
+    {
+      name: "post-registration collection mutation",
+      beforeCleanup: "subscriptions.pop();",
+      cleanup: "document.removeEventListener(event, handler, { capture });",
+    },
+  ])("rejects projected option-bag capture with $name", ({ beforeCleanup, cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function OutsideActions({ shouldCleanup, subscriptions }) {
+        useEffect(() => {
+          subscriptions.forEach(({ event, handler, capture }) => {
+            document.addEventListener(event, handler, { capture });
+          });
+
+          ${beforeCleanup}
+
+          return () => {
+            subscriptions.forEach(({ event, handler, capture }) => {
+              ${cleanup}
+            });
+          };
+        }, [shouldCleanup, subscriptions]);
+
+        return null;
+      }
+    `,
+      { filename: "OutsideActions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts direct exhaustive emitter cleanup through projected listener tuples", () => {
     const result = runRule(
       effectNeedsCleanup,

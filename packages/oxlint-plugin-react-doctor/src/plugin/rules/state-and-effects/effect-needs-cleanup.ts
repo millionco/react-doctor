@@ -289,9 +289,10 @@ const resolveEventListenerCaptureIdentityKey = (
   if (!optionsNode) return null;
   const unwrappedOptions = stripParenExpression(optionsNode);
   if (!isNodeOfType(unwrappedOptions, "ObjectExpression")) {
-    return allowOpaqueOptionsIdentity
+    const optionsKey = allowOpaqueOptionsIdentity
       ? resolveResourceIdentityKey(unwrappedOptions, context)
       : null;
+    return optionsKey ? `options:${optionsKey}` : null;
   }
   let captureKey: string | null = "capture:false";
   for (const property of unwrappedOptions.properties ?? []) {
@@ -305,10 +306,38 @@ const resolveEventListenerCaptureIdentityKey = (
       continue;
     }
     if (propertyName === "capture") {
-      captureKey = resolveResourceIdentityKey(property.value, context);
+      const propertyValueKey = resolveResourceIdentityKey(property.value, context);
+      captureKey = propertyValueKey ? `capture-value:${propertyValueKey}` : null;
     }
   }
   return captureKey;
+};
+
+const resolveEventListenerCaptureProjection = (
+  optionsNode: EsTreeNode | null | undefined,
+  context: RuleContext,
+): ForEachProjection | null => {
+  if (!optionsNode) return null;
+  const unwrappedOptions = stripParenExpression(optionsNode);
+  if (!isNodeOfType(unwrappedOptions, "ObjectExpression")) {
+    return resolveForEachProjection(unwrappedOptions, context);
+  }
+  let captureProjection: ForEachProjection | null = null;
+  for (const property of unwrappedOptions.properties ?? []) {
+    if (!isNodeOfType(property, "Property")) {
+      captureProjection = null;
+      continue;
+    }
+    const propertyName = getStaticPropertyKeyName(property);
+    if (propertyName === null || (!property.computed && propertyName === "__proto__")) {
+      captureProjection = null;
+      continue;
+    }
+    if (propertyName === "capture") {
+      captureProjection = resolveForEachProjection(property.value, context);
+    }
+  }
+  return captureProjection;
 };
 
 const doEventListenerCapturesMatch = (
@@ -2891,13 +2920,16 @@ const hasSafeForEachProjectionCleanup = (
     releaseCall.arguments?.[0],
     releaseCall.arguments?.[1],
   ];
-  if (registrationVerbName === "addEventListener" && releaseVerbName === "removeEventListener") {
-    projectionExpressions.push(registrationCall.arguments?.[2], releaseCall.arguments?.[2]);
-  }
   const projections = projectionExpressions.flatMap((expression) => {
     const projection = resolveForEachProjection(expression, context);
     return projection ? [projection] : [];
   });
+  if (registrationVerbName === "addEventListener" && releaseVerbName === "removeEventListener") {
+    for (const optionsNode of [registrationCall.arguments?.[2], releaseCall.arguments?.[2]]) {
+      const captureProjection = resolveEventListenerCaptureProjection(optionsNode, context);
+      if (captureProjection) projections.push(captureProjection);
+    }
+  }
   if (projections.length === 0) return true;
   const cleanupFunction = findDirectExhaustiveForEachCleanupFunction(releaseCall, context);
   if (!cleanupFunction) return false;

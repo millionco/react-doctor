@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+
+import { DaytonaNotFoundError } from "@daytona/sdk";
 import type { Daytona, Sandbox } from "@daytona/sdk";
 
 import {
@@ -37,11 +40,13 @@ export const evaluateRepositoryGroup = async ({
     ref: repositoryGroup.ref,
     rootDir: rootDirectory,
   }));
+  const sandboxName = `react-doctor-eval-${randomUUID()}`;
   let sandbox: Sandbox | undefined;
   try {
     try {
       sandbox = await daytona.create(
         {
+          name: sandboxName,
           snapshot: snapshotName,
           ephemeral: true,
           autoStopInterval: SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
@@ -116,12 +121,24 @@ export const evaluateRepositoryGroup = async ({
       await onRecord(record);
     }
   } finally {
-    if (sandbox) {
+    let sandboxToDelete = sandbox;
+    if (!sandboxToDelete) {
       try {
-        await daytona.delete(sandbox, SANDBOX_DELETE_TIMEOUT_SECONDS);
+        sandboxToDelete = await daytona.get(sandboxName);
+      } catch (error) {
+        if (!(error instanceof DaytonaNotFoundError)) {
+          process.stderr.write(
+            `Failed to recover Daytona sandbox ${sandboxName}: ${toErrorMessage(error)}\n`,
+          );
+        }
+      }
+    }
+    if (sandboxToDelete) {
+      try {
+        await daytona.delete(sandboxToDelete, SANDBOX_DELETE_TIMEOUT_SECONDS);
       } catch (error) {
         process.stderr.write(
-          `Failed to delete Daytona sandbox ${sandbox.id}: ${toErrorMessage(error)}\n`,
+          `Failed to delete Daytona sandbox ${sandboxToDelete.id}: ${toErrorMessage(error)}\n`,
         );
       }
     }

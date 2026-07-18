@@ -11,6 +11,14 @@ describe("r3f-no-internal-imports", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
+  it("flags TypeScript import-equals private imports", () => {
+    const result = runRule(
+      r3fNoInternalImports,
+      `import Fiber = require("@react-three/fiber/dist/declarations/src/core"); Fiber.createRoot(canvas);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows documented entry points and shadowed require", () => {
     const result = runRule(
       r3fNoInternalImports,

@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getModuleNamespaceSource } from "./utils/get-module-namespace-source.js";
 
 const isPrivateR3fPath = (source: unknown): source is string =>
   typeof source === "string" &&
@@ -35,6 +36,9 @@ export const r3fNoInternalImports = defineRule({
       },
       ImportExpression(node: EsTreeNodeOfType<"ImportExpression">) {
         if (isNodeOfType(node.source, "Literal")) reportSource(node.source, node.source.value);
+      },
+      TSImportEqualsDeclaration(node: EsTreeNodeOfType<"TSImportEqualsDeclaration">) {
+        reportSource(node, getModuleNamespaceSource(node.id, context.scopes));
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (

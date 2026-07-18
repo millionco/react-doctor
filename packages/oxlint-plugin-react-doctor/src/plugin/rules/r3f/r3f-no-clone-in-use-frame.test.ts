@@ -6,7 +6,7 @@ describe("r3f-no-clone-in-use-frame", () => {
   it("flags clones from refs and R3F state", () => {
     const result = runRule(
       r3fNoCloneInUseFrame,
-      `import { useFrame } from "@react-three/fiber"; useFrame((state) => { mesh.current.position.clone(); state.camera.position.clone(); });`,
+      `import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = () => { const mesh = useRef(null); useFrame((state) => { mesh.current.position.clone(); state.camera.position.clone(); }); };`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });
@@ -30,7 +30,7 @@ describe("r3f-no-clone-in-use-frame", () => {
   it("flags clones through stable Three.js aliases", () => {
     const result = runRule(
       r3fNoCloneInUseFrame,
-      `import { useFrame } from "@react-three/fiber"; useFrame(({ camera }) => { const position = camera.position; position.clone(); const target = mesh.current.position; target.clone(); });`,
+      `import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = () => { const mesh = useRef(null); useFrame(({ camera }) => { const position = camera.position; position.clone(); const target = mesh.current.position; target.clone(); }); };`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });
@@ -39,6 +39,14 @@ describe("r3f-no-clone-in-use-frame", () => {
     const result = runRule(
       r3fNoCloneInUseFrame,
       `import { useFrame } from "@react-three/fiber"; useFrame(() => record.clone());`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores current properties that do not come from React refs", () => {
+    const result = runRule(
+      r3fNoCloneInUseFrame,
+      `import { useFrame } from "@react-three/fiber"; const record = { current: { clone() {} } }; useFrame(() => record.current.clone());`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

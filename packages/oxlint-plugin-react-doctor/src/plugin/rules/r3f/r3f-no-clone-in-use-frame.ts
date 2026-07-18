@@ -5,6 +5,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isR3fCallbackStateProperty } from "./utils/is-r3f-callback-state-property.js";
@@ -25,7 +26,7 @@ const hasThreeObjectProvenance = (
     : firstCallbackParameter;
   let current = stripParenExpression(expression);
   while (isNodeOfType(current, "MemberExpression")) {
-    if (getStaticPropertyName(current) === "current") return true;
+    if (resolveReactRefSymbol(current, scopes)) return true;
     current = stripParenExpression(current.object);
   }
   if (

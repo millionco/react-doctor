@@ -1735,7 +1735,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame(async () => load());',
   },
   "r3f-no-clone-in-use-frame": {
-    code: 'import { useFrame } from "@react-three/fiber"; useFrame(() => mesh.current.position.clone());',
+    code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = () => { const mesh = useRef(null); useFrame(() => mesh.current.position.clone()); };',
   },
   "r3f-no-duplicate-primitive-object": {
     code: 'import "@react-three/fiber"; const Scene = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;',

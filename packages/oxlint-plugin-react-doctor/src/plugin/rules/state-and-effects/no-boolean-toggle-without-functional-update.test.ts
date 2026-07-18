@@ -366,9 +366,19 @@ describe("no-boolean-toggle-without-functional-update", () => {
       noBooleanToggleWithoutFunctionalUpdate,
       "const C = () => { const [open, setOpen] = useState(false); load().finally(() => setOpen(!open)); };",
     );
+    const workerTimer = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C = () => { const [open, setOpen] = useState(false); self.setTimeout(() => setOpen(!open), 1); };",
+    );
+    const shadowedWorker = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const self={setTimeout:callback=>callback()};const C=()=>{const[open,setOpen]=useState(false);self.setTimeout(()=>setOpen(!open),1)};",
+    );
     expect(windowTimer.diagnostics).toHaveLength(1);
     expect(promiseCatch.diagnostics).toHaveLength(1);
     expect(promiseFinally.diagnostics).toHaveLength(1);
+    expect(workerTimer.diagnostics).toHaveLength(1);
+    expect(shadowedWorker.diagnostics).toHaveLength(0);
   });
 
   it("flags subscription callbacks even without cleanup", () => {

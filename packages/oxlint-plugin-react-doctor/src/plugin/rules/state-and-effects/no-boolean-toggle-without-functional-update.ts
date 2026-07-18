@@ -73,7 +73,9 @@ const isGlobalIdentifier = (expression: EsTreeNode, name: string, context: RuleC
 
 const isGlobalObjectIdentifier = (expression: EsTreeNode, context: RuleContext): boolean =>
   isNodeOfType(expression, "Identifier") &&
-  (expression.name === "window" || expression.name === "globalThis") &&
+  (expression.name === "window" ||
+    expression.name === "globalThis" ||
+    expression.name === "self") &&
   context.scopes.isGlobalReference(expression);
 
 const isProvenSynchronousThenable = (expression: EsTreeNode, context: RuleContext): boolean => {

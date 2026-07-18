@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
@@ -160,15 +161,6 @@ const baseReceiverIdentifier = (expression: EsTreeNode): EsTreeNodeOfType<"Ident
   return isNodeOfType(current, "Identifier") ? current : null;
 };
 
-const nodeIsInsideFunction = (node: EsTreeNode, functionNode: EsTreeNode): boolean => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current) {
-    if (current === functionNode) return true;
-    current = current.parent;
-  }
-  return false;
-};
-
 const memberReceiverIsUpdaterLocal = (
   receiver: EsTreeNodeOfType<"MemberExpression">,
   updaterFunction: EsTreeNode,
@@ -241,7 +233,7 @@ const receiverIsUpdaterLocal = (
   if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
   visitedSymbolIds.add(symbol.id);
   const isDeclaredInsideUpdater = [...executedFunctions].some((functionNode) =>
-    nodeIsInsideFunction(symbol.bindingIdentifier, functionNode),
+    isAstDescendant(symbol.bindingIdentifier, functionNode),
   );
   if (!isDeclaredInsideUpdater) return false;
   if (symbol.kind === "parameter") {

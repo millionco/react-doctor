@@ -29,6 +29,10 @@ const SYNCHRONOUS_ITERATION_METHOD_NAMES = new Set([
 
 const REACT_RENDER_PHASE_HOOK_NAMES = new Set(["useMemo", "useState"]);
 
+export interface ExecutesDuringRenderOptions {
+  requireProvenSynchronousCallbackReceiver?: boolean;
+}
+
 const isGlobalArrayFromMember = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const unwrappedNode = stripParenExpression(node);
   if (
@@ -61,13 +65,34 @@ const isConstAliasOfGlobalArrayFrom = (node: EsTreeNode, scopes: ScopeAnalysis):
   );
 };
 
+const isProvenArrayReceiver = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const receiver = stripParenExpression(node);
+  if (isNodeOfType(receiver, "ArrayExpression")) return true;
+  if (!isNodeOfType(receiver, "CallExpression")) return false;
+  const callee = stripParenExpression(receiver.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const arrayIdentifier = stripParenExpression(callee.object);
+  return Boolean(
+    isNodeOfType(arrayIdentifier, "Identifier") &&
+    arrayIdentifier.name === "Array" &&
+    scopes.isGlobalReference(arrayIdentifier) &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier") &&
+    (callee.property.name === "from" || callee.property.name === "of"),
+  );
+};
+
 // A nested function usually runs on a user event, not during the render
 // pass — but four shapes DO execute while rendering: an immediately
 // invoked function (`{(() => new Date().toLocaleString())()}`), a
 // useMemo factory (`{useMemo(() => Date.now(), [])}`), and a synchronous
 // iteration callback (`{rows.map((row) => …)}`), or a global Promise
 // constructor executor (`new Promise((resolve) => resolve())`).
-export const executesDuringRender = (functionNode: EsTreeNode, scopes?: ScopeAnalysis): boolean => {
+export const executesDuringRender = (
+  functionNode: EsTreeNode,
+  scopes?: ScopeAnalysis,
+  options: ExecutesDuringRenderOptions = {},
+): boolean => {
   const parent = functionNode.parent;
   if (isNodeOfType(parent, "NewExpression")) {
     const callee = stripParenExpression(parent.callee);
@@ -100,6 +125,8 @@ export const executesDuringRender = (functionNode: EsTreeNode, scopes?: ScopeAna
     !parent.callee.computed &&
     isNodeOfType(parent.callee.property, "Identifier") &&
     SYNCHRONOUS_ITERATION_METHOD_NAMES.has(parent.callee.property.name) &&
-    parent.arguments?.[0] === functionNode
+    parent.arguments?.[0] === functionNode &&
+    (!options.requireProvenSynchronousCallbackReceiver ||
+      Boolean(scopes && isProvenArrayReceiver(parent.callee.object, scopes)))
   );
 };

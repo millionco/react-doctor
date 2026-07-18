@@ -102,6 +102,27 @@ describe("control-flow-graph", () => {
       ).toBe(true);
     });
 
+    it.each(["while (true)", "for (;;)"])(
+      "%s enters its body before a reachable break",
+      (loopHeader) => {
+        const analysis = analyze(`
+          function fn() {
+            ${loopHeader} {
+              beforeBreak();
+              break;
+            }
+            afterLoop();
+          }
+        `);
+        expect(
+          analysis.isUnconditionalFromEntry(findCalleeNode(analysis.program, "beforeBreak")!),
+        ).toBe(true);
+        expect(
+          analysis.isUnconditionalFromEntry(findCalleeNode(analysis.program, "afterLoop")!),
+        ).toBe(true);
+      },
+    );
+
     it("for loop body is conditional", () => {
       const analysis = analyze(`
         function fn() {

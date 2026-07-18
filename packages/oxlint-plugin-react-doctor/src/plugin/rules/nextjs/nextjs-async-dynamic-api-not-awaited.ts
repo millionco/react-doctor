@@ -1,3 +1,5 @@
+import * as path from "node:path";
+import { ROUTE_HANDLER_HTTP_METHODS } from "../../constants/nextjs.js";
 import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import type { BasicBlock } from "../../semantic/control-flow-graph.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
@@ -10,13 +12,22 @@ import {
   isNamespaceImportFromModule,
 } from "../../utils/find-import-source-for-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { findExportedValue } from "../../utils/find-exported-value.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVisibleSymbol } from "../../utils/find-visible-symbol.js";
+import { hasCapability } from "../../utils/get-react-doctor-setting.js";
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isDescendantOf } from "../../utils/is-descendant-of.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isFrameworkRouteOrSpecialFilename } from "../../utils/is-framework-route-or-special-filename.js";
+import { isNextjsMetadataImageRouteFilename } from "../../utils/is-nextjs-metadata-image-route-filename.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import {
@@ -32,6 +43,7 @@ const UNSAFE_UNWRAPPED_TYPE_NAMES: ReadonlySet<string> = new Set([
 ]);
 const OBJECT_ENUMERATION_METHOD_NAMES: ReadonlySet<string> = new Set([
   "entries",
+  "getOwnPropertyDescriptor",
   "getOwnPropertyDescriptors",
   "getOwnPropertyNames",
   "getOwnPropertySymbols",
@@ -72,14 +84,69 @@ interface ConditionalClearingBranches {
 const resolvesToImportBinding = (context: RuleContext, identifier: EsTreeNode): boolean =>
   findVisibleSymbol(identifier, context.scopes)?.kind === "import";
 
-const isNextHeadersDynamicCall = (context: RuleContext, expression: EsTreeNode): boolean => {
+const isNextHeadersDynamicCall = (
+  context: RuleContext,
+  expression: EsTreeNode,
+  visitedWrapperSymbolIds: Set<number> = new Set(),
+): boolean => {
   const node = stripParenExpression(expression);
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = stripParenExpression(node.callee);
   if (isNodeOfType(callee, "Identifier")) {
-    if (!resolvesToImportBinding(context, callee)) return false;
-    const importedName = getImportedNameFromModule(node, callee.name, "next/headers");
-    return importedName !== null && DYNAMIC_API_NAMES.has(importedName);
+    const symbol = resolveConstIdentifierAlias(callee, context.scopes);
+    if (symbol?.kind === "import" && isNodeOfType(symbol.bindingIdentifier, "Identifier")) {
+      const importedName = getImportedNameFromModule(
+        node,
+        symbol.bindingIdentifier.name,
+        "next/headers",
+      );
+      if (importedName !== null && DYNAMIC_API_NAMES.has(importedName)) return true;
+    }
+    const localSymbol = context.scopes.symbolFor(callee);
+    if (
+      node.arguments.length === 0 &&
+      localSymbol?.initializer &&
+      isFunctionLike(localSymbol.initializer) &&
+      !visitedWrapperSymbolIds.has(localSymbol.id) &&
+      localSymbol.initializer.params.length === 0
+    ) {
+      const returnedExpression = getSingleReturnExpression(localSymbol.initializer);
+      if (returnedExpression) {
+        visitedWrapperSymbolIds.add(localSymbol.id);
+        if (isNextHeadersDynamicCall(context, returnedExpression, visitedWrapperSymbolIds)) {
+          return true;
+        }
+      }
+    }
+    if (
+      localSymbol?.kind !== "const" ||
+      !isNodeOfType(localSymbol.declarationNode, "VariableDeclarator") ||
+      !isNodeOfType(localSymbol.declarationNode.id, "ObjectPattern") ||
+      !localSymbol.initializer
+    ) {
+      return false;
+    }
+    const property = localSymbol.declarationNode.id.properties.find(
+      (candidateProperty) =>
+        isNodeOfType(candidateProperty, "Property") &&
+        candidateProperty.value === localSymbol.bindingIdentifier,
+    );
+    if (!isNodeOfType(property, "Property")) return false;
+    const importedName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    const namespaceExpression = stripParenExpression(localSymbol.initializer);
+    if (
+      importedName === null ||
+      !DYNAMIC_API_NAMES.has(importedName) ||
+      !isNodeOfType(namespaceExpression, "Identifier")
+    ) {
+      return false;
+    }
+    const namespaceSymbol = resolveConstIdentifierAlias(namespaceExpression, context.scopes);
+    return Boolean(
+      namespaceSymbol?.kind === "import" &&
+      isNodeOfType(namespaceSymbol.bindingIdentifier, "Identifier") &&
+      isNamespaceImportFromModule(node, namespaceSymbol.bindingIdentifier.name, "next/headers"),
+    );
   }
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const namespaceObject = stripParenExpression(callee.object);
@@ -88,11 +155,16 @@ const isNextHeadersDynamicCall = (context: RuleContext, expression: EsTreeNode):
     !isNodeOfType(namespaceObject, "Identifier") ||
     memberName === null ||
     !DYNAMIC_API_NAMES.has(memberName) ||
-    !resolvesToImportBinding(context, namespaceObject)
+    !resolveConstIdentifierAlias(namespaceObject, context.scopes)
   ) {
     return false;
   }
-  return isNamespaceImportFromModule(node, namespaceObject.name, "next/headers");
+  const namespaceSymbol = resolveConstIdentifierAlias(namespaceObject, context.scopes);
+  return Boolean(
+    namespaceSymbol?.kind === "import" &&
+    isNodeOfType(namespaceSymbol.bindingIdentifier, "Identifier") &&
+    isNamespaceImportFromModule(node, namespaceSymbol.bindingIdentifier.name, "next/headers"),
+  );
 };
 
 const isUnsafeUnwrappedType = (
@@ -126,6 +198,7 @@ const isUnsafeUnwrappedType = (
 };
 
 const castChainAssertsUnsafeUnwrapped = (context: RuleContext, expression: EsTreeNode): boolean => {
+  if (hasCapability(context.settings, "nextjs:16")) return false;
   let current: EsTreeNode | null = expression;
   while (current) {
     if (
@@ -146,8 +219,27 @@ const castChainAssertsUnsafeUnwrapped = (context: RuleContext, expression: EsTre
   return false;
 };
 
-const isPromiseSettleAccess = (memberExpression: EsTreeNodeOfType<"MemberExpression">): boolean => {
-  const propertyName = getStaticPropertyName(memberExpression);
+const isPromiseSettleAccess = (
+  context: RuleContext,
+  memberExpression: EsTreeNodeOfType<"MemberExpression">,
+): boolean => {
+  let propertyName = getStaticPropertyName(memberExpression);
+  if (
+    propertyName === null &&
+    memberExpression.computed &&
+    isNodeOfType(memberExpression.property, "Identifier")
+  ) {
+    const propertySymbol = resolveConstIdentifierAlias(memberExpression.property, context.scopes);
+    if (propertySymbol?.kind === "const" && propertySymbol.initializer) {
+      const propertyInitializer = stripParenExpression(propertySymbol.initializer);
+      if (
+        isNodeOfType(propertyInitializer, "Literal") &&
+        typeof propertyInitializer.value === "string"
+      ) {
+        propertyName = propertyInitializer.value;
+      }
+    }
+  }
   return propertyName !== null && PROMISE_SETTLE_METHODS.has(propertyName);
 };
 
@@ -173,6 +265,146 @@ interface FunctionAliasCandidate {
   sourceNode: EsTreeNode;
   symbol: SymbolDescriptor;
 }
+
+interface OfficialAsyncPropContract {
+  parameterIndex: number;
+  propertyNames: ReadonlySet<string>;
+}
+
+interface OfficialPropsObjectSource {
+  contract: OfficialAsyncPropContract;
+  symbol: SymbolDescriptor;
+}
+
+const getOfficialAsyncPropContract = (
+  context: RuleContext,
+  functionNode: EsTreeNode,
+): OfficialAsyncPropContract | null => {
+  if (!isFrameworkRouteOrSpecialFilename(context, "next")) return null;
+  const program = findProgramRoot(functionNode);
+  if (!program) return null;
+  const basename = path.basename(context.filename ?? "");
+  const routeKind = basename.split(".")[0] ?? "";
+  const isDefaultExport = findExportedValue(program, "default") === functionNode;
+  const isPage = routeKind === "page";
+  if (isDefaultExport) {
+    if (isPage) {
+      return { parameterIndex: 0, propertyNames: new Set(["params", "searchParams"]) };
+    }
+    if (
+      routeKind === "layout" ||
+      routeKind === "default" ||
+      (isNextjsMetadataImageRouteFilename(context.filename) &&
+        hasCapability(context.settings, "nextjs:16"))
+    ) {
+      return { parameterIndex: 0, propertyNames: new Set(["params"]) };
+    }
+  }
+  if (routeKind === "route") {
+    for (const methodName of ROUTE_HANDLER_HTTP_METHODS) {
+      if (findExportedValue(program, methodName) === functionNode) {
+        return { parameterIndex: 1, propertyNames: new Set(["params"]) };
+      }
+    }
+    return null;
+  }
+  if (routeKind !== "page" && routeKind !== "layout") return null;
+  if (
+    findExportedValue(program, "generateMetadata") !== functionNode &&
+    findExportedValue(program, "generateViewport") !== functionNode
+  ) {
+    return null;
+  }
+  return {
+    parameterIndex: 0,
+    propertyNames: isPage ? new Set(["params", "searchParams"]) : new Set(["params"]),
+  };
+};
+
+const findParameterPropertyName = (
+  parameter: EsTreeNode,
+  bindingIdentifier: EsTreeNode,
+): string | null => {
+  const pattern = isNodeOfType(parameter, "AssignmentPattern") ? parameter.left : parameter;
+  if (!isNodeOfType(pattern, "ObjectPattern")) return null;
+  for (const property of pattern.properties) {
+    if (!isNodeOfType(property, "Property")) continue;
+    let propertyBinding = property.value;
+    if (isNodeOfType(propertyBinding, "AssignmentPattern")) {
+      propertyBinding = propertyBinding.left;
+    }
+    if (propertyBinding !== bindingIdentifier) continue;
+    return getStaticPropertyKeyName(property, { allowComputedString: true });
+  }
+  return null;
+};
+
+const findOfficialPropsObjectSource = (
+  context: RuleContext,
+  expression: EsTreeNode,
+): OfficialPropsObjectSource | null => {
+  const node = stripParenExpression(expression);
+  if (!isNodeOfType(node, "Identifier")) return null;
+  const symbol = resolveConstIdentifierAlias(node, context.scopes);
+  if (!symbol) return null;
+  const functionNode = context.cfg.enclosingFunction(symbol.bindingIdentifier);
+  if (!functionNode || !isFunctionLike(functionNode)) return null;
+  const contract = getOfficialAsyncPropContract(context, functionNode);
+  if (!contract) return null;
+  const parameter = functionNode.params[contract.parameterIndex];
+  if (!parameter) return null;
+  const parameterIdentifier = isNodeOfType(parameter, "AssignmentPattern")
+    ? parameter.left
+    : parameter;
+  return parameterIdentifier === symbol.bindingIdentifier ? { contract, symbol } : null;
+};
+
+const isOfficialAsyncRequestPropSource = (
+  context: RuleContext,
+  expression: EsTreeNode,
+): boolean => {
+  const node = stripParenExpression(expression);
+  let bindingIdentifier: EsTreeNode | null = null;
+  let propertyName: string | null = null;
+  if (isNodeOfType(node, "Identifier")) {
+    const symbol = context.scopes.symbolFor(node);
+    if (!symbol) return false;
+    bindingIdentifier = symbol.bindingIdentifier;
+  } else if (isNodeOfType(node, "MemberExpression")) {
+    const receiver = stripParenExpression(node.object);
+    if (!isNodeOfType(receiver, "Identifier")) return false;
+    const symbol = resolveConstIdentifierAlias(receiver, context.scopes);
+    if (!symbol) return false;
+    bindingIdentifier = symbol.bindingIdentifier;
+    propertyName = getStaticPropertyName(node);
+  } else {
+    return false;
+  }
+  const functionNode = context.cfg.enclosingFunction(bindingIdentifier);
+  if (!functionNode || !isFunctionLike(functionNode)) return false;
+  const bindingSymbol = context.scopes.symbolFor(bindingIdentifier);
+  if (!bindingSymbol) return false;
+  const contract = getOfficialAsyncPropContract(context, functionNode);
+  if (!contract) return false;
+  const parameter = functionNode.params[contract.parameterIndex];
+  if (!parameter) return false;
+  if (propertyName !== null) {
+    const parameterIdentifier = isNodeOfType(parameter, "AssignmentPattern")
+      ? parameter.left
+      : parameter;
+    return Boolean(
+      parameterIdentifier === bindingIdentifier &&
+      contract.propertyNames.has(propertyName) &&
+      !createPendingSymbolFlow(context, bindingSymbol, bindingIdentifier).isClearedBefore(node),
+    );
+  }
+  const destructuredPropertyName = findParameterPropertyName(parameter, bindingIdentifier);
+  return Boolean(
+    destructuredPropertyName &&
+    contract.propertyNames.has(destructuredPropertyName) &&
+    !createPendingSymbolFlow(context, bindingSymbol, bindingIdentifier).isClearedBefore(node),
+  );
+};
 
 const getStaticLogicalValue = (
   context: RuleContext,
@@ -277,7 +509,7 @@ const findRetainedExpressionSource = (
         pendingFrames.push({ expression: node.right, isExpanded: false });
       } else if (isNodeOfType(node, "CallExpression")) {
         const callee = stripParenExpression(node.callee);
-        if (isNodeOfType(callee, "MemberExpression") && isPromiseSettleAccess(callee)) {
+        if (isNodeOfType(callee, "MemberExpression") && isPromiseSettleAccess(context, callee)) {
           pendingFrames.push({ expression: callee.object, isExpanded: false });
         }
       }
@@ -320,7 +552,7 @@ const findRetainedExpressionSource = (
       retainedSource = sourceByExpression.get(node.right) ?? null;
     } else if (isNodeOfType(node, "CallExpression")) {
       const callee = stripParenExpression(node.callee);
-      if (isNodeOfType(callee, "MemberExpression") && isPromiseSettleAccess(callee)) {
+      if (isNodeOfType(callee, "MemberExpression") && isPromiseSettleAccess(context, callee)) {
         retainedSource = sourceByExpression.get(callee.object) ?? null;
       }
     }
@@ -334,7 +566,10 @@ const findPendingDynamicApiSource = (
   expression: EsTreeNode,
 ): EsTreeNode | null =>
   findRetainedExpressionSource(context, expression, (candidateExpression) =>
-    isNextHeadersDynamicCall(context, candidateExpression) ? candidateExpression : null,
+    isNextHeadersDynamicCall(context, candidateExpression) ||
+    isOfficialAsyncRequestPropSource(context, candidateExpression)
+      ? candidateExpression
+      : null,
   );
 
 const patternReadsDynamicApiValue = (pattern: EsTreeNode): boolean => {
@@ -396,7 +631,10 @@ const isGlobalEnumerationCallForArgument = (
     return methodName === "from" && callExpression.arguments[0] === argumentExpression;
   }
   if (receiver.name === "Reflect") {
-    return methodName === "ownKeys" && callExpression.arguments[0] === argumentExpression;
+    return (
+      (methodName === "get" || methodName === "ownKeys") &&
+      callExpression.arguments[0] === argumentExpression
+    );
   }
   return (
     receiver.name === "Object" &&
@@ -424,10 +662,12 @@ const isGlobalIterableConstructorForArgument = (
 };
 
 const isPromiseSettlementCall = (
+  context: RuleContext,
   callExpression: EsTreeNodeOfType<"CallExpression">,
   calleeRoot: EsTreeNode,
   memberExpression: EsTreeNodeOfType<"MemberExpression">,
-): boolean => callExpression.callee === calleeRoot && isPromiseSettleAccess(memberExpression);
+): boolean =>
+  callExpression.callee === calleeRoot && isPromiseSettleAccess(context, memberExpression);
 
 const expressionIsSynchronouslyConsumed = (
   context: RuleContext,
@@ -437,13 +677,13 @@ const expressionIsSynchronouslyConsumed = (
   while (current.parent) {
     const parent = current.parent;
     if (isNodeOfType(parent, "MemberExpression") && parent.object === current) {
-      if (!isPromiseSettleAccess(parent)) return true;
+      if (!isPromiseSettleAccess(context, parent)) return true;
       const memberRoot = findTransparentExpressionRoot(parent);
       const call = memberRoot.parent;
       if (
         !call ||
         !isNodeOfType(call, "CallExpression") ||
-        !isPromiseSettlementCall(call, memberRoot, parent)
+        !isPromiseSettlementCall(context, call, memberRoot, parent)
       ) {
         return false;
       }
@@ -458,6 +698,13 @@ const expressionIsSynchronouslyConsumed = (
       return true;
     }
     if (isNodeOfType(parent, "YieldExpression") && parent.delegate && parent.argument === current) {
+      return true;
+    }
+    if (
+      isNodeOfType(parent, "BinaryExpression") &&
+      parent.operator === "in" &&
+      parent.right === current
+    ) {
       return true;
     }
     if (isObjectDestructureOfExpression(parent, current)) return true;
@@ -758,7 +1005,7 @@ const aliasIsOverwrittenBeforeInvocation = (
       writeStart > sourceStart &&
       writeStart < invocationStart &&
       context.cfg.enclosingFunction(writeNode) === invocationOwner &&
-      context.cfg.isUnconditionalFromEntry(writeNode)
+      nodeDominatesNode(writeNode, invocation, context)
     );
   });
 };
@@ -820,7 +1067,13 @@ const createPendingSymbolFlow = (
     };
   }
   const functionCfg = context.cfg.cfgFor(owner);
-  const sourceBlock = functionCfg?.blockOf(sourceExpression);
+  const isParameterSource =
+    isFunctionLike(owner) &&
+    owner.params.some(
+      (parameter) => parameter === sourceExpression || isDescendantOf(sourceExpression, parameter),
+    );
+  const sourceBlock =
+    functionCfg?.blockOf(sourceExpression) ?? (isParameterSource ? functionCfg?.entry : null);
   if (!functionCfg || !sourceBlock) return { isClearedBefore: () => false };
 
   const clearingStartsByBlock = new Map<BasicBlock, number[]>();
@@ -944,7 +1197,12 @@ const getDirectInvocationSites = (context: RuleContext, functionNode: EsTreeNode
   ) {
     return [directParent];
   }
-  if (directParent && executesDuringRender(functionRoot, context.scopes)) {
+  if (
+    directParent &&
+    executesDuringRender(functionRoot, context.scopes, {
+      requireProvenSynchronousCallbackReceiver: true,
+    })
+  ) {
     return [directParent];
   }
 
@@ -978,6 +1236,18 @@ const getDirectInvocationSites = (context: RuleContext, functionNode: EsTreeNode
       const referenceRoot = findTransparentExpressionRoot(reference.identifier);
       const parent = referenceRoot.parent;
       if (parent && isNodeOfType(parent, "CallExpression") && parent.callee === referenceRoot) {
+        if (!aliasIsOverwrittenBeforeInvocation(context, candidate, parent)) {
+          invocationSites.push(parent);
+        }
+        continue;
+      }
+      if (
+        parent &&
+        (isNodeOfType(parent, "CallExpression") || isNodeOfType(parent, "NewExpression")) &&
+        executesDuringRender(referenceRoot, context.scopes, {
+          requireProvenSynchronousCallbackReceiver: true,
+        })
+      ) {
         if (!aliasIsOverwrittenBeforeInvocation(context, candidate, parent)) {
           invocationSites.push(parent);
         }
@@ -1093,6 +1363,98 @@ const reportAssignedPendingExpression = (
   context.report({ node: source, message: MESSAGE });
 };
 
+const collectPatternBindingIdentifiers = (
+  pattern: EsTreeNode,
+  identifiers: EsTreeNode[] = [],
+): EsTreeNode[] => {
+  if (isNodeOfType(pattern, "Identifier")) {
+    identifiers.push(pattern);
+  } else if (isNodeOfType(pattern, "AssignmentPattern")) {
+    collectPatternBindingIdentifiers(pattern.left, identifiers);
+  } else if (isNodeOfType(pattern, "RestElement")) {
+    collectPatternBindingIdentifiers(pattern.argument, identifiers);
+  } else if (isNodeOfType(pattern, "ObjectPattern")) {
+    for (const property of pattern.properties) {
+      if (isNodeOfType(property, "Property")) {
+        collectPatternBindingIdentifiers(property.value, identifiers);
+      } else if (isNodeOfType(property, "RestElement")) {
+        collectPatternBindingIdentifiers(property.argument, identifiers);
+      }
+    }
+  } else if (isNodeOfType(pattern, "ArrayPattern")) {
+    for (const element of pattern.elements) {
+      if (element) collectPatternBindingIdentifiers(element, identifiers);
+    }
+  }
+  return identifiers;
+};
+
+const reportPatternAssignedPendingExpressions = (
+  context: RuleContext,
+  pattern: EsTreeNode,
+  expression: EsTreeNode,
+): void => {
+  for (const bindingIdentifier of collectPatternBindingIdentifiers(pattern)) {
+    const symbol = context.scopes.symbolFor(bindingIdentifier);
+    if (!symbol) continue;
+    const assignedValue = findPatternAssignedValue(context, pattern, expression, symbol);
+    if (!assignedValue?.expression) continue;
+    reportAssignedPendingExpression(context, assignedValue.expression, bindingIdentifier);
+  }
+};
+
+const getDirectPatternBindingIdentifier = (pattern: EsTreeNode): EsTreeNode | null => {
+  if (isNodeOfType(pattern, "Identifier")) return pattern;
+  if (isNodeOfType(pattern, "AssignmentPattern") && isNodeOfType(pattern.left, "Identifier")) {
+    return pattern.left;
+  }
+  return null;
+};
+
+const reportOfficialPropsPatternAliases = (
+  context: RuleContext,
+  pattern: EsTreeNode,
+  expression: EsTreeNode,
+): void => {
+  if (!isNodeOfType(pattern, "ObjectPattern")) return;
+  const propsSource = findOfficialPropsObjectSource(context, expression);
+  if (!propsSource) return;
+  for (const property of pattern.properties) {
+    if (!isNodeOfType(property, "Property")) continue;
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (!propertyName || !propsSource.contract.propertyNames.has(propertyName)) continue;
+    const bindingIdentifier = getDirectPatternBindingIdentifier(property.value);
+    if (!bindingIdentifier) {
+      context.report({ node: property, message: MESSAGE });
+      continue;
+    }
+    const symbol = context.scopes.symbolFor(bindingIdentifier);
+    if (!symbol || !symbolHasSynchronousAccess(context, symbol, property.value)) continue;
+    context.report({ node: property, message: MESSAGE });
+  }
+};
+
+const reportNestedOfficialParameterDestructure = (
+  context: RuleContext,
+  functionNode: EsTreeNode,
+): void => {
+  if (!isFunctionLike(functionNode)) return;
+  const contract = getOfficialAsyncPropContract(context, functionNode);
+  if (!contract) return;
+  const parameter = functionNode.params[contract.parameterIndex];
+  const pattern =
+    parameter && isNodeOfType(parameter, "AssignmentPattern") ? parameter.left : parameter;
+  if (!pattern || !isNodeOfType(pattern, "ObjectPattern")) return;
+  for (const property of pattern.properties) {
+    if (!isNodeOfType(property, "Property")) continue;
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (!propertyName || !contract.propertyNames.has(propertyName)) continue;
+    if (!getDirectPatternBindingIdentifier(property.value)) {
+      context.report({ node: property, message: MESSAGE });
+    }
+  }
+};
+
 const reportDirectSynchronousConsumption = (context: RuleContext, expression: EsTreeNode): void => {
   const source = findPendingDynamicApiSource(context, expression);
   if (source) context.report({ node: source, message: MESSAGE });
@@ -1100,28 +1462,48 @@ const reportDirectSynchronousConsumption = (context: RuleContext, expression: Es
 
 export const nextjsAsyncDynamicApiNotAwaited = defineRule({
   id: "nextjs-async-dynamic-api-not-awaited",
-  title: "Un-awaited async next/headers API",
+  title: "Synchronous Next.js request API access",
   tags: ["test-noise"],
   requires: ["nextjs:15"],
   severity: "error",
   recommendation:
-    "Await `cookies()`, `headers()`, and `draftMode()` from `next/headers`, or unwrap their promises with React `use()`, before reading properties.",
+    "Await `cookies()`, `headers()`, `draftMode()`, and async route `params` or `searchParams`, or unwrap their promises with React `use()`, before reading properties.",
   create: (context: RuleContext) => ({
+    FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
+      reportNestedOfficialParameterDestructure(context, node);
+    },
+    FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
+      reportNestedOfficialParameterDestructure(context, node);
+    },
+    ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
+      reportNestedOfficialParameterDestructure(context, node);
+    },
     MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
       const source = findPendingDynamicApiSource(context, node.object);
       if (!source) return;
-      if (isPromiseSettleAccess(node)) return;
+      if (isPromiseSettleAccess(context, node)) return;
       context.report({ node: source, message: MESSAGE });
     },
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!node.init) return;
       reportDirectDestructure(context, node.init, node.id);
-      if (!isNodeOfType(node.id, "Identifier")) return;
-      reportAssignedPendingExpression(context, node.init, node.id);
+      if (isNodeOfType(node.id, "Identifier")) {
+        reportAssignedPendingExpression(context, node.init, node.id);
+      } else {
+        reportPatternAssignedPendingExpressions(context, node.id, node.init);
+        reportOfficialPropsPatternAliases(context, node.id, node.init);
+      }
     },
     AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
-      if (node.operator !== "=") return;
-      reportDirectDestructure(context, node.right, node.left);
+      if (node.operator === "=") {
+        reportDirectDestructure(context, node.right, node.left);
+        if (!isNodeOfType(stripParenExpression(node.left), "Identifier")) {
+          reportPatternAssignedPendingExpressions(context, node.left, node.right);
+          reportOfficialPropsPatternAliases(context, node.left, node.right);
+        }
+      } else if (node.operator !== "&&=" && node.operator !== "||=" && node.operator !== "??=") {
+        return;
+      }
       const assignmentTarget = stripParenExpression(node.left);
       if (!isNodeOfType(assignmentTarget, "Identifier")) return;
       reportAssignedPendingExpression(context, node.right, assignmentTarget);
@@ -1138,6 +1520,10 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
     YieldExpression(node: EsTreeNodeOfType<"YieldExpression">) {
       if (!node.delegate || !node.argument) return;
       reportDirectSynchronousConsumption(context, node.argument);
+    },
+    BinaryExpression(node: EsTreeNodeOfType<"BinaryExpression">) {
+      if (node.operator !== "in") return;
+      reportDirectSynchronousConsumption(context, node.right);
     },
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       for (const argument of node.arguments) {

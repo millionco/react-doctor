@@ -730,6 +730,20 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     );
   });
 
+  it("reports compatibility casts when Next.js 16 removes synchronous access", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `import { cookies, type UnsafeUnwrappedCookies } from "next/headers";
+       export const read = () => (cookies() as unknown as UnsafeUnwrappedCookies).get("session");`,
+      {
+        filename: "app/page.tsx",
+        settings: { "react-doctor": { capabilities: ["nextjs:15", "nextjs:16"] } },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not report an angle-bracket compatibility cast", () => {
     expectDiagnosticCount(
       `import { headers, type UnsafeUnwrappedHeaders } from "next/headers";
@@ -1163,6 +1177,23 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     );
   });
 
+  it("does not report a closure alias overwritten on the only branch that invokes it", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async (shouldCall) => {
+         let pending = cookies();
+         const readPending = () => pending.get("session");
+         let readAlias = readPending;
+         if (shouldCall) {
+           readAlias = () => null;
+           readAlias();
+         }
+         pending = await pending;
+       };`,
+      0,
+    );
+  });
+
   it.each(["[0].map(() => pending.get('session'))", "new Promise(() => pending.get('session'))"])(
     "reports a mutable pending binding read by the synchronous callback in %s",
     (expression) => {
@@ -1178,6 +1209,303 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
       );
     },
   );
+
+  it.each(["[0].map(readPending)", "new Promise(readPending)"])(
+    "reports a named synchronous callback passed through %s",
+    (expression) => {
+      expectDiagnosticCount(
+        `import { cookies } from "next/headers";
+         export const read = async () => {
+           let pending = cookies();
+           const readPending = () => pending.get("session");
+           const value = ${expression};
+           pending = await pending;
+           return value;
+         };`,
+        1,
+      );
+    },
+  );
+
+  it("does not treat an arbitrary receiver's map callback as synchronously invoked", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async (scheduler) => {
+         let pending = cookies();
+         scheduler.map(() => pending.get("session"));
+         pending = await pending;
+         scheduler.flush();
+       };`,
+      0,
+    );
+  });
+
+  it.each(["while (true)", "for (;;)"])(
+    "recognizes provenance clearing before a break from %s",
+    (loopHeader) => {
+      expectDiagnosticCount(
+        `import { cookies } from "next/headers";
+         export const read = async () => {
+           let pending = cookies();
+           ${loopHeader} {
+             pending = await pending;
+             break;
+           }
+           return pending.get("session");
+         };`,
+        0,
+      );
+    },
+  );
+
+  it.each(["then", "catch", "finally"])(
+    "does not report a Promise settlement method selected through const %s",
+    (methodName) => {
+      expectDiagnosticCount(
+        `import { cookies } from "next/headers";
+         const settleMethod = "${methodName}";
+         export const read = () => cookies()[settleMethod](handle);`,
+        0,
+      );
+    },
+  );
+
+  it.each([
+    'Reflect.get(pending, "get")',
+    'Object.getOwnPropertyDescriptor(pending, "get")',
+    '"get" in pending',
+  ])("reports reflective property access through %s", (expression) => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = () => {
+         const pending = cookies();
+         return ${expression};
+       };`,
+      1,
+    );
+  });
+
+  it.each([
+    `import { cookies } from "next/headers";
+     const readCookies = cookies;
+     export const read = () => readCookies().get("session");`,
+    `import * as nextHeaders from "next/headers";
+     const requestHeaders = nextHeaders;
+     export const read = () => requestHeaders.headers().get("x-request-id");`,
+    `import * as nextHeaders from "next/headers";
+     const { headers: readHeaders } = nextHeaders;
+     export const read = () => readHeaders().get("x-request-id");`,
+    `import { draftMode } from "next/headers";
+     const readDraftMode = () => draftMode();
+     export const read = () => readDraftMode().isEnabled;`,
+  ])("reports bounded aliases and wrappers of next/headers APIs", (code) => {
+    expectDiagnosticCount(code, 1);
+  });
+
+  it.each(["let pending; pending ??= cookies();", "const { pending } = { pending: cookies() };"])(
+    "reports pending values introduced through %s",
+    (declaration) => {
+      expectDiagnosticCount(
+        `import { cookies } from "next/headers";
+       export const read = () => {
+         ${declaration}
+         return pending.get("session");
+       };`,
+        1,
+      );
+    },
+  );
+
+  it.each([
+    {
+      code: `export default function Page({ params }) { return params.slug; }`,
+      filename: "app/blog/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page(props) { return props.searchParams.query; }`,
+      filename: "src/app/search/page.tsx",
+    },
+    {
+      code: `export default function Page(props) { const routeProps = props; return routeProps.params.slug; }`,
+      filename: "app/blog/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page(props) { const { params: routeParams } = props; return routeParams.slug; }`,
+      filename: "app/blog/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page({ params: { slug } }) { return slug; }`,
+      filename: "app/blog/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Layout({ params: routeParams }) { return routeParams.team; }`,
+      filename: "app/[team]/layout.tsx",
+    },
+    {
+      code: `export const GET = (request, { params }) => Response.json({ slug: params.slug });`,
+      filename: "app/api/[slug]/route.ts",
+    },
+    {
+      code: `export const generateMetadata = ({ searchParams }) => ({ title: searchParams.query });`,
+      filename: "app/search/page.tsx",
+    },
+    {
+      code: `export const generateViewport = ({ params }) => ({ themeColor: params.theme });`,
+      filename: "app/[theme]/layout.tsx",
+    },
+    {
+      code: `export default function Default({ params }) { return params.slug; }`,
+      filename: "app/blog/[slug]/default.tsx",
+    },
+  ])("reports synchronous official async request props in $filename", ({ code, filename }) => {
+    expectDiagnosticCount(code, 1, filename);
+  });
+
+  it.each(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])(
+    "reports route params in the %s handler context",
+    (methodName) => {
+      expectDiagnosticCount(
+        `export const ${methodName} = (request, context) => Response.json(context.params.slug);`,
+        1,
+        "app/api/[slug]/route.ts",
+      );
+    },
+  );
+
+  it.each([
+    `const Page = ({ params }) => params.slug; export { Page as default };`,
+    `export default function Page({ ["params"]: routeParams }) { return routeParams.slug; }`,
+    `export const generateMetadata = ({ params }) => ({ title: params.slug });`,
+    `export const generateViewport = ({ searchParams }) => ({ colorScheme: searchParams.scheme });`,
+  ])("reports official async props through supported export and pattern forms", (code) => {
+    expectDiagnosticCount(code, 1, "app/[slug]/page.tsx");
+  });
+
+  it.each([
+    `export default function Page({ params }) { return { ...params }; }`,
+    `export default function Page({ params }) { return Object.keys(params); }`,
+    `export default function Page({ params }) { const { slug } = params; return slug; }`,
+  ])("reports official async props through synchronous consumption forms", (code) => {
+    expectDiagnosticCount(code, 1, "app/[slug]/page.tsx");
+  });
+
+  it("reports metadata image params in Next.js 16", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `export default function Image({ params }) { return new ImageResponse(params.slug); }`,
+      {
+        filename: "app/blog/[slug]/opengraph-image.tsx",
+        settings: { "react-doctor": { capabilities: ["nextjs:15", "nextjs:16"] } },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      code: `export default async function Page({ params }) { const route = await params; return route.slug; }`,
+      filename: "app/blog/[slug]/page.tsx",
+    },
+    {
+      code: `import { use } from "react"; export default function Page({ searchParams }) { return use(searchParams).query; }`,
+      filename: "app/search/page.tsx",
+    },
+    {
+      code: `import { use as unwrap } from "react"; export default function Page({ params }) { return unwrap(params).slug; }`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page({ params }) { return params.then((route) => route.slug); }`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export const helper = ({ params }) => params.slug;`,
+      filename: "app/blog/[slug]/page.tsx",
+    },
+    {
+      code: `function Page({ params }) { return params.slug; } export { Page };`,
+      filename: "app/blog/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Card({ params }) { return params.slug; }`,
+      filename: "src/components/page.tsx",
+    },
+    {
+      code: `export default function Layout({ searchParams }) { return searchParams.query; }`,
+      filename: "app/layout.tsx",
+    },
+    {
+      code: `export default function Loading({ params }) { return params.slug; }`,
+      filename: "app/loading.tsx",
+    },
+    {
+      code: `export default function Template({ params }) { return params.slug; }`,
+      filename: "app/template.tsx",
+    },
+    {
+      code: `export default function LegacyPage({ params }) { return params.slug; }`,
+      filename: "pages/page.tsx",
+    },
+    {
+      code: `export default withPage(function Page({ params }) { return params.slug; });`,
+      filename: "app/blog/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page(props) { return props[propertyName].slug; }`,
+      filename: "app/blog/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Route(request) { return request.params.slug; }`,
+      filename: "app/api/[slug]/route.ts",
+    },
+    {
+      code: `export const handler = (request, { params }) => params.slug;`,
+      filename: "app/api/[slug]/route.ts",
+    },
+    {
+      code: `export default function Route(request, { params }) { return params.slug; }`,
+      filename: "app/api/[slug]/route.ts",
+    },
+    {
+      code: `export const generateStaticParams = ({ params }) => [{ slug: params.slug }];`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page({ [propertyName]: routeParams }) { return routeParams.slug; }`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page({ params }) { return <div />; }`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Image({ params }) { return new ImageResponse(params.slug); }`,
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
+      code: `export const generateImageMetadata = ({ params }) => [{ id: params.slug }];`,
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
+      code: `export async function Page({ params }) { params = await params; return params.slug; } export default Page;`,
+      filename: "app/blog/[slug]/page.tsx",
+    },
+  ])("does not report safe or non-contract request props in $filename", ({ code, filename }) => {
+    expectDiagnosticCount(code, 0, filename);
+  });
+
+  it("reports request props after only a conditional await", () => {
+    expectDiagnosticCount(
+      `export async function Page({ params }, shouldAwait) {
+         if (shouldAwait) params = await params;
+         return params.slug;
+       }
+       export default Page;`,
+      1,
+      "app/blog/[slug]/page.tsx",
+    );
+  });
 
   it("handles a deeply nested logical source without recursive traversal", () => {
     const logicalBranchCount = 1_200;

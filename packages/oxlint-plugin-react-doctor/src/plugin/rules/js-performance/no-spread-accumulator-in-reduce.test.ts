@@ -376,6 +376,38 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
+  it("treats unknown member calls as possible collection growth", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const firstItems = [];
+       api.merge(firstItems, externalItems);
+       firstItems.reduce((acc, item) => [...acc, item], []);
+
+       const secondItems = [];
+       const method = "merge";
+       api[method](secondItems, externalItems);
+       secondItems.reduce((acc, item) => [...acc, item], []);
+
+       const thirdItems = [];
+       thirdItems.mergeExternal(externalItems);
+       thirdItems.reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("keeps proven non-growing collection calls bounded", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const firstItems = [];
+       Array.from(firstItems);
+       Object.keys(firstItems);
+       firstItems.slice();
+       firstItems.forEach(visit);
+       firstItems.reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not trust mutated global Object and Array aliases", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,

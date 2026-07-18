@@ -1172,6 +1172,27 @@ describe("no-create-object-url-without-revoke", () => {
          if (!entry) return;
          URL.revokeObjectURL(entry.preview.url);
          previewCache.delete(id);
+       };
+       const evictPreviewAlias = (id) => {
+         const entry = previewCache.get(id);
+         if (!entry) return;
+         const url = entry.preview.url;
+         URL.revokeObjectURL(url);
+         previewCache.delete(id);
+       };
+       const evictPreviewIntermediateAlias = (id) => {
+         const entry = previewCache.get(id);
+         if (!entry) return;
+         const preview = entry.preview;
+         URL.revokeObjectURL(preview.url);
+         previewCache.delete(id);
+       };
+       const evictPreviewDestructure = (id) => {
+         const entry = previewCache.get(id);
+         if (!entry) return;
+         const { preview: { url } } = entry;
+         URL.revokeObjectURL(url);
+         previewCache.delete(id);
        };`,
     );
     expect(nestedValueResult.diagnostics).toHaveLength(0);

@@ -13,6 +13,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveMemberHandlerFunction } from "../../utils/resolve-member-handler-function.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -30,7 +31,34 @@ const NON_GROWING_ARRAY_METHOD_NAMES = new Set([
   "toSorted",
   "with",
 ]);
-const ARRAY_LENGTH_GROWING_MUTATION_METHOD_NAMES = new Set(["push", "splice", "unshift"]);
+const NON_GROWING_ARRAY_RECEIVER_METHOD_NAMES = new Set([
+  ...NON_GROWING_ARRAY_METHOD_NAMES,
+  "at",
+  "concat",
+  "entries",
+  "every",
+  "find",
+  "findIndex",
+  "findLast",
+  "findLastIndex",
+  "flat",
+  "flatMap",
+  "forEach",
+  "includes",
+  "indexOf",
+  "join",
+  "keys",
+  "lastIndexOf",
+  "pop",
+  "reduce",
+  "reduceRight",
+  "shift",
+  "some",
+  "toLocaleString",
+  "toSpliced",
+  "toString",
+  "values",
+]);
 const OBJECT_GROWING_MUTATION_METHOD_NAMES = new Set([
   "assign",
   "defineProperties",
@@ -147,7 +175,17 @@ const bindingMayHaveGrown = (
       ) {
         return false;
       }
-      return isNodeOfType(directCallee, "Identifier");
+      if (isNodeOfType(directCallee, "MemberExpression")) {
+        const localFunction = resolveMemberHandlerFunction(directCallee);
+        if (
+          localFunction &&
+          isNodeOfType(localFunction.body, "BlockStatement") &&
+          localFunction.body.body.length === 0
+        ) {
+          return false;
+        }
+      }
+      return true;
     }
     if (
       (isNodeOfType(directConsumer, "Property") && directConsumer.value === referenceRoot) ||
@@ -175,11 +213,9 @@ const bindingMayHaveGrown = (
     ) {
       return true;
     }
-    return (
-      isNodeOfType(consumer, "CallExpression") &&
-      consumer.callee === memberRoot &&
-      ARRAY_LENGTH_GROWING_MUTATION_METHOD_NAMES.has(getStaticPropertyName(member) ?? "")
-    );
+    if (!isNodeOfType(consumer, "CallExpression") || consumer.callee !== memberRoot) return false;
+    const methodName = getStaticPropertyName(member);
+    return !methodName || !NON_GROWING_ARRAY_RECEIVER_METHOD_NAMES.has(methodName);
   });
   growthBySymbolId.set(symbol.id, didBindingGrow);
   return didBindingGrow;

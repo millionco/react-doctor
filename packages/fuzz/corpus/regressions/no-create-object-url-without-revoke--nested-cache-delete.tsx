@@ -14,7 +14,10 @@ export const cachePreview = (blob: Blob, id: string) => {
 export const evictPreview = (id: string) => {
   const entry = previewCache.get(id);
   if (!entry) return;
-  URL.revokeObjectURL(entry.preview.url);
+  const {
+    preview: { url },
+  } = entry;
+  URL.revokeObjectURL(url);
   previewCache.delete(id);
 };
 

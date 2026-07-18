@@ -62,6 +62,11 @@ interface ProducedValueBinding {
   readonly binding: EsTreeNode;
 }
 
+interface BindingPathAlias {
+  readonly binding: EsTreeNode;
+  readonly propertyPath: readonly string[];
+}
+
 const getModuleScopeCache = (node: EsTreeNode, scopes: ScopeAnalysis): ModuleScopeCache | null => {
   let cacheReference = stripParenExpression(node);
   const visitedSymbolIds = new Set<number>();
@@ -1056,6 +1061,128 @@ const buildProgramDisposalIndex = (
   return index;
 };
 
+const isPropertyPathPrefix = (
+  prefix: readonly string[],
+  propertyPath: readonly string[],
+): boolean => prefix.every((propertyName, index) => propertyPath[index] === propertyName);
+
+const getPatternPropertyName = (property: EsTreeNodeOfType<"Property">): string | null => {
+  const key = property.key;
+  if (!property.computed && isNodeOfType(key, "Identifier")) return key.name;
+  if (isNodeOfType(key, "Literal") && typeof key.value === "string") return key.value;
+  return null;
+};
+
+const collectBindingPathAliasesFromPattern = (
+  pattern: EsTreeNode,
+  targetPath: readonly string[],
+  patternPath: readonly string[],
+  aliases: BindingPathAlias[],
+): void => {
+  if (isNodeOfType(pattern, "Identifier")) {
+    if (isPropertyPathPrefix(patternPath, targetPath)) {
+      aliases.push({ binding: pattern, propertyPath: targetPath.slice(patternPath.length) });
+    }
+    return;
+  }
+  if (isNodeOfType(pattern, "AssignmentPattern")) {
+    collectBindingPathAliasesFromPattern(pattern.left, targetPath, patternPath, aliases);
+    return;
+  }
+  if (!isNodeOfType(pattern, "ObjectPattern")) return;
+  for (const property of pattern.properties) {
+    if (!isNodeOfType(property, "Property")) continue;
+    const propertyName = getPatternPropertyName(property);
+    if (!propertyName) continue;
+    collectBindingPathAliasesFromPattern(
+      property.value,
+      targetPath,
+      [...patternPath, propertyName],
+      aliases,
+    );
+  }
+};
+
+const bindingPathIsRevokedBefore = (
+  currentValue: ProducedValueBinding,
+  guardedValue: ProducedValueBinding,
+  resultCall: EsTreeNodeOfType<"CallExpression">,
+  beforeNode: EsTreeNode,
+  propertyPath: readonly string[],
+  context: RuleContext,
+  visitedStates: Set<string>,
+): boolean => {
+  const symbol = context.scopes.symbolFor(currentValue.binding);
+  if (!symbol) return false;
+  const stateKey = `${symbol.id}:${JSON.stringify(propertyPath)}`;
+  if (visitedStates.has(stateKey)) return false;
+  visitedStates.add(stateKey);
+  const executionBoundary = context.cfg.enclosingFunction(resultCall);
+  return symbol.references.some((reference) => {
+    if (reference.identifier.range[0] <= currentValue.acquiredAt) return false;
+    let candidate = findTransparentExpressionRoot(reference.identifier);
+    let consumedPathLength = 0;
+    while (consumedPathLength < propertyPath.length) {
+      const member = candidate.parent;
+      if (
+        !member ||
+        !isNodeOfType(member, "MemberExpression") ||
+        stripParenExpression(member.object) !== stripParenExpression(candidate) ||
+        getStaticPropertyName(member) !== propertyPath[consumedPathLength]
+      ) {
+        break;
+      }
+      consumedPathLength++;
+      candidate = findTransparentExpressionRoot(member);
+    }
+    const remainingPath = propertyPath.slice(consumedPathLength);
+    const consumer = candidate.parent;
+    if (
+      remainingPath.length === 0 &&
+      consumer &&
+      isNodeOfType(consumer, "CallExpression") &&
+      consumer.range[0] < beforeNode.range[0] &&
+      isUrlMethodCall(consumer, "revokeObjectURL", context.scopes) &&
+      isAstNode(consumer.arguments[0]) &&
+      stripParenExpression(consumer.arguments[0]) === stripParenExpression(candidate) &&
+      bindingValueRemainsCurrentAtConsumer(currentValue, resultCall, consumer, context.scopes) &&
+      isNodeReachableWithinFunction(consumer, context) &&
+      consumerIsGuaranteedAfterResult(
+        consumer,
+        resultCall,
+        guardedValue,
+        executionBoundary,
+        context,
+      )
+    ) {
+      return true;
+    }
+    if (
+      !consumer ||
+      !isNodeOfType(consumer, "VariableDeclarator") ||
+      consumer.init !== candidate ||
+      !consumer.parent ||
+      !isNodeOfType(consumer.parent, "VariableDeclaration") ||
+      consumer.parent.kind !== "const"
+    ) {
+      return false;
+    }
+    const aliases: BindingPathAlias[] = [];
+    collectBindingPathAliasesFromPattern(consumer.id, remainingPath, [], aliases);
+    return aliases.some((alias) =>
+      bindingPathIsRevokedBefore(
+        { acquiredAt: consumer.range[1], binding: alias.binding },
+        guardedValue,
+        resultCall,
+        beforeNode,
+        alias.propertyPath,
+        context,
+        visitedStates,
+      ),
+    );
+  });
+};
+
 const boundResultIsRevokedBefore = (
   resultCall: EsTreeNodeOfType<"CallExpression">,
   beforeNode: EsTreeNode,
@@ -1066,45 +1193,16 @@ const boundResultIsRevokedBefore = (
   if (!resultExpression) return false;
   const executionBoundary = context.cfg.enclosingFunction(resultCall);
   if (context.cfg.enclosingFunction(beforeNode) !== executionBoundary) return false;
-  const valueBindings: ProducedValueBinding[] = [];
-  collectProvenValueBindings(resultExpression, resultCall.range[1], context.scopes, valueBindings);
-  return valueBindings.some((producedValue) => {
-    const symbol = context.scopes.symbolFor(producedValue.binding);
-    return symbol?.references.some((reference) => {
-      let referenceRoot = findTransparentExpressionRoot(reference.identifier);
-      for (const propertyName of propertyPath) {
-        const member = referenceRoot.parent;
-        if (
-          !member ||
-          !isNodeOfType(member, "MemberExpression") ||
-          stripParenExpression(member.object) !== stripParenExpression(referenceRoot) ||
-          getStaticPropertyName(member) !== propertyName
-        ) {
-          return false;
-        }
-        referenceRoot = findTransparentExpressionRoot(member);
-      }
-      const consumer = referenceRoot.parent;
-      return Boolean(
-        consumer &&
-        isNodeOfType(consumer, "CallExpression") &&
-        consumer.range[0] < beforeNode.range[0] &&
-        (propertyPath.length === 0
-          ? isRevokeOfProducedBinding(consumer, producedValue.binding, context.scopes)
-          : isUrlMethodCall(consumer, "revokeObjectURL", context.scopes) &&
-            isAstNode(consumer.arguments[0]) &&
-            stripParenExpression(consumer.arguments[0]) === stripParenExpression(referenceRoot)) &&
-        bindingValueRemainsCurrentAtConsumer(producedValue, resultCall, consumer, context.scopes) &&
-        consumerIsGuaranteedAfterResult(
-          consumer,
-          resultCall,
-          producedValue,
-          executionBoundary,
-          context,
-        ),
-      );
-    });
-  });
+  const producedValue = { acquiredAt: resultCall.range[1], binding: resultExpression };
+  return bindingPathIsRevokedBefore(
+    producedValue,
+    producedValue,
+    resultCall,
+    beforeNode,
+    propertyPath,
+    context,
+    new Set(),
+  );
 };
 
 const cacheGetMatchesKey = (

@@ -924,7 +924,7 @@ const MissingNoCharts = ({ dataId, chartType }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: anchorEl.href helper fed e.currentTarget from an inline handler on a trusted-href link (react-cosmos idiom)", () => {
+  it("flags an anchor helper wired through a custom Link with an unresolved href helper", () => {
     const result = runRule(
       windowOpenWithoutNoopener,
       `export function FixtureLink({ children, fixtureId }) {
@@ -948,7 +948,7 @@ function openAnchorInNewTab(anchorEl) {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: anchorEl.href helper reached through a named handler wired to a trusted-href link (react-cosmos bookmarks idiom)", () => {
+  it("flags an anchor helper wired through a custom FixtureLink component", () => {
     const result = runRule(
       windowOpenWithoutNoopener,
       `export function FixtureBookmarks({ bookmarks, onFixtureSelect }) {
@@ -980,6 +980,26 @@ function openAnchorInNewTab(anchorEl) {
 }`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet: anchorEl.href helper fed currentTarget from an intrinsic anchor with a proven href", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const createRelativePlaygroundUrl = ({ fixture }) => "/playground/" + fixture;
+       const openAnchorInNewTab = (anchorEl) => {
+         window.open(anchorEl.href, "_blank");
+       };
+       const FixtureLink = ({ fixtureId }) => (
+         <a
+           href={createRelativePlaygroundUrl({ fixture: fixtureId })}
+           onClick={(event) => {
+             event.preventDefault();
+             if (event.metaKey) openAnchorInNewTab(event.currentTarget);
+           }}
+         />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("still flags an anchorEl.href helper when the wired element's href is dynamic", () => {
@@ -1291,6 +1311,188 @@ window.open(buildCorrelationsUrl(dataId, encodeStrings, isPPS, true), '_blank');
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("rejects writes inside a foreign helper using foreign source offsets", () => {
+    writeFile(
+      "src/share-url.ts",
+      `export const buildShareUrl = (userControlledUrl: string) => {
+  const buildPath = (path: string) => {
+    path = userControlledUrl;
+    return path;
+  };
+  return buildPath('/safe');
+};
+`,
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { buildShareUrl } from './share-url';\nwindow.open(buildShareUrl(userControlledUrl), '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when a foreign initializer snapshots a trusted let before a later write", () => {
+    writeFile(
+      "src/share-url.ts",
+      `let popupPath = '/safe';
+export const popupTarget = popupPath;
+popupPath = userControlledUrl;
+`,
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { popupTarget } from './share-url';\nwindow.open(popupTarget, '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when a foreign initializer has an uncalled nested mutator", () => {
+    writeFile(
+      "src/share-url.ts",
+      `let popupPath = '/safe';
+const mutatePopupPath = () => {
+  popupPath = userControlledUrl;
+};
+void mutatePopupPath;
+export const popupTarget = popupPath;
+`,
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { popupTarget } from './share-url';\nwindow.open(popupTarget, '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a module write that completes before an imported helper is called", () => {
+    writeFile(
+      "src/share-url.ts",
+      `let popupPath = '/safe';
+export const buildShareUrl = () => popupPath;
+popupPath = userControlledUrl;
+`,
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { buildShareUrl } from './share-url';\nwindow.open(buildShareUrl(), '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when an imported helper has an uncalled nested mutator", () => {
+    writeFile(
+      "src/share-url.ts",
+      `let popupPath = '/safe';
+const mutatePopupPath = () => {
+  popupPath = userControlledUrl;
+};
+void mutatePopupPath;
+export const buildShareUrl = () => popupPath;
+`,
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { buildShareUrl } from './share-url';\nwindow.open(buildShareUrl(), '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a foreign helper mutated by a function called during module initialization", () => {
+    writeFile(
+      "src/share-url.ts",
+      `let popupPath = '/safe';
+mutatePopupPath();
+export const buildShareUrl = () => popupPath;
+function mutatePopupPath() {
+  popupPath = userControlledUrl;
+}
+`,
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { buildShareUrl } from './share-url';\nwindow.open(buildShareUrl(), '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when a write after a foreign helper return is unreachable", () => {
+    writeFile(
+      "src/share-url.ts",
+      `export const buildShareUrl = () => {
+  let popupPath = '/safe';
+  return popupPath;
+  popupPath = userControlledUrl;
+};
+`,
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { buildShareUrl } from './share-url';\nwindow.open(buildShareUrl(), '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a write before a foreign helper return", () => {
+    writeFile(
+      "src/share-url.ts",
+      `export const buildShareUrl = () => {
+  let popupPath = '/safe';
+  popupPath = userControlledUrl;
+  return popupPath;
+};
+`,
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { buildShareUrl } from './share-url';\nwindow.open(buildShareUrl(), '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when a foreign URL initializer precedes a global replacement", () => {
+    writeFile(
+      "src/share-url.ts",
+      `export const storeUrl = new URL('/store', location.origin).toString();
+URL = EvilURL;
+`,
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { storeUrl } from './share-url';\nwindow.open(storeUrl, '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a global replacement that completes before an imported URL helper is called", () => {
+    writeFile(
+      "src/share-url.ts",
+      `export const buildShareUrl = () => new URL('/store', location.origin).toString();
+URL = EvilURL;
+`,
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { buildShareUrl } from './share-url';\nwindow.open(buildShareUrl(), '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a global replacement called during module initialization", () => {
+    writeFile(
+      "src/share-url.ts",
+      `const replaceUrl = () => {
+  URL = EvilURL;
+};
+replaceUrl();
+export const buildShareUrl = () => new URL('/store', location.origin).toString();
+`,
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { buildShareUrl } from './share-url';\nwindow.open(buildShareUrl(), '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags when the imported helper delegates to another imported helper (no transitive cross-file hops)", () => {
     writeFile("src/deep.ts", "export const buildDeepUrl = () => '/deep';\n");
     writeFile(
@@ -1551,20 +1753,33 @@ window.open(deltaPage, '_blank');
 
   it("uses only authoritative intrinsic anchor href attributes", () => {
     for (const code of [
-      `const C = ({ dynamicHref }) => <a href="/safe" {...props} onClick={(event) =>
-         window.open(event.currentTarget.href)} />;`,
-      `const C = ({ dynamicHref }) => <a href="/safe" href={dynamicHref} onClick={(event) =>
-         window.open(event.currentTarget.href)} />;`,
+      `const C = ({ dynamicHref }) => <a href="/safe" {...props} onClick={(event) => {
+         window.open(event.currentTarget.href);
+       }} />;`,
+      `const C = ({ dynamicHref }) => <a href="/safe" href={dynamicHref} onClick={(event) => {
+         window.open(event.currentTarget.href);
+       }} />;`,
     ]) {
       const result = runRule(windowOpenWithoutNoopener, code);
       expect(result.diagnostics).toHaveLength(1);
     }
     const customElement = runRule(
       windowOpenWithoutNoopener,
-      `const C = () => <Link href="/safe" onClick={(event) =>
-         window.open(event.currentTarget.href)} />;`,
+      `const C = () => <Link href="/safe" onClick={(event) => {
+         window.open(event.currentTarget.href);
+       }} />;`,
     );
-    expect(customElement.diagnostics).toHaveLength(0);
+    expect(customElement.diagnostics).toHaveLength(1);
+    const authoritativeHref = runRule(
+      windowOpenWithoutNoopener,
+      `const openAnchor = (anchor) => {
+         window.open(anchor.href);
+       };
+       const C = () => <a {...props} href="/safe" onClick={(event) => {
+         openAnchor(event.currentTarget);
+       }} />;`,
+    );
+    expect(authoritativeHref.diagnostics).toHaveLength(0);
   });
 
   it("uses the authoritative object property and rejects later mutation", () => {
@@ -1858,6 +2073,43 @@ window.open(deltaPage, '_blank');
     ]) {
       const result = runRule(windowOpenWithoutNoopener, code);
       expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("stays quiet when a nested opener is synchronously called before an outer write", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const openDestination = (destination) => {
+         const run = () => {
+           window.open(destination);
+         };
+         run();
+         destination = userControlledUrl;
+       };
+       openDestination('/safe');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when an inline synchronous opener runs before an outer write", () => {
+    for (const code of [
+      `const openDestination = (destination) => {
+         (() => {
+           window.open(destination);
+         })();
+         destination = userControlledUrl;
+       };
+       openDestination('/safe');`,
+      `const openDestination = (destination) => {
+         [1].forEach(() => {
+           window.open(destination);
+         });
+         destination = userControlledUrl;
+       };
+       openDestination('/safe');`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics).toHaveLength(0);
     }
   });
 

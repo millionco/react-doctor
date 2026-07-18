@@ -9,7 +9,7 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { hasPossibleStaticPropertyWriteBefore } from "../../utils/has-static-property-write-before.js";
-import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
+import { isSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -42,7 +42,17 @@ let routerCallsByFunctionMemo = new WeakMap<
   EsTreeNode,
   Array<EsTreeNodeOfType<"CallExpression">>
 >();
-let globalNamespaceMutationOffsetsMemo = new WeakMap<ScopeAnalysis, Map<string, number[]>>();
+let globalNamespaceMutationNodesMemo = new WeakMap<ScopeAnalysis, Map<string, EsTreeNode[]>>();
+
+const writeExecutesBeforeDestinationReference = (
+  writeNode: EsTreeNode,
+  referenceNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (isSymbolWriteBefore(writeNode, referenceNode, scopes)) return true;
+  const program = isAnalyzingDeferredForeignExport ? findProgramRoot(referenceNode) : null;
+  return Boolean(program && isSymbolWriteBefore(writeNode, program, scopes));
+};
 
 const bindingIsUnmodifiedBefore = (identifier: EsTreeNode, referenceNode: EsTreeNode): boolean => {
   const scopes = currentScopes;
@@ -56,16 +66,28 @@ const bindingIsUnmodifiedBefore = (identifier: EsTreeNode, referenceNode: EsTree
     scopes &&
     symbol &&
     (!symbolHasNonReadReference ||
-      (!hasSymbolWriteBefore(symbol, referenceNode, scopes) &&
+      (referenceNode.range != null &&
+        !symbol.references.some(
+          (reference) => reference.flag !== "read" && reference.identifier.range == null,
+        ) &&
         !symbol.references.some(
           (reference) =>
-            reference.flag !== "read" && reference.identifier.range[0] < referenceNode.range[0],
+            reference.flag !== "read" &&
+            (writeExecutesBeforeDestinationReference(reference.identifier, referenceNode, scopes) ||
+              (!isAnalyzingForeignExport &&
+                reference.identifier.range[0] < referenceNode.range[0])),
         ))),
   );
 };
 
 const bindingIsUnmodifiedBeforeCurrentOpen = (identifier: EsTreeNode): boolean =>
-  Boolean(currentWindowOpenCall && bindingIsUnmodifiedBefore(identifier, currentWindowOpenCall));
+  Boolean(
+    currentWindowOpenCall &&
+    bindingIsUnmodifiedBefore(
+      identifier,
+      isAnalyzingForeignExport ? identifier : currentWindowOpenCall,
+    ),
+  );
 
 // Matches `window.open` and `globalThis.window.open` — a non-computed
 // `.open` member off the `window` global. Bare `open(...)` (an
@@ -523,8 +545,8 @@ const isTrustedDestructuredIterationMember = (
   return everyArrayElementSuppliesTrustedProperty(arrayLiteral, propertyName, depth);
 };
 
-// A `let url;` whose EVERY assignment in the enclosing scope is a trusted
-// static literal (switch/case link pickers) cannot carry attacker data.
+// A `let url;` whose every assignment that can execute before the read is a
+// trusted static literal (switch/case link pickers) cannot carry attacker data.
 const isLetAssignedOnlyTrustedLiterals = (
   identifier: EsTreeNodeOfType<"Identifier">,
   depth: number,
@@ -536,10 +558,56 @@ const isLetAssignedOnlyTrustedLiterals = (
   if (declarator.init && !isTrustedDestination(declarator.init as EsTreeNode, depth + 1)) {
     return false;
   }
-  const bindingSymbol = currentScopes?.symbolFor(binding.bindingIdentifier);
-  if (!bindingSymbol) return false;
-  let sawAssignment = false;
+  const scopes = currentScopes;
+  const bindingSymbol = scopes?.symbolFor(binding.bindingIdentifier);
+  if (!scopes || !bindingSymbol || identifier.range == null) return false;
+  if (!isAnalyzingForeignExport) {
+    let sawAssignment = false;
+    for (const reference of bindingSymbol.references) {
+      let writeTargetChild = reference.identifier;
+      let writeTargetParent = writeTargetChild.parent;
+      let isNestedWriteTarget = false;
+      while (writeTargetParent) {
+        if (isNodeOfType(writeTargetParent, "AssignmentExpression")) {
+          isNestedWriteTarget =
+            writeTargetParent.left === writeTargetChild &&
+            writeTargetChild !== reference.identifier;
+          break;
+        }
+        if (
+          (isNodeOfType(writeTargetParent, "ForInStatement") ||
+            isNodeOfType(writeTargetParent, "ForOfStatement")) &&
+          writeTargetParent.left === writeTargetChild
+        ) {
+          isNestedWriteTarget = true;
+          break;
+        }
+        if (isFunctionLike(writeTargetParent)) break;
+        writeTargetChild = writeTargetParent;
+        writeTargetParent = writeTargetParent.parent;
+      }
+      if (isNestedWriteTarget) return false;
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const referenceParent = referenceRoot.parent;
+      if (
+        referenceParent &&
+        isNodeOfType(referenceParent, "AssignmentExpression") &&
+        referenceParent.operator === "=" &&
+        referenceParent.left === referenceRoot
+      ) {
+        sawAssignment = true;
+        if (!isTrustedDestination(referenceParent.right as EsTreeNode, depth + 1)) {
+          return false;
+        }
+        continue;
+      }
+      if (reference.flag !== "read") return false;
+    }
+    return sawAssignment;
+  }
+  let sawTrustedValue = declarator.init != null;
   for (const reference of bindingSymbol.references) {
+    if (reference.identifier.range == null) return false;
     let writeTargetChild = reference.identifier;
     let writeTargetParent = writeTargetChild.parent;
     let isNestedWriteTarget = false;
@@ -561,7 +629,12 @@ const isLetAssignedOnlyTrustedLiterals = (
       writeTargetChild = writeTargetParent;
       writeTargetParent = writeTargetParent.parent;
     }
-    if (isNestedWriteTarget) return false;
+    if (isNestedWriteTarget) {
+      if (writeExecutesBeforeDestinationReference(reference.identifier, identifier, scopes)) {
+        return false;
+      }
+      continue;
+    }
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
     const referenceParent = referenceRoot.parent;
     if (
@@ -570,15 +643,23 @@ const isLetAssignedOnlyTrustedLiterals = (
       referenceParent.operator === "=" &&
       referenceParent.left === referenceRoot
     ) {
-      sawAssignment = true;
+      if (!writeExecutesBeforeDestinationReference(reference.identifier, identifier, scopes)) {
+        continue;
+      }
+      sawTrustedValue = true;
       if (!isTrustedDestination(referenceParent.right as EsTreeNode, depth + 1)) {
         return false;
       }
       continue;
     }
-    if (reference.flag !== "read") return false;
+    if (
+      reference.flag !== "read" &&
+      writeExecutesBeforeDestinationReference(reference.identifier, identifier, scopes)
+    ) {
+      return false;
+    }
   }
-  return sawAssignment;
+  return sawTrustedValue;
 };
 
 // `ctaLink` destructured from the props of a module-local, non-exported
@@ -1337,6 +1418,12 @@ const crossFileResolutionMemo = new Map<string, ResolvedCrossFileExport | null>(
 // disabled, so a foreign helper delegating to its OWN imports stays
 // opaque (no transitive resolution chains).
 let isAnalyzingForeignExport = false;
+let isAnalyzingDeferredForeignExport = false;
+
+interface ForeignExportAnalysisOptions {
+  foreignExpression: EsTreeNode;
+  isDeferred: boolean;
+}
 
 interface ImportedExportReference {
   moduleSpecifier: string;
@@ -1393,17 +1480,25 @@ const resolveCrossFileExportWithinBudget = (
 // (the foreign AST carries parent references); literal trust tightens to
 // same-origin (`isTrustedForeignStaticText`) and further cross-file hops
 // are off.
-const isTrustedForeignExportExpression = (foreignExpression: EsTreeNode): boolean => {
+const isTrustedForeignExportExpression = ({
+  foreignExpression,
+  isDeferred,
+}: ForeignExportAnalysisOptions): boolean => {
   const previousScopes = currentScopes;
+  const previousWindowOpenCall = currentWindowOpenCall;
   const foreignProgramRoot = findProgramRoot(foreignExpression);
   currentScopes = foreignProgramRoot ? analyzeScopes(foreignProgramRoot) : undefined;
+  currentWindowOpenCall = foreignExpression;
   isAnalyzingForeignExport = true;
+  isAnalyzingDeferredForeignExport = isDeferred;
   try {
     const strippedExpression = stripParenExpression(foreignExpression);
     return isTrustedDestination(strippedExpression, 0);
   } finally {
     isAnalyzingForeignExport = false;
+    isAnalyzingDeferredForeignExport = false;
     currentScopes = previousScopes;
+    currentWindowOpenCall = previousWindowOpenCall;
   }
 };
 
@@ -1420,7 +1515,10 @@ const crossFileImportedDestinationVerdict = (
   const resolvedExport = resolveCrossFileExportWithinBudget(identifier);
   if (!resolvedExport) return null;
   if (resolvedExport.kind !== "initializer") return null;
-  return isTrustedForeignExportExpression(resolvedExport.node);
+  return isTrustedForeignExportExpression({
+    foreignExpression: resolvedExport.node,
+    isDeferred: false,
+  });
 };
 
 // `get…Url` / `create…Url` / `build…Url` imported helpers: the sync
@@ -1439,7 +1537,7 @@ const crossFileUrlHelperDestinationVerdict = (
   const returnedExpressions = collectLocalFunctionReturnExpressions(resolvedExport.node);
   if (!returnedExpressions || returnedExpressions.length === 0) return false;
   return returnedExpressions.every((returnedExpression) =>
-    isTrustedForeignExportExpression(returnedExpression),
+    isTrustedForeignExportExpression({ foreignExpression: returnedExpression, isDeferred: true }),
   );
 };
 
@@ -1544,17 +1642,26 @@ const globalNamespaceBindingIsUnmodifiedBefore = (
   const scopes = currentScopes;
   const program = findProgramRoot(referenceNode);
   if (!scopes || !program) return false;
-  const referenceStart = referenceNode.range?.[0] ?? Number.POSITIVE_INFINITY;
-  let offsetsByNamespace = globalNamespaceMutationOffsetsMemo.get(scopes);
-  if (!offsetsByNamespace) {
-    offsetsByNamespace = new Map();
-    globalNamespaceMutationOffsetsMemo.set(scopes, offsetsByNamespace);
+  const mutationExecutesBeforeReference = (mutationNode: EsTreeNode): boolean => {
+    if (mutationNode.range == null || referenceNode.range == null) return true;
+    if (!isAnalyzingForeignExport) return mutationNode.range[0] < referenceNode.range[0];
+    return (
+      isSymbolWriteBefore(mutationNode, referenceNode, scopes) ||
+      (isAnalyzingDeferredForeignExport && isSymbolWriteBefore(mutationNode, program, scopes))
+    );
+  };
+  let nodesByNamespace = globalNamespaceMutationNodesMemo.get(scopes);
+  if (!nodesByNamespace) {
+    nodesByNamespace = new Map();
+    globalNamespaceMutationNodesMemo.set(scopes, nodesByNamespace);
   }
-  const memoizedMutationOffsets = offsetsByNamespace.get(namespaceName);
-  if (memoizedMutationOffsets) {
-    return !memoizedMutationOffsets.some((mutationOffset) => mutationOffset < referenceStart);
+  const memoizedMutationNodes = nodesByNamespace.get(namespaceName);
+  if (memoizedMutationNodes) {
+    if (memoizedMutationNodes.length === 0) return true;
+    if (referenceNode.range == null) return false;
+    return !memoizedMutationNodes.some(mutationExecutesBeforeReference);
   }
-  const mutationOffsets: number[] = [];
+  const mutationNodes: EsTreeNode[] = [];
   const mutationTargetsNamespace = (mutationTarget: EsTreeNode): boolean => {
     let namespaceCandidate = stripParenExpression(mutationTarget);
     if (isProvenGlobalNamespaceReference(namespaceCandidate, namespaceName, scopes)) return true;
@@ -1571,11 +1678,13 @@ const globalNamespaceBindingIsUnmodifiedBefore = (
       mutationTarget = node.argument;
     }
     if (mutationTarget && mutationTargetsNamespace(mutationTarget)) {
-      mutationOffsets.push(node.range?.[0] ?? Number.NEGATIVE_INFINITY);
+      mutationNodes.push(node);
     }
   });
-  offsetsByNamespace.set(namespaceName, mutationOffsets);
-  return !mutationOffsets.some((mutationOffset) => mutationOffset < referenceStart);
+  nodesByNamespace.set(namespaceName, mutationNodes);
+  if (mutationNodes.length === 0) return true;
+  if (referenceNode.range == null) return false;
+  return !mutationNodes.some(mutationExecutesBeforeReference);
 };
 
 // `URL.createObjectURL(blob)` — a blob: URL of app-generated content; the
@@ -2139,7 +2248,7 @@ export const windowOpenWithoutNoopener = defineRule({
     symbolHasNonReadReferenceMemo = new WeakMap();
     localFunctionCallArgumentsMemo = new WeakMap();
     routerCallsByFunctionMemo = new WeakMap();
-    globalNamespaceMutationOffsetsMemo = new WeakMap();
+    globalNamespaceMutationNodesMemo = new WeakMap();
     currentLintedFilename =
       typeof context.filename === "string" && path.isAbsolute(context.filename)
         ? context.filename
@@ -2147,6 +2256,7 @@ export const windowOpenWithoutNoopener = defineRule({
     crossFileResolutionsRemaining = CROSS_FILE_RESOLUTION_BUDGET_PER_FILE;
     crossFileResolutionMemo.clear();
     isAnalyzingForeignExport = false;
+    isAnalyzingDeferredForeignExport = false;
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         currentScopes = context.scopes;

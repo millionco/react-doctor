@@ -49,7 +49,7 @@ const symbolComesFromUseMutationResult = (
   );
 };
 
-const symbolComesFromDestructuredMutateAsync = (
+const symbolComesFromMutateAsync = (
   symbol: SymbolDescriptor | null,
   context: RuleContext,
   visitedSymbolIds: Set<number> = new Set(),
@@ -57,18 +57,30 @@ const symbolComesFromDestructuredMutateAsync = (
   if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
   visitedSymbolIds.add(symbol.id);
   if (getDestructuredBindingPropertyName(symbol.bindingIdentifier) === "mutateAsync") {
-    return Boolean(symbol.initializer && isUseMutationInitializer(symbol.initializer, context));
+    if (!symbol.initializer) return false;
+    const initializer = stripParenExpression(symbol.initializer);
+    if (isUseMutationInitializer(initializer, context)) return true;
+    return (
+      isNodeOfType(initializer, "Identifier") &&
+      symbolComesFromUseMutationResult(context.scopes.symbolFor(initializer), context)
+    );
   }
   const initializer = getDirectConstInitializer(symbol);
   if (!initializer) return false;
   const candidate = stripParenExpression(initializer);
-  return (
-    isNodeOfType(candidate, "Identifier") &&
-    symbolComesFromDestructuredMutateAsync(
+  if (isNodeOfType(candidate, "Identifier")) {
+    return symbolComesFromMutateAsync(
       context.scopes.symbolFor(candidate),
       context,
       visitedSymbolIds,
-    )
+    );
+  }
+  if (!isNodeOfType(candidate, "MemberExpression")) return false;
+  const resultObject = stripParenExpression(candidate.object);
+  return (
+    getStaticPropertyName(candidate) === "mutateAsync" &&
+    isNodeOfType(resultObject, "Identifier") &&
+    symbolComesFromUseMutationResult(context.scopes.symbolFor(resultObject), context)
   );
 };
 
@@ -84,7 +96,7 @@ const isTanstackMutateAsyncCall = (
     return symbolComesFromUseMutationResult(context.scopes.symbolFor(resultObject), context);
   }
   if (!isNodeOfType(callee, "Identifier")) return false;
-  return symbolComesFromDestructuredMutateAsync(context.scopes.symbolFor(callee), context);
+  return symbolComesFromMutateAsync(context.scopes.symbolFor(callee), context);
 };
 
 const findFunctionSymbol = (

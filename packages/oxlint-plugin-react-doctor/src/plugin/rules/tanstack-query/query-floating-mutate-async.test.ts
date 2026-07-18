@@ -38,6 +38,56 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    [
+      "direct member binding",
+      `const mutation = useMutation(options);
+       const save = mutation.mutateAsync;
+       save(payload);`,
+    ],
+    [
+      "wrapped member binding and call",
+      `const mutation = useMutation(options);
+       const save = mutation!.mutateAsync as MutationFunction;
+       (save as MutationFunction)(payload);`,
+    ],
+    [
+      "aliased result member binding",
+      `const mutation = useMutation(options);
+       const aliasedMutation = mutation;
+       const save = aliasedMutation.mutateAsync;
+       save(payload);`,
+    ],
+    [
+      "destructuring from a bound result",
+      `const mutation = useMutation(options);
+       const { mutateAsync: save } = mutation;
+       save(payload);`,
+    ],
+  ])("flags a deferred mutateAsync %s", (_bindingName, source) => {
+    const result = runMutationRule(source);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a handled deferred mutateAsync member binding", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const save = mutation.mutateAsync;
+       const handleError = (error) => report(error);
+       save(payload).catch(handleError);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on an unrelated deferred mutateAsync member binding", () => {
+    const result = runMutationRule(
+      `const queue = createQueue();
+       const save = queue.mutateAsync;
+       save(payload);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags namespace and result aliases", () => {
     const result = runRule(
       queryFloatingMutateAsync,

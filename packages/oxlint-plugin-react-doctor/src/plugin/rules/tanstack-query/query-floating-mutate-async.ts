@@ -4,6 +4,7 @@ import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbol
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findCallbackSelectionRoot } from "../../utils/find-callback-selection-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
@@ -93,8 +94,12 @@ const findFunctionSymbol = (
 ): SymbolDescriptor | null => getFunctionBindingSymbols(functionNode, context.scopes)[0] ?? null;
 
 const isEventHandlerAttributeValue = (expression: EsTreeNode): boolean => {
-  const container = expression.parent;
-  if (!isNodeOfType(container, "JSXExpressionContainer") || container.expression !== expression) {
+  const callbackValue = findCallbackSelectionRoot(expression);
+  const container = callbackValue.parent;
+  if (
+    !isNodeOfType(container, "JSXExpressionContainer") ||
+    container.expression !== callbackValue
+  ) {
     return false;
   }
   const attribute = container.parent;
@@ -119,7 +124,7 @@ const isExpressionValueDiscarded = (expression: EsTreeNode): boolean => {
       continue;
     }
     if (isNodeOfType(parent, "LogicalExpression")) {
-      if (parent.left === current) return true;
+      if (parent.left === current && parent.operator === "&&") return true;
       current = parent;
       parent = current.parent ?? null;
       continue;
@@ -284,7 +289,7 @@ const isFloatingPromiseUse = (
       continue;
     }
     if (isNodeOfType(parent, "LogicalExpression")) {
-      if (parent.left === current) return true;
+      if (parent.left === current && parent.operator === "&&") return true;
       current = parent;
       parent = current.parent ?? null;
       continue;

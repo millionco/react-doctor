@@ -321,6 +321,18 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    ["TypeScript assertion", "(() => mutation.mutateAsync(payload)) as () => void"],
+    ["satisfies expression", "(() => mutation.mutateAsync(payload)) satisfies () => void"],
+    ["conditional selection", "enabled ? () => mutation.mutateAsync(payload) : undefined"],
+  ])("flags mutateAsync returned through a wrapped event handler %s", (_wrapperName, handler) => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const view = <button onClick={${handler}} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags mutateAsync returned from immediately invoked functions", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);
@@ -380,6 +392,17 @@ describe("query-floating-mutate-async", () => {
       `const mutation = useMutation(options);
        const firstPromise = enabled ? mutation.mutateAsync(first) : fallback;
        const secondPromise = enabled && mutation.mutateAsync(second);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps logical left values reachable through or and nullish coalescing", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const firstPromise = mutation.mutateAsync(first) || fallback;
+       const secondPromise = mutation.mutateAsync(second) ?? fallback;
+       firstPromise.catch(handleError);
+       await secondPromise;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -250,7 +250,7 @@ const C = () => <input value="" onChange={(e) => setQuery(e.currentTarget.value)
       noControlledInputValueWithoutStateUpdate,
       `const Field = ({ draft, setDraft }) => {
          if (draft === null) return <input value="" onChange={(event) => setDraft(event.target.value)} />;
-         else if (draft.length > 0) return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+         else if (draft !== null) return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
          return null;
        };`,
     );
@@ -258,7 +258,7 @@ const C = () => <input value="" onChange={(e) => setQuery(e.currentTarget.value)
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("recognizes a nested terminating state-driven branch and literal fallback", () => {
+  it("does not pair an unrelated outer branch with a nested state-driven return", () => {
     const result = runRule(
       noControlledInputValueWithoutStateUpdate,
       `const Field = ({ draft, setDraft, isEditing }) => {
@@ -271,7 +271,39 @@ const C = () => <input value="" onChange={(e) => setQuery(e.currentTarget.value)
        };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not pair a related outer branch with a nested unrelated return gate", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, setDraft, isEditing }) => {
+         if (draft !== null) {
+           if (isEditing) {
+             return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+           }
+         }
+         return <input value="fixed" onChange={submit} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not pair opposite branches through a nested unrelated return gate", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, setDraft, isEditing }) => {
+         if (draft !== null) {
+           if (isEditing) return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+         } else {
+           return <input value="fixed" onChange={submit} />;
+         }
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("recognizes state-driven and literal results in a conditional expression", () => {

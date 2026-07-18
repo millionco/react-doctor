@@ -199,6 +199,42 @@ const elementsShareRelatedConditionalResult = (
   return false;
 };
 
+const returnPathHasOnlyBlocks = (
+  returnStatement: EsTreeNodeOfType<"ReturnStatement">,
+  boundary: EsTreeNode,
+): boolean => {
+  let ancestor = returnStatement.parent ?? null;
+  while (ancestor && ancestor !== boundary) {
+    if (!isNodeOfType(ancestor, "BlockStatement")) return false;
+    ancestor = ancestor.parent ?? null;
+  }
+  return ancestor === boundary;
+};
+
+const returnPathHasOnlyRelatedConditions = (
+  returnStatement: EsTreeNodeOfType<"ReturnStatement">,
+  boundary: EsTreeNode,
+  dynamicValueKey: string,
+  context: RuleContext,
+): boolean => {
+  let ancestor = returnStatement.parent ?? null;
+  while (ancestor && ancestor !== boundary) {
+    if (isNodeOfType(ancestor, "BlockStatement")) {
+      ancestor = ancestor.parent ?? null;
+      continue;
+    }
+    if (
+      isNodeOfType(ancestor, "IfStatement") &&
+      conditionReferencesDynamicValue(ancestor.test, dynamicValueKey, context)
+    ) {
+      ancestor = ancestor.parent ?? null;
+      continue;
+    }
+    return false;
+  }
+  return ancestor === boundary;
+};
+
 const returnsAreOppositeIfBranches = (
   flaggedReturn: EsTreeNodeOfType<"ReturnStatement">,
   siblingReturn: EsTreeNodeOfType<"ReturnStatement">,
@@ -215,7 +251,9 @@ const returnsAreOppositeIfBranches = (
       if (
         ((flaggedIsConsequent && siblingIsAlternate) ||
           (flaggedIsAlternate && siblingIsConsequent)) &&
-        conditionReferencesDynamicValue(ancestor.test, dynamicValueKey, context)
+        conditionReferencesDynamicValue(ancestor.test, dynamicValueKey, context) &&
+        returnPathHasOnlyRelatedConditions(flaggedReturn, ancestor, dynamicValueKey, context) &&
+        returnPathHasOnlyRelatedConditions(siblingReturn, ancestor, dynamicValueKey, context)
       ) {
         return true;
       }
@@ -232,12 +270,8 @@ const conditionalReturnPrecedesFallback = (
   context: RuleContext,
 ): boolean => {
   let conditionalAncestor = conditionalReturn.parent ?? null;
-  let hasRelatedCondition = false;
   while (conditionalAncestor) {
     if (isNodeOfType(conditionalAncestor, "IfStatement")) {
-      if (conditionReferencesDynamicValue(conditionalAncestor.test, dynamicValueKey, context)) {
-        hasRelatedCondition = true;
-      }
       const containingBlock = conditionalAncestor.parent;
       if (
         containingBlock &&
@@ -251,7 +285,10 @@ const conditionalReturnPrecedesFallback = (
           (statement) => statement === fallbackReturn,
         );
         if (conditionalIndex >= 0 && conditionalIndex < fallbackIndex) {
-          return hasRelatedCondition;
+          return (
+            returnPathHasOnlyBlocks(conditionalReturn, conditionalAncestor) &&
+            conditionReferencesDynamicValue(conditionalAncestor.test, dynamicValueKey, context)
+          );
         }
       }
     }

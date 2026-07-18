@@ -10,6 +10,7 @@ import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-na
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const REMOVAL_MESSAGE_BY_REACT_API_NAME = new Map<string, string>([
   [
@@ -32,8 +33,12 @@ const REMOVAL_MESSAGE_BY_REACT_API_NAME = new Map<string, string>([
 //   import { memo } from "react"                     → "memo"
 //   import { useMemo as memoize } from "react"       → "useMemo"
 //   import * as ReactNS from "react"; ReactNS.memo() → namespace path
-const resolveReactApiNameForIdentifier = (callee: EsTreeNode): string | null => {
+const resolveReactApiNameForIdentifier = (
+  callee: EsTreeNode,
+  context: RuleContext,
+): string | null => {
   if (!isNodeOfType(callee, "Identifier")) return null;
+  if (context.scopes.symbolFor(callee)?.kind !== "import") return null;
   const importedName = getImportedNameFromModule(callee, callee.name, "react");
   if (importedName && REMOVAL_MESSAGE_BY_REACT_API_NAME.has(importedName)) {
     return importedName;
@@ -41,24 +46,40 @@ const resolveReactApiNameForIdentifier = (callee: EsTreeNode): string | null => 
   return null;
 };
 
-const resolveReactApiNameForMemberExpression = (callee: EsTreeNode): string | null => {
+const resolveReactApiNameForMemberExpression = (
+  callee: EsTreeNode,
+  context: RuleContext,
+): string | null => {
   if (!isNodeOfType(callee, "MemberExpression")) return null;
   if (callee.computed) return null;
-  const namespaceIdentifier = callee.object;
+  const namespaceIdentifier = stripParenExpression(callee.object);
   const propertyIdentifier = callee.property;
   if (!isNodeOfType(namespaceIdentifier, "Identifier")) return null;
   if (!isNodeOfType(propertyIdentifier, "Identifier")) return null;
   if (!REMOVAL_MESSAGE_BY_REACT_API_NAME.has(propertyIdentifier.name)) return null;
   const namespaceName = namespaceIdentifier.name;
-  if (isCanonicalReactNamespaceName(namespaceName)) return propertyIdentifier.name;
-  if (isImportedFromModule(namespaceIdentifier, namespaceName, "react")) {
+  if (
+    context.scopes.symbolFor(namespaceIdentifier)?.kind === "import" &&
+    isImportedFromModule(namespaceIdentifier, namespaceName, "react")
+  ) {
+    return propertyIdentifier.name;
+  }
+  if (
+    isCanonicalReactNamespaceName(namespaceName) &&
+    context.scopes.isGlobalReference(namespaceIdentifier)
+  ) {
     return propertyIdentifier.name;
   }
   return null;
 };
 
-const resolveReactApiNameForCallee = (callee: EsTreeNode): string | null =>
-  resolveReactApiNameForIdentifier(callee) ?? resolveReactApiNameForMemberExpression(callee);
+const resolveReactApiNameForCallee = (callee: EsTreeNode, context: RuleContext): string | null => {
+  const unwrappedCallee = stripParenExpression(callee);
+  return (
+    resolveReactApiNameForIdentifier(unwrappedCallee, context) ??
+    resolveReactApiNameForMemberExpression(unwrappedCallee, context)
+  );
+};
 
 // `memo(Inner, undefined)` / `memo(Inner, null)` make React fall back to
 // the default shallow compare — exactly as redundant under React Compiler
@@ -133,7 +154,7 @@ export const reactCompilerNoManualMemoization = defineRule({
     "Delete the `useMemo` / `useCallback` / `memo` call and use the plain value or component. React Compiler caches it for you.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const apiName = resolveReactApiNameForCallee(node.callee);
+      const apiName = resolveReactApiNameForCallee(node.callee, context);
       if (!apiName) return;
       // `memo(Component, areEqual)` with a custom comparator encodes
       // bespoke equality the compiler can't replicate, so it isn't

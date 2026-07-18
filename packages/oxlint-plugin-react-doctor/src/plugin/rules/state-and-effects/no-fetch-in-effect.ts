@@ -42,21 +42,24 @@ const isShadowedByLocalBinding = (identifier: EsTreeNode): boolean => {
 
 const isRealFetchCall = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
-  if (isNodeOfType(node.callee, "Identifier") && FETCH_CALLEE_NAMES.has(node.callee.name)) {
-    return !isShadowedByLocalBinding(node.callee);
+  const callee = stripParenExpression(node.callee);
+  if (isNodeOfType(callee, "Identifier") && FETCH_CALLEE_NAMES.has(callee.name)) {
+    return !isShadowedByLocalBinding(callee);
   }
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object);
   return (
-    isNodeOfType(node.callee, "MemberExpression") &&
-    isNodeOfType(node.callee.object, "Identifier") &&
-    FETCH_MEMBER_OBJECTS.has(node.callee.object.name) &&
-    !isShadowedByLocalBinding(node.callee.object)
+    isNodeOfType(receiver, "Identifier") &&
+    FETCH_MEMBER_OBJECTS.has(receiver.name) &&
+    !isShadowedByLocalBinding(receiver)
   );
 };
 
-const isXmlHttpRequestConstruction = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "NewExpression") &&
-  isNodeOfType(node.callee, "Identifier") &&
-  node.callee.name === "XMLHttpRequest";
+const isXmlHttpRequestConstruction = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "NewExpression")) return false;
+  const callee = stripParenExpression(node.callee);
+  return isNodeOfType(callee, "Identifier") && callee.name === "XMLHttpRequest";
+};
 
 const isNetworkRequest = (node: EsTreeNode): boolean =>
   isRealFetchCall(node) || isXmlHttpRequestConstruction(node);

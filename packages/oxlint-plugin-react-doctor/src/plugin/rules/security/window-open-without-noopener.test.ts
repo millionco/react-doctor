@@ -321,6 +321,61 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags adjacent interpolation after a trusted origin", () => {
+    for (const code of [
+      "window.open(`${window.origin}${suffix}`, '_blank');",
+      `const buildDestination = (base, suffix) => \`\${base}\${suffix}\`;
+       window.open(buildDestination(window.origin, userControlledSuffix), '_blank');`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("keeps later interpolations safe after a path delimiter", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      "window.open(`${window.origin}/preview/${assetId}`, '_blank');",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("resolves stable const concatenation prefixes", () => {
+    for (const code of [
+      `const destinationPrefix = "https://example.com/";
+       window.open(destinationPrefix + slug, "_blank");`,
+      `const destinationPrefix = "/safe/";
+       window.open(destinationPrefix + slug, "_blank");`,
+      `const rootPrefix = "https://example.com/" as const;
+       const destinationPrefix = rootPrefix;
+       window.open(destinationPrefix + slug, "_blank");`,
+      `const rootPrefix = "https://example.com/" satisfies string;
+       const destinationPrefix = rootPrefix;
+       window.open(destinationPrefix + slug, "_blank");`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("does not trust opaque or origin-incomplete concatenation prefixes", () => {
+    for (const code of [
+      `import { destinationPrefix } from "./config";
+       window.open(destinationPrefix + slug, "_blank");`,
+      `let destinationPrefix = "/safe/";
+       window.open(destinationPrefix + slug, "_blank");`,
+      `const destinationPrefix = "https://example.com";
+       window.open(destinationPrefix + slug, "_blank");`,
+      `const destinationPrefix = userControlledPrefix;
+       window.open(destinationPrefix + slug, "_blank");`,
+      `const destinationPrefix = "//";
+       window.open(destinationPrefix + slug, "_blank");`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
   it("does not flag when features come from a shared constant (popup-helper idiom)", () => {
     const result = runRule(
       windowOpenWithoutNoopener,

@@ -1407,11 +1407,26 @@ const staticTextPinsConcatDestination = (urlText: string): boolean => {
   return startsUnambiguouslySameOriginTemplatePath(trimmedText);
 };
 
-const isTrustedConcatPrefix = (node: EsTreeNode): boolean => {
-  if (isStringLiteral(node)) return staticTextPinsConcatDestination(node.value);
-  if (!isNodeOfType(node, "TemplateLiteral")) return false;
-  if ((node.expressions?.length ?? 0) > 0) return isTrustedStaticDestination(node);
-  return staticTextPinsConcatDestination(node.quasis?.[0]?.value?.raw ?? "");
+const isTrustedConcatPrefix = (node: EsTreeNode, depth = 0): boolean => {
+  if (depth > MAX_BINDING_RESOLUTION_DEPTH) return false;
+  const unwrappedNode = stripParenExpression(node);
+  if (isStringLiteral(unwrappedNode)) {
+    return staticTextPinsConcatDestination(unwrappedNode.value);
+  }
+  if (isNodeOfType(unwrappedNode, "TemplateLiteral")) {
+    if ((unwrappedNode.expressions?.length ?? 0) > 0) {
+      return isTrustedStaticDestination(unwrappedNode);
+    }
+    return staticTextPinsConcatDestination(unwrappedNode.quasis?.[0]?.value?.raw ?? "");
+  }
+  if (
+    !isNodeOfType(unwrappedNode, "Identifier") ||
+    !bindingIsUnmodifiedBeforeCurrentOpen(unwrappedNode)
+  ) {
+    return false;
+  }
+  const initializer = resolveConstInitializer(unwrappedNode);
+  return Boolean(initializer && isTrustedConcatPrefix(initializer, depth + 1));
 };
 
 // Cross-file resolutions per linted file are capped: oxc-resolver +
@@ -1619,7 +1634,10 @@ const isTrustedLocalFunctionReturn = (
       const followingQuasiText = returned.quasis?.[1]?.value?.raw ?? "";
       if (
         argument &&
-        isSafeInterpolatedDestinationSuffix(followingQuasiText) &&
+        isSafeInterpolatedDestinationSuffix(
+          followingQuasiText,
+          (returned.expressions?.length ?? 0) > 1,
+        ) &&
         (!followingQuasiText.startsWith("/") ||
           isProvenNonSlashTerminatedDestination(argument, depth + 1))
       ) {
@@ -1930,8 +1948,12 @@ const isTrustedUrlInstanceHrefRead = (
   );
 };
 
-const isSafeInterpolatedDestinationSuffix = (suffixText: string): boolean => {
-  if (suffixText.length === 0 || suffixText.startsWith("?") || suffixText.startsWith("#")) {
+const isSafeInterpolatedDestinationSuffix = (
+  suffixText: string,
+  hasFollowingExpression = false,
+): boolean => {
+  if (suffixText.length === 0) return !hasFollowingExpression;
+  if (suffixText.startsWith("?") || suffixText.startsWith("#")) {
     return true;
   }
   return suffixText.startsWith("/") && suffixText[1] !== "/" && suffixText[1] !== "\\";
@@ -2106,7 +2128,10 @@ const isTrustedDestination = (
       const followingQuasiText = urlArgument.quasis?.[1]?.value?.raw ?? "";
       return withDestinationCoercionReference(destinationSerializationReference(urlArgument), () =>
         Boolean(
-          isSafeInterpolatedDestinationSuffix(followingQuasiText) &&
+          isSafeInterpolatedDestinationSuffix(
+            followingQuasiText,
+            (urlArgument.expressions?.length ?? 0) > 1,
+          ) &&
           (!followingQuasiText.startsWith("/") ||
             isProvenNonSlashTerminatedDestination(firstExpression as EsTreeNode, depth + 1)) &&
           isTrustedDestination(firstExpression as EsTreeNode, depth + 1),

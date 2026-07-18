@@ -6,6 +6,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
 import { isCallResultConsumedAsArgument } from "../../utils/is-call-result-consumed-as-argument.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import {
   DATA_SINK_METHOD_NAMES,
   STRING_READ_METHOD_NAMES,
@@ -33,7 +34,6 @@ import {
   isProp,
   isPropCallbackInvocationRef,
   isState,
-  isUseEffect,
   isWholePropsObjectReference,
 } from "./utils/effect/react.js";
 import { getParentCallbackPropNames } from "./utils/resolve-parent-callback-provenance.js";
@@ -361,7 +361,7 @@ export const noPassLiveStateToParent = defineRule({
     "Move the state up to the parent (or return it from the hook), instead of handing it back up through a prop callback in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#notifying-parent-components-about-state-changes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isUseEffect(node)) return;
+      if (!isReactHookCall(node, "useEffect", context.scopes)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
       const effectFnRefs = getEffectFnRefs(analysis, node);

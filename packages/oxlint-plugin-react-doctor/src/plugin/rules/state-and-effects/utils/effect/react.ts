@@ -258,20 +258,6 @@ const isHookCallee = (
   return false;
 };
 
-export const isUseEffect = (node: EsTreeNode | null | undefined): boolean => {
-  if (!node || !isNodeOfType(node, "CallExpression")) return false;
-  const callee = node.callee;
-  if (isNodeOfType(callee, "Identifier") && callee.name === "useEffect") return true;
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  const receiver = stripParenExpression(callee.object);
-  return (
-    isNodeOfType(receiver, "Identifier") &&
-    receiver.name === "React" &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === "useEffect"
-  );
-};
-
 export const getEffectFn = (analysis: ProgramAnalysis, node: EsTreeNode): EsTreeNode | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
   const fn = node.arguments?.[0];

@@ -3,7 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -100,7 +100,7 @@ export const noEventTriggerState = defineRule({
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
 
-      const useStateBindings = collectUseStateBindings(componentBody);
+      const useStateBindings = collectUseStateBindings(componentBody, context.scopes);
       if (useStateBindings.length === 0) return;
       const analysis = getProgramAnalysis(componentBody);
       if (!analysis) return;
@@ -113,17 +113,21 @@ export const noEventTriggerState = defineRule({
       // reachability machinery that `rerenderStateOnlyInHandlers`
       // uses to filter these out (transitive dep graph + walk from
       // render-reachable expressions).
-      const eventHandlerReferenceNames = collectFunctionLikeLocalNames(componentBody);
+      const eventHandlerReferenceNames = collectFunctionLikeLocalNames(
+        componentBody,
+        context.scopes,
+      );
       const dependencyGraph = buildLocalDependencyGraph(componentBody, eventHandlerReferenceNames);
       const directRenderNames = collectRenderReachableNames(
         componentBody,
+        context.scopes,
         eventHandlerReferenceNames,
       );
       const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);
 
       walkAst(componentBody, (effectCall: EsTreeNode) => {
         if (!isNodeOfType(effectCall, "CallExpression")) return;
-        if (!isHookCall(effectCall, EFFECT_HOOK_NAMES)) return;
+        if (!isReactHookCall(effectCall, EFFECT_HOOK_NAMES, context.scopes)) return;
         if ((effectCall.arguments?.length ?? 0) < 2) return;
 
         const depsNode = effectCall.arguments[1];

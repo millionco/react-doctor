@@ -85,7 +85,47 @@ describe("react-builtins/jsx-no-new-object-as-prop — regressions", () => {
     );
   });
 
+  it("still flags a memo consumer using shallowEqual (identity-sensitive comparator)", () => {
+    expectFail(
+      `import { memo } from "react";
+      import { shallowEqual } from "react-redux";
+      const Item = memo((props) => props.children, shallowEqual);
+      const Foo = ({ base }) => <Item foo={{ ...base }} />;`,
+    );
+  });
+
+  it("still flags a memo consumer with an explicit undefined comparator", () => {
+    expectFail(
+      `import { memo } from "react";
+      const Item = memo((props) => props.children, undefined);
+      const Foo = ({ base }) => <Item foo={{ ...base }} />;`,
+    );
+  });
+
+  it.each(["undefined", "shallowEqual"])(
+    "does not flag when %s is a local custom comparator",
+    (comparatorName) => {
+      expectPass(
+        `import { memo } from "react";
+        const ${comparatorName} = (previous, next) => previous.foo.id === next.foo.id;
+        const Item = memo((props) => props.children, ${comparatorName});
+        const Foo = ({ base }) => <Item foo={{ ...base }} />;`,
+      );
+    },
+  );
+
   it("still flags a memo consumer without a comparator", () => {
     expectFail(memoised(`const Foo = ({ base }) => <Item foo={{ ...base }} />;`));
   });
+
+  it.each(["(React as any).memo", "(React!).memo"])(
+    "still flags a memo consumer through the %s receiver",
+    (memoCallee) => {
+      expectFail(
+        `import React from "react";
+        const Item = ${memoCallee}((props) => props.children);
+        const Foo = ({ base }) => <Item foo={{ ...base }} />;`,
+      );
+    },
+  );
 });

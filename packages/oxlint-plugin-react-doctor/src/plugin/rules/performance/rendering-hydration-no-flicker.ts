@@ -507,9 +507,10 @@ export const renderingHydrationNoFlicker = defineRule({
   id: "rendering-hydration-no-flicker",
   title: "useEffect setState flashes on mount",
   tags: ["test-noise"],
+  requires: ["ssr"],
   severity: "warn",
   recommendation:
-    "Use `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` or add `suppressHydrationWarning` to the element",
+    "Read the value with `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` inside a reusable hook, or add `suppressHydrationWarning` to the element",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       // useLayoutEffect runs synchronously BEFORE paint, so a mount-time

@@ -5,6 +5,7 @@ import { parseFixture } from "../../test-utils/parse-fixture.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall, type ReactApiCallOptions } from "./is-react-api-call.js";
+import { isReactHookCall } from "./is-react-hook-call.js";
 import { walkAst } from "./walk-ast.js";
 
 interface ReactApiCallTestCase {
@@ -27,6 +28,20 @@ const countReactApiCalls = (code: string, options?: ReactApiCallOptions): number
       isNodeOfType(node, "CallExpression") &&
       isReactApiCall(node, EFFECT_API_NAMES, scopes, options)
     ) {
+      matchingCallCount += 1;
+    }
+  });
+  return matchingCallCount;
+};
+
+const countReactHookCalls = (code: string): number => {
+  const parsed = parseFixture(code);
+  expect(parsed.errors).toEqual([]);
+  attachParentReferences(parsed.program);
+  const scopes = analyzeScopes(parsed.program);
+  let matchingCallCount = 0;
+  walkAst(parsed.program, (node: EsTreeNode) => {
+    if (isNodeOfType(node, "CallExpression") && isReactHookCall(node, EFFECT_API_NAMES, scopes)) {
       matchingCallCount += 1;
     }
   });
@@ -230,4 +245,49 @@ describe("isReactApiCall", () => {
       expect(countReactApiCalls(testCase.code, testCase.options)).toBe(testCase.expectedCount);
     });
   }
+});
+
+describe("isReactHookCall", () => {
+  it.each([
+    [
+      "a named import alias",
+      'import { useEffect as runEffect } from "react"; runEffect(() => {});',
+      1,
+    ],
+    [
+      "an immutable local alias",
+      'import { useEffect } from "react"; const runEffect = useEffect; runEffect(() => {});',
+      1,
+    ],
+    [
+      "an isomorphic alias",
+      `import * as React from "react";
+      const runEffect = typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;
+      runEffect(() => {});`,
+      1,
+    ],
+    ["an unbound fixture hook", "useEffect(() => {});", 1],
+    [
+      "a userland same-name function",
+      "const useEffect = (callback) => callback(); useEffect(() => {});",
+      0,
+    ],
+    [
+      "a mutable alias",
+      `import { useEffect } from "react";
+      let runEffect = useEffect;
+      runEffect = (callback) => callback();
+      runEffect(() => {});`,
+      0,
+    ],
+    [
+      "a shadowed import",
+      `import { useEffect } from "react";
+      const run = (useEffect) => useEffect(() => {});
+      run((callback) => callback());`,
+      0,
+    ],
+  ])("classifies %s", (_name, code, expectedCount) => {
+    expect(countReactHookCalls(code)).toBe(expectedCount);
+  });
 });

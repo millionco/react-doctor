@@ -599,7 +599,7 @@ export const renderingUsetransitionLoading = defineRule({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Replace with `const [isPending, startTransition] = useTransition()`, which skips the extra render for the loading flag",
+    "Replace with `const [isPending, startTransition] = useTransition()`, which marks the update as non-urgent and interruptible so the input stays responsive",
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "ArrayPattern") || !node.id.elements?.length) return;
@@ -653,7 +653,7 @@ export const renderingUsetransitionLoading = defineRule({
 
       context.report({
         node: node.init,
-        message: `This adds an extra render because useState for "${stateVariableName}" re-renders just for the loading flag, so if it's a state change & not a data fetch, use useTransition instead`,
+        message: `This makes the "${stateVariableName}" update urgent and blocking because it's a plain useState flag, so if it's a state change & not a data fetch, use useTransition to keep the UI responsive while it runs`,
       });
     },
   }),

@@ -3,14 +3,9 @@
 // source: PR #1000 corpus sweep (locally proven same-origin popup builders)
 const fullPath = (path: string, dataId: string) => `${path}/${dataId}`;
 const buildURL = (path: string, _options: object) => path;
-const getLocation = () => window.location;
 
 export const openExport = (dataId: string, exportType: string) => {
   window.open(`${fullPath("/dtale/data-export", dataId)}?type=${exportType}`, "_blank");
-};
-
-export const openInNewTab = () => {
-  window.open(getLocation().pathname?.replace("/iframe/", "/main/") ?? "", "_blank");
 };
 
 export const openHtmlExport = (dataId: string) => {

@@ -1341,6 +1341,18 @@ describe("window-open-without-noopener — cross-file imported destinations", ()
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet: parenthesized foreign URL serialization remains transparent", () => {
+    writeFile(
+      "src/config.ts",
+      "export const storeUrl = (new URL('/store', window.location.origin)).toString();\n",
+    );
+    const result = runRuleAt(
+      "src/App.tsx",
+      "import { storeUrl } from './config';\nwindow.open(storeUrl, '_blank');\n",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("fails closed for a foreign raw URL object coerced in the consumer", () => {
     writeFile(
       "src/config.ts",

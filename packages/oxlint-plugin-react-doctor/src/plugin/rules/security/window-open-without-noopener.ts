@@ -2423,7 +2423,7 @@ const isTrustedDestination = (
       return false;
     }
     return withDestinationCoercionReference(serializationReference, () =>
-      isTrustedDestination(urlReceiver, depth + 1),
+      isTrustedDestination(stripParenExpression(urlReceiver), depth + 1),
     );
   }
   if (isNodeOfType(urlArgument, "NewExpression")) {

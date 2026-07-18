@@ -96,11 +96,24 @@ describe("r3f-no-inline-resource-prop", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
-  it("ignores clone methods without Three.js resource provenance", () => {
+  it("reports render-time conversion of a stable indexed geometry", () => {
     const code = `
       import { Canvas } from "@react-three/fiber";
-      function Scene({ cloneableGeometryConfig, cloneableMaterialConfig }) {
-        return <mesh geometry={cloneableGeometryConfig.clone()} material={cloneableMaterialConfig.clone()} />;
+      import { BufferGeometry } from "three";
+      const geometry = new BufferGeometry().setIndex([0, 1, 2]);
+      function Scene() {
+        return <mesh geometry={geometry.toNonIndexed()} />;
+      }
+    `;
+    const result = runRule(r3fNoInlineResourceProp, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores resource methods without Three.js resource provenance", () => {
+    const code = `
+      import { Canvas } from "@react-three/fiber";
+      function Scene({ cloneableGeometryConfig, cloneableMaterialConfig, geometryConfig }) {
+        return <><mesh geometry={cloneableGeometryConfig.clone()} material={cloneableMaterialConfig.clone()} /><mesh geometry={geometryConfig.toNonIndexed()} /></>;
       }
     `;
     const result = runRule(r3fNoInlineResourceProp, code);

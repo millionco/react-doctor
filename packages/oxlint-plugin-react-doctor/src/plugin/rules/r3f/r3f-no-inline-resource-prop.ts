@@ -259,7 +259,10 @@ const hasFreshThreeResource = (
     isNodeOfType(candidate.callee, "MemberExpression")
   ) {
     const methodName = getStaticPropertyName(candidate.callee);
-    if (methodName === "clone") {
+    if (
+      methodName === "clone" ||
+      (constructorSuffix === "Geometry" && methodName === "toNonIndexed")
+    ) {
       return hasThreeResourceProvenance(
         candidate.callee.object,
         constructorSuffix,

@@ -18,6 +18,7 @@ interface SourceRecord {
 interface ComponentDeclaration {
   readonly isDefaultExport: boolean;
   readonly name: string;
+  readonly node: ts.FunctionLikeDeclaration;
   readonly record: SourceRecord;
 }
 
@@ -174,6 +175,7 @@ const findEnclosingComponent = (
         component = {
           isDefaultExport: isDefaultExportedComponent(record, node, name),
           name,
+          node,
           record,
         };
         componentWidth = width;
@@ -380,6 +382,7 @@ const getForwardedHandlerAliases = (
     const tagNames = getComponentTagNames(record, component);
     if (tagNames.size === 0) continue;
     const visit = (node: ts.Node): void => {
+      if (record === component.record && node === component.node) return;
       if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
         const tagName = getJsxTagName(node);
         if (tagName !== null && tagNames.has(tagName)) {

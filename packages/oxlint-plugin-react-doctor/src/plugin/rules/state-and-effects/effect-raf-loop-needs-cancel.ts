@@ -1,4 +1,5 @@
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
+import { collectBindingAliases } from "../../utils/collect-binding-aliases.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -79,7 +80,11 @@ const collectScheduledSelfBindings = (
   const strippedArgument = stripParenExpression(scheduledArgument);
   if (isNodeOfType(strippedArgument, "Identifier")) {
     const argumentBinding = scopes.symbolFor(strippedArgument)?.bindingIdentifier;
-    if (argumentBinding) selfBindings.add(argumentBinding);
+    if (argumentBinding) {
+      for (const bindingIdentifier of collectBindingAliases(argumentBinding, scopes)) {
+        selfBindings.add(bindingIdentifier);
+      }
+    }
   }
   if (
     (isNodeOfType(scheduledFunction, "FunctionExpression") ||
@@ -88,7 +93,11 @@ const collectScheduledSelfBindings = (
     isNodeOfType(scheduledFunction.id, "Identifier")
   ) {
     const functionBinding = scopes.symbolFor(scheduledFunction.id)?.bindingIdentifier;
-    if (functionBinding) selfBindings.add(functionBinding);
+    if (functionBinding) {
+      for (const bindingIdentifier of collectBindingAliases(functionBinding, scopes)) {
+        selfBindings.add(bindingIdentifier);
+      }
+    }
   }
   return selfBindings;
 };
@@ -111,7 +120,7 @@ const doesSubtreeRescheduleSelf = (
   scopes: ScopeAnalysis,
 ): boolean => {
   let didReschedule = false;
-  walkAst(root, (child: EsTreeNode) => {
+  walkSynchronousCallbackFlow(root, (child: EsTreeNode) => {
     if (didReschedule) return false;
     if (!isRequestAnimationFrameCall(child)) return;
     const innerArgument = child.arguments?.[0];
@@ -202,7 +211,7 @@ const collectLoopSchedulingCalls = (
     scopes,
   );
   const calls = [rafLoop.rafCall];
-  walkAst(rafLoop.scheduledFunction, (child: EsTreeNode) => {
+  walkSynchronousCallbackFlow(rafLoop.scheduledFunction, (child: EsTreeNode) => {
     if (!isRequestAnimationFrameCall(child)) return;
     const scheduledArgument = child.arguments?.[0];
     if (scheduledArgument && isScheduledSelfReference(scheduledArgument, selfBindings, scopes)) {
@@ -705,7 +714,11 @@ const isNumericProgressBoundTest = (
   return expectedTestValue ? truthyDecreasingBound : falsyDecreasingBound;
 };
 
-const everyRescheduleIsProgressBounded = (scheduledFunction: EsTreeNode): boolean => {
+const everyRescheduleIsProgressBounded = (
+  rafLoop: SelfReschedulingRafLoop,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const scheduledFunction = rafLoop.scheduledFunction;
   const mutatedNames = new Set<string>();
   collectWrittenNames(scheduledFunction, mutatedNames);
   const increasingNames = collectMonotonicMutationNames(scheduledFunction, true);
@@ -740,12 +753,9 @@ const everyRescheduleIsProgressBounded = (scheduledFunction: EsTreeNode): boolea
     });
   }
   if (increasingNames.size === 0 && decreasingNames.size === 0) return false;
-  let sawReschedule = false;
-  let sawUnboundedReschedule = false;
-  walkAst(scheduledFunction, (child: EsTreeNode) => {
-    if (sawUnboundedReschedule) return false;
-    if (!isRequestAnimationFrameCall(child)) return;
-    sawReschedule = true;
+  const reschedulingCalls = collectLoopSchedulingCalls(rafLoop, scopes).slice(1);
+  if (reschedulingCalls.length === 0) return false;
+  for (const child of reschedulingCalls) {
     let bounded = false;
     let branchChild: EsTreeNode = child;
     let cursor: EsTreeNode | null | undefined = child.parent;
@@ -767,9 +777,9 @@ const everyRescheduleIsProgressBounded = (scheduledFunction: EsTreeNode): boolea
       branchChild = cursor;
       cursor = cursor.parent ?? null;
     }
-    if (!bounded) sawUnboundedReschedule = true;
-  });
-  return sawReschedule && !sawUnboundedReschedule;
+    if (!bounded) return false;
+  }
+  return true;
 };
 
 export const effectRafLoopNeedsCancel = defineRule({
@@ -787,7 +797,7 @@ export const effectRafLoopNeedsCancel = defineRule({
 
       const cleanupFunctions = collectReturnedCleanupFunctions(callback);
       for (const rafLoop of findSelfReschedulingRafLoops(callback, context.scopes)) {
-        if (everyRescheduleIsProgressBounded(rafLoop.scheduledFunction)) continue;
+        if (everyRescheduleIsProgressBounded(rafLoop, context.scopes)) continue;
         const handleKey = cancellableHandleKey(rafLoop, callback, context.scopes);
         if (
           handleKey &&

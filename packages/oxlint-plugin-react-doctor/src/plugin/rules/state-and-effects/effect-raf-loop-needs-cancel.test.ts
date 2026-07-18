@@ -522,6 +522,90 @@ describe("effect-raf-loop-needs-cancel", () => {
     expect(unboundedConsequent.diagnostics).toHaveLength(1);
   });
 
+  it("only follows nested reschedules through synchronously invoked helpers", () => {
+    const unusedHelper = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        const step = () => {
+          const debugLoop = () => requestAnimationFrame(step);
+          paint();
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const invokedHelper = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        const step = () => {
+          const continueLoop = () => requestAnimationFrame(step);
+          paint();
+          continueLoop();
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    expect(unusedHelper.diagnostics).toHaveLength(0);
+    expect(invokedHelper.diagnostics).toHaveLength(1);
+  });
+
+  it("proves progress bounds only from self-rescheduling RAF calls", () => {
+    const boundedSelfWithOneShot = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let frame = 0;
+        const paintOnce = () => paint();
+        const step = () => {
+          frame++;
+          requestAnimationFrame(paintOnce);
+          if (frame < 10) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const unboundedSelfWithBoundedOneShot = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let frame = 0;
+        const paintOnce = () => paint();
+        const step = () => {
+          frame++;
+          if (frame < 10) requestAnimationFrame(paintOnce);
+          requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    expect(boundedSelfWithOneShot.diagnostics).toHaveLength(0);
+    expect(unboundedSelfWithBoundedOneShot.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks self-reschedules through callback aliases", () => {
+    const boundedAlias = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let frame = 0;
+        const step = () => {
+          frame++;
+          const continueStep = step;
+          if (frame < 10) requestAnimationFrame(continueStep);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const unboundedAlias = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        const step = () => {
+          const continueStep = step;
+          requestAnimationFrame(continueStep);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    expect(boundedAlias.diagnostics).toHaveLength(0);
+    expect(unboundedAlias.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet: Custom useRafLoop hook whose cleanup invokes the stop closure through a ref", () => {
     const result = runRule(
       effectRafLoopNeedsCancel,

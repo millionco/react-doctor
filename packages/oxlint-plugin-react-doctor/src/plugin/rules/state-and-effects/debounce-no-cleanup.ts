@@ -14,6 +14,7 @@ import {
 } from "../../utils/is-proven-effect-hook-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callback-flow.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -264,7 +265,7 @@ const buildFunctionUsageIndex = (
       const effectArgument = child.arguments?.[0];
       const effectCallback = effectArgument ? stripParenExpression(effectArgument) : null;
       if (effectCallback && isFunctionLike(effectCallback)) {
-        walkAst(effectCallback, (effectChild: EsTreeNode) => {
+        walkSynchronousCallbackFlow(effectCallback, (effectChild: EsTreeNode) => {
           if (!isNodeOfType(effectChild, "CallExpression")) return;
           const symbolId = symbolIdForReferenceExpression(effectChild.callee as EsTreeNode, scopes);
           if (symbolId !== null) invokedSymbolIds.add(symbolId);

@@ -117,6 +117,7 @@ const recordObserverUsage = (
 // binding.
 const callbackReleasesViaObserverParameter = (
   construction: EsTreeNodeOfType<"NewExpression">,
+  scopes: RuleContext["scopes"],
 ): boolean => {
   const observerCallback = construction.arguments?.[0]
     ? stripParenExpression(construction.arguments[0] as EsTreeNode)
@@ -133,13 +134,21 @@ const callbackReleasesViaObserverParameter = (
   if (!observerParameter || !isNodeOfType(observerParameter as EsTreeNode, "Identifier")) {
     return false;
   }
-  const parameterName = (observerParameter as EsTreeNodeOfType<"Identifier">).name;
+  const parameterBindingIdentifier = scopes.symbolFor(
+    observerParameter as EsTreeNode,
+  )?.bindingIdentifier;
+  if (!parameterBindingIdentifier) return false;
   let didRelease = false;
   walkSynchronousCallbackFlow(callbackFunction, (child: EsTreeNode) => {
     if (didRelease) return;
     if (!isNodeOfType(child, "MemberExpression")) return;
     const receiver = stripParenExpression(child.object as EsTreeNode);
-    if (!isNodeOfType(receiver, "Identifier") || receiver.name !== parameterName) return;
+    if (
+      !isNodeOfType(receiver, "Identifier") ||
+      scopes.symbolFor(receiver)?.bindingIdentifier !== parameterBindingIdentifier
+    ) {
+      return;
+    }
     if (!OBSERVER_RELEASE_METHOD_NAMES.has(getStaticPropertyName(child) ?? "")) return;
     if (!isNodeOfType(child.parent, "CallExpression") || child.parent.callee !== child) return;
     didRelease = true;
@@ -249,7 +258,10 @@ export const effectObserverNeedsDisconnect = defineRule({
           didObserve: false,
           didObserveUnknownTarget: false,
           didReleaseAll: false,
-          didReleaseViaCallbackParameter: callbackReleasesViaObserverParameter(child),
+          didReleaseViaCallbackParameter: callbackReleasesViaObserverParameter(
+            child,
+            context.scopes,
+          ),
           didEscape: false,
           observedTargetKeys: new Set(),
         });

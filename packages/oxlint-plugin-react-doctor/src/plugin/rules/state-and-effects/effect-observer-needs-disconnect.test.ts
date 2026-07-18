@@ -585,6 +585,23 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("ignores releases on bindings shadowing the observer callback parameter", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new IntersectionObserver((entries, currentObserver) => {
+           entries.forEach((entry) => {
+             const currentObserver = makeObserverController(entry);
+             currentObserver.disconnect();
+           });
+         });
+         observer.observe(ref.current);
+       }, []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags when cleanup unobserves only one of multiple targets", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,

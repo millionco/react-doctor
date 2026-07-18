@@ -75,6 +75,44 @@ describe("debounce-no-cleanup", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("ignores debounce calls inside uninvoked nested effect helpers", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `${LODASH_DEBOUNCE_IMPORT}
+      function Search() {
+        const search = useMemo(() => debounce(async (value) => {
+          await fetchResults(value);
+        }, 500), []);
+        useEffect(() => {
+          const runSearch = () => search(query);
+          registerDebugHelper(runSearch);
+        }, [query, search]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("tracks debounce calls through invoked nested effect helpers", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `${LODASH_DEBOUNCE_IMPORT}
+      function Search() {
+        const search = useMemo(() => debounce(async (value) => {
+          await fetchResults(value);
+        }, 500), []);
+        useEffect(() => {
+          const runSearch = () => search(query);
+          runSearch();
+        }, [query, search]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags the standalone lodash.debounce package import", () => {
     const result = runRule(
       debounceNoCleanup,

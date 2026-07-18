@@ -1,10 +1,12 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import { findDeclaratorForBinding } from "./find-declarator-for-binding.js";
 import { findVariableInitializer } from "./find-variable-initializer.js";
+import { hasStaticPropertyWriteBefore } from "./has-static-property-write-before.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isHookCall } from "./is-hook-call.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall } from "./is-react-api-call.js";
+import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 // Array iteration methods that invoke their callback synchronously — the
@@ -65,9 +67,23 @@ const isConstAliasOfGlobalArrayFrom = (node: EsTreeNode, scopes: ScopeAnalysis):
   );
 };
 
-const isProvenArrayReceiver = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const isProvenArrayReceiver = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  referenceNode: EsTreeNode,
+  methodName: string,
+): boolean => {
   const receiver = stripParenExpression(node);
   if (isNodeOfType(receiver, "ArrayExpression")) return true;
+  if (isNodeOfType(receiver, "Identifier")) {
+    const symbol = resolveConstIdentifierAlias(receiver, scopes);
+    return Boolean(
+      symbol?.kind === "const" &&
+      symbol.initializer &&
+      !hasStaticPropertyWriteBefore(receiver, methodName, referenceNode, scopes) &&
+      isProvenArrayReceiver(symbol.initializer, scopes, referenceNode, methodName),
+    );
+  }
   if (!isNodeOfType(receiver, "CallExpression")) return false;
   const callee = stripParenExpression(receiver.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
@@ -127,6 +143,9 @@ export const executesDuringRender = (
     SYNCHRONOUS_ITERATION_METHOD_NAMES.has(parent.callee.property.name) &&
     parent.arguments?.[0] === functionNode &&
     (!options.requireProvenSynchronousCallbackReceiver ||
-      Boolean(scopes && isProvenArrayReceiver(parent.callee.object, scopes)))
+      Boolean(
+        scopes &&
+        isProvenArrayReceiver(parent.callee.object, scopes, parent, parent.callee.property.name),
+      ))
   );
 };

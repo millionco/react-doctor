@@ -1227,6 +1227,39 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     },
   );
 
+  it("reports a named callback on an immutable array alias", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async () => {
+         let pending = cookies();
+         const values = [0];
+         const readPending = () => pending.get("session");
+         const result = values.map(readPending);
+         pending = await pending;
+         return result;
+       };`,
+      1,
+    );
+  });
+
+  it.each([
+    "let values = [0]; values.map(readPending);",
+    "const values = scheduler.values; values.map(readPending);",
+    "const values = [0]; values.map = scheduler.map; values.map(readPending);",
+    "const Array = scheduler.Array; Array.of(0).map(readPending);",
+  ])("fails closed for an unproven synchronous callback host through %s", (invocation) => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async (scheduler) => {
+         let pending = cookies();
+         const readPending = () => pending.get("session");
+         ${invocation}
+         pending = await pending;
+       };`,
+      0,
+    );
+  });
+
   it("does not treat an arbitrary receiver's map callback as synchronously invoked", () => {
     expectDiagnosticCount(
       `import { cookies } from "next/headers";
@@ -1240,7 +1273,7 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     );
   });
 
-  it.each(["while (true)", "for (;;)"])(
+  it.each(["while (true)", "while (1)", 'while ("run")', "while (1n)", "for (;;)"])(
     "recognizes provenance clearing before a break from %s",
     (loopHeader) => {
       expectDiagnosticCount(
@@ -1272,6 +1305,8 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
 
   it.each([
     'Reflect.get(pending, "get")',
+    'Reflect.getOwnPropertyDescriptor(pending, "get")',
+    'Reflect.has(pending, "get")',
     'Object.getOwnPropertyDescriptor(pending, "get")',
     '"get" in pending',
   ])("reports reflective property access through %s", (expression) => {
@@ -1292,6 +1327,9 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `import * as nextHeaders from "next/headers";
      const requestHeaders = nextHeaders;
      export const read = () => requestHeaders.headers().get("x-request-id");`,
+    `import * as nextHeaders from "next/headers";
+     const readCookies = nextHeaders.cookies;
+     export const read = () => readCookies().get("session");`,
     `import * as nextHeaders from "next/headers";
      const { headers: readHeaders } = nextHeaders;
      export const read = () => readHeaders().get("x-request-id");`,
@@ -1374,6 +1412,7 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
 
   it.each([
     `const Page = ({ params }) => params.slug; export { Page as default };`,
+    `const Page = ({ params }) => params.slug; const Exported = Page; export default Exported;`,
     `export default function Page({ ["params"]: routeParams }) { return routeParams.slug; }`,
     `export const generateMetadata = ({ params }) => ({ title: params.slug });`,
     `export const generateViewport = ({ searchParams }) => ({ colorScheme: searchParams.scheme });`,
@@ -1385,14 +1424,16 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `export default function Page({ params }) { return { ...params }; }`,
     `export default function Page({ params }) { return Object.keys(params); }`,
     `export default function Page({ params }) { const { slug } = params; return slug; }`,
+    `export default function Page({ ...props }) { return props.params.slug; }`,
+    `export default function Page(props) { const { ...routeProps } = props; return routeProps.params.slug; }`,
   ])("reports official async props through synchronous consumption forms", (code) => {
     expectDiagnosticCount(code, 1, "app/[slug]/page.tsx");
   });
 
-  it("reports metadata image params in Next.js 16", () => {
+  it.each(["params", "id"])("reports metadata image %s in Next.js 16", (propertyName) => {
     const result = runRule(
       nextjsAsyncDynamicApiNotAwaited,
-      `export default function Image({ params }) { return new ImageResponse(params.slug); }`,
+      `export default function Image({ ${propertyName} }) { return new ImageResponse(${propertyName}.value); }`,
       {
         filename: "app/blog/[slug]/opengraph-image.tsx",
         settings: { "react-doctor": { capabilities: ["nextjs:15", "nextjs:16"] } },
@@ -1400,6 +1441,50 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports sitemap id in Next.js 16", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `export default function Sitemap({ id }) { return [{ url: id.value }]; }`,
+      {
+        filename: "app/sitemap.ts",
+        settings: { "react-doctor": { capabilities: ["nextjs:15", "nextjs:16"] } },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      code: `export default function Sitemap({ id }) { return [{ url: id.value }]; }`,
+      capabilities: ["nextjs:15"],
+    },
+    {
+      code: `export const generateSitemaps = ({ id }) => [{ id: id.value }];`,
+      capabilities: ["nextjs:15", "nextjs:16"],
+    },
+  ])("does not report a synchronous sitemap producer", ({ code, capabilities }) => {
+    const result = runRule(nextjsAsyncDynamicApiNotAwaited, code, {
+      filename: "app/sitemap.ts",
+      settings: { "react-doctor": { capabilities } },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not report generateImageMetadata in Next.js 16", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `export const generateImageMetadata = ({ params, id }) => [{ id: params.slug + id.value }];`,
+      {
+        filename: "app/blog/[slug]/opengraph-image.tsx",
+        settings: { "react-doctor": { capabilities: ["nextjs:15", "nextjs:16"] } },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it.each([

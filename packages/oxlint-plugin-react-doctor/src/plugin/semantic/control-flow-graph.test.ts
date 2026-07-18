@@ -102,7 +102,7 @@ describe("control-flow-graph", () => {
       ).toBe(true);
     });
 
-    it.each(["while (true)", "for (;;)"])(
+    it.each(["while (true)", "while (1)", 'while ("run")', "while (1n)", "for (;;)"])(
       "%s enters its body before a reachable break",
       (loopHeader) => {
         const analysis = analyze(`
@@ -122,6 +122,23 @@ describe("control-flow-graph", () => {
         ).toBe(true);
       },
     );
+
+    it.each(["while (false)", "while (0)", 'while ("")'])("%s can skip its body", (loopHeader) => {
+      const analysis = analyze(`
+          function fn() {
+            ${loopHeader} {
+              inLoop();
+            }
+            afterLoop();
+          }
+        `);
+      expect(analysis.isUnconditionalFromEntry(findCalleeNode(analysis.program, "inLoop")!)).toBe(
+        false,
+      );
+      expect(
+        analysis.isUnconditionalFromEntry(findCalleeNode(analysis.program, "afterLoop")!),
+      ).toBe(true);
+    });
 
     it("for loop body is conditional", () => {
       const analysis = analyze(`

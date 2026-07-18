@@ -6,5 +6,9 @@ import { cookies } from "next/headers";
 
 export const readSession = () => {
   const pendingCookies = cookies();
-  return Reflect.get(pendingCookies, "get");
+  return [
+    Reflect.get(pendingCookies, "get"),
+    Reflect.getOwnPropertyDescriptor(pendingCookies, "get"),
+    Reflect.has(pendingCookies, "get"),
+  ];
 };

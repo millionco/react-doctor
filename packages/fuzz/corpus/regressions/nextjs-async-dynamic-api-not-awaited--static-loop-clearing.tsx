@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 
 export const readSession = async () => {
   let pendingCookies = cookies();
-  while (true) {
+  while (1) {
     pendingCookies = await pendingCookies;
     break;
   }

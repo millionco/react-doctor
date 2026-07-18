@@ -1,5 +1,8 @@
 import * as path from "node:path";
-import { ROUTE_HANDLER_HTTP_METHODS } from "../../constants/nextjs.js";
+import {
+  NEXTJS_SOURCE_FILE_EXTENSION_GROUP,
+  ROUTE_HANDLER_HTTP_METHODS,
+} from "../../constants/nextjs.js";
 import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import type { BasicBlock } from "../../semantic/control-flow-graph.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
@@ -24,9 +27,11 @@ import { isAstNode } from "../../utils/is-ast-node.js";
 import { isDescendantOf } from "../../utils/is-descendant-of.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isFrameworkRouteOrSpecialFilename } from "../../utils/is-framework-route-or-special-filename.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import { isNextjsMetadataImageRouteFilename } from "../../utils/is-nextjs-metadata-image-route-filename.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
@@ -58,6 +63,7 @@ const ITERABLE_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
   "WeakMap",
   "WeakSet",
 ]);
+const SITEMAP_FILE_PATTERN = new RegExp(`^sitemap\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`);
 
 const MESSAGE =
   "This Next.js request API returns a Promise. Synchronous property access warns in Next.js 15 and is removed in Next.js 16; await it or unwrap it with React `use()`.";
@@ -103,6 +109,31 @@ const isNextHeadersDynamicCall = (
       if (importedName !== null && DYNAMIC_API_NAMES.has(importedName)) return true;
     }
     const localSymbol = context.scopes.symbolFor(callee);
+    if (localSymbol?.kind === "const" && localSymbol.initializer) {
+      const initializer = stripParenExpression(localSymbol.initializer);
+      if (isNodeOfType(initializer, "MemberExpression")) {
+        const namespaceExpression = stripParenExpression(initializer.object);
+        const importedName = getStaticPropertyName(initializer);
+        if (
+          isNodeOfType(namespaceExpression, "Identifier") &&
+          importedName !== null &&
+          DYNAMIC_API_NAMES.has(importedName)
+        ) {
+          const namespaceSymbol = resolveConstIdentifierAlias(namespaceExpression, context.scopes);
+          if (
+            namespaceSymbol?.kind === "import" &&
+            isNodeOfType(namespaceSymbol.bindingIdentifier, "Identifier") &&
+            isNamespaceImportFromModule(
+              node,
+              namespaceSymbol.bindingIdentifier.name,
+              "next/headers",
+            )
+          ) {
+            return true;
+          }
+        }
+      }
+    }
     if (
       node.arguments.length === 0 &&
       localSymbol?.initializer &&
@@ -280,12 +311,24 @@ const getOfficialAsyncPropContract = (
   context: RuleContext,
   functionNode: EsTreeNode,
 ): OfficialAsyncPropContract | null => {
-  if (!isFrameworkRouteOrSpecialFilename(context, "next")) return null;
+  const basename = path.basename(context.filename ?? "");
+  const normalizedFilename = normalizeFilename(context.filename ?? "");
+  const isSitemapFile =
+    (isInProjectDirectory(context, "app") || normalizedFilename.startsWith("app/")) &&
+    SITEMAP_FILE_PATTERN.test(basename);
+  if (!isSitemapFile && !isFrameworkRouteOrSpecialFilename(context, "next")) return null;
   const program = findProgramRoot(functionNode);
   if (!program) return null;
-  const basename = path.basename(context.filename ?? "");
   const routeKind = basename.split(".")[0] ?? "";
-  const isDefaultExport = findExportedValue(program, "default") === functionNode;
+  const exportedValueMatchesFunction = (exportedValue: EsTreeNode | null): boolean => {
+    if (exportedValue === functionNode) return true;
+    if (!exportedValue || !isNodeOfType(exportedValue, "Identifier")) return false;
+    const symbol = resolveConstIdentifierAlias(exportedValue, context.scopes);
+    return Boolean(
+      symbol && (symbol.initializer === functionNode || symbol.declarationNode === functionNode),
+    );
+  };
+  const isDefaultExport = exportedValueMatchesFunction(findExportedValue(program, "default"));
   const isPage = routeKind === "page";
   if (isDefaultExport) {
     if (isPage) {
@@ -297,12 +340,20 @@ const getOfficialAsyncPropContract = (
       (isNextjsMetadataImageRouteFilename(context.filename) &&
         hasCapability(context.settings, "nextjs:16"))
     ) {
-      return { parameterIndex: 0, propertyNames: new Set(["params"]) };
+      return {
+        parameterIndex: 0,
+        propertyNames: isNextjsMetadataImageRouteFilename(context.filename)
+          ? new Set(["id", "params"])
+          : new Set(["params"]),
+      };
+    }
+    if (isSitemapFile && hasCapability(context.settings, "nextjs:16")) {
+      return { parameterIndex: 0, propertyNames: new Set(["id"]) };
     }
   }
   if (routeKind === "route") {
     for (const methodName of ROUTE_HANDLER_HTTP_METHODS) {
-      if (findExportedValue(program, methodName) === functionNode) {
+      if (exportedValueMatchesFunction(findExportedValue(program, methodName))) {
         return { parameterIndex: 1, propertyNames: new Set(["params"]) };
       }
     }
@@ -310,8 +361,8 @@ const getOfficialAsyncPropContract = (
   }
   if (routeKind !== "page" && routeKind !== "layout") return null;
   if (
-    findExportedValue(program, "generateMetadata") !== functionNode &&
-    findExportedValue(program, "generateViewport") !== functionNode
+    !exportedValueMatchesFunction(findExportedValue(program, "generateMetadata")) &&
+    !exportedValueMatchesFunction(findExportedValue(program, "generateViewport"))
   ) {
     return null;
   }
@@ -342,21 +393,47 @@ const findParameterPropertyName = (
 const findOfficialPropsObjectSource = (
   context: RuleContext,
   expression: EsTreeNode,
+  visitedSymbolIds: Set<number> = new Set(),
 ): OfficialPropsObjectSource | null => {
   const node = stripParenExpression(expression);
   if (!isNodeOfType(node, "Identifier")) return null;
-  const symbol = resolveConstIdentifierAlias(node, context.scopes);
+  const directSymbol = context.scopes.symbolFor(node);
+  if (!directSymbol || visitedSymbolIds.has(directSymbol.id)) return null;
+  visitedSymbolIds.add(directSymbol.id);
+  const symbol = resolveConstIdentifierAlias(node, context.scopes) ?? directSymbol;
   if (!symbol) return null;
   const functionNode = context.cfg.enclosingFunction(symbol.bindingIdentifier);
-  if (!functionNode || !isFunctionLike(functionNode)) return null;
-  const contract = getOfficialAsyncPropContract(context, functionNode);
-  if (!contract) return null;
-  const parameter = functionNode.params[contract.parameterIndex];
-  if (!parameter) return null;
-  const parameterIdentifier = isNodeOfType(parameter, "AssignmentPattern")
-    ? parameter.left
-    : parameter;
-  return parameterIdentifier === symbol.bindingIdentifier ? { contract, symbol } : null;
+  if (functionNode && isFunctionLike(functionNode)) {
+    const contract = getOfficialAsyncPropContract(context, functionNode);
+    const parameter = contract ? functionNode.params[contract.parameterIndex] : null;
+    const parameterPattern =
+      parameter && isNodeOfType(parameter, "AssignmentPattern") ? parameter.left : parameter;
+    const isDirectParameter = parameterPattern === symbol.bindingIdentifier;
+    const isRestParameter = Boolean(
+      parameterPattern &&
+      isNodeOfType(parameterPattern, "ObjectPattern") &&
+      parameterPattern.properties.some(
+        (property) =>
+          isNodeOfType(property, "RestElement") && property.argument === symbol.bindingIdentifier,
+      ),
+    );
+    if (contract && (isDirectParameter || isRestParameter)) return { contract, symbol };
+  }
+  if (
+    directSymbol.kind !== "const" ||
+    !directSymbol.initializer ||
+    !isNodeOfType(directSymbol.declarationNode, "VariableDeclarator") ||
+    !isNodeOfType(directSymbol.declarationNode.id, "ObjectPattern") ||
+    !directSymbol.declarationNode.id.properties.some(
+      (property) =>
+        isNodeOfType(property, "RestElement") &&
+        property.argument === directSymbol.bindingIdentifier,
+    )
+  ) {
+    return null;
+  }
+  const source = findOfficialPropsObjectSource(context, directSymbol.initializer, visitedSymbolIds);
+  return source ? { contract: source.contract, symbol: directSymbol } : null;
 };
 
 const isOfficialAsyncRequestPropSource = (
@@ -373,10 +450,17 @@ const isOfficialAsyncRequestPropSource = (
   } else if (isNodeOfType(node, "MemberExpression")) {
     const receiver = stripParenExpression(node.object);
     if (!isNodeOfType(receiver, "Identifier")) return false;
-    const symbol = resolveConstIdentifierAlias(receiver, context.scopes);
-    if (!symbol) return false;
-    bindingIdentifier = symbol.bindingIdentifier;
     propertyName = getStaticPropertyName(node);
+    const propsSource = findOfficialPropsObjectSource(context, receiver);
+    if (!propsSource || propertyName === null) return false;
+    return Boolean(
+      propsSource.contract.propertyNames.has(propertyName) &&
+      !createPendingSymbolFlow(
+        context,
+        propsSource.symbol,
+        propsSource.symbol.bindingIdentifier,
+      ).isClearedBefore(node),
+    );
   } else {
     return false;
   }
@@ -632,7 +716,10 @@ const isGlobalEnumerationCallForArgument = (
   }
   if (receiver.name === "Reflect") {
     return (
-      (methodName === "get" || methodName === "ownKeys") &&
+      (methodName === "get" ||
+        methodName === "getOwnPropertyDescriptor" ||
+        methodName === "has" ||
+        methodName === "ownKeys") &&
       callExpression.arguments[0] === argumentExpression
     );
   }

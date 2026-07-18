@@ -113,6 +113,27 @@ describe("hook-import-rename-loses-use-prefix", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a non-use hook renamed to React's conditionally-callable bare use name", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useState as use } from "react";
+       const Counter = ({ enabled }) => {
+         if (enabled) use(0);
+         return null;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag React's bare use hook when its alias remains a hook name", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { use as usePromise } from "react";
+       const Products = ({ productsPromise }) => usePromise(productsPromise);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag the isomorphic SSR wrapper where the alias is only conditionally reassigned, never called (Radix useLayoutEffect idiom)", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
@@ -261,6 +282,58 @@ describe("hook-import-rename-loses-use-prefix", () => {
       hookImportRenameLosesUsePrefix,
       `import { useQuery as query } from "@tanstack/react-query";
        export const useProducts = () => query({ queryKey: ["products"] });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags an alias called from an async custom hook wrapper", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useQuery as query } from "@tanstack/react-query";
+       export const useProducts = async () => query({ queryKey: ["products"] });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags renamed React dependency hooks inside unconditional custom hook wrappers", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import {
+         useEffect as effect,
+         useLayoutEffect as useLayout,
+         useCallback as useMemoizedCallback,
+         useMemo as useMemoizedValue,
+         useImperativeHandle as useHandle,
+       } from "react";
+       export const useTrackedValue = (value, ref) => {
+         effect(() => console.log(value), []);
+         useLayout(() => console.log(value), []);
+         const callback = useMemoizedCallback(() => value, []);
+         const memoizedValue = useMemoizedValue(() => value, []);
+         useHandle(ref, () => ({ value }), []);
+         return { callback, memoizedValue };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(5);
+  });
+
+  it("flags a renamed React useEffectEvent inside an unconditional custom hook wrapper", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useEffectEvent as useEventCallback } from "react";
+       export const useTrackedEvent = (value) => {
+         const handler = useEventCallback(() => value);
+         return handler;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not require exact names for React hooks without name-specific lint semantics", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useState as useLocalState } from "react";
+       export const useCounter = () => useLocalState(0);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

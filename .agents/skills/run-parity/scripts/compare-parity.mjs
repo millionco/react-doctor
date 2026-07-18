@@ -76,6 +76,9 @@ const summarizeRules = (entries) => {
 try {
   const baselineRecords = loadRun(baselinePath);
   const candidateRecords = loadRun(candidatePath);
+  if (baselineRecords.size === 0 || candidateRecords.size === 0) {
+    throw new Error("Parity inputs must each contain at least one eval record");
+  }
   const allProjectKeys = new Set([...baselineRecords.keys(), ...candidateRecords.keys()]);
   const added = [];
   const removed = [];

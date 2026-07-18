@@ -1430,6 +1430,79 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     expectDiagnosticCount(code, 1, "app/[slug]/page.tsx");
   });
 
+  it.each([
+    `export default function Page({ params, ...props }) { return props.searchParams.query; }`,
+    `export default function Page({ searchParams, ...props }) { return props.params.slug; }`,
+    `export default function Page(props) { const { params, ...rest } = props; return rest.searchParams.query; }`,
+    `export default function Page(props) { let rest; ({ params, ...rest } = props); return rest.searchParams.query; }`,
+  ])("reports official props that remain in an object rest binding", (code) => {
+    expectDiagnosticCount(code, 1, "app/[slug]/page.tsx");
+  });
+
+  it("reports a nested consumed prop and a separate prop retained by object rest", () => {
+    expectDiagnosticCount(
+      `export default function Page(props) { const { params: { slug }, ...rest } = props; return slug + rest.searchParams.query; }`,
+      2,
+      "app/[slug]/page.tsx",
+    );
+  });
+
+  it.each([
+    {
+      code: `export default function Page({ params, ...props }) { return props.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page({ params, searchParams, ...props }) { return props.params?.slug ?? props.searchParams?.query; }`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page(props) { const { params, ...rest } = props; return rest.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page(props) { let rest; ({ params, ...rest } = props); return rest.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page(props) { const { params: routeParams = fallback, ...rest } = props; return rest.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page(props) { const { ["params"]: routeParams, ...rest } = props; return rest.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Page(props) { const { [propertyName]: consumed, ...rest } = props; return rest.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+    },
+    {
+      code: `export default function Layout({ params, ...props }) { return props.params.slug; }`,
+      filename: "app/[slug]/layout.tsx",
+    },
+    {
+      code: `export default function Default({ params, ...props }) { return props.params.slug; }`,
+      filename: "app/[slug]/default.tsx",
+    },
+    {
+      code: `export const GET = (request, { params, ...context }) => Response.json(context.params.slug);`,
+      filename: "app/api/[slug]/route.ts",
+    },
+  ])(
+    "does not report official props removed from an object rest binding in $filename",
+    ({ code, filename }) => {
+      expectDiagnosticCount(code, 0, filename);
+    },
+  );
+
+  it("does not add a rest diagnostic for a nested prop removed from object rest", () => {
+    expectDiagnosticCount(
+      `export default function Page(props) { const { params: { slug }, ...rest } = props; return slug + rest.params.slug; }`,
+      1,
+      "app/[slug]/page.tsx",
+    );
+  });
+
   it.each(["params", "id"])("reports metadata image %s in Next.js 16", (propertyName) => {
     const result = runRule(
       nextjsAsyncDynamicApiNotAwaited,

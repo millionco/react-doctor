@@ -304,6 +304,7 @@ interface OfficialAsyncPropContract {
 
 interface OfficialPropsObjectSource {
   contract: OfficialAsyncPropContract;
+  sourceExpression: EsTreeNode;
   symbol: SymbolDescriptor;
 }
 
@@ -390,6 +391,36 @@ const findParameterPropertyName = (
   return null;
 };
 
+const findObjectRestElementForSymbol = (
+  context: RuleContext,
+  pattern: EsTreeNode,
+  symbol: SymbolDescriptor,
+): EsTreeNode | null => {
+  if (!isNodeOfType(pattern, "ObjectPattern")) return null;
+  return (
+    pattern.properties.find(
+      (property) =>
+        isNodeOfType(property, "RestElement") &&
+        context.scopes.symbolFor(property.argument)?.id === symbol.id,
+    ) ?? null
+  );
+};
+
+const narrowContractForObjectRest = (
+  pattern: EsTreeNode,
+  contract: OfficialAsyncPropContract,
+): OfficialAsyncPropContract | null => {
+  if (!isNodeOfType(pattern, "ObjectPattern")) return null;
+  const propertyNames = new Set(contract.propertyNames);
+  for (const property of pattern.properties) {
+    if (!isNodeOfType(property, "Property")) continue;
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (propertyName === null) return null;
+    propertyNames.delete(propertyName);
+  }
+  return { parameterIndex: contract.parameterIndex, propertyNames };
+};
+
 const findOfficialPropsObjectSource = (
   context: RuleContext,
   expression: EsTreeNode,
@@ -409,31 +440,66 @@ const findOfficialPropsObjectSource = (
     const parameterPattern =
       parameter && isNodeOfType(parameter, "AssignmentPattern") ? parameter.left : parameter;
     const isDirectParameter = parameterPattern === symbol.bindingIdentifier;
-    const isRestParameter = Boolean(
-      parameterPattern &&
-      isNodeOfType(parameterPattern, "ObjectPattern") &&
-      parameterPattern.properties.some(
-        (property) =>
-          isNodeOfType(property, "RestElement") && property.argument === symbol.bindingIdentifier,
-      ),
-    );
-    if (contract && (isDirectParameter || isRestParameter)) return { contract, symbol };
+    const restElement =
+      contract && parameterPattern
+        ? findObjectRestElementForSymbol(context, parameterPattern, symbol)
+        : null;
+    if (contract && isDirectParameter) {
+      return { contract, sourceExpression: symbol.bindingIdentifier, symbol };
+    }
+    if (contract && parameterPattern && restElement) {
+      const narrowedContract = narrowContractForObjectRest(parameterPattern, contract);
+      return narrowedContract
+        ? { contract: narrowedContract, sourceExpression: restElement, symbol }
+        : null;
+    }
   }
   if (
-    directSymbol.kind !== "const" ||
-    !directSymbol.initializer ||
-    !isNodeOfType(directSymbol.declarationNode, "VariableDeclarator") ||
-    !isNodeOfType(directSymbol.declarationNode.id, "ObjectPattern") ||
-    !directSymbol.declarationNode.id.properties.some(
-      (property) =>
-        isNodeOfType(property, "RestElement") &&
-        property.argument === directSymbol.bindingIdentifier,
-    )
+    directSymbol.kind === "const" &&
+    directSymbol.initializer &&
+    isNodeOfType(directSymbol.declarationNode, "VariableDeclarator")
   ) {
-    return null;
+    const declarationPattern = directSymbol.declarationNode.id;
+    const restElement = findObjectRestElementForSymbol(context, declarationPattern, directSymbol);
+    if (restElement) {
+      const source = findOfficialPropsObjectSource(
+        context,
+        directSymbol.initializer,
+        new Set(visitedSymbolIds),
+      );
+      const narrowedContract = source
+        ? narrowContractForObjectRest(declarationPattern, source.contract)
+        : null;
+      return source && narrowedContract
+        ? { contract: narrowedContract, sourceExpression: restElement, symbol: directSymbol }
+        : null;
+    }
   }
-  const source = findOfficialPropsObjectSource(context, directSymbol.initializer, visitedSymbolIds);
-  return source ? { contract: source.contract, symbol: directSymbol } : null;
+  const assignmentCandidates = directSymbol.references
+    .map((reference) => findPatternAssignmentForIdentifier(reference.identifier))
+    .filter((assignment): assignment is EsTreeNodeOfType<"AssignmentExpression"> =>
+      Boolean(
+        assignment &&
+        assignment.operator === "=" &&
+        findObjectRestElementForSymbol(context, assignment.left, directSymbol) &&
+        nodeDominatesNode(assignment, expression, context),
+      ),
+    )
+    .sort((left, right) => getNodeStartIndex(right) - getNodeStartIndex(left));
+  for (const assignment of assignmentCandidates) {
+    const source = findOfficialPropsObjectSource(
+      context,
+      assignment.right,
+      new Set(visitedSymbolIds),
+    );
+    const narrowedContract = source
+      ? narrowContractForObjectRest(assignment.left, source.contract)
+      : null;
+    if (source && narrowedContract) {
+      return { contract: narrowedContract, sourceExpression: assignment, symbol: directSymbol };
+    }
+  }
+  return null;
 };
 
 const isOfficialAsyncRequestPropSource = (
@@ -458,7 +524,7 @@ const isOfficialAsyncRequestPropSource = (
       !createPendingSymbolFlow(
         context,
         propsSource.symbol,
-        propsSource.symbol.bindingIdentifier,
+        propsSource.sourceExpression,
       ).isClearedBefore(node),
     );
   } else {

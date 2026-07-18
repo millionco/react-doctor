@@ -140,6 +140,10 @@ const collectEffectInvocations = (
     }));
   }
 
+  if (isEffectCallbackReference(functionNode, context.scopes)) {
+    return [{ callback: functionNode, pathNodes: [node] }];
+  }
+
   const functionSymbol = findFunctionSymbol(functionNode, context);
   if (functionSymbol) {
     const functionSymbols = collectConstAliasSymbols(functionSymbol, context.scopes);
@@ -168,14 +172,6 @@ const collectEffectInvocations = (
     return invocations;
   }
 
-  const enclosingCall = functionNode.parent;
-  if (
-    isNodeOfType(enclosingCall, "CallExpression") &&
-    enclosingCall.arguments[0] === functionNode &&
-    isReactEffectHookCall(enclosingCall, context.scopes)
-  ) {
-    return [{ callback: functionNode, pathNodes: [node] }];
-  }
   return [];
 };
 
@@ -361,10 +357,11 @@ const getMutationCalls = (
     if (!resultSymbol) return calls;
     for (const symbol of collectConstAliasSymbols(resultSymbol, context.scopes)) {
       for (const reference of symbol.references) {
-        const memberExpression = reference.identifier.parent;
+        const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+        const memberExpression = referenceRoot.parent;
         if (
           !isNodeOfType(memberExpression, "MemberExpression") ||
-          memberExpression.object !== reference.identifier
+          memberExpression.object !== referenceRoot
         ) {
           continue;
         }

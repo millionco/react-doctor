@@ -286,6 +286,21 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    ["conditional", "enabled ? () => mutation.mutateAsync(payload) : undefined"],
+    ["logical", "enabled && (() => mutation.mutateAsync(payload))"],
+    ["TypeScript", "(() => mutation.mutateAsync(payload)) as () => void"],
+  ])(
+    "flags mutateAsync returned from a wrapped inline %s effect callback",
+    (_wrapperName, callback) => {
+      const result = runMutationRule(
+        `const mutation = useMutation(options);
+       useEffect(${callback}, [enabled]);`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("flags mutateAsync returned through an event-handler helper", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);
@@ -347,6 +362,24 @@ describe("query-floating-mutate-async", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);
        const promise = (prepare(), mutation.mutateAsync(payload));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags promises used only as conditional and logical tests", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const firstResult = mutation.mutateAsync(first) ? accepted : rejected;
+       const secondResult = mutation.mutateAsync(second) && fallback;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("keeps conditional and logical result branches reachable", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const firstPromise = enabled ? mutation.mutateAsync(first) : fallback;
+       const secondPromise = enabled && mutation.mutateAsync(second);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

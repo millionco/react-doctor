@@ -733,6 +733,35 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    ["conditional", "enabled ? () => { fetchUser(params); } : undefined"],
+    ["logical", "enabled && (() => { fetchUser(params); })"],
+    ["TypeScript", "(() => { fetchUser(params); }) as () => void"],
+  ])("detects a wrapped inline %s effect callback", (_wrapperName, callback) => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: fetchUser, data } = useMutation(options);
+         useEffect(${callback}, [enabled, params]);
+         return <div>{data.user.name}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["TypeScript assertion", "(fetchUserMutation as any).mutate(params)"],
+    ["non-null assertion", "fetchUserMutation!.mutate(params)"],
+  ])("detects a mutation call through a %s receiver", (_wrapperName, mutationCall) => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const fetchUserMutation = useMutation(options);
+         useEffect(() => { ${mutationCall}; }, [params]);
+         return <div>{fetchUserMutation.data.user.name}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not accept a non-dominating conditional status guard", () => {
     const result = runMutationReadRule(
       `function Component() {

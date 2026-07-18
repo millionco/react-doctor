@@ -107,11 +107,19 @@ const isExpressionValueDiscarded = (expression: EsTreeNode): boolean => {
   let current = expression;
   let parent = current.parent ?? null;
   while (parent) {
-    if (
-      TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type) ||
-      isNodeOfType(parent, "ConditionalExpression") ||
-      isNodeOfType(parent, "LogicalExpression")
-    ) {
+    if (TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type)) {
+      current = parent;
+      parent = current.parent ?? null;
+      continue;
+    }
+    if (isNodeOfType(parent, "ConditionalExpression")) {
+      if (parent.test === current) return true;
+      current = parent;
+      parent = current.parent ?? null;
+      continue;
+    }
+    if (isNodeOfType(parent, "LogicalExpression")) {
+      if (parent.left === current) return true;
       current = parent;
       parent = current.parent ?? null;
       continue;
@@ -224,6 +232,7 @@ const isFunctionResultDiscarded = (
   const nextVisitedFunctions = new Set(visitedFunctions);
   nextVisitedFunctions.add(functionNode);
   if (isEventHandlerAttributeValue(functionNode)) return true;
+  if (isEffectCallbackReference(functionNode, context.scopes)) return true;
   const directParent = functionNode.parent;
   if (
     isNodeOfType(directParent, "CallExpression") &&
@@ -263,11 +272,19 @@ const isFloatingPromiseUse = (
   let current: EsTreeNode = callExpression;
   let parent = current.parent ?? null;
   while (parent) {
-    if (
-      TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type) ||
-      isNodeOfType(parent, "ConditionalExpression") ||
-      isNodeOfType(parent, "LogicalExpression")
-    ) {
+    if (TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type)) {
+      current = parent;
+      parent = current.parent ?? null;
+      continue;
+    }
+    if (isNodeOfType(parent, "ConditionalExpression")) {
+      if (parent.test === current) return true;
+      current = parent;
+      parent = current.parent ?? null;
+      continue;
+    }
+    if (isNodeOfType(parent, "LogicalExpression")) {
+      if (parent.left === current) return true;
       current = parent;
       parent = current.parent ?? null;
       continue;

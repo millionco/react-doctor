@@ -1516,6 +1516,99 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    {
+      code: `export default function Image({ id }) { return new ImageResponse(String(id * 50000)); }`,
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
+      code: `export default function Image({ id }) { return <div>{id}</div>; }`,
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
+      code: `export default function Image({ id }) { return new ImageResponse(String(id)); }`,
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
+      code: `export default function Image({ id }) { const imageId = id; return new ImageResponse(String(imageId * 50000)); }`,
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
+      code: `export default function Sitemap({ id }) { return [{ url: String(id * 50000) }]; }`,
+      filename: "app/sitemap.ts",
+    },
+    {
+      code: "export default function Sitemap({ id }) { return [{ url: `/product/${id}` }]; }",
+      filename: "app/sitemap.ts",
+    },
+  ])("reports direct Next.js 16 id consumption in $filename", ({ code, filename }) => {
+    const result = runRule(nextjsAsyncDynamicApiNotAwaited, code, {
+      filename,
+      settings: { "react-doctor": { capabilities: ["nextjs:15", "nextjs:16"] } },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `export default async function Image({ id }) { const imageId = await id; return new ImageResponse(String(imageId * 50000)); }`,
+    `import { use } from "react"; export default function Image({ id }) { const imageId = use(id); return new ImageResponse(String(imageId * 50000)); }`,
+    `export default function Image({ id }) { return id; }`,
+    `export default function Image({ id }) { return id.then((imageId) => imageId * 50000); }`,
+  ])("does not report safe or propagating Next.js 16 id usage", (code) => {
+    const result = runRule(nextjsAsyncDynamicApiNotAwaited, code, {
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+      settings: { "react-doctor": { capabilities: ["nextjs:15", "nextjs:16"] } },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      code: `export default async function Page(props) { props.params = await props.params; return props.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+      capabilities: ["nextjs:15"],
+    },
+    {
+      code: `export default async function Page({ ...props }) { props.params = await props.params; return props.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+      capabilities: ["nextjs:15"],
+    },
+    {
+      code: `export default async function Page(props) { props.searchParams = await props.searchParams; return props.searchParams.query; }`,
+      filename: "app/[slug]/page.tsx",
+      capabilities: ["nextjs:15"],
+    },
+    {
+      code: `import { use } from "react"; export default function Page(props) { props.params = use(props.params); return props.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+      capabilities: ["nextjs:15"],
+    },
+    {
+      code: `export default async function Image(props) { props.id = await props.id; return new ImageResponse(String(props.id * 50000)); }`,
+      filename: "app/[slug]/opengraph-image.tsx",
+      capabilities: ["nextjs:15", "nextjs:16"],
+    },
+  ])(
+    "does not report an official prop after unconditional self-unwrapping",
+    ({ code, filename, capabilities }) => {
+      const result = runRule(nextjsAsyncDynamicApiNotAwaited, code, {
+        filename,
+        settings: { "react-doctor": { capabilities } },
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    `export default async function Page(props, shouldAwait) { if (shouldAwait) props.params = await props.params; return props.params.slug; }`,
+    `export default async function Page(props) { props.searchParams = await props.searchParams; return props.params.slug; }`,
+  ])("reports an official prop without unconditional matching self-unwrapping", (code) => {
+    expectDiagnosticCount(code, 1, "app/[slug]/page.tsx");
+  });
+
   it("reports sitemap id in Next.js 16", () => {
     const result = runRule(
       nextjsAsyncDynamicApiNotAwaited,

@@ -118,11 +118,17 @@ const isThreeMathUtils = (expression: EsTreeNode, context: RuleContext): boolean
   return getApiReferenceModuleSource(expression, "MathUtils", context.scopes) === "three";
 };
 
-const hasInterpolationReceiverProvenance = (expression: EsTreeNode): boolean => {
+const hasInterpolationReceiverProvenance = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   let current = stripParenExpression(expression);
   while (isNodeOfType(current, "MemberExpression")) {
     const propertyName = getStaticPropertyName(current);
-    if (propertyName === "current" || INTERPOLATION_RECEIVER_PROPERTIES.has(propertyName ?? "")) {
+    if (
+      (propertyName === "current" && resolveReactRefSymbol(current, context.scopes)) ||
+      INTERPOLATION_RECEIVER_PROPERTIES.has(propertyName ?? "")
+    ) {
       return true;
     }
     current = stripParenExpression(current.object);
@@ -229,7 +235,7 @@ const getFixedInterpolationFactor = (
   let factorArgumentIndex: number | undefined;
   if (methodName === "lerp" && isThreeMathUtils(node.callee.object, context)) {
     factorArgumentIndex = 2;
-  } else if (methodName && hasInterpolationReceiverProvenance(node.callee.object)) {
+  } else if (methodName && hasInterpolationReceiverProvenance(node.callee.object, context)) {
     factorArgumentIndex = INTERPOLATION_FACTOR_ARGUMENT_BY_METHOD.get(methodName);
   }
   if (factorArgumentIndex === undefined) return null;

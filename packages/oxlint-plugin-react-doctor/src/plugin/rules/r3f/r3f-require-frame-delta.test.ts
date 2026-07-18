@@ -122,6 +122,16 @@ describe("r3f-require-frame-delta", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("keeps interpolation on non-React current properties quiet", () => {
+    const result = runRule(
+      r3fRequireFrameDelta,
+      `import { useFrame } from "@react-three/fiber";
+       const value = { current: { lerp() {} } };
+       useFrame(() => { value.current.lerp(target, 0.1); });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("allows transform increments in a conditionally called local helper", () => {
     const result = runRule(
       r3fRequireFrameDelta,

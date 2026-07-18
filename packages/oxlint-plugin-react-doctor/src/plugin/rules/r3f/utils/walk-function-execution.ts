@@ -26,28 +26,27 @@ export const walkFunctionExecution = (
   scopes: ScopeAnalysis,
   visitor: (node: EsTreeNode, isConditionallyExecuted: boolean) => void,
 ): void => {
-  const conditionalityByVisitedFunction = new Map<EsTreeNode, boolean>();
-  const visitFunction = (
+  const conditionalityByReachableFunction = new Map<EsTreeNode, boolean>();
+  const discoverFunction = (
     currentFunction: EsTreeNode,
     isConditionallyExecutedByCallSite: boolean,
   ): void => {
     if (!isFunctionLike(currentFunction) || currentFunction.generator) return;
-    const previousConditionality = conditionalityByVisitedFunction.get(currentFunction);
+    const previousConditionality = conditionalityByReachableFunction.get(currentFunction);
     if (
       previousConditionality === false ||
       previousConditionality === isConditionallyExecutedByCallSite
     ) {
       return;
     }
-    conditionalityByVisitedFunction.set(currentFunction, isConditionallyExecutedByCallSite);
+    conditionalityByReachableFunction.set(currentFunction, isConditionallyExecutedByCallSite);
     walkAst(currentFunction, (node) => {
       if (node !== currentFunction && isFunctionLike(node)) return false;
       const isConditionallyExecuted =
         isConditionallyExecutedByCallSite || isNodeConditionallyExecuted(node, currentFunction);
-      visitor(node, isConditionallyExecuted);
       if (!isNodeOfType(node, "CallExpression")) return;
       const calledFunction = resolveExactLocalFunction(node.callee, scopes);
-      if (calledFunction) visitFunction(calledFunction, isConditionallyExecuted);
+      if (calledFunction) discoverFunction(calledFunction, isConditionallyExecuted);
       if (
         !isNodeOfType(node.callee, "MemberExpression") ||
         !SYNCHRONOUS_CALLBACK_METHODS.has(getStaticPropertyName(node.callee) ?? "")
@@ -57,9 +56,21 @@ export const walkFunctionExecution = (
       for (const argument of node.arguments) {
         if (isNodeOfType(argument, "SpreadElement")) continue;
         const callback = resolveExactLocalFunction(argument, scopes);
-        if (callback) visitFunction(callback, isConditionallyExecuted);
+        if (callback) discoverFunction(callback, isConditionallyExecuted);
       }
     });
   };
-  visitFunction(functionNode, false);
+  discoverFunction(functionNode, false);
+  for (const [
+    reachableFunction,
+    isConditionallyExecutedByCallSite,
+  ] of conditionalityByReachableFunction) {
+    walkAst(reachableFunction, (node) => {
+      if (node !== reachableFunction && isFunctionLike(node)) return false;
+      visitor(
+        node,
+        isConditionallyExecutedByCallSite || isNodeConditionallyExecuted(node, reachableFunction),
+      );
+    });
+  }
 };

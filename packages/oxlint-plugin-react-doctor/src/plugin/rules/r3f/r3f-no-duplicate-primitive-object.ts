@@ -176,16 +176,16 @@ const findMountSites = (
   }
   const elementSymbol = context.scopes.symbolFor(declarator.id);
   if (!elementSymbol) return [node];
-  const renderedReferences = elementSymbol.references
-    .filter(
-      (reference) =>
-        reference.flag !== "write" &&
-        functionReturnsMatchingExpression(
-          owningFunction,
-          context.scopes,
-          (returnedExpression) => isAstDescendant(reference.identifier, returnedExpression),
-          context.cfg,
-        ),
+  const readReferences = elementSymbol.references.filter((reference) => reference.flag !== "write");
+  if (readReferences.length === 0) return [];
+  const renderedReferences = readReferences
+    .filter((reference) =>
+      functionReturnsMatchingExpression(
+        owningFunction,
+        context.scopes,
+        (returnedExpression) => isAstDescendant(reference.identifier, returnedExpression),
+        context.cfg,
+      ),
     )
     .map((reference) => reference.identifier);
   return renderedReferences.length > 0 ? renderedReferences : [node];

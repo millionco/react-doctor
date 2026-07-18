@@ -58,4 +58,12 @@ describe("r3f-no-clone-in-use-frame", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("reports a helper once when reached conditionally and unconditionally", () => {
+    const result = runRule(
+      r3fNoCloneInUseFrame,
+      `import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = ({ enabled }) => { const mesh = useRef(null); const clonePosition = () => mesh.current.position.clone(); useFrame(() => { if (enabled) clonePosition(); clonePosition(); }); };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

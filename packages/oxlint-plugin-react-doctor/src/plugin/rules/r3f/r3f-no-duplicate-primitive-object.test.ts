@@ -82,6 +82,14 @@ describe("r3f-no-duplicate-primitive-object", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("ignores unused local elements", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `${R3F_RUNTIME_IMPORT} const Scene = ({ scene }) => { const unused = <primitive object={scene} />; return <primitive object={scene} />; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("allows mounts guarded by complementary logical expressions", () => {
     const result = runRule(
       r3fNoDuplicatePrimitiveObject,

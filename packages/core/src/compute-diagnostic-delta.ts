@@ -106,9 +106,10 @@ const buildMatchCandidates = (
  * files while changed constructs or messages remain new. Cardinality is
  * retained for identical findings. Diagnostics explicitly marked
  * `matchByOccurrence` may fall back to same-file plugin/rule/message matching
- * after strict evidence matching, preserving structural reformatting without
- * letting unrelated findings cancel across files. Unreadable evidence uses the
- * same conservative fallback rather than matching across files without proof.
+ * after same-file strict evidence matching. Cross-file evidence matching runs
+ * last so a copy cannot consume a reformatted local occurrence. Unreadable
+ * evidence uses the same conservative fallback rather than matching across
+ * files without proof.
  */
 export const computeDiagnosticDelta = (input: ComputeDiagnosticDeltaInput): DiagnosticDelta => {
   const baseCandidates = buildMatchCandidates(
@@ -164,6 +165,7 @@ export const computeDiagnosticDelta = (input: ComputeDiagnosticDeltaInput): Diag
   };
 
   matchCandidates(baseBySameFileStableEvidence, (candidate) => candidate.sameFileStableEvidenceKey);
+  matchCandidates(baseBySameFileFallback, (candidate) => candidate.sameFileFallbackKey);
   let crossFileMatchCount = 0;
   matchCandidates(
     baseByStableEvidence,
@@ -174,7 +176,6 @@ export const computeDiagnosticDelta = (input: ComputeDiagnosticDeltaInput): Diag
       }
     },
   );
-  matchCandidates(baseBySameFileFallback, (candidate) => candidate.sameFileFallbackKey);
 
   const newDiagnostics = input.headDiagnostics.filter(
     (_diagnostic, diagnosticIndex) => !matchedHeadDiagnosticIndexes.has(diagnosticIndex),

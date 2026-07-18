@@ -34,6 +34,7 @@ interface DiagnosticEvidenceReaderState {
 }
 
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"];
+const COMPONENT_WRAPPER_NAMES = new Set(["memo", "forwardRef"]);
 
 // Core's equivalent AST helpers compile against TypeScript 6 while this package supports
 // TypeScript 5, so these adapters stay local to avoid crossing incompatible node types.
@@ -122,14 +123,60 @@ const listSourceRecords = (
   return state.sourceRecords;
 };
 
+const unwrapExpression = (expression: ts.Expression): ts.Expression => {
+  let currentExpression = expression;
+  while (
+    ts.isParenthesizedExpression(currentExpression) ||
+    ts.isAsExpression(currentExpression) ||
+    ts.isTypeAssertionExpression(currentExpression) ||
+    ts.isNonNullExpression(currentExpression) ||
+    ts.isSatisfiesExpression(currentExpression)
+  ) {
+    currentExpression = currentExpression.expression;
+  }
+  return currentExpression;
+};
+
+const isComponentWrapperCall = (node: ts.CallExpression): boolean => {
+  const expression = unwrapExpression(node.expression);
+  let wrapperName: string | null = null;
+  if (ts.isIdentifier(expression)) {
+    wrapperName = expression.text;
+  } else if (ts.isPropertyAccessExpression(expression)) {
+    wrapperName = expression.name.text;
+  }
+  return wrapperName !== null && COMPONENT_WRAPPER_NAMES.has(wrapperName);
+};
+
 const getFunctionName = (node: ts.FunctionLikeDeclaration): string | null => {
   if (ts.isFunctionDeclaration(node) && node.name !== undefined) return node.name.text;
-  if (
-    (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) &&
-    ts.isVariableDeclaration(node.parent) &&
-    ts.isIdentifier(node.parent.name)
-  ) {
-    return node.parent.name.text;
+  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+    let componentExpression: ts.Expression = node;
+    while (true) {
+      const parent = componentExpression.parent;
+      if (
+        ts.isParenthesizedExpression(parent) ||
+        ts.isAsExpression(parent) ||
+        ts.isTypeAssertionExpression(parent) ||
+        ts.isNonNullExpression(parent) ||
+        ts.isSatisfiesExpression(parent)
+      ) {
+        componentExpression = parent;
+        continue;
+      }
+      if (
+        ts.isCallExpression(parent) &&
+        parent.arguments[0] === componentExpression &&
+        isComponentWrapperCall(parent)
+      ) {
+        componentExpression = parent;
+        continue;
+      }
+      if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
+        return parent.name.text;
+      }
+      return node.name?.text ?? null;
+    }
   }
   return null;
 };
@@ -243,20 +290,6 @@ const getComponentTagNames = (
     }
   }
   return tagNames;
-};
-
-const unwrapExpression = (expression: ts.Expression): ts.Expression => {
-  let currentExpression = expression;
-  while (
-    ts.isParenthesizedExpression(currentExpression) ||
-    ts.isAsExpression(currentExpression) ||
-    ts.isTypeAssertionExpression(currentExpression) ||
-    ts.isNonNullExpression(currentExpression) ||
-    ts.isSatisfiesExpression(currentExpression)
-  ) {
-    currentExpression = currentExpression.expression;
-  }
-  return currentExpression;
 };
 
 const getTransparentCall = (functionNode: ts.FunctionLikeDeclaration): ts.CallExpression | null => {

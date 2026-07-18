@@ -255,6 +255,31 @@ describe("computeDiagnosticDelta", () => {
     expect(delta.fixedCount).toBe(0);
   });
 
+  it("reserves a reformatted same-file occurrence before matching a cross-file copy", () => {
+    const occurrenceMatched = (filePath: string): Diagnostic =>
+      makeDiagnostic({
+        filePath,
+        rule: "iframe-has-title",
+        category: "Accessibility",
+        matchByOccurrence: true,
+      });
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [occurrenceMatched("src/CopiedFrame.tsx"), occurrenceMatched("src/App.tsx")],
+      baseDiagnostics: [occurrenceMatched("src/App.tsx")],
+      readHeadLine: lineReaderFrom({
+        "src/CopiedFrame.tsx:10": "<iframe",
+        "src/App.tsx:10": '<iframe src={url} className="embed" />',
+      }),
+      readBaseLine: lineReaderFrom({ "src/App.tsx:10": "<iframe" }),
+    });
+
+    expect(delta.newDiagnostics.map((diagnostic) => diagnostic.filePath)).toEqual([
+      "src/CopiedFrame.tsx",
+    ]);
+    expect(delta.fixedCount).toBe(0);
+    expect(delta.crossFileMatchCount).toBe(0);
+  });
+
   it("falls back to file, rule, and message matching when source is unreadable", () => {
     const base = [makeDiagnostic({ line: 10 })];
     const head = [makeDiagnostic({ line: 99 })];

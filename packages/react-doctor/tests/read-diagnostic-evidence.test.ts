@@ -129,6 +129,38 @@ describe("createDiagnosticEvidenceReader", () => {
     expect(delta.crossFileMatchCount).toBe(1);
   });
 
+  it("matches a handler extracted into a memo and forwardRef wrapped component", () => {
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/wrapper-before.tsx"),
+      "function WrapperBefore() {\n  return <span onClick={() => handleSendMessage(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-message-bubble.tsx"),
+      'import { forwardRef, memo } from "react";\nexport const ChatMessageBubble = memo(forwardRef(({ onSuggestion }, _ref) => {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}));\n',
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-page.tsx"),
+      'import { ChatMessageBubble } from "./chat-message-bubble";\n<ChatMessageBubble onSuggestion={handleSendMessage} />;\n',
+    );
+
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [
+        makeDiagnostic({ filePath: "src/chat-message-bubble.tsx", line: 3, endLine: 5 }),
+      ],
+      baseDiagnostics: [makeDiagnostic({ line: 2, endLine: 4 })],
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+      readHeadEvidence: createDiagnosticEvidenceReader(rootDirectory, {
+        resolveForwardedHandlers: true,
+      }),
+      readBaseEvidence: createDiagnosticEvidenceReader(rootDirectory),
+    });
+
+    expect(delta.newDiagnostics).toHaveLength(0);
+    expect(delta.fixedCount).toBe(0);
+    expect(delta.crossFileMatchCount).toBe(1);
+  });
+
   it("uses the diagnostic column to find a single-line arrow component", () => {
     const componentSource =
       "export const ChatMessageBubble = ({ onSuggestion }) => <span onClick={() => onSuggestion(question)}>{question}</span>;\n";

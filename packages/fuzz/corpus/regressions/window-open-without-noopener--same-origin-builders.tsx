@@ -1,7 +1,9 @@
 // rule: window-open-without-noopener
 // weakness: control-flow
-// source: PR #1000 corpus sweep (dtale same-origin popups; opener is wanted for app windows)
-import { fullPath, buildURL, getLocation } from "./menu-utils";
+// source: PR #1000 corpus sweep (locally proven same-origin popup builders)
+const fullPath = (path: string, dataId: string) => `${path}/${dataId}`;
+const buildURL = (path: string, _options: object) => path;
+const getLocation = () => window.location;
 
 export const openExport = (dataId: string, exportType: string) => {
   window.open(`${fullPath("/dtale/data-export", dataId)}?type=${exportType}`, "_blank");

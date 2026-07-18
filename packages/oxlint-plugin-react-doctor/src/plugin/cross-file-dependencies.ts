@@ -486,6 +486,7 @@ export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "nextjs-no-img-element",
   "no-loading-flag-reset-outside-finally",
   "only-export-components",
+  "window-open-without-noopener",
 ]);
 
 /**

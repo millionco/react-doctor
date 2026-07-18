@@ -97,6 +97,7 @@ const AUDITED_RULE_IDS = [
   "rn-detox-missing-await",
   "rules-of-hooks",
   "styled-components-non-transient-custom-prop-on-intrinsic-element",
+  "window-open-without-noopener",
 ] as const;
 
 // Rule × variant pairs where losing the diagnostic is the rule's DOCUMENTED

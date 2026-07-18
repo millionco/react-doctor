@@ -224,11 +224,9 @@ const producesComponentValue = (wrappingCall: EsTreeNode): boolean => {
   if (isNodeOfType(consumer, "ExportDefaultDeclaration")) return true;
   if (isNodeOfType(consumer, "AssignmentExpression") && consumer.right === outermostExpression) {
     if (isNodeOfType(consumer.left, "Identifier")) return isUppercaseName(consumer.left.name);
-    if (
-      isNodeOfType(consumer.left, "MemberExpression") &&
-      isNodeOfType(consumer.left.property, "Identifier")
-    ) {
-      return isUppercaseName(consumer.left.property.name);
+    if (isNodeOfType(consumer.left, "MemberExpression")) {
+      const propertyName = getStaticPropertyKeyName(consumer.left, { allowComputedString: true });
+      return propertyName !== null && isUppercaseName(propertyName);
     }
     return false;
   }

@@ -316,6 +316,17 @@ describe("no-inline-hoc-on-component", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat a dynamic uppercase member key as a component assignment", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `registry[Component] = withTheme((props) => {
+        useTheme();
+        return <div>{props.children}</div>;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a function that only renders JSX in a nested non-returned callback", () => {
     const result = runRule(
       noInlineHocOnComponent,

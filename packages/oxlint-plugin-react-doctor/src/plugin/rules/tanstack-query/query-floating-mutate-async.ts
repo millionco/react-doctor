@@ -136,7 +136,7 @@ const isDiscardingTestPosition = (
     parent.test === expression) ||
   (isNodeOfType(parent, "SwitchStatement") && parent.discriminant === expression);
 
-const isExpressionValueDiscarded = (expression: EsTreeNode): boolean => {
+const isExpressionValueDiscarded = (expression: EsTreeNode, context: RuleContext): boolean => {
   let current = expression;
   let parent = current.parent ?? null;
   while (parent) {
@@ -164,6 +164,12 @@ const isExpressionValueDiscarded = (expression: EsTreeNode): boolean => {
       parent = current.parent ?? null;
       continue;
     }
+    const forwardingPromiseCall = getRejectionForwardingPromiseCall(current, parent, context);
+    if (forwardingPromiseCall) {
+      current = forwardingPromiseCall;
+      parent = current.parent ?? null;
+      continue;
+    }
     return isNodeOfType(parent, "ExpressionStatement");
   }
   return false;
@@ -188,7 +194,7 @@ const isDiscardingCallbackHost = (
     (DISCARDING_SCHEDULER_NAMES.has(methodName) &&
       isProvenGlobalNamespaceReference(callee, methodName, context.scopes)) ||
     (PROMISE_PRODUCING_COLLECTION_METHOD_NAMES.has(methodName) &&
-      isExpressionValueDiscarded(callExpression))
+      isExpressionValueDiscarded(callExpression, context))
   );
 };
 
@@ -313,6 +319,7 @@ const isFloatingPromiseUse = (
 ): boolean => {
   let current: EsTreeNode = callExpression;
   let parent = current.parent ?? null;
+  let shouldTreatVoidAsDiscarded = false;
   while (parent) {
     if (TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type)) {
       current = parent;
@@ -331,7 +338,7 @@ const isFloatingPromiseUse = (
       parent = current.parent ?? null;
       continue;
     }
-    if (isDiscardingTestPosition(current, parent, false)) return true;
+    if (isDiscardingTestPosition(current, parent, shouldTreatVoidAsDiscarded)) return true;
     if (isNodeOfType(parent, "SequenceExpression")) {
       const finalExpression = parent.expressions.at(-1);
       if (finalExpression !== current) return true;
@@ -343,6 +350,7 @@ const isFloatingPromiseUse = (
     if (forwardingPromiseCall) {
       current = forwardingPromiseCall;
       parent = current.parent ?? null;
+      shouldTreatVoidAsDiscarded = true;
       continue;
     }
     if (isNodeOfType(parent, "MemberExpression") && parent.object === current) {
@@ -368,6 +376,7 @@ const isFloatingPromiseUse = (
       }
       current = chainCall;
       parent = current.parent ?? null;
+      shouldTreatVoidAsDiscarded = true;
       continue;
     }
     if (isNodeOfType(parent, "AwaitExpression") && parent.argument === current) {

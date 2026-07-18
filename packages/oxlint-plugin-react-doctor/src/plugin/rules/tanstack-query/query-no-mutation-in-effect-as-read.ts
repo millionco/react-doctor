@@ -541,7 +541,7 @@ const getNegativeRefGuardSymbol = (
 ): SymbolDescriptor | null => {
   const candidate = stripParenExpression(test);
   return isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!"
-    ? getRefCurrentSymbol(candidate.argument, context)
+    ? getRefCurrentSymbol(stripParenExpression(candidate.argument), context)
     : null;
 };
 

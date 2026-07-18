@@ -559,6 +559,37 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(4);
   });
 
+  it("flags explicitly voided rejection-forwarding Promise wrappers", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       void Promise.resolve(mutation.mutateAsync(first));
+       void Promise.all([mutation.mutateAsync(second)]);
+       void Promise.race([mutation.mutateAsync(third)]);
+       void Promise.any([mutation.mutateAsync(fourth)]);
+       void Promise.all(items.map((item) => mutation.mutateAsync(item)));`,
+    );
+    expect(result.diagnostics).toHaveLength(5);
+  });
+
+  it("flags explicitly voided fulfillment-only continuation chains", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       void mutation.mutateAsync(first).then(onSuccess);
+       void mutation.mutateAsync(second).finally(stopLoading);`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("accepts explicitly voided Promise wrappers with rejection handlers", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const handleError = (error) => report(error);
+       void Promise.resolve(mutation.mutateAsync(first)).catch(handleError);
+       void Promise.all([mutation.mutateAsync(second)]).then(onSuccess, handleError);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("accepts handled rejection-forwarding Promise wrappers", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);

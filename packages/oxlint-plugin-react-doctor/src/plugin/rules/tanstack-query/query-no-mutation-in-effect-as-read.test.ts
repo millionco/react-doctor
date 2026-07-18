@@ -466,7 +466,7 @@ describe("query-no-mutation-in-effect-as-read", () => {
        const { mutateAsync: fetchUser } = useMutation(options);
        const handled = useRef(false);
        useEffect(() => {
-         if (!(handled as RefObject<boolean>).current) {
+         if (!((handled as RefObject<boolean>).current as boolean)) {
            (handled as RefObject<boolean>).current = true as boolean;
            void fetchUser(params).then((response) => setUser(response.user));
          }

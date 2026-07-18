@@ -1016,6 +1016,28 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("tracks state mutation through transparent callee wrappers", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class DirectMutation extends React.Component {
+         componentDidMount() {
+           setTimeout(() => {
+             (this.setState as typeof this.setState)({ ready: true });
+           }, 100);
+         }
+         render() { return null; }
+       }
+       class HelperMutation extends React.Component {
+         refresh = () => (this.setState as typeof this.setState)({ ready: true });
+         componentDidMount() {
+           setTimeout(() => (this.refresh as typeof this.refresh)(), 100);
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("tracks forceUpdate helpers and transparent bound this arguments", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

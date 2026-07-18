@@ -95,14 +95,10 @@ const recordObserverUsage = (
     parent.arguments.some((argument) => argument === referenceRoot)
   ) {
     const bindCallee = stripParenExpression(parent.callee);
-    const boundMethod = isNodeOfType(bindCallee, "MemberExpression")
-      ? stripParenExpression(bindCallee.object)
-      : null;
     if (
       isNodeOfType(bindCallee, "MemberExpression") &&
       getStaticPropertyName(bindCallee) === "bind" &&
-      isNodeOfType(boundMethod, "MemberExpression") &&
-      isTrackedObserverReference(boundMethod.object, tracked.bindingIdentifier)
+      parent.arguments[0] === referenceRoot
     ) {
       return;
     }

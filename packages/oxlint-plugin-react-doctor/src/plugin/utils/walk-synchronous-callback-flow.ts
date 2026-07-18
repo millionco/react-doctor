@@ -1,5 +1,6 @@
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
+import { findVariableInitializer } from "./find-variable-initializer.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -20,11 +21,9 @@ const SYNCHRONOUS_CALLBACK_METHOD_NAMES = new Set([
   "sort",
 ]);
 
-const getConstLocalHelperName = (functionNode: EsTreeNode): string | null => {
+const getConstLocalHelperBindingIdentifier = (functionNode: EsTreeNode): EsTreeNode | null => {
   if (isNodeOfType(functionNode, "FunctionDeclaration")) {
-    return functionNode.id && isNodeOfType(functionNode.id, "Identifier")
-      ? functionNode.id.name
-      : null;
+    return functionNode.id && isNodeOfType(functionNode.id, "Identifier") ? functionNode.id : null;
   }
   const expressionRoot = findTransparentExpressionRoot(functionNode);
   const declarator = expressionRoot.parent;
@@ -32,7 +31,7 @@ const getConstLocalHelperName = (functionNode: EsTreeNode): string | null => {
   if (declarator.init !== expressionRoot || !isNodeOfType(declarator.id, "Identifier")) return null;
   const declaration = declarator.parent;
   if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return null;
-  return declaration.kind === "const" ? declarator.id.name : null;
+  return declaration.kind === "const" ? declarator.id : null;
 };
 
 export const walkSynchronousCallbackFlow = (
@@ -40,15 +39,17 @@ export const walkSynchronousCallbackFlow = (
   visit: (node: EsTreeNode) => void,
 ): void => {
   const activeBodies = new Set<EsTreeNode>();
-  const walkBody = (body: EsTreeNode, helpersInScope: Map<string, EsTreeNode>): void => {
+  const walkBody = (body: EsTreeNode, helpersInScope: Map<EsTreeNode, EsTreeNode>): void => {
     if (activeBodies.has(body)) return;
     activeBodies.add(body);
     const helperBodies = new Map(helpersInScope);
-    const helperAliases = new Map<string, string>();
+    const helperAliases = new Map<EsTreeNode, EsTreeNode>();
     walkAst(body, (child: EsTreeNode) => {
       if (child !== body && isFunctionLike(child)) {
-        const helperName = getConstLocalHelperName(child);
-        if (helperName && child.body) helperBodies.set(helperName, child.body);
+        const helperBindingIdentifier = getConstLocalHelperBindingIdentifier(child);
+        if (helperBindingIdentifier && child.body) {
+          helperBodies.set(helperBindingIdentifier, child.body);
+        }
         return false;
       }
       const aliasTarget =
@@ -63,18 +64,26 @@ export const walkSynchronousCallbackFlow = (
         isNodeOfType(child.parent, "VariableDeclaration") &&
         child.parent.kind === "const"
       ) {
-        helperAliases.set(child.id.name, aliasTarget.name);
+        const targetBindingIdentifier = findVariableInitializer(
+          aliasTarget,
+          aliasTarget.name,
+        )?.bindingIdentifier;
+        if (targetBindingIdentifier) helperAliases.set(child.id, targetBindingIdentifier);
       }
     });
-    for (const [aliasName, targetName] of helperAliases) {
-      let resolvedName = targetName;
-      const visitedNames = new Set([aliasName]);
-      while (helperAliases.has(resolvedName) && !visitedNames.has(resolvedName)) {
-        visitedNames.add(resolvedName);
-        resolvedName = helperAliases.get(resolvedName) ?? resolvedName;
+    for (const [aliasBindingIdentifier, targetBindingIdentifier] of helperAliases) {
+      let resolvedBindingIdentifier = targetBindingIdentifier;
+      const visitedBindingIdentifiers = new Set([aliasBindingIdentifier]);
+      while (
+        helperAliases.has(resolvedBindingIdentifier) &&
+        !visitedBindingIdentifiers.has(resolvedBindingIdentifier)
+      ) {
+        visitedBindingIdentifiers.add(resolvedBindingIdentifier);
+        resolvedBindingIdentifier =
+          helperAliases.get(resolvedBindingIdentifier) ?? resolvedBindingIdentifier;
       }
-      const helperBody = helperBodies.get(resolvedName);
-      if (helperBody) helperBodies.set(aliasName, helperBody);
+      const helperBody = helperBodies.get(resolvedBindingIdentifier);
+      if (helperBody) helperBodies.set(aliasBindingIdentifier, helperBody);
     }
     const walkNode = (node: EsTreeNode, isRoot = false): void => {
       if (!isRoot && isFunctionLike(node)) return;
@@ -83,7 +92,13 @@ export const walkSynchronousCallbackFlow = (
       if (!isNodeOfType(node, "CallExpression")) return;
       const callee = stripParenExpression(node.callee);
       if (isNodeOfType(callee, "Identifier")) {
-        const helperBody = helperBodies.get(callee.name);
+        const calleeBindingIdentifier = findVariableInitializer(
+          callee,
+          callee.name,
+        )?.bindingIdentifier;
+        const helperBody = calleeBindingIdentifier
+          ? helperBodies.get(calleeBindingIdentifier)
+          : undefined;
         if (helperBody) walkBody(helperBody, helperBodies);
         return;
       }
@@ -98,7 +113,13 @@ export const walkSynchronousCallbackFlow = (
         if (isFunctionLike(callback)) {
           if (callback.body) walkBody(callback.body, helperBodies);
         } else if (isNodeOfType(callback, "Identifier")) {
-          const helperBody = helperBodies.get(callback.name);
+          const callbackBindingIdentifier = findVariableInitializer(
+            callback,
+            callback.name,
+          )?.bindingIdentifier;
+          const helperBody = callbackBindingIdentifier
+            ? helperBodies.get(callbackBindingIdentifier)
+            : undefined;
           if (helperBody) walkBody(helperBody, helperBodies);
         }
       }

@@ -72,6 +72,28 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat observer bind this arguments as ownership escapes", () => {
+    const callbackBinding = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         callback.bind(observer);
+         observer.observe(node);
+       }, []);`,
+    );
+    const extractedMethodBinding = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         const extractedDisconnect = observer.disconnect;
+         extractedDisconnect.bind(observer);
+         observer.observe(node);
+       }, []);`,
+    );
+    expect(callbackBinding.diagnostics).toHaveLength(1);
+    expect(extractedMethodBinding.diagnostics).toHaveLength(1);
+  });
+
   it("tracks transparent wrappers in bound observer disconnect cleanups", () => {
     const castMethod = runRule(
       effectObserverNeedsDisconnect,
@@ -177,6 +199,28 @@ describe("effect-observer-needs-disconnect", () => {
     );
     expect(leakedResult.diagnostics).toHaveLength(1);
     expect(releasedResult.diagnostics).toHaveLength(0);
+  });
+
+  it("resolves synchronous helper calls by binding identity", () => {
+    const shadowedAcquisition = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         const observe = () => observer.observe(node);
+         [noop].forEach((observe) => observe());
+       }, []);`,
+    );
+    const shadowedRelease = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(callback);
+         const disconnect = () => observer.disconnect();
+         observer.observe(node);
+         [noop].forEach((disconnect) => disconnect());
+       }, []);`,
+    );
+    expect(shadowedAcquisition.diagnostics).toHaveLength(0);
+    expect(shadowedRelease.diagnostics).toHaveLength(1);
   });
 
   it("preserves observer acquisition and release order across synchronous callbacks", () => {

@@ -113,29 +113,23 @@ const functionSetsComponentState = (
       mutates = true;
       return false;
     }
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = stripParenExpression(node.callee);
     if (
-      isNodeOfType(node, "CallExpression") &&
-      isNodeOfType(node.callee, "MemberExpression") &&
-      isNodeOfType(stripParenExpression(node.callee.object), "ThisExpression") &&
-      COMPONENT_MUTATION_METHOD_NAMES.has(getStaticPropertyName(node.callee) ?? "")
+      !isNodeOfType(callee, "MemberExpression") ||
+      !isNodeOfType(stripParenExpression(callee.object), "ThisExpression")
     ) {
+      return;
+    }
+    const memberName = getStaticPropertyName(callee);
+    if (memberName && COMPONENT_MUTATION_METHOD_NAMES.has(memberName)) {
       mutates = true;
       return false;
     }
-    if (
-      isNodeOfType(node, "CallExpression") &&
-      isNodeOfType(node.callee, "MemberExpression") &&
-      isNodeOfType(stripParenExpression(node.callee.object), "ThisExpression")
-    ) {
-      const memberName = getStaticPropertyName(node.callee);
-      const nestedFunction = memberName ? classMemberFunction(classBody, memberName) : null;
-      if (
-        nestedFunction &&
-        functionSetsComponentState(nestedFunction, classBody, visitedFunctions)
-      ) {
-        mutates = true;
-        return false;
-      }
+    const nestedFunction = memberName ? classMemberFunction(classBody, memberName) : null;
+    if (nestedFunction && functionSetsComponentState(nestedFunction, classBody, visitedFunctions)) {
+      mutates = true;
+      return false;
     }
   });
   return mutates;
@@ -188,15 +182,16 @@ const timeoutCallbackMutatesComponent = (
       mutates = true;
       return;
     }
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = stripParenExpression(node.callee);
     if (
-      isNodeOfType(node, "CallExpression") &&
-      isNodeOfType(node.callee, "MemberExpression") &&
-      isNodeOfType(stripParenExpression(node.callee.object), "ThisExpression")
+      isNodeOfType(callee, "MemberExpression") &&
+      isNodeOfType(stripParenExpression(callee.object), "ThisExpression")
     ) {
       // `this.focusInput()` — resolve the instance method; a ref/DOM nudge
       // that never calls setState/runInAction mutates nothing when it
       // fires after unmount.
-      const memberName = getStaticPropertyName(node.callee);
+      const memberName = getStaticPropertyName(callee);
       const memberFunction = memberName ? classMemberFunction(classBody, memberName) : null;
       if (memberFunction && !functionSetsComponentState(memberFunction, classBody)) return;
       mutates = true;

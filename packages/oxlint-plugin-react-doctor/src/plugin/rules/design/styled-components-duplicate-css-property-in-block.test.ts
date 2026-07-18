@@ -155,6 +155,18 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not assume repeated parameter-independent calls are stable", () => {
+    const result = runStyledRule(
+      'let flip = false; const next = () => flip = !flip; const Modal = styled.div`height: ${() => next() ? "100vh" : "auto"}; height: ${() => next() ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+
+    const parameterResult = runStyledRule(
+      'let flip = false; const next = (value) => (flip = !flip) && value; const Modal = styled.div`height: ${(properties) => next(properties.active) ? "100vh" : "auto"}; height: ${(state) => next(state.active) ? "100dvh" : "auto"};`;',
+    );
+    expect(parameterResult.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag equivalent static property keys that match one parameter name", () => {
     const result = runStyledRule(
       'const Modal = styled.div`height: ${properties => properties.state ? "100vh" : "auto"}; height: ${state => state.state ? "100dvh" : "auto"};`;',
@@ -289,11 +301,94 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(arrayResult.diagnostics).toHaveLength(1);
   });
 
+  it("distinguishes different destructured property defaults", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${({ active = true }) => active ? "100vh" : "auto"}; height: ${({ active = false }) => active ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("distinguishes dynamic destructured property sources", () => {
+    const result = runStyledRule(
+      'const firstKey = "active"; const secondKey = "disabled"; const Modal = styled.div`height: ${({ [firstKey]: active }) => active ? "100vh" : "auto"}; height: ${({ [secondKey]: active }) => active ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("distinguishes callback parameter positions", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${(properties, other) => properties.active ? "100vh" : "auto"}; height: ${(other, properties) => properties.active ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("distinguishes dotted keys from nested property paths", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${({ "a.b": active }) => active ? "100vh" : "auto"}; height: ${({ a: { b: active } }) => active ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("distinguishes object rest exclusion sets", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${({ "a,b": omitted, ...rest }) => rest.a ? "100vh" : "auto"}; height: ${({ a: first, b: second, ...rest }) => rest.a ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("matches member reads with equivalent destructured bindings", () => {
     const result = runStyledRule(
       'const Modal = styled.div`height: ${properties => properties.active ? "100vh" : "auto"}; height: ${({ active: enabled }) => enabled ? "100dvh" : "auto"};`;',
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("matches array rest members to their original offsets", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${(properties) => properties.items[1].active ? "100vh" : "auto"}; height: ${({ items: [first, ...rest] }) => rest[0].active ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("matches root rest parameters to their argument positions", () => {
+    const equivalentResult = runStyledRule(
+      'const Modal = styled.div`height: ${(...parameters) => parameters[0].active ? "100vh" : "auto"}; height: ${(properties) => properties.active ? "100dvh" : "auto"};`;',
+    );
+    expect(equivalentResult.diagnostics).toHaveLength(0);
+
+    const differentResult = runStyledRule(
+      'const Modal = styled.div`height: ${(...parameters) => parameters[0].active ? "100vh" : "auto"}; height: ${(properties) => properties[0].active ? "100dvh" : "auto"};`;',
+    );
+    expect(differentResult.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat noncanonical array rest keys as offsets", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${([first, ...rest]) => rest["01"].active ? "100vh" : "auto"}; height: ${(properties) => properties[1].active ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves callback-local const initializers", () => {
+    const differentResult = runStyledRule(
+      'const Modal = styled.div`height: ${(properties) => { const active = properties.a; return active ? "100vh" : "auto"; }}; height: ${(properties) => { const active = properties.b; return active ? "100dvh" : "auto"; }};`;',
+    );
+    expect(differentResult.diagnostics).toHaveLength(1);
+
+    const equivalentResult = runStyledRule(
+      'const Modal = styled.div`height: ${(properties) => { const active = properties.a; return active ? "100vh" : "auto"; }}; height: ${(state) => { const enabled = state.a; return enabled ? "100dvh" : "auto"; }};`;',
+    );
+    expect(equivalentResult.diagnostics).toHaveLength(0);
+
+    const directResult = runStyledRule(
+      'const Modal = styled.div`height: ${(properties) => { const active = properties.a; return active ? "100vh" : "auto"; }}; height: ${(state) => state.a ? "100dvh" : "auto"};`;',
+    );
+    expect(directResult.diagnostics).toHaveLength(0);
+
+    const destructuredResult = runStyledRule(
+      'const Modal = styled.div`height: ${(properties) => { const { active } = properties; return active ? "100vh" : "auto"; }}; height: ${(state) => state.active ? "100dvh" : "auto"};`;',
+    );
+    expect(destructuredResult.diagnostics).toHaveLength(0);
   });
 
   it("preserves bindings alongside object rest parameters", () => {
@@ -311,6 +406,25 @@ describe("styled-components-duplicate-css-property-in-block", () => {
   it("does not distinguish shorthand from explicit object properties", () => {
     const result = runStyledRule(
       'const active = true; const Modal = styled.div`height: ${properties => matches({ active }) ? "100vh" : "auto"}; height: ${state => matches({ active: active }) ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("normalizes static computed members and object keys", () => {
+    const memberResult = runStyledRule(
+      'const flags = { active: true }; const Modal = styled.div`height: ${() => flags.active ? "100vh" : "auto"}; height: ${() => flags["active"] ? "100dvh" : "auto"};`;',
+    );
+    expect(memberResult.diagnostics).toHaveLength(0);
+
+    const propertyResult = runStyledRule(
+      'const Modal = styled.div`height: ${(properties) => matches({ ["active"]: properties.active }) ? "100vh" : "auto"}; height: ${(state) => matches({ active: state.active }) ? "100dvh" : "auto"};`;',
+    );
+    expect(propertyResult.diagnostics).toHaveLength(0);
+  });
+
+  it("compares cooked template literal values", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${(properties) => `${properties.mode}\\x61` ? "100vh" : "auto"}; height: ${(state) => `${state.mode}a` ? "100dvh" : "auto"};`;',
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -409,5 +523,31 @@ describe("styled-components-duplicate-css-property-in-block", () => {
         "`;",
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows a later conditional declaration with a flattened empty branch", () => {
+    for (const emptyValue of ["undefined", "null", "false", '""']) {
+      const result = runStyledRule(
+        `const Button = styled.button\`color: \${properties => properties.primary ? "red" : "blue"}; color: \${properties => properties.secondary ? "green" : ${emptyValue}};\`;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("respects important declaration precedence", () => {
+    const earlierImportantResult = runStyledRule(
+      'const Button = styled.button`color: ${properties => properties.primary ? "red" : "blue"} !important; color: ${properties => properties.secondary ? "green" : "black"};`;',
+    );
+    expect(earlierImportantResult.diagnostics).toHaveLength(0);
+
+    const laterImportantResult = runStyledRule(
+      'const Button = styled.button`color: ${properties => properties.primary ? "red" : "blue"}; color: ${properties => properties.secondary ? "green" : "black"} !important;`;',
+    );
+    expect(laterImportantResult.diagnostics).toHaveLength(1);
+
+    const interveningImportantResult = runStyledRule(
+      'const Button = styled.button`color: ${properties => properties.primary ? "red" : "blue"}; color: red !important; color: ${properties => properties.secondary ? "green" : "black"};`;',
+    );
+    expect(interveningImportantResult.diagnostics).toHaveLength(0);
   });
 });

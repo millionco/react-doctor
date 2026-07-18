@@ -1,4 +1,5 @@
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -10,6 +11,7 @@ import { isProvenStyledComponentExpression } from "../../utils/is-proven-styled-
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 // Opaque marker substituted for each `${...}` interpolation while scanning
 // the CSS text, so an interpolation never contributes a `;`/`{`/`}`/`:`
@@ -20,100 +22,243 @@ const CSS_PROPERTY_PATTERN = /^-?[a-z][a-z-]*$/;
 interface CssDeclaration {
   readonly property: string;
   readonly isConditional: boolean;
+  readonly isImportant: boolean;
   readonly ternaryTests: TernaryTest[];
 }
 
 interface TernaryTest {
   readonly expression: EsTreeNode;
-  readonly parameterBindings: ReadonlyMap<string, string> | null;
+  readonly parameterBindings: ReadonlyMap<string, CallbackParameterBinding>;
+  readonly localBindingNames: ReadonlySet<string>;
+  readonly localInitializers: ReadonlyMap<string, EsTreeNode>;
+  readonly alwaysProducesCssValue: boolean;
 }
+
+interface CallbackParameterBinding {
+  readonly sourcePath: CallbackParameterSourcePath;
+  readonly defaultValues: readonly EsTreeNode[];
+}
+
+interface CallbackParameterSourcePath {
+  readonly parameterIndex: number;
+  readonly segments: readonly CallbackParameterSourceSegment[];
+}
+
+interface CallbackParameterSourceSegment {
+  readonly propertyName: string | null;
+  readonly arrayRestOffset: number | null;
+  readonly excludedPropertyNames: readonly string[] | null;
+}
+
+const propertySourceSegment = (propertyName: string): CallbackParameterSourceSegment => ({
+  propertyName,
+  arrayRestOffset: null,
+  excludedPropertyNames: null,
+});
+
+const arrayRestSourceSegment = (arrayRestOffset: number): CallbackParameterSourceSegment => ({
+  propertyName: null,
+  arrayRestOffset,
+  excludedPropertyNames: null,
+});
+
+const restSourceSegment = (
+  excludedPropertyNames: readonly string[],
+): CallbackParameterSourceSegment => ({
+  propertyName: null,
+  arrayRestOffset: null,
+  excludedPropertyNames,
+});
 
 const collectCallbackParameterBindings = (
   parameter: EsTreeNode,
-  sourcePath: string,
-  bindings: Map<string, string>,
-): boolean => {
+  sourcePath: CallbackParameterSourcePath,
+  defaultValues: readonly EsTreeNode[],
+  bindings: Map<string, CallbackParameterBinding>,
+): void => {
   if (isNodeOfType(parameter, "Identifier")) {
-    bindings.set(parameter.name, sourcePath);
-    return true;
+    bindings.set(parameter.name, { sourcePath, defaultValues });
+    return;
   }
   if (isNodeOfType(parameter, "AssignmentPattern")) {
-    return collectCallbackParameterBindings(parameter.left, sourcePath, bindings);
+    const nestedDefaultValues =
+      sourcePath.segments.length === 0 ? defaultValues : [...defaultValues, parameter.right];
+    collectCallbackParameterBindings(parameter.left, sourcePath, nestedDefaultValues, bindings);
+    return;
   }
   if (isNodeOfType(parameter, "RestElement")) {
-    return collectCallbackParameterBindings(parameter.argument, sourcePath, bindings);
+    const restPath =
+      sourcePath.segments.length === 0
+        ? { ...sourcePath, segments: [arrayRestSourceSegment(0)] }
+        : sourcePath;
+    collectCallbackParameterBindings(parameter.argument, restPath, defaultValues, bindings);
+    return;
   }
   if (isNodeOfType(parameter, "ObjectPattern")) {
     const propertyNames: string[] = [];
+    let hasDynamicProperty = false;
     for (const property of parameter.properties) {
       if (!isNodeOfType(property, "Property")) continue;
       const propertyName = getStaticPropertyKeyName(property, {
         allowComputedString: true,
         stringifyNonStringLiterals: true,
       });
-      if (propertyName === null) return false;
+      if (propertyName === null) {
+        hasDynamicProperty = true;
+        continue;
+      }
       propertyNames.push(propertyName);
-      if (
-        !collectCallbackParameterBindings(property.value, `${sourcePath}.${propertyName}`, bindings)
-      ) {
-        return false;
-      }
+      collectCallbackParameterBindings(
+        property.value,
+        { ...sourcePath, segments: [...sourcePath.segments, propertySourceSegment(propertyName)] },
+        defaultValues,
+        bindings,
+      );
     }
-    const restSourcePath = `${sourcePath}.{rest-without:${propertyNames.toSorted().join(",")}}`;
+    if (hasDynamicProperty) return;
+    const uniquePropertyNames = [...new Set(propertyNames)].toSorted();
+    const restPath: CallbackParameterSourcePath = {
+      ...sourcePath,
+      segments: [...sourcePath.segments, restSourceSegment(uniquePropertyNames)],
+    };
     for (const property of parameter.properties) {
-      if (
-        isNodeOfType(property, "RestElement") &&
-        !collectCallbackParameterBindings(property.argument, restSourcePath, bindings)
-      ) {
-        return false;
+      if (isNodeOfType(property, "RestElement")) {
+        collectCallbackParameterBindings(property.argument, restPath, defaultValues, bindings);
       }
     }
-    return true;
+    return;
   }
   if (isNodeOfType(parameter, "ArrayPattern")) {
     for (let elementIndex = 0; elementIndex < parameter.elements.length; elementIndex += 1) {
       const element = parameter.elements[elementIndex];
       if (!element) continue;
-      if (!collectCallbackParameterBindings(element, `${sourcePath}.${elementIndex}`, bindings)) {
-        return false;
+      if (isNodeOfType(element, "RestElement")) {
+        collectCallbackParameterBindings(
+          element.argument,
+          {
+            ...sourcePath,
+            segments: [...sourcePath.segments, arrayRestSourceSegment(elementIndex)],
+          },
+          defaultValues,
+          bindings,
+        );
+        continue;
       }
+      collectCallbackParameterBindings(
+        element,
+        {
+          ...sourcePath,
+          segments: [...sourcePath.segments, propertySourceSegment(String(elementIndex))],
+        },
+        defaultValues,
+        bindings,
+      );
     }
-    return true;
   }
-  return false;
 };
 
 const getCallbackParameterBindings = (
-  parameter: EsTreeNode | undefined,
-): ReadonlyMap<string, string> | null => {
-  if (!parameter) return null;
-  const bindings = new Map<string, string>();
-  return collectCallbackParameterBindings(parameter, "$", bindings) ? bindings : null;
+  parameters: readonly EsTreeNode[],
+): Map<string, CallbackParameterBinding> => {
+  const bindings = new Map<string, CallbackParameterBinding>();
+  parameters.forEach((parameter, parameterIndex) => {
+    collectCallbackParameterBindings(parameter, { parameterIndex, segments: [] }, [], bindings);
+  });
+  return bindings;
 };
+
+const EMPTY_BINDINGS = new Map<string, CallbackParameterBinding>();
+const EMPTY_NAMES = new Set<string>();
+const EMPTY_INITIALIZERS = new Map<string, EsTreeNode>();
+
+const isFlattenedInterpolationValue = (expression: EsTreeNode): boolean => {
+  const unwrapped = stripParenExpression(expression);
+  if (isNodeOfType(unwrapped, "Literal")) {
+    return unwrapped.value === null || unwrapped.value === false || unwrapped.value === "";
+  }
+  if (isNodeOfType(unwrapped, "Identifier")) return unwrapped.name === "undefined";
+  return isNodeOfType(unwrapped, "UnaryExpression") && unwrapped.operator === "void";
+};
+
+const doesConditionalAlwaysProduceCssValue = (
+  conditionalExpression: EsTreeNodeOfType<"ConditionalExpression">,
+): boolean =>
+  !isFlattenedInterpolationValue(conditionalExpression.consequent) &&
+  !isFlattenedInterpolationValue(conditionalExpression.alternate);
 
 const getTernaryInterpolationTest = (expression: EsTreeNode | undefined): TernaryTest | null => {
   if (!expression) return null;
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "ConditionalExpression")) {
-    return { expression: stripped.test, parameterBindings: null };
+    return {
+      expression: stripped.test,
+      parameterBindings: EMPTY_BINDINGS,
+      localBindingNames: EMPTY_NAMES,
+      localInitializers: EMPTY_INITIALIZERS,
+      alwaysProducesCssValue: doesConditionalAlwaysProduceCssValue(stripped),
+    };
   }
   if (
     isNodeOfType(stripped, "ArrowFunctionExpression") ||
     isNodeOfType(stripped, "FunctionExpression")
   ) {
-    const firstParameter = stripped.params[0];
-    const parameterBindings =
-      stripped.params.length === 1 ? getCallbackParameterBindings(firstParameter) : null;
+    const parameters = stripped.params;
+    const parameterBindings = getCallbackParameterBindings(parameters);
+    const localBindingNames = new Set<string>();
+    for (const parameter of parameters) collectPatternNames(parameter, localBindingNames);
+    const localInitializers = new Map<string, EsTreeNode>();
     const body = stripParenExpression(stripped.body);
     if (isNodeOfType(body, "ConditionalExpression")) {
-      return { expression: body.test, parameterBindings };
+      return {
+        expression: body.test,
+        parameterBindings,
+        localBindingNames,
+        localInitializers,
+        alwaysProducesCssValue: doesConditionalAlwaysProduceCssValue(body),
+      };
     }
     if (isNodeOfType(body, "BlockStatement")) {
       for (const statement of body.body) {
+        if (isNodeOfType(statement, "VariableDeclaration")) {
+          for (const declarator of statement.declarations) {
+            collectPatternNames(declarator.id, localBindingNames);
+            if (statement.kind === "const" && declarator.init) {
+              const initializerBinding = getParameterBinding(declarator.init, {
+                expression: declarator.init,
+                parameterBindings,
+                localBindingNames,
+                localInitializers,
+                alwaysProducesCssValue: true,
+              });
+              if (initializerBinding) {
+                collectCallbackParameterBindings(
+                  declarator.id,
+                  initializerBinding.sourcePath,
+                  initializerBinding.defaultValues,
+                  parameterBindings,
+                );
+              }
+            }
+            if (
+              statement.kind === "const" &&
+              isNodeOfType(declarator.id, "Identifier") &&
+              declarator.init
+            ) {
+              localInitializers.set(declarator.id.name, declarator.init);
+            }
+          }
+          continue;
+        }
         if (!isNodeOfType(statement, "ReturnStatement") || !statement.argument) continue;
         const returnedExpression = stripParenExpression(statement.argument);
         if (isNodeOfType(returnedExpression, "ConditionalExpression")) {
-          return { expression: returnedExpression.test, parameterBindings };
+          return {
+            expression: returnedExpression.test,
+            parameterBindings,
+            localBindingNames,
+            localInitializers,
+            alwaysProducesCssValue: doesConditionalAlwaysProduceCssValue(returnedExpression),
+          };
         }
       }
     }
@@ -121,26 +266,164 @@ const getTernaryInterpolationTest = (expression: EsTreeNode | undefined): Ternar
   return null;
 };
 
-const getParameterSourcePath = (node: EsTreeNode, test: TernaryTest): string | null => {
+const getParameterBinding = (
+  node: EsTreeNode,
+  test: TernaryTest,
+  resolvingLocalNames = new Set<string>(),
+): CallbackParameterBinding | null => {
   const unwrapped = stripParenExpression(node);
   if (isNodeOfType(unwrapped, "Identifier")) {
-    return test.parameterBindings?.get(unwrapped.name) ?? null;
+    const parameterBinding = test.parameterBindings.get(unwrapped.name);
+    if (parameterBinding) return parameterBinding;
+    const initializer = test.localInitializers.get(unwrapped.name);
+    if (!initializer || resolvingLocalNames.has(unwrapped.name)) return null;
+    resolvingLocalNames.add(unwrapped.name);
+    const initializerBinding = getParameterBinding(initializer, test, resolvingLocalNames);
+    resolvingLocalNames.delete(unwrapped.name);
+    return initializerBinding;
   }
   if (!isNodeOfType(unwrapped, "MemberExpression")) return null;
-  const objectPath = getParameterSourcePath(unwrapped.object, test);
-  if (objectPath === null) return null;
-  const propertyName = getStaticPropertyName(unwrapped);
-  return propertyName === null ? null : `${objectPath}.${propertyName}`;
+  const objectBinding = getParameterBinding(unwrapped.object, test, resolvingLocalNames);
+  if (objectBinding === null) return null;
+  const propertyName = getStaticPropertyKeyName(unwrapped, {
+    allowComputedString: true,
+    stringifyNonStringLiterals: true,
+  });
+  if (propertyName === null) return null;
+  const lastSegment = objectBinding.sourcePath.segments.at(-1);
+  const numericPropertyIndex = Number(propertyName);
+  const canResolveArrayRestIndex =
+    lastSegment !== undefined &&
+    lastSegment.arrayRestOffset !== null &&
+    /^(?:0|[1-9]\d*)$/.test(propertyName) &&
+    Number.isSafeInteger(numericPropertyIndex) &&
+    numericPropertyIndex >= 0;
+  const isRootParameterRest =
+    canResolveArrayRestIndex && objectBinding.sourcePath.segments.length === 1;
+  const baseSegments = canResolveArrayRestIndex
+    ? objectBinding.sourcePath.segments.slice(0, -1)
+    : objectBinding.sourcePath.segments;
+  const resolvedPropertyName = canResolveArrayRestIndex
+    ? String((lastSegment?.arrayRestOffset ?? 0) + numericPropertyIndex)
+    : propertyName;
+  return {
+    ...objectBinding,
+    sourcePath: {
+      ...objectBinding.sourcePath,
+      parameterIndex: isRootParameterRest
+        ? objectBinding.sourcePath.parameterIndex +
+          (lastSegment?.arrayRestOffset ?? 0) +
+          numericPropertyIndex
+        : objectBinding.sourcePath.parameterIndex,
+      segments: isRootParameterRest
+        ? baseSegments
+        : [...baseSegments, propertySourceSegment(resolvedPropertyName)],
+    },
+  };
 };
 
-const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
+const areSourceSegmentsEquivalent = (
+  left: CallbackParameterSourceSegment,
+  right: CallbackParameterSourceSegment,
+): boolean =>
+  left.propertyName === right.propertyName &&
+  left.arrayRestOffset === right.arrayRestOffset &&
+  (left.excludedPropertyNames === null || right.excludedPropertyNames === null
+    ? left.excludedPropertyNames === right.excludedPropertyNames
+    : left.excludedPropertyNames.length === right.excludedPropertyNames.length &&
+      left.excludedPropertyNames.every(
+        (propertyName, propertyIndex) =>
+          propertyName === right.excludedPropertyNames?.[propertyIndex],
+      ));
+
+const areSourcePathsEquivalent = (
+  left: CallbackParameterSourcePath,
+  right: CallbackParameterSourcePath,
+): boolean =>
+  left.parameterIndex === right.parameterIndex &&
+  left.segments.length === right.segments.length &&
+  left.segments.every((segment, segmentIndex) =>
+    areSourceSegmentsEquivalent(segment, right.segments[segmentIndex]),
+  );
+
+const isObviouslyStatefulCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const symbol = resolveConstIdentifierAlias(callee, scopes);
+  const initializer = symbol?.initializer ? stripParenExpression(symbol.initializer) : null;
+  if (
+    !initializer ||
+    (!isNodeOfType(initializer, "ArrowFunctionExpression") &&
+      !isNodeOfType(initializer, "FunctionExpression"))
+  ) {
+    return false;
+  }
+  let isStateful = false;
+  walkAst(initializer.body, (node: EsTreeNode) => {
+    if (isNodeOfType(node, "AssignmentExpression") || isNodeOfType(node, "UpdateExpression")) {
+      isStateful = true;
+      return false;
+    }
+    return true;
+  });
+  return isStateful;
+};
+
+const areTestsEquivalent = (
+  left: TernaryTest,
+  right: TernaryTest,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const resolvingLeftLocalNames = new Set<string>();
+  const resolvingRightLocalNames = new Set<string>();
   const compare = (leftNode: EsTreeNode, rightNode: EsTreeNode): boolean => {
     const unwrappedLeft = stripParenExpression(leftNode);
     const unwrappedRight = stripParenExpression(rightNode);
-    const leftParameterPath = getParameterSourcePath(unwrappedLeft, left);
-    const rightParameterPath = getParameterSourcePath(unwrappedRight, right);
-    if (leftParameterPath !== null || rightParameterPath !== null) {
-      return leftParameterPath !== null && leftParameterPath === rightParameterPath;
+    const leftParameterBinding = getParameterBinding(unwrappedLeft, left);
+    const rightParameterBinding = getParameterBinding(unwrappedRight, right);
+    if (leftParameterBinding !== null || rightParameterBinding !== null) {
+      return (
+        leftParameterBinding !== null &&
+        rightParameterBinding !== null &&
+        areSourcePathsEquivalent(
+          leftParameterBinding.sourcePath,
+          rightParameterBinding.sourcePath,
+        ) &&
+        leftParameterBinding.defaultValues.length === rightParameterBinding.defaultValues.length &&
+        leftParameterBinding.defaultValues.every((defaultValue, defaultValueIndex) =>
+          compare(defaultValue, rightParameterBinding.defaultValues[defaultValueIndex]),
+        )
+      );
+    }
+    if (isNodeOfType(unwrappedLeft, "Identifier") && isNodeOfType(unwrappedRight, "Identifier")) {
+      const leftInitializer = left.localInitializers.get(unwrappedLeft.name);
+      const rightInitializer = right.localInitializers.get(unwrappedRight.name);
+      if (leftInitializer || rightInitializer) {
+        if (
+          (leftInitializer && resolvingLeftLocalNames.has(unwrappedLeft.name)) ||
+          (rightInitializer && resolvingRightLocalNames.has(unwrappedRight.name))
+        ) {
+          return false;
+        }
+        if (leftInitializer) resolvingLeftLocalNames.add(unwrappedLeft.name);
+        if (rightInitializer) resolvingRightLocalNames.add(unwrappedRight.name);
+        const areInitializersEquivalent = compare(
+          leftInitializer ?? unwrappedLeft,
+          rightInitializer ?? unwrappedRight,
+        );
+        if (leftInitializer) resolvingLeftLocalNames.delete(unwrappedLeft.name);
+        if (rightInitializer) resolvingRightLocalNames.delete(unwrappedRight.name);
+        return areInitializersEquivalent;
+      }
+      if (
+        left.localBindingNames.has(unwrappedLeft.name) ||
+        right.localBindingNames.has(unwrappedRight.name)
+      ) {
+        return false;
+      }
     }
     if (unwrappedLeft.type !== unwrappedRight.type) return false;
     if (isNodeOfType(unwrappedLeft, "Identifier") && isNodeOfType(unwrappedRight, "Identifier")) {
@@ -162,13 +445,20 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
       isNodeOfType(unwrappedLeft, "MemberExpression") &&
       isNodeOfType(unwrappedRight, "MemberExpression")
     ) {
-      const leftPropertyName = getStaticPropertyName(unwrappedLeft);
+      const leftPropertyName = getStaticPropertyKeyName(unwrappedLeft, {
+        allowComputedString: true,
+        stringifyNonStringLiterals: true,
+      });
+      const rightPropertyName = getStaticPropertyKeyName(unwrappedRight, {
+        allowComputedString: true,
+        stringifyNonStringLiterals: true,
+      });
       return (
-        unwrappedLeft.computed === unwrappedRight.computed &&
         compare(unwrappedLeft.object, unwrappedRight.object) &&
-        (unwrappedLeft.computed
-          ? compare(unwrappedLeft.property, unwrappedRight.property)
-          : leftPropertyName !== null && leftPropertyName === getStaticPropertyName(unwrappedRight))
+        (leftPropertyName !== null || rightPropertyName !== null
+          ? leftPropertyName !== null && leftPropertyName === rightPropertyName
+          : unwrappedLeft.computed === unwrappedRight.computed &&
+            compare(unwrappedLeft.property, unwrappedRight.property))
       );
     }
     if (
@@ -222,7 +512,10 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
         unwrappedLeft.quasis.length === unwrappedRight.quasis.length &&
         unwrappedLeft.expressions.length === unwrappedRight.expressions.length &&
         unwrappedLeft.quasis.every(
-          (quasi, quasiIndex) => quasi.value.raw === unwrappedRight.quasis[quasiIndex]?.value.raw,
+          (quasi, quasiIndex) =>
+            (quasi.value.cooked ?? quasi.value.raw) ===
+            (unwrappedRight.quasis[quasiIndex]?.value.cooked ??
+              unwrappedRight.quasis[quasiIndex]?.value.raw),
         ) &&
         unwrappedLeft.expressions.every((expression, expressionIndex) =>
           compare(expression, unwrappedRight.expressions[expressionIndex]),
@@ -233,6 +526,16 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
       isNodeOfType(unwrappedLeft, "CallExpression") &&
       isNodeOfType(unwrappedRight, "CallExpression")
     ) {
+      if (
+        isObviouslyStatefulCall(unwrappedLeft, scopes) ||
+        isObviouslyStatefulCall(unwrappedRight, scopes) ||
+        (unwrappedLeft.arguments.length === 0 &&
+          unwrappedRight.arguments.length === 0 &&
+          getParameterBinding(unwrappedLeft.callee, left) === null &&
+          getParameterBinding(unwrappedRight.callee, right) === null)
+      ) {
+        return false;
+      }
       return (
         compare(unwrappedLeft.callee, unwrappedRight.callee) &&
         unwrappedLeft.arguments.length === unwrappedRight.arguments.length &&
@@ -262,14 +565,19 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
     }
     if (isNodeOfType(unwrappedLeft, "Property") && isNodeOfType(unwrappedRight, "Property")) {
       const leftPropertyName = getStaticPropertyKeyName(unwrappedLeft, {
+        allowComputedString: true,
         stringifyNonStringLiterals: true,
       });
-      const keysMatch = unwrappedLeft.computed
-        ? unwrappedRight.computed && compare(unwrappedLeft.key, unwrappedRight.key)
-        : !unwrappedRight.computed &&
-          leftPropertyName !== null &&
-          leftPropertyName ===
-            getStaticPropertyKeyName(unwrappedRight, { stringifyNonStringLiterals: true });
+      const rightPropertyName = getStaticPropertyKeyName(unwrappedRight, {
+        allowComputedString: true,
+        stringifyNonStringLiterals: true,
+      });
+      const keysMatch =
+        leftPropertyName !== null || rightPropertyName !== null
+          ? leftPropertyName !== null && leftPropertyName === rightPropertyName
+          : unwrappedLeft.computed &&
+            unwrappedRight.computed &&
+            compare(unwrappedLeft.key, unwrappedRight.key);
       return (
         keysMatch &&
         unwrappedLeft.kind === unwrappedRight.kind &&
@@ -303,7 +611,12 @@ const finalizeDeclaration = (
   if (colonIndex === -1) return;
   const property = text.slice(0, colonIndex).trim().toLowerCase();
   if (!property || property.startsWith("--") || !CSS_PROPERTY_PATTERN.test(property)) return;
-  declarations.push({ property, isConditional: ternaryTests.length > 0, ternaryTests });
+  declarations.push({
+    property,
+    isConditional: ternaryTests.length > 0,
+    isImportant: /!\s*important\s*$/i.test(text),
+    ternaryTests,
+  });
 };
 
 // Scan the interleaved static text + interpolations, collecting only the
@@ -465,13 +778,32 @@ export const styledComponentsDuplicateCssPropertyInBlock = defineRule({
           (occurrence) =>
             occurrence.ternaryTests.length === firstTests.length &&
             occurrence.ternaryTests.every((test, testIndex) =>
-              areTestsEquivalent(test, firstTests[testIndex]),
+              areTestsEquivalent(test, firstTests[testIndex], context.scopes),
             ),
         );
         if (allTestsEqual) continue;
+        const hasConflictingOverride = occurrences.some((laterOccurrence, laterIndex) => {
+          if (
+            !laterOccurrence.isConditional ||
+            !laterOccurrence.ternaryTests.every((test) => test.alwaysProducesCssValue)
+          ) {
+            return false;
+          }
+          const priorOccurrences = occurrences.slice(0, laterIndex);
+          const priorImportantOccurrences = priorOccurrences.filter(
+            (occurrence) => occurrence.isImportant,
+          );
+          const effectivePriorOccurrence =
+            priorImportantOccurrences.at(-1) ?? priorOccurrences.at(-1);
+          return (
+            effectivePriorOccurrence?.isConditional === true &&
+            (laterOccurrence.isImportant || !effectivePriorOccurrence.isImportant)
+          );
+        });
+        if (!hasConflictingOverride) continue;
         context.report({
           node,
-          message: `The CSS property \`${property}\` is declared ${occurrences.length} times at the same level here, so the last conditional value always wins and the earlier ones never apply — merge them into a single declaration.`,
+          message: `The CSS property \`${property}\` is declared ${occurrences.length} times at the same level here, so a later conditional value can override an earlier one — merge them into a single declaration to make the precedence explicit.`,
         });
       }
     },

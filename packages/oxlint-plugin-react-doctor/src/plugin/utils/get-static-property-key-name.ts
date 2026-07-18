@@ -28,6 +28,13 @@ export const getStaticPropertyKeyName = (
     }
     if (
       options.allowComputedString &&
+      options.stringifyNonStringLiterals &&
+      isNodeOfType(key, "Literal")
+    ) {
+      return String(key.value);
+    }
+    if (
+      options.allowComputedString &&
       isNodeOfType(key, "TemplateLiteral") &&
       key.expressions.length === 0
     ) {

@@ -817,8 +817,20 @@ export const styledComponentsDuplicateCssPropertyInBlock = defineRule({
           );
           const effectivePriorOccurrence =
             priorImportantOccurrences.at(-1) ?? priorOccurrences.at(-1);
+          const hasDifferentTests =
+            effectivePriorOccurrence?.ternaryTests.length !== laterOccurrence.ternaryTests.length ||
+            laterOccurrence.ternaryTests.some(
+              (test, testIndex) =>
+                effectivePriorOccurrence === undefined ||
+                !areTestsEquivalent(
+                  test,
+                  effectivePriorOccurrence.ternaryTests[testIndex],
+                  context.scopes,
+                ),
+            );
           return (
             effectivePriorOccurrence?.isConditional === true &&
+            hasDifferentTests &&
             (laterOccurrence.isImportant || !effectivePriorOccurrence.isImportant)
           );
         });

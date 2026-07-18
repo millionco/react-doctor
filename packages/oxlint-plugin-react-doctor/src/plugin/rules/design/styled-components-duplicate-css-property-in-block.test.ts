@@ -542,6 +542,11 @@ describe("styled-components-duplicate-css-property-in-block", () => {
       );
       expect(result.diagnostics).toHaveLength(0);
     }
+
+    const progressiveEnhancementResult = runStyledRule(
+      'const Button = styled.button`height: ${properties => properties.full ? "100vh" : "auto"}; height: ${properties => properties.full ? "100dvh" : "auto"}; height: ${properties => properties.compact ? "50vh" : undefined};`;',
+    );
+    expect(progressiveEnhancementResult.diagnostics).toHaveLength(0);
   });
 
   it("respects important declaration precedence", () => {

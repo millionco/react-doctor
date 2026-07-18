@@ -303,6 +303,63 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("supports bounded object aliases, conditional branches, and TypeScript wrappers", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const base = { first: 1 };
+       const alias = base as Record<string, number>;
+       const selected = condition
+         ? alias
+         : ({ second: 2 } satisfies Record<string, number>);
+       const keys = Object.entries(selected).reduce(
+         (acc, [key]) => [...acc, key],
+         [],
+       );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps object alias mutation visible from the original binding", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const base = { first: 1 };
+       const alias = condition ? base : base;
+       alias[dynamicKey] = dynamicValue;
+       const keys = Object.keys(base).reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves bounded object aliases against the correct lexical scope", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const values = { outer: 1 };
+       {
+         const values = condition ? { inner: 1 } : externalValues;
+         const innerKeys = Object.keys(values).reduce((acc, key) => [...acc, key], []);
+       }
+       const outerKeys = Object.keys(values).reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects cyclic, external, mutable, and spread-bearing object sources", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const first = second;
+       const second = first;
+       const cyclicKeys = Object.keys(first).reduce((acc, key) => [...acc, key], []);
+       const selected = condition ? { first: 1 } : externalValues;
+       const selectedKeys = Object.keys(selected).reduce((acc, key) => [...acc, key], []);
+       let mutable = { first: 1 };
+       const mutableKeys = Object.keys(mutable).reduce((acc, key) => [...acc, key], []);
+       const spread = { ...externalValues };
+       const spreadKeys = Object.keys(spread).reduce((acc, key) => [...acc, key], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(4);
+  });
+
   it("does not treat destructuring defaults as bounded sources", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,

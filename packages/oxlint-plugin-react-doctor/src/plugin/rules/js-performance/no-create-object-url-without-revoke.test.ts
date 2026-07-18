@@ -630,6 +630,37 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("recognizes guarded stored cleanups returned through wrappers", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob: Blob) => URL.createObjectURL(blob);
+       const usePreview = (blob: Blob) => {
+         const url = make(blob);
+         setPreview(url);
+         const cleanup = () => {
+           if (!url) return;
+           URL.revokeObjectURL(url);
+         };
+         return (cleanup satisfies () => void);
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes a positive ternary guard inside a returned cleanup", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const usePreview = (blob) => {
+         const url = make(blob);
+         setPreview(url);
+         return () => url ? URL.revokeObjectURL(url) : undefined;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("recognizes a stored cleanup returned through TypeScript wrappers", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

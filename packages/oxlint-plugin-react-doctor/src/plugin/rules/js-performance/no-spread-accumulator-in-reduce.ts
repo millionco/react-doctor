@@ -8,7 +8,6 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
-import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
@@ -63,14 +62,53 @@ const isRestParameterBinding = (bindingIdentifier: EsTreeNode): boolean => {
   );
 };
 
-const bindingMayHaveGrown = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const findRetainingAliasBinding = (expression: EsTreeNode): EsTreeNode | null => {
+  let current = findTransparentExpressionRoot(expression);
+  while (current.parent) {
+    const parent = current.parent;
+    if (
+      (isNodeOfType(parent, "ConditionalExpression") &&
+        (parent.consequent === current || parent.alternate === current)) ||
+      (isNodeOfType(parent, "LogicalExpression") &&
+        (parent.left === current || parent.right === current))
+    ) {
+      current = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    if (
+      isNodeOfType(parent, "VariableDeclarator") &&
+      parent.init === current &&
+      isNodeOfType(parent.id, "Identifier") &&
+      parent.parent &&
+      isNodeOfType(parent.parent, "VariableDeclaration") &&
+      parent.parent.kind === "const"
+    ) {
+      return parent.id;
+    }
+    return null;
+  }
+  return null;
+};
+
+const bindingMayHaveGrown = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
   const candidate = stripParenExpression(expression);
   if (!isNodeOfType(candidate, "Identifier")) return false;
   const symbol = scopes.symbolFor(candidate);
   if (!symbol) return true;
+  if (visitedSymbolIds.has(symbol.id)) return false;
+  const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+  nextVisitedSymbolIds.add(symbol.id);
   return symbol.references.some((reference) => {
     if (reference.flag !== "read") return true;
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const aliasBinding = findRetainingAliasBinding(referenceRoot);
+    if (aliasBinding && scopes.symbolFor(aliasBinding) !== symbol) {
+      return bindingMayHaveGrown(aliasBinding, scopes, nextVisitedSymbolIds);
+    }
     const directConsumer = referenceRoot.parent;
     if (
       directConsumer &&
@@ -113,46 +151,26 @@ const bindingMayHaveGrown = (expression: EsTreeNode, scopes: ScopeAnalysis): boo
   });
 };
 
-const isLocallyConstructedBoundedObject = (
-  expression: EsTreeNode,
-  scopes: ScopeAnalysis,
-): boolean => {
-  const stripped = stripParenExpression(expression);
-  if (isSpreadFreeObjectLiteral(stripped)) return true;
-  if (!isNodeOfType(stripped, "Identifier")) return false;
-  const binding = findVariableInitializer(stripped, stripped.name);
-  if (!binding?.initializer || !isConstDeclaredBinding(binding)) return false;
-  const declarator = binding.bindingIdentifier.parent;
-  if (
-    !declarator ||
-    !isNodeOfType(declarator, "VariableDeclarator") ||
-    declarator.init !== binding.initializer
-  ) {
-    return false;
-  }
-  if (bindingMayHaveGrown(stripped, scopes)) return false;
-  return isSpreadFreeObjectLiteral(stripParenExpression(binding.initializer));
-};
-
 const isFixedLengthArrayConstruction = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const stripped = stripParenExpression(expression);
-  if (!isNodeOfType(stripped, "CallExpression") && !isNodeOfType(stripped, "NewExpression")) {
+  if (!isNodeOfType(expression, "CallExpression") && !isNodeOfType(expression, "NewExpression")) {
     return false;
   }
-  const callee = stripParenExpression(stripped.callee);
-  if (!isProvenGlobalNamespaceReference(callee, "Array", scopes)) {
-    return false;
-  }
-  const lengthArgument = stripped.arguments[0];
+  const callee = stripParenExpression(expression.callee);
+  const lengthArgument = expression.arguments[0];
   return Boolean(
-    stripped.arguments.length === 1 &&
+    isProvenGlobalNamespaceReference(callee, "Array", scopes) &&
+    expression.arguments.length === 1 &&
     isAstNode(lengthArgument) &&
     isNodeOfType(lengthArgument, "Literal") &&
     typeof lengthArgument.value === "number",
   );
 };
 
-const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const isStaticallyBoundedCollectionExpression = (
+  expression: EsTreeNode,
+  collectionKind: "array" | "object",
+  scopes: ScopeAnalysis,
+): boolean => {
   const pendingExpressions = [stripParenExpression(expression)];
   const pendingVisitedSymbolIds = [new Set<number>()];
   while (pendingExpressions.length > 0) {
@@ -160,8 +178,9 @@ const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnaly
     const visitedSymbolIds = pendingVisitedSymbolIds.pop();
     if (!currentExpression || !visitedSymbolIds) return false;
     if (
-      isFixedLengthArrayConstruction(currentExpression, scopes) ||
-      isSpreadFreeArrayLiteral(currentExpression, false)
+      (collectionKind === "array" && isFixedLengthArrayConstruction(currentExpression, scopes)) ||
+      (collectionKind === "array" && isSpreadFreeArrayLiteral(currentExpression, false)) ||
+      (collectionKind === "object" && isSpreadFreeObjectLiteral(currentExpression))
     ) {
       continue;
     }
@@ -173,6 +192,7 @@ const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnaly
         !symbol?.initializer ||
         symbol.kind !== "const" ||
         !binding?.initializer ||
+        symbol.initializer !== binding.initializer ||
         !declarator ||
         !isNodeOfType(declarator, "VariableDeclarator") ||
         declarator.init !== binding.initializer ||
@@ -195,6 +215,7 @@ const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnaly
       pendingVisitedSymbolIds.push(new Set(visitedSymbolIds), new Set(visitedSymbolIds));
       continue;
     }
+    if (collectionKind === "object") return false;
     if (!isNodeOfType(currentExpression, "CallExpression")) return false;
     const callee = stripParenExpression(currentExpression.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return false;
@@ -221,7 +242,7 @@ const isFixedLengthArrayExpression = (expression: EsTreeNode, scopes: ScopeAnaly
 const isStaticallyBoundedReduceSource = (source: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const stripped = stripParenExpression(source);
   if (isSpreadFreeArrayLiteral(stripped, false)) return true;
-  if (isFixedLengthArrayExpression(stripped, scopes)) return true;
+  if (isStaticallyBoundedCollectionExpression(stripped, "array", scopes)) return true;
   if (isNodeOfType(stripped, "Identifier")) {
     const binding = findVariableInitializer(stripped, stripped.name);
     return Boolean(binding && isRestParameterBinding(binding.bindingIdentifier));
@@ -237,7 +258,10 @@ const isStaticallyBoundedReduceSource = (source: EsTreeNode, scopes: ScopeAnalys
     return false;
   }
   const enumeratedObject = stripped.arguments[0];
-  return isAstNode(enumeratedObject) && isLocallyConstructedBoundedObject(enumeratedObject, scopes);
+  return (
+    isAstNode(enumeratedObject) &&
+    isStaticallyBoundedCollectionExpression(enumeratedObject, "object", scopes)
+  );
 };
 
 const hasOwnReducerMethod = (

@@ -10,6 +10,7 @@ import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-wit
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -286,17 +287,22 @@ const isPositiveGuardOnResult = (
   const resultCandidate = stripParenExpression(resultExpression);
   if (!isNodeOfType(resultCandidate, "Identifier")) return false;
   const resultSymbol = scopes.symbolFor(resultCandidate);
+  if (!resultSymbol) return false;
   let current = candidate;
   while (current.parent && current !== executionBoundary) {
     const parent = current.parent;
-    const guardExpression =
-      isNodeOfType(parent, "IfStatement") && parent.consequent === current
-        ? parent.test
-        : isNodeOfType(parent, "LogicalExpression") &&
-            parent.operator === "&&" &&
-            parent.right === current
-          ? parent.left
-          : null;
+    let guardExpression: EsTreeNode | null = null;
+    if (isNodeOfType(parent, "IfStatement") && parent.consequent === current) {
+      guardExpression = parent.test;
+    } else if (
+      isNodeOfType(parent, "LogicalExpression") &&
+      parent.operator === "&&" &&
+      parent.right === current
+    ) {
+      guardExpression = parent.left;
+    } else if (isNodeOfType(parent, "ConditionalExpression") && parent.consequent === current) {
+      guardExpression = parent.test;
+    }
     if (guardExpression) {
       const guardCandidate = stripParenExpression(guardExpression);
       if (
@@ -305,6 +311,31 @@ const isPositiveGuardOnResult = (
       ) {
         return true;
       }
+    }
+    if (isNodeOfType(parent, "BlockStatement")) {
+      const currentIndex = parent.body.findIndex(
+        (statement) =>
+          statement.range[0] === current.range[0] && statement.range[1] === current.range[1],
+      );
+      const hasPriorExitGuard = parent.body.slice(0, currentIndex).some((statement) => {
+        if (
+          !isNodeOfType(statement, "IfStatement") ||
+          statement.alternate ||
+          !statementAlwaysExits(statement.consequent)
+        ) {
+          return false;
+        }
+        const guardCandidate = stripParenExpression(statement.test);
+        if (!isNodeOfType(guardCandidate, "UnaryExpression") || guardCandidate.operator !== "!") {
+          return false;
+        }
+        const guardedValue = stripParenExpression(guardCandidate.argument);
+        return (
+          isNodeOfType(guardedValue, "Identifier") &&
+          scopes.symbolFor(guardedValue) === resultSymbol
+        );
+      });
+      if (hasPriorExitGuard) return true;
     }
     current = parent;
   }

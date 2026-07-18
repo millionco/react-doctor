@@ -1,5 +1,12 @@
 # @react-doctor/language-server
 
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies [[`2979a9b`](https://github.com/millionco/react-doctor/commit/2979a9bc1b1f18c685bafe6d92edb20b4b1a8707)]:
+  - @react-doctor/core@0.8.0
+
 ## 0.7.9
 
 ### Patch Changes

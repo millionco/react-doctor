@@ -1,5 +1,148 @@
 # oxlint-plugin-react-doctor
 
+## 0.8.0
+
+### Patch Changes
+
+- [#1269](https://github.com/millionco/react-doctor/pull/1269) [`cf7ada5`](https://github.com/millionco/react-doctor/commit/cf7ada5839156399e054b8e47bba1d54122f75b8) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect cleanup leaks in React ref callbacks invoked directly from effects
+
+- [#1373](https://github.com/millionco/react-doctor/pull/1373) [`ac392cb`](https://github.com/millionco/react-doctor/commit/ac392cbbc02e77d7e62aa30d34ed6985860b394c) Thanks [@aidenybai](https://github.com/aidenybai)! - Allow hook-use-state to recognize concise-arrow returns as returned state tuples.
+
+- [#1277](https://github.com/millionco/react-doctor/pull/1277) [`b30fb80`](https://github.com/millionco/react-doctor/commit/b30fb80a6d96de3a4d4c7f5d12cebb9acc5474a8) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix no-pass-data-to-parent to detect parent callbacks stored in refs and refreshed by a preceding effect.
+
+- [#1353](https://github.com/millionco/react-doctor/pull/1353) [`0ff57fa`](https://github.com/millionco/react-doctor/commit/0ff57fa57c6f81330f804d9ca94cab3139c20545) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect no-hydration-branch-on-browser-global through local helpers and React useMemo.
+
+- [#1308](https://github.com/millionco/react-doctor/pull/1308) [`b2f3c9c`](https://github.com/millionco/react-doctor/commit/b2f3c9c463f5f04dd6d7c2d09621ff9edcc7144f) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix `effect-needs-cleanup` to follow synchronous React ref callback chains so timers and subscriptions reached through multiple ref callbacks are not missed.
+
+- [#1283](https://github.com/millionco/react-doctor/pull/1283) [`9aa98b9`](https://github.com/millionco/react-doctor/commit/9aa98b94e301f4038a1b6cf85301f6fe872d4d8a) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep rn-no-falsy-and-render scoped to numeric gates rendered through React Native or unknown hosts, excluding proven DOM-host output in mixed-renderer projects.
+
+- [#1362](https://github.com/millionco/react-doctor/pull/1362) [`44d3ad8`](https://github.com/millionco/react-doctor/commit/44d3ad879d28ea47248a8060485ee9d08e8b0c89) Thanks [@aidenybai](https://github.com/aidenybai)! - Resolve React hooks by binding identity across state and effect rules, including named imports, immutable aliases, namespace calls, and isomorphic effect aliases.
+
+- [#1351](https://github.com/millionco/react-doctor/pull/1351) [`3c90f14`](https://github.com/millionco/react-doctor/commit/3c90f14c906778515fabab8615117ce5770b6ae2) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid false positives from `rendering-usetransition-loading` when FileReader success and error callbacks complete the loading state.
+
+- [#1271](https://github.com/millionco/react-doctor/pull/1271) [`f563205`](https://github.com/millionco/react-doctor/commit/f563205ee092aa93202964c05ff739c00ba74541) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix `no-uncontrolled-input` false positives for input types whose `value` is read-only in React, including types behind deep const aliases and constant ternaries.
+
+- [#1276](https://github.com/millionco/react-doctor/pull/1276) [`7eb7428`](https://github.com/millionco/react-doctor/commit/7eb74283d0ede1749c24f7b21818ac3a7ddcbfc7) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix `role-supports-aria-props` false positives for native number inputs and unresolved input types.
+
+- [#1309](https://github.com/millionco/react-doctor/pull/1309) [`f59ec54`](https://github.com/millionco/react-doctor/commit/f59ec540c751078decf4599ad52046c97c217ca2) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop no-create-ref-in-function-component from warning on createRef values stored as initial React state.
+
+- [#1289](https://github.com/millionco/react-doctor/pull/1289) [`a86b5b0`](https://github.com/millionco/react-doctor/commit/a86b5b0e9571e120fd38e3ebffcd0c78a3d458d7) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix no-render-in-render false positives from hooks in uninvoked nested closures
+
+- [#1294](https://github.com/millionco/react-doctor/pull/1294) [`d7d38d7`](https://github.com/millionco/react-doctor/commit/d7d38d7c881d8b6d31728fbed28a0ee5974bc818) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize browser reads gated by a local or project-imported `useSyncExternalStore` Hook with a false server snapshot.
+
+- [#1319](https://github.com/millionco/react-doctor/pull/1319) [`52fc179`](https://github.com/millionco/react-doctor/commit/52fc179e82afbb43f5d562e0c81c2a4def638e94) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve helper-owned gesture state when an effect also synchronizes it, and keep derived-state detection through transparent React hook receivers.
+
+- [#1292](https://github.com/millionco/react-doctor/pull/1292) [`1adf327`](https://github.com/millionco/react-doctor/commit/1adf3278df268d752a6eb3f40c62ebd7e8d84004) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize immutable and isomorphic React effect aliases in `no-chain-state-updates`.
+
+- [#1263](https://github.com/millionco/react-doctor/pull/1263) [`194cc06`](https://github.com/millionco/react-doctor/commit/194cc06e8c83decb1be71fecb9124009f5b8a837) Thanks [@aidenybai](https://github.com/aidenybai)! - Improve `no-create-ref-in-function-component` precision for render-local attachment refs while preserving stale-ref diagnostics.
+
+- [#1299](https://github.com/millionco/react-doctor/pull/1299) [`c88a39a`](https://github.com/millionco/react-doctor/commit/c88a39a936c2c96dfd282d3ac74f9264dcd68fea) Thanks [@aidenybai](https://github.com/aidenybai)! - Prevent no-effect-chain from reporting clear-only state writes when their values cannot reach downstream guarded work.
+
+- [#1315](https://github.com/millionco/react-doctor/pull/1315) [`3e6dcfc`](https://github.com/millionco/react-doctor/commit/3e6dcfc21712a8cdb7a43ac63c0ed466039852e1) Thanks [@skoshx](https://github.com/skoshx)! - Recognize matching `htmlFor` associations from components already treated as label renderers in
+  `control-has-associated-label`.
+
+- [#1288](https://github.com/millionco/react-doctor/pull/1288) [`be6d64b`](https://github.com/millionco/react-doctor/commit/be6d64b466596e40a4ee1233b9c6f260944c4286) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix async-parallel and server-sequential-independent-await to distinguish shadowed callback bindings from genuine result dependencies.
+
+- [#1355](https://github.com/millionco/react-doctor/pull/1355) [`0fbf728`](https://github.com/millionco/react-doctor/commit/0fbf728ec1d6cc70f55d70cea431081b641726e7) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid effect-needs-cleanup false positives for gesture listeners that synchronously remove themselves and their peer listeners.
+
+- [#1280](https://github.com/millionco/react-doctor/pull/1280) [`30e0ff0`](https://github.com/millionco/react-doctor/commit/30e0ff015e974bc9cc5ad22988fb4da1d0884e01) Thanks [@aidenybai](https://github.com/aidenybai)! - Align iframe-has-title with the accessibility rule's applicability boundary by ignoring frames proven hidden, excluded from sequential focus, or explicitly decorative while preserving diagnostics for uncertain and visible frames.
+
+- [#1333](https://github.com/millionco/react-doctor/pull/1333) [`11388bf`](https://github.com/millionco/react-doctor/commit/11388bfe2dd82851e46970ffea05d2a87a8fdf29) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect parent callback synchronization through React wrappers, immutable aliases, refs, conditional branches, object members, and prop-initialized custom-hook state.
+
+- [#1343](https://github.com/millionco/react-doctor/pull/1343) [`71892af`](https://github.com/millionco/react-doctor/commit/71892afc4651f9354baeb645a0fb77693fbf6f92) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid `effect-needs-cleanup` false positives when a `useSyncExternalStore` subscribe callback returns a delegated disposer through a conditional or nullish fallback.
+
+- [#1282](https://github.com/millionco/react-doctor/pull/1282) [`81da42b`](https://github.com/millionco/react-doctor/commit/81da42bc05a6097d6fd5c4d34afe6c87dc935917) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid server-fetch-without-revalidate false positives for imported or local fetch implementations.
+
+- [#1286](https://github.com/millionco/react-doctor/pull/1286) [`e5d5753`](https://github.com/millionco/react-doctor/commit/e5d57534a7bd4b3a42f9f9cc5cb7c3e4f82ee7d2) Thanks [@aidenybai](https://github.com/aidenybai)! - Prevent `prefer-module-scope-static-value` from recommending behavior-changing hoists for randomness accessed through proven global receivers.
+
+- [#1266](https://github.com/millionco/react-doctor/pull/1266) [`66a1db8`](https://github.com/millionco/react-doctor/commit/66a1db84f4925b2bd919960af6e02b9f66dfaf1a) Thanks [@skoshx](https://github.com/skoshx)! - Fix a false positive in `only-export-components` for exported `use[A-Z]` custom hooks alongside component exports.
+
+- [#1320](https://github.com/millionco/react-doctor/pull/1320) [`b392093`](https://github.com/millionco/react-doctor/commit/b3920938da9f8d3badbffca0f972f0b583c19a86) Thanks [@skoshx](https://github.com/skoshx)! - Ignore parser-confirmed comments when `artifact-env-leak` scans generated JavaScript and TypeScript artifacts, while preserving executable env-leak detection.
+
+- [#1317](https://github.com/millionco/react-doctor/pull/1317) [`6c5c91b`](https://github.com/millionco/react-doctor/commit/6c5c91b68c7e089b0dcd7a269a44b8052f846888) Thanks [@skoshx](https://github.com/skoshx)! - Avoid `server-after-nonblocking` diagnostics for side effects proven to run through Next.js `after()` callbacks.
+
+- [#1297](https://github.com/millionco/react-doctor/pull/1297) [`d8a20e0`](https://github.com/millionco/react-doctor/commit/d8a20e0de7f3707ff9fca132a59f429384d5cc7a) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize type- and write-proven falsy lazy initialization guards in `no-ref-current-in-render`.
+
+- [#1345](https://github.com/millionco/react-doctor/pull/1345) [`f441f59`](https://github.com/millionco/react-doctor/commit/f441f598bb172a92a70c4f425934949042427a51) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid `effect-needs-cleanup` false positives for legacy unary media-query listeners with matching cleanup.
+
+- [#1303](https://github.com/millionco/react-doctor/pull/1303) [`174955c`](https://github.com/millionco/react-doctor/commit/174955c25558a45dc3c8667c6efebb1af16ba8b4) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix `no-create-ref-in-function-component` false positives for test-local components proven to be mounted only in independent React Testing Library roots.
+
+- [#1328](https://github.com/millionco/react-doctor/pull/1328) [`bd3655c`](https://github.com/millionco/react-doctor/commit/bd3655c13d25fd43a9946a98a3643235d72ac55d) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect immediate viewport state adoption in a mount effect that registers and cleans up a resize listener.
+
+- [#1350](https://github.com/millionco/react-doctor/pull/1350) [`db5fe10`](https://github.com/millionco/react-doctor/commit/db5fe10229150da08d83f808809bbcd1c640351c) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid treating human-readable storage key names with camelCase segments as hardcoded secrets.
+
+- [#1363](https://github.com/millionco/react-doctor/pull/1363) [`c1e75f0`](https://github.com/millionco/react-doctor/commit/c1e75f06bab2042469f9e61a23de5efef2b6fbb6) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix `no-jsx-element-type` false positives on private renderer factories that accurately return one JSX element.
+
+- [#1287](https://github.com/millionco/react-doctor/pull/1287) [`796a56d`](https://github.com/millionco/react-doctor/commit/796a56d4f9f86d451568218dd28c1f4edd11ef98) Thanks [@aidenybai](https://github.com/aidenybai)! - Require native global Intl provenance before reporting formatter construction hoisting diagnostics.
+
+- [#1278](https://github.com/millionco/react-doctor/pull/1278) [`558118c`](https://github.com/millionco/react-doctor/commit/558118ca1fe556a2d563b8208d33fe9cd1a65e3d) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix interactive-supports-focus false positives on native content-editable editing hosts while preserving nested and disabled-host diagnostics.
+
+- [#1279](https://github.com/millionco/react-doctor/pull/1279) [`d4db626`](https://github.com/millionco/react-doctor/commit/d4db626555cf2b9eb19e2824ca21a08a37fde631) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix `no-reset-all-state-on-prop-change` false positives for loading state completed by an exact async helper.
+
+- [#1349](https://github.com/millionco/react-doctor/pull/1349) [`a16e452`](https://github.com/millionco/react-doctor/commit/a16e452648eda8a2c05504219d1af66fd428dbf8) Thanks [@aidenybai](https://github.com/aidenybai)! - Accept event listeners whose local AbortController is replaced through a React ref and aborted on unmount.
+
+- [#1281](https://github.com/millionco/react-doctor/pull/1281) [`d3f54c4`](https://github.com/millionco/react-doctor/commit/d3f54c4c1ddbdd4bf0472c8e74e2c0dccc692a5a) Thanks [@aidenybai](https://github.com/aidenybai)! - Prevent nextjs-no-css-link from recommending local CSS imports for statically proven remote HTTP(S) stylesheets.
+
+- [#1360](https://github.com/millionco/react-doctor/pull/1360) [`e5a5f73`](https://github.com/millionco/react-doctor/commit/e5a5f736992f42f67eaf01db056180eb8ed319cb) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid effect-needs-cleanup false positives when listener disposers are retained in React refs and invoked during effect or callback-ref cleanup.
+
+- [#1301](https://github.com/millionco/react-doctor/pull/1301) [`6325f9c`](https://github.com/millionco/react-doctor/commit/6325f9cea5bef7ae66860835e4251250c522055b) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop nextjs-no-img-element from prescribing next/image for exported JSX helpers proven to render only through ImageResponse or Satori.
+
+- [#1295](https://github.com/millionco/react-doctor/pull/1295) [`e86bc57`](https://github.com/millionco/react-doctor/commit/e86bc57911b836e07227aa213b40130136ae423d) Thanks [@aidenybai](https://github.com/aidenybai)! - Require semantic React component evidence before treating PascalCase function parameters as props.
+
+- [#1358](https://github.com/millionco/react-doctor/pull/1358) [`4f3848b`](https://github.com/millionco/react-doctor/commit/4f3848b0019590ef38d74e09296059ea6fbc5292) Thanks [@aidenybai](https://github.com/aidenybai)! - Resolve React effect, state setter, and dependency aliases by binding identity so chained and derived state diagnostics cannot be silenced by immutable renames.
+
+- [#1368](https://github.com/millionco/react-doctor/pull/1368) [`093619c`](https://github.com/millionco/react-doctor/commit/093619c3d8a9990586af270c00ed267b027506b4) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix effect-needs-cleanup false positives for generation-guarded nested subscriptions owned by an effect.
+
+- [#1274](https://github.com/millionco/react-doctor/pull/1274) [`21827da`](https://github.com/millionco/react-doctor/commit/21827da9079291ffdec247a907ff16b796912e95) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting `anchor-has-content` for href-less anchors without link semantics.
+
+- [#1270](https://github.com/millionco/react-doctor/pull/1270) [`12e9592`](https://github.com/millionco/react-doctor/commit/12e9592da8a7b95c3726ca439c334be7ab2f7ab8) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid `no-default-props` false positives for stable class receivers, which React 19 continues to support.
+
+- [#1296](https://github.com/millionco/react-doctor/pull/1296) [`c7f61cd`](https://github.com/millionco/react-doctor/commit/c7f61cd4f53fd864bc3299b7f2e359f161aae522) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep `no-effect-chain` quiet for effects that wait for a committed DOM node before focusing, scrolling, selecting, or measuring it.
+
+- [#1336](https://github.com/millionco/react-doctor/pull/1336) [`95f9937`](https://github.com/millionco/react-doctor/commit/95f99372c0498cc48a3c8829b63511518bf26085) Thanks [@aidenybai](https://github.com/aidenybai)! - Disable `no-chain-state-updates` for React 18 and newer projects.
+
+- [#1354](https://github.com/millionco/react-doctor/pull/1354) [`0f11de1`](https://github.com/millionco/react-doctor/commit/0f11de18bd9ab6e02019b2e49ac7e19f1216135b) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize bounded render-derived equivalents in `exhaustive-deps` dependency lists.
+
+- [#1306](https://github.com/millionco/react-doctor/pull/1306) [`1b86dae`](https://github.com/millionco/react-doctor/commit/1b86dae52c98d58e79ece863eee616008b0e0612) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix prefer-module-scope-static-value false positives for per-render arrays and objects mutated through nested members.
+
+- [#1324](https://github.com/millionco/react-doctor/pull/1324) [`1a30f2c`](https://github.com/millionco/react-doctor/commit/1a30f2caac12f1678243cb8733dd7bc1b598a9da) Thanks [@aidenybai](https://github.com/aidenybai)! - Improve dangerous HTML sink precision for KaTeX output and unsafe fallbacks.
+
+- [#1347](https://github.com/millionco/react-doctor/pull/1347) [`9e55e1f`](https://github.com/millionco/react-doctor/commit/9e55e1f83f3668e4fc39c8e158984f7976e5c12d) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid `effect-needs-cleanup` false positives for callback refs that release listeners from the previous node before replacing their ownership.
+
+- [#1352](https://github.com/millionco/react-doctor/pull/1352) [`c41f271`](https://github.com/millionco/react-doctor/commit/c41f271c3124d5f64cc7149195e93c4ed97fb6a6) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize stable values initialized once through `ref.current ??=` in `exhaustive-deps`.
+
+- [#1375](https://github.com/millionco/react-doctor/pull/1375) [`7e6cdf9`](https://github.com/millionco/react-doctor/commit/7e6cdf920b972a035cc7c5fd405049dbc060ed57) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize transparent TypeScript wrappers on React and HTTP client call receivers.
+
+- [#1291](https://github.com/millionco/react-doctor/pull/1291) [`544356c`](https://github.com/millionco/react-doctor/commit/544356cb0edcc7240f0268dcc6279fa06dab19ee) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix prefer-use-effect-event false positives when a helper also executes synchronously.
+
+- [#1346](https://github.com/millionco/react-doctor/pull/1346) [`cc96f47`](https://github.com/millionco/react-doctor/commit/cc96f473248c63e6c058827fc688579ee33aeb5e) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid `effect-needs-cleanup` false positives when locally observed resources are retained and exhaustively disconnected through the same collection.
+
+- [#1304](https://github.com/millionco/react-doctor/pull/1304) [`5f3ba37`](https://github.com/millionco/react-doctor/commit/5f3ba376289fa07ab9e44c649eb290a967009536) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid accessibility diagnostics for provenance-proven local unit-test fixtures and module mocks while preserving product and component-under-test findings.
+
+- [#1342](https://github.com/millionco/react-doctor/pull/1342) [`cf9acf2`](https://github.com/millionco/react-doctor/commit/cf9acf26c22fde1a0a7874efdf598a78b94c4808) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid `no-pass-data-to-parent` false positives when destructured media-query hook state is forwarded to a parent after an external subscription update.
+
+- [#1293](https://github.com/millionco/react-doctor/pull/1293) [`f94d7b1`](https://github.com/millionco/react-doctor/commit/f94d7b189b5b143c556209a67958556fed53875a) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix no-chain-state-updates false positives from stable useCallback dependencies whose bodies only write state.
+
+- [#1340](https://github.com/millionco/react-doctor/pull/1340) [`c245b9d`](https://github.com/millionco/react-doctor/commit/c245b9d05d7d0c48dc33891b037da21386061955) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid `no-flush-sync` false positives when an adjacent imperative DOM selection or focus handoff requires the React commit to finish synchronously.
+
+- [#1272](https://github.com/millionco/react-doctor/pull/1272) [`ef328c4`](https://github.com/millionco/react-doctor/commit/ef328c457115ff5e352e7016330b0c6a51386589) Thanks [@aidenybai](https://github.com/aidenybai)! - Prevent async-defer-await from flagging compound post-await freshness comparisons while preserving preflight guard diagnostics.
+
+- [#1334](https://github.com/millionco/react-doctor/pull/1334) [`b51022f`](https://github.com/millionco/react-doctor/commit/b51022f8e055ee0db07cce63b6d6e8cf795c4ba5) Thanks [@aidenybai](https://github.com/aidenybai)! - Restore `auth-token-in-web-storage` diagnostics for product API-key records, whose opaque IDs can be usable credentials, and follow web-storage aliases, factories, and local helper functions.
+
+- [#1356](https://github.com/millionco/react-doctor/pull/1356) [`21043e0`](https://github.com/millionco/react-doctor/commit/21043e024e77e65f0df5122d4330b7c759f0187e) Thanks [@aidenybai](https://github.com/aidenybai)! - Add `no-ref-callback-cleanup-before-react-19` to catch ref cleanup functions that React 18 ignores while keeping React 19-only projects quiet.
+
+- [#1273](https://github.com/millionco/react-doctor/pull/1273) [`418e0b2`](https://github.com/millionco/react-doctor/commit/418e0b210de5cb2c628baeda6704294b4c3b5b13) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve register command exemptions through proven ref-held callback aliases.
+
+- [#1290](https://github.com/millionco/react-doctor/pull/1290) [`b76aef7`](https://github.com/millionco/react-doctor/commit/b76aef71635c85260fa76c4ab4d02830077a06f3) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid no-scale-from-zero diagnostics on ordinary JSX data props.
+
+- [#1298](https://github.com/millionco/react-doctor/pull/1298) [`61111f1`](https://github.com/millionco/react-doctor/commit/61111f192a52e8c296b3b0ec7201e4ce3f4b84ae) Thanks [@aidenybai](https://github.com/aidenybai)! - Make no-array-index-as-key detect reachable nullish, logical, and conditional fallbacks to the iteration index
+
+- [#1316](https://github.com/millionco/react-doctor/pull/1316) [`c8a2918`](https://github.com/millionco/react-doctor/commit/c8a29185a03737dea64839d1a8063fbb8b892d79) Thanks [@skoshx](https://github.com/skoshx)! - Skip `supabase-client-owned-authz-field` on files with `'use server'` directive. Server actions with top-level `'use server'` are framework-enforced server-only code, so the rule's client-side threat model does not apply.
+
+- [#1361](https://github.com/millionco/react-doctor/pull/1361) [`8835214`](https://github.com/millionco/react-doctor/commit/88352149101497bbac80dfef98e07e1f2e6b7747) Thanks [@aidenybai](https://github.com/aidenybai)! - Align `no-adjust-state-on-prop-change` with its published contract by reporting prop-triggered resets instead of direct prop mirrors.
+
+- [#1335](https://github.com/millionco/react-doctor/pull/1335) [`2ba83c3`](https://github.com/millionco/react-doctor/commit/2ba83c3201e364939c76187be2725ed0bbf9daa5) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize terminating `componentDidUpdate` state synchronization sourced from JSX callback refs.
+
 ## 0.7.9
 
 ### Patch Changes

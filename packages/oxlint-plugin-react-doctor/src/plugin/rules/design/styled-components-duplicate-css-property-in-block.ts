@@ -183,8 +183,12 @@ const isFlattenedInterpolationValue = (expression: EsTreeNode): boolean => {
 const doesConditionalAlwaysProduceCssValue = (
   conditionalExpression: EsTreeNodeOfType<"ConditionalExpression">,
 ): boolean =>
-  !isFlattenedInterpolationValue(conditionalExpression.consequent) &&
-  !isFlattenedInterpolationValue(conditionalExpression.alternate);
+  [conditionalExpression.consequent, conditionalExpression.alternate].every((branch) => {
+    const unwrappedBranch = stripParenExpression(branch);
+    return isNodeOfType(unwrappedBranch, "ConditionalExpression")
+      ? doesConditionalAlwaysProduceCssValue(unwrappedBranch)
+      : !isFlattenedInterpolationValue(unwrappedBranch);
+  });
 
 const getTernaryInterpolationTest = (expression: EsTreeNode | undefined): TernaryTest | null => {
   if (!expression) return null;
@@ -404,6 +408,26 @@ const areTestsEquivalent = (
   const compare = (leftNode: EsTreeNode, rightNode: EsTreeNode): boolean => {
     const unwrappedLeft = stripParenExpression(leftNode);
     const unwrappedRight = stripParenExpression(rightNode);
+    if (isNodeOfType(unwrappedLeft, "Identifier")) {
+      const leftInitializer = left.localInitializers.get(unwrappedLeft.name);
+      if (leftInitializer && !left.parameterBindings.has(unwrappedLeft.name)) {
+        if (resolvingLeftLocalNames.has(unwrappedLeft.name)) return false;
+        resolvingLeftLocalNames.add(unwrappedLeft.name);
+        const areEquivalent = compare(leftInitializer, unwrappedRight);
+        resolvingLeftLocalNames.delete(unwrappedLeft.name);
+        return areEquivalent;
+      }
+    }
+    if (isNodeOfType(unwrappedRight, "Identifier")) {
+      const rightInitializer = right.localInitializers.get(unwrappedRight.name);
+      if (rightInitializer && !right.parameterBindings.has(unwrappedRight.name)) {
+        if (resolvingRightLocalNames.has(unwrappedRight.name)) return false;
+        resolvingRightLocalNames.add(unwrappedRight.name);
+        const areEquivalent = compare(unwrappedLeft, rightInitializer);
+        resolvingRightLocalNames.delete(unwrappedRight.name);
+        return areEquivalent;
+      }
+    }
     const leftParameterBinding = getParameterBinding(unwrappedLeft, left);
     const rightParameterBinding = getParameterBinding(unwrappedRight, right);
     if (leftParameterBinding !== null || rightParameterBinding !== null) {
@@ -421,25 +445,6 @@ const areTestsEquivalent = (
       );
     }
     if (isNodeOfType(unwrappedLeft, "Identifier") && isNodeOfType(unwrappedRight, "Identifier")) {
-      const leftInitializer = left.localInitializers.get(unwrappedLeft.name);
-      const rightInitializer = right.localInitializers.get(unwrappedRight.name);
-      if (leftInitializer || rightInitializer) {
-        if (
-          (leftInitializer && resolvingLeftLocalNames.has(unwrappedLeft.name)) ||
-          (rightInitializer && resolvingRightLocalNames.has(unwrappedRight.name))
-        ) {
-          return false;
-        }
-        if (leftInitializer) resolvingLeftLocalNames.add(unwrappedLeft.name);
-        if (rightInitializer) resolvingRightLocalNames.add(unwrappedRight.name);
-        const areInitializersEquivalent = compare(
-          leftInitializer ?? unwrappedLeft,
-          rightInitializer ?? unwrappedRight,
-        );
-        if (leftInitializer) resolvingLeftLocalNames.delete(unwrappedLeft.name);
-        if (rightInitializer) resolvingRightLocalNames.delete(unwrappedRight.name);
-        return areInitializersEquivalent;
-      }
       if (
         left.localBindingNames.has(unwrappedLeft.name) ||
         right.localBindingNames.has(unwrappedRight.name)

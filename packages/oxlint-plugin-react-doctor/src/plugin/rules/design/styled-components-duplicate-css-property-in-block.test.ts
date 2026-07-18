@@ -399,6 +399,11 @@ describe("styled-components-duplicate-css-property-in-block", () => {
       'const Modal = styled.div`height: ${(properties) => { const { active } = properties; return active ? "100vh" : "auto"; }}; height: ${(state) => state.active ? "100dvh" : "auto"};`;',
     );
     expect(destructuredResult.diagnostics).toHaveLength(0);
+
+    const helperResult = runStyledRule(
+      'const Modal = styled.div`height: ${(properties) => { const active = isFullHeight(properties); return active ? "100vh" : "auto"; }}; height: ${(state) => isFullHeight(state) ? "100dvh" : "auto"};`;',
+    );
+    expect(helperResult.diagnostics).toHaveLength(0);
   });
 
   it("preserves bindings alongside object rest parameters", () => {
@@ -547,6 +552,11 @@ describe("styled-components-duplicate-css-property-in-block", () => {
       'const Button = styled.button`height: ${properties => properties.full ? "100vh" : "auto"}; height: ${properties => properties.full ? "100dvh" : "auto"}; height: ${properties => properties.compact ? "50vh" : undefined};`;',
     );
     expect(progressiveEnhancementResult.diagnostics).toHaveLength(0);
+
+    const nestedFlattenedResult = runStyledRule(
+      'const Button = styled.button`color: ${properties => properties.primary ? "red" : "blue"}; color: ${properties => properties.secondary ? (properties.tertiary ? "green" : undefined) : undefined};`;',
+    );
+    expect(nestedFlattenedResult.diagnostics).toHaveLength(0);
   });
 
   it("respects important declaration precedence", () => {

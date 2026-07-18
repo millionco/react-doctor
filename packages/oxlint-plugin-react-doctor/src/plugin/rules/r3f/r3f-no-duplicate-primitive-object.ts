@@ -4,6 +4,9 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -31,6 +34,32 @@ const findLogicalGuard = (node: EsTreeNode): EsTreeNode | null => {
     current = current.parent;
   }
   return null;
+};
+
+const findMountingRenderOwner = (node: EsTreeNode, scopes: ScopeAnalysis): EsTreeNode | null => {
+  const nearestFunction = findEnclosingFunction(node);
+  if (!nearestFunction) return null;
+  const renderOwner = findRenderPhaseComponentOrHook(node, scopes);
+  if (!renderOwner || nearestFunction === renderOwner) return nearestFunction;
+  let currentFunction = nearestFunction;
+  while (currentFunction !== renderOwner) {
+    const nextFunction = findEnclosingFunction(currentFunction);
+    const functionRoot = findTransparentExpressionRoot(currentFunction);
+    const call = functionRoot.parent;
+    if (!nextFunction || !call || !isNodeOfType(call, "CallExpression")) return nearestFunction;
+    let current = call.parent;
+    while (current && current !== nextFunction) {
+      if (isNodeOfType(current, "JSXExpressionContainer")) return renderOwner;
+      current = current.parent;
+    }
+    if (
+      !functionReturnsMatchingExpression(nextFunction, scopes, (expression) => expression === call)
+    ) {
+      return nearestFunction;
+    }
+    currentFunction = nextFunction;
+  }
+  return renderOwner;
 };
 
 const areComplementaryGuards = (
@@ -70,7 +99,17 @@ const canMountTogether = (
 ): boolean => {
   const firstReturn = findAncestor(first, "ReturnStatement");
   const secondReturn = findAncestor(second, "ReturnStatement");
-  if (firstReturn && secondReturn && firstReturn !== secondReturn) return false;
+  const firstReturnFunction = firstReturn ? findEnclosingFunction(firstReturn) : null;
+  const secondReturnFunction = secondReturn ? findEnclosingFunction(secondReturn) : null;
+  if (
+    firstReturn &&
+    secondReturn &&
+    firstReturn !== secondReturn &&
+    firstReturnFunction &&
+    firstReturnFunction === secondReturnFunction
+  ) {
+    return false;
+  }
   const firstGuard = findLogicalGuard(first);
   const secondGuard = findLogicalGuard(second);
   if (firstGuard && secondGuard && areComplementaryGuards(firstGuard, secondGuard, scopes)) {
@@ -122,7 +161,7 @@ export const r3fNoDuplicatePrimitiveObject = defineRule({
         const objectExpression = stripParenExpression(objectAttribute.value.expression);
         if (!isNodeOfType(objectExpression, "Identifier")) return;
         const objectSymbol = context.scopes.symbolFor(objectExpression);
-        const owningFunction = findEnclosingFunction(node);
+        const owningFunction = findMountingRenderOwner(node, context.scopes);
         if (!objectSymbol || !owningFunction) return;
         const seenSymbols = seenByFunction.get(owningFunction) ?? new Map<number, EsTreeNode[]>();
         seenByFunction.set(owningFunction, seenSymbols);

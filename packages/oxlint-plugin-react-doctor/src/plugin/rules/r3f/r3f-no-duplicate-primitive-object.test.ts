@@ -42,4 +42,28 @@ describe("r3f-no-duplicate-primitive-object", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags a mount returned by an inline render helper alongside its parent", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `const Scene = ({ scene }) => <>{(() => { return <primitive object={scene} />; })()}<primitive object={scene} /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores a memoized element that is not mounted", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `import { useMemo } from "react"; const Scene = ({ scene }) => { useMemo(() => <primitive object={scene} />, [scene]); return <primitive object={scene} />; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores an inline render helper whose result is discarded", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `const Scene = ({ scene }) => <>{(() => { (() => <primitive object={scene} />)(); return null; })()}<primitive object={scene} /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

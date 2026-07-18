@@ -2895,12 +2895,16 @@ const hasCollectionMutationBeforeRelease = (
     if (!isAfterRegistration && !isBeforeRelease) return;
     if (isNodeOfType(child, "AssignmentExpression")) {
       const assignmentKey = resolveExpressionKey(child.left, context);
+      const assignmentTarget = stripParenExpression(child.left);
       if (
-        assignmentKey &&
-        [...collectionKeys].some(
-          (collectionKey) =>
-            assignmentKey === collectionKey || assignmentKey === `${collectionKey}.length`,
-        )
+        (assignmentKey &&
+          [...collectionKeys].some(
+            (collectionKey) =>
+              assignmentKey === collectionKey || assignmentKey === `${collectionKey}.length`,
+          )) ||
+        (isNodeOfType(assignmentTarget, "MemberExpression") &&
+          assignmentTarget.computed &&
+          collectionKeys.has(resolveExpressionKey(assignmentTarget.object, context) ?? ""))
       ) {
         didFindMutation = true;
         return false;

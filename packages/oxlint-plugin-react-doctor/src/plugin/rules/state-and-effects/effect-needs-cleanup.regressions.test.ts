@@ -4846,12 +4846,15 @@ export const MediaQuery = ({ breakpoint }) => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it.each(["subscriptions = [];", "subscriptions.length = 0;", "delete subscriptions[0];"])(
-    "rejects projected emitter cleanup after structural mutation with %s",
-    (mutation) => {
-      const result = runRule(
-        effectNeedsCleanup,
-        `
+  it.each([
+    "subscriptions = [];",
+    "subscriptions.length = 0;",
+    "subscriptions[0] = subscriptions[1];",
+    "delete subscriptions[0];",
+  ])("rejects projected emitter cleanup after structural mutation with %s", (mutation) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
         function Subscriptions({ emitter, subscriptions }) {
           useEffect(() => {
             subscriptions.forEach(({ event, handler }) => {
@@ -4869,13 +4872,12 @@ export const MediaQuery = ({ breakpoint }) => {
           return null;
         }
       `,
-        { filename: "Subscriptions.tsx" },
-      );
+      { filename: "Subscriptions.tsx" },
+    );
 
-      expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(1);
-    },
-  );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 
   it.each([
     "subscriptions.push({ event: 'extra', handler: extraHandler });",

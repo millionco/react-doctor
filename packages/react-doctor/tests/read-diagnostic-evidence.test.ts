@@ -73,7 +73,7 @@ describe("createDiagnosticEvidenceReader", () => {
     );
     fs.writeFileSync(
       path.join(rootDirectory, "src/chat-message-bubble.tsx"),
-      "export function ChatMessageBubble({ onSuggestion, nested }) {\n  return <>\n    <span onClick={() => onSuggestion(question)}>\n      {question}\n    </span>\n    {nested && <ChatMessageBubble onSuggestion={onSuggestion} nested={false} />}\n  </>\n}\n",
+      "export function ChatMessageBubble({ onSuggestion, nested }) {\n  const nestedBubble = nested ? <ChatMessageBubble onSuggestion={onSuggestion} nested={false} /> : null;\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
     );
     fs.writeFileSync(
       path.join(rootDirectory, "src/chat-page.tsx"),

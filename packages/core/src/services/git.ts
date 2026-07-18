@@ -771,14 +771,11 @@ export class Git extends Context.Service<
               "--others",
               "--exclude-standard",
               "-z",
-              "--relative",
             ]);
             if (untracked.status !== 0) return null;
             return {
               baseFiles: plan.baseFiles,
-              headFiles: [
-                ...new Set([...plan.headFiles, ...splitNullSeparated(untracked.stdout)]),
-              ],
+              headFiles: [...new Set([...plan.headFiles, ...splitNullSeparated(untracked.stdout)])],
             } satisfies GitBaselineDiffPlan;
           }).pipe(
             Effect.catch(() => Effect.succeed(null)),

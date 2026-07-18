@@ -527,6 +527,61 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("tracks stable aliases of ref-owned DOM receivers", () => {
+    const refAlias = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Chart extends React.Component {
+        containerRef = React.createRef();
+        componentDidMount() {
+          const container = (this.containerRef.current as HTMLElement)!;
+          const localContainer = container;
+          localContainer.addEventListener("wheel", this.handleWheel);
+        }
+        handleWheel = () => {};
+        render() { return <div ref={this.containerRef} />; }
+      }`,
+    );
+    const documentAlias = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Chart extends React.Component {
+        componentDidMount() {
+          const target = document.body;
+          target.addEventListener("wheel", this.handleWheel);
+        }
+        handleWheel = () => {};
+        render() { return null; }
+      }`,
+    );
+    const windowAlias = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Chart extends React.Component {
+        componentDidMount() {
+          const target = window;
+          target.addEventListener("wheel", this.handleWheel);
+        }
+        handleWheel = () => {};
+        render() { return null; }
+      }`,
+    );
+    const reassignedRefAlias = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Chart extends React.Component {
+        containerRef = React.createRef();
+        componentDidMount() {
+          let target = this.containerRef.current;
+          target = document.body;
+          target.addEventListener("wheel", this.handleWheel);
+        }
+        handleWheel = () => {};
+        render() { return <div ref={this.containerRef} />; }
+      }`,
+    );
+    expect(refAlias.diagnostics).toHaveLength(0);
+    expect(documentAlias.diagnostics).toHaveLength(1);
+    expect(windowAlias.diagnostics).toHaveLength(1);
+    expect(reassignedRefAlias.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a non-null asserted mount-local listener receiver", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

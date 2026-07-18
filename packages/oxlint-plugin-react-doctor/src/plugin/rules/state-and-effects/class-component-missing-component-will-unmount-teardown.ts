@@ -393,6 +393,41 @@ const collectSynchronouslyRemovedListeners = (
   return removedListeners;
 };
 
+const isRefOwnedReceiver = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
+  const receiver = stripParenExpression(expression);
+  if (isNodeOfType(receiver, "Identifier")) {
+    const symbol = scopes.symbolFor(receiver);
+    if (
+      !symbol ||
+      visitedSymbolIds.has(symbol.id) ||
+      hasSymbolWriteBefore(symbol, receiver, scopes)
+    ) {
+      return false;
+    }
+    const initializer = findVariableInitializer(receiver, receiver.name)?.initializer;
+    if (!initializer) return false;
+    visitedSymbolIds.add(symbol.id);
+    return isRefOwnedReceiver(initializer, scopes, visitedSymbolIds);
+  }
+  if (isNodeOfType(receiver, "MemberExpression")) {
+    return (
+      getStaticPropertyName(receiver) === "current" ||
+      isRefOwnedReceiver(receiver.object, scopes, visitedSymbolIds)
+    );
+  }
+  if (!isNodeOfType(receiver, "CallExpression")) return false;
+  return (
+    isRefOwnedReceiver(receiver.callee, scopes, visitedSymbolIds) ||
+    (receiver.arguments ?? []).some((argument) =>
+      isRefOwnedReceiver(argument, scopes, new Set(visitedSymbolIds)),
+    )
+  );
+};
+
 const isMountHazard = (
   node: EsTreeNode,
   localReceiverSymbolIds: Set<number>,
@@ -413,30 +448,14 @@ const isMountHazard = (
     const callArguments = node.arguments ?? [];
     const isFunctionFactoryOnce = methodName === "once" && callArguments.length < 2;
     let receiverBase = stripParenExpression(callee.object);
-    let receiverIsRefOwnedNode = false;
-    // Descend member chains AND fluent call chains (d3's
-    // `select(this.svgRef.current).selectAll(...).on(...)`): a ref-owned
-    // node anywhere in the chain (as receiver or call argument) means the
-    // listeners die with the component's own DOM.
+    const receiverIsRefOwnedNode = isRefOwnedReceiver(receiverBase, scopes);
     while (true) {
       receiverBase = stripParenExpression(receiverBase);
       if (isNodeOfType(receiverBase, "CallExpression")) {
-        for (const argument of receiverBase.arguments ?? []) {
-          let argumentCursor = stripParenExpression(argument as EsTreeNode);
-          while (isNodeOfType(argumentCursor, "MemberExpression")) {
-            if (getStaticPropertyName(argumentCursor) === "current") {
-              receiverIsRefOwnedNode = true;
-            }
-            argumentCursor = stripParenExpression(argumentCursor.object);
-          }
-        }
         receiverBase = stripParenExpression(receiverBase.callee);
         continue;
       }
       if (isNodeOfType(receiverBase, "MemberExpression")) {
-        if (getStaticPropertyName(receiverBase) === "current") {
-          receiverIsRefOwnedNode = true;
-        }
         receiverBase = stripParenExpression(receiverBase.object);
         continue;
       }
@@ -453,8 +472,6 @@ const isMountHazard = (
     const isSelfRemovingListener =
       (methodName === "addEventListener" && isOneShotListenerOptions(callArguments[2], scopes)) ||
       isSynchronouslyRemoved;
-    // A listener on a ref-owned DOM node (`this.containerRef.current`) dies
-    // with the node when the component unmounts, so it needs no teardown.
     return (
       !isFunctionFactoryOnce &&
       !isLocalReceiver &&

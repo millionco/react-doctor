@@ -8,33 +8,12 @@ import {
   REPOSITORY_SOURCE_EXTENSIONS,
 } from "./constants.js";
 import type { CorpusRepository } from "./corpus.js";
+import { parseCorpusRepository } from "./utils/parse-corpus-repository.js";
 
 interface RepositorySourceContent {
   source: string;
   content: string;
 }
-
-const isCorpusRepository = (value: unknown): value is CorpusRepository => {
-  if (typeof value !== "object" || value === null) return false;
-  if (
-    "org" in value &&
-    typeof value.org === "string" &&
-    "name" in value &&
-    typeof value.name === "string" &&
-    "ref" in value &&
-    typeof value.ref === "string" &&
-    "rootDir" in value &&
-    typeof value.rootDir === "string"
-  ) {
-    const rootDirectory = Path.posix.normalize(value.rootDir);
-    return (
-      !Path.posix.isAbsolute(rootDirectory) &&
-      rootDirectory !== ".." &&
-      !rootDirectory.startsWith("../")
-    );
-  }
-  return false;
-};
 
 const readRepositorySource = async (
   repositoriesSource: string,
@@ -67,14 +46,18 @@ const parseJsonRepositories = (
   source: RepositorySourceContent,
 ): ReadonlyArray<CorpusRepository> => {
   const repositories: unknown = JSON.parse(source.content);
-  if (
-    !Array.isArray(repositories) ||
-    repositories.length === 0 ||
-    !repositories.every(isCorpusRepository)
-  ) {
+  if (!Array.isArray(repositories) || repositories.length === 0) {
     throw new Error(`${source.source} must be an array of { org, name, ref, rootDir } records`);
   }
-  return repositories;
+  const parsedRepositories: CorpusRepository[] = [];
+  for (const repository of repositories) {
+    const parsedRepository = parseCorpusRepository(repository);
+    if (!parsedRepository) {
+      throw new Error(`${source.source} must be an array of { org, name, ref, rootDir } records`);
+    }
+    parsedRepositories.push(parsedRepository);
+  }
+  return parsedRepositories;
 };
 
 const parseTextRepositories = (
@@ -92,12 +75,16 @@ const parseTextRepositories = (
     if (!org || !name) {
       throw new Error(`${source.source}:${lineIndex + 1} must be owner/name or a GitHub URL`);
     }
-    repositories.push({
+    const repository = parseCorpusRepository({
       org,
       name,
       ref: DEFAULT_TARGET_REPOSITORY_REF,
       rootDir: DEFAULT_TARGET_ROOT_DIRECTORY,
     });
+    if (!repository) {
+      throw new Error(`${source.source}:${lineIndex + 1} must be a valid GitHub repository`);
+    }
+    repositories.push(repository);
   }
   return repositories;
 };
@@ -109,18 +96,17 @@ const parseEvaluationRecords = (
   for (const [lineIndex, line] of source.content.split("\n").entries()) {
     if (line.trim() === "") continue;
     const record: unknown = JSON.parse(line);
-    if (
-      typeof record !== "object" ||
-      record === null ||
-      !("repository" in record) ||
-      !isCorpusRepository(record.repository)
-    ) {
+    if (typeof record !== "object" || record === null || !("repository" in record)) {
       throw new Error(`${source.source}:${lineIndex + 1} must be an eval result record`);
     }
-    if (!PINNED_REPOSITORY_REF_PATTERN.test(record.repository.ref)) {
+    const repository = parseCorpusRepository(record.repository);
+    if (!repository) {
+      throw new Error(`${source.source}:${lineIndex + 1} must be an eval result record`);
+    }
+    if (!PINNED_REPOSITORY_REF_PATTERN.test(repository.ref)) {
       throw new Error(`${source.source}:${lineIndex + 1} contains an unpinned eval result`);
     }
-    repositories.push(record.repository);
+    repositories.push(repository);
   }
   return repositories;
 };

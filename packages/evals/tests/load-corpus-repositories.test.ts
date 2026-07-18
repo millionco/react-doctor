@@ -51,14 +51,57 @@ describe("loadCorpusRepositories", () => {
     const textPath = Path.join(directory, "repositories.txt");
     await writeFile(
       jsonPath,
-      JSON.stringify([{ org: "example", name: "app", ref: "abc123", rootDir: "web" }]),
+      JSON.stringify([
+        {
+          org: "example",
+          name: "app",
+          ref: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          rootDir: "web",
+        },
+      ]),
     );
     await writeFile(textPath, "example/app\nexample/other\n");
 
     await expect(loadCorpusRepositories([textPath, jsonPath])).resolves.toEqual([
       { org: "example", name: "other", ref: "HEAD", rootDir: "." },
-      { org: "example", name: "app", ref: "abc123", rootDir: "web" },
+      {
+        org: "example",
+        name: "app",
+        ref: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        rootDir: "web",
+      },
     ]);
+  });
+
+  it("normalizes root directories before deduplication", async () => {
+    const directory = await makeTemporaryDirectory();
+    const repositoriesPath = Path.join(directory, "repositories.json");
+    await writeFile(
+      repositoriesPath,
+      JSON.stringify([
+        { org: "example", name: "app", ref: "HEAD", rootDir: "packages/app" },
+        { org: "example", name: "app", ref: "HEAD", rootDir: "packages/web/../app" },
+      ]),
+    );
+
+    await expect(loadCorpusRepositories([repositoriesPath])).resolves.toEqual([
+      { org: "example", name: "app", ref: "HEAD", rootDir: "packages/app" },
+    ]);
+  });
+
+  it("rejects unsafe corpus fields", async () => {
+    const directory = await makeTemporaryDirectory();
+    const repositoriesPath = Path.join(directory, "repositories.json");
+    await writeFile(
+      repositoriesPath,
+      JSON.stringify([
+        { org: "example", name: "app", ref: "HEAD", rootDir: "$(touch compromised)" },
+      ]),
+    );
+
+    await expect(loadCorpusRepositories([repositoriesPath])).rejects.toThrow(
+      "must be an array of { org, name, ref, rootDir } records",
+    );
   });
 
   it("loads resolved repositories from evaluation NDJSON", async () => {

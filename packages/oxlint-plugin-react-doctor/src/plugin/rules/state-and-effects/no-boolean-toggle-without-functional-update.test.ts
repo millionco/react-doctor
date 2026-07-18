@@ -421,6 +421,32 @@ describe("no-boolean-toggle-without-functional-update", () => {
     expect(subscription.diagnostics).toHaveLength(0);
   });
 
+  it("accepts a stable named timer cleanup when state resubscribes", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);useEffect(()=>{const id=setInterval(()=>setOpen(!open),100);const cleanup=()=>clearInterval(id);return cleanup},[open])}",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects reassigned, uninvoked, and mismatched named timer cleanup", () => {
+    const reassigned = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);useEffect(()=>{const id=setInterval(()=>setOpen(!open),100);let cleanup=()=>clearInterval(id);cleanup=()=>{};return cleanup},[open])}",
+    );
+    const uninvoked = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);useEffect(()=>{const id=setInterval(()=>setOpen(!open),100);const cleanup=()=>()=>clearInterval(id);return cleanup},[open])}",
+    );
+    const mismatched = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);useEffect(()=>{const id=setInterval(()=>setOpen(!open),100);const otherId=setInterval(()=>{},100);const cleanup=()=>clearInterval(otherId);return cleanup},[open])}",
+    );
+    expect(reassigned.diagnostics).toHaveLength(1);
+    expect(uninvoked.diagnostics).toHaveLength(1);
+    expect(mismatched.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat mutually exclusive correlated await paths as stale", () => {
     const result = runRule(
       noBooleanToggleWithoutFunctionalUpdate,

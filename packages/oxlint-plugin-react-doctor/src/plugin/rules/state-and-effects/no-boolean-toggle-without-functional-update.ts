@@ -1,4 +1,5 @@
 import type { FunctionCfg } from "../../semantic/control-flow-graph.js";
+import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -332,15 +333,13 @@ const callbackRegistrationCalls = (
   return registrationCallsByCallback.get(callback) ?? [];
 };
 
-const isReturnedCleanupFunction = (node: EsTreeNode, effectCallback: EsTreeNode): boolean => {
+const isInsideReturnedCleanupFunction = (
+  node: EsTreeNode,
+  returnedCleanupFunctions: ReadonlySet<EsTreeNode>,
+): boolean => {
   let current: EsTreeNode | null | undefined = node;
-  while (current && current !== effectCallback) {
-    if (isFunctionLike(current)) {
-      const parent = current.parent;
-      return Boolean(
-        parent && isNodeOfType(parent, "ReturnStatement") && parent.argument === current,
-      );
-    }
+  while (current) {
+    if (isFunctionLike(current)) return returnedCleanupFunctions.has(current);
     current = current.parent;
   }
   return false;
@@ -350,6 +349,7 @@ const cleanupCallsMethodOnKey = (
   effectCallback: EsTreeNode,
   methodName: string,
   receiverKey: string,
+  returnedCleanupFunctions: ReadonlySet<EsTreeNode>,
   context: RuleContext,
 ): boolean => {
   let didFindCleanup = false;
@@ -357,7 +357,7 @@ const cleanupCallsMethodOnKey = (
     if (didFindCleanup) return false;
     if (
       !isNodeOfType(child, "CallExpression") ||
-      !isReturnedCleanupFunction(child, effectCallback) ||
+      !isInsideReturnedCleanupFunction(child, returnedCleanupFunctions) ||
       !context.cfg.isUnconditionalFromEntry(child)
     ) {
       return;
@@ -380,6 +380,9 @@ const registrationHasCleanup = (
   effectCallback: EsTreeNode,
   context: RuleContext,
 ): boolean => {
+  const returnedCleanupFunctions = new Set(
+    collectReturnedCleanupFunctions(effectCallback, context.scopes),
+  );
   const callee = stripParenExpression(registrationCall.callee);
   const timerMethodName = isNodeOfType(callee, "Identifier")
     ? callee.name
@@ -398,7 +401,7 @@ const registrationHasCleanup = (
       if (didFindCleanup) return false;
       if (
         !isNodeOfType(child, "CallExpression") ||
-        !isReturnedCleanupFunction(child, effectCallback) ||
+        !isInsideReturnedCleanupFunction(child, returnedCleanupFunctions) ||
         !context.cfg.isUnconditionalFromEntry(child)
       ) {
         return;
@@ -429,7 +432,13 @@ const registrationHasCleanup = (
     const subscriptionKey = registrationResultKey(registrationCall, context);
     return Boolean(
       subscriptionKey &&
-      cleanupCallsMethodOnKey(effectCallback, "unsubscribe", subscriptionKey, context),
+      cleanupCallsMethodOnKey(
+        effectCallback,
+        "unsubscribe",
+        subscriptionKey,
+        returnedCleanupFunctions,
+        context,
+      ),
     );
   }
   if (methodName === "addEventListener") {
@@ -445,7 +454,7 @@ const registrationHasCleanup = (
         if (didFindMatchingRemoval) return false;
         if (
           !isNodeOfType(child, "CallExpression") ||
-          !isReturnedCleanupFunction(child, effectCallback) ||
+          !isInsideReturnedCleanupFunction(child, returnedCleanupFunctions) ||
           !context.cfg.isUnconditionalFromEntry(child)
         ) {
           return;
@@ -485,7 +494,13 @@ const registrationHasCleanup = (
       const controllerKey = resolveExpressionKey(signal.object, context);
       if (
         controllerKey &&
-        cleanupCallsMethodOnKey(effectCallback, "abort", controllerKey, context)
+        cleanupCallsMethodOnKey(
+          effectCallback,
+          "abort",
+          controllerKey,
+          returnedCleanupFunctions,
+          context,
+        )
       ) {
         return true;
       }

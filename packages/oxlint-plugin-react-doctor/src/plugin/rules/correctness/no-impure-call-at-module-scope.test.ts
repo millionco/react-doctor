@@ -332,6 +332,42 @@ DeploymentFailureEmail.PreviewProps = previewDefaults;`,
 });
 
 describe("audit regressions", () => {
+  it("allows browser-only logical branches", () => {
+    const result = runRule(
+      noImpureCallAtModuleScope,
+      `const first = typeof window !== "undefined" && performance.now();
+       const second = typeof document === "undefined" || Date.now();`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("resolves an unreassigned browser guard binding", () => {
+    const result = runRule(
+      noImpureCallAtModuleScope,
+      `const isBrowser = typeof window !== "undefined";
+       const renderedAt = isBrowser && Date.now();`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags logical branches that execute on the server", () => {
+    const result = runRule(
+      noImpureCallAtModuleScope,
+      `const first = typeof window === "undefined" && performance.now();
+       const second = typeof document !== "undefined" || Date.now();`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not trust a typeof guard on a shadowed browser-global name", () => {
+    const result = runRule(
+      noImpureCallAtModuleScope,
+      `const window = {};
+       const renderedAt = typeof window !== "undefined" && Date.now();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("uses the server polarity of a typeof window conditional", () => {
     const result = runRule(
       noImpureCallAtModuleScope,
@@ -348,5 +384,31 @@ describe("audit regressions", () => {
   it("flags an unreassigned module let", () => {
     const result = runRule(noImpureCallAtModuleScope, `let requestTime = Date.now();`);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a nondeterministic direct default export", () => {
+    const result = runRule(noImpureCallAtModuleScope, `export default Date.now();`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a nondeterministic immediately invoked function", () => {
+    const result = runRule(noImpureCallAtModuleScope, `const requestTime = (() => Date.now())();`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an immediately invoked function through a TypeScript wrapper", () => {
+    const result = runRule(
+      noImpureCallAtModuleScope,
+      `const requestTime = ((() => Date.now()) as () => number)();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a callback passed to another function as immediate", () => {
+    const result = runRule(
+      noImpureCallAtModuleScope,
+      `const requestTime = defer(() => Date.now());`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 });

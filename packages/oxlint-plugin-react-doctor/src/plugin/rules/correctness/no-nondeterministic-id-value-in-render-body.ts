@@ -4,18 +4,13 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-
-// Impure id generators (bare-identifier forms). A local same-file
-// binding of the same name shadows the library import, so those are
-// resolved away before matching.
-const IMPURE_GENERATOR_IDENTIFIER_NAMES = new Set(["uniqueId", "nanoid", "shortid"]);
 
 // JSX attributes whose value is an *identity reference*: another element
 // or an aria/SVG relationship points at this id. When the id changes
@@ -47,9 +42,45 @@ const isKnownIdGeneratorLibraryReference = (
   identifier: EsTreeNodeOfType<"Identifier">,
   context: RuleContext,
 ): boolean => {
-  const importSource = getImportSourceForName(identifier, identifier.name);
-  if (importSource !== null) return ID_GENERATOR_IMPORT_SOURCES.has(importSource);
+  const importBinding = getImportBindingForName(identifier, identifier.name);
+  const declaration = context.scopes.symbolFor(identifier)?.declarationNode;
+  if (
+    importBinding &&
+    declaration &&
+    (isNodeOfType(declaration, "ImportSpecifier") ||
+      isNodeOfType(declaration, "ImportDefaultSpecifier") ||
+      isNodeOfType(declaration, "ImportNamespaceSpecifier"))
+  ) {
+    return ID_GENERATOR_IMPORT_SOURCES.has(importBinding.source);
+  }
   return identifier.name === "crypto" && context.scopes.isGlobalReference(identifier);
+};
+
+const isImportedIdGeneratorFunction = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const importBinding = getImportBindingForName(identifier, identifier.name);
+  if (!importBinding || importBinding.isNamespace) return false;
+  const declaration = context.scopes.symbolFor(identifier)?.declarationNode;
+  if (
+    !declaration ||
+    (!isNodeOfType(declaration, "ImportSpecifier") &&
+      !isNodeOfType(declaration, "ImportDefaultSpecifier"))
+  ) {
+    return false;
+  }
+  if (importBinding.source === "nanoid") {
+    return importBinding.exportedName === "nanoid" || importBinding.exportedName === "default";
+  }
+  if (
+    importBinding.source === "lodash" ||
+    importBinding.source === "lodash/uniqueId" ||
+    importBinding.source === "lodash.uniqueid"
+  ) {
+    return importBinding.exportedName === "uniqueId" || importBinding.exportedName === "default";
+  }
+  return importBinding.source === "shortid" && importBinding.exportedName === "default";
 };
 
 // True when `node` is a call to an impure id generator:
@@ -63,8 +94,7 @@ const isImpureIdGeneratorCall = (node: EsTreeNode, context: RuleContext): boolea
   const callee = unwrapped.callee;
 
   if (isNodeOfType(callee, "Identifier")) {
-    if (!IMPURE_GENERATOR_IDENTIFIER_NAMES.has(callee.name)) return false;
-    return isKnownIdGeneratorLibraryReference(callee, context);
+    return isImportedIdGeneratorFunction(callee, context);
   }
 
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
@@ -86,6 +116,17 @@ const isImpureIdGeneratorCall = (node: EsTreeNode, context: RuleContext): boolea
     return (
       isNodeOfType(callee.object, "Identifier") &&
       isKnownIdGeneratorLibraryReference(callee.object, context)
+    );
+  }
+  if (propertyName === "nanoid") {
+    if (!isNodeOfType(callee.object, "Identifier")) return false;
+    const importBinding = getImportBindingForName(callee.object, callee.object.name);
+    const declaration = context.scopes.symbolFor(callee.object)?.declarationNode;
+    return Boolean(
+      importBinding?.isNamespace &&
+      importBinding.source === "nanoid" &&
+      declaration &&
+      isNodeOfType(declaration, "ImportNamespaceSpecifier"),
     );
   }
   // `shortid.generate()`

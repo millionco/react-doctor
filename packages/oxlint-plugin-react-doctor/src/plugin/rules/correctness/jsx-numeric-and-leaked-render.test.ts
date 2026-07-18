@@ -421,6 +421,14 @@ describe("jsx-numeric-and-leaked-render", () => {
 });
 
 describe("audit regressions", () => {
+  it("does not treat a shadowed Number helper as numeric coercion", () => {
+    const result = runRule(
+      jsxNumericAndLeakedRender,
+      `const Number = (value) => Boolean(value); const C = ({ value }) => <div>{Number(value) && <Chip />}</div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not classify string concatenation as numeric", () => {
     const result = runRule(
       jsxNumericAndLeakedRender,

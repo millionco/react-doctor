@@ -747,6 +747,66 @@ describe("no-fetch-response-used-without-status-check", () => {
 });
 
 describe("audit regressions", () => {
+  it("does not treat a same-named custom URL producer as an inert object URL", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(api) { const response = await fetch(api.createObjectURL()); return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat an unresolved bare URL producer as the platform URL API", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(file) { const response = await fetch(createObjectURL(file)); return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a custom toDataURL method as a proven canvas producer", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(api) { const response = await fetch(api.toDataURL()); return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not preserve inert provenance through a reassigned URL binding", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { let url = "data:text/plain,ok"; url = "/api/data"; const response = await fetch(url); return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat shadowed URL and require bindings as bundled asset producers", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(URL, require) {
+        const first = await fetch(new URL("/api", baseUrl));
+        const second = await fetch(require("/api"));
+        return Promise.all([first.json(), second.json()]);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("recognizes the href of a bundled import-meta URL", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const asset = new URL("./font.woff", import.meta.url); const response = await fetch(asset.href); return response.arrayBuffer(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat an absolute import-meta URL as a bundled relative asset", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch(new URL("/api/data", import.meta.url)); return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("requires a status guard rather than a status read", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,

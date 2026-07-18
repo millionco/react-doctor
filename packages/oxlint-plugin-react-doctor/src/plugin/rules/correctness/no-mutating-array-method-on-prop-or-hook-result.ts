@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
+import { findSameFileTypeDeclaration } from "../../utils/find-same-file-type-declaration.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -55,6 +56,226 @@ const PLAYBACK_SIBLING_METHOD_NAMES = new Set([
 const MUTABLE_STORE_HOOK_PATTERN = /^use(?:LocalObservable|LocalStore|SyncedStore|Proxy|Creation)$/;
 
 const ALIAS_RESOLUTION_DEPTH_LIMIT = 3;
+const TYPE_RESOLUTION_DEPTH_LIMIT = 4;
+
+const getStaticTypeMemberName = (member: EsTreeNode): string | null => {
+  if (!isNodeOfType(member, "TSPropertySignature") && !isNodeOfType(member, "TSMethodSignature")) {
+    return null;
+  }
+  if (member.computed) return null;
+  if (isNodeOfType(member.key, "Identifier")) return member.key.name;
+  if (isNodeOfType(member.key, "Literal") && typeof member.key.value === "string") {
+    return member.key.value;
+  }
+  return null;
+};
+
+const typeCanBeArray = (
+  typeNode: EsTreeNode,
+  referenceNode: EsTreeNode,
+  depth: number,
+): boolean => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return true;
+  if (isNodeOfType(typeNode, "TSTypeAnnotation")) {
+    return typeCanBeArray(typeNode.typeAnnotation, referenceNode, depth);
+  }
+  if (isNodeOfType(typeNode, "TSArrayType") || isNodeOfType(typeNode, "TSTupleType")) return true;
+  if (isNodeOfType(typeNode, "TSUnionType") || isNodeOfType(typeNode, "TSIntersectionType")) {
+    return typeNode.types.some((member) => typeCanBeArray(member, referenceNode, depth + 1));
+  }
+  if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) {
+    return (typeNode.extends ?? []).some((extension) => {
+      if (!isNodeOfType(extension.expression, "Identifier")) return true;
+      if (extension.expression.name === "Array" || extension.expression.name === "ReadonlyArray") {
+        return true;
+      }
+      const declaration = findSameFileTypeDeclaration(referenceNode, extension.expression.name);
+      return declaration ? typeCanBeArray(declaration, referenceNode, depth + 1) : true;
+    });
+  }
+  if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
+    return typeCanBeArray(typeNode.typeAnnotation, referenceNode, depth + 1);
+  }
+  if (!isNodeOfType(typeNode, "TSTypeReference")) return false;
+  if (!isNodeOfType(typeNode.typeName, "Identifier")) return true;
+  if (typeNode.typeName.name === "Array" || typeNode.typeName.name === "ReadonlyArray") return true;
+  const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
+  return declaration ? typeCanBeArray(declaration, referenceNode, depth + 1) : true;
+};
+
+const membersDeclareCallableMember = (
+  members: ReadonlyArray<EsTreeNode>,
+  memberName: string,
+): boolean =>
+  members.some((member) => {
+    if (getStaticTypeMemberName(member) !== memberName) return false;
+    if (isNodeOfType(member, "TSMethodSignature")) return true;
+    return Boolean(
+      isNodeOfType(member, "TSPropertySignature") &&
+      member.typeAnnotation &&
+      isNodeOfType(member.typeAnnotation.typeAnnotation, "TSFunctionType"),
+    );
+  });
+
+const typeDeclaresCallableMember = (
+  typeNode: EsTreeNode,
+  memberName: string,
+  referenceNode: EsTreeNode,
+  depth: number,
+): boolean => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+  if (isNodeOfType(typeNode, "TSTypeAnnotation")) {
+    return typeDeclaresCallableMember(typeNode.typeAnnotation, memberName, referenceNode, depth);
+  }
+  if (isNodeOfType(typeNode, "TSArrayType") || isNodeOfType(typeNode, "TSTupleType")) {
+    return false;
+  }
+  if (isNodeOfType(typeNode, "TSUnionType")) {
+    return typeNode.types.every((member) =>
+      typeDeclaresCallableMember(member, memberName, referenceNode, depth + 1),
+    );
+  }
+  if (isNodeOfType(typeNode, "TSIntersectionType")) {
+    return typeNode.types.some((member) =>
+      typeDeclaresCallableMember(member, memberName, referenceNode, depth + 1),
+    );
+  }
+  if (isNodeOfType(typeNode, "TSTypeLiteral")) {
+    return membersDeclareCallableMember(typeNode.members, memberName);
+  }
+  if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) {
+    if (typeDeclaresCallableMember(typeNode.body, memberName, referenceNode, depth + 1)) {
+      return true;
+    }
+    return (typeNode.extends ?? []).some((extension) => {
+      if (extension.typeArguments || !isNodeOfType(extension.expression, "Identifier")) {
+        return false;
+      }
+      const declaration = findSameFileTypeDeclaration(referenceNode, extension.expression.name);
+      return Boolean(
+        declaration &&
+        typeDeclaresCallableMember(declaration, memberName, referenceNode, depth + 1),
+      );
+    });
+  }
+  if (isNodeOfType(typeNode, "TSInterfaceBody")) {
+    return membersDeclareCallableMember(typeNode.body, memberName);
+  }
+  if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
+    return typeDeclaresCallableMember(
+      typeNode.typeAnnotation,
+      memberName,
+      referenceNode,
+      depth + 1,
+    );
+  }
+  if (
+    !isNodeOfType(typeNode, "TSTypeReference") ||
+    !isNodeOfType(typeNode.typeName, "Identifier") ||
+    typeNode.typeName.name === "Array" ||
+    typeNode.typeName.name === "ReadonlyArray"
+  ) {
+    return false;
+  }
+  const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
+  return Boolean(
+    declaration && typeDeclaresCallableMember(declaration, memberName, referenceNode, depth + 1),
+  );
+};
+
+const propertyTypeFromObjectType = (
+  typeNode: EsTreeNode,
+  propertyName: string,
+  referenceNode: EsTreeNode,
+  depth: number,
+): EsTreeNode | null => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return null;
+  if (isNodeOfType(typeNode, "TSTypeAnnotation")) {
+    return propertyTypeFromObjectType(typeNode.typeAnnotation, propertyName, referenceNode, depth);
+  }
+  let members: ReadonlyArray<EsTreeNode> | null = null;
+  if (isNodeOfType(typeNode, "TSTypeLiteral")) members = typeNode.members;
+  if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) members = typeNode.body.body;
+  if (members) {
+    const typeMember = members.find((member) => getStaticTypeMemberName(member) === propertyName);
+    if (typeMember && isNodeOfType(typeMember, "TSPropertySignature")) {
+      return typeMember.typeAnnotation ?? null;
+    }
+  }
+  if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) {
+    for (const extension of typeNode.extends ?? []) {
+      if (extension.typeArguments || !isNodeOfType(extension.expression, "Identifier")) continue;
+      const declaration = findSameFileTypeDeclaration(referenceNode, extension.expression.name);
+      if (!declaration) continue;
+      const inheritedPropertyType = propertyTypeFromObjectType(
+        declaration,
+        propertyName,
+        referenceNode,
+        depth + 1,
+      );
+      if (inheritedPropertyType) return inheritedPropertyType;
+    }
+  }
+  if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
+    return propertyTypeFromObjectType(
+      typeNode.typeAnnotation,
+      propertyName,
+      referenceNode,
+      depth + 1,
+    );
+  }
+  if (isNodeOfType(typeNode, "TSIntersectionType")) {
+    for (const intersectionMember of typeNode.types) {
+      const propertyType = propertyTypeFromObjectType(
+        intersectionMember,
+        propertyName,
+        referenceNode,
+        depth + 1,
+      );
+      if (propertyType) return propertyType;
+    }
+  }
+  if (isNodeOfType(typeNode, "TSTypeReference") && isNodeOfType(typeNode.typeName, "Identifier")) {
+    const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
+    return declaration
+      ? propertyTypeFromObjectType(declaration, propertyName, referenceNode, depth + 1)
+      : null;
+  }
+  return null;
+};
+
+const propertyTypeForBinding = (bindingIdentifier: EsTreeNode): EsTreeNode | null => {
+  if (!isNodeOfType(bindingIdentifier, "Identifier")) return null;
+  if (bindingIdentifier.typeAnnotation) return bindingIdentifier.typeAnnotation;
+  const property = bindingIdentifier.parent;
+  const pattern = property?.parent;
+  if (
+    !property ||
+    !isNodeOfType(property, "Property") ||
+    property.computed ||
+    !pattern ||
+    !isNodeOfType(pattern, "ObjectPattern") ||
+    !pattern.typeAnnotation
+  ) {
+    return null;
+  }
+  let propertyName: string | null = null;
+  if (isNodeOfType(property.key, "Identifier")) propertyName = property.key.name;
+  if (isNodeOfType(property.key, "Literal") && typeof property.key.value === "string") {
+    propertyName = property.key.value;
+  }
+  if (!propertyName) return null;
+  return propertyTypeFromObjectType(pattern.typeAnnotation, propertyName, bindingIdentifier, 0);
+};
+
+const bindingDeclaresNonArrayMethod = (binding: BindingInfo, methodName: string): boolean => {
+  const bindingType = propertyTypeForBinding(binding.bindingIdentifier);
+  return Boolean(
+    bindingType &&
+    !typeCanBeArray(bindingType, binding.bindingIdentifier, 0) &&
+    typeDeclaresCallableMember(bindingType, methodName, binding.bindingIdentifier, 0),
+  );
+};
 
 const identifierWords = (name: string): string[] =>
   name
@@ -431,6 +652,7 @@ const resolveSharedArraySource = (
   if (hasMutationSafeWord(rootIdentifier.name)) return null;
   const binding = findVariableInitializer(rootIdentifier, rootIdentifier.name);
   if (!binding) return null;
+  if (bindingDeclaresNonArrayMethod(binding, mutatingMethodName)) return null;
   if (hasRebindBeforeCall(binding, rootIdentifier.name, callNode, context)) return null;
   if (!reachesThroughMemberAccess && isBoundThroughRestElement(binding)) return null;
   if (isDerivedFromHookCall(binding)) {

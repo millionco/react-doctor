@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
+import { findSameFileTypeDeclaration } from "../../utils/find-same-file-type-declaration.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -577,29 +578,6 @@ const isStringKeywordAnnotation = (typeAnnotation: EsTreeNode | null | undefined
     isNodeOfType(typeAnnotation, "TSTypeAnnotation") &&
     isNodeOfType(typeAnnotation.typeAnnotation, "TSStringKeyword"),
   );
-
-const findSameFileTypeDeclaration = (
-  referenceNode: EsTreeNode,
-  typeName: string,
-): EsTreeNode | null => {
-  const programRoot = findProgramRoot(referenceNode);
-  if (!programRoot || !isNodeOfType(programRoot, "Program")) return null;
-  for (const statement of programRoot.body) {
-    const declaration: EsTreeNode | null = isNodeOfType(statement, "ExportNamedDeclaration")
-      ? statement.declaration
-      : statement;
-    if (!declaration) continue;
-    if (
-      (isNodeOfType(declaration, "TSInterfaceDeclaration") ||
-        isNodeOfType(declaration, "TSTypeAliasDeclaration")) &&
-      isNodeOfType(declaration.id, "Identifier") &&
-      declaration.id.name === typeName
-    ) {
-      return declaration;
-    }
-  }
-  return null;
-};
 
 // Does `typeNode` (a type-literal, or a reference to a same-file
 // interface / type alias) declare `propertyName: string`?

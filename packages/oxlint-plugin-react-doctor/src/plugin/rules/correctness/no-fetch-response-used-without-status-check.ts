@@ -1,15 +1,14 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getMeaningfulParent } from "../../utils/get-meaningful-parent.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
@@ -30,16 +29,20 @@ const MESSAGE =
 const getTransparentExpressionParent = (node: EsTreeNode): EsTreeNode | null =>
   findTransparentExpressionRoot(node).parent ?? null;
 
-const isGlobalFetchCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
+const isGlobalFetchCall = (
+  node: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
   const callee = node.callee;
   if (!isNodeOfType(callee, "Identifier") || callee.name !== "fetch") return false;
-  // An imported / aliased / locally-bound `fetch` is a wrapper whose
-  // status check the detector can't see; only root at the DOM global.
-  if (findVariableInitializer(callee, "fetch")) return false;
-  return true;
+  return context.scopes.isGlobalReference(callee);
 };
 
-const resolveStaticUrlPrefix = (argument: EsTreeNode, depth: number): string | null => {
+const resolveStaticUrlPrefix = (
+  argument: EsTreeNode,
+  depth: number,
+  context: RuleContext,
+): string | null => {
   if (depth > MAX_URL_BINDING_RESOLUTION_DEPTH) return null;
   const expression = stripGroupingParens(argument);
   if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
@@ -49,64 +52,107 @@ const resolveStaticUrlPrefix = (argument: EsTreeNode, depth: number): string | n
     return expression.quasis[0]?.value.cooked ?? null;
   }
   if (isNodeOfType(expression, "BinaryExpression") && expression.operator === "+") {
-    return resolveStaticUrlPrefix(expression.left as EsTreeNode, depth + 1);
+    return resolveStaticUrlPrefix(expression.left as EsTreeNode, depth + 1, context);
   }
   if (isNodeOfType(expression, "Identifier")) {
-    const binding = findVariableInitializer(expression, expression.name);
-    if (!binding?.initializer || binding.initializer === expression) return null;
-    return resolveStaticUrlPrefix(binding.initializer, depth + 1);
+    const symbol = context.scopes.symbolFor(expression);
+    const initializer = symbol ? getDirectUnreassignedInitializer(symbol) : null;
+    if (!initializer || initializer === expression) return null;
+    return resolveStaticUrlPrefix(initializer, depth + 1, context);
   }
   return null;
 };
 
 // data:/blob: URLs produced by calls rather than literals —
 // `canvas.toDataURL(...)`, `URL.createObjectURL(...)` — or carried by a
-// binding/parameter named for the scheme (`dataUrl`, `objectUrl`,
-// `blobUrl`). Decoding them is local: no HTTP status exists to check.
+// local binding. Decoding them is local: no HTTP status exists to check.
 // A `require('./asset.md')` URL is inert the same way: the bundler emits
 // the asset into the app's own bundle, so the same-origin static URL
 // cannot 4xx/5xx in a consistent deployment.
-const INERT_URL_PRODUCER_METHOD_NAMES = new Set(["toDataURL", "createObjectURL"]);
-const INERT_URL_PRODUCER_CALLEE_NAMES = new Set(["createObjectURL", "require"]);
+const CANVAS_TYPE_NAMES = new Set(["HTMLCanvasElement", "OffscreenCanvas"]);
 
-const isBundledAssetRequireCall = (expression: EsTreeNode): boolean =>
+const isBundledAssetRequireCall = (expression: EsTreeNode, context: RuleContext): boolean =>
   isNodeOfType(expression, "CallExpression") &&
   isNodeOfType(expression.callee, "Identifier") &&
-  expression.callee.name === "require";
+  expression.callee.name === "require" &&
+  context.scopes.isGlobalReference(expression.callee);
 
 // `let markdownPath = ''; try { markdownPath = require(...) } catch {
 // markdownPath = require(fallback) }` — the require-produced URL reaches
 // the binding through assignments rather than the declarator initializer.
-const bindingIsAssignedFromRequire = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
-  const binding = findVariableInitializer(identifier, identifier.name);
-  if (!binding) return false;
-  let assignedFromRequire = false;
-  walkAst(binding.scopeOwner, (child) => {
-    if (assignedFromRequire) return false;
-    if (
-      isNodeOfType(child, "AssignmentExpression") &&
-      isNodeOfType(child.left, "Identifier") &&
-      child.left.name === identifier.name &&
-      isBundledAssetRequireCall(stripGroupingParens(child.right as EsTreeNode))
-    ) {
-      assignedFromRequire = true;
-      return false;
-    }
-  });
-  return assignedFromRequire;
+const bindingIsAssignedFromRequire = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const symbol = context.scopes.symbolFor(identifier);
+  if (!symbol) return false;
+  const writes = symbol.references.filter((reference) => reference.flag !== "read");
+  return (
+    writes.length > 0 &&
+    writes.every((reference) => {
+      const assignment = reference.identifier.parent;
+      return Boolean(
+        assignment &&
+        isNodeOfType(assignment, "AssignmentExpression") &&
+        assignment.left === reference.identifier &&
+        isBundledAssetRequireCall(stripGroupingParens(assignment.right as EsTreeNode), context),
+      );
+    })
+  );
+};
+
+const isProvenCanvasReference = (expression: EsTreeNode, context: RuleContext): boolean => {
+  if (!isNodeOfType(expression, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(expression);
+  if (!symbol) return false;
+  const binding = symbol.bindingIdentifier;
+  const annotation = isNodeOfType(binding, "Identifier") ? binding.typeAnnotation : null;
+  if (
+    annotation &&
+    isNodeOfType(annotation.typeAnnotation, "TSTypeReference") &&
+    isNodeOfType(annotation.typeAnnotation.typeName, "Identifier") &&
+    CANVAS_TYPE_NAMES.has(annotation.typeAnnotation.typeName.name)
+  ) {
+    return true;
+  }
+  const initializer = getDirectUnreassignedInitializer(symbol);
+  if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
+  const callee = stripGroupingParens(initializer.callee as EsTreeNode);
+  const firstArgument = initializer.arguments[0];
+  return Boolean(
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.object, "Identifier") &&
+    callee.object.name === "document" &&
+    context.scopes.isGlobalReference(callee.object) &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "createElement" &&
+    firstArgument &&
+    isNodeOfType(firstArgument, "Literal") &&
+    firstArgument.value === "canvas",
+  );
 };
 
 // `new URL('./asset.ttf', import.meta.url)` — the bundler resolves the
 // relative specifier against the module's own emitted location (the next/og
 // font idiom), so the fetched bytes are the app's own bundled asset: no
 // meaningful HTTP status exists to branch on.
-const isImportMetaUrlAssetUrl = (expression: EsTreeNode): boolean => {
+const isImportMetaUrlAssetUrl = (expression: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(expression, "NewExpression")) return false;
-  if (!isNodeOfType(expression.callee, "Identifier") || expression.callee.name !== "URL") {
+  if (
+    !isNodeOfType(expression.callee, "Identifier") ||
+    expression.callee.name !== "URL" ||
+    !context.scopes.isGlobalReference(expression.callee)
+  ) {
     return false;
   }
+  const pathArgument = expression.arguments?.[0];
   const baseArgument = expression.arguments?.[1];
-  if (!baseArgument) return false;
+  if (!pathArgument || !baseArgument) return false;
+  const pathPrefix = resolveStaticUrlPrefix(pathArgument as EsTreeNode, 0, context);
+  if (pathPrefix === null || (!pathPrefix.startsWith("./") && !pathPrefix.startsWith("../"))) {
+    return false;
+  }
   const base = stripGroupingParens(baseArgument as EsTreeNode);
   return (
     isNodeOfType(base, "MemberExpression") &&
@@ -117,10 +163,30 @@ const isImportMetaUrlAssetUrl = (expression: EsTreeNode): boolean => {
   );
 };
 
-const isInertUrlProducer = (argument: EsTreeNode, depth: number): boolean => {
+const isInertUrlProducer = (argument: EsTreeNode, depth: number, context: RuleContext): boolean => {
   if (depth > MAX_URL_BINDING_RESOLUTION_DEPTH) return false;
   const expression = stripGroupingParens(argument);
-  if (isImportMetaUrlAssetUrl(expression)) return true;
+  if (isImportMetaUrlAssetUrl(expression, context)) return true;
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    return (
+      isInertUrlProducer(expression.consequent, depth + 1, context) &&
+      isInertUrlProducer(expression.alternate, depth + 1, context)
+    );
+  }
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    return (
+      isInertUrlProducer(expression.left, depth + 1, context) &&
+      isInertUrlProducer(expression.right, depth + 1, context)
+    );
+  }
+  if (
+    isNodeOfType(expression, "MemberExpression") &&
+    !expression.computed &&
+    isNodeOfType(expression.property, "Identifier") &&
+    expression.property.name === "href"
+  ) {
+    return isInertUrlProducer(expression.object as EsTreeNode, depth + 1, context);
+  }
   if (isNodeOfType(expression, "CallExpression")) {
     const callee = stripGroupingParens(expression.callee as EsTreeNode);
     if (
@@ -128,25 +194,41 @@ const isInertUrlProducer = (argument: EsTreeNode, depth: number): boolean => {
       !callee.computed &&
       isNodeOfType(callee.property, "Identifier")
     ) {
-      return INERT_URL_PRODUCER_METHOD_NAMES.has(callee.property.name);
+      if (callee.property.name === "toDataURL") {
+        return isProvenCanvasReference(callee.object as EsTreeNode, context);
+      }
+      return Boolean(
+        callee.property.name === "createObjectURL" &&
+        isNodeOfType(callee.object, "Identifier") &&
+        callee.object.name === "URL" &&
+        context.scopes.isGlobalReference(callee.object),
+      );
     }
-    return isNodeOfType(callee, "Identifier") && INERT_URL_PRODUCER_CALLEE_NAMES.has(callee.name);
+    return Boolean(
+      isNodeOfType(callee, "Identifier") &&
+      callee.name === "require" &&
+      context.scopes.isGlobalReference(callee),
+    );
   }
   if (isNodeOfType(expression, "Identifier")) {
-    if (bindingIsAssignedFromRequire(expression)) return true;
-    const binding = findVariableInitializer(expression, expression.name);
-    if (!binding?.initializer || binding.initializer === expression) return false;
-    return isInertUrlProducer(binding.initializer, depth + 1);
+    if (bindingIsAssignedFromRequire(expression, context)) return true;
+    const symbol = context.scopes.symbolFor(expression);
+    const initializer = symbol ? getDirectUnreassignedInitializer(symbol) : null;
+    if (!initializer || initializer === expression) return false;
+    return isInertUrlProducer(initializer, depth + 1, context);
   }
   return false;
 };
 
-const fetchesInertUrlScheme = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
+const fetchesInertUrlScheme = (
+  node: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
   const firstArgument = node.arguments?.[0];
   if (!firstArgument) return false;
-  const urlPrefix = resolveStaticUrlPrefix(firstArgument as EsTreeNode, 0);
+  const urlPrefix = resolveStaticUrlPrefix(firstArgument as EsTreeNode, 0, context);
   if (urlPrefix !== null && INERT_URL_SCHEME_PATTERN.test(urlPrefix)) return true;
-  return isInertUrlProducer(firstArgument as EsTreeNode, 0);
+  return isInertUrlProducer(firstArgument as EsTreeNode, 0, context);
 };
 
 const isBodyConsumeCall = (node: EsTreeNode, responseName: string): boolean => {
@@ -429,8 +511,8 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
     if (BUILD_SCRIPT_BASENAME_PATTERN.test(basename)) return {};
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isGlobalFetchCall(node)) return;
-        if (fetchesInertUrlScheme(node)) return;
+        if (!isGlobalFetchCall(node, context)) return;
+        if (fetchesInertUrlScheme(node, context)) return;
         const fetchExpression = findTransparentExpressionRoot(node as EsTreeNode);
         const parent = getMeaningfulParent(fetchExpression);
         if (!parent) return;

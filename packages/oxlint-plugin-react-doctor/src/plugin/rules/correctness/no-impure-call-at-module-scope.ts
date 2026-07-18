@@ -1,7 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -17,7 +18,7 @@ const IMPURE_MEMBER_CALLS = new Map<string, ReadonlySet<string>>([
   ["performance", new Set(["now"])],
 ]);
 
-const impureBuiltinLabel = (node: EsTreeNode): string | null => {
+const impureBuiltinLabel = (node: EsTreeNode, context: RuleContext): string | null => {
   if (isNodeOfType(node, "NewExpression")) {
     // Only the zero-argument `new Date()` is nondeterministic; a
     // timestamp/parts argument is deterministic.
@@ -25,7 +26,7 @@ const impureBuiltinLabel = (node: EsTreeNode): string | null => {
       isNodeOfType(node.callee, "Identifier") &&
       node.callee.name === "Date" &&
       (node.arguments?.length ?? 0) === 0 &&
-      !findVariableInitializer(node.callee, "Date")
+      context.scopes.isGlobalReference(node.callee)
     ) {
       return "new Date()";
     }
@@ -36,7 +37,7 @@ const impureBuiltinLabel = (node: EsTreeNode): string | null => {
     isNodeOfType(node.callee, "Identifier") &&
     node.callee.name === "Date" &&
     node.arguments.length === 0 &&
-    !findVariableInitializer(node.callee, "Date")
+    context.scopes.isGlobalReference(node.callee)
   ) {
     return "Date()";
   }
@@ -47,19 +48,56 @@ const impureBuiltinLabel = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(callee.property, "Identifier")) return null;
   const allowedMethods = IMPURE_MEMBER_CALLS.get(receiver.name);
   if (!allowedMethods?.has(callee.property.name)) return null;
-  // A same-file binding named `Math`/`Date`/`performance` shadows the global.
-  if (findVariableInitializer(receiver, receiver.name)) return null;
+  if (!context.scopes.isGlobalReference(receiver)) return null;
   return `${receiver.name}.${callee.property.name}()`;
 };
 
-const serverValueOfTypeofBrowserGlobalTest = (test: EsTreeNode): boolean | null => {
+const serverValueOfTypeofBrowserGlobalTest = (
+  test: EsTreeNode,
+  context: RuleContext,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean | null => {
   const expression = stripParenExpression(test);
+  if (isNodeOfType(expression, "Identifier")) {
+    const symbol = context.scopes.symbolFor(expression);
+    if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
+    const initializer = getDirectUnreassignedInitializer(symbol);
+    if (!initializer) return null;
+    visitedSymbolIds.add(symbol.id);
+    const serverValue = serverValueOfTypeofBrowserGlobalTest(
+      initializer,
+      context,
+      visitedSymbolIds,
+    );
+    visitedSymbolIds.delete(symbol.id);
+    return serverValue;
+  }
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+    const argumentValue = serverValueOfTypeofBrowserGlobalTest(
+      expression.argument,
+      context,
+      visitedSymbolIds,
+    );
+    return argumentValue === null ? null : !argumentValue;
+  }
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    const leftValue = serverValueOfTypeofBrowserGlobalTest(
+      expression.left,
+      context,
+      visitedSymbolIds,
+    );
+    if (leftValue === null) return null;
+    if (expression.operator === "&&" && !leftValue) return false;
+    if (expression.operator === "||" && leftValue) return true;
+    return serverValueOfTypeofBrowserGlobalTest(expression.right, context, visitedSymbolIds);
+  }
   if (!isNodeOfType(expression, "BinaryExpression")) return null;
   const isUndefinedTypeof = (candidate: EsTreeNode): boolean =>
     isNodeOfType(candidate, "UnaryExpression") &&
     candidate.operator === "typeof" &&
     isNodeOfType(candidate.argument, "Identifier") &&
-    (candidate.argument.name === "window" || candidate.argument.name === "document");
+    (candidate.argument.name === "window" || candidate.argument.name === "document") &&
+    context.scopes.isGlobalReference(candidate.argument);
   const isUndefinedLiteral = (candidate: EsTreeNode): boolean =>
     isNodeOfType(candidate, "Literal") && candidate.value === "undefined";
   if (
@@ -80,17 +118,48 @@ const isModuleScopeEvaluation = (impureNode: EsTreeNode, context: RuleContext): 
   let cursor: EsTreeNode | null = impureNode.parent ?? null;
   let isStaticField = false;
   while (cursor) {
-    if (isFunctionLike(cursor) || isNodeOfType(cursor, "MethodDefinition")) return false;
+    if (isFunctionLike(cursor)) {
+      const functionExpression = findTransparentExpressionRoot(cursor);
+      const call = functionExpression.parent;
+      if (
+        !call ||
+        !isNodeOfType(call, "CallExpression") ||
+        stripParenExpression(call.callee as EsTreeNode) !== cursor
+      ) {
+        return false;
+      }
+      child = call;
+      cursor = call.parent ?? null;
+      continue;
+    }
+    if (isNodeOfType(cursor, "MethodDefinition")) return false;
 
     // `typeof window === "undefined" ? 0 : performance.now()` — the branch
     // visible to the server render is the deterministic constant; the
     // impure read only ever runs in the browser.
     if (isNodeOfType(cursor, "ConditionalExpression") && cursor.test !== child) {
-      const serverTestValue = serverValueOfTypeofBrowserGlobalTest(cursor.test as EsTreeNode);
+      const serverTestValue = serverValueOfTypeofBrowserGlobalTest(
+        cursor.test as EsTreeNode,
+        context,
+      );
       if (
         serverTestValue !== null &&
         ((cursor.consequent === child && !serverTestValue) ||
           (cursor.alternate === child && serverTestValue))
+      ) {
+        return false;
+      }
+    }
+
+    if (
+      isNodeOfType(cursor, "LogicalExpression") &&
+      cursor.right === child &&
+      (cursor.operator === "&&" || cursor.operator === "||")
+    ) {
+      const serverTestValue = serverValueOfTypeofBrowserGlobalTest(cursor.left, context);
+      if (
+        (cursor.operator === "&&" && serverTestValue === false) ||
+        (cursor.operator === "||" && serverTestValue === true)
       ) {
         return false;
       }
@@ -118,6 +187,8 @@ const isModuleScopeEvaluation = (impureNode: EsTreeNode, context: RuleContext): 
       return true;
     }
 
+    if (isNodeOfType(cursor, "Program")) return true;
+
     child = cursor;
     cursor = cursor.parent ?? null;
   }
@@ -134,7 +205,7 @@ export const noImpureCallAtModuleScope = defineRule({
     "`Math.random()`, `Date.now()`, `performance.now()`, and `new Date()` run once at module load, so the value is frozen for the whole server process. Move the call into a function/component so it evaluates per request.",
   create: (context: RuleContext) => {
     const check = (node: EsTreeNode): void => {
-      const label = impureBuiltinLabel(node);
+      const label = impureBuiltinLabel(node, context);
       if (!label) return;
       if (!isModuleScopeEvaluation(node, context)) return;
       context.report({

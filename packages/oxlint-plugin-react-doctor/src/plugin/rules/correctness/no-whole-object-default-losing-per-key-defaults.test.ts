@@ -300,6 +300,14 @@ describe("no-whole-object-default-losing-per-key-defaults", () => {
 });
 
 describe("audit regressions", () => {
+  it("does not mistake a shadowed undefined value for the missing-value primitive", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `const undefined = 3; export const read = ({ value } = { value: undefined }) => value;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("treats explicit undefined like an omitted argument", () => {
     const result = runRule(
       noWholeObjectDefaultLosingPerKeyDefaults,
@@ -312,6 +320,34 @@ describe("audit regressions", () => {
     const result = runRule(
       noWholeObjectDefaultLosingPerKeyDefaults,
       `export const read = ({ enabled } = { enabled: false }) => enabled === false;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes a required fallback inherited from a same-file interface", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `interface RequiredValue { value: string }
+       interface Options extends RequiredValue {}
+       export const read = ({ value }: Options = { value: "fallback" }) => value;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes a property required by every union member", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `type Options = { value: string } | { value: string; enabled: boolean };
+       export const read = ({ value }: Options = { value: "fallback" }) => value;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still reports when one union member makes the fallback optional", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `type Options = { value: string } | { value?: string; enabled: boolean };
+       export const read = ({ value }: Options = { value: "fallback" }) => value;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

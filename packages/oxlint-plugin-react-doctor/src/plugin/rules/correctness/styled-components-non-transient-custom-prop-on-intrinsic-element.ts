@@ -8,6 +8,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
+import { findSameFileTypeDeclaration } from "../../utils/find-same-file-type-declaration.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -84,32 +85,9 @@ const readStyledIntrinsicTag = (
   return { tagName: base.property.name };
 };
 
-const findSameFileTypeDeclaration = (
-  referenceNode: EsTreeNode,
-  typeName: string,
-): EsTreeNode | null => {
-  const programRoot = findProgramRoot(referenceNode);
-  if (!programRoot) return null;
-  for (const statement of programRoot.body) {
-    const declaration: EsTreeNode | null = isNodeOfType(statement, "ExportNamedDeclaration")
-      ? statement.declaration
-      : statement;
-    if (!declaration) continue;
-    if (
-      (isNodeOfType(declaration, "TSInterfaceDeclaration") ||
-        isNodeOfType(declaration, "TSTypeAliasDeclaration")) &&
-      isNodeOfType(declaration.id, "Identifier") &&
-      declaration.id.name === typeName
-    ) {
-      return declaration;
-    }
-  }
-  return null;
-};
-
 // Property members of the styled generic's prop type: an inline type
 // literal, or a reference to a same-file non-generic interface / type
-// alias resolving to one. Imported, generic, and union/intersection prop
+// alias resolving to one. Imported, generic, and union prop
 // types stay opaque (null) — their member set is not provable here.
 const resolvePropTypeMembers = (
   typeNode: EsTreeNode,
@@ -126,7 +104,16 @@ const resolvePropTypeMembers = (
     return memberGroups.flatMap((members) => members ?? []);
   }
   if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) {
-    return typeNode.typeParameters ? null : typeNode.body.body;
+    if (typeNode.typeParameters) return null;
+    const members: EsTreeNode[] = [...typeNode.body.body];
+    for (const extension of typeNode.extends ?? []) {
+      if (extension.typeArguments || !isNodeOfType(extension.expression, "Identifier")) continue;
+      const declaration = findSameFileTypeDeclaration(referenceNode, extension.expression.name);
+      if (!declaration) continue;
+      const inheritedMembers = resolvePropTypeMembers(declaration, referenceNode, depth + 1);
+      if (inheritedMembers) members.push(...inheritedMembers);
+    }
+    return members;
   }
   if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
     if (typeNode.typeParameters) return null;

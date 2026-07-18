@@ -711,6 +711,37 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
 });
 
 describe("audit regressions", () => {
+  it("does not flag reverse and splice methods on an explicitly non-array prop", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `const Controls = ({ controller }: { controller: { reverse(): void; splice(position: number): void } }) => {
+        controller.reverse();
+        controller.splice(0);
+        return null;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a same-file interface that declares a controller reverse method", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `interface Controller { reverse(): void }
+       interface Props { value: Controller }
+       const Controls = ({ value }: Props) => { value.reverse(); return null; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags an array interface that redeclares reverse", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `interface Rows extends Array<string> { reverse(): Rows }
+       const List = ({ rows }: { rows: Rows }) => { rows.reverse(); return null; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not trust a conditional fresh-array rebind", () => {
     const result = runRule(
       noMutatingArrayMethodOnPropOrHookResult,
@@ -733,5 +764,15 @@ describe("audit regressions", () => {
       `const C = () => { const ranking = useRanking(); return ranking.sort(); };`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let a merged controller declaration hide an array base", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `interface Rows { reverse(): Rows }
+       interface Rows extends Array<string> {}
+       const C = ({ rows }: { rows: Rows }) => rows.reverse();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

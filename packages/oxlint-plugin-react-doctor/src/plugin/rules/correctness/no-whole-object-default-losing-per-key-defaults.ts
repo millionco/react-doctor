@@ -1,7 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findProgramRoot } from "../../utils/find-program-root.js";
+import { findSameFileTypeDeclaration } from "../../utils/find-same-file-type-declaration.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -9,36 +9,10 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { walkAst } from "../../utils/walk-ast.js";
 
-// A whole-object parameter default (`({ a, b } = { a: 1, b: 'x' })`)
-// only applies when the argument is omitted ENTIRELY. The instant a
-// caller passes any object, the default object is discarded wholesale
-// and every key the caller left out becomes `undefined` — silently
-// bypassing the intended fallback. The correct form applies each
-// default independently: `({ a = 1, b = 'x' } = {})`.
-//
-// Scope-fix (fires only when a per-key default is actually reachable to
-// lose, and losing it changes behavior):
-//   1. the parameter is `ObjectPattern = ObjectExpression` (TS wrappers
-//      like `as` / `satisfies` around the object are peeled first),
-//   2. at least one destructured binding lacks its OWN default AND has a
-//      matching `key: value` property in the default object — that value
-//      is the fallback a partial call silently drops,
-//   3. at least one such dropped fallback is something other than the
-//      literal `false` or `undefined` — boolean-flag bags defaulting
-//      everything to `false` are consumed in truthiness checks where
-//      `undefined` behaves identically, and an `undefined` fallback IS
-//      the value the key would get anyway, so nothing observable is
-//      lost either way,
-//   4. the function has an unknown caller: when it is a local,
-//      non-exported binding whose every in-file reference is a direct
-//      call that either omits the argument or passes an object literal
-//      covering every at-risk key, no caller can ever apply the default
-//      partially, so the hazard is unreachable.
-// `= {}` (the recommended idiom), patterns where every binding is
-// already defaulted, all-`false`/`undefined` flag bags, and locals
-// whose call sites all pass complete objects stay quiet.
+// A whole-object parameter default is discarded as soon as a caller passes
+// any object. Per-key defaults, required property types, and complete local
+// call sites prove when an omitted key cannot lose observable behavior.
 
 const getStaticPropertyKey = (property: EsTreeNodeOfType<"Property">): string | null => {
   if (property.computed) return null;
@@ -87,9 +61,11 @@ const collectDroppedFallbacks = (
 
 // An `undefined` fallback IS what the key resolves to when dropped, so
 // losing it changes nothing.
-const isUndefinedValue = (value: EsTreeNode): boolean => {
+const isUndefinedValue = (value: EsTreeNode, context: RuleContext): boolean => {
   const innerValue = stripParenExpression(value);
-  if (isNodeOfType(innerValue, "Identifier")) return innerValue.name === "undefined";
+  if (isNodeOfType(innerValue, "Identifier")) {
+    return innerValue.name === "undefined" && context.scopes.isGlobalReference(innerValue);
+  }
   return isNodeOfType(innerValue, "UnaryExpression") && innerValue.operator === "void";
 };
 
@@ -104,11 +80,11 @@ const getPatternBindingForKey = (
   return null;
 };
 
-const isNoOpFunctionValue = (value: EsTreeNode): boolean => {
+const isNoOpFunctionValue = (value: EsTreeNode, context: RuleContext): boolean => {
   const unwrappedValue = stripParenExpression(value);
   if (!isFunctionLike(unwrappedValue)) return false;
   if (!isNodeOfType(unwrappedValue.body, "BlockStatement")) {
-    return Boolean(unwrappedValue.body && isUndefinedValue(unwrappedValue.body));
+    return Boolean(unwrappedValue.body && isUndefinedValue(unwrappedValue.body, context));
   }
   return unwrappedValue.body.body.every(
     (statement) =>
@@ -140,7 +116,7 @@ const isNoOpOptionalCallbackFallback = (
   objectPattern: EsTreeNodeOfType<"ObjectPattern">,
   context: RuleContext,
 ): boolean => {
-  if (!isNoOpFunctionValue(fallback.value)) return false;
+  if (!isNoOpFunctionValue(fallback.value, context)) return false;
   const binding = getPatternBindingForKey(objectPattern, fallback.key);
   return binding !== null && bindingIsOnlyOptionallyCalled(binding, context);
 };
@@ -162,26 +138,6 @@ const isRequiredTypeMember = (member: EsTreeNode, propertyName: string): boolean
   return getTypeMemberKey(member) === propertyName && member.optional !== true;
 };
 
-const findSameFileTypeDeclaration = (
-  referenceNode: EsTreeNode,
-  typeName: string,
-): EsTreeNode | null => {
-  const programRoot = findProgramRoot(referenceNode);
-  if (!programRoot) return null;
-  const declarations: EsTreeNode[] = [];
-  walkAst(programRoot, (candidate: EsTreeNode) => {
-    if (
-      (isNodeOfType(candidate, "TSInterfaceDeclaration") ||
-        isNodeOfType(candidate, "TSTypeAliasDeclaration")) &&
-      candidate.id.name === typeName
-    ) {
-      declarations.push(candidate);
-      return false;
-    }
-  });
-  return declarations.length === 1 ? declarations[0] : null;
-};
-
 const typeProvesRequiredProperty = (
   typeNode: EsTreeNode,
   propertyName: string,
@@ -200,7 +156,25 @@ const typeProvesRequiredProperty = (
     return typeNode.members.some((member) => isRequiredTypeMember(member, propertyName));
   }
   if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) {
-    return typeNode.body.body.some((member) => isRequiredTypeMember(member, propertyName));
+    if (visitedDeclarations.has(typeNode)) return false;
+    visitedDeclarations.add(typeNode);
+    const isRequired =
+      typeNode.body.body.some((member) => isRequiredTypeMember(member, propertyName)) ||
+      (typeNode.extends ?? []).some((extension) => {
+        if (extension.typeArguments || !isNodeOfType(extension.expression, "Identifier")) {
+          return false;
+        }
+        const declaration = findSameFileTypeDeclaration(referenceNode, extension.expression.name);
+        if (!declaration || visitedDeclarations.has(declaration)) return false;
+        return typeProvesRequiredProperty(
+          declaration,
+          propertyName,
+          referenceNode,
+          visitedDeclarations,
+        );
+      });
+    visitedDeclarations.delete(typeNode);
+    return isRequired;
   }
   if (isNodeOfType(typeNode, "TSIntersectionType")) {
     return typeNode.types.some((intersectionMember) =>
@@ -210,6 +184,11 @@ const typeProvesRequiredProperty = (
         referenceNode,
         visitedDeclarations,
       ),
+    );
+  }
+  if (isNodeOfType(typeNode, "TSUnionType")) {
+    return typeNode.types.every((unionMember) =>
+      typeProvesRequiredProperty(unionMember, propertyName, referenceNode, visitedDeclarations),
     );
   }
   if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
@@ -232,15 +211,7 @@ const typeProvesRequiredProperty = (
   }
   const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
   if (!declaration || visitedDeclarations.has(declaration)) return false;
-  visitedDeclarations.add(declaration);
-  const isRequired = typeProvesRequiredProperty(
-    declaration,
-    propertyName,
-    referenceNode,
-    visitedDeclarations,
-  );
-  visitedDeclarations.delete(declaration);
-  return isRequired;
+  return typeProvesRequiredProperty(declaration, propertyName, referenceNode, visitedDeclarations);
 };
 
 const patternTypeRequiresEveryFallback = (
@@ -291,9 +262,13 @@ const resolveUnexportedFunctionBinding = (
 
 // A spread-free object-literal argument statically providing every
 // at-risk key — such a call can never trigger the dropped fallbacks.
-const callArgumentCoversKeys = (argument: EsTreeNode, atRiskKeys: Set<string>): boolean => {
+const callArgumentCoversKeys = (
+  argument: EsTreeNode,
+  atRiskKeys: Set<string>,
+  context: RuleContext,
+): boolean => {
   const stripped = stripParenExpression(argument);
-  if (isUndefinedValue(stripped)) return true;
+  if (isUndefinedValue(stripped, context)) return true;
   if (!isNodeOfType(stripped, "ObjectExpression")) return false;
   const providedKeys = new Set<string>();
   for (const property of stripped.properties ?? []) {
@@ -339,7 +314,7 @@ const everyCallSitePassesAtRiskKeys = (
     }
     if (isNodeOfType(parent, "CallExpression") && parent.callee === child) {
       const argument = parent.arguments?.[parameterIndex];
-      if (!isAstNode(argument) || callArgumentCoversKeys(argument, atRiskKeys)) {
+      if (!isAstNode(argument) || callArgumentCoversKeys(argument, atRiskKeys, context)) {
         sawCompleteCall = true;
         continue;
       }
@@ -370,7 +345,7 @@ export const noWholeObjectDefaultLosingPerKeyDefaults = defineRule({
       if (droppedFallbacks.length === 0) return;
       const observableDroppedFallbacks = droppedFallbacks.filter(
         (fallback) =>
-          !isUndefinedValue(fallback.value) &&
+          !isUndefinedValue(fallback.value, context) &&
           !isNoOpOptionalCallbackFallback(fallback, pattern, context),
       );
       if (observableDroppedFallbacks.length === 0) return;

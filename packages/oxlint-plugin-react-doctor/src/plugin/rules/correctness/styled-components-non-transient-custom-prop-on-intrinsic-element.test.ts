@@ -293,6 +293,17 @@ describe("styled-components-non-transient-custom-prop-on-intrinsic-element", () 
 });
 
 describe("audit regressions", () => {
+  it("includes custom props inherited from same-file interfaces", () => {
+    const result = runRule(
+      styledComponentsNonTransientCustomPropOnIntrinsicElement,
+      `import styled from "styled-components";
+       interface InteractiveProps { active: boolean }
+       interface ButtonProps extends InteractiveProps { disabled?: boolean }
+       export const Button = styled.button<ButtonProps>\`\`;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags unknown event-looking props", () => {
     const result = runRule(
       styledComponentsNonTransientCustomPropOnIntrinsicElement,

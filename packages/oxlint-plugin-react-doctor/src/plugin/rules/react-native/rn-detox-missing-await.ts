@@ -43,8 +43,6 @@ const DETOX_ELEMENT_ACTIONS = new Set<string>([
   "adjustSliderToPosition",
 ]);
 
-const PROMISE_HANDLING_METHODS = new Set(["then", "catch"]);
-
 interface ChainRoot {
   readonly calleeName: string;
   readonly callee: EsTreeNodeOfType<"Identifier">;
@@ -125,10 +123,10 @@ const getDetoxOperationMethodName = (
   while (true) {
     const methodName = getTerminalMethodName(currentCall);
     if (methodName === null) return null;
-    if (PROMISE_HANDLING_METHODS.has(methodName)) {
-      if (isCallableHandler(currentCall.arguments[0] as EsTreeNode | undefined)) {
-        return null;
-      }
+    if (methodName === "catch") {
+      if (isCallableHandler(currentCall.arguments[0] as EsTreeNode | undefined)) return null;
+    } else if (methodName === "then") {
+      if (isCallableHandler(currentCall.arguments[1] as EsTreeNode | undefined)) return null;
     } else if (methodName !== "finally") {
       return methodName;
     }

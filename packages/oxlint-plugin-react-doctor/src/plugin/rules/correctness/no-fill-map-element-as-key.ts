@@ -2,6 +2,7 @@ import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -276,11 +277,21 @@ const fillBindingPassedToDominatingCall = (
   const symbol = context.scopes.symbolFor(stripped);
   if (!symbol) return false;
   return symbol.references.some((reference) => {
-    const call = reference.identifier.parent;
+    const argument = findTransparentExpressionRoot(reference.identifier);
+    const call = argument.parent;
+    if (!call || !isNodeOfType(call, "CallExpression")) return false;
+    const callee = stripParenExpression(call.callee as EsTreeNode);
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      !callee.computed &&
+      isNodeOfType(callee.object, "Identifier") &&
+      callee.object.name === "console" &&
+      context.scopes.isGlobalReference(callee.object)
+    ) {
+      return false;
+    }
     return Boolean(
-      call &&
-      isNodeOfType(call, "CallExpression") &&
-      call.arguments.some((argument) => argument === reference.identifier) &&
+      call.arguments.some((callArgument) => callArgument === argument) &&
       nodeDominatesNode(call, mapCall, context),
     );
   });

@@ -50,12 +50,16 @@ const floatingThenCall = (expression: EsTreeNode): EsTreeNodeOfType<"CallExpress
 
 // Discarded expression positions inside the handler: the expression
 // itself, the right side of a `&&`/`||`/`??` guard, and both ternary
-// branches. `void expr` is an explicit discard and never matches.
+// branches. `void expr` still leaves rejections unhandled.
 const collectExpressionFloatingThenCalls = (
   expression: EsTreeNode,
   found: EsTreeNodeOfType<"CallExpression">[],
 ): void => {
   const stripped = stripParenExpression(expression);
+  if (isNodeOfType(stripped, "UnaryExpression") && stripped.operator === "void") {
+    collectExpressionFloatingThenCalls(stripped.argument, found);
+    return;
+  }
   if (isNodeOfType(stripped, "LogicalExpression")) {
     collectExpressionFloatingThenCalls(stripped.right as EsTreeNode, found);
     return;

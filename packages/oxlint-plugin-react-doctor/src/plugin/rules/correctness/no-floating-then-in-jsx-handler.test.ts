@@ -87,10 +87,18 @@ describe("no-floating-then-in-jsx-handler", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag an explicit void fire-and-forget", () => {
+  it("flags an explicitly voided chain because void does not handle rejection", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
       `const el = <button onClick={() => void save().then(refetch)} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows an explicitly voided chain whose rejection is caught", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const el = <button onClick={() => void save().then(refetch).catch(reportError)} />;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -469,7 +469,7 @@ const resolveReceiverTypeName = (receiver: EsTreeNodeOfType<"Identifier">): stri
 // inference — comparisons, `!`/`!!`, `Boolean(...)`, strings, and bare
 // identifiers are deliberately excluded because their falsy values render
 // nothing.
-const isSyntacticallyNumeric = (node: EsTreeNode): boolean => {
+const isSyntacticallyNumeric = (node: EsTreeNode, context: RuleContext): boolean => {
   const stripped = stripParenExpression(node);
 
   if (
@@ -488,8 +488,8 @@ const isSyntacticallyNumeric = (node: EsTreeNode): boolean => {
     isNodeOfType(stripped, "BinaryExpression") &&
     (ARITHMETIC_BINARY_OPERATORS.has(stripped.operator) ||
       (stripped.operator === "+" &&
-        isSyntacticallyNumeric(stripped.left) &&
-        isSyntacticallyNumeric(stripped.right)))
+        isSyntacticallyNumeric(stripped.left, context) &&
+        isSyntacticallyNumeric(stripped.right, context)))
   ) {
     return true;
   }
@@ -497,7 +497,8 @@ const isSyntacticallyNumeric = (node: EsTreeNode): boolean => {
   if (
     isNodeOfType(stripped, "CallExpression") &&
     isNodeOfType(stripped.callee, "Identifier") &&
-    NUMERIC_COERCION_CALLEE_NAMES.has(stripped.callee.name)
+    NUMERIC_COERCION_CALLEE_NAMES.has(stripped.callee.name) &&
+    context.scopes.isGlobalReference(stripped.callee)
   ) {
     return true;
   }
@@ -587,7 +588,7 @@ export const jsxNumericAndLeakedRender = defineRule({
 
       const leakingOperand = operands
         .slice(0, -1)
-        .find((guardOperand) => isSyntacticallyNumeric(guardOperand));
+        .find((guardOperand) => isSyntacticallyNumeric(guardOperand, context));
       if (!leakingOperand) return;
       if (renderSideReadsMemberOfGuardPath(leakingOperand, renderOperand)) return;
       const precedingOperands = operands.slice(0, operands.indexOf(leakingOperand));

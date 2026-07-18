@@ -48,8 +48,14 @@ describe("rn-detox-missing-await", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does NOT flag a .then-handled action", () => {
+  it("flags an action with only a fulfillment handler", () => {
     const code = `it("x", () => { element(by.id("submit")).tap().then(done); });`;
+    const result = runRule(rnDetoxMissingAwait, code, e2eFile);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an action with an explicit rejection handler", () => {
+    const code = `it("x", () => { element(by.id("submit")).tap().then(done, fail); });`;
     const result = runRule(rnDetoxMissingAwait, code, e2eFile);
     expect(result.diagnostics).toHaveLength(0);
   });

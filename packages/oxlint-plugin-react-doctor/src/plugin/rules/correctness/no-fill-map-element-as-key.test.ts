@@ -282,4 +282,20 @@ describe("audit regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not let an earlier observational call hide duplicate keys", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const C = () => { const slots = Array(3).fill(null); console.log(slots); return slots.map((item) => <X key={item} />); };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows a filled array passed through a TypeScript wrapper before mapping", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const C = () => { const slots = Array(3).fill(0); populate(slots as number[]); return slots.map((item) => <X key={item} />); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

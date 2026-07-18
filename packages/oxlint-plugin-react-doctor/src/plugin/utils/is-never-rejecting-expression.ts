@@ -48,7 +48,9 @@ const isDefinitelyNonThenableValue = (node: EsTreeNode): boolean => {
   if (isNodeOfType(inner, "Literal")) return true;
   if (isNodeOfType(inner, "TemplateLiteral")) return true;
   if (isNodeOfType(inner, "ArrayExpression")) {
-    return true;
+    return inner.elements.every(
+      (element) => element === null || !isNodeOfType(element, "SpreadElement"),
+    );
   }
   if (isNodeOfType(inner, "ObjectExpression")) {
     return inner.properties.every(
@@ -56,10 +58,7 @@ const isDefinitelyNonThenableValue = (node: EsTreeNode): boolean => {
         isNodeOfType(property, "Property") &&
         property.kind === "init" &&
         !property.computed &&
-        !(
-          (isNodeOfType(property.key, "Identifier") && property.key.name === "then") ||
-          (isNodeOfType(property.key, "Literal") && property.key.value === "then")
-        ),
+        isDefinitelyNonThenableValue(property.value as EsTreeNode),
     );
   }
   return false;
@@ -189,12 +188,7 @@ export const chainCarriesRejectionHandler = (node: EsTreeNode, scopes?: ScopeAna
   }
   return false;
 };
-export const isNeverRejectingHelperCall = (
-  root: EsTreeNode,
-  scopes?: ScopeAnalysis,
-  carriesRejectionHandler: (node: EsTreeNode) => boolean = (node) =>
-    chainCarriesRejectionHandler(node, scopes),
-): boolean => {
+export const isNeverRejectingHelperCall = (root: EsTreeNode, scopes?: ScopeAnalysis): boolean => {
   const inner = stripParenExpression(root);
   if (!isNodeOfType(inner, "CallExpression")) return false;
   const callee = stripParenExpression(inner.callee as EsTreeNode);
@@ -238,7 +232,7 @@ export const isNeverRejectingHelperCall = (
           !isDefinitelyNonThenableValue(returned) &&
           !isPromiseResolveCall(returned, scopes) &&
           !isNonRejectingPromiseConstruction(returned, scopes) &&
-          !carriesRejectionHandler(returned)
+          !chainCarriesRejectionHandler(returned, scopes)
         ) {
           isRejectionProof = false;
         }
@@ -264,7 +258,7 @@ export const isNeverRejectingHelperCall = (
     returnedExpressions.length > 0 &&
     returnedExpressions.every(
       (returned) =>
-        carriesRejectionHandler(returned) ||
+        chainCarriesRejectionHandler(returned, scopes) ||
         isPromiseResolveCall(returned, scopes) ||
         isNonRejectingPromiseConstruction(returned, scopes),
     )

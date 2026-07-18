@@ -284,6 +284,30 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
 });
 
 describe("audit regressions", () => {
+  it("flags nanoid called through a namespace import", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import * as ids from "nanoid"; const Field = () => { const id = ids.nanoid(); return <><label htmlFor={id}>Name</label><input id={id} /></>; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not confuse a nested shadow with the nanoid namespace import", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import * as ids from "nanoid"; const Field = () => { const ids = { nanoid: () => "fixed" }; const id = ids.nanoid(); return <input id={id} />; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags an aliased named nanoid import", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import { nanoid as makeId } from "nanoid"; const Field = () => { const id = makeId(); return <input id={id} />; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat aria-label as an ID reference", () => {
     const result = runRule(
       noNondeterministicIdValueInRenderBody,

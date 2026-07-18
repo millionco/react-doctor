@@ -38,6 +38,22 @@ describe("classifyFileContext", () => {
     expect(classifyFileContext("app/page.tsx")).toBe("production");
   });
 
+  it("keeps production routes whose URL segments resemble test directories", () => {
+    expect(classifyFileContext("app/test/page.tsx")).toBe("production");
+    expect(classifyFileContext("src/app/tests/route.ts")).toBe("production");
+    expect(classifyFileContext("pages/tests/dashboard.tsx")).toBe("production");
+    expect(classifyFileContext("packages/app/pages/tests/dashboard.tsx")).toBe("production");
+    expect(classifyFileContext("/workspace/app/pages/tests/dashboard.tsx")).toBe("production");
+  });
+
+  it("keeps test projects containing route-shaped files classified as test", () => {
+    expect(classifyFileContext("tests/app/test/page.tsx")).toBe("test");
+    expect(classifyFileContext("e2e/pages/checkout.tsx")).toBe("test");
+    expect(classifyFileContext("app/tests/helper.ts")).toBe("test");
+    expect(classifyFileContext("pages/__tests__/dashboard.tsx")).toBe("test");
+    expect(classifyFileContext("pages/tests/dashboard.test.tsx")).toBe("test");
+  });
+
   it("classifies fixture-project source files under `fixtures/` as production", () => {
     expect(classifyFileContext("tests/fixtures/sample/src/Button.tsx")).toBe("production");
     expect(classifyFileContext("tests/__fixtures__/repo/Component.tsx")).toBe("production");

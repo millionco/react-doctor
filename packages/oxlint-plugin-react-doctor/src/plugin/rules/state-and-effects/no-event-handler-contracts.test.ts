@@ -158,4 +158,21 @@ describe("no-event-handler event-source contract", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("keeps no-event-trigger-state through a React effect import alias", () => {
+    const result = runRule(
+      noEventTriggerState,
+      `import { useEffect as useSynchronize, useState } from "react";
+      function Form() {
+        const [payload, setPayload] = useState(null);
+        useSynchronize(() => {
+          if (payload) post("/submit", payload);
+        }, [payload]);
+        return <button onClick={() => setPayload({ ready: true })}>Submit</button>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

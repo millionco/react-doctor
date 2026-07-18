@@ -1,7 +1,7 @@
 import { TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isTrivialBuiltInConstruction } from "../../utils/is-trivial-built-in-construction.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -88,7 +88,7 @@ export const rerenderLazyStateInit = defineRule({
     "Wrap expensive initial state in an arrow function so the initializer does not rerun and get thrown away on every render.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isHookCall(node, "useState") || !node.arguments?.length) return;
+      if (!isReactHookCall(node, "useState", context.scopes) || !node.arguments?.length) return;
       const initializer = findEagerInitializerCall(node.arguments[0] as EsTreeNode);
       if (!initializer) return;
       const isConstructor = isNodeOfType(initializer, "NewExpression");

@@ -49,6 +49,8 @@ const REACT_COMPILER_ACTION = "Rewrite the flagged code so the compiler can opti
 // users off mature libraries (#950), so this rule names the real fix instead.
 const REACT_COMPILER_INCOMPATIBLE_LIBRARY_ACTION =
   "It's how the library works, not a bug in your code. Memoize values you pass from it into other memoized components, or suppress it with `// react-doctor-disable-next-line react-hooks-js/incompatible-library`.";
+const SET_STATE_IN_EFFECT_ACTION =
+  "Prefer deriving or initializing the value before render. If the effect must read a browser API after mount, treat this as advisory or suppress it with `// react-doctor-disable-next-line react-hooks-js/set-state-in-effect`.";
 const REACT_COMPILER_GENERIC_MESSAGE = `${REACT_COMPILER_IMPACT}. ${REACT_COMPILER_ACTION}`;
 
 const buildReactCompilerMessage = (
@@ -58,6 +60,12 @@ const buildReactCompilerMessage = (
   const normalizedSummary = reasonSummary.replace(TRAILING_PERIOD_PATTERN, "");
   if (!normalizedSummary) return `${REACT_COMPILER_IMPACT}. ${action}`;
   return `${REACT_COMPILER_IMPACT}: ${normalizedSummary}. ${action}`;
+};
+
+const buildSetStateInEffectMessage = (reasonSummary: string): string => {
+  const normalizedSummary = reasonSummary.replace(TRAILING_PERIOD_PATTERN, "");
+  const reason = normalizedSummary ? `: ${normalizedSummary}` : "";
+  return `This synchronous effect update causes an extra render${reason}. ${SET_STATE_IN_EFFECT_ACTION}`;
 };
 
 // Adopted third-party plugins (not in the react-doctor registry) → the
@@ -197,6 +205,12 @@ const resolveCleanedDiagnostic = (
         help: reasonDetail || help,
       };
     }
+    if (rule === "set-state-in-effect") {
+      return {
+        message: buildSetStateInEffectMessage(reasonSummary.trim()),
+        help: reasonDetail || help,
+      };
+    }
     return {
       message: buildReactCompilerMessage(
         reasonSummary.trim(),
@@ -227,7 +241,8 @@ const resolveDiagnosticCategory = (plugin: string, rule: string): string => {
 
 // Whether the finding's identity is the flagged element rather than the
 // flagged line's text, so `computeDiagnosticDelta` matches it by
-// `(file, rule)` occurrence count. Resolved here — the one place that
+// same-file `(rule, message)` occurrence count after strict evidence matching.
+// Resolved here — the one place that
 // already consults rule metadata — so the delta stays a pure function of
 // its `Diagnostic` inputs. Every Accessibility-category finding qualifies
 // (element-level by nature, including adopted third-party a11y rules);

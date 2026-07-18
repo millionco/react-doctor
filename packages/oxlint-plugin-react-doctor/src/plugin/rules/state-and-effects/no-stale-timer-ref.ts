@@ -3,6 +3,7 @@ import {
   TIMER_CLEANUP_CALLEE_NAMES,
 } from "../../constants/dom.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -10,7 +11,7 @@ import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import {
@@ -220,10 +221,12 @@ const collectTimerRefUsageFacts = (ownerScope: EsTreeNode, refName: string): Tim
   return facts;
 };
 
-const isEffectCallbackFunction = (functionNode: EsTreeNode): boolean => {
+const isEffectCallbackFunction = (functionNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const parent = functionNode.parent;
   if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
-  return isHookCall(parent, EFFECT_HOOK_NAMES) && getEffectCallback(parent) === functionNode;
+  return (
+    isReactHookCall(parent, EFFECT_HOOK_NAMES, scopes) && getEffectCallback(parent) === functionNode
+  );
 };
 
 const doesEffectCallbackReturnName = (effectCallback: EsTreeNode, name: string): boolean => {
@@ -262,13 +265,19 @@ const isFunctionReturnedFromEffectCallback = (
 const isReturnedFromAnyEffectInScope = (
   functionNode: EsTreeNode,
   ownerScope: EsTreeNode,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const cleanupBindingName = getFunctionBindingName(functionNode);
   if (cleanupBindingName === null) return false;
   let isReturnedFromEffect = false;
   walkAst(ownerScope, (child: EsTreeNode) => {
     if (isReturnedFromEffect) return false;
-    if (!isNodeOfType(child, "CallExpression") || !isHookCall(child, EFFECT_HOOK_NAMES)) return;
+    if (
+      !isNodeOfType(child, "CallExpression") ||
+      !isReactHookCall(child, EFFECT_HOOK_NAMES, scopes)
+    ) {
+      return;
+    }
     const effectCallback = getEffectCallback(child);
     if (effectCallback && doesEffectCallbackReturnName(effectCallback, cleanupBindingName)) {
       isReturnedFromEffect = true;
@@ -281,18 +290,22 @@ const isReturnedFromAnyEffectInScope = (
 // window there is unmount / StrictMode remount, and the re-run path
 // immediately re-arms the ref in the effect body, so flagging the ubiquitous
 // `return () => clearTimeout(ref.current)` idiom would be mostly noise.
-const isInsideEffectCleanupReturn = (node: EsTreeNode, ownerScope: EsTreeNode): boolean => {
+const isInsideEffectCleanupReturn = (
+  node: EsTreeNode,
+  ownerScope: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   let functionNode = findEnclosingFunction(node);
   while (functionNode) {
     const outerFunction = findEnclosingFunction(functionNode);
     if (
       outerFunction &&
-      isEffectCallbackFunction(outerFunction) &&
+      isEffectCallbackFunction(outerFunction, scopes) &&
       isFunctionReturnedFromEffectCallback(functionNode, outerFunction)
     ) {
       return true;
     }
-    if (isReturnedFromAnyEffectInScope(functionNode, ownerScope)) return true;
+    if (isReturnedFromAnyEffectInScope(functionNode, ownerScope, scopes)) return true;
     functionNode = outerFunction;
   }
   return false;
@@ -341,12 +354,17 @@ export const noStaleTimerRef = defineRule({
       // Closest-scope binding resolution — a shadowing parameter or local
       // re-declaration of the name wins over an outer `useRef` binding.
       const refBinding = findVariableInitializer(node, refName);
-      if (!refBinding?.initializer || !isHookCall(refBinding.initializer, "useRef")) return;
+      if (
+        !refBinding?.initializer ||
+        !isReactHookCall(refBinding.initializer, "useRef", context.scopes)
+      ) {
+        return;
+      }
 
       const usageFacts = collectTimerRefUsageFacts(refBinding.scopeOwner, refName);
       if (!usageFacts.holdsScheduledTimerId || !usageFacts.hasPendingSignalRead) return;
 
-      if (isInsideEffectCleanupReturn(node, refBinding.scopeOwner)) return;
+      if (isInsideEffectCleanupReturn(node, refBinding.scopeOwner, context.scopes)) return;
       if (hasRefCurrentReassignmentAfterClear(node, refName)) return;
 
       context.report({

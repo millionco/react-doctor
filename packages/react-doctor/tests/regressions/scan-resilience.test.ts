@@ -424,7 +424,6 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
 
     expect(hasReactHooksJsPluginEntry).toBe(true);
     expect(reactHooksJsRuleKeys.length).toBeGreaterThan(0);
-    expect(reactHooksJsRuleKeys.every((ruleKey) => config.rules[ruleKey] === "error")).toBe(true);
   });
 
   it("emits no react-hooks-js rules when customRulesOnly skips the plugin", () => {
@@ -463,15 +462,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     );
   });
 
-  it("emits every react-hooks-js rule at error severity (so they block CI by default)", () => {
-    // Regression for the silent severity downgrade introduced in PR
-    // #140: every `react-hooks-js/*` entry got mass-converted from
-    // `"error"` to `"warn"`, which made "React Compiler can't optimize
-    // this code" diagnostics stop counting toward `errorCount` and
-    // stop blocking CI (react-doctor blocks on error-severity diagnostics
-    // by default unless `--blocking none` is set). Each compiler diagnostic
-    // represents an unoptimizable component shape — surfacing as warnings
-    // hid real perf regressions.
+  it("keeps compiler bailouts blocking while set-state-in-effect remains advisory", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
@@ -482,7 +473,14 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       .map(([ruleKey, severity]) => ({ ruleKey, severity }));
 
     expect(compilerSeverities.length).toBeGreaterThan(0);
-    const nonErrorEntries = compilerSeverities.filter((entry) => entry.severity !== "error");
+    const setStateInEffectEntry = compilerSeverities.find(
+      (entry) => entry.ruleKey === "react-hooks-js/set-state-in-effect",
+    );
+    const nonErrorEntries = compilerSeverities.filter(
+      (entry) =>
+        entry.ruleKey !== "react-hooks-js/set-state-in-effect" && entry.severity !== "error",
+    );
+    expect(setStateInEffectEntry?.severity).toBe("warn");
     expect(nonErrorEntries).toEqual([]);
   });
 
@@ -517,7 +515,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     // separate `effect/` namespace, no optional peer dependency.
     const config = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
-      project: buildTestProject({ rootDirectory: "/tmp/test" }),
+      project: buildTestProject({ rootDirectory: "/tmp/test", reactMajorVersion: 17 }),
     });
 
     // The whole derived-state family ships at `warn` — including
@@ -574,27 +572,33 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
   // noise, so they ship with
   // `disabledWhen: ["react-compiler"]` and the gate must drop them.
   it("disables react-compiler-redundant perf rules when React Compiler is detected", () => {
-    const reactCompilerGatedRules = [
-      "react-doctor/jsx-no-new-object-as-prop",
-      "react-doctor/jsx-no-new-array-as-prop",
-      "react-doctor/jsx-no-new-function-as-prop",
-      "react-doctor/jsx-no-jsx-as-prop",
-      "react-doctor/jsx-no-constructed-context-values",
-    ];
+    const reactCompilerGatedRules = new Map([
+      ["react-doctor/jsx-no-new-object-as-prop", "warn"],
+      ["react-doctor/jsx-no-new-array-as-prop", "warn"],
+      ["react-doctor/jsx-no-new-function-as-prop", "warn"],
+      ["react-doctor/jsx-no-jsx-as-prop", "warn"],
+      ["react-doctor/jsx-no-constructed-context-values", "warn"],
+      ["react-doctor/no-inline-prop-on-memo-component", "warn"],
+      ["react-doctor/no-effect-with-fresh-deps", "error"],
+      ["react-doctor/prefer-module-scope-pure-function", "warn"],
+      ["react-doctor/rendering-hoist-jsx", "warn"],
+      ["react-doctor/rerender-dependencies", "error"],
+      ["react-doctor/rerender-memo-with-default-value", "warn"],
+    ]);
 
     const withoutCompiler = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: false }),
     });
-    for (const ruleKey of reactCompilerGatedRules) {
-      expect(withoutCompiler.rules[ruleKey]).toBe("warn");
+    for (const [ruleKey, severity] of reactCompilerGatedRules) {
+      expect(withoutCompiler.rules[ruleKey]).toBe(severity);
     }
 
     const withCompiler = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
     });
-    for (const ruleKey of reactCompilerGatedRules) {
+    for (const ruleKey of reactCompilerGatedRules.keys()) {
       expect(withCompiler.rules[ruleKey]).toBeUndefined();
     }
   });
@@ -609,6 +613,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       "react-doctor/rn-no-inline-flatlist-renderitem",
       "react-doctor/rn-list-callback-per-row",
       "react-doctor/rn-no-inline-object-in-list-item",
+      "react-doctor/rn-list-data-mapped",
     ];
 
     const withoutCompiler = createOxlintConfig({

@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { collectBoundedEffectExecutionFrames } from "./utils/collect-effect-state-write-facts.js";
@@ -15,7 +16,6 @@ import {
   isProp,
   isState,
   isStateSetterCall,
-  isUseEffect,
   getUseStateDecl,
 } from "./utils/effect/react.js";
 import { findTriggeredSideEffectCalleeName } from "./utils/find-triggered-side-effect-callee-name.js";
@@ -126,7 +126,7 @@ export const noEventHandler = defineRule({
     "Run the side effect in the event handler that triggers it, instead of watching its state from a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#sharing-logic-between-event-handlers",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isUseEffect(node)) return;
+      if (!isReactHookCall(node, "useEffect", context.scopes)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis || hasCleanup(analysis, node)) return;
       const frames = collectBoundedEffectExecutionFrames(analysis, node);

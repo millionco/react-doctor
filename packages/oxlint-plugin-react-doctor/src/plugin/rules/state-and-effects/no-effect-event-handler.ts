@@ -3,7 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -333,7 +333,12 @@ export const noEffectEventHandler = defineRule({
     return {
       ...propStackTracker.visitors,
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
+        if (
+          !isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes) ||
+          (node.arguments?.length ?? 0) < 2
+        ) {
+          return;
+        }
 
         const callback = getEffectCallback(node);
         if (!callback) return;

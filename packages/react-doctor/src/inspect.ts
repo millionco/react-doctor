@@ -9,6 +9,7 @@ import {
   computeDiagnosticDelta,
   DEFAULT_SHOW_WARNINGS,
   filterDiagnosticsForSurface,
+  filterSourceFiles,
   highlighter,
   OXLINT_NODE_REQUIREMENT,
   PerFileLintCacheEnabled,
@@ -47,6 +48,7 @@ import { diagnosticIntersectsLineRanges } from "./cli/utils/diagnostic-intersect
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
 import { materializeBaselineFiles } from "./cli/utils/materialize-baseline-files.js";
 import { createSourceLineReader } from "./cli/utils/read-source-line.js";
+import { createDiagnosticEvidenceReader } from "./cli/utils/read-diagnostic-evidence.js";
 import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
 import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
 import {
@@ -181,7 +183,11 @@ export interface ResolvedInspectOptions {
   /** Scan time budget in milliseconds, or `null` for no budget. */
   maxDurationMs: number | null;
   /** Baseline ref to subtract (new-only mode), or `null` for a plain scan. */
-  baseline: { ref: string } | null;
+  baseline: {
+    ref: string;
+    baseFiles?: ReadonlyArray<string>;
+    headFiles?: ReadonlyArray<string>;
+  } | null;
   /**
    * `--scope lines`: changed line ranges to restrict reported diagnostics to,
    * or `null` for any other scope. An empty array still filters (a `lines`
@@ -420,6 +426,9 @@ interface RunBaselineComparisonInput {
   headDiagnostics: ReadonlyArray<Diagnostic>;
   resolvedNodeBinaryPath: string | null;
   baselineRef: string;
+  baseFiles?: ReadonlyArray<string>;
+  headFiles?: ReadonlyArray<string>;
+  headAnalyzedFiles: ReadonlyArray<string>;
   /** Shared invocation deadline; bounds the base-ref lint like the head scan. */
   deadlineEpochMs: number | null;
 }
@@ -441,12 +450,32 @@ const runBaselineComparison = async (
     directory: params.directory,
     ref: params.baselineRef,
     files: params.options.includePaths,
+    baseFiles: params.baseFiles,
+    headFiles: params.headFiles,
     tempDirectory,
   }).catch((error: unknown) => {
     rmSync(tempDirectory, { recursive: true, force: true });
     throw error;
   });
+  if (snapshot === null) {
+    rmSync(tempDirectory, { recursive: true, force: true });
+    return null;
+  }
   try {
+    if (!snapshot.isComplete) return null;
+    const analyzedHeadFiles = new Set(params.headAnalyzedFiles.map(toForwardSlashes));
+    const baseFiles = new Set(snapshot.baseFiles.map(toForwardSlashes));
+    const trackedHeadFiles = new Set(snapshot.headFiles.map(toForwardSlashes));
+    const expectedHeadFiles = new Set(trackedHeadFiles);
+    for (const filePath of params.options.includePaths) {
+      const normalizedFilePath = toForwardSlashes(filePath);
+      if (!baseFiles.has(normalizedFilePath)) expectedHeadFiles.add(normalizedFilePath);
+    }
+    if (
+      filterSourceFiles([...expectedHeadFiles]).some((filePath) => !analyzedHeadFiles.has(filePath))
+    ) {
+      return null;
+    }
     const baseLayers = buildRuntimeLayers({
       directory: snapshot.tempDirectory,
       hasConfigOverride: true,
@@ -463,7 +492,7 @@ const runBaselineComparison = async (
     const baseProgram = runInspectEffect(
       {
         directory: snapshot.tempDirectory,
-        includePaths: params.options.includePaths,
+        includePaths: snapshot.materializedFiles,
         customRulesOnly: params.options.customRulesOnly,
         respectInlineDisables: params.options.respectInlineDisables,
         warnings: params.options.warnings,
@@ -508,18 +537,26 @@ const runBaselineComparison = async (
     if (baseOutput.didLintFail || countIncompleteLintFiles(baseOutput.lintPartialFailures) > 0) {
       return null;
     }
+    const hasUnscannedUntrackedSourceFiles = filterSourceFiles(
+      snapshot.untrackedFiles.map(toForwardSlashes),
+    ).some((filePath) => !analyzedHeadFiles.has(filePath));
     const delta = computeDiagnosticDelta({
       headDiagnostics: params.headDiagnostics,
       baseDiagnostics: baseOutput.diagnostics,
       readHeadLine: createSourceLineReader(params.directory),
       readBaseLine: createSourceLineReader(snapshot.tempDirectory),
+      readHeadEvidence: createDiagnosticEvidenceReader(params.directory, {
+        resolveForwardedHandlers: true,
+      }),
+      readBaseEvidence: createDiagnosticEvidenceReader(snapshot.tempDirectory),
     });
     return {
       displayDiagnostics: delta.newDiagnostics,
       baselineDelta: {
         baseRef: params.baselineRef,
-        fixedCount: delta.fixedCount,
+        fixedCount: hasUnscannedUntrackedSourceFiles ? 0 : delta.fixedCount,
         baseTotalCount: baseOutput.diagnostics.length,
+        crossFileMatchCount: delta.crossFileMatchCount,
       },
     };
   } finally {
@@ -735,6 +772,9 @@ const runInspectWithRuntime = async (
       headDiagnostics: output.diagnostics,
       resolvedNodeBinaryPath,
       baselineRef: options.baseline.ref,
+      baseFiles: options.baseline.baseFiles,
+      headFiles: options.baseline.headFiles,
+      headAnalyzedFiles: output.analyzedFiles,
       deadlineEpochMs,
     });
     if (comparison) {
@@ -1183,9 +1223,15 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
 
     // Re-score with the displayed top errors removed so the score bar can
     // show the payoff as a ghost gain segment.
+    const scoreDiagnostics = filterDiagnosticsForSurface([...diagnostics], "score", userConfig);
+    const displayedScoreDiagnostics = filterDiagnosticsForSurface(
+      [...printedDiagnostics],
+      "score",
+      userConfig,
+    );
     const potentialScore = score
       ? yield* Effect.promise(() =>
-          computeProjectedScore([...printedDiagnostics], [...surfaceDiagnostics], score),
+          computeProjectedScore(displayedScoreDiagnostics, scoreDiagnostics, score),
         )
       : null;
 

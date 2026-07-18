@@ -12,6 +12,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -30,7 +31,6 @@ import {
   isRefCurrent,
   isState,
   isSyncStateSetterCall,
-  isUseEffect,
 } from "./utils/effect/react.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
@@ -1303,7 +1303,7 @@ export const noResetAllStateOnPropChange = defineRule({
     "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isUseEffect(node)) return;
+      if (!isReactHookCall(node, "useEffect", context.scopes)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
       const effectFnRefs = getEffectFnRefs(analysis, node);

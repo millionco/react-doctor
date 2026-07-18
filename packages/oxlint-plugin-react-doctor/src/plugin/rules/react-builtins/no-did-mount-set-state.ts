@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle.js";
@@ -10,9 +11,6 @@ import { walkAst } from "../../utils/walk-ast.js";
 const LIFECYCLE_NAMES = new Set(["componentDidMount"]);
 const MESSAGE =
   "Your users see an extra render right after mount when you call `setState` in `componentDidMount`.";
-
-const getNodeStart = (node: EsTreeNode): number =>
-  "start" in node && typeof node.start === "number" ? node.start : -1;
 
 const getEnclosingLifecycleFunction = (setStateCall: EsTreeNode): EsTreeNode | null => {
   let ancestor: EsTreeNode | null | undefined = setStateCall.parent;
@@ -172,13 +170,13 @@ const isAfterAwaitInAsyncLifecycle = (
   lifecycleFunction: EsTreeNode,
 ): boolean => {
   if (!isFunctionLike(lifecycleFunction) || lifecycleFunction.async !== true) return false;
-  const callStart = getNodeStart(setStateCall);
+  const callStart = getNodeStartIndex(setStateCall);
   if (callStart < 0) return false;
   let didFindPrecedingAwait = false;
   walkAst(lifecycleFunction, (descendant) => {
     if (didFindPrecedingAwait) return false;
     if (!isNodeOfType(descendant, "AwaitExpression")) return;
-    const awaitStart = getNodeStart(descendant);
+    const awaitStart = getNodeStartIndex(descendant);
     if (awaitStart >= 0 && awaitStart < callStart) {
       didFindPrecedingAwait = true;
       return false;

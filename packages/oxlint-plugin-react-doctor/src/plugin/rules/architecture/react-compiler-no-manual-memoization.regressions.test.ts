@@ -6,6 +6,47 @@ const run = (code: string) =>
   runRule(reactCompilerNoManualMemoization, code, { filename: "fixture.tsx" });
 
 describe("architecture/react-compiler-no-manual-memoization — regressions", () => {
+  it.each([
+    ["an as assertion", "(React as any).memo"],
+    ["a non-null assertion", "(React!).memo"],
+  ])("flags React.memo through %s on its receiver", (_name, callee) => {
+    const result = run(`import React from "react"; const C = ${callee}(Inner);`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "a userland object",
+      `const ReactTools = { memo: (value) => value };
+       const C = (ReactTools as any).memo(Inner);`,
+    ],
+    [
+      "a shadowing parameter",
+      `import * as ReactTools from "react";
+       const wrap = (ReactTools) => (ReactTools as any).memo(Inner);`,
+    ],
+    [
+      "a shadowed named import",
+      `import { memo } from "react";
+       const wrap = (memo) => (memo as any)(Inner);`,
+    ],
+    [
+      "a mutable local",
+      `let ReactTools = { memo: (value) => value };
+       const C = (ReactTools!).memo(Inner);`,
+    ],
+  ])("does not flag a wrapped memo method on %s", (_name, code) => {
+    const result = run(code);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a wrapped React.memo call with a custom comparator", () => {
+    const result = run(
+      `import React from "react"; const C = (React as any).memo(Inner, (a, b) => a.id === b.id);`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag memo() with a custom comparator", () => {
     const result = run(
       `import { memo } from "react"; const C = memo(Inner, (prev, next) => prev.id === next.id);`,

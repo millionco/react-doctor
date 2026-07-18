@@ -8,6 +8,7 @@ import { DEFAULT_SURFACE_EXCLUDED_TAGS } from "./diagnostic-surface.js";
 import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
 
 interface ResolvedSurfaceControls {
+  includeFileContexts: ReadonlySet<string>;
   includeTags: ReadonlySet<string>;
   excludeTags: ReadonlySet<string>;
   includeCategories: ReadonlySet<string>;
@@ -31,6 +32,7 @@ const buildResolvedControls = (
   for (const tag of toStringSet(userControls?.excludeTags)) excludeTags.add(tag);
 
   return {
+    includeFileContexts: toStringSet(userControls?.includeFileContexts),
     includeTags,
     excludeTags,
     includeCategories: toStringSet(userControls?.includeCategories),
@@ -56,6 +58,14 @@ export const isDiagnosticOnSurface = (
   if (resolved.includeRuleKeys.has(ruleKey)) return true;
   if (resolved.includeCategories.has(category)) return true;
   if (intersects(tags, resolved.includeTags)) return true;
+
+  if (
+    diagnostic.fileContext !== undefined &&
+    (surface === "score" || surface === "ciFailure") &&
+    !resolved.includeFileContexts.has(diagnostic.fileContext)
+  ) {
+    return false;
+  }
 
   if (resolved.excludeRuleKeys.has(ruleKey)) return false;
   if (resolved.excludeCategories.has(category)) return false;

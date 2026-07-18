@@ -225,7 +225,7 @@ describe("inspect — score surface filter", () => {
       try {
         const configOverride: ReactDoctorConfig = {
           surfaces: {
-            score: { includeRules: ["react-doctor/no-array-index-as-key"] },
+            score: { includeFileContexts: ["test", "story"] },
           },
         };
         const result = await inspect(projectDirectory, {

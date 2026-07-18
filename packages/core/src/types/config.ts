@@ -1,3 +1,5 @@
+import type { DiagnosticFileContext } from "./diagnostic.js";
+
 /**
  * Severity threshold at which a scan blocks CI (exits non-zero). Controlled
  * by `blocking` / `--blocking` (default `"error"`):
@@ -78,9 +80,9 @@ interface ReactDoctorIgnoreConfig {
  * Defaults: design rules (tag `"design"`) are excluded from `prComment`,
  * `score`, and `ciFailure` so style cleanup doesn't dilute meaningful
  * React findings. Diagnostics stamped with `fileContext: "test" | "story"`
- * are excluded from `score` and `ciFailure`. Both remain in `cli`, and an
- * explicit rule, category, or tag include promotes a diagnostic back onto
- * the selected surface.
+ * are excluded from `score` and `ciFailure`. Both remain in `cli`. Explicit
+ * rule, category, or tag includes promote matching diagnostics, while
+ * `includeFileContexts` restores a context without bypassing other exclusions.
  */
 export type DiagnosticSurface = "cli" | "prComment" | "score" | "ciFailure";
 
@@ -126,6 +128,11 @@ export interface SeverityBuckets {
 }
 
 export interface SurfaceControls {
+  /**
+   * Non-production file contexts to retain on this surface. This restores
+   * test or story findings without overriding unrelated tag exclusions.
+   */
+  includeFileContexts?: Array<Exclude<DiagnosticFileContext, "production">>;
   /**
    * Tag names whose diagnostics should be force-included on the surface,
    * even if a default or category-level exclusion would otherwise drop
@@ -392,9 +399,9 @@ export interface ReactDoctorConfig {
    * - `score` and `ciFailure` exclude test/story file contexts unless explicitly included
    *
    * Pass any controls block, including an empty `{}`, to keep the defaults.
-   * Your include/exclude entries layer on top. Includes always win over
-   * excludes. For example, you can promote one high-signal `design-*` rule
-   * back into the score or PR-comment surface.
+   * Your include/exclude entries layer on top. Rule, category, and tag includes
+   * win over their exclusions. Included file contexts still respect unrelated
+   * exclusions, so restoring story findings does not restore every design rule.
    */
   surfaces?: Partial<Record<DiagnosticSurface, SurfaceControls>>;
   /**

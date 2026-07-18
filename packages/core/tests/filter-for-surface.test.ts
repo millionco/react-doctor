@@ -17,7 +17,7 @@ const designDiagnostic: Diagnostic = {
   help: "",
   line: 12,
   column: 4,
-  category: "Architecture",
+  category: "Maintainability",
 };
 
 const correctnessDiagnostic: Diagnostic = {
@@ -29,7 +29,7 @@ const correctnessDiagnostic: Diagnostic = {
   help: "",
   line: 18,
   column: 5,
-  category: "Correctness",
+  category: "Bugs",
 };
 
 const externalPluginDiagnostic: Diagnostic = {
@@ -54,7 +54,7 @@ const docusaurusTestDiagnostic: Diagnostic = {
   help: "",
   line: 32,
   column: 5,
-  category: "Correctness",
+  category: "Bugs",
   fileContext: "test",
 };
 
@@ -67,7 +67,7 @@ const radixTestDiagnostic: Diagnostic = {
   help: "",
   line: 48,
   column: 9,
-  category: "Correctness",
+  category: "Bugs",
   fileContext: "test",
 };
 
@@ -80,7 +80,7 @@ const storyDiagnostic: Diagnostic = {
   help: "",
   line: 12,
   column: 4,
-  category: "Architecture",
+  category: "Maintainability",
   fileContext: "story",
 };
 
@@ -141,7 +141,7 @@ describe("filterDiagnosticsForSurface — user overrides", () => {
 
   it("`excludeCategories` removes everything in a category from a surface", () => {
     const config: ReactDoctorConfig = {
-      surfaces: { ciFailure: { excludeCategories: ["Correctness"] } },
+      surfaces: { ciFailure: { excludeCategories: ["Bugs"] } },
     };
     const diagnostics = [designDiagnostic, correctnessDiagnostic];
     expect(filterDiagnosticsForSurface(diagnostics, "ciFailure", config)).toEqual([]);
@@ -171,7 +171,7 @@ describe("filterDiagnosticsForSurface — user overrides", () => {
       surfaces: { score: { includeRules: ["react-compiler/globals"] } },
     };
     const categoryConfig: ReactDoctorConfig = {
-      surfaces: { ciFailure: { includeCategories: ["Correctness"] } },
+      surfaces: { ciFailure: { includeCategories: ["Bugs"] } },
     };
     const tagConfig: ReactDoctorConfig = {
       surfaces: { score: { includeTags: ["design"] } },
@@ -190,6 +190,20 @@ describe("filterDiagnosticsForSurface — user overrides", () => {
     expect(filterDiagnosticsForSurface([storyDiagnostic], "score", tagConfig)).toEqual([
       storyDiagnostic,
     ]);
+  });
+
+  it("includes requested file contexts without overriding unrelated exclusions", () => {
+    const config: ReactDoctorConfig = {
+      surfaces: { score: { includeFileContexts: ["test", "story"] } },
+    };
+
+    expect(
+      filterDiagnosticsForSurface(
+        [docusaurusTestDiagnostic, radixTestDiagnostic, storyDiagnostic],
+        "score",
+        config,
+      ),
+    ).toEqual([docusaurusTestDiagnostic, radixTestDiagnostic]);
   });
 });
 

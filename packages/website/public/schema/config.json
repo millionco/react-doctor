@@ -158,7 +158,7 @@
             }
           },
           "additionalProperties": false,
-          "description": "Per-surface include/exclude controls. Each `DiagnosticSurface` resolves rule tags, categories, and identifiers independently. This lets you keep a rule visible locally while hiding it from PR comments, the score, or the CI gate. These controls don't change rule severity or activation.\n\nDefaults (applied before user overrides):\n\n- `prComment` excludes tag `\"design\"`\n- `score` excludes tag `\"design\"`\n- `ciFailure` excludes tag `\"design\"`\n- `score` and `ciFailure` exclude test/story file contexts unless explicitly included\n\nPass any controls block, including an empty `{}`, to keep the defaults. Your include/exclude entries layer on top. Includes always win over excludes. For example, you can promote one high-signal `design-*` rule back into the score or PR-comment surface."
+          "description": "Per-surface include/exclude controls. Each `DiagnosticSurface` resolves rule tags, categories, and identifiers independently. This lets you keep a rule visible locally while hiding it from PR comments, the score, or the CI gate. These controls don't change rule severity or activation.\n\nDefaults (applied before user overrides):\n\n- `prComment` excludes tag `\"design\"`\n- `score` excludes tag `\"design\"`\n- `ciFailure` excludes tag `\"design\"`\n- `score` and `ciFailure` exclude test/story file contexts unless explicitly included\n\nPass any controls block, including an empty `{}`, to keep the defaults. Your include/exclude entries layer on top. Rule, category, and tag includes win over their exclusions. Included file contexts still respect unrelated exclusions, so restoring story findings does not restore every design rule."
         },
         "rules": {
           "type": "object",
@@ -260,6 +260,17 @@
     "SurfaceControls": {
       "type": "object",
       "properties": {
+        "includeFileContexts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "test",
+              "story"
+            ]
+          },
+          "description": "Non-production file contexts to retain on this surface. This restores test or story findings without overriding unrelated tag exclusions."
+        },
         "includeTags": {
           "type": "array",
           "items": {

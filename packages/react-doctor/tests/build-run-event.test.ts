@@ -50,7 +50,7 @@ const buildDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
   help: "Use a stable id",
   line: 1,
   column: 1,
-  category: "Correctness",
+  category: "Bugs",
   ...overrides,
 });
 
@@ -278,7 +278,7 @@ describe("buildRunEventAttributes", () => {
         buildDiagnostic({
           severity: "warning",
           rule: "no-bar",
-          category: "Correctness",
+          category: "Bugs",
           filePath: "src/B.tsx",
         }),
       ],
@@ -293,7 +293,7 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["diag.distinctRules"]).toBe(2);
     expect(attributes["diag.topRule"]).toBe("react-doctor/no-foo");
     expect(attributes["diag.category.performance"]).toBe(2);
-    expect(attributes["diag.category.correctness"]).toBe(1);
+    expect(attributes["diag.category.bugs"]).toBe(1);
     expect(attributes["score.value"]).toBe(73);
     expect(attributes["score.label"]).toBe("Fair");
     expect(attributes["score.available"]).toBe(true);
@@ -383,10 +383,20 @@ describe("buildRunEventAttributes", () => {
     const categoryIncludedAttributes = buildRunEventAttributes(
       baseInput({
         result,
-        userConfig: { surfaces: { ciFailure: { includeCategories: ["Correctness"] } } },
+        userConfig: { surfaces: { ciFailure: { includeCategories: ["Bugs"] } } },
       }),
     );
     expect(categoryIncludedAttributes["diag.nonProductionGateExcluded"]).toBe(0);
+
+    const fileContextIncludedAttributes = buildRunEventAttributes(
+      baseInput({
+        result,
+        userConfig: {
+          surfaces: { ciFailure: { includeFileContexts: ["test", "story"] } },
+        },
+      }),
+    );
+    expect(fileContextIncludedAttributes["diag.nonProductionGateExcluded"]).toBe(0);
   });
 
   it("never reports a blocked run in score-only mode (matches the CLI exit guard)", () => {

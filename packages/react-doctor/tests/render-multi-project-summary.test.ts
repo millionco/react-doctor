@@ -44,7 +44,7 @@ const buildDiagnostic = (overrides: Partial<Diagnostic>): Diagnostic => ({
   help: "Fix it",
   line: 1,
   column: 1,
-  category: "Correctness",
+  category: "Bugs",
   ...overrides,
 });
 
@@ -84,7 +84,7 @@ const lowDesignDiagnostic = buildDiagnostic({
   filePath: "src/LowDesign.tsx",
   rule: "design-no-redundant-size-axes",
   severity: "warning",
-  category: "Architecture",
+  category: "Maintainability",
 });
 const highProductionDiagnostic = buildDiagnostic({
   filePath: "src/High.tsx",
@@ -144,7 +144,7 @@ describe("printMultiProjectSummary score projection", () => {
       {
         surfaces: {
           score: {
-            includeCategories: ["Correctness"],
+            includeCategories: ["Bugs"],
             includeTags: ["design"],
           },
         },

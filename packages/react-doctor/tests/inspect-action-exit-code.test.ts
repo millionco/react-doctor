@@ -167,7 +167,7 @@ describe("inspectAction exit-code gate", () => {
           plugin: "eslint",
           rule: "no-unused-vars",
           severity: "error",
-          category: "Correctness",
+          category: "Bugs",
           fileContext: "test",
         }),
       ],
@@ -187,7 +187,27 @@ describe("inspectAction exit-code gate", () => {
           plugin: "eslint",
           rule: "no-unused-vars",
           severity: "error",
-          category: "Correctness",
+          category: "Bugs",
+          fileContext: "test",
+        }),
+      ],
+    });
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("fails CI when test diagnostics are included by file context", async () => {
+    mockState.userConfig = {
+      surfaces: { ciFailure: { includeFileContexts: ["test"] } },
+    };
+    await runInspectAction({
+      diagnostics: [
+        buildDiagnostic({
+          filePath: "packages/react/context-menu/src/context-menu-controlled.test.tsx",
+          plugin: "eslint",
+          rule: "no-unused-vars",
+          severity: "error",
+          category: "Bugs",
           fileContext: "test",
         }),
       ],

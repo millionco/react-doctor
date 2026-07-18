@@ -1,4 +1,5 @@
 import type {
+  DiagnosticFileContext,
   DiagnosticSurface,
   ReactDoctorConfig,
   RuleSeverityOverride,
@@ -9,6 +10,10 @@ import { DIAGNOSTIC_CATEGORY_BUCKETS } from "./constants.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
 
 const VALID_RULE_SEVERITIES: ReadonlyArray<RuleSeverityOverride> = ["error", "warn", "off"];
+const VALID_INCLUDED_FILE_CONTEXTS: ReadonlyArray<Exclude<DiagnosticFileContext, "production">> = [
+  "test",
+  "story",
+];
 
 // The pre-collapse category names live on in old configs. They no longer
 // match any diagnostic's `category` (everything now rolls up into the five
@@ -66,6 +71,11 @@ const SURFACE_CONTROL_FIELD_NAMES = [
   "includeRules",
   "excludeRules",
 ] as const satisfies ReadonlyArray<keyof SurfaceControls>;
+
+const isIncludedFileContext = (
+  value: string,
+): value is Exclude<DiagnosticFileContext, "production"> =>
+  VALID_INCLUDED_FILE_CONTEXTS.some((fileContext) => fileContext === value);
 
 const SEVERITY_FIELD_NAMES = ["rules", "categories"] as const satisfies ReadonlyArray<
   keyof ReactDoctorConfig
@@ -130,6 +140,21 @@ const validateSurfaceControls = (
     return undefined;
   }
   const validatedSurfaceControls: SurfaceControls = {};
+  if (rawControls.includeFileContexts !== undefined) {
+    const qualifiedName = `surfaces.${surface}.includeFileContexts`;
+    const result = validateStringArrayField(qualifiedName, rawControls.includeFileContexts);
+    if (result !== undefined) {
+      validatedSurfaceControls.includeFileContexts = result.filter(
+        (fileContext): fileContext is Exclude<DiagnosticFileContext, "production"> => {
+          if (isIncludedFileContext(fileContext)) return true;
+          warnConfigIssue(
+            `config field "${qualifiedName}" lists "${fileContext}", which is not a non-production file context (expected one of: ${VALID_INCLUDED_FILE_CONTEXTS.join(", ")}); ignoring the entry.`,
+          );
+          return false;
+        },
+      );
+    }
+  }
   for (const fieldName of SURFACE_CONTROL_FIELD_NAMES) {
     if (rawControls[fieldName] === undefined) continue;
     const qualifiedName = `surfaces.${surface}.${fieldName}`;

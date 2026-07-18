@@ -58,6 +58,20 @@ describe("Git.baselineDiffPlan", () => {
     });
   });
 
+  it("keeps an unstaged rename destination on the head side", async () => {
+    writeFile(directory, "src/old-name.tsx", "export const value = 1;\n");
+    const baseRef = commitAll(directory, "base");
+    fs.renameSync(
+      path.join(directory, "src/old-name.tsx"),
+      path.join(directory, "src/new-name.tsx"),
+    );
+
+    await expect(readPlan(directory, baseRef)).resolves.toEqual({
+      baseFiles: ["src/old-name.tsx"],
+      headFiles: ["src/new-name.tsx"],
+    });
+  });
+
   it("keeps a copied file head-only", async () => {
     writeFile(directory, "src/original.tsx", "export const value = 1;\n");
     const baseRef = commitAll(directory, "base");

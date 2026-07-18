@@ -7,7 +7,7 @@
   "type": "module",
   "sideEffects": false,
   "scripts": {
-    "eval": "ulimit -n unlimited && tsx src/cli.ts",
+    "eval": "tsx src/cli.ts",
     "test": "vp test run",
     "typecheck": "tsc --noEmit"
   },

@@ -13,6 +13,7 @@ import {
 } from "./constants.js";
 import type { CorpusEvaluationRecord, CorpusRepositoryGroup } from "./corpus.js";
 import { executeSandboxCommand } from "./execute-sandbox-command.js";
+import { parseReactDoctorReport } from "./utils/parse-react-doctor-report.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 
 export interface EvaluateRepositoryGroupInput {
@@ -87,7 +88,7 @@ export const evaluateRepositoryGroup = async ({
           description: `Scan ${repository.org}/${repository.name}:${repository.rootDir}`,
           acceptNonZeroExitCode: true,
         });
-        const report: unknown = JSON.parse(output);
+        const report = parseReactDoctorReport(output);
         await onRecord({
           schemaVersion: EVALUATION_SCHEMA_VERSION,
           repository,

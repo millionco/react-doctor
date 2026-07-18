@@ -541,13 +541,47 @@ const subtreeWritesAnyGuardPath = (
   node: EsTreeNode,
   guardNames: string[],
   context: RuleContext,
+  beforeNode?: EsTreeNode,
 ): boolean => {
   const symbolIds = new Set(
     guardNames
       .map((guardName) => Number(guardName.slice(0, guardName.indexOf(":"))))
       .filter(Number.isFinite),
   );
-  return subtreeWritesSymbol(node, symbolIds, context);
+  return subtreeWritesSymbol(node, symbolIds, context, undefined, beforeNode);
+};
+
+const switchPathWritesAnyGuardBeforeNode = (
+  switchCase: EsTreeNodeOfType<"SwitchCase">,
+  node: EsTreeNode,
+  guardNames: string[],
+  context: RuleContext,
+): boolean => {
+  if (subtreeWritesAnyGuardPath(switchCase, guardNames, context, node)) {
+    return true;
+  }
+  const switchStatement = switchCase.parent;
+  if (!switchStatement || !isNodeOfType(switchStatement, "SwitchStatement")) return false;
+  const switchCaseIndex = switchStatement.cases.findIndex(
+    (candidateCase) => candidateCase === switchCase,
+  );
+  for (let caseIndex = switchCaseIndex - 1; caseIndex >= 0; caseIndex -= 1) {
+    const precedingCase = switchStatement.cases[caseIndex];
+    let didWriteGuardPath = false;
+    let canFallThrough = true;
+    for (const statementNode of precedingCase.consequent) {
+      if (isEarlyExitStatement(statementNode)) {
+        canFallThrough = false;
+        break;
+      }
+      if (subtreeWritesAnyGuardPath(statementNode, guardNames, context)) {
+        didWriteGuardPath = true;
+      }
+    }
+    if (!canFallThrough) break;
+    if (didWriteGuardPath) return true;
+  }
+  return false;
 };
 
 const writtenSymbolKeysByScope = new WeakMap<EsTreeNode, Set<string>>();
@@ -607,7 +641,8 @@ const isGuardedByEnclosingTest = (
       ancestor.test !== null &&
       ancestor.parent &&
       isNodeOfType(ancestor.parent, "SwitchStatement") &&
-      subtreeReferencesAnyName(ancestor.parent.discriminant, guardNames, context)
+      subtreeReferencesAnyName(ancestor.parent.discriminant, guardNames, context) &&
+      !switchPathWritesAnyGuardBeforeNode(ancestor, binaryNode, guardNames, context)
     ) {
       return true;
     }

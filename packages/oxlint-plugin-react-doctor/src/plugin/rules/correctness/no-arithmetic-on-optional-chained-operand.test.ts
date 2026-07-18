@@ -383,6 +383,180 @@ describe("no-arithmetic-on-optional-chained-operand", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not retain a switch discriminant guard after the root is written", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function OrderTotal({ order, taxRate }) {
+        switch (order?.status) {
+          case "paid": {
+            order = undefined;
+            const total = order?.amount * taxRate;
+            return <b>{total.toFixed(2)}</b>;
+          }
+          default:
+            return null;
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not retain a switch guard through a writing fallthrough case", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function OrderTotal({ order, taxRate }) {
+        switch (order?.status) {
+          case "paid":
+            order = undefined;
+          case "pending":
+            return order?.amount * taxRate;
+          default:
+            return 0;
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a switch guard when a writing predecessor exits before the case", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function OrderTotal({ order, taxRate }) {
+        switch (order?.status) {
+          case "paid":
+            order = undefined;
+            break;
+          case "pending":
+            return order?.amount * taxRate;
+          default:
+            return 0;
+        }
+        return 0;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores unreachable switch writes after unconditional exits", () => {
+    const breakResult = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function OrderTotal({ order, taxRate }) {
+        switch (order?.status) {
+          case "paid":
+            break;
+            order = undefined;
+          case "pending":
+            return order?.amount * taxRate;
+          default:
+            return 0;
+        }
+        return 0;
+      }`,
+    );
+    const returnResult = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function OrderTotal({ order, taxRate }) {
+        switch (order?.status) {
+          case "paid":
+            order = undefined;
+            return 0;
+          case "pending":
+            return order?.amount * taxRate;
+          default:
+            return 0;
+        }
+      }`,
+    );
+    const throwResult = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function OrderTotal({ order, taxRate }) {
+        switch (order?.status) {
+          case "paid":
+            throw new Error("paid");
+            order = undefined;
+          case "pending":
+            return order?.amount * taxRate;
+          default:
+            return 0;
+        }
+      }`,
+    );
+    expect(breakResult.diagnostics).toHaveLength(0);
+    expect(returnResult.diagnostics).toHaveLength(0);
+    expect(throwResult.diagnostics).toHaveLength(0);
+  });
+
+  it("orders same-statement switch writes around optional arithmetic", () => {
+    const laterArgumentWriteResult = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function OrderTotal({ order, taxRate }) {
+        switch (order?.status) {
+          case "paid":
+            return consume(order?.amount * taxRate, (order = undefined));
+          default:
+            return 0;
+        }
+      }`,
+    );
+    const laterDeclaratorWriteResult = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function OrderTotal({ order, taxRate }) {
+        switch (order?.status) {
+          case "paid": {
+            const total = order?.amount * taxRate, cleared = (order = undefined);
+            return total.toFixed(2) + String(cleared);
+          }
+          default:
+            return "0";
+        }
+      }`,
+    );
+    const earlierWriteResult = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function OrderTotal({ order, taxRate }) {
+        switch (order?.status) {
+          case "paid":
+            return (order = undefined, (order?.amount * taxRate).toFixed(2));
+          default:
+            return "0";
+        }
+      }`,
+    );
+    expect(laterArgumentWriteResult.diagnostics).toHaveLength(0);
+    expect(laterDeclaratorWriteResult.diagnostics).toHaveLength(0);
+    expect(earlierWriteResult.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks writes through empty and default fallthrough cases", () => {
+    const emptyCaseResult = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function OrderTotal({ order, taxRate }) {
+        switch (order?.status) {
+          case "paid":
+            order = undefined;
+          case "processing":
+          case "pending":
+            return order?.amount * taxRate;
+          default:
+            return 0;
+        }
+      }`,
+    );
+    const defaultCaseResult = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function OrderTotal({ order, taxRate }) {
+        switch (order?.status) {
+          default:
+            order = undefined;
+          case "paid":
+            return order?.amount * taxRate;
+        }
+      }`,
+    );
+    expect(emptyCaseResult.diagnostics).toHaveLength(1);
+    expect(defaultCaseResult.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet: Math consumer inside a root-guarded ternary branch", () => {
     const result = runRule(
       noArithmeticOnOptionalChainedOperand,

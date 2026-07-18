@@ -11,10 +11,12 @@ export const subtreeWritesSymbol = (
   symbolIds: ReadonlySet<number>,
   context: RuleContext,
   isAllowedAssignment?: (assignment: EsTreeNodeOfType<"AssignmentExpression">) => boolean,
+  beforeNode?: EsTreeNode,
 ): boolean => {
   let didWriteSymbol = false;
   walkAst(node, (child) => {
     if (didWriteSymbol) return false;
+    if (beforeNode && child.range[0] >= beforeNode.range[0]) return false;
     if (child !== node && isFunctionLike(child)) return false;
     let target: EsTreeNode | null = null;
     if (isNodeOfType(child, "AssignmentExpression")) {

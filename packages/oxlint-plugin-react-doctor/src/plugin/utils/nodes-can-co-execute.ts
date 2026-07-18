@@ -1,4 +1,6 @@
+import type { SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveConstIdentifierRootSymbol } from "./resolve-const-identifier-root-symbol.js";
 import type { RuleContext } from "./rule-context.js";
@@ -19,6 +21,8 @@ interface PredicateConstraints {
 interface PredicateValueConstraint {
   readonly excludedValueKeys: ReadonlySet<string>;
   readonly requiredValueKey: string | null;
+  readonly sourceTests: ReadonlyArray<EsTreeNode>;
+  readonly symbol: SymbolDescriptor;
 }
 
 const exitingPredicatesByBlock = new WeakMap<EsTreeNode, ExitingPredicate[]>();
@@ -46,7 +50,7 @@ const getExitingPredicates = (block: EsTreeNode): ExitingPredicate[] => {
 
 interface PredicateConstraint {
   readonly isEquality: boolean;
-  readonly symbolId: number;
+  readonly symbol: SymbolDescriptor;
   readonly valueKey: string;
 }
 
@@ -110,7 +114,7 @@ const predicateConstraint = (
   return symbol
     ? {
         isEquality: comparisonIsEquality === expectedValue,
-        symbolId: symbol.id,
+        symbol,
         valueKey,
       }
     : null;
@@ -124,9 +128,11 @@ const addPredicateConstraint = (
 ): boolean => {
   const constraint = predicateConstraint(expression, isTruthy, context);
   if (!constraint) return false;
-  const previousValue = constraints.get(constraint.symbolId) ?? {
+  const previousValue = constraints.get(constraint.symbol.id) ?? {
     excludedValueKeys: new Set<string>(),
     requiredValueKey: null,
+    sourceTests: [],
+    symbol: constraint.symbol,
   };
   if (constraint.isEquality) {
     if (
@@ -136,16 +142,20 @@ const addPredicateConstraint = (
     ) {
       return true;
     }
-    constraints.set(constraint.symbolId, {
+    constraints.set(constraint.symbol.id, {
       excludedValueKeys: previousValue.excludedValueKeys,
       requiredValueKey: constraint.valueKey,
+      sourceTests: [...previousValue.sourceTests, expression],
+      symbol: constraint.symbol,
     });
     return false;
   }
   if (previousValue.requiredValueKey === constraint.valueKey) return true;
-  constraints.set(constraint.symbolId, {
+  constraints.set(constraint.symbol.id, {
     excludedValueKeys: new Set([...previousValue.excludedValueKeys, constraint.valueKey]),
     requiredValueKey: previousValue.requiredValueKey,
+    sourceTests: [...previousValue.sourceTests, expression],
+    symbol: constraint.symbol,
   });
   return false;
 };
@@ -210,6 +220,37 @@ const collectNodePredicateConstraints = (
   return result;
 };
 
+const predicateValueWasWrittenBetweenTests = (
+  leftValue: PredicateValueConstraint,
+  rightValue: PredicateValueConstraint,
+): boolean => {
+  for (const leftTest of leftValue.sourceTests) {
+    for (const rightTest of rightValue.sourceTests) {
+      const leftStart = leftTest.range?.[0] ?? 0;
+      const rightStart = rightTest.range?.[0] ?? 0;
+      const lowerStart = Math.min(leftStart, rightStart);
+      const upperStart = Math.max(leftStart, rightStart);
+      if (lowerStart === upperStart) continue;
+      const enclosingFunction = findEnclosingFunction(leftTest);
+      if (findEnclosingFunction(rightTest) !== enclosingFunction) continue;
+      if (
+        leftValue.symbol.references.some((reference) => {
+          const referenceStart = reference.identifier.range?.[0] ?? 0;
+          return (
+            reference.flag !== "read" &&
+            referenceStart > lowerStart &&
+            referenceStart < upperStart &&
+            findEnclosingFunction(reference.identifier) === enclosingFunction
+          );
+        })
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
 export const nodesCanCoExecute = (
   left: EsTreeNode,
   right: EsTreeNode,
@@ -221,15 +262,15 @@ export const nodesCanCoExecute = (
   for (const [symbolId, leftValue] of leftConstraints.values) {
     const rightValue = rightConstraints.values.get(symbolId);
     if (!rightValue) continue;
-    if (
+    const constraintsConflict =
       (leftValue.requiredValueKey !== null &&
         rightValue.requiredValueKey !== null &&
         leftValue.requiredValueKey !== rightValue.requiredValueKey) ||
       (leftValue.requiredValueKey !== null &&
         rightValue.excludedValueKeys.has(leftValue.requiredValueKey)) ||
       (rightValue.requiredValueKey !== null &&
-        leftValue.excludedValueKeys.has(rightValue.requiredValueKey))
-    ) {
+        leftValue.excludedValueKeys.has(rightValue.requiredValueKey));
+    if (constraintsConflict && !predicateValueWasWrittenBetweenTests(leftValue, rightValue)) {
       return false;
     }
   }

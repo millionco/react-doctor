@@ -172,4 +172,164 @@ describe("state update correctness final audit regressions", () => {
     expect(fetchCall.diagnostics).toHaveLength(1);
     expect(scheduler.diagnostics).toHaveLength(1);
   });
+
+  it("invalidates shared predicate correlations after a write", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=({flag})=>{const[,setItems]=useState([]);setItems(items=>{if(flag)items.push(1);flag=false;if(!flag)return items;return [...items]})}",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks original aliases across parameter reassignment", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=()=>{const[,setItems]=useState([]);setItems(items=>{const original=items;items=[];original.push(1);return original})}",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a fresh reassignment inside the same try block", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=()=>{const[,setItems]=useState([]);setItems(items=>{try{items=[...items];items.push(1);return items}catch{return []}})}",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes exact Object.assign mutations and return values", () => {
+    const updater = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=()=>{const[,setValue]=useState({});setValue(value=>{Object.assign(value,{x:1});return value})}",
+    );
+    const direct = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const C=()=>{const[value,setValue]=useState({});setValue(Object.assign(value,{x:1}))}",
+    );
+    const shadowed = runRule(
+      noMutateThenSetOrReturnSameReference,
+      "const Object={assign:(target,next)=>({...target,...next})};const C=()=>{const[value,setValue]=useState({});setValue(Object.assign(value,{x:1}))}",
+    );
+    expect(updater.diagnostics).toHaveLength(1);
+    expect(direct.diagnostics).toHaveLength(1);
+    expect(shadowed.diagnostics).toHaveLength(0);
+  });
+
+  it("detects property writes to external updater receivers", () => {
+    const assignment = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({store})=>{const[,setX]=useState(0);setX(x=>{store.value=x;return x+1})}",
+    );
+    const update = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({metrics})=>{const[,setX]=useState(0);setX(x=>{metrics.count++;return x+1})}",
+    );
+    const local = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=()=>{const[,setX]=useState(0);setX(x=>{const next={value:x};next.value+=1;return next.value})}",
+    );
+    const stateAlias = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=()=>{const[,setX]=useState({value:0});setX(value=>{const draft=value;draft.value+=1;return draft})}",
+    );
+    const externalHelperArgument = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({store})=>{const[,setX]=useState(0);setX(value=>{const write=target=>{target.value=value};write(store);return value+1})}",
+    );
+    const localHelperArgument = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=()=>{const[,setX]=useState({value:0});setX(value=>{const write=target=>{target.value+=1};write(value);return value})}",
+    );
+    const mixedHelperArguments = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({store})=>{const[,setX]=useState({value:0});setX(value=>{const write=target=>{target.value+=1};write(value);write(store);return value})}",
+    );
+    expect(assignment.diagnostics).toHaveLength(1);
+    expect(update.diagnostics).toHaveLength(1);
+    expect(local.diagnostics).toHaveLength(0);
+    expect(stateAlias.diagnostics).toHaveLength(0);
+    expect(externalHelperArgument.diagnostics).toHaveLength(1);
+    expect(localHelperArgument.diagnostics).toHaveLength(0);
+    expect(mixedHelperArguments.diagnostics).toHaveLength(1);
+  });
+
+  it("distinguishes proven nullish fallbacks from unknown fallbacks", () => {
+    const safe = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{options?:{width:number}}const defaults={options:{width:1}};const C=(props:Props)=>{const merged={...defaults,...props};return (merged.options?.width??0)*2}",
+    );
+    const unknown = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:1};const C=(props:Props)=>{const merged={...defaults,...props};return (merged.width??getFallback())*2}",
+    );
+    expect(safe.diagnostics).toHaveLength(0);
+    expect(unknown.diagnostics).toHaveLength(1);
+  });
+
+  it("follows scalar aliases through wrappers and assignments", () => {
+    const wrapped = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:1};const C=(props:Props)=>{const merged={...defaults,...props};const width=merged.width;const alias=width as number;return alias*2}",
+    );
+    const assigned = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:1};const C=(props:Props)=>{const merged={...defaults,...props};const width=merged.width;let alias;alias=width;return alias*2}",
+    );
+    const overwritten = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number}const defaults={width:1};const C=(props:Props)=>{const merged={...defaults,...props};const width=merged.width;let alias;alias=width;alias=1;return alias*2}",
+    );
+    const conditionallyOverwritten = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      "interface Props{width?:number;safe:boolean}const defaults={width:1};const C=(props:Props)=>{const merged={...defaults,...props};const width=merged.width;let alias;alias=width;if(props.safe)alias=1;return alias*2}",
+    );
+    expect(wrapped.diagnostics).toHaveLength(1);
+    expect(assigned.diagnostics).toHaveLength(1);
+    expect(overwritten.diagnostics).toHaveLength(0);
+    expect(conditionallyOverwritten.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps whole-object dependencies for direct method receivers", () => {
+    const directMethod = runRule(
+      noWholeObjectDepWithMemberReads,
+      'import{useMemo}from"react";const Panel=(props)=>useMemo(()=>props.format(),[props])',
+    );
+    const nestedMethod = runRule(
+      noWholeObjectDepWithMemberReads,
+      'import{useMemo}from"react";const Panel=(props)=>useMemo(()=>props.user.format(),[props])',
+    );
+    expect(directMethod.diagnostics).toHaveLength(0);
+    expect(nestedMethod.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes once callbacks and globalThis timers as deferred", () => {
+    const once = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=({emitter})=>{const[open,setOpen]=useState(false);const run=()=>emitter.once('ready',()=>setOpen(!open));return <button onClick={run}/>}",
+    );
+    const globalTimer = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);const run=()=>globalThis.setTimeout(()=>setOpen(!open),0);return <button onClick={run}/>}",
+    );
+    expect(once.diagnostics).toHaveLength(1);
+    expect(globalTimer.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat synchronous thenables as deferred Promises", () => {
+    const synchronousThenable = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);const run=()=>({then(callback){callback()}}).then(()=>setOpen(!open));return <button onClick={run}/>}",
+    );
+    const promise = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);const run=()=>Promise.resolve().then(()=>setOpen(!open));return <button onClick={run}/>}",
+    );
+    const deferredThenable = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      "const C=()=>{const[open,setOpen]=useState(false);const thenable={then(callback){setTimeout(callback,0)}};const run=()=>thenable.then(()=>setOpen(!open));return <button onClick={run}/>}",
+    );
+    expect(synchronousThenable.diagnostics).toHaveLength(0);
+    expect(promise.diagnostics).toHaveLength(1);
+    expect(deferredThenable.diagnostics).toHaveLength(1);
+  });
 });

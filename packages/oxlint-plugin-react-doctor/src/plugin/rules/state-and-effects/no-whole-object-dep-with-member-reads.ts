@@ -333,7 +333,17 @@ const analyzePropsUsage = (
         return;
       }
       if (parent && isNodeOfType(parent, "MemberExpression") && parent.object === child) {
-        if (getStaticPropertyName(parent) === null || isMemberMutation(parent)) {
+        const expressionRoot = findTransparentExpressionRoot(parent);
+        const isDirectMethodReceiver = Boolean(
+          isNodeOfType(expressionRoot.parent, "CallExpression") &&
+          expressionRoot.parent.callee === expressionRoot &&
+          !/^on[A-Z]/.test(getStaticPropertyName(parent) ?? ""),
+        );
+        if (
+          getStaticPropertyName(parent) === null ||
+          isMemberMutation(parent) ||
+          isDirectMethodReceiver
+        ) {
           usage.hasBareUse = true;
         } else {
           usage.hasMemberRead = true;

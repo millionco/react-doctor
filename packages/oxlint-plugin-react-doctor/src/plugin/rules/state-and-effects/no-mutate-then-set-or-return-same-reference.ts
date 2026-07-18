@@ -48,7 +48,39 @@ const reachableBlockIdsByCfg = new WeakMap<FunctionCfg, Map<number, ReadonlySet<
 interface MutationFact {
   readonly node: EsTreeNode;
   readonly call: EsTreeNodeOfType<"CallExpression"> | null;
+  readonly referenceSymbol: SymbolDescriptor;
 }
+
+const expressionBaseSymbol = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): SymbolDescriptor | null => {
+  let current = stripParenExpression(expression);
+  while (isNodeOfType(current, "MemberExpression")) {
+    current = stripParenExpression(current.object);
+  }
+  return isNodeOfType(current, "Identifier") ? context.scopes.symbolFor(current) : null;
+};
+
+const getExactObjectAssignTarget = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const callee = stripParenExpression(call.callee);
+  if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "assign") {
+    return null;
+  }
+  const receiver = stripParenExpression(callee.object);
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    receiver.name !== "Object" ||
+    !context.scopes.isGlobalReference(receiver)
+  ) {
+    return null;
+  }
+  const target = call.arguments?.[0];
+  return target && !isNodeOfType(target, "SpreadElement") ? target : null;
+};
 
 const nodePrecedesOnReachablePath = (
   sourceNode: EsTreeNode,
@@ -244,6 +276,10 @@ const isSelfReturningMutationCall = (
 ): boolean => {
   const call = stripParenExpression(expression);
   if (!isNodeOfType(call, "CallExpression")) return false;
+  const objectAssignTarget = getExactObjectAssignTarget(call, context);
+  if (objectAssignTarget) {
+    return expressionRootSymbol(objectAssignTarget, context)?.id === expectedSymbol.id;
+  }
   const callee = stripParenExpression(call.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const methodName = getStaticPropertyName(callee);
@@ -264,6 +300,17 @@ const collectMutationFacts = (
   walkAst(functionNode, (child: EsTreeNode) => {
     if (child !== functionNode && isFunctionLike(child)) return false;
     if (isNodeOfType(child, "CallExpression")) {
+      const objectAssignTarget = getExactObjectAssignTarget(child, context);
+      if (
+        objectAssignTarget &&
+        expressionRootSymbol(objectAssignTarget, context)?.id === expectedSymbol.id
+      ) {
+        const referenceSymbol = expressionBaseSymbol(objectAssignTarget, context);
+        if (referenceSymbol) {
+          facts.push({ node: child, call: child, referenceSymbol });
+        }
+        return;
+      }
       const callee = stripParenExpression(child.callee);
       if (!isNodeOfType(callee, "MemberExpression")) return;
       const methodName = getStaticPropertyName(callee);
@@ -281,7 +328,10 @@ const collectMutationFacts = (
       ) {
         return;
       }
-      facts.push({ node: child, call: child });
+      const referenceSymbol = expressionBaseSymbol(callee.object, context);
+      if (referenceSymbol) {
+        facts.push({ node: child, call: child, referenceSymbol });
+      }
       return;
     }
     if (isNodeOfType(child, "AssignmentExpression")) {
@@ -290,7 +340,10 @@ const collectMutationFacts = (
         isNodeOfType(left, "MemberExpression") &&
         expressionRootSymbol(left, context)?.id === expectedSymbol.id
       ) {
-        facts.push({ node: child, call: null });
+        const referenceSymbol = expressionBaseSymbol(left, context);
+        if (referenceSymbol) {
+          facts.push({ node: child, call: null, referenceSymbol });
+        }
       }
       return;
     }
@@ -300,7 +353,10 @@ const collectMutationFacts = (
         isNodeOfType(argument, "MemberExpression") &&
         expressionRootSymbol(argument, context)?.id === expectedSymbol.id
       ) {
-        facts.push({ node: child, call: null });
+        const referenceSymbol = expressionBaseSymbol(argument, context);
+        if (referenceSymbol) {
+          facts.push({ node: child, call: null, referenceSymbol });
+        }
       }
       return;
     }
@@ -310,7 +366,10 @@ const collectMutationFacts = (
       isNodeOfType(stripParenExpression(child.argument), "MemberExpression") &&
       expressionRootSymbol(stripParenExpression(child.argument), context)?.id === expectedSymbol.id
     ) {
-      facts.push({ node: child, call: null });
+      const referenceSymbol = expressionBaseSymbol(stripParenExpression(child.argument), context);
+      if (referenceSymbol) {
+        facts.push({ node: child, call: null, referenceSymbol });
+      }
     }
   });
   return facts;
@@ -377,6 +436,23 @@ const collectSameReferenceResultExpressions = (
   return [];
 };
 
+const sameReferenceResultSymbol = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): SymbolDescriptor | null => {
+  const result = stripParenExpression(expression);
+  if (isNodeOfType(result, "Identifier")) {
+    return context.scopes.symbolFor(result);
+  }
+  if (!isNodeOfType(result, "CallExpression")) return null;
+  const objectAssignTarget = getExactObjectAssignTarget(result, context);
+  if (objectAssignTarget) return expressionBaseSymbol(objectAssignTarget, context);
+  const callee = stripParenExpression(result.callee);
+  return isNodeOfType(callee, "MemberExpression")
+    ? expressionBaseSymbol(callee.object, context)
+    : null;
+};
+
 const nodeIsInside = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
   let current: EsTreeNode | null | undefined = node;
   while (current) {
@@ -393,8 +469,8 @@ const lastUnconditionalReassignmentBefore = (
   functionCfg: FunctionCfg,
   context: RuleContext,
   lowerBoundNode: EsTreeNode | null = null,
-): EsTreeNode | null => {
-  let lastReassignmentRight: EsTreeNode | null = null;
+): EsTreeNodeOfType<"AssignmentExpression"> | null => {
+  let lastReassignment: EsTreeNodeOfType<"AssignmentExpression"> | null = null;
   let lastReassignmentStart = Number.NEGATIVE_INFINITY;
   walkAst(functionNode, (child: EsTreeNode) => {
     if (child !== functionNode && isFunctionLike(child)) return false;
@@ -406,12 +482,20 @@ const lastUnconditionalReassignmentBefore = (
       (() => {
         let ancestor: EsTreeNode | null | undefined = child.parent;
         while (ancestor && ancestor !== functionNode) {
+          if (isNodeOfType(ancestor, "TryStatement")) {
+            const sharedRegion = [ancestor.block, ancestor.handler, ancestor.finalizer].some(
+              (region) =>
+                region !== null && nodeIsInside(child, region) && nodeIsInside(targetNode, region),
+            );
+            if (!sharedRegion) return true;
+            ancestor = ancestor.parent;
+            continue;
+          }
           if (
             isNodeOfType(ancestor, "IfStatement") ||
             isNodeOfType(ancestor, "ConditionalExpression") ||
             isNodeOfType(ancestor, "LogicalExpression") ||
             isNodeOfType(ancestor, "SwitchCase") ||
-            isNodeOfType(ancestor, "TryStatement") ||
             isNodeOfType(ancestor, "ForStatement") ||
             isNodeOfType(ancestor, "ForInStatement") ||
             isNodeOfType(ancestor, "ForOfStatement") ||
@@ -432,11 +516,22 @@ const lastUnconditionalReassignmentBefore = (
     }
     const assignmentStart = child.range?.[0] ?? 0;
     if (assignmentStart > lastReassignmentStart) {
-      lastReassignmentRight = child.right;
+      lastReassignment = child;
       lastReassignmentStart = assignmentStart;
     }
   });
-  return lastReassignmentRight;
+  return lastReassignment;
+};
+
+const reassignmentChangesReference = (
+  reassignment: EsTreeNodeOfType<"AssignmentExpression">,
+  expectedSymbol: SymbolDescriptor,
+  referenceSymbol: SymbolDescriptor,
+): boolean => {
+  if (referenceSymbol.id === expectedSymbol.id) return true;
+  return Boolean(
+    (referenceSymbol.bindingIdentifier.range?.[0] ?? 0) > (reassignment.range?.[0] ?? 0),
+  );
 };
 
 const hasFreshReassignmentBefore = (
@@ -445,6 +540,7 @@ const hasFreshReassignmentBefore = (
   targetNode: EsTreeNode,
   functionCfg: FunctionCfg,
   collectionKind: string | null,
+  referenceSymbol: SymbolDescriptor,
   context: RuleContext,
 ): boolean => {
   const reassignment = lastUnconditionalReassignmentBefore(
@@ -456,7 +552,13 @@ const hasFreshReassignmentBefore = (
   );
   return Boolean(
     reassignment &&
-    expressionIsDefinitelyFreshReference(reassignment, expectedSymbol, collectionKind, context),
+    reassignmentChangesReference(reassignment, expectedSymbol, referenceSymbol) &&
+    expressionIsDefinitelyFreshReference(
+      reassignment.right,
+      expectedSymbol,
+      collectionKind,
+      context,
+    ),
   );
 };
 
@@ -467,6 +569,7 @@ const hasFreshReassignmentBetween = (
   targetNode: EsTreeNode,
   functionCfg: FunctionCfg,
   collectionKind: string | null,
+  referenceSymbol: SymbolDescriptor,
   context: RuleContext,
 ): boolean => {
   const reassignment = lastUnconditionalReassignmentBefore(
@@ -479,7 +582,13 @@ const hasFreshReassignmentBetween = (
   );
   return Boolean(
     reassignment &&
-    expressionIsDefinitelyFreshReference(reassignment, expectedSymbol, collectionKind, context),
+    reassignmentChangesReference(reassignment, expectedSymbol, referenceSymbol) &&
+    expressionIsDefinitelyFreshReference(
+      reassignment.right,
+      expectedSymbol,
+      collectionKind,
+      context,
+    ),
   );
 };
 
@@ -568,6 +677,8 @@ const updaterMutatesThenReturnsSameReference = (
       context,
     );
     for (const sameReferenceResult of sameReferenceResults) {
+      const resultReferenceSymbol = sameReferenceResultSymbol(sameReferenceResult, context);
+      if (!resultReferenceSymbol) continue;
       for (const mutationFact of reachableMutationFacts) {
         if (
           (mutationFact.node === sameReferenceResult ||
@@ -583,6 +694,7 @@ const updaterMutatesThenReturnsSameReference = (
             mutationFact.node,
             functionCfg,
             collectionKind,
+            mutationFact.referenceSymbol,
             context,
           ) &&
           !hasFreshReassignmentBetween(
@@ -592,6 +704,7 @@ const updaterMutatesThenReturnsSameReference = (
             sameReferenceResult,
             functionCfg,
             collectionKind,
+            resultReferenceSymbol,
             context,
           )
         ) {
@@ -634,6 +747,7 @@ export const noMutateThenSetOrReturnSameReference = defineRule({
       mutationNode: EsTreeNode,
       functionCfg: FunctionCfg,
       collectionKind: string | null,
+      referenceSymbol: SymbolDescriptor,
     ): boolean => {
       const cachedResult = freshReassignmentByMutation.get(mutationNode);
       if (cachedResult !== undefined) return cachedResult;
@@ -643,6 +757,7 @@ export const noMutateThenSetOrReturnSameReference = defineRule({
         mutationNode,
         functionCfg,
         collectionKind,
+        referenceSymbol,
         context,
       );
       freshReassignmentByMutation.set(mutationNode, result);
@@ -718,6 +833,7 @@ export const noMutateThenSetOrReturnSameReference = defineRule({
                     mutationFact.node,
                     functionCfg,
                     collectionKind,
+                    mutationFact.referenceSymbol,
                   ),
               )
             ) {

@@ -6,6 +6,7 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenPromiseExpression } from "../../utils/is-proven-promise-expression.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { nodesCanCoExecute } from "../../utils/nodes-can-co-execute.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
@@ -68,6 +69,46 @@ const isGlobalIdentifier = (expression: EsTreeNode, name: string, context: RuleC
   isNodeOfType(expression, "Identifier") &&
   expression.name === name &&
   context.scopes.isGlobalReference(expression);
+
+const isGlobalObjectIdentifier = (expression: EsTreeNode, context: RuleContext): boolean =>
+  isNodeOfType(expression, "Identifier") &&
+  (expression.name === "window" || expression.name === "globalThis") &&
+  context.scopes.isGlobalReference(expression);
+
+const isProvenSynchronousThenable = (expression: EsTreeNode, context: RuleContext): boolean => {
+  let current = stripParenExpression(expression);
+  const visitedSymbolIds = new Set<number>();
+  while (isNodeOfType(current, "Identifier")) {
+    const symbol = context.scopes.symbolFor(current);
+    if (!symbol?.initializer || visitedSymbolIds.has(symbol.id)) return false;
+    visitedSymbolIds.add(symbol.id);
+    current = stripParenExpression(symbol.initializer);
+  }
+  if (!isNodeOfType(current, "ObjectExpression")) return false;
+  const thenProperty = current.properties.find(
+    (property) =>
+      isNodeOfType(property, "Property") &&
+      getStaticPropertyKeyName(property, { allowComputedString: true }) === "then",
+  );
+  if (!isNodeOfType(thenProperty, "Property")) return false;
+  const thenFunction = stripParenExpression(thenProperty.value);
+  if (!isFunctionLike(thenFunction)) return false;
+  const callbackParameter = thenFunction.params?.[0];
+  if (!isNodeOfType(callbackParameter, "Identifier")) return false;
+  const callbackSymbol = context.scopes.symbolFor(callbackParameter);
+  return Boolean(
+    callbackSymbol &&
+    callbackSymbol.references.length > 0 &&
+    callbackSymbol.references.every((reference) => {
+      const call = reference.identifier.parent;
+      return (
+        context.cfg.enclosingFunction(reference.identifier) === thenFunction &&
+        isNodeOfType(call, "CallExpression") &&
+        call.callee === reference.identifier
+      );
+    }),
+  );
+};
 
 const reactEffectCallForFunction = (
   functionNode: EsTreeNode,
@@ -173,7 +214,7 @@ const collectDeferredFunctions = (
     const receiver = stripParenExpression(callee.object);
     if (
       TIMER_CALLBACK_INDEX_BY_NAME.has(methodName) &&
-      isGlobalIdentifier(receiver, "window", context)
+      isGlobalObjectIdentifier(receiver, context)
     ) {
       const callback = resolveFunctionExpression(
         child.arguments?.[TIMER_CALLBACK_INDEX_BY_NAME.get(methodName) ?? 0],
@@ -182,7 +223,11 @@ const collectDeferredFunctions = (
       addDeferredFunction(callback, child);
       return;
     }
-    if (methodName === "then" || methodName === "catch" || methodName === "finally") {
+    if (
+      (methodName === "then" || methodName === "catch" || methodName === "finally") &&
+      (isProvenPromiseExpression(callee.object, context.scopes) ||
+        !isProvenSynchronousThenable(callee.object, context))
+    ) {
       const firstCallback = resolveFunctionExpression(child.arguments?.[0], context);
       const secondCallback = resolveFunctionExpression(child.arguments?.[1], context);
       addDeferredFunction(firstCallback, child);
@@ -199,7 +244,7 @@ const collectDeferredFunctions = (
       addDeferredFunction(callback, child);
       return;
     }
-    if (methodName === "on" || methodName === "addListener") {
+    if (methodName === "on" || methodName === "addListener" || methodName === "once") {
       const callback = resolveFunctionExpression(child.arguments?.[1], context);
       addDeferredFunction(callback, child);
     }
@@ -339,7 +384,7 @@ const registrationHasCleanup = (
   const timerMethodName = isNodeOfType(callee, "Identifier")
     ? callee.name
     : isNodeOfType(callee, "MemberExpression") &&
-        isGlobalIdentifier(stripParenExpression(callee.object), "window", context)
+        isGlobalObjectIdentifier(stripParenExpression(callee.object), context)
       ? getStaticPropertyName(callee)
       : null;
   const clearMethodName = timerMethodName
@@ -364,7 +409,7 @@ const registrationHasCleanup = (
           ? cleanupCallee.name
           : null
         : isNodeOfType(cleanupCallee, "MemberExpression") &&
-            isGlobalIdentifier(stripParenExpression(cleanupCallee.object), "window", context)
+            isGlobalObjectIdentifier(stripParenExpression(cleanupCallee.object), context)
           ? getStaticPropertyName(cleanupCallee)
           : null;
       if (

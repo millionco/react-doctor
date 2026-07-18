@@ -170,6 +170,7 @@ const nodeIsInsideFunction = (node: EsTreeNode, functionNode: EsTreeNode): boole
 
 const memberReceiverIsUpdaterLocal = (
   receiver: EsTreeNodeOfType<"MemberExpression">,
+  updaterFunction: EsTreeNode,
   executedFunctions: ReadonlySet<EsTreeNode>,
   context: RuleContext,
   visitedSymbolIds: Set<number>,
@@ -207,6 +208,7 @@ const memberReceiverIsUpdaterLocal = (
     if (!isNodeOfType(value, "Identifier")) return false;
     return receiverIsUpdaterLocal(
       value,
+      updaterFunction,
       executedFunctions,
       context,
       new Set([...visitedSymbolIds, objectSymbol.id]),
@@ -217,6 +219,7 @@ const memberReceiverIsUpdaterLocal = (
 
 const receiverIsUpdaterLocal = (
   receiver: EsTreeNode,
+  updaterFunction: EsTreeNode,
   executedFunctions: ReadonlySet<EsTreeNode>,
   context: RuleContext,
   visitedSymbolIds: Set<number> = new Set(),
@@ -225,6 +228,7 @@ const receiverIsUpdaterLocal = (
   if (isNodeOfType(unwrappedReceiver, "MemberExpression")) {
     return memberReceiverIsUpdaterLocal(
       unwrappedReceiver,
+      updaterFunction,
       executedFunctions,
       context,
       visitedSymbolIds,
@@ -239,6 +243,52 @@ const receiverIsUpdaterLocal = (
     nodeIsInsideFunction(symbol.bindingIdentifier, functionNode),
   );
   if (!isDeclaredInsideUpdater) return false;
+  if (symbol.kind === "parameter") {
+    const parameterFunction = [...executedFunctions].find(
+      (functionNode) =>
+        isFunctionLike(functionNode) &&
+        functionNode.params.some((parameter) => {
+          const binding = isNodeOfType(parameter, "AssignmentPattern") ? parameter.left : parameter;
+          return (
+            isNodeOfType(binding, "Identifier") &&
+            context.scopes.symbolFor(binding)?.id === symbol.id
+          );
+        }),
+    );
+    if (parameterFunction === updaterFunction) return true;
+    if (!parameterFunction || !isFunctionLike(parameterFunction)) return false;
+    const parameterIndex = parameterFunction.params.findIndex((parameter) => {
+      const binding = isNodeOfType(parameter, "AssignmentPattern") ? parameter.left : parameter;
+      return (
+        isNodeOfType(binding, "Identifier") && context.scopes.symbolFor(binding)?.id === symbol.id
+      );
+    });
+    if (parameterIndex < 0) return false;
+    let didFindDirectInvocation = false;
+    let doAllArgumentsStayLocal = true;
+    for (const executedFunction of executedFunctions) {
+      walkOwnFunctionScope(executedFunction, (child: EsTreeNode) => {
+        if (!doAllArgumentsStayLocal || !isNodeOfType(child, "CallExpression")) return;
+        if (resolveLocalFunction(child.callee, context) !== parameterFunction) return;
+        didFindDirectInvocation = true;
+        const argument = child.arguments?.[parameterIndex];
+        if (
+          !argument ||
+          isNodeOfType(argument, "SpreadElement") ||
+          !receiverIsUpdaterLocal(
+            argument,
+            updaterFunction,
+            executedFunctions,
+            context,
+            new Set(visitedSymbolIds),
+          )
+        ) {
+          doAllArgumentsStayLocal = false;
+        }
+      });
+    }
+    return didFindDirectInvocation && doAllArgumentsStayLocal;
+  }
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
   if (!initializer) return false;
   if (
@@ -256,7 +306,46 @@ const receiverIsUpdaterLocal = (
     );
   }
   if (!isNodeOfType(initializer, "Identifier")) return false;
-  return receiverIsUpdaterLocal(initializer, executedFunctions, context, visitedSymbolIds);
+  return receiverIsUpdaterLocal(
+    initializer,
+    updaterFunction,
+    executedFunctions,
+    context,
+    visitedSymbolIds,
+  );
+};
+
+const memberWriteHasExternalReceiver = (
+  member: EsTreeNodeOfType<"MemberExpression">,
+  updaterFunction: EsTreeNode,
+  executedFunctions: ReadonlySet<EsTreeNode>,
+  context: RuleContext,
+): boolean => {
+  const baseIdentifier = baseReceiverIdentifier(member.object);
+  if (!baseIdentifier) return false;
+  if (!context.scopes.symbolFor(baseIdentifier)) return true;
+  return !receiverIsUpdaterLocal(member.object, updaterFunction, executedFunctions, context);
+};
+
+const getExternallyVisiblePropertyWrite = (
+  node: EsTreeNode,
+  updaterFunction: EsTreeNode,
+  executedFunctions: ReadonlySet<EsTreeNode>,
+  context: RuleContext,
+): EsTreeNode | null => {
+  let writeTarget: EsTreeNode | null = null;
+  if (isNodeOfType(node, "AssignmentExpression")) {
+    writeTarget = stripParenExpression(node.left);
+  } else if (isNodeOfType(node, "UpdateExpression")) {
+    writeTarget = stripParenExpression(node.argument);
+  } else if (isNodeOfType(node, "UnaryExpression") && node.operator === "delete") {
+    writeTarget = stripParenExpression(node.argument);
+  }
+  return writeTarget &&
+    isNodeOfType(writeTarget, "MemberExpression") &&
+    memberWriteHasExternalReceiver(writeTarget, updaterFunction, executedFunctions, context)
+    ? node
+    : null;
 };
 
 const isStaticallyUnreachable = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
@@ -422,6 +511,7 @@ const receiverIsKnownSynchronousCollection = (
 
 const callHasSideEffectName = (
   call: EsTreeNodeOfType<"CallExpression">,
+  updaterFunction: EsTreeNode,
   executedFunctions: ReadonlySet<EsTreeNode>,
   allowGlobalScheduler: boolean,
   context: RuleContext,
@@ -478,7 +568,7 @@ const callHasSideEffectName = (
   ) {
     return true;
   }
-  return !receiverIsUpdaterLocal(receiver, executedFunctions, context);
+  return !receiverIsUpdaterLocal(receiver, updaterFunction, executedFunctions, context);
 };
 
 const nodeIsReachable = (
@@ -623,9 +713,22 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
         for (const executedFunction of executedFunctions) {
           const functionCfg = context.cfg.cfgFor(executedFunction);
           walkOwnFunctionScope(executedFunction, (child: EsTreeNode) => {
-            if (!isNodeOfType(child, "CallExpression")) return;
             if (isStaticallyUnreachable(child, executedFunction)) return;
             if (functionCfg && !nodeIsReachable(child, functionCfg, reachableBlockIdsByCfg)) return;
+            const propertyWrite = getExternallyVisiblePropertyWrite(
+              child,
+              updaterFunction,
+              executedFunctions,
+              context,
+            );
+            if (propertyWrite) {
+              if (!reportedSideEffectNodes.has(propertyWrite)) {
+                reportedSideEffectNodes.add(propertyWrite);
+                context.report({ node: propertyWrite, message: MESSAGE });
+              }
+              return;
+            }
+            if (!isNodeOfType(child, "CallExpression")) return;
             if (child !== node && isReactStateSetterCall(child, context)) {
               if (!reportedSideEffectNodes.has(child)) {
                 reportedSideEffectNodes.add(child);
@@ -652,6 +755,7 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
             if (
               !callHasSideEffectName(
                 child,
+                updaterFunction,
                 executedFunctions,
                 executedFunction === updaterFunction,
                 context,

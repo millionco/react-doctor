@@ -4,6 +4,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -325,20 +326,22 @@ const unwrapSafeFallback = (node: EsTreeNode): EsTreeNode => {
 const referenceFeedsComputation = (reference: EsTreeNode, context: RuleContext): boolean => {
   let current = unwrapSafeFallback(reference);
   let parent = current.parent;
-  if (
-    parent &&
-    isNodeOfType(parent, "LogicalExpression") &&
-    (parent.operator === "??" || parent.operator === "||") &&
-    parent.left === current
-  ) {
-    return false;
-  }
   while (
     parent &&
     ((isNodeOfType(parent, "MemberExpression") && parent.object === current) ||
       isNodeOfType(parent, "ChainExpression") ||
       isNodeOfType(parent, "TSNonNullExpression"))
   ) {
+    current = parent;
+    parent = current.parent;
+  }
+  if (
+    parent &&
+    isNodeOfType(parent, "LogicalExpression") &&
+    (parent.operator === "??" || parent.operator === "||") &&
+    parent.left === current
+  ) {
+    if (expressionIsDefinitelyNonUndefined(parent.right, context)) return false;
     current = parent;
     parent = current.parent;
   }
@@ -643,24 +646,68 @@ const scalarSymbolFeedsComputation = (
   context: RuleContext,
   symbolById: ReadonlyMap<number, SymbolDescriptor>,
   visitedSymbolIds: Set<number>,
+  lowerBoundStart = Number.NEGATIVE_INFINITY,
+  upperBoundStart = Number.POSITIVE_INFINITY,
 ): boolean => {
   if (visitedSymbolIds.has(symbolId)) return false;
   visitedSymbolIds.add(symbolId);
   const resolvedSymbol = symbolById.get(symbolId) ?? null;
   if (!resolvedSymbol) return false;
+  let nextWriteStart = upperBoundStart;
+  for (const reference of resolvedSymbol.references) {
+    const referenceStart = getNodeStart(reference.identifier);
+    if (
+      reference.flag !== "read" &&
+      referenceStart > lowerBoundStart &&
+      referenceStart < nextWriteStart &&
+      context.cfg.isUnconditionalFromEntry(reference.identifier)
+    ) {
+      nextWriteStart = referenceStart;
+    }
+  }
   for (const reference of resolvedSymbol.references) {
     const identifier = reference.identifier;
+    const referenceStart = getNodeStart(identifier);
+    if (referenceStart <= lowerBoundStart || referenceStart >= nextWriteStart) continue;
     if (referenceFeedsComputation(identifier, context)) return true;
-    const parent = identifier.parent;
+    const expressionRoot = findTransparentExpressionRoot(identifier);
+    const parent = expressionRoot.parent;
     if (
       isNodeOfType(parent, "VariableDeclarator") &&
-      parent.init === identifier &&
+      parent.init === expressionRoot &&
       isNodeOfType(parent.id, "Identifier")
     ) {
       const aliasSymbol = context.scopes.symbolFor(parent.id);
       if (
         aliasSymbol &&
-        scalarSymbolFeedsComputation(aliasSymbol.id, context, symbolById, visitedSymbolIds)
+        scalarSymbolFeedsComputation(
+          aliasSymbol.id,
+          context,
+          symbolById,
+          new Set(visitedSymbolIds),
+          getNodeStart(parent),
+        )
+      ) {
+        return true;
+      }
+      continue;
+    }
+    if (
+      isNodeOfType(parent, "AssignmentExpression") &&
+      parent.operator === "=" &&
+      parent.right === expressionRoot &&
+      isNodeOfType(stripParenExpression(parent.left), "Identifier")
+    ) {
+      const aliasSymbol = context.scopes.symbolFor(stripParenExpression(parent.left));
+      if (
+        aliasSymbol &&
+        scalarSymbolFeedsComputation(
+          aliasSymbol.id,
+          context,
+          symbolById,
+          new Set(visitedSymbolIds),
+          getNodeStart(parent),
+        )
       ) {
         return true;
       }
@@ -697,6 +744,34 @@ const objectSymbolFeedsComputation = (
         referenceFeedsComputation(parent, context)
       ) {
         return true;
+      }
+      if (
+        keyName &&
+        (candidateKeys === null || candidateKeys.has(keyName)) &&
+        typeAllowsUndefinedForKey(parameterType, keyName, context) &&
+        !priorWrite?.isSafe &&
+        !memberUseIsGuarded(parent, symbol, keyName, context, priorWrite)
+      ) {
+        const memberRoot = findTransparentExpressionRoot(parent);
+        const declarator = memberRoot.parent;
+        if (
+          isNodeOfType(declarator, "VariableDeclarator") &&
+          declarator.init === memberRoot &&
+          isNodeOfType(declarator.id, "Identifier")
+        ) {
+          const scalarSymbol = context.scopes.symbolFor(declarator.id);
+          if (
+            scalarSymbol &&
+            scalarSymbolFeedsComputation(
+              scalarSymbol.id,
+              context,
+              symbolById,
+              new Set(visitedSymbolIds),
+            )
+          ) {
+            return true;
+          }
+        }
       }
       continue;
     }

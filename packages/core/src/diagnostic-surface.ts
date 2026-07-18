@@ -17,8 +17,10 @@ export const isDiagnosticSurface = (value: unknown): value is DiagnosticSurface 
  * to the local CLI so developers see them while editing, but they're
  * removed from the PR comment surface, the score, and the CI gate so
  * they can't bury real React findings or fail a build over a Tailwind
- * shorthand. Override per-surface via `config.surfaces.<surface>` to
- * promote individual rules back in by tag, category, or rule id.
+ * shorthand. Diagnostics from test and story files likewise remain in
+ * raw output while staying out of the production-health score and CI
+ * gate. Override per-surface via `config.surfaces.<surface>` to promote
+ * individual rules back in by tag, category, or rule id.
  */
 export const DEFAULT_SURFACE_EXCLUDED_TAGS: Record<DiagnosticSurface, ReadonlyArray<string>> = {
   cli: [],

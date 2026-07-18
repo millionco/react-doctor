@@ -16,6 +16,55 @@ const expectPass = (code: string): void => {
 
 describe("state-and-effects/no-fetch-in-effect — regressions", () => {
   it.each([
+    ["an as assertion", "(axios as any).get"],
+    ["a non-null assertion", "(axios!).get"],
+  ])("flags an imported HTTP client through %s on its receiver", (_name, callee) => {
+    expectFail(`
+      import axios from "axios";
+      import { useEffect } from "react";
+      const Search = () => {
+        useEffect(() => { void ${callee}("/search"); }, []);
+        return null;
+      };
+    `);
+  });
+
+  it.each([
+    ["a local object", "const axios = { get: () => undefined };"],
+    ["a mutable local", "let axios = { get: () => undefined };"],
+  ])("does not flag a wrapped get method on %s", (_name, declaration) => {
+    expectPass(`
+      import { useEffect } from "react";
+      const Search = () => {
+        ${declaration}
+        useEffect(() => { void (axios as any).get("/search"); }, []);
+        return null;
+      };
+    `);
+  });
+
+  it("does not flag a wrapped method on a userland client", () => {
+    expectPass(`
+      import { useEffect } from "react";
+      const Search = (httpClient) => {
+        useEffect(() => { void (httpClient!).get("/search"); }, [httpClient]);
+        return null;
+      };
+    `);
+  });
+
+  it("does not flag an imported client shadowed by a parameter", () => {
+    expectPass(`
+      import axios from "axios";
+      import { useEffect } from "react";
+      const Search = (axios) => {
+        useEffect(() => { void (axios as any).get("/search"); }, [axios]);
+        return null;
+      };
+    `);
+  });
+
+  it.each([
     [
       "a shadowing local",
       `import { useEffect } from "react";

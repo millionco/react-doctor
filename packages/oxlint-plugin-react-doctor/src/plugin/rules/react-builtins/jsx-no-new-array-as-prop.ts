@@ -188,7 +188,7 @@ export const jsxNoNewArrayAsProp = defineRule({
         // function, which routinely ignores reference identity (antd's
         // MemoInput element-wise childProps compare) — a fresh array
         // cannot break that bailout.
-        if (hasCustomMemoComparator(openingName)) return;
+        if (hasCustomMemoComparator(openingName, context.scopes)) return;
         // Data-collection slot props (`items`, `data`, `options`,
         // `tabs`, `*Items`, `*Options`, etc.) receive inline array
         // literals by convention — every list/table/menu/chart

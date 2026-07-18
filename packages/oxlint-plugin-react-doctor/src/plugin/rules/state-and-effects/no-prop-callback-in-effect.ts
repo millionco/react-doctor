@@ -7,7 +7,7 @@ import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Reference } from "eslint-scope";
@@ -172,7 +172,12 @@ export const noPropCallbackInEffect = defineRule({
     return {
       ...propStackTracker.visitors,
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
+        if (
+          !isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes) ||
+          (node.arguments?.length ?? 0) < 2
+        ) {
+          return;
+        }
         const callback = getEffectCallback(node);
         if (
           !callback ||

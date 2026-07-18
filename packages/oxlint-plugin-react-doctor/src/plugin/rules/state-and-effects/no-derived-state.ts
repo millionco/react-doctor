@@ -3,7 +3,7 @@ import { createComponentPropStackTracker } from "../../utils/create-component-pr
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { collectRenderStateWriteFacts } from "./utils/collect-render-state-write-facts.js";
@@ -54,16 +54,7 @@ export const noDerivedState = defineRule({
     return {
       ...componentTracker.visitors,
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (
-          !isReactApiCall(node, "useEffect", context.scopes, {
-            allowGlobalReactNamespace: true,
-            allowUnboundBareCalls: true,
-            resolveConditionalAliases: true,
-            resolveNamedAliases: true,
-          })
-        ) {
-          return;
-        }
+        if (!isReactHookCall(node, "useEffect", context.scopes)) return;
         const analysis = getProgramAnalysis(node);
         if (!analysis) return;
         for (const fact of collectEffectStateWriteFacts(

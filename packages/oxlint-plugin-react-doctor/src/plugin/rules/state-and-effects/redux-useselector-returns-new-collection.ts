@@ -65,7 +65,6 @@ export const reduxUseselectorReturnsNewCollection = defineRule({
   title: "useSelector returns a new collection",
   severity: "warn",
   category: "Performance",
-  disabledWhen: ["react-compiler"],
   recommendation:
     "Return a stable selected value, split selectors, or pass `shallowEqual` so every Redux action does not redraw this component.",
   create: (context: RuleContext) => {

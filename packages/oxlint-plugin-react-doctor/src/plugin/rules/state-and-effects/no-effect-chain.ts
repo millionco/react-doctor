@@ -27,6 +27,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenBrowserApiReceiver } from "../../utils/is-proven-browser-api-receiver.js";
 import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx-element.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
@@ -82,16 +83,7 @@ const findTopLevelEffectCalls = (
     if (!isNodeOfType(statement, "ExpressionStatement")) continue;
     const expression = unwrapDiscardedExpression(statement);
     if (!isNodeOfType(expression, "CallExpression")) continue;
-    if (
-      !isReactApiCall(expression, EFFECT_HOOK_NAMES, scopes, {
-        allowGlobalReactNamespace: true,
-        allowUnboundBareCalls: true,
-        resolveConditionalAliases: true,
-        resolveNamedAliases: true,
-      })
-    ) {
-      continue;
-    }
+    if (!isReactHookCall(expression, EFFECT_HOOK_NAMES, scopes)) continue;
     effectCalls.push(expression);
   }
   return effectCalls;

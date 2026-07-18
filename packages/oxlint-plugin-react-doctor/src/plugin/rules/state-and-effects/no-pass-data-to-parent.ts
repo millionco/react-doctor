@@ -7,7 +7,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
-import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import {
   DATA_SINK_METHOD_NAMES,
   STRING_READ_METHOD_NAMES,
@@ -40,7 +40,6 @@ import {
   isRefCall,
   isRefCurrent,
   isState,
-  isUseEffect,
   isWholePropsObjectReference,
 } from "./utils/effect/react.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -1152,18 +1151,12 @@ export const noPassDataToParent = defineRule({
     "Fetch the data in the parent and pass it down as a prop (or return it from the hook), instead of handing it back up through a prop callback in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#passing-data-to-the-parent",
   create: (context: RuleContext) => {
     const isReactUseRefCall = (node: EsTreeNode): boolean =>
-      isReactApiCall(node, "useRef", context.scopes, {
-        allowGlobalReactNamespace: true,
-        allowUnboundBareCalls: true,
-      });
+      isReactHookCall(node, "useRef", context.scopes);
     const isReactUseEffectCall = (node: EsTreeNode): boolean =>
-      isReactApiCall(node, "useEffect", context.scopes, {
-        allowGlobalReactNamespace: true,
-        allowUnboundBareCalls: true,
-      });
+      isReactHookCall(node, "useEffect", context.scopes);
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isUseEffect(node)) return;
+        if (!isReactUseEffectCall(node)) return;
         const analysis = getProgramAnalysis(node);
         if (!analysis) return;
         if (hasCleanup(analysis, node)) return;

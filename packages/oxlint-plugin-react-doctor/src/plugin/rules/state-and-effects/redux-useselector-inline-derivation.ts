@@ -149,7 +149,6 @@ export const reduxUseselectorInlineDerivation = defineRule({
   title: "useSelector derives data inline",
   severity: "warn",
   category: "Performance",
-  disabledWhen: ["react-compiler"],
   recommendation:
     "Select the raw slice and memoize derivation so Redux actions do not rebuild a collection and redraw this component.",
   create: (context: RuleContext) => {

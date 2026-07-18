@@ -2,10 +2,10 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { isUseEffect } from "./utils/effect/react.js";
 
 const getStateName = (stateDeclarator: EsTreeNode): string => {
   if (!isNodeOfType(stateDeclarator, "VariableDeclarator")) return "<state>";
@@ -23,7 +23,7 @@ export const noInitializeState = defineRule({
     "Pass the initial value directly to useState() instead of setting it from a mount-only useEffect. For SSR hydration, prefer useSyncExternalStore().",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isUseEffect(node)) return;
+      if (!isReactHookCall(node, "useEffect", context.scopes)) return;
       const dependencies = node.arguments?.[1];
       if (
         !dependencies ||

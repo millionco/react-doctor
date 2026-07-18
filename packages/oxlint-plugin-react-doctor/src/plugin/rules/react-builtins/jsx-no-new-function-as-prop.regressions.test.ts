@@ -28,6 +28,18 @@ const memoised = (jsx: string): string =>
   `import { memo } from "react";\nconst Item = memo(() => null);\n${jsx}`;
 
 describe("react-builtins/jsx-no-new-function-as-prop — regressions", () => {
+  // `memo(fn, arePropsEqual)` compares props with the author's own
+  // function, which routinely ignores reference identity — a fresh
+  // function cannot break that bailout. Same gate as the object/array
+  // siblings.
+  it("does not flag when the memo consumer has a custom comparator", () => {
+    expectPass(
+      `import { memo } from "react";
+      const Item = memo((props) => props.children, (prev, next) => prev.id === next.id);
+      const Foo = () => <Item id={1} handleClick={() => true} />;`,
+    );
+  });
+
   it("flags an inline arrow function", () => {
     expectFail(memoised(`const Foo = () => <Item prop={() => true} />;`));
   });

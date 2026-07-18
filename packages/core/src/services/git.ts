@@ -162,6 +162,38 @@ const parseGithubViewerPermission = (stdout: string): string | null => {
 const splitNullSeparated = (value: string): ReadonlyArray<string> =>
   value.split("\0").filter((entry) => entry.length > 0);
 
+export interface GitBaselineDiffPlan {
+  readonly baseFiles: ReadonlyArray<string>;
+  readonly headFiles: ReadonlyArray<string>;
+  readonly untrackedFiles: ReadonlyArray<string>;
+}
+
+const parseBaselineDiffPlan = (value: string): GitBaselineDiffPlan | null => {
+  const entries = splitNullSeparated(value);
+  const baseFiles = new Set<string>();
+  const headFiles = new Set<string>();
+  for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 2) {
+    const status = entries[entryIndex];
+    const filePath = entries[entryIndex + 1];
+    if (status === undefined || filePath === undefined || status.length !== 1) return null;
+    if (status === "A") {
+      headFiles.add(filePath);
+      continue;
+    }
+    if (status === "D") {
+      baseFiles.add(filePath);
+      continue;
+    }
+    if (status === "M" || status === "T") {
+      baseFiles.add(filePath);
+      headFiles.add(filePath);
+      continue;
+    }
+    return null;
+  }
+  return { baseFiles: [...baseFiles], headFiles: [...headFiles], untrackedFiles: [] };
+};
+
 // An untracked file has no base to diff against, so `--scope lines` treats
 // every line as changed by spanning the whole file (1 → last possible line).
 const UNTRACKED_FILE_LAST_LINE = Number.MAX_SAFE_INTEGER;
@@ -285,6 +317,16 @@ export class Git extends Context.Service<
     readonly diffSelection: (
       input: GitDiffSelectionInput,
     ) => Effect.Effect<GitDiffSelection | null, ReactDoctorError>;
+    /**
+     * Side-aware paths between `ref` and the worktree. Rename and copy
+     * detection is disabled so path identity never depends on Git heuristics:
+     * a rename is represented as one base deletion plus one head addition.
+     * Returns `null` for unmerged or otherwise unsupported diff states.
+     */
+    readonly baselineDiffPlan: (input: {
+      readonly directory: string;
+      readonly ref: string;
+    }) => Effect.Effect<GitBaselineDiffPlan | null, ReactDoctorError>;
     /** Files staged for commit (null-separated, `--diff-filter=ACMR`). */
     readonly stagedFilePaths: (
       directory: string,
@@ -700,6 +742,48 @@ export class Git extends Context.Service<
         githubViewerPermission,
         branchExists,
         mergeBase,
+        baselineDiffPlan: (input) => {
+          if (!isSafeGitRevision(input.ref)) return Effect.succeed(null);
+          return Effect.gen(function* () {
+            const unmerged = yield* runGit(input.directory, [
+              "diff",
+              "--no-ext-diff",
+              "-z",
+              "--name-only",
+              "--diff-filter=U",
+              "--relative",
+            ]);
+            if (unmerged.status !== 0 || unmerged.stdout.length > 0) return null;
+            const result = yield* runGit(input.directory, [
+              "diff",
+              "--no-ext-diff",
+              "--no-textconv",
+              "--no-renames",
+              "-z",
+              "--name-status",
+              "--relative",
+              input.ref,
+            ]);
+            if (result.status !== 0) return null;
+            const plan = parseBaselineDiffPlan(result.stdout);
+            if (plan === null) return null;
+            const untracked = yield* runGit(input.directory, [
+              "ls-files",
+              "--others",
+              "--exclude-standard",
+              "-z",
+            ]);
+            if (untracked.status !== 0) return null;
+            return {
+              baseFiles: plan.baseFiles,
+              headFiles: plan.headFiles,
+              untrackedFiles: splitNullSeparated(untracked.stdout),
+            } satisfies GitBaselineDiffPlan;
+          }).pipe(
+            Effect.catch(() => Effect.succeed(null)),
+            Effect.withSpan("Git.baselineDiffPlan"),
+          );
+        },
         diffSelection: ({ directory, explicitBaseBranch, includeUntracked = false }) =>
           Effect.gen(function* () {
             if (explicitBaseBranch !== undefined && explicitBaseBranch.trim().length === 0) {
@@ -951,6 +1035,7 @@ export class Git extends Context.Service<
     readonly branchExists?: ReadonlyMap<string, boolean>;
     /** Keyed by the `ref` argument; value is the resolved merge-base SHA. */
     readonly mergeBase?: ReadonlyMap<string, string>;
+    readonly baselineDiffPlan?: GitBaselineDiffPlan | null;
     readonly stagedFiles?: ReadonlyArray<string>;
     readonly stagedContent?: ReadonlyMap<string, string>;
     /** Keyed by `<ref>:<relativePath>`. */
@@ -970,6 +1055,7 @@ export class Git extends Context.Service<
         branchExists: (_directory, branch) =>
           Effect.succeed(snapshot.branchExists?.get(branch) ?? false),
         mergeBase: ({ ref }) => Effect.succeed(snapshot.mergeBase?.get(ref) ?? null),
+        baselineDiffPlan: () => Effect.succeed(snapshot.baselineDiffPlan ?? null),
         diffSelection: () => Effect.succeed(snapshot.diffSelection ?? null),
         stagedFilePaths: () => Effect.succeed(snapshot.stagedFiles ?? []),
         showStagedContent: (_directory, relativePath) =>

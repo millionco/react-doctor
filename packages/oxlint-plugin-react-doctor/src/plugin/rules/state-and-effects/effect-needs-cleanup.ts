@@ -2811,10 +2811,12 @@ const isReactRefListenerReplacementRelease = (
 
 const findDirectExhaustiveForEachCleanupFunction = (
   releaseNode: EsTreeNode,
+  requiredCollectionKeys: ReadonlySet<string>,
   context: RuleContext,
 ): EsTreeNode | null => {
   let currentNode = findTransparentExpressionRoot(releaseNode);
   const visitedFunctions = new Set<EsTreeNode>();
+  const replayedCollectionKeys = new Set<string>();
   while (true) {
     const ownerFunction = findEnclosingFunction(currentNode);
     if (!ownerFunction || !isFunctionLike(ownerFunction) || visitedFunctions.has(ownerFunction)) {
@@ -2839,13 +2841,21 @@ const findDirectExhaustiveForEachCleanupFunction = (
     }
     const forEachCall = findForEachCallForCallback(ownerFunction);
     if (!forEachCall) {
-      return isReturnedEffectCleanupFunction(ownerFunction, context) ? ownerFunction : null;
+      return replayedCollectionKeys.size === requiredCollectionKeys.size &&
+        isReturnedEffectCleanupFunction(ownerFunction, context)
+        ? ownerFunction
+        : null;
     }
+    const forEachCallee = stripParenExpression(forEachCall.callee);
+    if (!isNodeOfType(forEachCallee, "MemberExpression")) return null;
+    const collectionKey = resolveExpressionKey(forEachCallee.object, context);
+    if (!collectionKey || !requiredCollectionKeys.has(collectionKey)) return null;
+    replayedCollectionKeys.add(collectionKey);
     currentNode = findTransparentExpressionRoot(forEachCall);
   }
 };
 
-const collectSetupOwnerFunctions = (usageNode: EsTreeNode): Set<EsTreeNode> => {
+const collectReplayOwnerFunctions = (usageNode: EsTreeNode): Set<EsTreeNode> => {
   const ownerFunctions = new Set<EsTreeNode>();
   let currentNode = usageNode;
   while (true) {
@@ -2860,25 +2870,28 @@ const collectSetupOwnerFunctions = (usageNode: EsTreeNode): Set<EsTreeNode> => {
   return ownerFunctions;
 };
 
-const hasCollectionMutationBeforeCleanup = (
+const hasCollectionMutationBeforeRelease = (
   usageNode: EsTreeNode,
-  cleanupFunction: EsTreeNode,
+  releaseNode: EsTreeNode,
   collectionKeys: ReadonlySet<string>,
   context: RuleContext,
 ): boolean => {
   const usageStart = getRangeStart(usageNode);
-  const cleanupStart = getRangeStart(cleanupFunction);
-  if (usageStart === null || cleanupStart === null) return true;
-  const setupOwnerFunctions = collectSetupOwnerFunctions(usageNode);
+  const releaseStart = getRangeStart(releaseNode);
+  if (usageStart === null || releaseStart === null) return true;
+  const replayOwnerFunctions = new Set([
+    ...collectReplayOwnerFunctions(usageNode),
+    ...collectReplayOwnerFunctions(releaseNode),
+  ]);
   let programNode = usageNode;
   while (programNode.parent) programNode = programNode.parent;
   let didFindMutation = false;
   walkAst(programNode, (child: EsTreeNode) => {
     if (didFindMutation) return false;
     const childStart = getRangeStart(child);
-    if (childStart === null || childStart <= usageStart || childStart >= cleanupStart) return;
+    if (childStart === null || childStart <= usageStart || childStart >= releaseStart) return;
     const ownerFunction = context.cfg.enclosingFunction(child);
-    if (!ownerFunction || !setupOwnerFunctions.has(ownerFunction)) return;
+    if (!ownerFunction || !replayOwnerFunctions.has(ownerFunction)) return;
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = stripParenExpression(child.callee);
     if (
@@ -2931,12 +2944,16 @@ const hasSafeForEachProjectionCleanup = (
     }
   }
   if (projections.length === 0) return true;
-  const cleanupFunction = findDirectExhaustiveForEachCleanupFunction(releaseCall, context);
-  if (!cleanupFunction) return false;
   const collectionKeys = new Set(projections.map((projection) => projection.collectionKey));
-  return !hasCollectionMutationBeforeCleanup(
+  const cleanupFunction = findDirectExhaustiveForEachCleanupFunction(
+    releaseCall,
+    collectionKeys,
+    context,
+  );
+  if (!cleanupFunction) return false;
+  return !hasCollectionMutationBeforeRelease(
     registrationCall,
-    cleanupFunction,
+    releaseCall,
     collectionKeys,
     context,
   );

@@ -4697,6 +4697,66 @@ export const MediaQuery = ({ breakpoint }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("rejects projected emitter cleanup wrapped in an unrelated collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Subscriptions({ emitter, subscriptions, unrelatedItems }) {
+        useEffect(() => {
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          return () => {
+            unrelatedItems.forEach(() => {
+              subscriptions.forEach(({ event, handler }) => {
+                emitter.off(event, handler);
+              });
+            });
+          };
+        }, [emitter, subscriptions, unrelatedItems]);
+
+        return null;
+      }
+    `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["subscriptions.pop();", "subscriptions.clear();"])(
+    "rejects projected emitter cleanup after cleanup-body mutation with %s",
+    (mutation) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+        function Subscriptions({ emitter, subscriptions }) {
+          useEffect(() => {
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.on(event, handler);
+            });
+
+            return () => {
+              ${mutation}
+              subscriptions.forEach(({ event, handler }) => {
+                emitter.off(event, handler);
+              });
+            };
+          }, [emitter, subscriptions]);
+
+          return null;
+        }
+      `,
+        { filename: "Subscriptions.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it.each([
     {
       name: "a different receiver collection",

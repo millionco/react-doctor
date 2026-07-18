@@ -136,11 +136,17 @@ const isDiscardingTestPosition = (
     parent.test === expression) ||
   (isNodeOfType(parent, "SwitchStatement") && parent.discriminant === expression);
 
+const isSpreadArgument = (expression: EsTreeNode, parent: EsTreeNode): boolean =>
+  isNodeOfType(parent, "SpreadElement") && parent.argument === expression;
+
 const isExpressionValueDiscarded = (expression: EsTreeNode, context: RuleContext): boolean => {
   let current = expression;
   let parent = current.parent ?? null;
   while (parent) {
-    if (TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type)) {
+    if (
+      TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type) ||
+      isSpreadArgument(current, parent)
+    ) {
       current = parent;
       parent = current.parent ?? null;
       continue;
@@ -321,7 +327,10 @@ const isFloatingPromiseUse = (
   let parent = current.parent ?? null;
   let shouldTreatVoidAsDiscarded = false;
   while (parent) {
-    if (TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type)) {
+    if (
+      TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type) ||
+      isSpreadArgument(current, parent)
+    ) {
       current = parent;
       parent = current.parent ?? null;
       continue;

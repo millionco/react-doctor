@@ -571,6 +571,43 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(5);
   });
 
+  it.each(["all", "race", "any"])(
+    "flags promises returned through a spread in discarded Promise.%s",
+    (methodName) => {
+      const result = runMutationRule(
+        `const mutation = useMutation(options);
+         Promise.${methodName}([existingPromise, ...items.map((item) => mutation.mutateAsync(item))]);`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("flags a directly spread mutateAsync promise in a discarded aggregate", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       Promise.all([...mutation.mutateAsync(item)]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts promises returned through a spread in handled Promise aggregates", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const handleError = (error) => report(error);
+       await Promise.all([existingPromise, ...items.map((item) => mutation.mutateAsync(item))]);
+       Promise.allSettled([...items.map((item) => mutation.mutateAsync(item))]).catch(handleError);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts promises returned through a spread in discarded Promise.allSettled", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       Promise.allSettled([...items.map((item) => mutation.mutateAsync(item))]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags explicitly voided fulfillment-only continuation chains", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);

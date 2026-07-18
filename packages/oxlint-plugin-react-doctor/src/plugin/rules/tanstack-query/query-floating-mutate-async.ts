@@ -279,10 +279,11 @@ const isFunctionResultDiscarded = (
   return collectConstAliasSymbols(functionSymbol, context.scopes).some((symbol) =>
     symbol.references.some((reference) => {
       if (isDiscardedCallbackReference(reference.identifier, context)) return true;
-      const caller = reference.identifier.parent;
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const caller = referenceRoot.parent;
       return Boolean(
         isNodeOfType(caller, "CallExpression") &&
-        caller.callee === reference.identifier &&
+        caller.callee === referenceRoot &&
         isFloatingPromiseUse(caller, context, new Set(nextVisitedFunctions)),
       );
     }),
@@ -337,8 +338,10 @@ const isFloatingPromiseUse = (
       ) {
         return false;
       }
-      const chainCall = parent.parent;
-      if (!isNodeOfType(chainCall, "CallExpression") || chainCall.callee !== parent) return false;
+      const memberRoot = findTransparentExpressionRoot(parent);
+      const chainCall = memberRoot.parent;
+      if (!isNodeOfType(chainCall, "CallExpression") || chainCall.callee !== memberRoot)
+        return false;
       const rejectionHandler =
         chainMethodName === "catch" ? chainCall.arguments[0] : chainCall.arguments[1];
       if (

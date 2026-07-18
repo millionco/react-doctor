@@ -129,7 +129,8 @@ const collectEffectInvocations = (
   if (!functionNode || visitedFunctions.has(functionNode)) return [];
   visitedFunctions.add(functionNode);
 
-  const directCall = functionNode.parent;
+  const functionRoot = findTransparentExpressionRoot(functionNode);
+  const directCall = functionRoot.parent;
   if (
     isNodeOfType(directCall, "CallExpression") &&
     stripParenExpression(directCall.callee) === functionNode
@@ -157,8 +158,9 @@ const collectEffectInvocations = (
     const invocations: EffectInvocation[] = [];
     for (const symbol of functionSymbols) {
       for (const reference of symbol.references) {
-        const callSite = reference.identifier.parent;
-        if (!isNodeOfType(callSite, "CallExpression") || callSite.callee !== reference.identifier) {
+        const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+        const callSite = referenceRoot.parent;
+        if (!isNodeOfType(callSite, "CallExpression") || callSite.callee !== referenceRoot) {
           continue;
         }
         for (const invocation of collectEffectInvocations(callSite, context, visitedFunctions)) {
@@ -180,10 +182,11 @@ const isInEffectDependencyArray = (node: EsTreeNode, context: RuleContext): bool
   let parent = current.parent;
   while (parent && !isFunctionLike(parent)) {
     if (isNodeOfType(parent, "ArrayExpression")) {
-      const callExpression = parent.parent;
+      const dependencyArrayRoot = findTransparentExpressionRoot(parent);
+      const callExpression = dependencyArrayRoot.parent;
       return Boolean(
         isNodeOfType(callExpression, "CallExpression") &&
-        callExpression.arguments[1] === parent &&
+        callExpression.arguments[1] === dependencyArrayRoot &&
         isReactEffectHookCall(callExpression, context.scopes),
       );
     }
@@ -311,15 +314,16 @@ const resultObjectDataIsConsumed = (
 ): boolean => {
   for (const symbol of collectConstAliasSymbols(resultSymbol, context.scopes)) {
     for (const reference of symbol.references) {
-      const parent = reference.identifier.parent;
-      if (isNodeOfType(parent, "MemberExpression") && parent.object === reference.identifier) {
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const parent = referenceRoot.parent;
+      if (isNodeOfType(parent, "MemberExpression") && parent.object === referenceRoot) {
         if (getStaticPropertyName(parent) !== "data") continue;
         if (responseExpressionIsConsumed(parent, context, new Set())) return true;
         continue;
       }
       if (
         isNodeOfType(parent, "VariableDeclarator") &&
-        parent.init === reference.identifier &&
+        parent.init === referenceRoot &&
         isNodeOfType(parent.id, "ObjectPattern")
       ) {
         for (const dataBinding of getPatternBindings(parent.id, "data")) {
@@ -342,10 +346,11 @@ const getMutationCalls = (
     if (!symbol) return;
     for (const aliasSymbol of collectConstAliasSymbols(symbol, context.scopes)) {
       for (const reference of aliasSymbol.references) {
-        const callExpression = reference.identifier.parent;
+        const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+        const callExpression = referenceRoot.parent;
         if (
           isNodeOfType(callExpression, "CallExpression") &&
-          callExpression.callee === reference.identifier
+          callExpression.callee === referenceRoot
         ) {
           calls.push(callExpression);
         }
@@ -366,28 +371,30 @@ const getMutationCalls = (
           continue;
         }
         const methodName = getStaticPropertyName(memberExpression);
-        const callExpression = memberExpression.parent;
+        const memberRoot = findTransparentExpressionRoot(memberExpression);
+        const callExpression = memberRoot.parent;
         if (methodName !== "mutate" && methodName !== "mutateAsync") continue;
         if (
           isNodeOfType(callExpression, "CallExpression") &&
-          callExpression.callee === memberExpression
+          callExpression.callee === memberRoot
         ) {
           calls.push(callExpression);
           continue;
         }
         if (
           isNodeOfType(callExpression, "VariableDeclarator") &&
-          callExpression.init === memberExpression &&
+          callExpression.init === memberRoot &&
           isNodeOfType(callExpression.id, "Identifier")
         ) {
           collectBindingCalls(callExpression.id);
         }
       }
       for (const reference of symbol.references) {
-        const aliasDeclarator = reference.identifier.parent;
+        const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+        const aliasDeclarator = referenceRoot.parent;
         if (
           !isNodeOfType(aliasDeclarator, "VariableDeclarator") ||
-          aliasDeclarator.init !== reference.identifier ||
+          aliasDeclarator.init !== referenceRoot ||
           !isNodeOfType(aliasDeclarator.id, "ObjectPattern")
         ) {
           continue;
@@ -442,8 +449,12 @@ const thenHandlerConsumesResponse = (
   ) {
     return false;
   }
-  const thenCall = memberExpression.parent;
-  const handler = isNodeOfType(thenCall, "CallExpression") ? thenCall.arguments[0] : null;
+  const memberRoot = findTransparentExpressionRoot(memberExpression);
+  const thenCall = memberRoot.parent;
+  const handler =
+    isNodeOfType(thenCall, "CallExpression") && thenCall.callee === memberRoot
+      ? thenCall.arguments[0]
+      : null;
   return Boolean(handler && handlerConsumesResponse(handler, context));
 };
 
@@ -542,10 +553,11 @@ const getAssignedTrueRefSymbol = (
 const refSymbolHasResettingWrite = (refSymbol: SymbolDescriptor, context: RuleContext): boolean =>
   collectConstAliasSymbols(refSymbol, context.scopes).some((symbol) =>
     symbol.references.some((reference) => {
-      const memberExpression = reference.identifier.parent;
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const memberExpression = referenceRoot.parent;
       if (
         !isNodeOfType(memberExpression, "MemberExpression") ||
-        memberExpression.object !== reference.identifier ||
+        memberExpression.object !== referenceRoot ||
         getStaticPropertyName(memberExpression) !== "current"
       ) {
         return false;

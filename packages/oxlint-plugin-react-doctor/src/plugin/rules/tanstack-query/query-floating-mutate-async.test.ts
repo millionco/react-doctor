@@ -107,6 +107,14 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("flags a TypeScript-wrapped finally-only chain", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       mutation.mutateAsync(payload).finally!(stopLoading);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags concise and explicit returns from JSX event handlers", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);
@@ -325,6 +333,16 @@ describe("query-floating-mutate-async", () => {
       `const mutation = useMutation(options);
        const requestSave = () => mutation.mutateAsync(payload);
        const handleClick = () => requestSave();
+       const view = <button onClick={handleClick} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags mutateAsync returned through a TypeScript-wrapped helper call", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const requestSave = () => mutation.mutateAsync(payload);
+       const handleClick = () => (requestSave as () => Promise<void>)();
        const view = <button onClick={handleClick} />;`,
     );
     expect(result.diagnostics).toHaveLength(1);

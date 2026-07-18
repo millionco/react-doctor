@@ -59,6 +59,43 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(memberAlias.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    [
+      "whole-result member access",
+      `const fetchUserMutation = useMutation(options);
+       useEffect(() => { (fetchUserMutation as MutationResult).mutate(userId); }, [userId]);
+       const user = (fetchUserMutation as MutationResult).data?.user;`,
+    ],
+    [
+      "whole-result destructuring",
+      `const fetchUserMutation = useMutation(options);
+       const { mutate, data } = fetchUserMutation as MutationResult;
+       useEffect(() => { mutate(userId); }, [userId]);
+       const user = data?.user;`,
+    ],
+    [
+      "deferred method binding",
+      `const fetchUserMutation = useMutation(options);
+       const requestUser = fetchUserMutation!.mutate as MutationFunction;
+       useEffect(() => { (requestUser as MutationFunction)(userId); }, [userId]);
+       const user = fetchUserMutation!.data?.user;`,
+    ],
+  ])("detects TypeScript-wrapped %s", (_wrapperName, source) => {
+    const result = runMutationReadRule(source);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("detects calls through TypeScript-wrapped effect helpers", () => {
+    const result = runMutationReadRule(
+      `const fetchUserMutation = useMutation(options);
+       const loadUser = () => fetchUserMutation.mutate(userId);
+       const runLoadEffect = () => { (loadUser as () => void)(); };
+       useEffect(runLoadEffect, [userId]);
+       const user = fetchUserMutation.data?.user;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("detects response consumption in per-call success options", () => {
     const result = runMutationReadRule(
       `const getUser = useMutation(options);
@@ -121,6 +158,16 @@ describe("query-no-mutation-in-effect-as-read", () => {
            })();
          }, [params]);
        }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags response consumption through a TypeScript-wrapped then method", () => {
+    const result = runMutationReadRule(
+      `const { mutateAsync: fetchUser } = useMutation(options);
+       useEffect(() => {
+         void fetchUser(userId).then!((response) => setUser(response.user));
+       }, [userId]);`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -348,6 +395,14 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("ignores data references in TypeScript-wrapped effect dependencies", () => {
+    const result = runMutationReadRule(
+      `const { mutateAsync: fetchUser, data } = useMutation(options);
+       useEffect(() => { fetchUser(params); }, [params, data] as const);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("accepts static computed and later-destructured acknowledgement fields", () => {
     const result = runMutationReadRule(
       `function Component() {
@@ -404,6 +459,21 @@ describe("query-no-mutation-in-effect-as-read", () => {
            return () => { handled.current = false; };
          }, [params]);
        }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not accept a TypeScript-wrapped ref latch reset", () => {
+    const result = runMutationReadRule(
+      `import { useRef } from "react";
+       const { mutateAsync: fetchUser } = useMutation(options);
+       const handled = useRef(false);
+       useEffect(() => {
+         if (handled.current) return;
+         handled.current = true;
+         void fetchUser(params).then((response) => setUser(response.user));
+         return () => { (handled as RefObject<boolean>).current = false; };
+       }, [params]);`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

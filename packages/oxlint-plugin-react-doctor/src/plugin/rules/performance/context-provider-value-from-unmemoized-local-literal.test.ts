@@ -346,6 +346,21 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an IIFE passed through React createElement props children", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import React, { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         return React.createElement(React.Fragment, { children: (() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         })() });
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a named IIFE that constructs a local provider value during render", () => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,
@@ -399,6 +414,183 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
        ${body}`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a synchronous callback result returned inside JSX", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const renderNow = (render) => render();
+       function App() {
+         return <>{renderNow(() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         })}</>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["anonymous", "() =>"],
+    ["named", "function Inner()"],
+  ])("does not flag a %s callback whose result is discarded by its helper", (_name, callback) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const inspect = (render) => {
+         render();
+         return null;
+       };
+       function App() {
+         return inspect(${callback} {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         });
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a callback when the component discards the helper result", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const renderNow = (render) => render();
+       function App() {
+         renderNow(() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         });
+         return null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["an IIFE", "(() => {", "})()"],
+    ["a synchronous renderer", "renderNow(() => {", "})"],
+  ])("flags %s passed through a React createElement child", (_name, opening, closing) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import React, { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const renderNow = (render) => render();
+       function App() {
+         return React.createElement(React.Fragment, null, ${opening}
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         ${closing});
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an IIFE result referenced by a local JSX child", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         const child = (() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         })();
+         return <>{child}</>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not follow a reassigned local JSX child to its initializer", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         let child = (() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         })();
+         child = null;
+         return <>{child}</>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags an IIFE nested in a spread React output array", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         return [...[(() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         })()]];
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["truthy or", "true ||"],
+    ["falsy and", "false &&"],
+    ["non-nullish coalescing", "'stable' ??"],
+  ])("ignores an IIFE in a statically dead %s branch", (_name, operator) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         return <>{${operator} (() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         })()}</>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores an IIFE in a statically dead conditional branch", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         return <>{true ? null : (() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         })()}</>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["anonymous", "(() => {"],
+    ["named", "(function Inner() {"],
+  ])("does not flag a discarded %s IIFE result", (_name, opening) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         ${opening}
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         })();
+         return null;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it.each([
@@ -525,6 +717,204 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
          let value = {};
          value = STABLE_VALUE;
          return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a fresh value assigned before the provider reads it", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = { theme: "dark" };
+       function App() {
+         let value = STABLE_VALUE;
+         value = { theme: "light" };
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a fresh value assigned by a synchronously invoked helper", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = { theme: "dark" };
+       function App() {
+         let value = STABLE_VALUE;
+         function update() {
+           value = { theme: "light" };
+         }
+         update();
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags the final fresh write through a wrapped helper alias", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = { theme: "dark" };
+       function App() {
+         let value = STABLE_VALUE;
+         function update() {
+           value = STABLE_VALUE;
+           value = { theme: "light" };
+         }
+         const applyUpdate = update;
+         (applyUpdate as () => void)();
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags writes through hoisted nested helpers declared after the provider", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = { theme: "dark" };
+       function App() {
+         let value = STABLE_VALUE;
+         outer();
+         const provider = <ThemeContext.Provider value={value} />;
+         return provider;
+         function outer() {
+           update();
+         }
+         function update() {
+           value = { theme: "light" };
+         }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores an unreachable fresh write after a helper returns", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = { theme: "dark" };
+       function App() {
+         let value = STABLE_VALUE;
+         function update() {
+           return;
+           value = { theme: "light" };
+         }
+         update();
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("uses the final reachable write before a helper returns", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = { theme: "dark" };
+       function App() {
+         let value = STABLE_VALUE;
+         function update() {
+           value = { theme: "light" };
+           return;
+           value = STABLE_VALUE;
+         }
+         update();
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores fresh writes that execute only at module initialization", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       let value = { stable: true };
+       value = { alsoStable: true };
+       function App() {
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag fresh writes when a later proven write is stable", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = { theme: "dark" };
+       function App() {
+         let value = STABLE_VALUE;
+         value = { theme: "light" };
+         value = STABLE_VALUE;
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a helper whose final write is stable", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = { theme: "dark" };
+       function App() {
+         let value = STABLE_VALUE;
+         function update() {
+           value = { theme: "light" };
+           value = STABLE_VALUE;
+         }
+         update();
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["conditional", "if (shouldUpdate) value = { theme: 'light' };"],
+    ["compound", "value ||= { theme: 'light' };"],
+    ["destructured", "({ value } = source);"],
+  ])("does not treat a %s write as a proven fresh value", (_name, updateCode) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = { theme: "dark" };
+       function App({ shouldUpdate, source }) {
+         let value = STABLE_VALUE;
+         ${updateCode}
+         return <ThemeContext.Provider value={value} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores a fresh write after the provider read", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       const STABLE_VALUE = { theme: "dark" };
+       function App() {
+         let value = STABLE_VALUE;
+         const provider = <ThemeContext.Provider value={value} />;
+         value = { theme: "light" };
+         return provider;
        }`,
     );
     expect(result.diagnostics).toHaveLength(0);

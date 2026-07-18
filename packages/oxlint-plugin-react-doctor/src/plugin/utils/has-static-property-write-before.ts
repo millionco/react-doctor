@@ -1,11 +1,13 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
+import { findProgramRoot } from "./find-program-root.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
+import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
@@ -195,30 +197,42 @@ export const isNodeOnUnconditionalPath = (node: EsTreeNode, boundary: EsTreeNode
   return current === boundary;
 };
 
-const findFunctionBindingIdentifier = (functionNode: EsTreeNode): EsTreeNode | null => {
-  if (isNodeOfType(functionNode, "FunctionDeclaration")) return functionNode.id ?? null;
-  const parent = functionNode.parent;
-  if (
-    parent &&
-    isNodeOfType(parent, "VariableDeclarator") &&
-    parent.init === functionNode &&
-    isNodeOfType(parent.id, "Identifier")
-  ) {
-    return parent.id;
-  }
-  return null;
-};
+const exactLocalFunctionCallsByAnalysis = new WeakMap<
+  ScopeAnalysis,
+  Map<EsTreeNode, EsTreeNode[]>
+>();
 
-const findDirectCall = (identifier: EsTreeNode): EsTreeNode | null => {
-  let callee: EsTreeNode = identifier;
-  let parent = callee.parent;
-  while (parent && stripParenExpression(parent) === identifier) {
-    callee = parent;
-    parent = callee.parent;
+const getExactLocalFunctionCalls = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode[] => {
+  let callsByFunction = exactLocalFunctionCallsByAnalysis.get(scopes);
+  if (!callsByFunction) {
+    const discoveredCallsByFunction = new Map<EsTreeNode, EsTreeNode[]>();
+    const resolvedFunctionsBySymbolId = new Map<number, EsTreeNode | null>();
+    const program = findProgramRoot(functionNode);
+    if (program) {
+      walkAst(program, (candidate) => {
+        if (!isNodeOfType(candidate, "CallExpression")) return;
+        const callee = stripParenExpression(candidate.callee);
+        const calleeSymbol = isNodeOfType(callee, "Identifier") ? scopes.symbolFor(callee) : null;
+        let calledFunction = calleeSymbol
+          ? resolvedFunctionsBySymbolId.get(calleeSymbol.id)
+          : undefined;
+        if (calledFunction === undefined) {
+          calledFunction = resolveExactLocalFunction(candidate.callee, scopes);
+          if (calleeSymbol) resolvedFunctionsBySymbolId.set(calleeSymbol.id, calledFunction);
+        }
+        if (!calledFunction) return;
+        const calls = discoveredCallsByFunction.get(calledFunction) ?? [];
+        calls.push(candidate);
+        discoveredCallsByFunction.set(calledFunction, calls);
+      });
+    }
+    callsByFunction = discoveredCallsByFunction;
+    exactLocalFunctionCallsByAnalysis.set(scopes, callsByFunction);
   }
-  return parent && isNodeOfType(parent, "CallExpression") && parent.callee === callee
-    ? parent
-    : null;
+  return callsByFunction.get(functionNode) ?? [];
 };
 
 const firstAwaitOffsetByFunction = new WeakMap<EsTreeNode, number | null>();
@@ -242,56 +256,68 @@ const isBeforeFirstAwait = (node: EsTreeNode, functionNode: EsTreeNode): boolean
   return firstAwaitOffset === null || node.range[0] < firstAwaitOffset;
 };
 
-export const isFunctionSynchronouslyInvokedBefore = (
+export const getFunctionSynchronousInvocationPathsBefore = (
   functionNode: EsTreeNode,
   referenceNode: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedFunctionNodes = new Set<EsTreeNode>(),
   synchronousNode: EsTreeNode | null = null,
-): boolean => {
+  isSynchronousNode?: (node: EsTreeNode) => boolean,
+): number[][] => {
   if (
     visitedFunctionNodes.has(functionNode) ||
     !isFunctionLike(functionNode) ||
     functionNode.generator ||
     (synchronousNode !== null && !isNodeOnUnconditionalPath(synchronousNode, functionNode)) ||
     (synchronousNode !== null &&
+      isSynchronousNode !== undefined &&
+      !isSynchronousNode(synchronousNode)) ||
+    (synchronousNode !== null &&
       functionNode.async &&
       !isBeforeFirstAwait(synchronousNode, functionNode))
   ) {
-    return false;
+    return [];
   }
   visitedFunctionNodes.add(functionNode);
   const referenceBoundary = findExecutionBoundary(referenceNode);
-  if (!referenceBoundary) return false;
-  const invocationCalls: EsTreeNode[] = [];
-  const bindingIdentifier = findFunctionBindingIdentifier(functionNode);
-  if (bindingIdentifier) {
-    for (const symbol of getEquivalentSymbols(bindingIdentifier, scopes)) {
-      for (const reference of symbol.references) {
-        const call = findDirectCall(reference.identifier);
-        if (call) invocationCalls.push(call);
-      }
-    }
-  } else {
-    const call = findDirectCall(functionNode);
-    if (call) invocationCalls.push(call);
-  }
-  return invocationCalls.some((call) => {
-    if (call.range[0] >= referenceNode.range[0]) return false;
+  if (!referenceBoundary) return [];
+  const invocationCalls = getExactLocalFunctionCalls(functionNode, scopes);
+  return invocationCalls.flatMap((call) => {
     const callBoundary = findExecutionBoundary(call);
-    if (!callBoundary) return false;
-    if (synchronousNode !== null && !isNodeOnUnconditionalPath(call, callBoundary)) return false;
-    if (callBoundary === referenceBoundary) return true;
-    if (!isFunctionLike(callBoundary)) return false;
-    return isFunctionSynchronouslyInvokedBefore(
+    if (!callBoundary) return [];
+    if (synchronousNode !== null && !isNodeOnUnconditionalPath(call, callBoundary)) return [];
+    if (synchronousNode !== null && isSynchronousNode !== undefined && !isSynchronousNode(call)) {
+      return [];
+    }
+    if (callBoundary === referenceBoundary) {
+      return call.range[0] < referenceNode.range[0] ? [[call.range[0]]] : [];
+    }
+    if (!isFunctionLike(callBoundary)) return [];
+    return getFunctionSynchronousInvocationPathsBefore(
       callBoundary,
       referenceNode,
       scopes,
       new Set(visitedFunctionNodes),
       synchronousNode === null ? null : call,
-    );
+      isSynchronousNode,
+    ).map((invocationPath) => [...invocationPath, call.range[0]]);
   });
 };
+
+export const isFunctionSynchronouslyInvokedBefore = (
+  functionNode: EsTreeNode,
+  referenceNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedFunctionNodes = new Set<EsTreeNode>(),
+  synchronousNode: EsTreeNode | null = null,
+): boolean =>
+  getFunctionSynchronousInvocationPathsBefore(
+    functionNode,
+    referenceNode,
+    scopes,
+    visitedFunctionNodes,
+    synchronousNode,
+  ).length > 0;
 
 const isMemberWriteTarget = (memberExpression: EsTreeNode): boolean => {
   const parent = memberExpression.parent;

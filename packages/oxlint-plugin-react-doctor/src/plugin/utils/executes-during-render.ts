@@ -67,6 +67,22 @@ const isConstAliasOfGlobalArrayFrom = (node: EsTreeNode, scopes: ScopeAnalysis):
   );
 };
 
+const isGlobalArrayConstructor = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const unwrappedNode = stripParenExpression(node);
+  if (!isNodeOfType(unwrappedNode, "Identifier")) return false;
+  if (unwrappedNode.name === "Array" && scopes.isGlobalReference(unwrappedNode)) return true;
+  const symbol = scopes.symbolFor(unwrappedNode);
+  if (symbol?.kind !== "const" || !symbol.initializer || visitedSymbolIds.has(symbol.id)) {
+    return false;
+  }
+  visitedSymbolIds.add(symbol.id);
+  return isGlobalArrayConstructor(symbol.initializer, scopes, visitedSymbolIds);
+};
+
 const isProvenArrayReceiver = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -85,22 +101,11 @@ const isProvenArrayReceiver = (
     );
   }
   if (isNodeOfType(receiver, "NewExpression")) {
-    const callee = stripParenExpression(receiver.callee);
-    return Boolean(
-      isNodeOfType(callee, "Identifier") &&
-      callee.name === "Array" &&
-      scopes.isGlobalReference(callee),
-    );
+    return isGlobalArrayConstructor(receiver.callee, scopes);
   }
   if (!isNodeOfType(receiver, "CallExpression")) return false;
   const callee = stripParenExpression(receiver.callee);
-  if (
-    isNodeOfType(callee, "Identifier") &&
-    callee.name === "Array" &&
-    scopes.isGlobalReference(callee)
-  ) {
-    return true;
-  }
+  if (isGlobalArrayConstructor(callee, scopes)) return true;
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const arrayIdentifier = stripParenExpression(callee.object);
   return Boolean(

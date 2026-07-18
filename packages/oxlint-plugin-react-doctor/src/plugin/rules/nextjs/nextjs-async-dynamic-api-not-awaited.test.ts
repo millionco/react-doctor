@@ -1259,6 +1259,24 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     );
   });
 
+  it.each(["A(1).map(readPending)", "new A(1).map(readPending)"])(
+    "reports a named callback through an immutable global Array constructor alias in %s",
+    (invocation) => {
+      expectDiagnosticCount(
+        `import { cookies } from "next/headers";
+         export const read = async () => {
+           let pending = cookies();
+           const A = Array;
+           const readPending = () => pending.get("session");
+           const result = ${invocation};
+           pending = await pending;
+           return result;
+         };`,
+        1,
+      );
+    },
+  );
+
   it.each([
     "let values = [0]; values.map(readPending);",
     "const values = scheduler.values; values.map(readPending);",
@@ -1266,6 +1284,8 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     "const Array = scheduler.Array; Array.of(0).map(readPending);",
     "const Array = scheduler.Array; Array(1).map(readPending);",
     "const Array = scheduler.Array; new Array(1).map(readPending);",
+    "const A = scheduler.Array; A(1).map(readPending);",
+    "let A = Array; A(1).map(readPending);",
   ])("fails closed for an unproven synchronous callback host through %s", (invocation) => {
     expectDiagnosticCount(
       `import { cookies } from "next/headers";
@@ -1621,6 +1641,10 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
       filename: "app/blog/[slug]/opengraph-image.tsx",
     },
     {
+      code: "export default function Image({ id }) { return String.raw`/${id}`; }",
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
       code: `export default function Image({ id }) { id++; return null; }`,
       filename: "app/blog/[slug]/opengraph-image.tsx",
     },
@@ -1655,7 +1679,12 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `export default function Image({ id }) { return Promise.resolve(id); }`,
     "export default function Image({ id }) { return consume`/${id}`; }",
     `export default function Image({ id }) { return null?.[id]; }`,
+    `export default function Image({ id }) { return undefined?.[id]; }`,
+    `export default function Image({ id }) { return (void 0)?.[id]; }`,
+    `export default function Image({ id }) { return false && values[id]; }`,
+    `export default function Image({ id }) { return true ? null : values[id]; }`,
     `export default function Image({ id }) { const parseInt = consume; return parseInt(id); }`,
+    "export default function Image({ id }) { const String = consume; return String.raw`/${id}`; }",
     `export default function Image({ id }) { return id.then((imageId) => imageId * 50000); }`,
   ])("does not report safe or propagating Next.js 16 id usage", (code) => {
     const result = runRule(nextjsAsyncDynamicApiNotAwaited, code, {
@@ -1737,6 +1766,12 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
   it.each([
     `export default async function Page(props, shouldAwait) { if (shouldAwait) props.params = await props.params; return props.params.slug; }`,
     `export default async function Page(props) { props.searchParams = await props.searchParams; return props.params.slug; }`,
+    `export default function Page(props, condition) { props.params = condition ? props.params : { slug: "fallback" }; return props.params.slug; }`,
+    `export default function Page(props) { props.params = props.params || fallback; return props.params.slug; }`,
+    `export default function Page(props) { props.params = props.params ?? fallback; return props.params.slug; }`,
+    `export default function Page(props) { props.params = (observe(), props.params); return props.params.slug; }`,
+    `export default function Page(props) { const pending = props.params; props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { const pending = cookies(); props.params = pending; return props.params.slug; }`,
     `export default function Page(props) { props.params = props.searchParams; return props.params.slug; }`,
     `export default async function Page(props) { try { props.params = await props.params; } catch {} return props.params.slug; }`,
     `export default async function Page(props, shouldFallback) { try { props.params = await props.params; } catch { if (shouldFallback) props.params = { slug: "fallback" }; } return props.params.slug; }`,
@@ -1747,6 +1782,25 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
   it("reports a compound official prop write and clears the following read", () => {
     expectDiagnosticCount(
       `export default function Page(props) { props.params += fallback; return props.params.slug; }`,
+      1,
+      "app/[slug]/page.tsx",
+    );
+  });
+
+  it.each(["||=", "??="])(
+    "reports a retaining %s official prop write and the following read",
+    (operator) => {
+      expectDiagnosticCount(
+        `export default function Page(props) { props.params ${operator} fallback; return props.params.slug; }`,
+        2,
+        "app/[slug]/page.tsx",
+      );
+    },
+  );
+
+  it("reports an &&= official prop write and clears the following read", () => {
+    expectDiagnosticCount(
+      `export default function Page(props) { props.params &&= fallback; return props.params.slug; }`,
       1,
       "app/[slug]/page.tsx",
     );

@@ -582,25 +582,7 @@ const assignmentUnwrapsOfficialProperty = (
   ) {
     return true;
   }
-  if (isNextHeadersDynamicCall(context, right)) return false;
-  if (isNodeOfType(right, "Identifier")) {
-    return !findOfficialAsyncRequestPropReference(context, right);
-  }
-  if (isNodeOfType(right, "MemberExpression")) {
-    const receiver = stripParenExpression(right.object);
-    const rightPropertyName = getResolvedStaticPropertyName(context, right);
-    const propsSource = isNodeOfType(receiver, "Identifier")
-      ? findOfficialPropsObjectSource(context, receiver)
-      : null;
-    if (
-      propsSource &&
-      rightPropertyName &&
-      propsSource.contract.propertyNames.has(rightPropertyName)
-    ) {
-      return false;
-    }
-  }
-  return true;
+  return !expressionMayRetainOfficialPendingValue(context, right);
 };
 
 const collectOfficialPropertyClearingNodes = (
@@ -617,7 +599,9 @@ const collectOfficialPropertyClearingNodes = (
       if (
         node.operator === "="
           ? assignmentUnwrapsOfficialProperty(context, node, source.symbol, propertyName)
-          : memberExpressionMatchesOfficialProperty(context, node.left, source.symbol, propertyName)
+          : node.operator !== "||=" &&
+            node.operator !== "??=" &&
+            memberExpressionMatchesOfficialProperty(context, node.left, source.symbol, propertyName)
       ) {
         clearingNodes.push(node);
       }
@@ -755,6 +739,37 @@ const logicalRightCanBecomeResult = (
   return leftValue.isNullish;
 };
 
+const expressionIsStaticallySkipped = (context: RuleContext, expression: EsTreeNode): boolean => {
+  let current = expression;
+  while (current.parent) {
+    const parent = current.parent;
+    if (isFunctionLike(parent)) return false;
+    if (isNodeOfType(parent, "LogicalExpression") && parent.right === current) {
+      const leftValue = getStaticLogicalValue(context, parent.left);
+      if (leftValue && !logicalRightCanBecomeResult(parent.operator, leftValue)) return true;
+    } else if (isNodeOfType(parent, "ConditionalExpression") && parent.test !== current) {
+      const testValue = getStaticLogicalValue(context, parent.test);
+      if (
+        testValue &&
+        ((parent.consequent === current && !testValue.isTruthy) ||
+          (parent.alternate === current && testValue.isTruthy))
+      ) {
+        return true;
+      }
+    } else if (
+      isNodeOfType(parent, "MemberExpression") &&
+      parent.optional &&
+      parent.computed &&
+      parent.property === current
+    ) {
+      const receiverValue = getStaticLogicalValue(context, parent.object);
+      if (receiverValue?.isNullish) return true;
+    }
+    current = parent;
+  }
+  return false;
+};
+
 const findRetainedExpressionSource = (
   context: RuleContext,
   expression: EsTreeNode,
@@ -846,6 +861,36 @@ const findRetainedExpressionSource = (
     sourceByExpression.set(frame.expression, retainedSource);
   }
   return sourceByExpression.get(expression) ?? null;
+};
+
+const expressionMayRetainOfficialPendingValue = (
+  context: RuleContext,
+  expression: EsTreeNode,
+): boolean => {
+  const visitedSymbolIds = new Set<number>();
+  const findSource = (candidate: EsTreeNode): EsTreeNode | null =>
+    findRetainedExpressionSource(context, candidate, (nestedCandidate) => {
+      if (isNextHeadersDynamicCall(context, nestedCandidate)) return nestedCandidate;
+      if (isNodeOfType(nestedCandidate, "MemberExpression")) {
+        const receiver = stripParenExpression(nestedCandidate.object);
+        const propertyName = getResolvedStaticPropertyName(context, nestedCandidate);
+        const propsSource = isNodeOfType(receiver, "Identifier")
+          ? findOfficialPropsObjectSource(context, receiver)
+          : null;
+        return propsSource && propertyName && propsSource.contract.propertyNames.has(propertyName)
+          ? nestedCandidate
+          : null;
+      }
+      if (!isNodeOfType(nestedCandidate, "Identifier")) return null;
+      if (findOfficialAsyncRequestPropReference(context, nestedCandidate)) return nestedCandidate;
+      const symbol = context.scopes.symbolFor(nestedCandidate);
+      if (symbol?.kind !== "const" || !symbol.initializer || visitedSymbolIds.has(symbol.id)) {
+        return null;
+      }
+      visitedSymbolIds.add(symbol.id);
+      return findSource(symbol.initializer);
+    });
+  return Boolean(findSource(expression));
 };
 
 const findPendingDynamicApiSource = (
@@ -1827,6 +1872,7 @@ const reportOfficialDirectValueConsumption = (
   context: RuleContext,
   expression: EsTreeNode,
 ): void => {
+  if (expressionIsStaticallySkipped(context, expression)) return;
   if (isOfficialDirectValueSource(context, expression)) {
     context.report({ node: expression, message: MESSAGE });
   }
@@ -1872,13 +1918,7 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
       reportNestedOfficialParameterDestructure(context, node);
     },
     MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
-      const receiver = stripParenExpression(node.object);
-      const isStaticallySkippedOptionalMember = Boolean(
-        node.optional && isNodeOfType(receiver, "Literal") && receiver.value === null,
-      );
-      if (node.computed && !isStaticallySkippedOptionalMember) {
-        reportOfficialDirectValueConsumption(context, node.property);
-      }
+      if (node.computed) reportOfficialDirectValueConsumption(context, node.property);
       if (memberExpressionIsAssignmentTarget(node)) {
         const assignment = findTransparentExpressionRoot(node).parent;
         if (
@@ -1979,7 +2019,17 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
         isNodeOfType(node.parent, "TaggedTemplateExpression") &&
         node.parent.quasi === node
       ) {
-        return;
+        const tag = stripParenExpression(node.parent.tag);
+        if (!isNodeOfType(tag, "MemberExpression")) return;
+        const receiver = stripParenExpression(tag.object);
+        if (
+          !isNodeOfType(receiver, "Identifier") ||
+          receiver.name !== "String" ||
+          !context.scopes.isGlobalReference(receiver) ||
+          getResolvedStaticPropertyName(context, tag) !== "raw"
+        ) {
+          return;
+        }
       }
       for (const expression of node.expressions) {
         reportOfficialDirectValueConsumption(context, expression);

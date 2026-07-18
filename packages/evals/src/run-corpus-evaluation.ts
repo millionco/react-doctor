@@ -26,7 +26,7 @@ import { loadCorpusRepositories } from "./load-corpus-repositories.js";
 import type { EvaluationOptions } from "./parse-evaluation-arguments.js";
 
 export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<void> => {
-  const repositories = await loadCorpusRepositories(options.repositoriesSource);
+  const repositories = await loadCorpusRepositories(options.repositoriesSources);
   const repositoryGroups = groupCorpusRepositories(repositories);
   const startedAt = globalThis.performance.now();
   let completedProjects = 0;

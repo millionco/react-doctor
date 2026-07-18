@@ -5,7 +5,7 @@ import { parseEvaluationArguments } from "../src/parse-evaluation-arguments.js";
 describe("parseEvaluationArguments", () => {
   it("defaults to the full corpus at 500 concurrent repositories", () => {
     expect(parseEvaluationArguments([])).toEqual({
-      repositoriesSource: "../../../react-doctor-evals/repos.json",
+      repositoriesSources: ["../../../react-doctor-evals/repos.json", "./repositories"],
       concurrency: 500,
       reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
       reactDoctorRef: "main",
@@ -17,13 +17,15 @@ describe("parseEvaluationArguments", () => {
       parseEvaluationArguments([
         "--repositories",
         "repositories.json",
+        "--repositories",
+        "repositories.txt",
         "--concurrency",
         "25",
         "--react-doctor-ref",
         "feature/eval",
       ]),
     ).toMatchObject({
-      repositoriesSource: "repositories.json",
+      repositoriesSources: ["repositories.json", "repositories.txt"],
       concurrency: 25,
       reactDoctorRef: "feature/eval",
     });

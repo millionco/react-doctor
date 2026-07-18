@@ -2,6 +2,7 @@ import type { Daytona, Sandbox } from "@daytona/sdk";
 
 import {
   EVALUATION_SCHEMA_VERSION,
+  RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
   SANDBOX_DELETE_TIMEOUT_SECONDS,
   SANDBOX_FORK_TIMEOUT_SECONDS,
   SANDBOX_SCAN_TIMEOUT_SECONDS,
@@ -26,7 +27,7 @@ export const evaluateRepositoryGroup = async ({
   repositoryGroup,
   onRecord,
 }: EvaluateRepositoryGroupInput): Promise<void> => {
-  const repositories = repositoryGroup.rootDirectories.map((rootDirectory) => ({
+  let repositories = repositoryGroup.rootDirectories.map((rootDirectory) => ({
     org: repositoryGroup.org,
     name: repositoryGroup.name,
     ref: repositoryGroup.ref,
@@ -50,6 +51,16 @@ export const evaluateRepositoryGroup = async ({
       timeoutSeconds: SANDBOX_SETUP_TIMEOUT_SECONDS,
       description: `Clone ${repositoryGroup.org}/${repositoryGroup.name}`,
     });
+    const resolvedRef = (
+      await executeSandboxCommand({
+        sandbox,
+        command: RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
+        environment: {},
+        timeoutSeconds: SANDBOX_SETUP_TIMEOUT_SECONDS,
+        description: `Resolve ${repositoryGroup.org}/${repositoryGroup.name}`,
+      })
+    ).trim();
+    repositories = repositories.map((repository) => ({ ...repository, ref: resolvedRef }));
 
     for (const repository of repositories) {
       try {

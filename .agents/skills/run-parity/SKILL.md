@@ -5,7 +5,7 @@ description: Run full-corpus React Doctor parity for a GitHub pull request with 
 
 # Run PR Parity
 
-Compare the PR's exact `baseRefOid` and `headRefOid` across the same pinned OSS corpus. Build each React Doctor ref once, fan repository scans out through Daytona, and compare the resulting NDJSON deterministically.
+Compare the PR's exact `baseRefOid` and `headRefOid` across the same OSS corpus. Build each React Doctor ref once, resolve every target repository to a commit in the baseline run, fan scans out through Daytona, and compare the resulting NDJSON deterministically.
 
 ## Preconditions
 
@@ -32,7 +32,7 @@ Do not substitute branch names for the returned commit SHAs. The two runs must s
 
 Create an ignored directory under `tmp/parity-pr-<number>-<head-short-sha>`. Preserve it after the run.
 
-Fetch the latest eval corpus without changing the sibling checkout's branch or working tree:
+Fetch the latest pinned RDE corpus without changing the sibling checkout's branch or working tree. The React Bench mining lists are tracked under `packages/evals/repositories` at the PR head:
 
 ```sh
 git -C ../react-doctor-evals fetch origin main
@@ -40,7 +40,7 @@ git -C ../react-doctor-evals show origin/main:repos.json > <run-directory>/repos
 ni
 ```
 
-Use the same `repositories.json` and concurrency for both runs. Default to concurrency 500 unless the user requests another value.
+Use both sources for the baseline. Use the baseline NDJSON as the candidate corpus so every default-branch mining repository is scanned at the exact commit resolved by the baseline. Default to concurrency 500 unless the user requests another value.
 
 ## Run both sides
 
@@ -49,13 +49,14 @@ Run from `packages/evals`, redirecting only stdout. Progress and completion metr
 ```sh
 nr eval -- \
   --repositories <absolute-run-directory>/repositories.json \
+  --repositories ./repositories \
   --concurrency 500 \
   --react-doctor-repository <baseline-repository-url> \
   --react-doctor-ref <baseRefOid> \
   > <absolute-run-directory>/baseline.ndjson
 
 nr eval -- \
-  --repositories <absolute-run-directory>/repositories.json \
+  --repositories <absolute-run-directory>/baseline.ndjson \
   --concurrency 500 \
   --react-doctor-repository <candidate-repository-url> \
   --react-doctor-ref <headRefOid> \

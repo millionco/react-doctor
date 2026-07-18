@@ -1,6 +1,12 @@
 export const DEFAULT_REACT_DOCTOR_REPOSITORY = "https://github.com/millionco/react-doctor.git";
 export const DEFAULT_REACT_DOCTOR_REF = "main";
-export const DEFAULT_REPOSITORIES_SOURCE = "../../../react-doctor-evals/repos.json";
+export const DEFAULT_REPOSITORIES_SOURCES: ReadonlyArray<string> = [
+  "../../../react-doctor-evals/repos.json",
+  "./repositories",
+];
+export const DEFAULT_TARGET_REPOSITORY_REF = "HEAD";
+export const DEFAULT_TARGET_ROOT_DIRECTORY = ".";
+export const REPOSITORY_SOURCE_EXTENSIONS: ReadonlyArray<string> = [".json", ".ndjson", ".txt"];
 export const DEFAULT_CORPUS_CONCURRENCY = 500;
 
 export const SANDBOX_IMAGE = "node:22-bookworm";
@@ -37,6 +43,8 @@ git -C /workspace/target init -q
 git -C /workspace/target remote add origin "$TARGET_REPOSITORY"
 git -C /workspace/target fetch -q --depth 1 origin "$TARGET_REF"
 git -C /workspace/target checkout -q --detach FETCH_HEAD`;
+
+export const RESOLVE_TARGET_REPOSITORY_REF_COMMAND = "git -C /workspace/target rev-parse HEAD";
 
 export const SCAN_COMMAND = `node /workspace/react-doctor/packages/react-doctor/bin/react-doctor.js \
   --json \

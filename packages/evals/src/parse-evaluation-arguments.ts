@@ -4,11 +4,11 @@ import {
   DEFAULT_CORPUS_CONCURRENCY,
   DEFAULT_REACT_DOCTOR_REF,
   DEFAULT_REACT_DOCTOR_REPOSITORY,
-  DEFAULT_REPOSITORIES_SOURCE,
+  DEFAULT_REPOSITORIES_SOURCES,
 } from "./constants.js";
 
 export interface EvaluationOptions {
-  repositoriesSource: string;
+  repositoriesSources: ReadonlyArray<string>;
   concurrency: number;
   reactDoctorRepository: string;
   reactDoctorRef: string;
@@ -23,7 +23,7 @@ export const parseEvaluationArguments = (
     options: {
       repositories: {
         type: "string",
-        default: DEFAULT_REPOSITORIES_SOURCE,
+        multiple: true,
       },
       concurrency: {
         type: "string",
@@ -42,7 +42,7 @@ export const parseEvaluationArguments = (
 
   if (positionals.length !== 0) {
     throw new Error(
-      "Usage: nr eval -- [--repositories <path-or-url>] [--concurrency <count>] [--react-doctor-ref <git-ref>]",
+      "Usage: nr eval -- [--repositories <path-url-or-directory>]... [--concurrency <count>] [--react-doctor-ref <git-ref>]",
     );
   }
 
@@ -52,7 +52,7 @@ export const parseEvaluationArguments = (
   }
 
   return {
-    repositoriesSource: values.repositories,
+    repositoriesSources: values.repositories ?? DEFAULT_REPOSITORIES_SOURCES,
     concurrency,
     reactDoctorRepository: values["react-doctor-repository"],
     reactDoctorRef: values["react-doctor-ref"],

@@ -146,6 +146,36 @@ describe("rerender-state-only-in-handlers — regressions", () => {
 
   it.each([
     {
+      hookName: "useEffect",
+      mutationBody: `setRevision((previous) => previous + 1);
+        history.pushState({}, "", "/next");`,
+    },
+    {
+      hookName: "useLayoutEffect",
+      mutationBody:
+        'history.replaceState({}, "", String(setRevision((previous) => previous + 1)));',
+    },
+  ])(
+    "stays silent when $hookName batches a setter before a location mutation",
+    ({ hookName, mutationBody }) => {
+      const result = runRule(
+        rerenderStateOnlyInHandlers,
+        `import { ${hookName}, useState } from "react";
+        function EffectLocationInvalidator() {
+          const [revision, setRevision] = useState(0);
+          ${hookName}(() => {
+            ${mutationBody}
+          }, []);
+          return <output>{location.pathname}</output>;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each([
+    {
       name: "the location mutation follows an await",
       body: `setRevision((previous) => previous + 1);
         await Promise.resolve();

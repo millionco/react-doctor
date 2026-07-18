@@ -1067,13 +1067,13 @@ const canExecuteBeforeAsyncSuspension = (
   return false;
 };
 
-const canReactEventBatchMutationAfterExecution = (
+const canReactBatchMutationAfterExecution = (
   executionNode: EsTreeNode,
   mutationNode: EsTreeNode,
   owner: EsTreeNode,
   index: LocationInvalidationIndex,
 ): boolean =>
-  isExclusiveIntrinsicReactEventHandler(owner, index) &&
+  (isExclusiveIntrinsicReactEventHandler(owner, index) || index.effectCallbacks.has(owner)) &&
   canNodeReachNode(executionNode, mutationNode, index) &&
   canExecuteBeforeAsyncSuspension(mutationNode, owner, index) &&
   canNodeReachNormalFunctionExit(mutationNode, owner, index);
@@ -1403,7 +1403,7 @@ const executionAnchorInvalidatesLocationSnapshot = (
     [...collectLocationMutationExecutions(owner, index)].some(
       (mutationExecution) =>
         canNodeReachNode(mutationExecution, executionAnchor, index) ||
-        canReactEventBatchMutationAfterExecution(executionAnchor, mutationExecution, owner, index),
+        canReactBatchMutationAfterExecution(executionAnchor, mutationExecution, owner, index),
     )
   ) {
     return true;

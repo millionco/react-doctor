@@ -75,6 +75,22 @@ describe("r3f-no-state-in-use-frame", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("reports updates outside a nested latch transition", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [started, setStarted] = useState(true); const [count, setCount] = useState(0); useFrame(() => { if (started) { setCount((value) => value + 1); if (done) setStarted(false); } }); return count; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows related updates inside the nested latch region", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [started, setStarted] = useState(true); const [finished, setFinished] = useState(false); useFrame(() => { if (started) { if (didFinish()) { setStarted(false); setFinished(true); } } }); return finished; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("keeps non-converging boolean guards reportable", () => {
     const result = runRule(
       r3fNoStateInUseFrame,

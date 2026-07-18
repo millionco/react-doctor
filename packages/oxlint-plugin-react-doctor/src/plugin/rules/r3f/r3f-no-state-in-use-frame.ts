@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -125,8 +126,47 @@ const callbackCallsStateSetterMoreThanOnce = (
   return setterCallCount > 1;
 };
 
+const isLatchTransitionGuaranteedForSetter = (
+  latchCall: EsTreeNode,
+  setterCall: EsTreeNode,
+  branch: EsTreeNode,
+): boolean => {
+  let currentChild = latchCall;
+  let currentAncestor = latchCall.parent;
+  while (currentAncestor && currentAncestor !== branch) {
+    let conditionalRegion: EsTreeNode | null = null;
+    if (isNodeOfType(currentAncestor, "IfStatement") && currentAncestor.test !== currentChild) {
+      conditionalRegion = currentChild;
+    }
+    if (
+      isNodeOfType(currentAncestor, "ConditionalExpression") &&
+      (currentAncestor.consequent === currentChild || currentAncestor.alternate === currentChild)
+    ) {
+      conditionalRegion = currentChild;
+    }
+    if (
+      isNodeOfType(currentAncestor, "LogicalExpression") &&
+      currentAncestor.right === currentChild
+    ) {
+      conditionalRegion = currentChild;
+    }
+    if (
+      isNodeOfType(currentAncestor, "AssignmentPattern") &&
+      currentAncestor.right === currentChild
+    ) {
+      conditionalRegion = currentChild;
+    }
+    if (isNodeOfType(currentAncestor, "SwitchCase")) conditionalRegion = currentAncestor;
+    if (conditionalRegion && !isAstDescendant(setterCall, conditionalRegion)) return false;
+    currentChild = currentAncestor;
+    currentAncestor = currentAncestor.parent;
+  }
+  return currentAncestor === branch;
+};
+
 const branchHasBooleanLatchTransition = (
   branch: EsTreeNode,
+  setterCall: EsTreeNode,
   callback: EsTreeNode,
   test: EsTreeNode,
   didTestPass: boolean,
@@ -163,7 +203,8 @@ const branchHasBooleanLatchTransition = (
         !nextStateCandidate.value,
         scopes,
       ) ||
-      callbackCallsStateSetterMoreThanOnce(callback, stateSymbolId, scopes)
+      callbackCallsStateSetterMoreThanOnce(callback, stateSymbolId, scopes) ||
+      !isLatchTransitionGuaranteedForSetter(candidate, setterCall, branch)
     ) {
       return;
     }
@@ -257,6 +298,7 @@ const isGuardedStateTransition = (
         (branchGuaranteesValueChange(currentAncestor.test, didTestPass, scopes) ||
           branchHasBooleanLatchTransition(
             currentChild,
+            setterCall,
             callback,
             currentAncestor.test,
             didTestPass,
@@ -278,6 +320,7 @@ const isGuardedStateTransition = (
         (branchGuaranteesValueChange(currentAncestor.test, didTestPass, scopes) ||
           branchHasBooleanLatchTransition(
             currentChild,
+            setterCall,
             callback,
             currentAncestor.test,
             didTestPass,

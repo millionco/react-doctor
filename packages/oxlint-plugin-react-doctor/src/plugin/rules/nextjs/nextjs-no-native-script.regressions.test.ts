@@ -71,6 +71,34 @@ describe("nextjs/nextjs-no-native-script — regressions", () => {
     }
   });
 
+  it("still flags statically disabled or dynamic async and defer attributes", () => {
+    for (const scriptJsx of [
+      `<script async={false} src="https://widget.example.com/embed.js" />`,
+      `<script defer={false} src="https://widget.example.com/embed.js" />`,
+      `<script async={0} src="https://widget.example.com/embed.js" />`,
+      `<script defer={0} src="https://widget.example.com/embed.js" />`,
+      `<script async={shouldLoadAsync} src="https://widget.example.com/embed.js" />`,
+      `<script defer={shouldDefer} src="https://widget.example.com/embed.js" />`,
+    ]) {
+      const result = runRule(nextjsNoNativeScript, `const C = () => ${scriptJsx};`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("ignores statically truthy async and defer expressions", () => {
+    for (const scriptJsx of [
+      `<script async={"false"} src="https://widget.example.com/embed.js" />`,
+      `<script defer={"false"} src="https://widget.example.com/embed.js" />`,
+      `<script async={1} src="https://widget.example.com/embed.js" />`,
+      `<script defer={1} src="https://widget.example.com/embed.js" />`,
+    ]) {
+      const result = runRule(nextjsNoNativeScript, `const C = () => ${scriptJsx};`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
   it("still ignores non-executable script types", () => {
     const result = runRule(
       nextjsNoNativeScript,

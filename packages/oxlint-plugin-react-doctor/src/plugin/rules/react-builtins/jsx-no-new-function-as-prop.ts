@@ -549,7 +549,7 @@ export const jsxNoNewFunctionAsProp = defineRule({
         // `memo(fn, arePropsEqual)` compares props with the author's own
         // function, which routinely ignores reference identity — a fresh
         // function cannot break that bailout.
-        if (hasCustomMemoComparator(openingName)) return;
+        if (hasCustomMemoComparator(openingName, context.scopes)) return;
         // One-shot lifecycle handlers (onMount / onError / onClose /
         // etc.) and render-prop slots (`fallback`, `render*`, `*Render`,
         // `*Renderer`, etc.) accept inline functions by design — they

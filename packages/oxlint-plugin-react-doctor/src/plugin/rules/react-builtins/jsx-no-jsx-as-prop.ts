@@ -375,7 +375,7 @@ export const jsxNoJsxAsProp = defineRule({
         // `memo(fn, arePropsEqual)` compares props with the author's own
         // function, which routinely ignores reference identity — fresh JSX
         // cannot break that bailout.
-        if (hasCustomMemoComparator(openingName)) return;
+        if (hasCustomMemoComparator(openingName, context.scopes)) return;
         const openingSymbol =
           openingName && isNodeOfType(openingName, "JSXIdentifier")
             ? context.scopes.symbolFor(openingName)

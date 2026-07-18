@@ -574,27 +574,33 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
   // noise, so they ship with
   // `disabledWhen: ["react-compiler"]` and the gate must drop them.
   it("disables react-compiler-redundant perf rules when React Compiler is detected", () => {
-    const reactCompilerGatedRules = [
-      "react-doctor/jsx-no-new-object-as-prop",
-      "react-doctor/jsx-no-new-array-as-prop",
-      "react-doctor/jsx-no-new-function-as-prop",
-      "react-doctor/jsx-no-jsx-as-prop",
-      "react-doctor/jsx-no-constructed-context-values",
-    ];
+    const reactCompilerGatedRules = new Map([
+      ["react-doctor/jsx-no-new-object-as-prop", "warn"],
+      ["react-doctor/jsx-no-new-array-as-prop", "warn"],
+      ["react-doctor/jsx-no-new-function-as-prop", "warn"],
+      ["react-doctor/jsx-no-jsx-as-prop", "warn"],
+      ["react-doctor/jsx-no-constructed-context-values", "warn"],
+      ["react-doctor/no-inline-prop-on-memo-component", "warn"],
+      ["react-doctor/no-effect-with-fresh-deps", "error"],
+      ["react-doctor/prefer-module-scope-pure-function", "warn"],
+      ["react-doctor/rendering-hoist-jsx", "warn"],
+      ["react-doctor/rerender-dependencies", "error"],
+      ["react-doctor/rerender-memo-with-default-value", "warn"],
+    ]);
 
     const withoutCompiler = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: false }),
     });
-    for (const ruleKey of reactCompilerGatedRules) {
-      expect(withoutCompiler.rules[ruleKey]).toBe("warn");
+    for (const [ruleKey, severity] of reactCompilerGatedRules) {
+      expect(withoutCompiler.rules[ruleKey]).toBe(severity);
     }
 
     const withCompiler = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
     });
-    for (const ruleKey of reactCompilerGatedRules) {
+    for (const ruleKey of reactCompilerGatedRules.keys()) {
       expect(withCompiler.rules[ruleKey]).toBeUndefined();
     }
   });
@@ -609,6 +615,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       "react-doctor/rn-no-inline-flatlist-renderitem",
       "react-doctor/rn-list-callback-per-row",
       "react-doctor/rn-no-inline-object-in-list-item",
+      "react-doctor/rn-list-data-mapped",
     ];
 
     const withoutCompiler = createOxlintConfig({

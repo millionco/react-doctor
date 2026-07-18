@@ -815,6 +815,157 @@ describe("audit regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    `if (response.ok) console.log("ok");`,
+    `if (!response.ok) console.log("failed");`,
+    `response.ok ? console.log("ok") : console.log("failed");`,
+    `response.ok && console.log("ok");`,
+  ])("does not treat a non-terminating status condition as a guard: %s", (statusRead) => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); ${statusRead} return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows a positive status branch whose alternate terminates", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); if (response.ok) console.log("ok"); else throw new Error("failed"); return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    `if (!response.ok) return response.json(); return null;`,
+    `if (response.ok) return null; return response.json();`,
+    `if (response.status) return response.json(); return null;`,
+  ])("allows consuming a response on either checked status outcome: %s", (body) => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); ${body} }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    [`if (response.ok && flag) return response.json(); return null;`, 0],
+    [`if (flag && response.ok) return response.json(); return null;`, 0],
+    [`if (response.ok || flag) return response.json(); return null;`, 0],
+    [`if (flag || response.ok) return response.json(); return null;`, 1],
+    [`if (response.ok && flag) return null; return response.json();`, 0],
+    [`if (flag && response.ok) return null; return response.json();`, 1],
+    [`if (response.ok || flag) return null; return response.json();`, 0],
+    [`if (flag || response.ok) return null; return response.json();`, 0],
+  ])("tracks short-circuit status evaluation: %s", (body, diagnosticCount) => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(flag) { const response = await fetch("/api"); ${body} }`,
+    );
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
+  });
+
+  it("allows a status switch case that consumes the response", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); switch (response.status) { case 200: return response.json(); default: return null; } }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a non-terminating status switch as a guard", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); switch (response.status) { case 200: console.log("ok"); } return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a do-while condition as guarding the first consumption", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); do { await response.json(); } while (response.ok); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [`if (flag ? response.ok : true) return response.json(); return null;`, 1],
+    [`if (response.ok ? flag : false) return response.json(); return null;`, 0],
+    [`if (check?.(response.ok)) return response.json(); return null;`, 1],
+    [`if (check?.(response.ok)) return null; return response.json();`, 1],
+  ])("tracks conditional and optional status evaluation: %s", (body, diagnosticCount) => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(flag, check) { const response = await fetch("/api"); ${body} }`,
+    );
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
+  });
+
+  it("recognizes a status check duplicated across both conditional branches", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(flag) { const response = await fetch("/api"); if (flag ? response.ok : response.ok) return response.json(); return null; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes a status check in the first matching switch case", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); switch (true) { case response.ok: return response.json(); default: return null; } }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports when a guarded first consumption is followed by an unguarded consumption", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); if (response.ok) await response.json(); return response.text(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows multiple consumptions when each one is status-guarded", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); if (response.ok) return response.json(); return response.text(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each(["ok", "status"])("does not trust a reassigned destructured %s binding", (key) => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); let { ${key} } = response; ${key} = true; if (${key}) return response.json(); return null; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `while (response.ok) { break; } return response.json();`,
+    `switch (response.status) { default: break; } return response.json();`,
+  ])("does not treat a non-terminating prior control statement as a guard: %s", (body) => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); ${body} }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps deeply nested status conditions bounded", () => {
+    const condition = Array.from({ length: 25 }, (_, index) => `flags[${index}]`).reduce(
+      (nestedCondition, flag, index) =>
+        `(${nestedCondition} ${index % 2 === 0 ? "&&" : "||"} ${flag})`,
+      "response.ok",
+    );
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load(flags) { const response = await fetch("/api"); if (${condition}) return response.json(); return null; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("requires a status guard to dominate consumption", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,

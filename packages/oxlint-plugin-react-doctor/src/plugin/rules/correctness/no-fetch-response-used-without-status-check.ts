@@ -4,6 +4,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getMeaningfulParent } from "../../utils/get-meaningful-parent.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
+import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
@@ -247,6 +249,163 @@ const isBodyConsumeCall = (node: EsTreeNode, responseName: string): boolean => {
   );
 };
 
+const makeExpressionGuaranteesStatusCheck = (statusReferences: EsTreeNode[]) => {
+  const resultsByPolarity = new WeakMap<EsTreeNode, [boolean | undefined, boolean | undefined]>();
+  const expressionGuaranteesStatusCheck = (
+    expression: EsTreeNode,
+    branchRunsWhenTruthy: boolean,
+  ): boolean => {
+    const inner = stripGroupingParens(expression);
+    const resultIndex = branchRunsWhenTruthy ? 1 : 0;
+    const cachedResults = resultsByPolarity.get(inner);
+    const cachedResult = cachedResults?.[resultIndex];
+    if (cachedResult !== undefined) return cachedResult;
+    const references = statusReferences
+      .map(stripGroupingParens)
+      .filter((reference) => isAstDescendant(reference, inner));
+    let result = false;
+    if (references.some((reference) => reference === inner)) {
+      result = true;
+    } else if (references.length === 0) {
+      result = false;
+    } else if (isNodeOfType(inner, "UnaryExpression") && inner.operator === "!") {
+      result = expressionGuaranteesStatusCheck(inner.argument, !branchRunsWhenTruthy);
+    } else if (isNodeOfType(inner, "LogicalExpression") && inner.operator === "&&") {
+      result = branchRunsWhenTruthy
+        ? expressionGuaranteesStatusCheck(inner.left, true) ||
+          expressionGuaranteesStatusCheck(inner.right, true)
+        : expressionGuaranteesStatusCheck(inner.left, false) &&
+          (expressionGuaranteesStatusCheck(inner.left, true) ||
+            expressionGuaranteesStatusCheck(inner.right, false));
+    } else if (isNodeOfType(inner, "LogicalExpression") && inner.operator === "||") {
+      result = branchRunsWhenTruthy
+        ? expressionGuaranteesStatusCheck(inner.left, true) &&
+          (expressionGuaranteesStatusCheck(inner.left, false) ||
+            expressionGuaranteesStatusCheck(inner.right, true))
+        : expressionGuaranteesStatusCheck(inner.left, false) ||
+          expressionGuaranteesStatusCheck(inner.right, false);
+    } else if (isNodeOfType(inner, "ConditionalExpression")) {
+      const testAlwaysChecksStatus =
+        expressionGuaranteesStatusCheck(inner.test, true) &&
+        expressionGuaranteesStatusCheck(inner.test, false);
+      result =
+        testAlwaysChecksStatus ||
+        (expressionGuaranteesStatusCheck(inner.consequent, branchRunsWhenTruthy) &&
+          expressionGuaranteesStatusCheck(inner.alternate, branchRunsWhenTruthy));
+    } else if (
+      isNodeOfType(inner, "CallExpression") &&
+      inner.optional === true &&
+      inner.arguments.some(
+        (argument) =>
+          !isNodeOfType(argument, "SpreadElement") &&
+          references.some((reference) => isAstDescendant(reference, argument)),
+      )
+    ) {
+      result = branchRunsWhenTruthy;
+    } else {
+      result = references.some((reference) => {
+        let child = reference;
+        let ancestor = reference.parent ?? null;
+        while (ancestor) {
+          if (isNodeOfType(ancestor, "LogicalExpression") && ancestor.right === child) return false;
+          if (isNodeOfType(ancestor, "ConditionalExpression") && ancestor.test !== child) {
+            return false;
+          }
+          if (
+            isNodeOfType(ancestor, "CallExpression") &&
+            ancestor.optional === true &&
+            ancestor.callee !== child
+          ) {
+            return findTransparentExpressionRoot(ancestor) === inner && branchRunsWhenTruthy;
+          }
+          if (ancestor === inner) return true;
+          child = ancestor;
+          ancestor = ancestor.parent ?? null;
+        }
+        return false;
+      });
+    }
+    const results = cachedResults ?? [undefined, undefined];
+    results[resultIndex] = result;
+    resultsByPolarity.set(inner, results);
+    return result;
+  };
+  return expressionGuaranteesStatusCheck;
+};
+
+const statusCheckGuardsNode = (statusReferences: EsTreeNode[], target: EsTreeNode): boolean => {
+  const expressionGuaranteesStatusCheck = makeExpressionGuaranteesStatusCheck(statusReferences);
+  const conditionGuaranteesStatusCheck = (
+    test: EsTreeNode,
+    branchRunsWhenTruthy: boolean,
+  ): boolean => expressionGuaranteesStatusCheck(test, branchRunsWhenTruthy);
+  let child = target;
+  let ancestor = target.parent ?? null;
+  while (ancestor && !isFunctionLike(ancestor)) {
+    if (isNodeOfType(ancestor, "LogicalExpression") && ancestor.right === child) {
+      if (
+        (ancestor.operator === "&&" && conditionGuaranteesStatusCheck(ancestor.left, true)) ||
+        (ancestor.operator === "||" && conditionGuaranteesStatusCheck(ancestor.left, false))
+      ) {
+        return true;
+      }
+    }
+    if (isNodeOfType(ancestor, "IfStatement") || isNodeOfType(ancestor, "ConditionalExpression")) {
+      if (ancestor.consequent === child && conditionGuaranteesStatusCheck(ancestor.test, true)) {
+        return true;
+      }
+      if (ancestor.alternate === child && conditionGuaranteesStatusCheck(ancestor.test, false)) {
+        return true;
+      }
+    }
+    if (
+      isNodeOfType(ancestor, "SwitchCase") &&
+      ancestor.parent &&
+      isNodeOfType(ancestor.parent, "SwitchStatement")
+    ) {
+      const discriminantChecksStatus =
+        conditionGuaranteesStatusCheck(ancestor.parent.discriminant, true) &&
+        conditionGuaranteesStatusCheck(ancestor.parent.discriminant, false);
+      const caseChecksStatus =
+        ancestor.parent.cases[0] === ancestor &&
+        ancestor.test !== null &&
+        conditionGuaranteesStatusCheck(ancestor.test, true);
+      if (discriminantChecksStatus || caseChecksStatus) return true;
+    }
+    if (
+      (isNodeOfType(ancestor, "WhileStatement") || isNodeOfType(ancestor, "ForStatement")) &&
+      ancestor.body === child &&
+      ancestor.test &&
+      conditionGuaranteesStatusCheck(ancestor.test, true)
+    ) {
+      return true;
+    }
+    if (isNodeOfType(ancestor, "BlockStatement") || isNodeOfType(ancestor, "Program")) {
+      const childIndex = ancestor.body.findIndex((statement) => statement === child);
+      if (childIndex >= 0) {
+        for (const statement of ancestor.body.slice(0, childIndex)) {
+          if (!isNodeOfType(statement, "IfStatement")) continue;
+          if (
+            isEarlyExitStatement(statement.consequent) &&
+            conditionGuaranteesStatusCheck(statement.test, false)
+          ) {
+            return true;
+          }
+          if (
+            isEarlyExitStatement(statement.alternate) &&
+            conditionGuaranteesStatusCheck(statement.test, true)
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
 const outermostPromiseChainCall = (fetchCall: EsTreeNode): EsTreeNode => {
   let chainLink: EsTreeNode = fetchCall;
   while (true) {
@@ -362,19 +521,20 @@ const reportUnguarded = ({
       if (
         (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") ||
         isNodeOfType(parent, "BinaryExpression") ||
-        isNodeOfType(parent, "LogicalExpression")
+        isNodeOfType(parent, "LogicalExpression") ||
+        isNodeOfType(parent, "ConditionalExpression")
       ) {
         current = parent;
         continue;
       }
       return Boolean(
         (isNodeOfType(parent, "IfStatement") && parent.test === current) ||
-        (isNodeOfType(parent, "ConditionalExpression") && parent.test === current) ||
         ((isNodeOfType(parent, "WhileStatement") ||
           isNodeOfType(parent, "DoWhileStatement") ||
           isNodeOfType(parent, "ForStatement")) &&
           parent.test === current) ||
-        (isNodeOfType(parent, "SwitchStatement") && parent.discriminant === current),
+        (isNodeOfType(parent, "SwitchStatement") && parent.discriminant === current) ||
+        (isNodeOfType(parent, "SwitchCase") && parent.test === current),
       );
     }
     return false;
@@ -412,28 +572,26 @@ const reportUnguarded = ({
       }
     }
   }
-  const firstConsumption = consumptions.toSorted(
-    (left, right) => left.range[0] - right.range[0],
-  )[0];
-  if (!firstConsumption) return;
+  if (consumptions.length === 0) return;
 
-  const statusGuardDominates = symbol.references.some((reference) => {
+  const directStatusReferences = symbol.references.flatMap((reference) => {
     const receiver = findTransparentExpressionRoot(reference.identifier);
     const member = receiver.parent;
-    return Boolean(
-      member &&
-      isNodeOfType(member, "MemberExpression") &&
-      member.object === receiver &&
-      !member.computed &&
-      isNodeOfType(member.property, "Identifier") &&
-      STATUS_CHECK_PROPERTIES.has(member.property.name) &&
-      isConditionUse(member) &&
-      nodeDominatesNode(member, firstConsumption, context),
-    );
+    if (
+      !member ||
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== receiver ||
+      member.computed ||
+      !isNodeOfType(member.property, "Identifier") ||
+      !STATUS_CHECK_PROPERTIES.has(member.property.name) ||
+      !isConditionUse(member)
+    ) {
+      return [];
+    }
+    return [member];
   });
-  if (statusGuardDominates) return;
 
-  const destructuredStatusGuardDominates = symbol.references.some((reference) => {
+  const destructuredStatusReferences = symbol.references.flatMap((reference) => {
     const declarator = reference.identifier.parent;
     if (
       !declarator ||
@@ -441,50 +599,65 @@ const reportUnguarded = ({
       declarator.init !== reference.identifier ||
       !isNodeOfType(declarator.id, "ObjectPattern")
     ) {
-      return false;
+      return [];
     }
-    return declarator.id.properties.some((property) => {
+    return declarator.id.properties.flatMap((property) => {
       if (
         !isNodeOfType(property, "Property") ||
         !isNodeOfType(property.key, "Identifier") ||
         !STATUS_CHECK_PROPERTIES.has(property.key.name) ||
         !isNodeOfType(property.value, "Identifier")
       ) {
-        return false;
+        return [];
       }
       const statusSymbol = context.scopes.symbolFor(property.value);
+      if (
+        !statusSymbol ||
+        statusSymbol.references.some((statusReference) => statusReference.flag !== "read")
+      ) {
+        return [];
+      }
+      return statusSymbol.references
+        .map((statusReference) => statusReference.identifier)
+        .filter(isConditionUse);
+    });
+  });
+
+  const everyConsumptionIsGuarded = consumptions.every((consumption) => {
+    if (
+      directStatusReferences.length > 0 &&
+      statusCheckGuardsNode(directStatusReferences, consumption)
+    ) {
+      return true;
+    }
+    if (
+      destructuredStatusReferences.length > 0 &&
+      statusCheckGuardsNode(destructuredStatusReferences, consumption)
+    ) {
+      return true;
+    }
+    return symbol.references.some((reference) => {
+      const parent = reference.identifier.parent;
+      if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
+      if (!parent.arguments.some((argument) => argument === reference.identifier)) return false;
+      const callee = stripGroupingParens(parent.callee as EsTreeNode);
+      let validatorName: string | null = null;
+      if (isNodeOfType(callee, "Identifier")) {
+        validatorName = callee.name;
+      } else if (
+        isNodeOfType(callee, "MemberExpression") &&
+        isNodeOfType(callee.property, "Identifier")
+      ) {
+        validatorName = callee.property.name;
+      }
       return Boolean(
-        statusSymbol?.references.some(
-          (statusReference) =>
-            isConditionUse(statusReference.identifier) &&
-            nodeDominatesNode(statusReference.identifier, firstConsumption, context),
-        ),
+        validatorName &&
+        /^(?:assert|check|ensure|require|throw|validate)/i.test(validatorName) &&
+        nodeDominatesNode(parent, consumption, context),
       );
     });
   });
-  if (destructuredStatusGuardDominates) return;
-
-  const validatorDominates = symbol.references.some((reference) => {
-    const parent = reference.identifier.parent;
-    if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
-    if (!parent.arguments.some((argument) => argument === reference.identifier)) return false;
-    const callee = stripGroupingParens(parent.callee as EsTreeNode);
-    let validatorName: string | null = null;
-    if (isNodeOfType(callee, "Identifier")) {
-      validatorName = callee.name;
-    } else if (
-      isNodeOfType(callee, "MemberExpression") &&
-      isNodeOfType(callee.property, "Identifier")
-    ) {
-      validatorName = callee.property.name;
-    }
-    return Boolean(
-      validatorName &&
-      /^(?:assert|check|ensure|require|throw|validate)/i.test(validatorName) &&
-      nodeDominatesNode(parent, firstConsumption, context),
-    );
-  });
-  if (validatorDominates) return;
+  if (everyConsumptionIsGuarded) return;
   context.report({ node: reportNode, message: MESSAGE });
 };
 

@@ -785,6 +785,73 @@ const collectProvenValueBindings = (
   }
 };
 
+const findControlTransferTarget = (
+  transfer: EsTreeNodeOfType<"BreakStatement"> | EsTreeNodeOfType<"ContinueStatement">,
+): EsTreeNode | null => {
+  const labelName = transfer.label?.name ?? null;
+  let current = transfer.parent ?? null;
+  while (current) {
+    if (
+      labelName !== null &&
+      isNodeOfType(current, "LabeledStatement") &&
+      current.label.name === labelName
+    ) {
+      return current;
+    }
+    if (
+      labelName === null &&
+      (LOOP_STATEMENT_TYPES.has(current.type) ||
+        (isNodeOfType(transfer, "BreakStatement") && isNodeOfType(current, "SwitchStatement")))
+    ) {
+      return current;
+    }
+    if (FUNCTION_LIKE_TYPES.has(current.type) || isNodeOfType(current, "Program")) break;
+    current = current.parent ?? null;
+  }
+  return null;
+};
+
+const throwIsCaughtWithinStatement = (
+  throwStatement: EsTreeNodeOfType<"ThrowStatement">,
+  statement: EsTreeNode,
+): boolean => {
+  let current = throwStatement.parent ?? null;
+  while (current) {
+    if (
+      isNodeOfType(current, "TryStatement") &&
+      current.handler &&
+      isAstDescendant(throwStatement, current.block)
+    ) {
+      return current === statement || isAstDescendant(current, statement);
+    }
+    if (FUNCTION_LIKE_TYPES.has(current.type) || isNodeOfType(current, "Program")) break;
+    current = current.parent ?? null;
+  }
+  return false;
+};
+
+const statementCanBypassFollowingSibling = (statement: EsTreeNode): boolean => {
+  let canBypass = false;
+  walkAst(statement, (child) => {
+    if (canBypass) return false;
+    if (child !== statement && FUNCTION_LIKE_TYPES.has(child.type)) return false;
+    if (isNodeOfType(child, "ReturnStatement")) {
+      canBypass = true;
+      return false;
+    }
+    if (isNodeOfType(child, "ThrowStatement")) {
+      canBypass = !throwIsCaughtWithinStatement(child, statement);
+      return !canBypass;
+    }
+    if (isNodeOfType(child, "BreakStatement") || isNodeOfType(child, "ContinueStatement")) {
+      const target = findControlTransferTarget(child);
+      canBypass = Boolean(!target || (target !== statement && !isAstDescendant(target, statement)));
+      return !canBypass;
+    }
+  });
+  return canBypass;
+};
+
 const statementAlwaysRevokesResult = (
   statement: EsTreeNode,
   resultExpression: EsTreeNode,
@@ -793,7 +860,7 @@ const statementAlwaysRevokesResult = (
   if (isNodeOfType(statement, "BlockStatement")) {
     for (const child of statement.body) {
       if (statementAlwaysRevokesResult(child, resultExpression, scopes)) return true;
-      if (statementAlwaysExits(child)) return false;
+      if (statementAlwaysExits(child) || statementCanBypassFollowingSibling(child)) return false;
     }
     return false;
   }
@@ -810,11 +877,7 @@ const statementAlwaysRevokesResult = (
       for (const switchCase of statement.cases.slice(caseIndex)) {
         for (const child of switchCase.consequent) {
           if (statementAlwaysRevokesResult(child, resultExpression, scopes)) return true;
-          if (
-            statementAlwaysExits(child) ||
-            isNodeOfType(child, "BreakStatement") ||
-            isNodeOfType(child, "ContinueStatement")
-          ) {
+          if (statementAlwaysExits(child) || statementCanBypassFollowingSibling(child)) {
             return false;
           }
         }
@@ -1106,7 +1169,7 @@ const statementAlwaysRevokesBindingPath = (
   if (isNodeOfType(statement, "BlockStatement")) {
     for (const child of statement.body) {
       if (statementAlwaysRevokesBindingPath(child, binding, propertyPath, scopes)) return true;
-      if (statementAlwaysExits(child)) return false;
+      if (statementAlwaysExits(child) || statementCanBypassFollowingSibling(child)) return false;
     }
     return false;
   }
@@ -1253,14 +1316,14 @@ const cacheEvictionIsSafe = (
     return cacheClearIsSafe(eviction, store, cacheSymbolId, retention, index, context);
   }
   const keyExpression = eviction.arguments[0];
-  if (retention.kind === "set-element") {
+  if (retention.kind === "set-element" || retention.kind === "map-key") {
     return Boolean(
       methodName === "delete" &&
       isAstNode(keyExpression) &&
       expressionIsRevokedBefore(keyExpression, eviction, index, context),
     );
   }
-  if (retention.kind !== "map-value" || retention.propertyPath.length > 0) return false;
+  if (retention.kind !== "map-value") return false;
   return Boolean(
     methodName === "delete" &&
     isAstNode(keyExpression) &&

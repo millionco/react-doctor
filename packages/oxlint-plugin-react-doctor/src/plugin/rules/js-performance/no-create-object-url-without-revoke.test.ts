@@ -1157,6 +1157,54 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts nested Map value and Map key cleanup before deletion", () => {
+    const nestedValueResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const cachePreview = (blob, id) => {
+         const previous = previewCache.get(id);
+         if (previous) URL.revokeObjectURL(previous.preview.url);
+         previewCache.set(id, { preview: { url: make(blob) } });
+       };
+       const evictPreview = (id) => {
+         const entry = previewCache.get(id);
+         if (!entry) return;
+         URL.revokeObjectURL(entry.preview.url);
+         previewCache.delete(id);
+       };`,
+    );
+    expect(nestedValueResult.diagnostics).toHaveLength(0);
+
+    const mapKeyResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const cachePreview = (blob) => {
+         const url = make(blob);
+         previewCache.set(url, metadata);
+       };
+       const evictPreview = (url) => {
+         URL.revokeObjectURL(url);
+         previewCache.delete(url);
+       };`,
+    );
+    expect(mapKeyResult.diagnostics).toHaveLength(0);
+
+    const conditionalNestedValueResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       previewCache.set("preview", { preview: { url: make(blob) } });
+       const evictPreview = (enabled) => {
+         const entry = previewCache.get("preview");
+         if (enabled) URL.revokeObjectURL(entry.preview.url);
+         previewCache.delete("preview");
+       };`,
+    );
+    expect(conditionalNestedValueResult.diagnostics).toHaveLength(1);
+  });
+
   it("rejects conditional cache eviction cleanup", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
@@ -1284,6 +1332,95 @@ describe("no-create-object-url-without-revoke", () => {
       );
       expect(result.diagnostics).toHaveLength(1);
     }
+  });
+
+  it("does not accept exhaustive cleanup after a conditional early exit", () => {
+    const branchResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const attachPreview = (blob, shouldSkip, branch) => {
+         const url = make(blob);
+         anchor.href = url;
+         if (branch) {
+           if (shouldSkip) return;
+           URL.revokeObjectURL(url);
+         } else {
+           URL.revokeObjectURL(url);
+         }
+       };`,
+    );
+    expect(branchResult.diagnostics).toHaveLength(1);
+
+    const throwResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const attachPreview = (blob, shouldSkip, branch) => {
+         const url = make(blob);
+         anchor.href = url;
+         if (branch) {
+           if (shouldSkip) throw new Error("skip");
+           URL.revokeObjectURL(url);
+         } else {
+           URL.revokeObjectURL(url);
+         }
+       };`,
+    );
+    expect(throwResult.diagnostics).toHaveLength(1);
+
+    const switchResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const attachPreview = (blob, shouldSkip, mode) => {
+         const url = make(blob);
+         anchor.href = url;
+         switch (mode) {
+           case "preview":
+             if (shouldSkip) break;
+             URL.revokeObjectURL(url);
+             break;
+           default:
+             URL.revokeObjectURL(url);
+         }
+       };`,
+    );
+    expect(switchResult.diagnostics).toHaveLength(1);
+
+    const cacheResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       previewCache.set("preview", make(blob));
+       const clearPreviews = (shouldSkip) => {
+         previewCache.forEach((url) => {
+           if (shouldSkip) return;
+           URL.revokeObjectURL(url);
+         });
+         previewCache.clear();
+       };`,
+    );
+    expect(cacheResult.diagnostics).toHaveLength(1);
+
+    const internalTransferResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const attachPreview = (blob, shouldThrow, branch, mode) => {
+         const url = make(blob);
+         anchor.href = url;
+         if (branch) {
+           try {
+             if (shouldThrow) throw new Error("handled");
+           } catch {}
+           switch (mode) {
+             case "preview":
+               break;
+           }
+           URL.revokeObjectURL(url);
+         } else {
+           URL.revokeObjectURL(url);
+         }
+       };`,
+    );
+    expect(internalTransferResult.diagnostics).toHaveLength(0);
   });
 
   it("requires exhaustive cleanup to dominate the created URL", () => {

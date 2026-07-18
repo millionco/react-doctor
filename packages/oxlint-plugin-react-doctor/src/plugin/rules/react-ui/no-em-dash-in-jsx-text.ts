@@ -4,6 +4,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isInsideExcludedTypographyAncestor } from "./utils/is-inside-excluded-typography-ancestor.js";
 
 const EM_DASH = "—";
+const LONG_FORM_CONTENT_PATH_PATTERN =
+  /(?:^|[/\\])(?:articles?|blog|changelog|content|docs?|posts?)(?:[/\\]|$)/i;
 
 // Only an em dash embedded in prose (letters on both sides, same line)
 // reads as AI-generated copy. Standalone `—` placeholders for empty
@@ -24,6 +26,7 @@ export const noEmDashInJsxText = defineRule({
     "Replace em dashes in UI text with commas, colons, semicolons, or parentheses so the copy reads less like AI output.",
   create: (context: RuleContext) => ({
     JSXText(jsxTextNode: EsTreeNodeOfType<"JSXText">) {
+      if (context.filename && LONG_FORM_CONTENT_PATH_PATTERN.test(context.filename)) return;
       const textValue = typeof jsxTextNode.value === "string" ? jsxTextNode.value : "";
       if (!textValue.includes(EM_DASH)) return;
       if (!PROSE_EM_DASH_PATTERN.test(textValue)) return;

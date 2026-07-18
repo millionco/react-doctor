@@ -6,7 +6,7 @@ describe("no-cramped-container-padding", () => {
   it("flags text in a bordered Tailwind container with 4px padding", () => {
     const result = runRule(
       noCrampedContainerPadding,
-      `const Badge = () => <span className="border rounded p-1">Status</span>;`,
+      `const Panel = () => <div className="border rounded p-1">Status</div>;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -14,7 +14,7 @@ describe("no-cramped-container-padding", () => {
   it("flags an inline bounded surface with cramped padding", () => {
     const result = runRule(
       noCrampedContainerPadding,
-      `const Badge = () => <span style={{ backgroundColor: "navy", padding: "6px" }}>Status</span>;`,
+      `const Panel = () => <div style={{ backgroundColor: "navy", padding: "6px" }}>Status</div>;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -22,7 +22,7 @@ describe("no-cramped-container-padding", () => {
   it("accepts at least 8px of padding", () => {
     const result = runRule(
       noCrampedContainerPadding,
-      `const Badge = () => <><span className="border p-2">Status</span><span style={{ border: "1px solid", padding: 8 }}>Status</span></>;`,
+      `const Panel = () => <><div className="border p-2">Status</div><div style={{ border: "1px solid", padding: 8 }}>Status</div></>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -30,7 +30,7 @@ describe("no-cramped-container-padding", () => {
   it("does not infer a visible boundary from transparent backgrounds", () => {
     const result = runRule(
       noCrampedContainerPadding,
-      `const Label = () => <span className="bg-transparent p-1" style={{ backgroundColor: "transparent", padding: 4 }}>Status</span>;`,
+      `const Label = () => <div className="bg-transparent p-1" style={{ backgroundColor: "transparent", padding: 4 }}>Status</div>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -38,7 +38,15 @@ describe("no-cramped-container-padding", () => {
   it("does not combine padding and boundaries from different variants", () => {
     const result = runRule(
       noCrampedContainerPadding,
-      `const Badge = () => <span className="p-1 dark:border">Status</span>;`,
+      `const Panel = () => <div className="p-1 dark:border">Status</div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a one-sided divider as a container around text", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Cells = () => <><div className="border-r px-5 pt-0.5">Node pool</div><div className="border-r px-0"><div className="px-4 py-3">Member</div></div><div className="border border-r-0 p-1">Open edge</div></>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -47,15 +55,15 @@ describe("no-cramped-container-padding", () => {
     const result = runRule(
       noCrampedContainerPadding,
       `const Examples = () => <>
-        <span className="border-0 p-1">Zero border</span>
-        <span className="border-none p-1">No border</span>
-        <span className="border-transparent p-1">Transparent border color</span>
-        <span className="border border-transparent p-1">Transparent border</span>
-        <span className="border-spacing-2 p-1">Table spacing</span>
-        <span className="ring-0 p-1">Zero ring</span>
-        <span className="ring ring-transparent p-1">Transparent ring</span>
-        <span className="bg-transparent p-1">Transparent background</span>
-        <span className="bg-blue-500 bg-opacity-0 p-1">Transparent background color</span>
+        <div className="border-0 p-1">Zero border</div>
+        <div className="border-none p-1">No border</div>
+        <div className="border-transparent p-1">Transparent border color</div>
+        <div className="border border-transparent p-1">Transparent border</div>
+        <div className="border-spacing-2 p-1">Table spacing</div>
+        <div className="ring-0 p-1">Zero ring</div>
+        <div className="ring ring-transparent p-1">Transparent ring</div>
+        <div className="bg-transparent p-1">Transparent background</div>
+        <div className="bg-blue-500 bg-opacity-0 p-1">Transparent background color</div>
       </>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
@@ -64,7 +72,7 @@ describe("no-cramped-container-padding", () => {
   it("still recognizes positive border and ring widths", () => {
     const result = runRule(
       noCrampedContainerPadding,
-      `const Examples = () => <><span className="border-2 p-1">Border</span><span className="ring-1 p-1">Ring</span></>;`,
+      `const Examples = () => <><div className="border-2 p-1">Border</div><div className="ring-1 p-1">Ring</div></>;`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });
@@ -73,15 +81,15 @@ describe("no-cramped-container-padding", () => {
     const result = runRule(
       noCrampedContainerPadding,
       `const Examples = () => <>
-        <span className="border px-1">Horizontal</span>
-        <span className="border py-1">Vertical</span>
-        <span className="border pt-1">Top</span>
-        <span className="border pr-1">Right</span>
-        <span className="border pb-1">Bottom</span>
-        <span className="border pl-1">Left</span>
-        <span className="border ps-1">Start</span>
-        <span className="border pe-[0.25rem]">End</span>
-        <span className="border p-px">One pixel</span>
+        <div className="border px-1">Horizontal</div>
+        <div className="border py-1">Vertical</div>
+        <div className="border pt-1">Top</div>
+        <div className="border pr-1">Right</div>
+        <div className="border pb-1">Bottom</div>
+        <div className="border pl-1">Left</div>
+        <div className="border ps-1">Start</div>
+        <div className="border pe-[0.25rem]">End</div>
+        <div className="border p-px">One pixel</div>
       </>;`,
     );
     expect(result.diagnostics).toHaveLength(9);
@@ -90,7 +98,7 @@ describe("no-cramped-container-padding", () => {
   it("uses the smallest declared base padding regardless of token order", () => {
     const result = runRule(
       noCrampedContainerPadding,
-      `const Examples = () => <><span className="border p-4 px-1">First</span><span className="border px-1 p-4">Second</span></>;`,
+      `const Examples = () => <><div className="border p-4 px-1">First</div><div className="border px-1 p-4">Second</div></>;`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });
@@ -98,7 +106,7 @@ describe("no-cramped-container-padding", () => {
   it("does not retain a shorthand value overridden on every axis", () => {
     const result = runRule(
       noCrampedContainerPadding,
-      `const Example = () => <span className="border p-1 px-4 py-4">Roomy</span>;`,
+      `const Example = () => <div className="border p-1 px-4 py-4">Roomy</div>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -106,7 +114,7 @@ describe("no-cramped-container-padding", () => {
   it("ignores zero-width inline boundaries", () => {
     const result = runRule(
       noCrampedContainerPadding,
-      `const Examples = () => <><span style={{ borderWidth: 0, padding: 4 }}>Zero</span><span style={{ border: "0", padding: 4 }}>None</span></>;`,
+      `const Examples = () => <><div style={{ borderWidth: 0, padding: 4 }}>Zero</div><div style={{ border: "0", padding: 4 }}>None</div></>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -115,9 +123,9 @@ describe("no-cramped-container-padding", () => {
     const result = runRule(
       noCrampedContainerPadding,
       `const Examples = () => <>
-        <span style={{ backgroundColor: "navy", backgroundColor: "transparent", padding: 4 }}>No surface</span>
-        <span style={{ backgroundColor: "navy", padding: 4, padding: 16 }}>Roomy</span>
-        <span style={{ backgroundColor: "transparent", backgroundColor: "navy", padding: 16, padding: 4 }}>Cramped</span>
+        <div style={{ backgroundColor: "navy", backgroundColor: "transparent", padding: 4 }}>No surface</div>
+        <div style={{ backgroundColor: "navy", padding: 4, padding: 16 }}>Roomy</div>
+        <div style={{ backgroundColor: "transparent", backgroundColor: "navy", padding: 16, padding: 4 }}>Cramped</div>
       </>;`,
     );
     expect(result.diagnostics).toHaveLength(1);
@@ -126,7 +134,15 @@ describe("no-cramped-container-padding", () => {
   it("stays conservative when a later spread can override inline geometry", () => {
     const result = runRule(
       noCrampedContainerPadding,
-      `const Example = ({ overrides }) => <span style={{ backgroundColor: "navy", padding: 4, ...overrides }}>Status</span>;`,
+      `const Example = ({ overrides }) => <div style={{ backgroundColor: "navy", padding: 4, ...overrides }}>Status</div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores compact inline surfaces, controls, and opaque components", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <><span className="rounded bg-slate-200 px-2 py-1">Status</span><button className="rounded bg-blue-600 px-3 py-1.5">Save</button><Badge className="border p-1">New</Badge></>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

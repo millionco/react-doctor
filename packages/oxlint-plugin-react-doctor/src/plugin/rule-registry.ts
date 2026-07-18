@@ -213,6 +213,7 @@ import { noConflictingSpringOptions } from "./rules/performance/no-conflicting-s
 import { noControlledInputValueWithoutStateUpdate } from "./rules/correctness/no-controlled-input-value-without-state-update.js";
 import { noCrampedContainerPadding } from "./rules/design/no-cramped-container-padding.js";
 import { noCreateContextInRender } from "./rules/state-and-effects/no-create-context-in-render.js";
+import { noCreateObjectUrlInRender } from "./rules/state-and-effects/no-create-object-url-in-render.js";
 import { noCreateObjectUrlWithoutRevoke } from "./rules/js-performance/no-create-object-url-without-revoke.js";
 import { noCreateRefInFunctionComponent } from "./rules/react-builtins/no-create-ref-in-function-component.js";
 import { noCreateStoreInRender } from "./rules/state-and-effects/no-create-store-in-render.js";
@@ -241,6 +242,7 @@ import { noDocumentStartViewTransition } from "./rules/view-transitions/no-docum
 import { noDocumentWrite } from "./rules/js-performance/no-document-write.js";
 import { noDuplicateStaticIdReference } from "./rules/a11y/no-duplicate-static-id-reference.js";
 import { noDynamicImportPath } from "./rules/bundle-size/no-dynamic-import-path.js";
+import { noDynamicTailwindClassFragment } from "./rules/design/no-dynamic-tailwind-class-fragment.js";
 import { noEagerNewInUseStateInitializer } from "./rules/performance/no-eager-new-in-use-state-initializer.js";
 import { noEaseInMotion } from "./rules/design/no-ease-in-motion.js";
 import { noEffectChain } from "./rules/state-and-effects/no-effect-chain.js";
@@ -248,6 +250,7 @@ import { noEffectEventHandler } from "./rules/state-and-effects/no-effect-event-
 import { noEffectEventInDeps } from "./rules/state-and-effects/no-effect-event-in-deps.js";
 import { noEffectWithFreshDeps } from "./rules/state-and-effects/no-effect-with-fresh-deps.js";
 import { noEffectWrapperDiscardsCallbackCleanupReturn } from "./rules/state-and-effects/no-effect-wrapper-discards-callback-cleanup-return.js";
+import { noEmojiHeadingDecoration } from "./rules/design/no-emoji-heading-decoration.js";
 import { noEmptyCardShell } from "./rules/design/no-empty-card-shell.js";
 import { noEnterSubmitWithoutImeCompositionGuard } from "./rules/correctness/no-enter-submit-without-ime-composition-guard.js";
 import { noEval } from "./rules/security/no-eval.js";
@@ -274,6 +277,7 @@ import { noFullViewportCenteredHero } from "./rules/design/no-full-viewport-cent
 import { noFullViewportWidth } from "./rules/design/no-full-viewport-width.js";
 import { noGenericHandlerNames } from "./rules/architecture/no-generic-handler-names.js";
 import { noGenericMarketingCopy } from "./rules/design/no-generic-marketing-copy.js";
+import { noGenericPurpleBlueIconGradient } from "./rules/design/no-generic-purple-blue-icon-gradient.js";
 import { noGiantComponent } from "./rules/architecture/no-giant-component.js";
 import { noGlobalCssVariableAnimation } from "./rules/performance/no-global-css-variable-animation.js";
 import { noGradientText } from "./rules/design/no-gradient-text.js";
@@ -289,6 +293,7 @@ import { noImgWithoutDimensions } from "./rules/design/no-img-without-dimensions
 import { noImpureCallAtModuleScope } from "./rules/correctness/no-impure-call-at-module-scope.js";
 import { noImpureStateUpdater } from "./rules/state-and-effects/no-impure-state-updater.js";
 import { noIndeterminateAttribute } from "./rules/correctness/no-indeterminate-attribute.js";
+import { noInertPointerAffordance } from "./rules/design/no-inert-pointer-affordance.js";
 import { noInertStickyPosition } from "./rules/design/no-inert-sticky-position.js";
 import { noInitializeState } from "./rules/state-and-effects/no-initialize-state.js";
 import { noInlineBounceEasing } from "./rules/design/no-inline-bounce-easing.js";
@@ -297,6 +302,7 @@ import { noInlineHocOnComponent } from "./rules/architecture/no-inline-hoc-on-co
 import { noInlinePropOnMemoComponent } from "./rules/performance/no-inline-prop-on-memo-component.js";
 import { noInteractiveElementToNoninteractiveRole } from "./rules/a11y/no-interactive-element-to-noninteractive-role.js";
 import { noInvalidProgressRange } from "./rules/a11y/no-invalid-progress-range.js";
+import { noInvisibleFocusControl } from "./rules/design/no-invisible-focus-control.js";
 import { noIsMounted } from "./rules/react-builtins/no-is-mounted.js";
 import { noItalicSerifDisplayHeading } from "./rules/design/no-italic-serif-display-heading.js";
 import { noJsonParseStringifyClone } from "./rules/js-performance/no-json-parse-stringify-clone.js";
@@ -381,6 +387,7 @@ import { noRepeatedEmojiTiles } from "./rules/design/no-repeated-emoji-tiles.js"
 import { noRepeatedGlassSurfaces } from "./rules/design/no-repeated-glass-surfaces.js";
 import { noRepeatedHoverScale } from "./rules/design/no-repeated-hover-scale.js";
 import { noRepeatedKickerLabels } from "./rules/design/no-repeated-kicker-labels.js";
+import { noRepeatedPlaceholderNavigation } from "./rules/design/no-repeated-placeholder-navigation.js";
 import { noRepeatedSectionShells } from "./rules/design/no-repeated-section-shells.js";
 import { noRepeatingGradientDecoration } from "./rules/design/no-repeating-gradient-decoration.js";
 import { noResetAllStateOnPropChange } from "./rules/state-and-effects/no-reset-all-state-on-prop-change.js";
@@ -413,6 +420,7 @@ import { noTightAllCapsHeading } from "./rules/design/no-tight-all-caps-heading.
 import { noTightBodyLeading } from "./rules/design/no-tight-body-leading.js";
 import { noTightDisplayTracking } from "./rules/design/no-tight-display-tracking.js";
 import { noTinyText } from "./rules/design/no-tiny-text.js";
+import { noTinyUppercaseTrackedLabel } from "./rules/design/no-tiny-uppercase-tracked-label.js";
 import { noTransitionAll } from "./rules/performance/no-transition-all.js";
 import { noTransitionedFocusRing } from "./rules/design/no-transitioned-focus-ring.js";
 import { noUnboundedAnimationFrameLoop } from "./rules/performance/no-unbounded-animation-frame-loop.js";
@@ -3049,6 +3057,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-create-object-url-in-render",
+    id: "no-create-object-url-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noCreateObjectUrlInRender,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noCreateObjectUrlInRender.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-create-object-url-without-revoke",
     id: "no-create-object-url-without-revoke",
     source: "react-doctor",
@@ -3386,6 +3406,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-dynamic-tailwind-class-fragment",
+    id: "no-dynamic-tailwind-class-fragment",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noDynamicTailwindClassFragment,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noDynamicTailwindClassFragment.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-eager-new-in-use-state-initializer",
     id: "no-eager-new-in-use-state-initializer",
     source: "react-doctor",
@@ -3474,6 +3506,18 @@ export const reactDoctorRules = [
           ...(noEffectWrapperDiscardsCallbackCleanupReturn.requires ?? []),
         ]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-emoji-heading-decoration",
+    id: "no-emoji-heading-decoration",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noEmojiHeadingDecoration,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noEmojiHeadingDecoration.tags ?? [])])],
     },
   },
   {
@@ -3786,6 +3830,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-generic-purple-blue-icon-gradient",
+    id: "no-generic-purple-blue-icon-gradient",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noGenericPurpleBlueIconGradient,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noGenericPurpleBlueIconGradient.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-giant-component",
     id: "no-giant-component",
     source: "react-doctor",
@@ -3969,6 +4025,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-inert-pointer-affordance",
+    id: "no-inert-pointer-affordance",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noInertPointerAffordance,
+      framework: "global",
+      category: "Accessibility",
+      tags: [...new Set(["design", ...(noInertPointerAffordance.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-inert-sticky-position",
     id: "no-inert-sticky-position",
     source: "react-doctor",
@@ -4068,6 +4136,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(noInvalidProgressRange.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-invisible-focus-control",
+    id: "no-invisible-focus-control",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noInvisibleFocusControl,
+      framework: "global",
+      category: "Accessibility",
+      tags: [...new Set(["design", ...(noInvisibleFocusControl.tags ?? [])])],
     },
   },
   {
@@ -5078,6 +5158,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-repeated-placeholder-navigation",
+    id: "no-repeated-placeholder-navigation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRepeatedPlaceholderNavigation,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noRepeatedPlaceholderNavigation.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-repeated-section-shells",
     id: "no-repeated-section-shells",
     source: "react-doctor",
@@ -5471,6 +5563,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       tags: [...new Set(["design", ...(noTinyText.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-tiny-uppercase-tracked-label",
+    id: "no-tiny-uppercase-tracked-label",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noTinyUppercaseTrackedLabel,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noTinyUppercaseTrackedLabel.tags ?? [])])],
     },
   },
   {

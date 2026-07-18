@@ -1,4 +1,5 @@
 const BORDER_WIDTH_PATTERN = /^border(?:-[trblxy])?(?:-(px|[\d.]+|\[[\d.]+px\]))?$/;
+const CLOSED_BORDER_WIDTH_PATTERN = /^border(?:-(px|[\d.]+|\[[\d.]+px\]))?$/;
 const RING_WIDTH_PATTERN = /^ring(?:-(px|[\d.]+|\[[\d.]+px\]))?$/;
 const SHADOW_GEOMETRY_PATTERN =
   /^shadow(?:-(?:2xl|inner|lg|md|sm|xl|xs)|-\[(?=[^\]]*(?:em|px|rem))[^\]]+\])?$/;
@@ -17,6 +18,13 @@ export const hasVisibleTailwindBorder = (tokens: string[]): boolean =>
     /^(?:border(?:-[trblxy])?-(?:opacity-0|transparent)|border(?:-[trblxy])?-.+\/0)$/.test(token),
   ) && tokens.some((token) => hasPositiveLength(token, BORDER_WIDTH_PATTERN));
 
+export const hasVisibleTailwindClosedBorder = (tokens: string[]): boolean =>
+  !tokens.some((token) =>
+    /^(?:border(?:-[trblxy])?-(?:0|none|opacity-0|transparent)|border(?:-[trblxy])?-.+\/0)$/.test(
+      token,
+    ),
+  ) && tokens.some((token) => hasPositiveLength(token, CLOSED_BORDER_WIDTH_PATTERN));
+
 export const hasVisibleTailwindRing = (tokens: string[]): boolean =>
   !tokens.some((token) => /^(?:ring-(?:opacity-0|transparent)|ring-.+\/0)$/.test(token)) &&
   tokens.some((token) => hasPositiveLength(token, RING_WIDTH_PATTERN));
@@ -31,6 +39,11 @@ export const hasVisibleTailwindShadow = (tokens: string[]): boolean =>
 
 export const hasVisibleTailwindFillOrEdge = (tokens: string[]): boolean =>
   hasVisibleTailwindBorder(tokens) ||
+  hasVisibleTailwindRing(tokens) ||
+  hasVisibleTailwindBackground(tokens);
+
+export const hasVisibleTailwindClosedSurface = (tokens: string[]): boolean =>
+  hasVisibleTailwindClosedBorder(tokens) ||
   hasVisibleTailwindRing(tokens) ||
   hasVisibleTailwindBackground(tokens);
 

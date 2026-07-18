@@ -2,7 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noEmDashInJsxText } from "./no-em-dash-in-jsx-text.js";
 
-const run = (code: string) => runRule(noEmDashInJsxText, code, { filename: "fixture.tsx" });
+const run = (code: string, filename = "fixture.tsx") =>
+  runRule(noEmDashInJsxText, code, { filename });
 
 describe("react-ui/no-em-dash-in-jsx-text — regressions", () => {
   it("does not flag a standalone em dash used as an empty-value placeholder", () => {
@@ -45,6 +46,14 @@ describe("react-ui/no-em-dash-in-jsx-text — regressions", () => {
 
   it("still skips prose em dashes inside excluded typography ancestors", () => {
     const result = run(`const C = () => <code>flag — value</code>;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not apply UI-copy house style to long-form content files", () => {
+    const result = run(
+      `const Entry = () => <p>The library supports canvases — including hybrid SVG scenes — across the rendering pipeline.</p>;`,
+      "/project/docs/src/blog/entries/interoperability.tsx",
+    );
     expect(result.diagnostics).toEqual([]);
   });
 });

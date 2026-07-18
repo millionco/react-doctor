@@ -8,10 +8,19 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const isButtonLikeTagName = (tagName: string): boolean => {
-  if (tagName === "button") return true;
-  if (tagName === "Button") return true;
-  return false;
+  return tagName === "button" || tagName === "Button";
 };
+
+const isPreviousStepControlTagName = (tagName: string): boolean =>
+  isButtonLikeTagName(tagName) || tagName === "a" || tagName === "Link";
+
+const PREVIOUS_STEP_LABELS = new Set(["back", "previous"]);
+
+const getNormalizedLabel = (labelText: string): string =>
+  labelText
+    .toLowerCase()
+    .replace(/[.!?…]+$/, "")
+    .trim();
 
 const collectJsxLabelText = (jsxElementNode: EsTreeNode): string | null => {
   if (!isNodeOfType(jsxElementNode, "JSXElement") && !isNodeOfType(jsxElementNode, "JSXFragment"))
@@ -37,22 +46,55 @@ const collectJsxLabelText = (jsxElementNode: EsTreeNode): string | null => {
           continue;
         }
       }
-      // Bail on dynamic content (interpolation, identifiers).
       return null;
     }
     if (isNodeOfType(childNode, "JSXFragment")) {
-      // Recurse into <>…</> fragments — they're transparent for label purposes.
       const fragmentLabel = collectJsxLabelText(childNode);
       if (fragmentLabel === null) return null;
       collectedFragments.push(fragmentLabel);
       continue;
     }
     if (isNodeOfType(childNode, "JSXElement")) {
-      // Bail on nested elements (icons, spans) — the leading/trailing text alone isn't the full label.
       return null;
     }
   }
   return collectedFragments.join("").trim();
+};
+
+const findEnclosingForm = (node: EsTreeNode): EsTreeNodeOfType<"JSXElement"> | null => {
+  let currentNode = node.parent;
+  while (currentNode) {
+    if (
+      isNodeOfType(currentNode, "JSXElement") &&
+      getOpeningElementTagName(currentNode.openingElement) === "form"
+    ) {
+      return currentNode;
+    }
+    currentNode = currentNode.parent;
+  }
+  return null;
+};
+
+const hasPreviousStepControl = (
+  node: EsTreeNodeOfType<"JSXElement"> | EsTreeNodeOfType<"JSXFragment">,
+): boolean => {
+  for (const childNode of node.children ?? []) {
+    if (isNodeOfType(childNode, "JSXFragment")) {
+      if (hasPreviousStepControl(childNode)) return true;
+      continue;
+    }
+    if (!isNodeOfType(childNode, "JSXElement")) continue;
+    const tagName = getOpeningElementTagName(childNode.openingElement);
+    if (
+      tagName &&
+      isPreviousStepControlTagName(tagName) &&
+      PREVIOUS_STEP_LABELS.has(getNormalizedLabel(collectJsxLabelText(childNode) ?? ""))
+    ) {
+      return true;
+    }
+    if (hasPreviousStepControl(childNode)) return true;
+  }
+  return false;
 };
 
 export const noVagueButtonLabel = defineRule({
@@ -60,8 +102,6 @@ export const noVagueButtonLabel = defineRule({
   title: "Vague button label",
   tags: ["design", "test-noise"],
   severity: "warn",
-  // Default off: subjective design / house-style preference, not a
-  // correctness, performance, or accessibility issue. Opt in to enforce it.
   defaultEnabled: false,
   recommendation:
     'Name the action: "Save changes" instead of "Continue", "Send invite" instead of "Submit". The label is the button\'s accessible name.',
@@ -71,11 +111,12 @@ export const noVagueButtonLabel = defineRule({
       if (!tagName || !isButtonLikeTagName(tagName)) return;
       const labelText = collectJsxLabelText(jsxElementNode);
       if (!labelText) return;
-      const normalizedLabel = labelText
-        .toLowerCase()
-        .replace(/[.!?…]+$/, "")
-        .trim();
+      const normalizedLabel = getNormalizedLabel(labelText);
       if (!VAGUE_BUTTON_LABELS.has(normalizedLabel)) return;
+      if (normalizedLabel === "continue") {
+        const enclosingForm = findEnclosingForm(jsxElementNode);
+        if (enclosingForm && hasPreviousStepControl(enclosingForm)) return;
+      }
       context.report({
         node: jsxElementNode.openingElement ?? jsxElementNode,
         message: `Screen reader users may not know what "${labelText}" does. Use a specific action label.`,

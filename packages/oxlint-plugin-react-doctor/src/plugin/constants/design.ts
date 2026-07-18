@@ -21,6 +21,8 @@ export const COLOR_CHROMA_THRESHOLD = 30;
 
 export const TINY_TEXT_THRESHOLD_PX = 12;
 
+export const TINY_UPPERCASE_TRACKED_LABEL_MAX_PX = 11;
+
 export const MINIMUM_TARGET_SIZE_PX = 24;
 
 // WCAG 2.1 contrast minimums. Normal text needs 4.5:1; "large" text
@@ -99,6 +101,8 @@ export const CENTERED_COPY_MIN_COUNT = 3;
 export const CENTERED_COPY_MIN_CHARACTERS = 48;
 
 export const REPEATED_EMOJI_TILE_MIN_COUNT = 3;
+
+export const GENERIC_ICON_GRADIENT_MAX_SIZE_SPACING_UNITS = 16;
 
 export const EXCESSIVE_MOTION_STAGGER_SECONDS = 0.08;
 
@@ -243,4 +247,4 @@ export const TAILWIND_DISPLAY_TOKENS = new Set([
 
 export const SPACE_AXIS_PATTERN = /(?:^|\s)(?:-)?space-(x|y)-(\d+(?:\.\d+)?|\[[^\]]+\])(?=$|[\s:])/;
 
-export const TRAILING_THREE_PERIOD_ELLIPSIS_PATTERN = /[A-Za-z]\.\.\./;
+export const TRAILING_THREE_PERIOD_ELLIPSIS_PATTERN = /[\p{L}\p{N}]\.\.\./u;

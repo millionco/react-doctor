@@ -6,12 +6,13 @@ import {
 import { defineRule } from "../../utils/define-rule.js";
 import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
 import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
+import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
-import { hasVisibleTailwindFillOrEdge } from "./utils/has-visible-tailwind-fill-or-edge.js";
+import { hasVisibleTailwindClosedSurface } from "./utils/has-visible-tailwind-fill-or-edge.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
@@ -37,6 +38,19 @@ const PADDING_STYLE_PROPERTIES = new Set([
 ]);
 const TAILWIND_PADDING_PATTERN = /^(p[trblesxy]?)-(px|[\d.]+)$/;
 const ARBITRARY_PADDING_PATTERN = /^(p[trblesxy]?)-\[([\d.]+)(px|rem)\]$/;
+const BOUNDED_CONTAINER_TAG_NAMES = new Set([
+  "article",
+  "aside",
+  "div",
+  "fieldset",
+  "footer",
+  "header",
+  "li",
+  "main",
+  "nav",
+  "p",
+  "section",
+]);
 
 const getPaddingPx = (property: EsTreeNode): number | null => {
   const numberValue = getStylePropertyNumberValue(property);
@@ -103,12 +117,13 @@ export const noCrampedContainerPadding = defineRule({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       if (!getStaticJsxText(node).trim()) return;
       const openingElement = node.openingElement;
+      if (!BOUNDED_CONTAINER_TAG_NAMES.has(resolveJsxElementType(openingElement))) return;
       const classNameValue = getStringFromClassNameAttr(openingElement);
       if (classNameValue) {
         const tokens = getUnvariantClassNameTokens(classNameValue);
         const paddingPx = getTailwindPaddingPx(tokens);
         if (
-          hasVisibleTailwindFillOrEdge(tokens) &&
+          hasVisibleTailwindClosedSurface(tokens) &&
           paddingPx !== null &&
           paddingPx < MIN_BOUNDED_CONTAINER_PADDING_PX
         ) {

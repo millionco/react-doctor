@@ -632,6 +632,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-create-object-url-without-revoke": {
     code: "function make(blob) { return URL.createObjectURL(blob); }",
   },
+  "no-create-object-url-in-render": {
+    code: "const Preview = ({ blob }) => { const src = URL.createObjectURL(blob); return <img src={src} />; };",
+  },
   "no-create-ref-in-function-component": {
     code: "import { createRef, useMemo } from 'react';\nconst useDriveItemActions = (item) => {\n  const nameInputRef = useMemo(() => createRef(), []);\n  return { nameInputRef };\n};\nexport default useDriveItemActions;",
   },
@@ -639,7 +642,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: '\n      import { create } from "zustand";\n\n      function App() {\n        const useStore = create((set) => ({ count: 0 }));\n        return null;\n      }\n    ',
   },
   "no-cramped-container-padding": {
-    code: 'const Badge = () => <span className="border rounded p-1">Status</span>;',
+    code: 'const Panel = () => <div className="border rounded p-1">Status</div>;',
   },
   "no-crushed-letter-spacing": {
     code: 'const Heading = () => <h1 style={{ letterSpacing: "-0.12em" }}>Readable heading</h1>;',
@@ -710,6 +713,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-eager-new-in-use-state-initializer": {
     code: 'import { useState } from "react";\nconst Client = () => useState(new AbortController());',
+  },
+  "no-dynamic-tailwind-class-fragment": {
+    code: "const Tile = ({ color }) => <div className={`bg-${color}-500`} />;",
   },
   "no-effect-chain": {
     code: "function Game({ card }) {\n        const [goldCardCount, setGoldCardCount] = useState(0);\n        const [round, setRound] = useState(1);\n        useEffect(() => { if (card.gold) setGoldCardCount(goldCardCount + 1); }, [card]);\n        useEffect(() => { if (goldCardCount > 3) setRound(round + 1); }, [goldCardCount]);\n        return null;\n      }",
@@ -1797,6 +1803,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-inert-sticky-position": {
     code: 'const Header = () => <header className="sticky" />;',
   },
+  "no-inert-pointer-affordance": {
+    code: 'const Card = () => <article className="cursor-pointer">Open</article>;',
+  },
+  "no-tiny-uppercase-tracked-label": {
+    code: 'const Label = () => <span className="text-[10px] uppercase tracking-wide">Recent activity</span>;',
+  },
   "no-invalid-progress-range": {
     code: "const Progress = () => <progress value={11} max={10} />;",
   },
@@ -1827,8 +1839,14 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-focusable-content-in-aria-hidden": {
     code: 'const Hidden = () => <div aria-hidden><button type="button">Save</button></div>;',
   },
+  "no-generic-purple-blue-icon-gradient": {
+    code: 'const Icon = () => <div className="size-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex"><BotIcon /></div>;',
+  },
   "no-hover-only-reveal": {
     code: 'const Action = () => <button className="opacity-0 hover:opacity-100" />;',
+  },
+  "no-invisible-focus-control": {
+    code: 'const Select = () => <select className="absolute inset-0 opacity-0"><option>UTC</option></select>;',
   },
   "no-multiple-unlabeled-navigation-landmarks": {
     code: "const Page = () => <><nav /><nav /></>;",
@@ -1884,6 +1902,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-repeated-emoji-tiles": {
     code: 'const Page = () => <main><span className="size-12 rounded-xl bg-blue-100">🚀</span><span className="size-12 rounded-xl bg-green-100">🔒</span><span className="size-12 rounded-xl bg-amber-100">⚡</span></main>;',
   },
+  "no-repeated-placeholder-navigation": {
+    code: 'const Nav = () => <nav><a href="#">Home</a><a href="#">Settings</a></nav>;',
+  },
   "no-repeated-glass-surfaces": {
     code: 'const Page = () => <main><div className="rounded-xl border bg-white/10 backdrop-blur-xl" /><div className="rounded-xl border bg-white/10 backdrop-blur-xl" /><div className="rounded-xl border bg-white/10 backdrop-blur-xl" /></main>;',
   },
@@ -1895,6 +1916,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-empty-card-shell": {
     code: 'const Empty = () => <section className="rounded-xl border bg-white p-6" />;',
+  },
+  "no-emoji-heading-decoration": {
+    code: "const Heading = () => <h2>🎧 Audio formats</h2>;",
   },
   "no-mixed-icon-libraries": {
     code: 'import { Search } from "lucide-react"; import { HomeIcon } from "@heroicons/react/24/outline"; const Toolbar = () => <><Search /><HomeIcon /></>;',

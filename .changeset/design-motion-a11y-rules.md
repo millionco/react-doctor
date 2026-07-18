@@ -102,6 +102,15 @@ Add `react-doctor design [directory]` for a focused UI audit. The command runs t
 - **`no-common-root-font`** — opt-in detection for page roots that explicitly select a commonly reused UI font.
 - **`no-default-warm-page-surface`** — opt-in detection for full-page warm-neutral Tailwind surfaces.
 - **`no-default-purple-page-gradient`** — opt-in detection for full-page purple-to-blue or purple-to-cyan Tailwind gradients.
+- **`no-generic-purple-blue-icon-gradient`** — opt-in detection for compact, rounded purple-to-blue gradient tiles used as generic icons or avatars.
+- **`no-dynamic-tailwind-class-fragment`** — opt-in detection for Tailwind utilities assembled across runtime template interpolations, which the Tailwind source scanner cannot discover as complete class names.
+- **`no-emoji-heading-decoration`** — opt-in detection for decorative emoji embedded in static native heading copy while preserving dynamic content, icon components, and non-product example paths.
+- **`no-inert-pointer-affordance`** — opt-in detection for noninteractive native elements that advertise clickability with `cursor-pointer` but have no local or delegated interaction signal.
+- **`no-repeated-placeholder-navigation`** — opt-in detection for navigation containers that repeat bare `href="#"` destinations while preserving real fragment links and isolated scroll-to-top anchors.
+- **`no-tiny-uppercase-tracked-label`** — opt-in detection for static labels that combine an explicit font size of 11 px or less with uppercase transformation and non-default tracking, while preserving code-like values, dynamic copy, responsive-only styles, and readable sizes.
+
+Tailwind-specific design detectors now require a detected Tailwind dependency, and JSX-only design detectors require React. The newest visual heuristics also abstain when spreads, custom-component forwarding, later utility precedence, or semantic emoji placement make the verdict uncertain.
+
 - **`no-flat-page-type-scale`** — opt-in page-level analysis for three or more explicit text sizes compressed into less than a 2× range.
 - **`no-monotonous-page-spacing`** — opt-in page-level analysis for a dominant spacing value repeated across a sufficiently large static sample.
 - **`no-generic-marketing-copy`** — opt-in detection for broad promotional phrases in static page or article copy.
@@ -114,6 +123,7 @@ Add `react-doctor design [directory]` for a focused UI audit. The command runs t
 - **`no-undersized-icon-button`**: opt-in detection for icon-only buttons with a provable target below 24 px on either axis.
 - **`no-layout-shifting-interaction-state`**: opt-in detection for interaction utilities that change layout geometry or font metrics.
 - **`no-hover-only-reveal`**: opt-in detection for content revealed on hover without an equivalent keyboard-focus state.
+- **`no-invisible-focus-control`**: opt-in detection for fully transparent native controls whose proxy surface provides no visible keyboard-focus treatment.
 - **`no-fixed-inside-transformed-ancestor`**: opt-in detection for fixed descendants whose static ancestor establishes a containing block.
 - **`no-decorative-blur-orb`** — opt-in detection for empty, absolutely positioned, strongly blurred circular color fields used as generic decoration.
 - **`no-repeated-glass-surfaces`** — opt-in page-level detection for three or more complete translucent, blurred, bordered, and rounded surface treatments.
@@ -144,6 +154,14 @@ Add `react-doctor design [directory]` for a focused UI audit. The command runs t
 - **`no-uppercase-tracked-navigation-label`** — opt-in detection for static navigation labels combining uppercase and expanded tracking.
 - **`require-scale-reveal-transform-origin`** — opt-in detection for proven Motion reveal elements that animate scale without a static transform origin.
 - **`no-gradient-text`** (extended) — now recognizes Tailwind v4 linear, radial, conic, numeric-angle, and arbitrary gradient background utilities without combining utilities across variants.
+- **`design-no-three-period-ellipsis`** (extended) — now checks static placeholders, titles, alternative text, and ARIA labels in addition to JSX text.
+- **`design-no-vague-button-label`** (narrowed) — preserves conventional Continue navigation when the same form proves a Back or Previous action.
+- **`design-no-em-dash-in-jsx-text`** (narrowed) — skips files in conventional long-form documentation, article, blog, content, and post paths.
+- **`no-cramped-container-padding`** (narrowed) — no longer treats a one-sided table or layout divider as a closed container around text.
+
+**Render lifecycle**
+
+- **`no-create-object-url-in-render`** — detects global `URL.createObjectURL()` calls in component or custom-hook render, including memo and state initializers, where discarded renders can leak disposable browser resources.
 
 **HTML and component contracts**
 

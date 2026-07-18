@@ -60,6 +60,7 @@ export interface RunUpstreamParityOptions {
    * `recommended` config and asserts no diagnostics.
    */
   assertNoneOfPortedRules?: boolean;
+  reactMajorVersion?: number;
 }
 
 const PORTED_RULE_IDS: ReadonlyArray<string> = [
@@ -75,10 +76,15 @@ const PORTED_RULE_IDS: ReadonlyArray<string> = [
 
 const collectAnyPortedRuleHits = async (
   projectDir: string,
+  reactMajorVersion?: number,
 ): Promise<Array<{ rule: string; message: string }>> => {
   const aggregated: Array<{ rule: string; message: string }> = [];
   for (const ruleId of PORTED_RULE_IDS) {
-    const hits = await collectRuleHits(projectDir, ruleId);
+    const hits = await collectRuleHits(
+      projectDir,
+      ruleId,
+      reactMajorVersion === undefined ? {} : { reactMajorVersion },
+    );
     for (const hit of hits) {
       aggregated.push({ rule: ruleId, message: hit.message });
     }
@@ -108,10 +114,13 @@ export const runUpstreamParity = (
           `v-${validCase.idx}-${slugify(validCase.name)}`,
           {
             files: { "src/Component.tsx": wrapAsTsx(validCase.code) },
+            ...(options.reactMajorVersion === undefined
+              ? {}
+              : { reactVersion: `^${options.reactMajorVersion}.0.0` }),
           },
         );
         if (options.assertNoneOfPortedRules) {
-          const hits = await collectAnyPortedRuleHits(projectDir);
+          const hits = await collectAnyPortedRuleHits(projectDir, options.reactMajorVersion);
           if (hits.length !== 0) {
             fs.appendFileSync(
               failureLogPath,
@@ -124,7 +133,13 @@ export const runUpstreamParity = (
           expect(hits).toHaveLength(0);
           return;
         }
-        const hits = await collectRuleHits(projectDir, ruleIdToFilter);
+        const hits = await collectRuleHits(
+          projectDir,
+          ruleIdToFilter,
+          options.reactMajorVersion === undefined
+            ? {}
+            : { reactMajorVersion: options.reactMajorVersion },
+        );
         if (hits.length !== 0) {
           fs.appendFileSync(
             failureLogPath,
@@ -146,9 +161,18 @@ export const runUpstreamParity = (
           `i-${invalidCase.idx}-${slugify(invalidCase.name)}`,
           {
             files: { "src/Component.tsx": wrapAsTsx(invalidCase.code) },
+            ...(options.reactMajorVersion === undefined
+              ? {}
+              : { reactVersion: `^${options.reactMajorVersion}.0.0` }),
           },
         );
-        const hits = await collectRuleHits(projectDir, ruleIdToFilter);
+        const hits = await collectRuleHits(
+          projectDir,
+          ruleIdToFilter,
+          options.reactMajorVersion === undefined
+            ? {}
+            : { reactMajorVersion: options.reactMajorVersion },
+        );
         if (hits.length !== (invalidCase.errors ?? 1)) {
           fs.appendFileSync(
             failureLogPath,

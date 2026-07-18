@@ -669,6 +669,7 @@ export class Git extends Context.Service<
 
           const diff = yield* runGit(input.directory, [
             "diff",
+            "--no-ext-diff",
             "-z",
             "--name-only",
             "--diff-filter=ACMR",
@@ -760,6 +761,7 @@ export class Git extends Context.Service<
             if (resolvedCurrentBranch !== null && resolvedCurrentBranch === baseBranch) {
               const uncommitted = yield* runGit(directory, [
                 "diff",
+                "--no-ext-diff",
                 "-z",
                 "--name-only",
                 "--diff-filter=ACMR",
@@ -788,6 +790,7 @@ export class Git extends Context.Service<
 
             const diff = yield* runGit(directory, [
               "diff",
+              "--no-ext-diff",
               "-z",
               "--name-only",
               "--diff-filter=ACMR",
@@ -811,6 +814,7 @@ export class Git extends Context.Service<
         stagedFilePaths: (directory) =>
           runGit(directory, [
             "diff",
+            "--no-ext-diff",
             "--cached",
             "-z",
             "--name-only",
@@ -884,6 +888,7 @@ export class Git extends Context.Service<
             if (baseRef !== undefined && !isSafeGitRevision(baseRef)) return null;
             const result = yield* runGit(directory, [
               "diff",
+              "--no-ext-diff",
               "--unified=0",
               "--diff-filter=ACMR",
               "--relative",

@@ -1,6 +1,6 @@
 import os from "node:os";
 import { describe, expect, it } from "vite-plus/test";
-import { scrubSensitivePaths } from "../src/cli/utils/scrub-sensitive-text.js";
+import { scrubSensitivePaths } from "@react-doctor/core";
 
 describe("scrubSensitivePaths", () => {
   it("replaces the current user's home directory with ~", () => {

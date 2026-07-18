@@ -18,7 +18,92 @@ describe("performance/rendering-usetransition-loading — regressions", () => {
       `function C() { const [isLoading, setIsLoading] = useState(false); const toggle = () => { setIsLoading(true); }; return <button onClick={toggle}>{isLoading ? "..." : "go"}</button>; }`,
     );
     expect(result.parseErrors).toEqual([]);
+    expect(
+      result.diagnostics.some((diagnostic) => diagnostic.message.includes('"isLoading"')),
+    ).toBe(true);
+  });
+
+  it("stays silent when FileReader success and error callbacks finish the loading state", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function Upload() { const [isLoading, setIsLoading] = useState(false); const handleFile = (file) => { setIsLoading(true); const reader = new FileReader(); reader.onload = () => { setIsLoading(false); setText(reader.result); }; reader.onerror = () => { setIsLoading(false); setError(reader.error); }; reader.readAsText(file); }; return <button onClick={() => handleFile(file)}>{isLoading ? "Reading" : "Upload"}</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for the Tracecat FileReader shape with useCallback completion helpers", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `import { useCallback, useState } from "react"; function Upload() { const [isLoading, setIsLoading] = useState(false); const clearLoadingStatus = useCallback(() => { setIsLoading(false); setFilename(null); }, []); const failRead = useCallback(() => { setError("read failed"); clearLoadingStatus(); }, [clearLoadingStatus]); const handleFile = useCallback((file) => { setIsLoading(true); let reader; try { reader = new FileReader(); } catch { failRead(); return; } reader.onload = () => { setText(reader.result); clearLoadingStatus(); }; reader.onerror = () => { failRead(); }; reader.readAsText(file); }, [clearLoadingStatus, failRead]); return <button onClick={() => handleFile(file)}>{isLoading ? "Reading" : "Upload"}</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags FileReader loading without an error completion", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function Upload() { const [isLoading, setIsLoading] = useState(false); const handleFile = (file) => { setIsLoading(true); const reader = new FileReader(); reader.onload = () => setIsLoading(false); reader.readAsText(file); }; return <button onClick={() => handleFile(file)}>{isLoading ? "Reading" : "Upload"}</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags FileReader loading without a success completion", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function Upload() { const [isLoading, setIsLoading] = useState(false); const handleFile = (file) => { setIsLoading(true); const reader = new FileReader(); reader.onerror = () => setIsLoading(false); reader.readAsText(file); }; return <button onClick={() => handleFile(file)}>{isLoading ? "Reading" : "Upload"}</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags callback properties on an unrelated local object", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function Upload() { const [isLoading, setIsLoading] = useState(false); const handleFile = (file) => { setIsLoading(true); const reader = createReader(); reader.onload = () => setIsLoading(false); reader.onerror = () => setIsLoading(false); reader.readAsText(file); }; return <button onClick={() => handleFile(file)}>{isLoading ? "Reading" : "Upload"}</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a locally shadowed FileReader constructor", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function Upload({ FileReader }) { const [isLoading, setIsLoading] = useState(false); const handleFile = (file) => { setIsLoading(true); const reader = new FileReader(); reader.onload = () => setIsLoading(false); reader.onerror = () => setIsLoading(false); reader.readAsText(file); }; return <button onClick={() => handleFile(file)}>{isLoading ? "Reading" : "Upload"}</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a FileReader callback overwritten before reading starts", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function Upload() { const [isLoading, setIsLoading] = useState(false); const handleFile = (file) => { setIsLoading(true); const reader = new FileReader(); reader.onload = () => setIsLoading(false); reader.onerror = () => setIsLoading(false); reader.onerror = reportError; reader.readAsText(file); }; return <button onClick={() => handleFile(file)}>{isLoading ? "Reading" : "Upload"}</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags FileReader callbacks installed after reading starts", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function Upload() { const [isLoading, setIsLoading] = useState(false); const handleFile = (file) => { setIsLoading(true); const reader = new FileReader(); reader.readAsText(file); reader.onload = () => setIsLoading(false); reader.onerror = () => setIsLoading(false); }; return <button onClick={() => handleFile(file)}>{isLoading ? "Reading" : "Upload"}</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags FileReader callbacks that clear a different loading state", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function Upload() { const [isLoading, setIsLoading] = useState(false); const [isPreviewLoading, setIsPreviewLoading] = useState(false); const handleFile = (file) => { setIsLoading(true); const reader = new FileReader(); reader.onload = () => setIsPreviewLoading(false); reader.onerror = () => setIsPreviewLoading(false); reader.readAsText(file); }; return <button onClick={() => handleFile(file)}>{isLoading ? "Reading" : "Upload"}</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(
+      result.diagnostics.some((diagnostic) => diagnostic.message.includes('"isLoading"')),
+    ).toBe(true);
   });
 
   // FN-critical anchor (algolia/react-instantsearch useAnswers):

@@ -6,6 +6,7 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 export const resolveConstIdentifierAlias = (
   identifier: EsTreeNode,
   scopes: ScopeAnalysis,
+  allowPatternBinding = false,
 ): SymbolDescriptor | null => {
   if (!isNodeOfType(identifier, "Identifier") && !isNodeOfType(identifier, "JSXIdentifier")) {
     return null;
@@ -16,10 +17,12 @@ export const resolveConstIdentifierAlias = (
     if (
       visitedSymbolIds.has(symbol.id) ||
       !symbol.initializer ||
-      !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
-      symbol.declarationNode.id !== symbol.bindingIdentifier
+      !isNodeOfType(symbol.declarationNode, "VariableDeclarator")
     ) {
       return null;
+    }
+    if (symbol.declarationNode.id !== symbol.bindingIdentifier) {
+      return allowPatternBinding ? symbol : null;
     }
     visitedSymbolIds.add(symbol.id);
     const initializer = stripParenExpression(symbol.initializer);

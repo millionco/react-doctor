@@ -511,7 +511,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     filePath: "src/components/save-button.tsx",
   },
   "no-adjust-state-on-prop-change": {
-    code: 'function Field({ value }) {\n        const [draft, setDraft] = useState("");\n        useEffect(() => {\n          setDraft(value);\n        }, [value]);\n        return <input value={draft} />;\n      }',
+    code: "function List({ items }) {\n        const [selection, setSelection] = useState(null);\n        useEffect(() => {\n          setSelection(null);\n        }, [items]);\n        return <div>{selection}</div>;\n      }",
   },
   "no-aria-hidden-on-focusable": {
     code: 'export const A = () => <button aria-hidden={true} type="button">x</button>;',
@@ -810,6 +810,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-react-dom-deprecated-apis": {
     code: 'import { render } from "react-dom";\nrender(null, document.getElementById("root"));',
+  },
+  "no-ref-callback-cleanup-before-react-19": {
+    code: "const Component = ({ release }) => <div ref={(node) => () => release(node)} />;",
+    forceJsx: true,
   },
   "no-react19-deprecated-apis": {
     code: 'import * as React from "react";\nconst Button = React.createFactory("button");\nvoid Button;',

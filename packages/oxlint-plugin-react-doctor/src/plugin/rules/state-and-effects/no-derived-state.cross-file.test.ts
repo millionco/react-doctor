@@ -82,13 +82,29 @@ function List({ items }) {
   it.each([
     {
       dependencies: "[value]",
+      diagnosticCount: 0,
       name: "no-adjust-state-on-prop-change",
       rule: noAdjustStateOnPropChange,
     },
-    { dependencies: "[value]", name: "no-derived-state", rule: noDerivedState },
-    { dependencies: "[value]", name: "no-derived-state-effect", rule: noDerivedStateEffect },
-    { dependencies: "[]", name: "no-initialize-state", rule: noInitializeState },
-  ])("shares imported helper provenance with $name", ({ dependencies, rule }) => {
+    {
+      dependencies: "[value]",
+      diagnosticCount: 1,
+      name: "no-derived-state",
+      rule: noDerivedState,
+    },
+    {
+      dependencies: "[value]",
+      diagnosticCount: 1,
+      name: "no-derived-state-effect",
+      rule: noDerivedStateEffect,
+    },
+    {
+      dependencies: "[]",
+      diagnosticCount: 1,
+      name: "no-initialize-state",
+      rule: noInitializeState,
+    },
+  ])("shares imported helper provenance with $name", ({ dependencies, diagnosticCount, rule }) => {
     writeFile("src/derive-label.ts", `export const deriveLabel = (value) => value.trim();\n`);
     const result = runConsumer(
       `
@@ -104,7 +120,7 @@ function Field({ value }) {
       rule,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
   });
 
   it.each([

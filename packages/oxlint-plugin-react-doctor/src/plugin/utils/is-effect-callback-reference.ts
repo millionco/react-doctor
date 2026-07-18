@@ -1,10 +1,13 @@
-import { EFFECT_HOOK_NAMES } from "../constants/react.js";
+import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
-import { isHookCall } from "./is-hook-call.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isReactEffectHookCall } from "./is-react-effect-hook-call.js";
 
-export const isEffectCallbackReference = (identifier: EsTreeNode): boolean => {
+export const isEffectCallbackReference = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   let callbackValue = findTransparentExpressionRoot(identifier);
   while (callbackValue.parent) {
     const parent = callbackValue.parent;
@@ -26,6 +29,6 @@ export const isEffectCallbackReference = (identifier: EsTreeNode): boolean => {
   return Boolean(
     isNodeOfType(callExpression, "CallExpression") &&
     callExpression.arguments[0] === callbackValue &&
-    isHookCall(callExpression, EFFECT_HOOK_NAMES),
+    isReactEffectHookCall(callExpression, scopes),
   );
 };

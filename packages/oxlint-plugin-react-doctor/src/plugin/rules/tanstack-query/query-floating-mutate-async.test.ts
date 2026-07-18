@@ -149,6 +149,50 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an awaited mutateAsync rejection in a discarded async event handler", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const view = <button onClick={async () => {
+         await mutation.mutateAsync(payload);
+       }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an awaited mutateAsync rejection caught inside an async event handler", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const view = <button onClick={async () => {
+         try {
+           await mutation.mutateAsync(payload);
+         } catch (error) {
+           report(error);
+         }
+       }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes aliased React effect imports", () => {
+    const result = runMutationRule(
+      `import { useEffect as runEffect } from "react";
+       const mutation = useMutation(options);
+       const callback = () => mutation.mutateAsync(payload);
+       runEffect(callback, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a local effect-like host handles the returned rejection", () => {
+    const result = runMutationRule(
+      `const useEffect = (callback) => callback().catch(handleError);
+       const mutation = useMutation(options);
+       const callback = () => mutation.mutateAsync(payload);
+       useEffect(callback);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it.each([
     ["conditional consequent", "enabled ? effectCallback : fallback"],
     ["conditional alternate", "enabled ? fallback : effectCallback"],
@@ -303,6 +347,44 @@ describe("query-floating-mutate-async", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);
        const promise = (prepare(), mutation.mutateAsync(payload));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags discarded rejection-forwarding Promise wrappers", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       Promise.resolve(mutation.mutateAsync(first));
+       Promise.all([mutation.mutateAsync(second)]);
+       Promise.race([mutation.mutateAsync(third)]);
+       Promise.any([mutation.mutateAsync(fourth)]);`,
+    );
+    expect(result.diagnostics).toHaveLength(4);
+  });
+
+  it("accepts handled rejection-forwarding Promise wrappers", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const handleError = (error) => report(error);
+       await Promise.resolve(mutation.mutateAsync(first));
+       Promise.all([mutation.mutateAsync(second)]).catch(handleError);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags promises returned from a discarded map result", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       items.map((item) => mutation.mutateAsync(item));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps promises reachable through a consumed map result", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const requests = items.map((item) => mutation.mutateAsync(item));
+       await Promise.all(requests);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

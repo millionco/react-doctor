@@ -22,6 +22,83 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("recognizes aliased React effect imports", () => {
+    const result = runMutationReadRule(
+      `import { useEffect as runEffect } from "react";
+       const getUser = useMutation(options);
+       runEffect(() => getUser.mutate(userId), [userId]);
+       const view = getUser.data?.name;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a local effect-like function", () => {
+    const result = runMutationReadRule(
+      `const useEffect = (callback) => callback();
+       const getUser = useMutation(options);
+       useEffect(() => getUser.mutate(userId));
+       const view = getUser.data?.name;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("detects mutation calls through deferred method bindings", () => {
+    const destructured = runMutationReadRule(
+      `const getUser = useMutation(options);
+       const { mutate } = getUser;
+       useEffect(() => mutate(userId), [userId]);
+       const view = getUser.data?.name;`,
+    );
+    const memberAlias = runMutationReadRule(
+      `const getUser = useMutation(options);
+       const requestUser = getUser.mutate;
+       useEffect(() => requestUser(userId), [userId]);
+       const view = getUser.data?.name;`,
+    );
+    expect(destructured.diagnostics).toHaveLength(1);
+    expect(memberAlias.diagnostics).toHaveLength(1);
+  });
+
+  it("detects response consumption in per-call success options", () => {
+    const result = runMutationReadRule(
+      `const getUser = useMutation(options);
+       useEffect(() => {
+         getUser.mutate(userId, { onSuccess: (data) => setUser(data) });
+       }, [userId]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("detects response consumption in mutation settled options", () => {
+    const result = runMutationReadRule(
+      `const getUser = useMutation({
+         mutationFn: fetchUser,
+         onSettled: (data) => setUser(data),
+       });
+       useEffect(() => getUser.mutate(userId), [userId]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("uses the mutation function name as read intent", () => {
+    const result = runMutationReadRule(
+      `const mutation = useMutation({ mutationFn: fetchUser });
+       useEffect(() => mutation.mutate(userId), [userId]);
+       const view = mutation.data?.name;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not infer read intent from an opaque options binding", () => {
+    const result = runMutationReadRule(
+      `import { fetchMutationOptions } from "./mutation-options";
+       const mutation = useMutation(fetchMutationOptions);
+       useEffect(() => mutation.mutate(userId), [userId]);
+       const view = mutation.data?.name;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags whole-result member usage", () => {
     const result = runMutationReadRule(
       `function Component() {

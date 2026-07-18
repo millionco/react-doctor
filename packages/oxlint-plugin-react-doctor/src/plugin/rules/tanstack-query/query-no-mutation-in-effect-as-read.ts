@@ -1,5 +1,4 @@
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
-import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -7,23 +6,24 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
 import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isEffectCallbackReference } from "../../utils/is-effect-callback-reference.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isReactEffectHookCall } from "../../utils/is-react-effect-hook-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
-import { resolveTanstackQueryHookNameFromInitializer } from "./utils/resolve-tanstack-query-hook-name.js";
+import { resolveTanstackMutationHookNameFromInitializer } from "./utils/resolve-tanstack-query-hook-name.js";
 
 interface EffectInvocation {
   callback: EsTreeNode;
@@ -145,7 +145,7 @@ const collectEffectInvocations = (
     const functionSymbols = collectConstAliasSymbols(functionSymbol, context.scopes);
     for (const symbol of functionSymbols) {
       for (const reference of symbol.references) {
-        if (isEffectCallbackReference(reference.identifier)) {
+        if (isEffectCallbackReference(reference.identifier, context.scopes)) {
           return [{ callback: functionNode, pathNodes: [node] }];
         }
       }
@@ -172,14 +172,14 @@ const collectEffectInvocations = (
   if (
     isNodeOfType(enclosingCall, "CallExpression") &&
     enclosingCall.arguments[0] === functionNode &&
-    isHookCall(enclosingCall, EFFECT_HOOK_NAMES)
+    isReactEffectHookCall(enclosingCall, context.scopes)
   ) {
     return [{ callback: functionNode, pathNodes: [node] }];
   }
   return [];
 };
 
-const isInEffectDependencyArray = (node: EsTreeNode): boolean => {
+const isInEffectDependencyArray = (node: EsTreeNode, context: RuleContext): boolean => {
   let current: EsTreeNode = node;
   let parent = current.parent;
   while (parent && !isFunctionLike(parent)) {
@@ -188,7 +188,7 @@ const isInEffectDependencyArray = (node: EsTreeNode): boolean => {
       return Boolean(
         isNodeOfType(callExpression, "CallExpression") &&
         callExpression.arguments[1] === parent &&
-        isHookCall(callExpression, EFFECT_HOOK_NAMES),
+        isReactEffectHookCall(callExpression, context.scopes),
       );
     }
     current = parent;
@@ -272,7 +272,7 @@ const responseExpressionIsConsumed = (
   ) {
     return false;
   }
-  if (isInEffectDependencyArray(expression) || isGuardOnlyReference(expression, context)) {
+  if (isInEffectDependencyArray(expression, context) || isGuardOnlyReference(expression, context)) {
     return false;
   }
   let expressionRoot = findTransparentExpressionRoot(expression);
@@ -341,6 +341,21 @@ const getMutationCalls = (
   context: RuleContext,
 ): EsTreeNodeOfType<"CallExpression">[] => {
   const calls: EsTreeNodeOfType<"CallExpression">[] = [];
+  const collectBindingCalls = (binding: EsTreeNodeOfType<"Identifier">): void => {
+    const symbol = context.scopes.symbolFor(binding);
+    if (!symbol) return;
+    for (const aliasSymbol of collectConstAliasSymbols(symbol, context.scopes)) {
+      for (const reference of aliasSymbol.references) {
+        const callExpression = reference.identifier.parent;
+        if (
+          isNodeOfType(callExpression, "CallExpression") &&
+          callExpression.callee === reference.identifier
+        ) {
+          calls.push(callExpression);
+        }
+      }
+    }
+  };
   if (isNodeOfType(declarator.id, "Identifier")) {
     const resultSymbol = context.scopes.symbolFor(declarator.id);
     if (!resultSymbol) return calls;
@@ -355,12 +370,35 @@ const getMutationCalls = (
         }
         const methodName = getStaticPropertyName(memberExpression);
         const callExpression = memberExpression.parent;
+        if (methodName !== "mutate" && methodName !== "mutateAsync") continue;
         if (
-          (methodName === "mutate" || methodName === "mutateAsync") &&
           isNodeOfType(callExpression, "CallExpression") &&
           callExpression.callee === memberExpression
         ) {
           calls.push(callExpression);
+          continue;
+        }
+        if (
+          isNodeOfType(callExpression, "VariableDeclarator") &&
+          callExpression.init === memberExpression &&
+          isNodeOfType(callExpression.id, "Identifier")
+        ) {
+          collectBindingCalls(callExpression.id);
+        }
+      }
+      for (const reference of symbol.references) {
+        const aliasDeclarator = reference.identifier.parent;
+        if (
+          !isNodeOfType(aliasDeclarator, "VariableDeclarator") ||
+          aliasDeclarator.init !== reference.identifier ||
+          !isNodeOfType(aliasDeclarator.id, "ObjectPattern")
+        ) {
+          continue;
+        }
+        for (const propertyName of ["mutate", "mutateAsync"]) {
+          for (const binding of getPatternBindings(aliasDeclarator.id, propertyName)) {
+            collectBindingCalls(binding);
+          }
         }
       }
     }
@@ -368,19 +406,7 @@ const getMutationCalls = (
   }
   for (const propertyName of ["mutate", "mutateAsync"]) {
     for (const binding of getPatternBindings(declarator.id, propertyName)) {
-      const symbol = context.scopes.symbolFor(binding);
-      if (!symbol) continue;
-      for (const aliasSymbol of collectConstAliasSymbols(symbol, context.scopes)) {
-        for (const reference of aliasSymbol.references) {
-          const callExpression = reference.identifier.parent;
-          if (
-            isNodeOfType(callExpression, "CallExpression") &&
-            callExpression.callee === reference.identifier
-          ) {
-            calls.push(callExpression);
-          }
-        }
-      }
+      collectBindingCalls(binding);
     }
   }
   return calls;
@@ -425,34 +451,35 @@ const thenHandlerConsumesResponse = (
 };
 
 const resolveOptionsObject = (
-  initializer: EsTreeNodeOfType<"CallExpression">,
+  optionsExpression: EsTreeNode | null | undefined,
   context: RuleContext,
 ): EsTreeNodeOfType<"ObjectExpression"> | null => {
-  const optionsArgument = initializer.arguments[0];
-  if (!optionsArgument) return null;
-  const options = stripParenExpression(optionsArgument);
+  if (!optionsExpression) return null;
+  const options = stripParenExpression(optionsExpression);
   if (isNodeOfType(options, "ObjectExpression")) return options;
   if (!isNodeOfType(options, "Identifier")) return null;
-  const symbol = context.scopes.symbolFor(options);
+  const symbol = resolveConstIdentifierAlias(options, context.scopes);
   if (!symbol?.initializer) return null;
   const resolved = stripParenExpression(symbol.initializer);
   return isNodeOfType(resolved, "ObjectExpression") ? resolved : null;
 };
 
-const onSuccessConsumesResponse = (
-  initializer: EsTreeNodeOfType<"CallExpression">,
+const optionsConsumeResponse = (
+  optionsExpression: EsTreeNode | null | undefined,
   context: RuleContext,
 ): boolean => {
-  const options = resolveOptionsObject(initializer, context);
+  const options = resolveOptionsObject(optionsExpression, context);
   if (!options) return false;
   for (const property of options.properties) {
     if (
       !isNodeOfType(property, "Property") ||
-      getStaticPropertyKeyName(property, { allowComputedString: true }) !== "onSuccess"
+      !["onSettled", "onSuccess"].includes(
+        getStaticPropertyKeyName(property, { allowComputedString: true }) ?? "",
+      )
     ) {
       continue;
     }
-    return handlerConsumesResponse(property.value, context);
+    if (handlerConsumesResponse(property.value, context)) return true;
   }
   return false;
 };
@@ -678,14 +705,54 @@ const mutationResultIsConsumedInCall = (
   if (awaitedExpression) {
     return responseExpressionIsConsumed(awaitedExpression, context, new Set());
   }
-  return thenHandlerConsumesResponse(callExpression, context);
+  return (
+    thenHandlerConsumesResponse(callExpression, context) ||
+    optionsConsumeResponse(callExpression.arguments[1], context)
+  );
+};
+
+const getMutationFunctionIntentName = (
+  initializer: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): string | null => {
+  const options = resolveOptionsObject(initializer.arguments[0], context);
+  if (options) {
+    for (const property of options.properties) {
+      if (
+        !isNodeOfType(property, "Property") ||
+        getStaticPropertyKeyName(property, { allowComputedString: true }) !== "mutationFn"
+      ) {
+        continue;
+      }
+      const mutationFunction = stripParenExpression(property.value);
+      if (isNodeOfType(mutationFunction, "Identifier")) return mutationFunction.name;
+      if (isNodeOfType(mutationFunction, "MemberExpression")) {
+        return getStaticPropertyName(mutationFunction);
+      }
+      return isFunctionLike(mutationFunction) ? getFunctionBindingName(mutationFunction) : null;
+    }
+    return null;
+  }
+  const mutationFunction = initializer.arguments[0];
+  if (!mutationFunction) return null;
+  const candidate = stripParenExpression(mutationFunction);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = context.scopes.symbolFor(candidate);
+    if (symbol?.kind === "function") return candidate.name;
+    return symbol?.initializer && isFunctionLike(stripParenExpression(symbol.initializer))
+      ? candidate.name
+      : null;
+  }
+  return isFunctionLike(candidate) ? getFunctionBindingName(candidate) : null;
 };
 
 const declaratorHasReadIntent = (
   declarator: EsTreeNodeOfType<"VariableDeclarator">,
   initializer: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
 ): boolean => {
   if (hasReadIntentName(getCalleeName(initializer))) return true;
+  if (hasReadIntentName(getMutationFunctionIntentName(initializer, context))) return true;
   if (isNodeOfType(declarator.id, "Identifier")) return hasReadIntentName(declarator.id.name);
   return ["mutate", "mutateAsync"].some((propertyName) =>
     getPatternBindings(declarator.id, propertyName).some((binding) =>
@@ -708,9 +775,9 @@ export const queryNoMutationInEffectAsRead = defineRule({
       const initializer = stripParenExpression(node.init);
       if (
         !isNodeOfType(initializer, "CallExpression") ||
-        resolveTanstackQueryHookNameFromInitializer(initializer, context.scopes) !==
+        resolveTanstackMutationHookNameFromInitializer(initializer, context.scopes) !==
           "useMutation" ||
-        !declaratorHasReadIntent(node, initializer)
+        !declaratorHasReadIntent(node, initializer, context)
       ) {
         return;
       }
@@ -718,7 +785,7 @@ export const queryNoMutationInEffectAsRead = defineRule({
       const calls = getMutationCalls(node, context);
       const statusTargets = getStatusTargets(node, context);
       const hasSharedDataConsumer = resultDataIsConsumed(node, context);
-      const hasOnSuccessConsumer = onSuccessConsumesResponse(initializer, context);
+      const hasOptionsConsumer = optionsConsumeResponse(initializer.arguments[0], context);
 
       for (const call of calls) {
         const invocations = collectEffectInvocations(call, context);
@@ -731,7 +798,7 @@ export const queryNoMutationInEffectAsRead = defineRule({
         if (activeInvocations.length === 0) continue;
         if (
           !hasSharedDataConsumer &&
-          !hasOnSuccessConsumer &&
+          !hasOptionsConsumer &&
           !mutationResultIsConsumedInCall(call, context)
         ) {
           continue;

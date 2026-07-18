@@ -13,26 +13,30 @@ import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEffectCallbackReference } from "../../utils/is-effect-callback-reference.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
+import { isReactEffectHookCall } from "../../utils/is-react-effect-hook-call.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import {
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
   stripParenExpression,
 } from "../../utils/strip-paren-expression.js";
-import { resolveTanstackQueryHookNameFromInitializer } from "./utils/resolve-tanstack-query-hook-name.js";
+import { resolveTanstackMutationHookNameFromInitializer } from "./utils/resolve-tanstack-query-hook-name.js";
 
 const DISCARDING_CALLBACK_HOST_NAMES = new Set([
   ...TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES,
   "forEach",
   "setImmediate",
-  "useEffect",
-  "useInsertionEffect",
-  "useLayoutEffect",
 ]);
 
+const PROMISE_REJECTION_FORWARDING_METHOD_NAMES = new Set(["all", "any", "race", "resolve"]);
+const PROMISE_COLLECTION_METHOD_NAMES = new Set(["all", "any", "race"]);
+const PROMISE_PRODUCING_COLLECTION_METHOD_NAMES = new Set(["flatMap", "map"]);
+
 const isUseMutationInitializer = (initializer: EsTreeNode, context: RuleContext): boolean =>
-  resolveTanstackQueryHookNameFromInitializer(initializer, context.scopes) === "useMutation";
+  resolveTanstackMutationHookNameFromInitializer(initializer, context.scopes) === "useMutation";
 
 const symbolComesFromUseMutationResult = (
   symbol: SymbolDescriptor | null,
@@ -99,26 +103,96 @@ const isEventHandlerAttributeValue = (expression: EsTreeNode): boolean => {
   return Boolean(attributeName && /^on[A-Z]/.test(attributeName));
 };
 
-const isDiscardingCallbackHost = (callExpression: EsTreeNodeOfType<"CallExpression">): boolean => {
+const isExpressionValueDiscarded = (expression: EsTreeNode): boolean => {
+  let current = expression;
+  let parent = current.parent ?? null;
+  while (parent) {
+    if (
+      TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type) ||
+      isNodeOfType(parent, "ConditionalExpression") ||
+      isNodeOfType(parent, "LogicalExpression")
+    ) {
+      current = parent;
+      parent = current.parent ?? null;
+      continue;
+    }
+    if (isNodeOfType(parent, "SequenceExpression")) {
+      if (parent.expressions.at(-1) !== current) return true;
+      current = parent;
+      parent = current.parent ?? null;
+      continue;
+    }
+    return isNodeOfType(parent, "ExpressionStatement");
+  }
+  return false;
+};
+
+const isDiscardingCallbackHost = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  if (isReactEffectHookCall(callExpression, context.scopes)) return true;
   const callee = stripParenExpression(callExpression.callee);
   if (isNodeOfType(callee, "Identifier")) {
     return DISCARDING_CALLBACK_HOST_NAMES.has(callee.name);
   }
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const methodName = getStaticPropertyName(callee) ?? "";
   return (
-    isNodeOfType(callee, "MemberExpression") &&
-    DISCARDING_CALLBACK_HOST_NAMES.has(getStaticPropertyName(callee) ?? "")
+    DISCARDING_CALLBACK_HOST_NAMES.has(methodName) ||
+    (PROMISE_PRODUCING_COLLECTION_METHOD_NAMES.has(methodName) &&
+      isExpressionValueDiscarded(callExpression))
   );
 };
 
-const isDiscardedCallbackReference = (identifier: EsTreeNode): boolean => {
-  if (isEventHandlerAttributeValue(identifier) || isEffectCallbackReference(identifier))
+const isDiscardedCallbackReference = (identifier: EsTreeNode, context: RuleContext): boolean => {
+  if (
+    isEventHandlerAttributeValue(identifier) ||
+    isEffectCallbackReference(identifier, context.scopes)
+  )
     return true;
   const callExpression = identifier.parent;
   return Boolean(
     isNodeOfType(callExpression, "CallExpression") &&
     callExpression.arguments.some((argument) => argument === identifier) &&
-    isDiscardingCallbackHost(callExpression),
+    isDiscardingCallbackHost(callExpression, context),
   );
+};
+
+const getPromiseMethodName = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): string | null => {
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return null;
+  const receiver = stripParenExpression(callee.object);
+  if (!isProvenGlobalNamespaceReference(receiver, "Promise", context.scopes)) return null;
+  return getStaticPropertyName(callee);
+};
+
+const getRejectionForwardingPromiseCall = (
+  current: EsTreeNode,
+  parent: EsTreeNode,
+  context: RuleContext,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    parent.arguments.some((argument) => argument === current)
+  ) {
+    const methodName = getPromiseMethodName(parent, context);
+    return methodName && PROMISE_REJECTION_FORWARDING_METHOD_NAMES.has(methodName) ? parent : null;
+  }
+  if (!isNodeOfType(parent, "ArrayExpression")) return null;
+  const arrayRoot = findTransparentExpressionRoot(parent);
+  const callExpression = arrayRoot.parent;
+  if (
+    !isNodeOfType(callExpression, "CallExpression") ||
+    !callExpression.arguments.some((argument) => argument === arrayRoot)
+  ) {
+    return null;
+  }
+  const methodName = getPromiseMethodName(callExpression, context);
+  return methodName && PROMISE_COLLECTION_METHOD_NAMES.has(methodName) ? callExpression : null;
 };
 
 const isPossibleCallable = (
@@ -139,6 +213,46 @@ const isPossibleCallable = (
   if (!symbol.initializer || visitedSymbols.has(symbol.id)) return false;
   visitedSymbols.add(symbol.id);
   return isPossibleCallable(symbol.initializer, context, visitedSymbols);
+};
+
+const isFunctionResultDiscarded = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+  visitedFunctions: Set<EsTreeNode>,
+): boolean => {
+  if (visitedFunctions.has(functionNode)) return false;
+  const nextVisitedFunctions = new Set(visitedFunctions);
+  nextVisitedFunctions.add(functionNode);
+  if (isEventHandlerAttributeValue(functionNode)) return true;
+  const directParent = functionNode.parent;
+  if (
+    isNodeOfType(directParent, "CallExpression") &&
+    directParent.arguments.some((argument) => argument === functionNode) &&
+    isDiscardingCallbackHost(directParent, context)
+  ) {
+    return true;
+  }
+  const functionRoot = findTransparentExpressionRoot(functionNode);
+  const immediateCall = functionRoot.parent;
+  if (
+    isNodeOfType(immediateCall, "CallExpression") &&
+    stripParenExpression(immediateCall.callee) === functionNode
+  ) {
+    return isFloatingPromiseUse(immediateCall, context, nextVisitedFunctions);
+  }
+  const functionSymbol = findFunctionSymbol(functionNode, context);
+  if (!functionSymbol) return false;
+  return collectConstAliasSymbols(functionSymbol, context.scopes).some((symbol) =>
+    symbol.references.some((reference) => {
+      if (isDiscardedCallbackReference(reference.identifier, context)) return true;
+      const caller = reference.identifier.parent;
+      return Boolean(
+        isNodeOfType(caller, "CallExpression") &&
+        caller.callee === reference.identifier &&
+        isFloatingPromiseUse(caller, context, new Set(nextVisitedFunctions)),
+      );
+    }),
+  );
 };
 
 const isFloatingPromiseUse = (
@@ -165,6 +279,12 @@ const isFloatingPromiseUse = (
       parent = current.parent ?? null;
       continue;
     }
+    const forwardingPromiseCall = getRejectionForwardingPromiseCall(current, parent, context);
+    if (forwardingPromiseCall) {
+      current = forwardingPromiseCall;
+      parent = current.parent ?? null;
+      continue;
+    }
     if (isNodeOfType(parent, "MemberExpression") && parent.object === current) {
       const chainMethodName = getStaticPropertyName(parent);
       if (
@@ -188,6 +308,20 @@ const isFloatingPromiseUse = (
       parent = current.parent ?? null;
       continue;
     }
+    if (isNodeOfType(parent, "AwaitExpression") && parent.argument === current) {
+      const awaitingFunction = findEnclosingFunction(parent);
+      if (
+        !awaitingFunction ||
+        isInsideTryStatement(parent, {
+          boundary: awaitingFunction,
+          region: "block",
+          requireHandler: true,
+        })
+      ) {
+        return false;
+      }
+      return isFunctionResultDiscarded(awaitingFunction, context, visitedFunctions);
+    }
     if (isNodeOfType(parent, "ExpressionStatement")) return true;
     let returningFunction: EsTreeNode | null = null;
     if (isNodeOfType(parent, "ReturnStatement") && parent.argument === current) {
@@ -196,39 +330,7 @@ const isFloatingPromiseUse = (
       returningFunction = parent;
     }
     if (returningFunction) {
-      if (visitedFunctions.has(returningFunction)) return false;
-      const nextVisitedFunctions = new Set(visitedFunctions);
-      nextVisitedFunctions.add(returningFunction);
-      if (isEventHandlerAttributeValue(returningFunction)) return true;
-      const directParent = returningFunction.parent;
-      if (
-        isNodeOfType(directParent, "CallExpression") &&
-        directParent.arguments.some((argument) => argument === returningFunction) &&
-        isDiscardingCallbackHost(directParent)
-      ) {
-        return true;
-      }
-      const functionRoot = findTransparentExpressionRoot(returningFunction);
-      const immediateCall = functionRoot.parent;
-      if (
-        isNodeOfType(immediateCall, "CallExpression") &&
-        stripParenExpression(immediateCall.callee) === returningFunction
-      ) {
-        return isFloatingPromiseUse(immediateCall, context, nextVisitedFunctions);
-      }
-      const functionSymbol = findFunctionSymbol(returningFunction, context);
-      if (!functionSymbol) return false;
-      return collectConstAliasSymbols(functionSymbol, context.scopes).some((symbol) =>
-        symbol.references.some((reference) => {
-          if (isDiscardedCallbackReference(reference.identifier)) return true;
-          const caller = reference.identifier.parent;
-          return Boolean(
-            isNodeOfType(caller, "CallExpression") &&
-            caller.callee === reference.identifier &&
-            isFloatingPromiseUse(caller, context, new Set(nextVisitedFunctions)),
-          );
-        }),
-      );
+      return isFunctionResultDiscarded(returningFunction, context, visitedFunctions);
     }
     return false;
   }

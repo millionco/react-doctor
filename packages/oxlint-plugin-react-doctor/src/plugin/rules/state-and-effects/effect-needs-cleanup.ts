@@ -216,23 +216,6 @@ const resolveExpressionKey = (
   return null;
 };
 
-const findForEachCallForCallback = (
-  callbackNode: EsTreeNode,
-): EsTreeNodeOfType<"CallExpression"> | null => {
-  if (!isFunctionLike(callbackNode) || callbackNode.async || callbackNode.generator) return null;
-  const callNode = callbackNode.parent;
-  if (!isNodeOfType(callNode, "CallExpression") || callNode.arguments?.[0] !== callbackNode) {
-    return null;
-  }
-  const callee = stripParenExpression(callNode.callee);
-  return isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === "forEach"
-    ? callNode
-    : null;
-};
-
 const resolveForEachProjection = (
   expression: EsTreeNode | null | undefined,
   context: RuleContext,
@@ -251,7 +234,7 @@ const resolveForEachProjection = (
   let callbackNode: EsTreeNode | null | undefined = symbol.bindingIdentifier.parent;
   while (callbackNode && !isFunctionLike(callbackNode)) callbackNode = callbackNode.parent;
   if (!callbackNode || !isFunctionLike(callbackNode)) return null;
-  const forEachCall = findForEachCallForCallback(callbackNode);
+  const forEachCall = findEnclosingForEachCall(callbackNode);
   if (!forEachCall) return null;
   const forEachCallee = stripParenExpression(forEachCall.callee);
   if (!isNodeOfType(forEachCallee, "MemberExpression")) return null;
@@ -1238,9 +1221,15 @@ const isSynchronousIteratorCallback = (functionNode: EsTreeNode): boolean => {
   );
 };
 
-const findEnclosingForEachCall = (node: EsTreeNode): EsTreeNode | null => {
-  const callbackNode = findEnclosingFunction(node);
-  if (!callbackNode) return null;
+const findEnclosingForEachCall = (node: EsTreeNode): EsTreeNodeOfType<"CallExpression"> | null => {
+  const callbackNode = isFunctionLike(node) ? node : findEnclosingFunction(node);
+  if (
+    !callbackNode ||
+    !isFunctionLike(callbackNode) ||
+    callbackNode.async ||
+    callbackNode.generator
+  )
+    return null;
   const callNode = callbackNode.parent;
   if (!isNodeOfType(callNode, "CallExpression") || callNode.arguments?.[0] !== callbackNode) {
     return null;
@@ -2850,7 +2839,7 @@ const findDirectExhaustiveForEachCleanupFunction = (
     ) {
       return null;
     }
-    const forEachCall = findForEachCallForCallback(ownerFunction);
+    const forEachCall = findEnclosingForEachCall(ownerFunction);
     if (!forEachCall) {
       return replayedCollectionKeys.size === requiredCollectionKeys.size &&
         isReturnedEffectCleanupFunction(ownerFunction, context)
@@ -2874,7 +2863,7 @@ const collectReplayOwnerFunctions = (usageNode: EsTreeNode): Set<EsTreeNode> => 
     if (!ownerFunction || !isFunctionLike(ownerFunction) || ownerFunctions.has(ownerFunction))
       break;
     ownerFunctions.add(ownerFunction);
-    const forEachCall = findForEachCallForCallback(ownerFunction);
+    const forEachCall = findEnclosingForEachCall(ownerFunction);
     if (!forEachCall) break;
     currentNode = forEachCall;
   }
@@ -2890,19 +2879,20 @@ const hasCollectionMutationBeforeRelease = (
   const usageStart = getRangeStart(usageNode);
   const releaseStart = getRangeStart(releaseNode);
   if (usageStart === null || releaseStart === null) return true;
-  const replayOwnerFunctions = new Set([
-    ...collectReplayOwnerFunctions(usageNode),
-    ...collectReplayOwnerFunctions(releaseNode),
-  ]);
+  const setupOwnerFunctions = collectReplayOwnerFunctions(usageNode);
+  const cleanupOwnerFunctions = collectReplayOwnerFunctions(releaseNode);
   let programNode = usageNode;
   while (programNode.parent) programNode = programNode.parent;
   let didFindMutation = false;
   walkAst(programNode, (child: EsTreeNode) => {
     if (didFindMutation) return false;
     const childStart = getRangeStart(child);
-    if (childStart === null || childStart <= usageStart || childStart >= releaseStart) return;
+    if (childStart === null) return;
     const ownerFunction = context.cfg.enclosingFunction(child);
-    if (!ownerFunction || !replayOwnerFunctions.has(ownerFunction)) return;
+    if (!ownerFunction) return;
+    const isAfterRegistration = setupOwnerFunctions.has(ownerFunction) && childStart > usageStart;
+    const isBeforeRelease = cleanupOwnerFunctions.has(ownerFunction) && childStart < releaseStart;
+    if (!isAfterRegistration && !isBeforeRelease) return;
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = stripParenExpression(child.callee);
     if (

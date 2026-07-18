@@ -4757,6 +4757,36 @@ export const MediaQuery = ({ breakpoint }) => {
     },
   );
 
+  it("rejects cleanup-body mutation when the cleanup is declared before registration", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Subscriptions({ emitter, subscriptions }) {
+        useEffect(() => {
+          function releaseSubscriptions() {
+            subscriptions.pop();
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.off(event, handler);
+            });
+          }
+
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          return releaseSubscriptions;
+        }, [emitter, subscriptions]);
+
+        return null;
+      }
+    `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it.each([
     "subscriptions.push({ event: 'extra', handler: extraHandler });",
     "subscriptions.unshift({ event: 'extra', handler: extraHandler });",

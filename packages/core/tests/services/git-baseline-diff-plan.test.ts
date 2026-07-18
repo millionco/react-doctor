@@ -85,17 +85,20 @@ describe("Git.baselineDiffPlan", () => {
     });
   });
 
-  it("preserves newline-containing paths through null-delimited parsing", async () => {
-    const filePath = "src/line\nbreak.ts";
-    writeFile(directory, filePath, "export const value = 1;\n");
-    const baseRef = commitAll(directory, "base");
-    writeFile(directory, filePath, "export const value = 2;\n");
+  it.skipIf(process.platform === "win32")(
+    "preserves newline-containing paths through null-delimited parsing",
+    async () => {
+      const filePath = "src/line\nbreak.ts";
+      writeFile(directory, filePath, "export const value = 1;\n");
+      const baseRef = commitAll(directory, "base");
+      writeFile(directory, filePath, "export const value = 2;\n");
 
-    await expect(readPlan(directory, baseRef)).resolves.toEqual({
-      baseFiles: [filePath],
-      headFiles: [filePath],
-    });
-  });
+      await expect(readPlan(directory, baseRef)).resolves.toEqual({
+        baseFiles: [filePath],
+        headFiles: [filePath],
+      });
+    },
+  );
 
   it("degrades when the index contains an unresolved merge", async () => {
     writeFile(directory, "src/conflict.ts", "export const value = 'base';\n");

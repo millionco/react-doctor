@@ -154,8 +154,13 @@ const findEnclosingComponent = (
 ): ComponentDeclaration | null => {
   if (!Number.isInteger(diagnostic.line) || diagnostic.line < 1) return null;
   const lineIndex = diagnostic.line - 1;
-  if (lineIndex >= record.sourceFile.getLineStarts().length) return null;
-  const diagnosticPosition = record.sourceFile.getPositionOfLineAndCharacter(lineIndex, 0);
+  const lineStarts = record.sourceFile.getLineStarts();
+  const lineStart = lineStarts[lineIndex];
+  if (lineStart === undefined) return null;
+  const nextLineStart = lineStarts[lineIndex + 1] ?? record.sourceFile.end;
+  const lineEnd = Math.max(lineStart, nextLineStart - 1);
+  const columnIndex = Number.isInteger(diagnostic.column) ? Math.max(0, diagnostic.column - 1) : 0;
+  const diagnosticPosition = Math.min(lineStart + columnIndex, lineEnd);
   let component: ComponentDeclaration | null = null;
   let componentWidth = Number.POSITIVE_INFINITY;
   const visit = (node: ts.Node): void => {
@@ -187,10 +192,16 @@ const moduleSpecifierTargetsComponent = (
 ): boolean => {
   if (!moduleSpecifier.startsWith(".")) return false;
   const unresolvedPath = path.resolve(path.dirname(callerRecord.absolutePath), moduleSpecifier);
+  const specifiedExtension = path.extname(unresolvedPath).toLowerCase();
+  const sourcePathWithoutExtension = SOURCE_EXTENSIONS.includes(specifiedExtension)
+    ? unresolvedPath.slice(0, -specifiedExtension.length)
+    : unresolvedPath;
   const candidatePaths = [
     unresolvedPath,
-    ...SOURCE_EXTENSIONS.map((extension) => `${unresolvedPath}${extension}`),
-    ...SOURCE_EXTENSIONS.map((extension) => path.join(unresolvedPath, `index${extension}`)),
+    ...SOURCE_EXTENSIONS.map((extension) => `${sourcePathWithoutExtension}${extension}`),
+    ...(sourcePathWithoutExtension === unresolvedPath
+      ? SOURCE_EXTENSIONS.map((extension) => path.join(unresolvedPath, `index${extension}`))
+      : []),
   ];
   return candidatePaths.includes(componentRecord.absolutePath);
 };

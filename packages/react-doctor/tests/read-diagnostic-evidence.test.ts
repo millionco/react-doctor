@@ -97,6 +97,61 @@ describe("createDiagnosticEvidenceReader", () => {
     expect(delta.crossFileMatchCount).toBe(1);
   });
 
+  it("uses the diagnostic column to find a single-line arrow component", () => {
+    const componentSource =
+      "export const ChatMessageBubble = ({ onSuggestion }) => <span onClick={() => onSuggestion(question)}>{question}</span>;\n";
+    fs.writeFileSync(path.join(rootDirectory, "src/chat-message-bubble.tsx"), componentSource);
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-page.tsx"),
+      'import { ChatMessageBubble } from "./chat-message-bubble";\n<ChatMessageBubble onSuggestion={handleSendMessage} />;\n',
+    );
+    const reader = createDiagnosticEvidenceReader(rootDirectory, {
+      resolveForwardedHandlers: true,
+    });
+
+    const evidence = reader(
+      makeDiagnostic({
+        filePath: "src/chat-message-bubble.tsx",
+        line: 1,
+        column: componentSource.indexOf("<span") + 1,
+        endLine: 1,
+      }),
+    );
+
+    expect(evidence).toContain("handleSendMessage(question)");
+  });
+
+  it("resolves a JavaScript import specifier to its TypeScript source", () => {
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/wrapper-before.tsx"),
+      "function WrapperBefore() {\n  return <span onClick={() => handleSendMessage(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-message-bubble.tsx"),
+      "export function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-page.tsx"),
+      'import { ChatMessageBubble } from "./chat-message-bubble.js";\n<ChatMessageBubble onSuggestion={handleSendMessage} />;\n',
+    );
+
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [
+        makeDiagnostic({ filePath: "src/chat-message-bubble.tsx", line: 2, endLine: 4 }),
+      ],
+      baseDiagnostics: [makeDiagnostic({ line: 2, endLine: 4 })],
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+      readHeadEvidence: createDiagnosticEvidenceReader(rootDirectory, {
+        resolveForwardedHandlers: true,
+      }),
+      readBaseEvidence: createDiagnosticEvidenceReader(rootDirectory),
+    });
+
+    expect(delta.newDiagnostics).toHaveLength(0);
+    expect(delta.crossFileMatchCount).toBe(1);
+  });
+
   it("does not treat a default import as a named diagnosed component", () => {
     fs.writeFileSync(
       path.join(rootDirectory, "src/wrapper-before.tsx"),

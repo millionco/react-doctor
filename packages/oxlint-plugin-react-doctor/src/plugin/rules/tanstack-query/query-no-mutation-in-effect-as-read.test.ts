@@ -446,6 +446,20 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts TypeScript-wrapped run-once latch booleans", () => {
+    const result = runMutationReadRule(
+      `import { useRef } from "react";
+       const { mutateAsync: fetchUser } = useMutation(options);
+       const handled = useRef(false);
+       useEffect(() => {
+         if (handled.current === (true as const)) return;
+         handled.current = true as boolean;
+         void fetchUser(params).then((response) => setUser(response.user));
+       }, [params]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not accept a run-once ref latch reset by cleanup", () => {
     const result = runMutationReadRule(
       `import { useRef } from "react";

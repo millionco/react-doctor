@@ -201,6 +201,40 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each(["setTimeout", "queueMicrotask"])(
+    "stays silent when a local %s host handles the returned rejection",
+    (schedulerName) => {
+      const result = runMutationRule(
+        `const ${schedulerName} = (callback) => callback().catch(handleError);
+         const mutation = useMutation(options);
+         const callback = () => mutation.mutateAsync(payload);
+         ${schedulerName}(callback);`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
+  it("stays silent when a local scheduler object handles the returned rejection", () => {
+    const result = runMutationRule(
+      `const scheduler = { setTimeout: (callback) => callback().catch(handleError) };
+       const mutation = useMutation(options);
+       const callback = () => mutation.mutateAsync(payload);
+       scheduler.setTimeout(callback);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags promises returned from global scheduler members", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const firstCallback = () => mutation.mutateAsync(first);
+       const secondCallback = () => mutation.mutateAsync(second);
+       window.setTimeout(firstCallback);
+       globalThis.queueMicrotask(secondCallback);`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it.each([
     ["conditional consequent", "enabled ? effectCallback : fallback"],
     ["conditional alternate", "enabled ? fallback : effectCallback"],

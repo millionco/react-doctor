@@ -26,9 +26,8 @@ import {
 } from "../../utils/strip-paren-expression.js";
 import { resolveTanstackMutationHookNameFromInitializer } from "./utils/resolve-tanstack-query-hook-name.js";
 
-const DISCARDING_CALLBACK_HOST_NAMES = new Set([
+const DISCARDING_SCHEDULER_NAMES = new Set([
   ...TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES,
-  "forEach",
   "setImmediate",
 ]);
 
@@ -165,12 +164,17 @@ const isDiscardingCallbackHost = (
   if (isReactEffectHookCall(callExpression, context.scopes)) return true;
   const callee = stripParenExpression(callExpression.callee);
   if (isNodeOfType(callee, "Identifier")) {
-    return DISCARDING_CALLBACK_HOST_NAMES.has(callee.name);
+    return (
+      DISCARDING_SCHEDULER_NAMES.has(callee.name) &&
+      isProvenGlobalNamespaceReference(callee, callee.name, context.scopes)
+    );
   }
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const methodName = getStaticPropertyName(callee) ?? "";
   return (
-    DISCARDING_CALLBACK_HOST_NAMES.has(methodName) ||
+    methodName === "forEach" ||
+    (DISCARDING_SCHEDULER_NAMES.has(methodName) &&
+      isProvenGlobalNamespaceReference(callee, methodName, context.scopes)) ||
     (PROMISE_PRODUCING_COLLECTION_METHOD_NAMES.has(methodName) &&
       isExpressionValueDiscarded(callExpression))
   );

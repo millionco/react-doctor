@@ -524,10 +524,12 @@ const getPositiveRefGuardSymbol = (
   }
   const leftSymbol = getRefCurrentSymbol(candidate.left, context);
   const rightSymbol = getRefCurrentSymbol(candidate.right, context);
-  if (leftSymbol && isNodeOfType(candidate.right, "Literal") && candidate.right.value === true) {
+  const leftValue = stripParenExpression(candidate.left);
+  const rightValue = stripParenExpression(candidate.right);
+  if (leftSymbol && isNodeOfType(rightValue, "Literal") && rightValue.value === true) {
     return leftSymbol;
   }
-  if (rightSymbol && isNodeOfType(candidate.left, "Literal") && candidate.left.value === true) {
+  if (rightSymbol && isNodeOfType(leftValue, "Literal") && leftValue.value === true) {
     return rightSymbol;
   }
   return null;
@@ -539,11 +541,14 @@ const getAssignedTrueRefSymbol = (
 ): SymbolDescriptor | null => {
   if (!isNodeOfType(statement, "ExpressionStatement")) return null;
   const expression = stripParenExpression(statement.expression);
+  const assignedValue = isNodeOfType(expression, "AssignmentExpression")
+    ? stripParenExpression(expression.right)
+    : null;
   if (
     !isNodeOfType(expression, "AssignmentExpression") ||
     expression.operator !== "=" ||
-    !isNodeOfType(expression.right, "Literal") ||
-    expression.right.value !== true
+    !isNodeOfType(assignedValue, "Literal") ||
+    assignedValue.value !== true
   ) {
     return null;
   }
@@ -568,10 +573,11 @@ const refSymbolHasResettingWrite = (refSymbol: SymbolDescriptor, context: RuleCo
       if (!isNodeOfType(parent, "AssignmentExpression") || parent.left !== memberRoot) {
         return false;
       }
+      const assignedValue = stripParenExpression(parent.right);
       return !(
         parent.operator === "=" &&
-        isNodeOfType(parent.right, "Literal") &&
-        parent.right.value === true
+        isNodeOfType(assignedValue, "Literal") &&
+        assignedValue.value === true
       );
     }),
   );

@@ -463,11 +463,13 @@ const runBaselineComparison = async (
   }
   try {
     if (!snapshot.isComplete) return null;
-    const analyzedHeadFiles = new Set(params.headAnalyzedFiles);
-    const baseFiles = new Set(snapshot.baseFiles);
+    const analyzedHeadFiles = new Set(params.headAnalyzedFiles.map(toForwardSlashes));
+    const baseFiles = new Set(snapshot.baseFiles.map(toForwardSlashes));
     const expectedHeadFiles = new Set([
-      ...snapshot.headFiles,
-      ...params.options.includePaths.filter((filePath) => !baseFiles.has(filePath)),
+      ...snapshot.headFiles.map(toForwardSlashes),
+      ...params.options.includePaths
+        .map(toForwardSlashes)
+        .filter((filePath) => !baseFiles.has(filePath)),
     ]);
     if (
       filterSourceFiles([...expectedHeadFiles]).some((filePath) => !analyzedHeadFiles.has(filePath))

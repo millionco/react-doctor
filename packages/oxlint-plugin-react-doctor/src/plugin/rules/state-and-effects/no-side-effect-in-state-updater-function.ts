@@ -506,7 +506,6 @@ const callHasSideEffectName = (
   call: EsTreeNodeOfType<"CallExpression">,
   updaterFunction: EsTreeNode,
   executedFunctions: ReadonlySet<EsTreeNode>,
-  allowGlobalScheduler: boolean,
   context: RuleContext,
 ): boolean => {
   const callName = getCallName(call);
@@ -521,8 +520,7 @@ const callHasSideEffectName = (
     );
     if (
       isGlobalObjectMember &&
-      (GLOBAL_SIDE_EFFECT_CALL_NAMES.has(callName) ||
-        (allowGlobalScheduler && GLOBAL_SCHEDULER_CALL_NAMES.has(callName)))
+      (GLOBAL_SIDE_EFFECT_CALL_NAMES.has(callName) || GLOBAL_SCHEDULER_CALL_NAMES.has(callName))
     ) {
       return true;
     }
@@ -532,11 +530,7 @@ const callHasSideEffectName = (
     !SIDE_EFFECT_CALL_NAME_PATTERN.test(callName) &&
     !identifierIsCallbackParameter(callee, context) &&
     !(GLOBAL_SIDE_EFFECT_CALL_NAMES.has(callName) && context.scopes.isGlobalReference(callee)) &&
-    !(
-      allowGlobalScheduler &&
-      GLOBAL_SCHEDULER_CALL_NAMES.has(callName) &&
-      context.scopes.isGlobalReference(callee)
-    )
+    !(GLOBAL_SCHEDULER_CALL_NAMES.has(callName) && context.scopes.isGlobalReference(callee))
   ) {
     return false;
   }
@@ -747,15 +741,7 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
               }
               return;
             }
-            if (
-              !callHasSideEffectName(
-                child,
-                updaterFunction,
-                executedFunctions,
-                executedFunction === updaterFunction,
-                context,
-              )
-            ) {
+            if (!callHasSideEffectName(child, updaterFunction, executedFunctions, context)) {
               return;
             }
             if (reportedSideEffectNodes.has(child)) return;

@@ -45,6 +45,43 @@ describe("r3f-no-duplicate-primitive-object", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows local elements selected by mutually exclusive render branches", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `
+        ${R3F_RUNTIME_IMPORT}
+        const Direct = ({ scene, detail }) => {
+          const summary = <primitive object={scene} />;
+          const expanded = <primitive object={scene} />;
+          return detail ? expanded : summary;
+        };
+        const Aliased = ({ scene, detail }) => {
+          const summary = <primitive object={scene} />;
+          const expanded = <primitive object={scene} />;
+          const content = detail ? expanded : summary;
+          return content;
+        };
+        const Assigned = ({ scene, detail }) => {
+          const summary = <primitive object={scene} />;
+          const expanded = <primitive object={scene} />;
+          let content;
+          if (detail) content = expanded;
+          else content = summary;
+          return content;
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags local elements that can both reach the render output", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `${R3F_RUNTIME_IMPORT} const Scene = ({ scene }) => { const first = <primitive object={scene} />; const second = <primitive object={scene} />; return <>{first}{second}</>; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows mounts guarded by complementary logical expressions", () => {
     const result = runRule(
       r3fNoDuplicatePrimitiveObject,

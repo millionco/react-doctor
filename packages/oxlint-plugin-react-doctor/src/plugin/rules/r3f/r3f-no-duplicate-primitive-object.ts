@@ -157,6 +157,40 @@ const canMountTogether = (
   return true;
 };
 
+const findMountSites = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  owningFunction: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode[] => {
+  const element = node.parent;
+  if (!element || !isNodeOfType(element, "JSXElement")) return [node];
+  const elementRoot = findTransparentExpressionRoot(element);
+  const declarator = elementRoot.parent;
+  if (
+    !declarator ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== elementRoot ||
+    !isNodeOfType(declarator.id, "Identifier")
+  ) {
+    return [node];
+  }
+  const elementSymbol = context.scopes.symbolFor(declarator.id);
+  if (!elementSymbol) return [node];
+  const renderedReferences = elementSymbol.references
+    .filter(
+      (reference) =>
+        reference.flag !== "write" &&
+        functionReturnsMatchingExpression(
+          owningFunction,
+          context.scopes,
+          (returnedExpression) => isAstDescendant(reference.identifier, returnedExpression),
+          context.cfg,
+        ),
+    )
+    .map((reference) => reference.identifier);
+  return renderedReferences.length > 0 ? renderedReferences : [node];
+};
+
 export const r3fNoDuplicatePrimitiveObject = defineRule({
   id: "r3f-no-duplicate-primitive-object",
   title: "Primitive object mounted twice",
@@ -193,13 +227,16 @@ export const r3fNoDuplicatePrimitiveObject = defineRule({
         const objectSymbol = context.scopes.symbolFor(objectExpression);
         const owningFunction = findMountingRenderOwner(node, context.scopes);
         if (!objectSymbol || !owningFunction) return;
+        const mountSites = findMountSites(node, owningFunction, context);
         const seenSymbols = seenByFunction.get(owningFunction) ?? new Map<number, EsTreeNode[]>();
         seenByFunction.set(owningFunction, seenSymbols);
         const previousMounts = seenSymbols.get(objectSymbol.id) ?? [];
-        seenSymbols.set(objectSymbol.id, [...previousMounts, node]);
+        seenSymbols.set(objectSymbol.id, [...previousMounts, ...mountSites]);
         if (
           !previousMounts.some((previousMount) =>
-            canMountTogether(previousMount, node, context.scopes),
+            mountSites.some((mountSite) =>
+              canMountTogether(previousMount, mountSite, context.scopes),
+            ),
           )
         ) {
           return;

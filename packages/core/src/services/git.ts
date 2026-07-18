@@ -763,7 +763,23 @@ export class Git extends Context.Service<
               "--relative",
               input.ref,
             ]);
-            return result.status === 0 ? parseBaselineDiffPlan(result.stdout) : null;
+            if (result.status !== 0) return null;
+            const plan = parseBaselineDiffPlan(result.stdout);
+            if (plan === null) return null;
+            const untracked = yield* runGit(input.directory, [
+              "ls-files",
+              "--others",
+              "--exclude-standard",
+              "-z",
+              "--relative",
+            ]);
+            if (untracked.status !== 0) return null;
+            return {
+              baseFiles: plan.baseFiles,
+              headFiles: [
+                ...new Set([...plan.headFiles, ...splitNullSeparated(untracked.stdout)]),
+              ],
+            } satisfies GitBaselineDiffPlan;
           }).pipe(
             Effect.catch(() => Effect.succeed(null)),
             Effect.withSpan("Git.baselineDiffPlan"),

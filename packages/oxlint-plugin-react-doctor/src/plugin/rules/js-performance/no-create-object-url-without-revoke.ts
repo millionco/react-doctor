@@ -8,6 +8,7 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
@@ -528,16 +529,18 @@ const isPositiveGuardOnResult = (
     if (guardExpression) {
       const guardAlsoControlsResult =
         (isNodeOfType(parent, "IfStatement") &&
-          ((parent.consequent === current && nodeIsWithin(resultExpression, parent.consequent)) ||
+          ((parent.consequent === current &&
+            isAstDescendant(resultExpression, parent.consequent)) ||
             (parent.alternate === current &&
               parent.alternate !== null &&
-              nodeIsWithin(resultExpression, parent.alternate)))) ||
+              isAstDescendant(resultExpression, parent.alternate)))) ||
         (isNodeOfType(parent, "LogicalExpression") &&
           parent.right === current &&
-          nodeIsWithin(resultExpression, parent.right)) ||
+          isAstDescendant(resultExpression, parent.right)) ||
         (isNodeOfType(parent, "ConditionalExpression") &&
-          ((parent.consequent === current && nodeIsWithin(resultExpression, parent.consequent)) ||
-            (parent.alternate === current && nodeIsWithin(resultExpression, parent.alternate))));
+          ((parent.consequent === current &&
+            isAstDescendant(resultExpression, parent.consequent)) ||
+            (parent.alternate === current && isAstDescendant(resultExpression, parent.alternate))));
       const guardCandidate = stripParenExpression(guardExpression);
       if (
         isNodeOfType(guardCandidate, "Identifier") &&
@@ -559,7 +562,7 @@ const isPositiveGuardOnResult = (
           ? parent.consequent
           : parent.alternate
         : current;
-      if (!conditionalBranch || !nodeIsWithin(resultExpression, conditionalBranch)) {
+      if (!conditionalBranch || !isAstDescendant(resultExpression, conditionalBranch)) {
         didCrossUnrelatedCondition = true;
       }
     }
@@ -573,7 +576,7 @@ const isPositiveGuardOnResult = (
       (isNodeOfType(parent, "CatchClause") && parent.body === current)
         ? parent
         : null;
-    if (optionalExecutionRegion && !nodeIsWithin(resultExpression, optionalExecutionRegion)) {
+    if (optionalExecutionRegion && !isAstDescendant(resultExpression, optionalExecutionRegion)) {
       didCrossUnrelatedCondition = true;
     }
     if (isNodeOfType(parent, "BlockStatement")) {
@@ -689,15 +692,6 @@ const consumerIsGuaranteedAfterResult = (
   return consumerRunsAfterResult && hasPositiveResultGuard;
 };
 
-const nodeIsWithin = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
-  let current: EsTreeNode | null = node;
-  while (current) {
-    if (current === ancestor) return true;
-    current = current.parent ?? null;
-  }
-  return false;
-};
-
 const identifierIsWithinAssignmentTarget = (identifier: EsTreeNode): boolean => {
   let current = identifier;
   while (current.parent) {
@@ -748,7 +742,7 @@ const bindingValueRemainsCurrentAtConsumer = (
   if (!bindingValueHasNoWritesBefore(producedValue, consumer, scopes)) return false;
   let current = resultCall.parent ?? null;
   while (current) {
-    if (LOOP_STATEMENT_TYPES.has(current.type) && !nodeIsWithin(consumer, current)) return false;
+    if (LOOP_STATEMENT_TYPES.has(current.type) && !isAstDescendant(consumer, current)) return false;
     if (FUNCTION_LIKE_TYPES.has(current.type) || isNodeOfType(current, "Program")) break;
     current = current.parent ?? null;
   }
@@ -816,7 +810,13 @@ const statementAlwaysRevokesResult = (
       for (const switchCase of statement.cases.slice(caseIndex)) {
         for (const child of switchCase.consequent) {
           if (statementAlwaysRevokesResult(child, resultExpression, scopes)) return true;
-          if (statementAlwaysExits(child) || isNodeOfType(child, "BreakStatement")) return false;
+          if (
+            statementAlwaysExits(child) ||
+            isNodeOfType(child, "BreakStatement") ||
+            isNodeOfType(child, "ContinueStatement")
+          ) {
+            return false;
+          }
         }
       }
       return false;

@@ -8,3 +8,21 @@ export const attachPreview = (image: HTMLImageElement, blob: Blob, shouldRevoke:
   image.src = url;
   return () => shouldRevoke && URL.revokeObjectURL(url);
 };
+
+export const attachPreviews = (blobs: Blob[], mode: number) => {
+  for (const blob of blobs) {
+    const url = createPreview(blob);
+    setPreview(url);
+    switch (mode) {
+      case 1:
+        continue;
+      case 2:
+        URL.revokeObjectURL(url);
+        break;
+      default:
+        URL.revokeObjectURL(url);
+    }
+  }
+};
+
+declare const setPreview: (url: string) => void;

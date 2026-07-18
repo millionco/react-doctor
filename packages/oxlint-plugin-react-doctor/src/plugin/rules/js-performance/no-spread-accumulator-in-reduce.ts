@@ -12,6 +12,7 @@ import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-wit
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -317,8 +318,8 @@ const hasOwnReducerMethod = (
 ): boolean => {
   let candidate = stripParenExpression(source);
   if (isNodeOfType(candidate, "Identifier")) {
-    const symbol = scopes.symbolFor(candidate);
-    if (!symbol?.initializer || symbol.kind !== "const") return false;
+    const symbol = resolveConstIdentifierAlias(candidate, scopes);
+    if (!symbol?.initializer) return false;
     candidate = stripParenExpression(symbol.initializer);
   }
   if (!isNodeOfType(candidate, "ObjectExpression")) return false;

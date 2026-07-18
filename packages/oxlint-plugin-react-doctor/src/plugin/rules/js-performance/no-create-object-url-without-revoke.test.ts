@@ -1235,6 +1235,29 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat a switch continue as fallthrough to cleanup", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const use = (blobs, mode) => {
+         for (const blob of blobs) {
+           const url = make(blob);
+           setPreview(url);
+           switch (mode) {
+             case 1:
+               continue;
+             case 2:
+               URL.revokeObjectURL(url);
+               break;
+             default:
+               URL.revokeObjectURL(url);
+           }
+         }
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("uses exact produced aliases for exhaustive cleanup", () => {
     const staleAliasResult = runRule(
       noCreateObjectUrlWithoutRevoke,

@@ -596,6 +596,18 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not analyze a custom reducer through const aliases", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const custom = { reduce(callback, seed) { return seed; } };
+       const firstAlias = custom;
+       const secondAlias = firstAlias as typeof custom;
+       const out = secondAlias.reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not analyze a custom reducer with a static template key", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,

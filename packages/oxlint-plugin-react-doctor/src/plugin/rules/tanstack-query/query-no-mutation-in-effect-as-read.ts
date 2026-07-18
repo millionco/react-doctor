@@ -670,20 +670,77 @@ const testPositivelyMatchesStatusTarget = (
   return other.value === true;
 };
 
+const testNegativelyMatchesStatusTarget = (
+  test: EsTreeNode,
+  target: StatusTarget,
+  context: RuleContext,
+): boolean => {
+  const candidate = stripParenExpression(test);
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
+    return (
+      target.sourcePropertyName === "isSuccess" &&
+      expressionMatchesStatusTarget(candidate.argument, target, context)
+    );
+  }
+  if (!isNodeOfType(candidate, "BinaryExpression")) return false;
+  const leftMatches = expressionMatchesStatusTarget(candidate.left, target, context);
+  const rightMatches = expressionMatchesStatusTarget(candidate.right, target, context);
+  const otherOperand = leftMatches ? candidate.right : rightMatches ? candidate.left : null;
+  if (!otherOperand) return false;
+  const other = stripParenExpression(otherOperand);
+  if (target.sourcePropertyName === "data") {
+    return ["==", "==="].includes(candidate.operator) && isNullishExpression(other);
+  }
+  if (!isNodeOfType(other, "Literal")) return false;
+  if (target.sourcePropertyName === "status") {
+    return ["!=", "!=="].includes(candidate.operator) && other.value === "success";
+  }
+  return (
+    (["==", "==="].includes(candidate.operator) && other.value === false) ||
+    (["!=", "!=="].includes(candidate.operator) && other.value === true)
+  );
+};
+
+const pathHasEnclosingNegativeStatusGuard = (
+  pathNode: EsTreeNode,
+  statusTargets: StatusTarget[],
+  context: RuleContext,
+): boolean => {
+  let branchChild = pathNode;
+  let branchParent = branchChild.parent;
+  while (branchParent && !isFunctionLike(branchParent)) {
+    const currentBranchParent = branchParent;
+    if (
+      isNodeOfType(currentBranchParent, "IfStatement") &&
+      currentBranchParent.consequent === branchChild &&
+      statusTargets.some((target) =>
+        testNegativelyMatchesStatusTarget(currentBranchParent.test, target, context),
+      )
+    ) {
+      return true;
+    }
+    branchChild = currentBranchParent;
+    branchParent = branchChild.parent;
+  }
+  return false;
+};
+
 const invocationHasDominatingStatusGuard = (
   invocation: EffectInvocation,
   statusTargets: StatusTarget[],
   context: RuleContext,
 ): boolean =>
-  invocation.pathNodes.some((pathNode) =>
-    collectDominatingStatements(pathNode).some(
-      (statement) =>
-        isNodeOfType(statement, "IfStatement") &&
-        isEarlyExitStatement(statement.consequent) &&
-        statusTargets.some((target) =>
-          testPositivelyMatchesStatusTarget(statement.test, target, context),
-        ),
-    ),
+  invocation.pathNodes.some(
+    (pathNode) =>
+      pathHasEnclosingNegativeStatusGuard(pathNode, statusTargets, context) ||
+      collectDominatingStatements(pathNode).some(
+        (statement) =>
+          isNodeOfType(statement, "IfStatement") &&
+          isEarlyExitStatement(statement.consequent) &&
+          statusTargets.some((target) =>
+            testPositivelyMatchesStatusTarget(statement.test, target, context),
+          ),
+      ),
   );
 
 const getStatusTargets = (

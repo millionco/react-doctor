@@ -688,6 +688,60 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    ["negated isSuccess", `!(isSuccess as boolean)`],
+    ["false isSuccess equality", `(isSuccess as boolean) === (false as const)`],
+    ["true isSuccess inequality", `(isSuccess as boolean) !== (true as const)`],
+    ["loose status inequality", `(status as string) != ("success" as const)`],
+    ["strict status inequality", `(status as string) !== ("success" as const)`],
+    ["loose nullish data equality", `(data as User | null | undefined) == null`],
+    ["strict undefined data equality", `(data as User | undefined) === undefined`],
+  ])("accepts an enclosing %s branch", (_guardName, guardExpression) => {
+    const result = runMutationReadRule(
+      `const { mutateAsync: fetchUser, data, isSuccess, status } = useMutation(options);
+       useEffect(() => {
+         if (${guardExpression}) {
+           fetchUser(params);
+         }
+       }, [data, isSuccess, params, status]);
+       const user = data?.user;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["positive isSuccess", `isSuccess`],
+    ["true isSuccess equality", `isSuccess === true`],
+    ["successful status equality", `status === "success"`],
+    ["present data inequality", `data !== undefined`],
+  ])("does not accept an enclosing %s branch", (_guardName, guardExpression) => {
+    const result = runMutationReadRule(
+      `const { mutateAsync: fetchUser, data, isSuccess, status } = useMutation(options);
+       useEffect(() => {
+         if (${guardExpression}) {
+           fetchUser(params);
+         }
+       }, [data, isSuccess, params, status]);
+       const user = data?.user;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not accept the alternate branch of an inverted status guard", () => {
+    const result = runMutationReadRule(
+      `const { mutateAsync: fetchUser, data, isSuccess } = useMutation(options);
+       useEffect(() => {
+         if (!isSuccess) {
+           trackPending();
+         } else {
+           fetchUser(params);
+         }
+       }, [isSuccess, params]);
+       const user = data?.user;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts a dominating void-zero data guard", () => {
     const result = runMutationReadRule(
       `function Component() {

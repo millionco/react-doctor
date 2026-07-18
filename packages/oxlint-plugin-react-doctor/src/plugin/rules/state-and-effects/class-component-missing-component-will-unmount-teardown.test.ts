@@ -874,6 +874,31 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags wrapped bind callees for instance methods that set state", () => {
+    const castBind = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Banner extends React.Component {
+         tick() { this.setState({ visible: true }); }
+         componentDidMount() {
+           setTimeout((this.tick.bind as typeof this.tick.bind)(this), 3000);
+         }
+         render() { return null; }
+       }`,
+    );
+    const assertedBind = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Banner extends React.Component {
+         tick() { this.setState({ visible: true }); }
+         componentDidMount() {
+           setTimeout(this.tick.bind!(this), 3000);
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(castBind.diagnostics).toHaveLength(1);
+    expect(assertedBind.diagnostics).toHaveLength(1);
+  });
+
   it("flags a setTimeout callback reached through local aliases", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

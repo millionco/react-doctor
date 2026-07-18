@@ -150,13 +150,16 @@ const resolveTimeoutCallbackFunction = (
       ? resolveTimeoutCallbackFunction(initializer, classBody, visitedExpressions)
       : null;
   }
+  const callee = isNodeOfType(expression, "CallExpression")
+    ? stripParenExpression(expression.callee)
+    : null;
   const boundTarget =
     isNodeOfType(expression, "CallExpression") &&
-    isNodeOfType(expression.callee, "MemberExpression") &&
-    getStaticPropertyName(expression.callee) === "bind" &&
+    isNodeOfType(callee, "MemberExpression") &&
+    getStaticPropertyName(callee) === "bind" &&
     expression.arguments?.[0] &&
     isNodeOfType(stripParenExpression(expression.arguments[0] as EsTreeNode), "ThisExpression")
-      ? stripParenExpression(expression.callee.object as EsTreeNode)
+      ? stripParenExpression(callee.object)
       : null;
   const methodReference = boundTarget ?? expression;
   const memberName =

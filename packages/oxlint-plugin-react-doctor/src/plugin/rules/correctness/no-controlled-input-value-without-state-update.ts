@@ -9,6 +9,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isLiteralVoidExpression } from "../../utils/is-literal-void-expression.js";
 import { isJsxAttributePotentiallyTruthy } from "../../utils/is-jsx-attribute-potentially-truthy.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -146,9 +147,63 @@ const findReturnStatementAncestor = (
   return null;
 };
 
+const conditionReferencesDynamicValue = (
+  condition: EsTreeNode,
+  dynamicValueKey: string,
+  context: RuleContext,
+): boolean => {
+  let foundReference = false;
+  walkAst(condition, (child) => {
+    if (foundReference) return false;
+    if (child !== condition && isFunctionLike(child)) return false;
+    const conditionReferenceKey = serializeReferenceKey({ node: child, scopes: context.scopes });
+    if (!conditionReferenceKey) return;
+    if (
+      conditionReferenceKey === dynamicValueKey ||
+      dynamicValueKey.startsWith(`${conditionReferenceKey}.`)
+    ) {
+      foundReference = true;
+    }
+    return false;
+  });
+  return foundReference;
+};
+
+const elementsShareRelatedConditionalResult = (
+  flaggedElement: EsTreeNode,
+  siblingElement: EsTreeNode,
+  boundary: EsTreeNode,
+  dynamicValueKey: string,
+  context: RuleContext,
+): boolean => {
+  if (!areNodesOnExclusiveConditionalBranches(flaggedElement, siblingElement, boundary)) {
+    return false;
+  }
+  let ancestor = flaggedElement.parent ?? null;
+  while (ancestor && ancestor !== boundary) {
+    if (isNodeOfType(ancestor, "ConditionalExpression")) {
+      const flaggedIsConsequent = isAstDescendant(flaggedElement, ancestor.consequent);
+      const flaggedIsAlternate = isAstDescendant(flaggedElement, ancestor.alternate);
+      const siblingIsConsequent = isAstDescendant(siblingElement, ancestor.consequent);
+      const siblingIsAlternate = isAstDescendant(siblingElement, ancestor.alternate);
+      if (
+        ((flaggedIsConsequent && siblingIsAlternate) ||
+          (flaggedIsAlternate && siblingIsConsequent)) &&
+        conditionReferencesDynamicValue(ancestor.test, dynamicValueKey, context)
+      ) {
+        return true;
+      }
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
 const returnsAreOppositeIfBranches = (
   flaggedReturn: EsTreeNodeOfType<"ReturnStatement">,
   siblingReturn: EsTreeNodeOfType<"ReturnStatement">,
+  dynamicValueKey: string,
+  context: RuleContext,
 ): boolean => {
   let ancestor = flaggedReturn.parent ?? null;
   while (ancestor) {
@@ -158,8 +213,9 @@ const returnsAreOppositeIfBranches = (
       const siblingIsConsequent = isAstDescendant(siblingReturn, ancestor.consequent);
       const siblingIsAlternate = isAstDescendant(siblingReturn, ancestor.alternate);
       if (
-        (flaggedIsConsequent && siblingIsAlternate) ||
-        (flaggedIsAlternate && siblingIsConsequent)
+        ((flaggedIsConsequent && siblingIsAlternate) ||
+          (flaggedIsAlternate && siblingIsConsequent)) &&
+        conditionReferencesDynamicValue(ancestor.test, dynamicValueKey, context)
       ) {
         return true;
       }
@@ -172,10 +228,16 @@ const returnsAreOppositeIfBranches = (
 const conditionalReturnPrecedesFallback = (
   conditionalReturn: EsTreeNodeOfType<"ReturnStatement">,
   fallbackReturn: EsTreeNodeOfType<"ReturnStatement">,
+  dynamicValueKey: string,
+  context: RuleContext,
 ): boolean => {
   let conditionalAncestor = conditionalReturn.parent ?? null;
+  let hasRelatedCondition = false;
   while (conditionalAncestor) {
     if (isNodeOfType(conditionalAncestor, "IfStatement")) {
+      if (conditionReferencesDynamicValue(conditionalAncestor.test, dynamicValueKey, context)) {
+        hasRelatedCondition = true;
+      }
       const containingBlock = conditionalAncestor.parent;
       if (
         containingBlock &&
@@ -188,7 +250,9 @@ const conditionalReturnPrecedesFallback = (
         const fallbackIndex = containingBlock.body.findIndex(
           (statement) => statement === fallbackReturn,
         );
-        if (conditionalIndex >= 0 && conditionalIndex < fallbackIndex) return true;
+        if (conditionalIndex >= 0 && conditionalIndex < fallbackIndex) {
+          return hasRelatedCondition;
+        }
       }
     }
     conditionalAncestor = conditionalAncestor.parent ?? null;
@@ -201,19 +265,28 @@ const resultsAreAlternativeBranches = (
   siblingElement: EsTreeNode,
   flaggedReturn: EsTreeNodeOfType<"ReturnStatement">,
   siblingReturn: EsTreeNodeOfType<"ReturnStatement">,
+  dynamicValueKey: string,
+  context: RuleContext,
 ): boolean => {
   if (flaggedReturn === siblingReturn) {
-    return areNodesOnExclusiveConditionalBranches(flaggedElement, siblingElement, flaggedReturn);
+    return elementsShareRelatedConditionalResult(
+      flaggedElement,
+      siblingElement,
+      flaggedReturn,
+      dynamicValueKey,
+      context,
+    );
   }
   return (
-    returnsAreOppositeIfBranches(flaggedReturn, siblingReturn) ||
-    conditionalReturnPrecedesFallback(flaggedReturn, siblingReturn) ||
-    conditionalReturnPrecedesFallback(siblingReturn, flaggedReturn)
+    returnsAreOppositeIfBranches(flaggedReturn, siblingReturn, dynamicValueKey, context) ||
+    conditionalReturnPrecedesFallback(flaggedReturn, siblingReturn, dynamicValueKey, context) ||
+    conditionalReturnPrecedesFallback(siblingReturn, flaggedReturn, dynamicValueKey, context)
   );
 };
 
 const componentRendersStateDrivenAlternative = (
   flaggedElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
 ): boolean => {
   let enclosingFunction: EsTreeNode | null = flaggedElement.parent ?? null;
   while (enclosingFunction && !isFunctionLike(enclosingFunction)) {
@@ -232,11 +305,23 @@ const componentRendersStateDrivenAlternative = (
     }
     const siblingValue = findJsxAttribute(child.attributes ?? [], "value");
     const siblingReturn = findReturnStatementAncestor(child, enclosingFunction);
+    const dynamicValueKey =
+      siblingValue?.value && isNodeOfType(siblingValue.value, "JSXExpressionContainer")
+        ? serializeReferenceKey({ node: siblingValue.value.expression, scopes: context.scopes })
+        : null;
     if (
       siblingValue &&
       !isLiteralValueAttribute(siblingValue) &&
+      dynamicValueKey &&
       siblingReturn &&
-      resultsAreAlternativeBranches(flaggedElement, child, flaggedReturn, siblingReturn)
+      resultsAreAlternativeBranches(
+        flaggedElement,
+        child,
+        flaggedReturn,
+        siblingReturn,
+        dynamicValueKey,
+        context,
+      )
     ) {
       foundSibling = true;
       return false;
@@ -284,7 +369,7 @@ export const noControlledInputValueWithoutStateUpdate = defineRule({
         }
 
         if (hasHiddenOrDecoySignal(attributes)) return;
-        if (componentRendersStateDrivenAlternative(node)) return;
+        if (componentRendersStateDrivenAlternative(node, context)) return;
 
         context.report({
           node,

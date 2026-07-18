@@ -353,6 +353,90 @@ const C = () => <input value="" onChange={(e) => setQuery(e.currentTarget.value)
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not pair an unrelated conditional state-driven return with a frozen fallback", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, mode, setDraft }) => {
+         if (mode === "preview") {
+           return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+         }
+         return <input value="fixed" onChange={submit} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not pair ternary results when the condition is unrelated to the dynamic value", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, mode, setDraft }) => {
+         return mode === "preview"
+           ? <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+           : <input value="fixed" onChange={submit} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not pair a sibling member value with a guard on another property", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ form, setDraft }) => {
+         if (form.other !== null) {
+           return <input value={form.draft} onChange={(event) => setDraft(event.target.value)} />;
+         }
+         return <input value="fixed" onChange={submit} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not pair a computed dynamic value through a matching callee name", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, format }) => {
+         if (format !== null) {
+           return <input value={format(draft)} onChange={submit} />;
+         }
+         return <input value="fixed" onChange={submit} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("pairs a member value with a guard on its exact receiver", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ form, setDraft }) => {
+         if (form !== null) {
+           return <input value={form.draft} onChange={(event) => setDraft(event.target.value)} />;
+         }
+         return <input value="" onChange={(event) => setDraft(event.target.value)} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not pair a shadowed condition reference with the outer dynamic value", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft, mode, previewDraft, setDraft }) => {
+         if (mode === "preview") {
+           const draft = previewDraft;
+           if (draft !== null) return <input value="fixed" onChange={submit} />;
+         }
+         return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat an empty conditional return as a state-driven alternative", () => {
     const result = runRule(
       noControlledInputValueWithoutStateUpdate,

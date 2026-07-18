@@ -22,3 +22,23 @@ const _AlternateTernaryScene = ({ scene, detail }) => (
     {detail ? null : <primitive object={scene} />}
   </>
 );
+
+const _OrScene = ({ scene, detail }) => (
+  <>
+    {detail || <primitive object={scene} />}
+    {detail && <primitive object={scene} />}
+  </>
+);
+
+const _SiblingIfScene = ({ scene, detail }) => {
+  let first = null;
+  let second = null;
+  if (detail) first = <primitive object={scene} />;
+  if (!detail) second = <primitive object={scene} />;
+  return (
+    <>
+      {first}
+      {second}
+    </>
+  );
+};

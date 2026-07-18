@@ -54,6 +54,17 @@ describe("r3f-no-duplicate-primitive-object", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows complementary OR/AND and sibling if mounts", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `
+        const Logical = ({ scene, detail }) => <>{detail || <primitive object={scene} />}{detail && <primitive object={scene} />}</>;
+        const Branches = ({ scene, detail }) => { let first = null; let second = null; if (detail) first = <primitive object={scene} />; if (!detail) second = <primitive object={scene} />; return <>{first}{second}</>; };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("keeps opaque complementary ternary guards reportable", () => {
     const result = runRule(
       r3fNoDuplicatePrimitiveObject,

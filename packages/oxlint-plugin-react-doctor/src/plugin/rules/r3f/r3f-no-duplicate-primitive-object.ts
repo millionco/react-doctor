@@ -41,15 +41,23 @@ const findMountGuards = (node: EsTreeNode): MountGuard[] => {
   while (current) {
     if (
       isNodeOfType(current, "LogicalExpression") &&
-      current.operator === "&&" &&
+      (current.operator === "&&" || current.operator === "||") &&
       isAstDescendant(node, current.right)
     ) {
-      const guard = readMountGuard(current.left);
+      const guard = readMountGuard(current.left, current.operator === "||");
       if (guard) guards.push(guard);
     }
     if (isNodeOfType(current, "ConditionalExpression")) {
       const isConsequent = isAstDescendant(node, current.consequent);
       const isAlternate = isAstDescendant(node, current.alternate);
+      if (isConsequent || isAlternate) {
+        const guard = readMountGuard(current.test, isAlternate);
+        if (guard) guards.push(guard);
+      }
+    }
+    if (isNodeOfType(current, "IfStatement")) {
+      const isConsequent = isAstDescendant(node, current.consequent);
+      const isAlternate = Boolean(current.alternate && isAstDescendant(node, current.alternate));
       if (isConsequent || isAlternate) {
         const guard = readMountGuard(current.test, isAlternate);
         if (guard) guards.push(guard);

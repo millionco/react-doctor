@@ -18,10 +18,9 @@ if (process.argv.slice(2).length !== EXPECTED_ARGUMENT_COUNT) {
 const projectKey = (repository) =>
   JSON.stringify([repository.org, repository.name, repository.ref, repository.rootDir]);
 
-const diagnosticKey = (diagnostic) => {
-  if (typeof diagnostic.id === "string") return diagnostic.id;
-  return JSON.stringify([
-    diagnostic.normalizedFilePath ?? diagnostic.filePath,
+const diagnosticKey = (diagnostic) =>
+  JSON.stringify([
+    diagnostic.filePath ?? diagnostic.normalizedFilePath,
     diagnostic.line,
     diagnostic.column,
     diagnostic.plugin,
@@ -29,7 +28,6 @@ const diagnosticKey = (diagnostic) => {
     diagnostic.severity,
     diagnostic.message,
   ]);
-};
 
 const loadRun = (filePath) => {
   const records = new Map();

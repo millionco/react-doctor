@@ -23,7 +23,6 @@ const TEST_FILE_SUFFIX_PATTERN = new RegExp(
 const TEST_FILE_DIRECTORY_PATTERN =
   /(?:^|\/)(?:__tests__|__test__|tests|test|__mocks__|cypress|e2e|playwright)\//;
 const AMBIGUOUS_TEST_ROUTE_DIRECTORY_PATTERN = /(?:^|\/)(?:tests|test)\//;
-const NEXT_ROUTE_ROOT_PATTERN = /(?:^|\/)(app|pages)\//;
 const NEXT_APP_ROUTE_FILE_SUFFIX_PATTERN =
   /\/(?:default|error|forbidden|global-error|layout|loading|not-found|page|route|template|unauthorized)\.[cm]?[jt]sx?$/;
 const SCRIPT_FILE_SUFFIX_PATTERN = /\.[cm]?[jt]sx?$/;
@@ -66,9 +65,12 @@ const stripAboveSourceRoot = (relativePath: string): string => {
 const isFrameworkRouteBeforeAmbiguousTestDirectory = (relativePath: string): boolean => {
   const testDirectoryMatch = AMBIGUOUS_TEST_ROUTE_DIRECTORY_PATTERN.exec(relativePath);
   if (testDirectoryMatch === null) return false;
-  const routeRootMatch = NEXT_ROUTE_ROOT_PATTERN.exec(relativePath);
-  if (routeRootMatch === null || routeRootMatch.index >= testDirectoryMatch.index) return false;
-  return routeRootMatch[1] === "pages"
+  let nearestRouteRoot: string | undefined;
+  for (const pathSegment of relativePath.slice(0, testDirectoryMatch.index).split("/")) {
+    if (pathSegment === "app" || pathSegment === "pages") nearestRouteRoot = pathSegment;
+  }
+  if (nearestRouteRoot === undefined) return false;
+  return nearestRouteRoot === "pages"
     ? SCRIPT_FILE_SUFFIX_PATTERN.test(relativePath)
     : NEXT_APP_ROUTE_FILE_SUFFIX_PATTERN.test(relativePath);
 };

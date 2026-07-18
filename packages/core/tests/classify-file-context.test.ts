@@ -42,6 +42,8 @@ describe("classifyFileContext", () => {
     expect(classifyFileContext("app/test/page.tsx")).toBe("production");
     expect(classifyFileContext("src/app/tests/route.ts")).toBe("production");
     expect(classifyFileContext("pages/tests/dashboard.tsx")).toBe("production");
+    expect(classifyFileContext("packages/app/pages/tests/dashboard.tsx")).toBe("production");
+    expect(classifyFileContext("/workspace/app/pages/tests/dashboard.tsx")).toBe("production");
   });
 
   it("keeps test projects containing route-shaped files classified as test", () => {

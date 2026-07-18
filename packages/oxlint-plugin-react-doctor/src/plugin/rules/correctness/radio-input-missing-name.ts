@@ -18,15 +18,15 @@ const nameAttributeMayCreateGroup = (
   attribute: EsTreeNodeOfType<"JSXAttribute">,
   context: RuleContext,
 ): boolean => {
-  if (!attribute.value) return true;
+  if (!attribute.value) return false;
   if (isNodeOfType(attribute.value, "Literal")) {
-    if (attribute.value.value === null) return false;
+    if (attribute.value.value === null || typeof attribute.value.value === "boolean") return false;
     return typeof attribute.value.value !== "string" || attribute.value.value.trim().length > 0;
   }
   if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return true;
   const expression = stripParenExpression(attribute.value.expression);
   if (isNodeOfType(expression, "Literal")) {
-    if (expression.value === null) return false;
+    if (expression.value === null || typeof expression.value === "boolean") return false;
     return typeof expression.value !== "string" || expression.value.trim().length > 0;
   }
   if (isLiteralVoidExpression(expression)) return false;

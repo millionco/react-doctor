@@ -290,28 +290,36 @@ const analyzeEnterBranch = (enterTest: EsTreeNode): EnterBranch | null => {
 // The modifier gate may be extracted into a same-file helper —
 // `if (e.key === 'Enter' && isModEnter(e))` — so scan the resolved bodies of
 // helpers called from the test expression alongside the test itself.
-const expressionRequiresModifier = (expression: EsTreeNode, predicateResult: boolean): boolean => {
+const expressionRequiresModifier = (
+  expression: EsTreeNode,
+  predicateResult: boolean,
+  visitedFunctions: ReadonlySet<EsTreeNode> = new Set(),
+): boolean => {
   const strippedExpression = stripGroupingParens(expression);
   if (isNodeOfType(strippedExpression, "UnaryExpression") && strippedExpression.operator === "!") {
-    return expressionRequiresModifier(strippedExpression.argument, !predicateResult);
+    return expressionRequiresModifier(
+      strippedExpression.argument,
+      !predicateResult,
+      visitedFunctions,
+    );
   }
   if (isNodeOfType(strippedExpression, "LogicalExpression")) {
     if (strippedExpression.operator === "&&" && predicateResult) {
       return (
-        expressionRequiresModifier(strippedExpression.left, true) ||
-        expressionRequiresModifier(strippedExpression.right, true)
+        expressionRequiresModifier(strippedExpression.left, true, visitedFunctions) ||
+        expressionRequiresModifier(strippedExpression.right, true, visitedFunctions)
       );
     }
     if (strippedExpression.operator === "||" && !predicateResult) {
       return (
-        expressionRequiresModifier(strippedExpression.left, false) ||
-        expressionRequiresModifier(strippedExpression.right, false)
+        expressionRequiresModifier(strippedExpression.left, false, visitedFunctions) ||
+        expressionRequiresModifier(strippedExpression.right, false, visitedFunctions)
       );
     }
     if (strippedExpression.operator === "||" && predicateResult) {
       return (
-        expressionRequiresModifier(strippedExpression.left, true) &&
-        expressionRequiresModifier(strippedExpression.right, true)
+        expressionRequiresModifier(strippedExpression.left, true, visitedFunctions) &&
+        expressionRequiresModifier(strippedExpression.right, true, visitedFunctions)
       );
     }
     return false;
@@ -320,10 +328,15 @@ const expressionRequiresModifier = (expression: EsTreeNode, predicateResult: boo
   if (propertyName && MODIFIER_PROPERTIES.has(propertyName)) return predicateResult;
   if (isNodeOfType(strippedExpression, "CallExpression")) {
     const calledFunction = resolveCalledFunction(strippedExpression);
-    if (calledFunction) {
+    if (calledFunction && !visitedFunctions.has(calledFunction)) {
       const returnedExpression = getSingleReturnExpression(calledFunction);
       return Boolean(
-        returnedExpression && expressionRequiresModifier(returnedExpression, predicateResult),
+        returnedExpression &&
+        expressionRequiresModifier(
+          returnedExpression,
+          predicateResult,
+          new Set([...visitedFunctions, calledFunction]),
+        ),
       );
     }
   }
@@ -567,22 +580,38 @@ const resolveClassMemberFunction = (
   return null;
 };
 
-const isInsideCompositionCondition = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
+const isInsideCompositionSafeCondition = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
   let child = node;
   let ancestor = node.parent ?? null;
   while (ancestor && ancestor !== boundary) {
+    if (isNodeOfType(ancestor, "IfStatement") || isNodeOfType(ancestor, "ConditionalExpression")) {
+      let predicateResult: boolean | null = null;
+      if (ancestor.consequent === child) predicateResult = true;
+      else if (ancestor.alternate === child) predicateResult = false;
+      if (
+        predicateResult !== null &&
+        compositionIsActiveWhenPredicate(ancestor.test, predicateResult) === false
+      ) {
+        return true;
+      }
+    }
     if (
-      ((isNodeOfType(ancestor, "IfStatement") ||
-        isNodeOfType(ancestor, "ConditionalExpression") ||
-        isNodeOfType(ancestor, "WhileStatement") ||
-        isNodeOfType(ancestor, "DoWhileStatement")) &&
-        ancestor.test === child &&
-        subtreeHasCompositionSignal(ancestor.test)) ||
-      (isNodeOfType(ancestor, "LogicalExpression") &&
-        ancestor.left === child &&
-        subtreeHasCompositionSignal(ancestor.left))
+      (isNodeOfType(ancestor, "WhileStatement") || isNodeOfType(ancestor, "DoWhileStatement")) &&
+      ancestor.body === child &&
+      compositionIsActiveWhenPredicate(ancestor.test, true) === false
     ) {
       return true;
+    }
+    if (isNodeOfType(ancestor, "LogicalExpression") && ancestor.right === child) {
+      let predicateResult: boolean | null = null;
+      if (ancestor.operator === "&&") predicateResult = true;
+      else if (ancestor.operator === "||") predicateResult = false;
+      if (
+        predicateResult !== null &&
+        compositionIsActiveWhenPredicate(ancestor.left, predicateResult) === false
+      ) {
+        return true;
+      }
     }
     child = ancestor;
     ancestor = ancestor.parent ?? null;
@@ -621,8 +650,8 @@ const scopeCommitsAreCompositionGuarded = (
     if (!isNodeOfType(child, "CallExpression")) return;
     const calleeProperty = memberPropertyName(stripGroupingParens(child.callee as EsTreeNode));
     if (calleeProperty && NON_COMMIT_CALL_PROPERTIES.has(calleeProperty)) return;
-    if (isInsideCompositionCondition(child, scope)) return;
     foundCommit = true;
+    if (isInsideCompositionSafeCondition(child, scope)) return;
     if (hasPriorCompositionEarlyExit(scope, child)) return;
     const calledFunction = resolveCalledFunction(child);
     if (
@@ -695,6 +724,7 @@ export const noEnterSubmitWithoutImeCompositionGuard = defineRule({
 
       const enterTests: EsTreeNode[] = [];
       walkAst(handler, (child) => {
+        if (child !== handler && isFunctionLike(child)) return false;
         if (isEnterKeyTest(child)) enterTests.push(child);
       });
       if (enterTests.length === 0) return;

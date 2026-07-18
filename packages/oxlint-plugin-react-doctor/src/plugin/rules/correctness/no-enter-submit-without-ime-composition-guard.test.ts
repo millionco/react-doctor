@@ -263,6 +263,36 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a nested Enter commit that runs only while composition is active", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = () => (
+         <input onKeyDown={(event) => {
+           if (event.key === "Enter") {
+             if (event.nativeEvent.isComposing) save();
+           }
+         }} />
+       );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when a nested logical gate requires composition to be inactive", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = () => (
+         <input onKeyDown={(event) => {
+           if (event.key === "Enter") {
+             !event.nativeEvent.isComposing && save();
+           }
+         }} />
+       );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags an Enter commit after an inverted composition early return", () => {
     const result = runRule(
       noEnterSubmitWithoutImeCompositionGuard,
@@ -285,6 +315,20 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
            if (event.key === "Enter" || event.metaKey) save();
          }} />
        );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags without crashing when a modifier helper recursively calls itself", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = () => {
+         const requiresModifier = () => requiresModifier();
+         return <textarea onKeyDown={(event) => {
+           if (event.key === "Enter" && requiresModifier()) save();
+         }} />;
+       };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -664,6 +708,19 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
            const commitLater = () => save();
            void commitLater;
          }
+       }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat an Enter branch inside a deferred callback as the handler", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Editor = () => <input onKeyDown={() => {
+         const handleLater = (event) => {
+           if (event.key === "Enter") save();
+         };
+         void handleLater;
        }} />;`,
     );
     expect(result.diagnostics).toHaveLength(0);

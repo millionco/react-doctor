@@ -103,16 +103,19 @@ describe("radio-input-missing-name", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a radio that has a name", () => {
-    const result = runRule(
-      radioInputMissingName,
-      `<input type="radio" name="answer" value="yes" />;`,
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
-  });
+  it.each([`name="answer"`, `name={"answer"}`, `name={42}`])(
+    "does not flag a radio whose %s value creates a group",
+    (nameAttribute) => {
+      const result = runRule(
+        radioInputMissingName,
+        `<input type="radio" ${nameAttribute} value="yes" />;`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
 
-  it.each([`name=""`, `name={null}`, `name={undefined}`])(
+  it.each([`name`, `name=""`, `name={false}`, `name={true}`, `name={null}`, `name={undefined}`])(
     "flags a radio whose %s value does not create a group",
     (nameAttribute) => {
       const result = runRule(

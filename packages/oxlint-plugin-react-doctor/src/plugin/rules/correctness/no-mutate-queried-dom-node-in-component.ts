@@ -11,6 +11,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -448,30 +449,6 @@ const isInsideEffectCleanup = (node: EsTreeNode, context: RuleContext): boolean 
   return false;
 };
 
-const nodeDominates = (
-  candidate: EsTreeNode,
-  target: EsTreeNode,
-  context: RuleContext,
-): boolean => {
-  const owner = context.cfg.enclosingFunction(target);
-  if (!owner || context.cfg.enclosingFunction(candidate) !== owner) return false;
-  const functionControlFlow = context.cfg.cfgFor(owner);
-  const candidateBlock = functionControlFlow?.blockOf(candidate) ?? null;
-  const targetBlock = functionControlFlow?.blockOf(target) ?? null;
-  if (!functionControlFlow || !candidateBlock || !targetBlock) return false;
-  if (candidateBlock === targetBlock) return candidate.range[0] < target.range[0];
-  const visitedBlocks = new Set<number>();
-  const pendingBlocks = [functionControlFlow.entry];
-  while (pendingBlocks.length > 0) {
-    const block = pendingBlocks.pop();
-    if (!block || visitedBlocks.has(block.id) || block === candidateBlock) continue;
-    if (block === targetBlock) return false;
-    visitedBlocks.add(block.id);
-    for (const edge of block.successors) pendingBlocks.push(edge.to);
-  }
-  return true;
-};
-
 const nodePostDominates = (
   candidate: EsTreeNode,
   target: EsTreeNode,
@@ -547,7 +524,7 @@ const hasStyleSaveRestore = (
       isNodeOfType(child.id, "Identifier") &&
       child.init &&
       matchesStyleRead(stripParenExpression(child.init as EsTreeNode)) &&
-      nodeDominates(child, assignment, context)
+      nodeDominatesNode(child, assignment, context)
     ) {
       const savedSymbol = context.scopes.symbolFor(child.id);
       if (savedSymbol) savedDeclarationsBySymbolId.set(savedSymbol.id, child);

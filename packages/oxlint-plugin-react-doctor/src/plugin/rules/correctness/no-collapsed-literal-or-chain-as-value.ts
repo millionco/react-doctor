@@ -23,7 +23,7 @@ const STRING_SEARCH_METHODS = new Set([
 
 const EQUALITY_OPERATORS = new Set(["===", "!==", "==", "!="]);
 
-type LiteralKind = "string" | "number";
+type LiteralKind = "string" | "number" | "regexp";
 
 // Classifies a chain LEAF: a bare string/number literal or an
 // expression-free template literal (a string). Any other operand —
@@ -32,9 +32,18 @@ type LiteralKind = "string" | "number";
 // like `x || "default"` must never match).
 const classifyCollapsibleLiteral = (node: EsTreeNode): LiteralKind | null => {
   if (isNodeOfType(node, "Literal")) {
+    if ("regex" in node && node.regex) return "regexp";
     if (typeof node.value === "string") return "string";
     if (typeof node.value === "number") return "number";
     return null;
+  }
+  if (
+    isNodeOfType(node, "UnaryExpression") &&
+    (node.operator === "+" || node.operator === "-") &&
+    isNodeOfType(node.argument, "Literal") &&
+    typeof node.argument.value === "number"
+  ) {
+    return "number";
   }
   if (isNodeOfType(node, "TemplateLiteral")) {
     return getStaticTemplateLiteralValue(node) === null ? null : "string";

@@ -5,6 +5,7 @@ import { findDeferredExecutionBoundary } from "../../utils/find-deferred-executi
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { hasBindingWriteBetween } from "../../utils/has-binding-write-between.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
@@ -51,8 +52,7 @@ const isStaticallyValidJsonLiteral = (argument: EsTreeNode): boolean => {
   }
   if (literalText === null) return false;
   try {
-    JSON.parse(literalText);
-    return true;
+    return JSON.parse(literalText) !== null;
   } catch {
     return false;
   }
@@ -336,7 +336,8 @@ const isGuardedByJsonValidator = (
     if (
       isNodeOfType(ancestor, "IfStatement") &&
       ancestor.consequent === child &&
-      expressionGuaranteesJsonValidity(ancestor.test, true, validatedSource, scopes)
+      expressionGuaranteesJsonValidity(ancestor.test, true, validatedSource, scopes) &&
+      !hasBindingWriteBetween(validatedSource, ancestor.test, parseCall, scopes)
     ) {
       return true;
     }
@@ -346,7 +347,8 @@ const isGuardedByJsonValidator = (
         if (
           isNodeOfType(statement, "IfStatement") &&
           isEarlyExitStatement(statement.consequent) &&
-          expressionGuaranteesJsonValidity(statement.test, false, validatedSource, scopes)
+          expressionGuaranteesJsonValidity(statement.test, false, validatedSource, scopes) &&
+          !hasBindingWriteBetween(validatedSource, statement.test, parseCall, scopes)
         ) {
           return true;
         }
@@ -571,7 +573,13 @@ export const noUnsafeJsonParse = defineRule({
             );
             if (
               argumentBinding?.initializer &&
-              isKnownSerializerCall(argumentBinding.initializer, context.scopes)
+              isKnownSerializerCall(argumentBinding.initializer, context.scopes) &&
+              !hasBindingWriteBetween(
+                unwrappedArgument,
+                argumentBinding.bindingIdentifier,
+                node as EsTreeNode,
+                context.scopes,
+              )
             ) {
               return;
             }

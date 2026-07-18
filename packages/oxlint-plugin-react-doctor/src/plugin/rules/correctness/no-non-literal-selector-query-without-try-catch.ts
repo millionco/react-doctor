@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { hasBindingWriteBetween } from "../../utils/has-binding-write-between.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
@@ -59,6 +60,7 @@ const REGEX_VALIDATION_METHOD_NAMES = new Set(["match", "test", "exec"]);
 const SAFE_HASH_SELECTOR_PATTERNS = new Set([
   "^#[A-Za-z][\\w-]*$",
   "^#[a-zA-Z][\\w-]*$",
+  "^#[a-z][a-z0-9-]*$",
   "^[A-Za-z][\\w-]*$",
   "^[a-zA-Z][\\w-]*$",
 ]);
@@ -186,9 +188,27 @@ const isSanitizedSelectorHelperCall = (node: EsTreeNode): boolean => {
   const binding = findVariableInitializer(callee, callee.name);
   if (!binding?.initializer) return false;
   if (isImportSpecifierNode(binding.initializer)) return true;
-  return someNodeInSubtree(
-    binding.initializer,
-    (candidate) => isCssEscapeCall(candidate) || isRegexValidationCall(candidate),
+  const helper = stripParenExpression(binding.initializer);
+  if (!isFunctionLike(helper)) return false;
+  const returnedExpressions: EsTreeNode[] = [];
+  if (!isNodeOfType(helper.body, "BlockStatement")) {
+    returnedExpressions.push(helper.body as EsTreeNode);
+  } else {
+    walkAst(helper.body, (candidate) => {
+      if (candidate !== helper && isFunctionLike(candidate)) return false;
+      if (isNodeOfType(candidate, "ReturnStatement") && candidate.argument) {
+        returnedExpressions.push(candidate.argument as EsTreeNode);
+      }
+    });
+  }
+  return (
+    returnedExpressions.length > 0 &&
+    returnedExpressions.every((returnedExpression) =>
+      someNodeInSubtree(
+        returnedExpression,
+        (candidate) => isCssEscapeCall(candidate) || isRegexValidationCall(candidate),
+      ),
+    )
   );
 };
 
@@ -234,10 +254,17 @@ const isLiteralHrefTable = (node: EsTreeNode): boolean => {
     const strippedElement = stripParenExpression(element as EsTreeNode);
     if (!isNodeOfType(strippedElement, "ObjectExpression")) return false;
     return strippedElement.properties.every((property) => {
-      if (!isNodeOfType(property, "Property") || property.computed) return true;
-      if (!isNodeOfType(property.key, "Identifier") || property.key.name !== "href") return true;
+      if (!isNodeOfType(property, "Property")) return false;
+      let propertyName: string | null = null;
+      if (!property.computed && isNodeOfType(property.key, "Identifier")) {
+        propertyName = property.key.name;
+      } else if (isNodeOfType(property.key, "Literal") && typeof property.key.value === "string") {
+        propertyName = property.key.value;
+      }
+      if (propertyName === null) return false;
+      if (propertyName !== "href") return true;
       const value = stripParenExpression(property.value as EsTreeNode);
-      return isNodeOfType(value, "Literal") && typeof value.value === "string";
+      return isSafeHashSelectorLiteral(value);
     });
   });
 };
@@ -246,7 +273,10 @@ const isLiteralHrefTable = (node: EsTreeNode): boolean => {
 // `navItems` is a same-file array of object literals with literal `href`s
 // — every selector the query can receive is developer-authored, so the
 // DOMException the rule warns about cannot occur.
-const selectorComesFromLiteralHrefTable = (selectorArgument: EsTreeNode): boolean => {
+const selectorComesFromLiteralHrefTable = (
+  selectorArgument: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   const stripped = stripParenExpression(selectorArgument);
   let member: EsTreeNode = stripped;
   if (isNodeOfType(member, "ChainExpression")) member = member.expression as EsTreeNode;
@@ -282,7 +312,13 @@ const selectorComesFromLiteralHrefTable = (selectorArgument: EsTreeNode): boolea
   if (isLiteralHrefTable(tableReceiver)) return true;
   if (!isNodeOfType(tableReceiver, "Identifier")) return false;
   const tableBinding = findVariableInitializer(tableReceiver, tableReceiver.name);
-  return Boolean(tableBinding?.initializer && isLiteralHrefTable(tableBinding.initializer));
+  if (!tableBinding?.initializer || !isLiteralHrefTable(tableBinding.initializer)) return false;
+  return !hasBindingWriteBetween(
+    tableReceiver,
+    tableBinding.bindingIdentifier,
+    iterationCall,
+    scopes,
+  );
 };
 
 // The selector argument taints to an href/hash value: either directly, or
@@ -412,9 +448,41 @@ const isTaintPinningAssertion = (
 ): boolean => {
   const rootCall = getExpectChainRootCall(node);
   if (!rootCall) return false;
-  return (rootCall.arguments ?? []).some((argument: EsTreeNode) =>
-    someNodeInSubtree(argument, referencesTaintedValue),
+  if (
+    !(rootCall.arguments ?? []).some((argument) =>
+      someNodeInSubtree(argument, referencesTaintedValue),
+    )
+  ) {
+    return false;
+  }
+  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression")) {
+    return false;
+  }
+  const matcherName = getStaticMemberPropertyName(node.callee);
+  const expectedValue = node.arguments[0];
+  if (!matcherName || !expectedValue || isNodeOfType(expectedValue, "SpreadElement")) return false;
+  if (matcherName === "toBe" || matcherName === "toEqual" || matcherName === "toStrictEqual") {
+    return isSafeHashSelectorLiteral(expectedValue as EsTreeNode);
+  }
+  if (matcherName !== "toMatch") return false;
+  const expectedPattern = stripParenExpression(expectedValue as EsTreeNode);
+  return Boolean(
+    isNodeOfType(expectedPattern, "Literal") &&
+    "regex" in expectedPattern &&
+    expectedPattern.regex &&
+    SAFE_HASH_SELECTOR_PATTERNS.has(expectedPattern.regex.pattern),
   );
+};
+
+const hasTaintedBindingWriteBetween = (
+  selectorArgument: EsTreeNode,
+  validationNode: EsTreeNode,
+  callNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const identifier = stripParenExpression(selectorArgument);
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  return hasBindingWriteBetween(identifier, validationNode, callNode, scopes);
 };
 
 // `hash === '#pricing'`, `hash in sectionOffsets` — the guard pins the
@@ -572,7 +640,8 @@ const isShapeValidatedByDominatingGuard = (
         ancestor.test,
         ancestor.consequent === child,
         referencesTaintedValue,
-      )
+      ) &&
+      !hasTaintedBindingWriteBetween(selectorArgument, ancestor.test, callNode, scopes)
     ) {
       return true;
     }
@@ -583,6 +652,12 @@ const isShapeValidatedByDominatingGuard = (
         ancestor.left as EsTreeNode,
         ancestor.operator === "&&",
         referencesTaintedValue,
+      ) &&
+      !hasTaintedBindingWriteBetween(
+        selectorArgument,
+        ancestor.left as EsTreeNode,
+        callNode,
+        scopes,
       )
     ) {
       return true;
@@ -593,13 +668,15 @@ const isShapeValidatedByDominatingGuard = (
         if (
           isNodeOfType(statement, "IfStatement") &&
           isEarlyExitStatement(statement.consequent) &&
-          expressionGuaranteesValidSelector(statement.test, false, referencesTaintedValue)
+          expressionGuaranteesValidSelector(statement.test, false, referencesTaintedValue) &&
+          !hasTaintedBindingWriteBetween(selectorArgument, statement.test, callNode, scopes)
         ) {
           return true;
         }
         if (
           isNodeOfType(statement, "ExpressionStatement") &&
-          isTaintPinningAssertion(statement.expression, referencesTaintedValue)
+          isTaintPinningAssertion(statement.expression, referencesTaintedValue) &&
+          !hasTaintedBindingWriteBetween(selectorArgument, statement.expression, callNode, scopes)
         ) {
           return true;
         }
@@ -760,7 +837,7 @@ export const noNonLiteralSelectorQueryWithoutTryCatch = defineRule({
         if (!selectorArgument || isNodeOfType(selectorArgument, "SpreadElement")) return;
         if (isStringLiteralSelector(selectorArgument)) return;
         if (!selectorArgumentTaintsToHref(selectorArgument)) return;
-        if (selectorComesFromLiteralHrefTable(selectorArgument)) return;
+        if (selectorComesFromLiteralHrefTable(selectorArgument, context.scopes)) return;
         if (isShapeValidatedByDominatingGuard(node, selectorArgument, context.scopes)) return;
         if (
           isInsideTryStatement(node as EsTreeNode, {

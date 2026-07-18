@@ -532,4 +532,78 @@ describe("no-non-literal-selector-query-without-try-catch", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a hash helper that sanitizes an unrelated value", () => {
+    const result = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `const getHashSelector = (rawHash) => {
+        CSS.escape("unused");
+        return rawHash;
+      };
+      document.querySelector(getHashSelector(location.hash));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a literal nav table whose spread can override href", () => {
+    const result = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `const dynamicLink = { href: location.hash };
+      const navItems = [{ href: "#safe", ...dynamicLink }];
+      navItems.map((item) => document.querySelector(item.href));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a nav table whose computed property may be href", () => {
+    const result = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `const propertyName = "href";
+      const navItems = [{ [propertyName]: location.hash }];
+      navItems.map((item) => document.querySelector(item.href));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a reassigned literal nav table", () => {
+    const result = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `let navItems = [{ href: "#safe" }];
+      navItems = [{ href: location.hash }];
+      navItems.map((item) => document.querySelector(item.href));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat an unrelated assertion as selector validation", () => {
+    const result = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `const hash = location.hash;
+      expect(hash).toBeDefined();
+      document.querySelector(hash);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("invalidates a selector assertion after reassignment", () => {
+    const result = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `let hash = location.hash;
+      expect(hash).toBe("#safe");
+      hash = readHash();
+      document.querySelector(hash);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a deferred reassignment invalidate a selector assertion", () => {
+    const result = runRule(
+      noNonLiteralSelectorQueryWithoutTryCatch,
+      `let hash = location.hash;
+      expect(hash).toBe("#safe");
+      queueMicrotask(() => { hash = readHash(); });
+      document.querySelector(hash);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

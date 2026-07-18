@@ -29,7 +29,14 @@ const propertyMayCustomizeStringCoercion = (property: EsTreeNode): boolean => {
   if (isNodeOfType(property, "SpreadElement")) return true;
   if (!isNodeOfType(property, "Property")) return false;
   const key = property.key as EsTreeNode;
-  if (property.computed) return isSymbolToPrimitiveKey(key);
+  if (property.computed) {
+    return (
+      isSymbolToPrimitiveKey(key) ||
+      (isNodeOfType(key, "Literal") &&
+        typeof key.value === "string" &&
+        STRING_COERCION_METHOD_NAMES.has(key.value))
+    );
+  }
   if (isNodeOfType(key, "Identifier")) return STRING_COERCION_METHOD_NAMES.has(key.name);
   return (
     isNodeOfType(key, "Literal") &&

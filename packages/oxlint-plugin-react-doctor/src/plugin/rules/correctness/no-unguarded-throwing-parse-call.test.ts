@@ -958,4 +958,79 @@ describe("no-unguarded-throwing-parse-call", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not trust URL.canParse with a base for a single-argument URL constructor", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function LinkPreview(searchParams) {
+        const target = searchParams.get("href");
+        if (!URL.canParse(target, "https://example.com")) return null;
+        return new URL(target).hostname;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("respects boolean-comparison polarity around URL.canParse", () => {
+    const safeResult = runRule(
+      noUnguardedThrowingParseCall,
+      `function LinkPreview(searchParams) {
+        const target = searchParams.get("href");
+        if (URL.canParse(target) === false) return null;
+        return new URL(target).hostname;
+      }`,
+    );
+    const unsafeResult = runRule(
+      noUnguardedThrowingParseCall,
+      `function LinkPreview(searchParams) {
+        const target = searchParams.get("href");
+        if (URL.canParse(target) === true) return null;
+        return new URL(target).hostname;
+      }`,
+    );
+    expect(safeResult.diagnostics).toHaveLength(0);
+    expect(unsafeResult.diagnostics).toHaveLength(1);
+  });
+
+  it("invalidates URL.canParse after reassignment", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function LinkPreview(searchParams) {
+        let target = searchParams.get("href");
+        if (!URL.canParse(target)) return null;
+        target = searchParams.get("fallback");
+        return new URL(target).hostname;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a deferred reassignment invalidate URL.canParse", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function LinkPreview(searchParams) {
+        let target = searchParams.get("href");
+        if (!URL.canParse(target)) return null;
+        queueMicrotask(() => { target = searchParams.get("fallback"); });
+        return new URL(target).hostname;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps Array.from mapper callbacks protected by an outer try", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `try { Array.from(values, () => decodeURIComponent(location.hash)); } catch { recover(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let an outer try suppress a custom async-map callback", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `try { asyncMap(values, () => decodeURIComponent(location.hash)); } catch { recover(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -7,6 +7,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { hasBindingWriteBetween } from "../../utils/has-binding-write-between.js";
 import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
@@ -644,6 +645,7 @@ const isMatchingValidityCheck = (
   if (!expressionsReferenceSameValue(firstArgument as EsTreeNode, parsedArgument)) return false;
   if (parserKind === "url") {
     return (
+      inner.arguments.length === 1 &&
       methodName === "canParse" &&
       isNodeOfType(receiver, "Identifier") &&
       receiver.name === "URL" &&
@@ -673,6 +675,38 @@ const validityCheckPolarity = (
   ) {
     return false;
   }
+  if (
+    isNodeOfType(inner, "BinaryExpression") &&
+    (inner.operator === "===" ||
+      inner.operator === "==" ||
+      inner.operator === "!==" ||
+      inner.operator === "!=")
+  ) {
+    const readComparisonPolarity = (
+      checkedExpression: EsTreeNode,
+      comparedExpression: EsTreeNode,
+    ): boolean | null => {
+      const comparedValue = stripParenExpression(comparedExpression);
+      if (!isNodeOfType(comparedValue, "Literal") || typeof comparedValue.value !== "boolean") {
+        return null;
+      }
+      const checkedPolarity = validityCheckPolarity(
+        checkedExpression,
+        parserKind,
+        parsedArgument,
+        context,
+      );
+      if (checkedPolarity === null) return null;
+      const comparisonIsEquality = inner.operator === "===" || inner.operator === "==";
+      return comparisonIsEquality
+        ? checkedPolarity === comparedValue.value
+        : checkedPolarity !== comparedValue.value;
+    };
+    return (
+      readComparisonPolarity(inner.left as EsTreeNode, inner.right as EsTreeNode) ??
+      readComparisonPolarity(inner.right as EsTreeNode, inner.left as EsTreeNode)
+    );
+  }
   return null;
 };
 
@@ -698,14 +732,7 @@ const hasParsedValueWriteBetween = (
 ): boolean => {
   const rootIdentifier = findRootIdentifier(parsedArgument);
   if (!rootIdentifier) return false;
-  const symbol = context.scopes.referenceFor(rootIdentifier)?.resolvedSymbol ?? null;
-  if (!symbol) return false;
-  return symbol.references.some(
-    (reference) =>
-      reference.flag !== "read" &&
-      reference.identifier.range[0] > guardTest.range[1] &&
-      reference.identifier.range[0] < parseCall.range[0],
-  );
+  return hasBindingWriteBetween(rootIdentifier, guardTest, parseCall, context.scopes);
 };
 
 // True when the parse call is dominated by a validity pre-check within the

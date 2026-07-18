@@ -260,4 +260,12 @@ describe("no-object-or-array-coerced-to-string-in-template-literal", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag an object literal with a computed static toString method", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      `function f() { const point = { x: 1, ["toString"]() { return String(this.x); } }; return \`point: ${"${point}"}\`; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

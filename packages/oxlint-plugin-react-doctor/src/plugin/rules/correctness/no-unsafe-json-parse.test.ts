@@ -413,4 +413,59 @@ describe("no-unsafe-json-parse", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags a property read from a statically parsed null", () => {
+    const result = runRule(noUnsafeJsonParse, `const value = JSON.parse("null").value;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("invalidates a JSON validator guard after reassignment", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `const isValidJsonArray = (value) => { try { return Array.isArray(JSON.parse(value)); } catch { return false; } };
+      function format(value) {
+        if (isValidJsonArray(value)) {
+          value = readPayload();
+          return JSON.parse(value)[0];
+        }
+        return null;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("invalidates a serializer-derived binding after reassignment", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `let snapshot = JSON.stringify(state);
+      snapshot = readPayload();
+      const value = JSON.parse(snapshot).value;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps Array.from mapper parses protected by an outer try", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `try { Array.from(values, () => JSON.parse(raw).value); } catch { recover(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a shadowed Array.from callback as synchronous", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `const Array = { from: (values, callback) => queueMicrotask(() => values.map(callback)) };
+      try { Array.from(values, () => JSON.parse(raw).value); } catch { recover(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let an outer try suppress a custom async-map parse", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `try { asyncMap(values, () => JSON.parse(raw).value); } catch { recover(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

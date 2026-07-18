@@ -4,6 +4,8 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { hasBindingWriteBetween } from "../../utils/has-binding-write-between.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -63,12 +65,17 @@ const isFullyLiteralPattern = (argument: EsTreeNode): boolean => {
   return false;
 };
 
-const isRegExpEscapeBuiltin = (callee: EsTreeNode): boolean =>
-  isNodeOfType(callee, "MemberExpression") &&
-  isNodeOfType(callee.object, "Identifier") &&
-  callee.object.name === "RegExp" &&
-  isNodeOfType(callee.property, "Identifier") &&
-  callee.property.name === "escape";
+const isRegExpEscapeBuiltin = (callee: EsTreeNode): boolean => {
+  const inner = stripParenExpression(callee);
+  if (!isNodeOfType(inner, "MemberExpression")) return false;
+  const receiver = stripParenExpression(inner.object);
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "RegExp" &&
+    !findVariableInitializer(receiver, "RegExp") &&
+    getStaticPropertyName(inner) === "escape"
+  );
+};
 
 const REGEXP_ESCAPE_PATTERN_CHARACTERS = [".", "*", "+", "?", "^", "$", "{", "}", "(", ")", "|"];
 
@@ -501,6 +508,7 @@ const identifierResolvesToEscapedValue = (
   regexpObjectSymbolIds: ReadonlySet<number>,
   globalRegExpObjectNames: ReadonlySet<string>,
 ): boolean => {
+  if (hasBindingWriteBetween(identifier, null, identifier, scopes)) return false;
   if (SANITIZED_NAME_PATTERN.test(identifier.name)) return true;
   // SCREAMING_SNAKE names are developer-authored pattern constants (often
   // imported, so their initializer is unresolvable) — the metacharacters
@@ -616,7 +624,8 @@ const isParameterFedOnlyMetacharacterFreeLiterals = (
 // construction only runs on metacharacter-free values.
 const isShapeTestedByDominatingGuard = (
   constructionNode: EsTreeNode,
-  identifierName: string,
+  identifier: EsTreeNodeOfType<"Identifier">,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const isSafeCharacterClassTest = (candidate: EsTreeNode): boolean => {
     const inner = stripParenExpression(candidate);
@@ -632,7 +641,16 @@ const isShapeTestedByDominatingGuard = (
       return false;
     }
     const argument = inner.arguments[0];
-    if (!argument || !isNodeOfType(argument, "Identifier") || argument.name !== identifierName) {
+    if (!argument || !isNodeOfType(argument, "Identifier")) {
+      return false;
+    }
+    const guardedSymbol = scopes.symbolFor(argument);
+    const constructedSymbol = scopes.symbolFor(identifier);
+    if (
+      guardedSymbol
+        ? guardedSymbol !== constructedSymbol
+        : constructedSymbol !== null || argument.name !== identifier.name
+    ) {
       return false;
     }
     const classMatch = receiver.regex.pattern.match(/^\^\[([^\]]+)\][*+]\$$/);
@@ -665,7 +683,7 @@ const isShapeTestedByDominatingGuard = (
           ancestor.alternate === child &&
           shapeTestPolarity(ancestor.test) === false))
     ) {
-      return true;
+      if (!hasBindingWriteBetween(identifier, ancestor.test, constructionNode, scopes)) return true;
     }
     if (isNodeOfType(ancestor, "BlockStatement") || isNodeOfType(ancestor, "Program")) {
       const statements = ancestor.body;
@@ -676,7 +694,11 @@ const isShapeTestedByDominatingGuard = (
           isEarlyExitStatement(precedingStatement.consequent) &&
           shapeTestPolarity(precedingStatement.test) === false
         ) {
-          return true;
+          if (
+            !hasBindingWriteBetween(identifier, precedingStatement.test, constructionNode, scopes)
+          ) {
+            return true;
+          }
         }
       }
     }
@@ -701,19 +723,21 @@ const normalizeRegexValidationArgument = (node: EsTreeNode): EsTreeNode => {
 const trustedRegexValidatorPolarity = (
   test: EsTreeNode,
   constructedArgument: EsTreeNode,
+  scopes: ScopeAnalysis,
 ): boolean | null => {
   const inner = stripParenExpression(test);
   if (isNodeOfType(inner, "UnaryExpression") && inner.operator === "!") {
     const nestedPolarity = trustedRegexValidatorPolarity(
       inner.argument as EsTreeNode,
       constructedArgument,
+      scopes,
     );
     return nestedPolarity === null ? null : !nestedPolarity;
   }
   if (isNodeOfType(inner, "Identifier")) {
     const binding = findVariableInitializer(inner, inner.name);
     return binding?.initializer
-      ? trustedRegexValidatorPolarity(binding.initializer, constructedArgument)
+      ? trustedRegexValidatorPolarity(binding.initializer, constructedArgument, scopes)
       : null;
   }
   if (!isNodeOfType(inner, "CallExpression")) return null;
@@ -728,10 +752,21 @@ const trustedRegexValidatorPolarity = (
   }
   const validatedArgument = inner.arguments[0];
   if (!validatedArgument || isNodeOfType(validatedArgument, "SpreadElement")) return null;
-  return areExpressionsStructurallyEqual(
-    normalizeRegexValidationArgument(validatedArgument),
-    normalizeRegexValidationArgument(constructedArgument),
-  )
+  const normalizedValidatedArgument = normalizeRegexValidationArgument(validatedArgument);
+  const normalizedConstructedArgument = normalizeRegexValidationArgument(constructedArgument);
+  if (
+    isNodeOfType(normalizedValidatedArgument, "Identifier") &&
+    isNodeOfType(normalizedConstructedArgument, "Identifier")
+  ) {
+    const validatedSymbol = scopes.symbolFor(normalizedValidatedArgument);
+    const constructedSymbol = scopes.symbolFor(normalizedConstructedArgument);
+    if (validatedSymbol) return validatedSymbol === constructedSymbol ? true : null;
+    return constructedSymbol === null &&
+      normalizedValidatedArgument.name === normalizedConstructedArgument.name
+      ? true
+      : null;
+  }
+  return areExpressionsStructurallyEqual(normalizedValidatedArgument, normalizedConstructedArgument)
     ? true
     : null;
 };
@@ -739,14 +774,20 @@ const trustedRegexValidatorPolarity = (
 const isGuardedByTrustedRegexValidator = (
   constructionNode: EsTreeNode,
   constructedArgument: EsTreeNode,
+  scopes: ScopeAnalysis,
 ): boolean => {
+  const normalizedConstructedArgument = normalizeRegexValidationArgument(constructedArgument);
+  const hasWriteAfterValidation = (validationNode: EsTreeNode): boolean =>
+    isNodeOfType(normalizedConstructedArgument, "Identifier") &&
+    hasBindingWriteBetween(normalizedConstructedArgument, validationNode, constructionNode, scopes);
   let child = constructionNode;
   let ancestor = constructionNode.parent;
   while (ancestor) {
     if (
       isNodeOfType(ancestor, "IfStatement") &&
       ancestor.consequent === child &&
-      trustedRegexValidatorPolarity(ancestor.test, constructedArgument) === true
+      trustedRegexValidatorPolarity(ancestor.test, constructedArgument, scopes) === true &&
+      !hasWriteAfterValidation(ancestor.test)
     ) {
       return true;
     }
@@ -756,7 +797,9 @@ const isGuardedByTrustedRegexValidator = (
         if (
           isNodeOfType(precedingStatement, "IfStatement") &&
           isEarlyExitStatement(precedingStatement.consequent) &&
-          trustedRegexValidatorPolarity(precedingStatement.test, constructedArgument) === false
+          trustedRegexValidatorPolarity(precedingStatement.test, constructedArgument, scopes) ===
+            false &&
+          !hasWriteAfterValidation(precedingStatement.test)
         ) {
           return true;
         }
@@ -788,7 +831,7 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
       const firstArgument = node.arguments?.[0];
       if (!firstArgument || isNodeOfType(firstArgument, "SpreadElement")) return;
       if (isFullyLiteralPattern(firstArgument)) return;
-      if (isGuardedByTrustedRegexValidator(node, firstArgument)) return;
+      if (isGuardedByTrustedRegexValidator(node, firstArgument, context.scopes)) return;
       if (!regexpObjectIndex) {
         const programRoot = findProgramRoot(node);
         if (!programRoot) return;
@@ -805,7 +848,7 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
             currentRegExpObjectIndex.regexpObjectSymbolIds,
             currentRegExpObjectIndex.globalRegExpObjectNames,
           ) &&
-          !isShapeTestedByDominatingGuard(node, identifier.name) &&
+          !isShapeTestedByDominatingGuard(node, identifier, context.scopes) &&
           !isParameterFedOnlyMetacharacterFreeLiterals(identifier, context.scopes),
       );
       if (!hasUnescapedSearchTerm) return;

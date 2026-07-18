@@ -243,20 +243,14 @@ import { noMutateThenSetOrReturnSameReference } from "./rules/state-and-effects/
 import { noMutatingReducerState } from "./rules/state-and-effects/no-mutating-reducer-state.js";
 import { noNamespace } from "./rules/react-builtins/no-namespace.js";
 import { noNestedComponentDefinition } from "./rules/architecture/no-nested-component-definition.js";
-<<<<<<< HEAD
+import { noNonLiteralSelectorQueryWithoutTryCatch } from "./rules/correctness/no-non-literal-selector-query-without-try-catch.js";
 import { noNonNullAssertionOnMaybeUndefinedResult } from "./rules/correctness/no-non-null-assertion-on-maybe-undefined-result.js";
 import { noNoninteractiveElementInteractions } from "./rules/a11y/no-noninteractive-element-interactions.js";
 import { noNoninteractiveElementToInteractiveRole } from "./rules/a11y/no-noninteractive-element-to-interactive-role.js";
 import { noNoninteractiveTabindex } from "./rules/a11y/no-noninteractive-tabindex.js";
 import { noNullishCoalescingArithmeticPrecedence } from "./rules/correctness/no-nullish-coalescing-arithmetic-precedence.js";
 import { noObjectKeysValuesEntriesOnMaybeUndefined } from "./rules/correctness/no-object-keys-values-entries-on-maybe-undefined.js";
-=======
-import { noNonLiteralSelectorQueryWithoutTryCatch } from "./rules/correctness/no-non-literal-selector-query-without-try-catch.js";
-import { noNoninteractiveElementInteractions } from "./rules/a11y/no-noninteractive-element-interactions.js";
-import { noNoninteractiveElementToInteractiveRole } from "./rules/a11y/no-noninteractive-element-to-interactive-role.js";
-import { noNoninteractiveTabindex } from "./rules/a11y/no-noninteractive-tabindex.js";
 import { noObjectOrArrayCoercedToStringInTemplateLiteral } from "./rules/correctness/no-object-or-array-coerced-to-string-in-template-literal.js";
->>>>>>> 10b8a2d5a (feat(rules): add parsing and string safety diagnostics)
 import { noOutlineNone } from "./rules/design/no-outline-none.js";
 import { noPassDataToParent } from "./rules/state-and-effects/no-pass-data-to-parent.js";
 import { noPassLiveStateToParent } from "./rules/state-and-effects/no-pass-live-state-to-parent.js";
@@ -3273,21 +3267,23 @@ export const reactDoctorRules = [
     },
   },
   {
-<<<<<<< HEAD
-    key: "react-doctor/no-non-null-assertion-on-maybe-undefined-result",
-    id: "no-non-null-assertion-on-maybe-undefined-result",
-    source: "react-doctor",
-    originallyExternal: false,
-    rule: {
-      ...noNonNullAssertionOnMaybeUndefinedResult,
-=======
     key: "react-doctor/no-non-literal-selector-query-without-try-catch",
     id: "no-non-literal-selector-query-without-try-catch",
     source: "react-doctor",
     originallyExternal: false,
     rule: {
       ...noNonLiteralSelectorQueryWithoutTryCatch,
->>>>>>> 10b8a2d5a (feat(rules): add parsing and string safety diagnostics)
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-non-null-assertion-on-maybe-undefined-result",
+    id: "no-non-null-assertion-on-maybe-undefined-result",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noNonNullAssertionOnMaybeUndefinedResult,
       framework: "global",
       category: "Bugs",
     },
@@ -3336,7 +3332,6 @@ export const reactDoctorRules = [
     },
   },
   {
-<<<<<<< HEAD
     key: "react-doctor/no-nullish-coalescing-arithmetic-precedence",
     id: "no-nullish-coalescing-arithmetic-precedence",
     source: "react-doctor",
@@ -3354,14 +3349,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...noObjectKeysValuesEntriesOnMaybeUndefined,
-=======
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/no-object-or-array-coerced-to-string-in-template-literal",
     id: "no-object-or-array-coerced-to-string-in-template-literal",
     source: "react-doctor",
     originallyExternal: false,
     rule: {
       ...noObjectOrArrayCoercedToStringInTemplateLiteral,
->>>>>>> 10b8a2d5a (feat(rules): add parsing and string safety diagnostics)
       framework: "global",
       category: "Bugs",
     },

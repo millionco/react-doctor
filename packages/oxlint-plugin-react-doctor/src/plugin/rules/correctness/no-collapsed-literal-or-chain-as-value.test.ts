@@ -151,4 +151,17 @@ describe("no-collapsed-literal-or-chain-as-value", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a negative numeric literal chain", () => {
+    const result = runRule(noCollapsedLiteralOrChainAsValue, `const bad = code !== (-1 || -2);`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a regex literal chain used as a match pattern", () => {
+    const result = runRule(
+      noCollapsedLiteralOrChainAsValue,
+      `const bad = value.match(/first/ || /second/);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

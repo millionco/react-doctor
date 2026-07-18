@@ -307,7 +307,7 @@ const isGuardedByRelatedAncestor = (
       }
     }
     if (isNodeOfType(ancestor, "LogicalExpression")) {
-      if (ancestor.left === child && (ancestor.operator === "||" || ancestor.operator === "??")) {
+      if (ancestor.left === child && ancestor.operator === "||") {
         return true;
       }
       if (

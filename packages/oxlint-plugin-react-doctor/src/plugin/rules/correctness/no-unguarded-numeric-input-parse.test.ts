@@ -356,4 +356,14 @@ describe("no-unguarded-numeric-input-parse", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a nullish fallback because NaN is not nullish", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const QtyField = ({ setQty }) => (
+        <input type="text" onChange={(event) => setQty(Number(event.target.value) ?? 1)} />
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

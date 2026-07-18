@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { findVariableInitializer } from "./find-variable-initializer.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
@@ -32,6 +33,14 @@ const isInvokedAtDefinitionSite = (functionNode: EsTreeNode): boolean => {
     return false;
   }
   const methodName = getStaticPropertyName(parent.callee);
+  if (
+    methodName === "from" &&
+    isNodeOfType(parent.callee.object, "Identifier") &&
+    parent.callee.object.name === "Array" &&
+    !findVariableInitializer(parent.callee.object, "Array")
+  ) {
+    return true;
+  }
   return Boolean(methodName && SYNCHRONOUS_CALLBACK_METHOD_NAMES.has(methodName));
 };
 

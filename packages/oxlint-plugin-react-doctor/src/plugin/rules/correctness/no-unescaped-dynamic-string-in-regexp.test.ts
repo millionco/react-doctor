@@ -553,4 +553,72 @@ describe("no-unescaped-dynamic-string-in-regexp", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("recognizes a TypeScript-wrapped RegExp.escape call", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const matcher = new RegExp((RegExp.escape as (value: string) => string)(searchTerm), "i");`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a shadowed RegExp.escape inside a sanitizer helper", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const normalize = (value) => {
+        const RegExp = { escape: (innerValue) => innerValue };
+        return RegExp.escape(value);
+      };
+      const searchPattern = normalize(searchTerm);
+      const matcher = new RegExp(searchPattern, "i");`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("invalidates an escaped binding after reassignment", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `let escapedSearchTerm = RegExp.escape(searchTerm);
+      escapedSearchTerm = searchTerm;
+      const matcher = new RegExp(escapedSearchTerm, "i");`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a regex guard over a shadowed binding", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const build = (searchTerm) => {
+        if (["safe"].some((searchTerm) => /^[\\w ]+$/.test(searchTerm))) {
+          return new RegExp(searchTerm, "i");
+        }
+        return null;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("invalidates a regex shape guard after reassignment", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const build = (searchTerm) => {
+        if (!/^[\\w ]+$/.test(searchTerm)) return null;
+        searchTerm = readSearchTerm();
+        return new RegExp(searchTerm, "i");
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a deferred reassignment invalidate a regex shape guard", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const build = (searchTerm) => {
+        if (!/^[\\w ]+$/.test(searchTerm)) return null;
+        queueMicrotask(() => { searchTerm = readSearchTerm(); });
+        return new RegExp(searchTerm, "i");
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

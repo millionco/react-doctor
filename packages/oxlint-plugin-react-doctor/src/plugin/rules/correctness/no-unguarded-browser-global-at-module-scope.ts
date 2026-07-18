@@ -350,22 +350,35 @@ const collectBrowserOnlyGuardEndOffsets = (
   context: RuleContext,
   guardAliasNames: ReadonlySet<string>,
   classifyImportedGuardIdentifier: ClassifyImportedGuardIdentifier,
-): number[] =>
-  (program.body ?? [])
-    .filter(
-      (statement) =>
-        isNodeOfType(statement, "IfStatement") &&
-        isFlowTerminatingStatement(statement.consequent) &&
+): Map<string, number[]> => {
+  const guardEndOffsetsByGlobalName = new Map<string, number[]>();
+  for (const statement of program.body ?? []) {
+    if (
+      !isNodeOfType(statement, "IfStatement") ||
+      !isFlowTerminatingStatement(statement.consequent)
+    ) {
+      continue;
+    }
+    for (const globalName of BROWSER_GLOBAL_NAMES) {
+      if (
         browserIsAvailableWhenPredicate(
           statement.test,
-          true,
-          "window",
+          false,
+          globalName,
           context,
           guardAliasNames,
           classifyImportedGuardIdentifier,
-        ) === false,
-    )
-    .map((statement) => statement.range[1]);
+        ) !== true
+      ) {
+        continue;
+      }
+      const guardEndOffsets = guardEndOffsetsByGlobalName.get(globalName) ?? [];
+      guardEndOffsets.push(statement.range[1]);
+      guardEndOffsetsByGlobalName.set(globalName, guardEndOffsets);
+    }
+  }
+  return guardEndOffsetsByGlobalName;
+};
 
 const catchClauseCanThrow = (handler: EsTreeNodeOfType<"CatchClause">): boolean => {
   let canThrow = false;
@@ -515,7 +528,7 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
     if (isBrowserOnlyModuleFilename(context.filename)) return {};
 
     let guardAliasNames: ReadonlySet<string> = NO_GUARD_ALIASES;
-    let browserOnlyGuardEndOffsets: number[] = [];
+    let browserOnlyGuardEndOffsetsByGlobalName = new Map<string, number[]>();
 
     const importedGuardResolutionByName = new Map<string, ImportedGuardResolution>();
     let importedGuardResolutionCount = 0;
@@ -568,7 +581,11 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
     };
 
     const reportRead = (node: EsTreeNode, globalName: string): void => {
-      if (browserOnlyGuardEndOffsets.some((guardEndOffset) => guardEndOffset <= node.range[0])) {
+      if (
+        browserOnlyGuardEndOffsetsByGlobalName
+          .get(globalName)
+          ?.some((guardEndOffset) => guardEndOffset <= node.range[0])
+      ) {
         return;
       }
       if (!isEvaluatedAtImportTime(node)) return;
@@ -591,7 +608,7 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         guardAliasNames = collectGuardAliasNames(node);
-        browserOnlyGuardEndOffsets = collectBrowserOnlyGuardEndOffsets(
+        browserOnlyGuardEndOffsetsByGlobalName = collectBrowserOnlyGuardEndOffsets(
           node,
           context,
           guardAliasNames,

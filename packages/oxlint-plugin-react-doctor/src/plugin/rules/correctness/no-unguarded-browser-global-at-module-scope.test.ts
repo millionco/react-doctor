@@ -313,6 +313,143 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    ["window", "const value = window.location.href;"],
+    ["navigator", "const value = navigator.language;"],
+    ["localStorage", 'const value = localStorage.getItem("theme");'],
+    ["sessionStorage", 'const value = sessionStorage.getItem("theme");'],
+    ["matchMedia", 'const value = matchMedia("(min-width: 1px)");'],
+  ])("recognizes a terminating missing-%s guard before the same global", (globalName, read) => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (typeof ${globalName} === "undefined") throw new Error("browser only");
+       ${read}`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("uses a terminating window guard for browser globals covered by window availability", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (typeof window === "undefined") throw new Error("window required");
+       const language = navigator.language;
+       const theme = localStorage.getItem("theme");`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves terminating same-file browser aliases", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `const canUseDOM = typeof window !== "undefined";
+       if (!canUseDOM) throw new Error("browser only");
+       const language = navigator.language;
+       const theme = localStorage.getItem("theme");`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not use a terminating storage guard to suppress another browser global", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (typeof localStorage === "undefined") throw new Error("storage required");
+       const language = navigator.language;`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust the inverted terminating predicate", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (typeof localStorage !== "undefined") throw new Error("storage disabled");
+       const value = localStorage.getItem("theme");`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a non-terminating missing-global branch", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (typeof navigator === "undefined") log("server");
+       const language = navigator.language;`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not apply a terminating guard to an earlier read", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `const value = sessionStorage.getItem("theme");
+       if (typeof sessionStorage === "undefined") throw new Error("browser only");`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a terminating guard on a shadowed browser-global binding", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `const localStorage = undefined;
+       if (typeof localStorage === "undefined") throw new Error("disabled");
+       const language = navigator.language;`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a compound missing guard whose false path may still lack a global", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (typeof localStorage === "undefined" && typeof navigator === "undefined") {
+         throw new Error("browser only");
+       }
+       const value = localStorage.getItem(navigator.language);`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not trust an AND guard whose false path may still lack the global", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (typeof localStorage === "undefined" && shouldAbort) {
+         throw new Error("disabled");
+       }
+       const value = localStorage.getItem("theme");`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes an OR guard whose surviving path proves the global exists", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (typeof localStorage === "undefined" || shouldAbort) {
+         throw new Error("disabled");
+       }
+       const value = localStorage.getItem("theme");`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a window-property assignment target because resolving window crashes SSR", () => {
     const result = runRule(noUnguardedBrowserGlobalAtModuleScope, `window.___emitter = emitter;`, {
       filename: "src/app.js",

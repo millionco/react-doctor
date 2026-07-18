@@ -15,6 +15,28 @@ describe("parseReactDoctorReport", () => {
     expect(() => parseReactDoctorReport(JSON.stringify(report))).toThrow("No React project found");
   });
 
+  it("rejects reports with a hard lint failure", () => {
+    const report = {
+      ok: true,
+      diagnostics: [],
+      projects: [{ diagnostics: [], skippedChecks: ["lint"] }],
+    };
+
+    expect(() => parseReactDoctorReport(JSON.stringify(report))).toThrow(
+      "React Doctor skipped the lint check",
+    );
+  });
+
+  it("allows reports that only skip checks disabled by the evaluation", () => {
+    const report = {
+      ok: true,
+      diagnostics: [],
+      projects: [{ diagnostics: [], skippedChecks: ["supply-chain"] }],
+    };
+
+    expect(parseReactDoctorReport(JSON.stringify(report))).toEqual(report);
+  });
+
   it("rejects reports without a success status", () => {
     expect(() => parseReactDoctorReport('{"diagnostics":[]}')).toThrow(
       "React Doctor returned an invalid JSON report",

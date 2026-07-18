@@ -90,35 +90,37 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
       ),
     );
   } finally {
-    const cleanupLimit = pLimit(SANDBOX_CLEANUP_CONCURRENCY);
-    const remainingSandboxes: Sandbox[] = [];
-    for await (const sandbox of daytona.list({ labels: { evaluation: evaluationId } })) {
-      if (sandbox.state !== SandboxState.DESTROYING && sandbox.state !== SandboxState.DESTROYED) {
-        remainingSandboxes.push(sandbox);
-      }
-    }
-    await Promise.all(
-      remainingSandboxes.map((sandbox) =>
-        cleanupLimit(async () => {
-          try {
-            await daytona.delete(sandbox, SANDBOX_DELETE_TIMEOUT_SECONDS);
-          } catch (error) {
-            process.stderr.write(
-              `Failed to clean up Daytona sandbox ${sandbox.id}: ${toErrorMessage(error)}\n`,
-            );
-          }
-        }),
-      ),
-    );
-
     try {
-      const snapshot = await daytona.snapshot.get(snapshotName);
-      await daytona.snapshot.delete(snapshot);
-    } catch (error) {
-      if (!(error instanceof DaytonaNotFoundError)) {
-        process.stderr.write(
-          `Failed to delete Daytona snapshot ${snapshotName}: ${toErrorMessage(error)}\n`,
-        );
+      const cleanupLimit = pLimit(SANDBOX_CLEANUP_CONCURRENCY);
+      const remainingSandboxes: Sandbox[] = [];
+      for await (const sandbox of daytona.list({ labels: { evaluation: evaluationId } })) {
+        if (sandbox.state !== SandboxState.DESTROYING && sandbox.state !== SandboxState.DESTROYED) {
+          remainingSandboxes.push(sandbox);
+        }
+      }
+      await Promise.all(
+        remainingSandboxes.map((sandbox) =>
+          cleanupLimit(async () => {
+            try {
+              await daytona.delete(sandbox, SANDBOX_DELETE_TIMEOUT_SECONDS);
+            } catch (error) {
+              process.stderr.write(
+                `Failed to clean up Daytona sandbox ${sandbox.id}: ${toErrorMessage(error)}\n`,
+              );
+            }
+          }),
+        ),
+      );
+    } finally {
+      try {
+        const snapshot = await daytona.snapshot.get(snapshotName);
+        await daytona.snapshot.delete(snapshot);
+      } catch (error) {
+        if (!(error instanceof DaytonaNotFoundError)) {
+          process.stderr.write(
+            `Failed to delete Daytona snapshot ${snapshotName}: ${toErrorMessage(error)}\n`,
+          );
+        }
       }
     }
   }

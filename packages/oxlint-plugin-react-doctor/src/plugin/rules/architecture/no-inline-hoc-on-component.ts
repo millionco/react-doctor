@@ -103,7 +103,10 @@ const isSynchronousRenderOutputCallback = (
   if (!call || !isNodeOfType(call, "CallExpression")) return false;
   if (
     call.arguments[0] === callbackExpression &&
-    isReactApiCall(call, "useMemo", scopes, { resolveNamedAliases: true }) &&
+    isReactApiCall(call, "useMemo", scopes, {
+      allowGlobalReactNamespace: true,
+      resolveNamedAliases: true,
+    }) &&
     hasStableCallTarget(call, scopes)
   ) {
     return true;

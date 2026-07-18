@@ -381,6 +381,18 @@ describe("no-inline-hoc-on-component", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags JSX returned through a global React.useMemo callback", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Rows = withTracking(({ items }) => {
+        React.useState(items);
+        return React.useMemo(() => <RowList items={items} />, [items]);
+      });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat a shadowed useMemo callback as React render output", () => {
     const result = runRule(
       noInlineHocOnComponent,
@@ -388,6 +400,22 @@ describe("no-inline-hoc-on-component", () => {
       const Rows = withTracking(({ items }) => {
         useRows(items);
         return useMemo(() => <RowList items={items} />, [items]);
+      });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a shadowed React.useMemo callback as React render output", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const React = {
+        useMemo: (callback) => ({ callback }),
+        useState: (value) => value,
+      };
+      const Rows = withTracking(({ items }) => {
+        React.useState(items);
+        return React.useMemo(() => <RowList items={items} />, [items]);
       });`,
     );
     expect(result.parseErrors).toEqual([]);

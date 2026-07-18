@@ -4787,6 +4787,96 @@ export const MediaQuery = ({ breakpoint }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("accepts exhaustive projected cleanup declared before registration", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Subscriptions({ emitter, subscriptions }) {
+        useEffect(() => {
+          function releaseSubscriptions() {
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.off(event, handler);
+            });
+          }
+
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          return releaseSubscriptions;
+        }, [emitter, subscriptions]);
+
+        return null;
+      }
+    `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts exhaustive projected cleanup returned through a stable alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Subscriptions({ emitter, subscriptions }) {
+        useEffect(() => {
+          const releaseSubscriptions = () => {
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.off(event, handler);
+            });
+          };
+          const cleanup = releaseSubscriptions;
+
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          return cleanup;
+        }, [emitter, subscriptions]);
+
+        return null;
+      }
+    `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["subscriptions = [];", "subscriptions.length = 0;", "delete subscriptions[0];"])(
+    "rejects projected emitter cleanup after structural mutation with %s",
+    (mutation) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+        function Subscriptions({ emitter, subscriptions }) {
+          useEffect(() => {
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.on(event, handler);
+            });
+
+            return () => {
+              ${mutation}
+              subscriptions.forEach(({ event, handler }) => {
+                emitter.off(event, handler);
+              });
+            };
+          }, [emitter, subscriptions]);
+
+          return null;
+        }
+      `,
+        { filename: "Subscriptions.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it.each([
     "subscriptions.push({ event: 'extra', handler: extraHandler });",
     "subscriptions.unshift({ event: 'extra', handler: extraHandler });",

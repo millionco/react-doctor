@@ -2893,6 +2893,40 @@ const hasCollectionMutationBeforeRelease = (
     const isAfterRegistration = setupOwnerFunctions.has(ownerFunction) && childStart > usageStart;
     const isBeforeRelease = cleanupOwnerFunctions.has(ownerFunction) && childStart < releaseStart;
     if (!isAfterRegistration && !isBeforeRelease) return;
+    if (isNodeOfType(child, "AssignmentExpression")) {
+      const assignmentKey = resolveExpressionKey(child.left, context);
+      if (
+        assignmentKey &&
+        [...collectionKeys].some(
+          (collectionKey) =>
+            assignmentKey === collectionKey || assignmentKey === `${collectionKey}.length`,
+        )
+      ) {
+        didFindMutation = true;
+        return false;
+      }
+      return;
+    }
+    if (isNodeOfType(child, "UnaryExpression") && child.operator === "delete") {
+      const deletedMember = stripParenExpression(child.argument);
+      if (!isNodeOfType(deletedMember, "MemberExpression")) return;
+      if (collectionKeys.has(resolveExpressionKey(deletedMember.object, context) ?? "")) {
+        didFindMutation = true;
+        return false;
+      }
+      return;
+    }
+    if (isNodeOfType(child, "UpdateExpression")) {
+      const updatedKey = resolveExpressionKey(child.argument, context);
+      if (
+        updatedKey &&
+        [...collectionKeys].some((collectionKey) => updatedKey === `${collectionKey}.length`)
+      ) {
+        didFindMutation = true;
+        return false;
+      }
+      return;
+    }
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = stripParenExpression(child.callee);
     if (
@@ -3232,28 +3266,29 @@ const isReturnedEffectCleanupFunction = (
   functionNode: EsTreeNode,
   context: RuleContext,
 ): boolean => {
-  let currentNode = functionNode;
-  let parentNode = currentNode.parent;
-  while (
-    isNodeOfType(parentNode, "ChainExpression") ||
-    isNodeOfType(parentNode, "TSAsExpression") ||
-    isNodeOfType(parentNode, "TSNonNullExpression")
+  const effectCallback = findEnclosingFunction(functionNode);
+  if (!effectCallback || !isFunctionLike(effectCallback)) return false;
+  const effectCall = effectCallback.parent;
+  if (
+    !isNodeOfType(effectCall, "CallExpression") ||
+    !isReactHookCall(effectCall, CLEANUP_EFFECT_HOOK_NAMES, context.scopes)
   ) {
-    currentNode = parentNode;
-    parentNode = currentNode.parent;
+    return false;
   }
-  const effectCallback =
-    isNodeOfType(parentNode, "ReturnStatement") && parentNode.argument === currentNode
-      ? findEnclosingFunction(parentNode)
-      : isNodeOfType(parentNode, "ArrowFunctionExpression") && parentNode.body === currentNode
-        ? parentNode
-        : null;
-  const effectCall = effectCallback?.parent;
-  return Boolean(
-    effectCallback &&
-    isNodeOfType(effectCall, "CallExpression") &&
-    isReactHookCall(effectCall, CLEANUP_EFFECT_HOOK_NAMES, context.scopes),
-  );
+  if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
+    return resolveStableValue(effectCallback.body, context) === functionNode;
+  }
+  let isReturned = false;
+  walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
+    if (
+      isNodeOfType(child, "ReturnStatement") &&
+      child.argument &&
+      resolveStableValue(child.argument, context) === functionNode
+    ) {
+      isReturned = true;
+    }
+  });
+  return isReturned;
 };
 
 const isPotentiallyReachableFunction = (

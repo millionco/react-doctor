@@ -6,6 +6,7 @@ export interface ExecuteSandboxCommandInput {
   environment: Record<string, string>;
   timeoutSeconds: number;
   description: string;
+  acceptNonZeroExitCode?: boolean;
 }
 
 export const executeSandboxCommand = async ({
@@ -14,6 +15,7 @@ export const executeSandboxCommand = async ({
   environment,
   timeoutSeconds,
   description,
+  acceptNonZeroExitCode = false,
 }: ExecuteSandboxCommandInput): Promise<string> => {
   const response = await sandbox.process.executeCommand(
     command,
@@ -21,7 +23,7 @@ export const executeSandboxCommand = async ({
     environment,
     timeoutSeconds,
   );
-  if (response.exitCode !== 0) {
+  if (response.exitCode !== 0 && !acceptNonZeroExitCode) {
     const output = response.result.trim();
     throw new Error(
       output === "" ? `${description} failed with exit code ${response.exitCode}` : output,

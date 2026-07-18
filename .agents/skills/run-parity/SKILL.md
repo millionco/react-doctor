@@ -27,12 +27,12 @@ Create `tmp/parity-pr-<number>-<head-short-sha>` and preserve it after the run. 
 Run from `packages/evals`. The default corpus contains 2,000 selected repositories, and the default concurrency is 500.
 
 ```sh
-nr eval -- \
+nr eval \
   --react-doctor-repository <base-repository-url> \
   --react-doctor-ref <baseRefOid> \
   > <absolute-run-directory>/baseline.ndjson
 
-nr eval -- \
+nr eval \
   --repositories <absolute-run-directory>/baseline.ndjson \
   --react-doctor-repository <head-repository-url> \
   --react-doctor-ref <headRefOid> \

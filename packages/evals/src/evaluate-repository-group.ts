@@ -3,8 +3,9 @@ import type { Daytona, Sandbox } from "@daytona/sdk";
 import {
   EVALUATION_SCHEMA_VERSION,
   RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
+  SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
+  SANDBOX_CREATE_TIMEOUT_SECONDS,
   SANDBOX_DELETE_TIMEOUT_SECONDS,
-  SANDBOX_FORK_TIMEOUT_SECONDS,
   SANDBOX_SCAN_TIMEOUT_SECONDS,
   SANDBOX_SETUP_TIMEOUT_SECONDS,
   SCAN_COMMAND,
@@ -16,14 +17,14 @@ import { toErrorMessage } from "./utils/to-error-message.js";
 
 export interface EvaluateRepositoryGroupInput {
   daytona: Daytona;
-  seedSandbox: Sandbox;
+  snapshotName: string;
   repositoryGroup: CorpusRepositoryGroup;
   onRecord: (record: CorpusEvaluationRecord) => Promise<void>;
 }
 
 export const evaluateRepositoryGroup = async ({
   daytona,
-  seedSandbox,
+  snapshotName,
   repositoryGroup,
   onRecord,
 }: EvaluateRepositoryGroupInput): Promise<void> => {
@@ -35,10 +36,17 @@ export const evaluateRepositoryGroup = async ({
   }));
   let sandbox: Sandbox | undefined;
   try {
-    sandbox = await daytona._experimental_fork(
-      seedSandbox,
-      undefined,
-      SANDBOX_FORK_TIMEOUT_SECONDS,
+    sandbox = await daytona.create(
+      {
+        snapshot: snapshotName,
+        ephemeral: true,
+        autoStopInterval: SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
+        labels: {
+          project: "react-doctor",
+          purpose: "eval-repository",
+        },
+      },
+      { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
     );
     const repositoryUrl = `https://github.com/${repositoryGroup.org}/${repositoryGroup.name}.git`;
     await executeSandboxCommand({
@@ -74,6 +82,7 @@ export const evaluateRepositoryGroup = async ({
           },
           timeoutSeconds: SANDBOX_SCAN_TIMEOUT_SECONDS,
           description: `Scan ${repository.org}/${repository.name}:${repository.rootDir}`,
+          acceptNonZeroExitCode: true,
         });
         const report: unknown = JSON.parse(output);
         await onRecord({

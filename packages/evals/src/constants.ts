@@ -15,7 +15,6 @@ export const SANDBOX_AUTO_STOP_INTERVAL_MINUTES = 15;
 export const SANDBOX_CREATE_TIMEOUT_SECONDS = 600;
 export const SANDBOX_SETUP_TIMEOUT_SECONDS = 1_800;
 export const SANDBOX_SCAN_TIMEOUT_SECONDS = 900;
-export const SANDBOX_FORK_TIMEOUT_SECONDS = 600;
 export const SANDBOX_DELETE_TIMEOUT_SECONDS = 120;
 
 export const EVALUATION_SCHEMA_VERSION = 1;
@@ -25,15 +24,19 @@ export const MILLISECONDS_PER_SECOND = 1_000;
 export const PERCENT_MULTIPLIER = 100;
 export const SUMMARY_DECIMAL_PLACES = 1;
 
-export const SETUP_REACT_DOCTOR_COMMAND = `set -eu
-mkdir -p /workspace/react-doctor
-git -C /workspace/react-doctor init -q
-git -C /workspace/react-doctor remote add origin "$REACT_DOCTOR_REPOSITORY"
-git -C /workspace/react-doctor fetch -q --depth 1 origin "$REACT_DOCTOR_REF"
-git -C /workspace/react-doctor checkout -q --detach FETCH_HEAD
-cd /workspace/react-doctor
-npx --yes --package @antfu/ni ni --frozen
-./node_modules/.bin/turbo run build --filter=react-doctor`;
+export const REACT_DOCTOR_WORK_DIRECTORY = "/workspace/react-doctor";
+export const PREPARE_REACT_DOCTOR_COMMANDS: ReadonlyArray<string> = [
+  `mkdir -p ${REACT_DOCTOR_WORK_DIRECTORY}`,
+  `git -C ${REACT_DOCTOR_WORK_DIRECTORY} init -q`,
+  `git -C ${REACT_DOCTOR_WORK_DIRECTORY} remote add origin "$REACT_DOCTOR_REPOSITORY"`,
+  `git -C ${REACT_DOCTOR_WORK_DIRECTORY} fetch -q --depth 1 origin "$REACT_DOCTOR_REF"`,
+  `git -C ${REACT_DOCTOR_WORK_DIRECTORY} checkout -q --detach FETCH_HEAD`,
+];
+export const BUILD_REACT_DOCTOR_COMMANDS: ReadonlyArray<string> = [
+  "corepack enable",
+  "npx --yes --package @antfu/ni ni --frozen",
+  "./node_modules/.bin/turbo run build --filter=react-doctor",
+];
 
 export const SETUP_TARGET_REPOSITORY_COMMAND = `set -eu
 mkdir -p /workspace/target

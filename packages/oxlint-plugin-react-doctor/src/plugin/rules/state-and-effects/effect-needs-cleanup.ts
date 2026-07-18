@@ -277,6 +277,58 @@ const resolveResourceIdentityKey = (
 ): string | null =>
   resolveForEachProjectionKey(expression, context) ?? resolveExpressionKey(expression, context);
 
+const resolveEventListenerCaptureIdentityKey = (
+  optionsNode: EsTreeNode | null | undefined,
+  context: RuleContext,
+  allowOpaqueOptionsIdentity: boolean,
+): string | null => {
+  const capture = resolveEventListenerCapture(optionsNode, {
+    allowIndeterminateEntries: true,
+  });
+  if (capture !== null) return `capture:${String(capture)}`;
+  if (!optionsNode) return null;
+  const unwrappedOptions = stripParenExpression(optionsNode);
+  if (!isNodeOfType(unwrappedOptions, "ObjectExpression")) {
+    return allowOpaqueOptionsIdentity
+      ? resolveResourceIdentityKey(unwrappedOptions, context)
+      : null;
+  }
+  let captureKey: string | null = "capture:false";
+  for (const property of unwrappedOptions.properties ?? []) {
+    if (!isNodeOfType(property, "Property")) {
+      captureKey = null;
+      continue;
+    }
+    const propertyName = getStaticPropertyKeyName(property);
+    if (propertyName === null || (!property.computed && propertyName === "__proto__")) {
+      captureKey = null;
+      continue;
+    }
+    if (propertyName === "capture") {
+      captureKey = resolveResourceIdentityKey(property.value, context);
+    }
+  }
+  return captureKey;
+};
+
+const doEventListenerCapturesMatch = (
+  registrationOptions: EsTreeNode | null | undefined,
+  releaseOptions: EsTreeNode | null | undefined,
+  context: RuleContext,
+  allowOpaqueOptionsIdentity = false,
+): boolean => {
+  const registrationCaptureKey = resolveEventListenerCaptureIdentityKey(
+    registrationOptions,
+    context,
+    allowOpaqueOptionsIdentity,
+  );
+  return (
+    registrationCaptureKey !== null &&
+    registrationCaptureKey ===
+      resolveEventListenerCaptureIdentityKey(releaseOptions, context, allowOpaqueOptionsIdentity)
+  );
+};
+
 const findAssignedResourceKey = (resourceNode: EsTreeNode, context: RuleContext): string | null => {
   let currentNode = resourceNode;
   let parentNode = currentNode.parent;
@@ -2689,16 +2741,8 @@ const isReactRefListenerReplacementRelease = (
   ) {
     return false;
   }
-  const registrationCapture = resolveEventListenerCapture(usage.node.arguments?.[2], {
-    allowIndeterminateEntries: true,
-  });
-  const releaseCapture = resolveEventListenerCapture(releaseCall.arguments?.[2], {
-    allowIndeterminateEntries: true,
-  });
   if (
-    registrationCapture === null ||
-    releaseCapture === null ||
-    registrationCapture !== releaseCapture
+    !doEventListenerCapturesMatch(usage.node.arguments?.[2], releaseCall.arguments?.[2], context)
   ) {
     return false;
   }
@@ -2824,6 +2868,48 @@ const hasCollectionMutationBeforeCleanup = (
   return didFindMutation;
 };
 
+const hasSafeForEachProjectionCleanup = (
+  registrationCall: EsTreeNodeOfType<"CallExpression">,
+  releaseCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const registrationCallee = stripParenExpression(registrationCall.callee);
+  const releaseCallee = stripParenExpression(releaseCall.callee);
+  if (
+    !isNodeOfType(registrationCallee, "MemberExpression") ||
+    !isNodeOfType(releaseCallee, "MemberExpression")
+  ) {
+    return true;
+  }
+  const registrationVerbName = getCalleeName(registrationCall);
+  const releaseVerbName = getCalleeName(releaseCall);
+  const projectionExpressions = [
+    registrationCallee.object,
+    registrationCall.arguments?.[0],
+    registrationCall.arguments?.[1],
+    releaseCallee.object,
+    releaseCall.arguments?.[0],
+    releaseCall.arguments?.[1],
+  ];
+  if (registrationVerbName === "addEventListener" && releaseVerbName === "removeEventListener") {
+    projectionExpressions.push(registrationCall.arguments?.[2], releaseCall.arguments?.[2]);
+  }
+  const projections = projectionExpressions.flatMap((expression) => {
+    const projection = resolveForEachProjection(expression, context);
+    return projection ? [projection] : [];
+  });
+  if (projections.length === 0) return true;
+  const cleanupFunction = findDirectExhaustiveForEachCleanupFunction(releaseCall, context);
+  if (!cleanupFunction) return false;
+  const collectionKeys = new Set(projections.map((projection) => projection.collectionKey));
+  return !hasCollectionMutationBeforeCleanup(
+    registrationCall,
+    cleanupFunction,
+    collectionKeys,
+    context,
+  );
+};
+
 const doesReleaseCallMatchUsage = (
   node: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -2944,44 +3030,21 @@ const doesReleaseCallMatchUsage = (
   ) {
     const registrationCallee = stripParenExpression(usage.node.callee);
     if (!isNodeOfType(registrationCallee, "MemberExpression")) return false;
-    const registrationCapture = resolveEventListenerCapture(usage.node.arguments?.[2], {
-      allowIndeterminateEntries: true,
-    });
-    const releaseCapture = resolveEventListenerCapture(callNode.arguments?.[2], {
-      allowIndeterminateEntries: true,
-    });
-    const registrationCaptureKey = resolveResourceIdentityKey(usage.node.arguments?.[2], context);
-    const releaseCaptureKey = resolveResourceIdentityKey(callNode.arguments?.[2], context);
-    const doCapturesMatch =
-      registrationCapture === null || releaseCapture === null
-        ? registrationCaptureKey !== null && registrationCaptureKey === releaseCaptureKey
-        : registrationCapture === releaseCapture;
-    if (!doCapturesMatch) return false;
-    const projectionExpressions = [
-      registrationCallee.object,
-      usage.node.arguments?.[0],
-      usage.node.arguments?.[1],
-      usage.node.arguments?.[2],
-      callee.object,
-      callNode.arguments?.[0],
-      callNode.arguments?.[1],
-      callNode.arguments?.[2],
-    ];
-    const projections = projectionExpressions.flatMap((expression) => {
-      const projection = resolveForEachProjection(expression, context);
-      return projection ? [projection] : [];
-    });
-    if (projections.length > 0) {
-      const cleanupFunction = findDirectExhaustiveForEachCleanupFunction(callNode, context);
-      if (!cleanupFunction) return false;
-      const collectionKeys = new Set(projections.map((projection) => projection.collectionKey));
-      if (
-        hasCollectionMutationBeforeCleanup(usage.node, cleanupFunction, collectionKeys, context)
-      ) {
-        return false;
-      }
-    }
+    if (
+      !doEventListenerCapturesMatch(
+        usage.node.arguments?.[2],
+        callNode.arguments?.[2],
+        context,
+        true,
+      )
+    )
+      return false;
   }
+  if (
+    isNodeOfType(usage.node, "CallExpression") &&
+    !hasSafeForEachProjectionCleanup(usage.node, callNode, context)
+  )
+    return false;
   if (usage.receiverKey === null || releaseReceiverKey !== usage.receiverKey) return false;
   if (
     usage.registrationVerbName === "subscribe" &&
@@ -3065,16 +3128,8 @@ const doesReleaseCallMatchUsage = (
       ) {
         return false;
       }
-      const registrationCapture = resolveEventListenerCapture(usage.node.arguments?.[2], {
-        allowIndeterminateEntries: true,
-      });
-      const releaseCapture = resolveEventListenerCapture(callNode.arguments?.[2], {
-        allowIndeterminateEntries: true,
-      });
       if (
-        registrationCapture === null ||
-        releaseCapture === null ||
-        registrationCapture !== releaseCapture
+        !doEventListenerCapturesMatch(usage.node.arguments?.[2], callNode.arguments?.[2], context)
       ) {
         return false;
       }
@@ -3452,20 +3507,12 @@ const isSelfReleasingListenerRelease = (
   ) {
     return false;
   }
-  const registrationCapture = resolveEventListenerCapture(usage.node.arguments?.[2], {
-    allowIndeterminateEntries: true,
-  });
   const releaseCall = isNodeOfType(releaseNode, "ChainExpression")
     ? releaseNode.expression
     : releaseNode;
   if (!isNodeOfType(releaseCall, "CallExpression")) return false;
-  const releaseCapture = resolveEventListenerCapture(releaseCall.arguments?.[2], {
-    allowIndeterminateEntries: true,
-  });
   if (
-    registrationCapture === null ||
-    releaseCapture === null ||
-    registrationCapture !== releaseCapture
+    !doEventListenerCapturesMatch(usage.node.arguments?.[2], releaseCall.arguments?.[2], context)
   ) {
     return false;
   }

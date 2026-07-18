@@ -334,6 +334,16 @@ describe("audit regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("recognizes a required fallback from a merged interface declaration", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `interface Options { enabled?: boolean }
+       interface Options { value: string }
+       export const read = ({ value }: Options = { value: "fallback" }) => value;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("recognizes a property required by every union member", () => {
     const result = runRule(
       noWholeObjectDefaultLosingPerKeyDefaults,

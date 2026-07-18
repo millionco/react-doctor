@@ -304,6 +304,17 @@ describe("audit regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("includes custom props from every merged interface declaration", () => {
+    const result = runRule(
+      styledComponentsNonTransientCustomPropOnIntrinsicElement,
+      `import styled from "styled-components";
+       interface ButtonProps { $internal: boolean }
+       interface ButtonProps { active: boolean }
+       export const Button = styled.button<ButtonProps>\`\`;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags unknown event-looking props", () => {
     const result = runRule(
       styledComponentsNonTransientCustomPropOnIntrinsicElement,

@@ -2,10 +2,15 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
-const declarationsByProgram = new WeakMap<EsTreeNode, ReadonlyMap<string, EsTreeNode | null>>();
+const declarationsByProgram = new WeakMap<
+  EsTreeNode,
+  ReadonlyMap<string, ReadonlyArray<EsTreeNode>>
+>();
 
-const collectDeclarations = (program: EsTreeNode): ReadonlyMap<string, EsTreeNode | null> => {
-  const declarations = new Map<string, EsTreeNode | null>();
+const collectDeclarations = (
+  program: EsTreeNode,
+): ReadonlyMap<string, ReadonlyArray<EsTreeNode>> => {
+  const declarations = new Map<string, ReadonlyArray<EsTreeNode>>();
   if (!isNodeOfType(program, "Program")) return declarations;
   for (const statement of program.body) {
     const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
@@ -14,26 +19,28 @@ const collectDeclarations = (program: EsTreeNode): ReadonlyMap<string, EsTreeNod
     if (
       !declaration ||
       (!isNodeOfType(declaration, "TSInterfaceDeclaration") &&
-        !isNodeOfType(declaration, "TSTypeAliasDeclaration"))
+        !isNodeOfType(declaration, "TSTypeAliasDeclaration")) ||
+      !isNodeOfType(declaration.id, "Identifier")
     ) {
       continue;
     }
     const name = declaration.id.name;
-    declarations.set(name, declarations.has(name) ? null : declaration);
+    const matchingDeclarations = declarations.get(name) ?? [];
+    declarations.set(name, [...matchingDeclarations, declaration]);
   }
   return declarations;
 };
 
-export const findSameFileTypeDeclaration = (
+export const findSameFileTypeDeclarations = (
   referenceNode: EsTreeNode,
   typeName: string,
-): EsTreeNode | null => {
+): ReadonlyArray<EsTreeNode> => {
   const program = findProgramRoot(referenceNode);
-  if (!program) return null;
+  if (!program) return [];
   let declarations = declarationsByProgram.get(program);
   if (!declarations) {
     declarations = collectDeclarations(program);
     declarationsByProgram.set(program, declarations);
   }
-  return declarations.get(typeName) ?? null;
+  return declarations.get(typeName) ?? [];
 };

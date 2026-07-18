@@ -4,7 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
-import { findSameFileTypeDeclaration } from "../../utils/find-same-file-type-declaration.js";
+import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -89,8 +89,11 @@ const typeCanBeArray = (
       if (extension.expression.name === "Array" || extension.expression.name === "ReadonlyArray") {
         return true;
       }
-      const declaration = findSameFileTypeDeclaration(referenceNode, extension.expression.name);
-      return declaration ? typeCanBeArray(declaration, referenceNode, depth + 1) : true;
+      const declarations = findSameFileTypeDeclarations(referenceNode, extension.expression.name);
+      return (
+        declarations.length === 0 ||
+        declarations.some((declaration) => typeCanBeArray(declaration, referenceNode, depth + 1))
+      );
     });
   }
   if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
@@ -99,8 +102,11 @@ const typeCanBeArray = (
   if (!isNodeOfType(typeNode, "TSTypeReference")) return false;
   if (!isNodeOfType(typeNode.typeName, "Identifier")) return true;
   if (typeNode.typeName.name === "Array" || typeNode.typeName.name === "ReadonlyArray") return true;
-  const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
-  return declaration ? typeCanBeArray(declaration, referenceNode, depth + 1) : true;
+  const declarations = findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name);
+  return (
+    declarations.length === 0 ||
+    declarations.some((declaration) => typeCanBeArray(declaration, referenceNode, depth + 1))
+  );
 };
 
 const membersDeclareCallableMember = (
@@ -151,10 +157,9 @@ const typeDeclaresCallableMember = (
       if (extension.typeArguments || !isNodeOfType(extension.expression, "Identifier")) {
         return false;
       }
-      const declaration = findSameFileTypeDeclaration(referenceNode, extension.expression.name);
-      return Boolean(
-        declaration &&
-        typeDeclaresCallableMember(declaration, memberName, referenceNode, depth + 1),
+      return findSameFileTypeDeclarations(referenceNode, extension.expression.name).some(
+        (declaration) =>
+          typeDeclaresCallableMember(declaration, memberName, referenceNode, depth + 1),
       );
     });
   }
@@ -177,9 +182,8 @@ const typeDeclaresCallableMember = (
   ) {
     return false;
   }
-  const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
-  return Boolean(
-    declaration && typeDeclaresCallableMember(declaration, memberName, referenceNode, depth + 1),
+  return findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name).some((declaration) =>
+    typeDeclaresCallableMember(declaration, memberName, referenceNode, depth + 1),
   );
 };
 
@@ -205,15 +209,18 @@ const propertyTypeFromObjectType = (
   if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) {
     for (const extension of typeNode.extends ?? []) {
       if (extension.typeArguments || !isNodeOfType(extension.expression, "Identifier")) continue;
-      const declaration = findSameFileTypeDeclaration(referenceNode, extension.expression.name);
-      if (!declaration) continue;
-      const inheritedPropertyType = propertyTypeFromObjectType(
-        declaration,
-        propertyName,
+      for (const declaration of findSameFileTypeDeclarations(
         referenceNode,
-        depth + 1,
-      );
-      if (inheritedPropertyType) return inheritedPropertyType;
+        extension.expression.name,
+      )) {
+        const inheritedPropertyType = propertyTypeFromObjectType(
+          declaration,
+          propertyName,
+          referenceNode,
+          depth + 1,
+        );
+        if (inheritedPropertyType) return inheritedPropertyType;
+      }
     }
   }
   if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
@@ -236,10 +243,15 @@ const propertyTypeFromObjectType = (
     }
   }
   if (isNodeOfType(typeNode, "TSTypeReference") && isNodeOfType(typeNode.typeName, "Identifier")) {
-    const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
-    return declaration
-      ? propertyTypeFromObjectType(declaration, propertyName, referenceNode, depth + 1)
-      : null;
+    for (const declaration of findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name)) {
+      const propertyType = propertyTypeFromObjectType(
+        declaration,
+        propertyName,
+        referenceNode,
+        depth + 1,
+      );
+      if (propertyType) return propertyType;
+    }
   }
   return null;
 };

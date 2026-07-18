@@ -8,7 +8,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
-import { findSameFileTypeDeclaration } from "../../utils/find-same-file-type-declaration.js";
+import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -108,10 +108,13 @@ const resolvePropTypeMembers = (
     const members: EsTreeNode[] = [...typeNode.body.body];
     for (const extension of typeNode.extends ?? []) {
       if (extension.typeArguments || !isNodeOfType(extension.expression, "Identifier")) continue;
-      const declaration = findSameFileTypeDeclaration(referenceNode, extension.expression.name);
-      if (!declaration) continue;
-      const inheritedMembers = resolvePropTypeMembers(declaration, referenceNode, depth + 1);
-      if (inheritedMembers) members.push(...inheritedMembers);
+      for (const declaration of findSameFileTypeDeclarations(
+        referenceNode,
+        extension.expression.name,
+      )) {
+        const inheritedMembers = resolvePropTypeMembers(declaration, referenceNode, depth + 1);
+        if (inheritedMembers) members.push(...inheritedMembers);
+      }
     }
     return members;
   }
@@ -124,9 +127,13 @@ const resolvePropTypeMembers = (
     isNodeOfType(typeNode.typeName, "Identifier") &&
     !typeNode.typeArguments
   ) {
-    const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
-    if (!declaration) return null;
-    return resolvePropTypeMembers(declaration, referenceNode, depth + 1);
+    const declarations = findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name);
+    if (declarations.length === 0) return null;
+    const memberGroups = declarations.map((declaration) =>
+      resolvePropTypeMembers(declaration, referenceNode, depth + 1),
+    );
+    if (memberGroups.some((members) => members === null)) return null;
+    return memberGroups.flatMap((members) => members ?? []);
   }
   return null;
 };

@@ -3,7 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
-import { findSameFileTypeDeclaration } from "../../utils/find-same-file-type-declaration.js";
+import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -608,9 +608,9 @@ const typeDeclaresStringProperty = (
     );
   }
   if (isNodeOfType(typeNode, "TSTypeReference") && isNodeOfType(typeNode.typeName, "Identifier")) {
-    const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
-    if (!declaration) return false;
-    return typeDeclaresStringProperty(declaration, propertyName, referenceNode, depth + 1);
+    return findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name).some((declaration) =>
+      typeDeclaresStringProperty(declaration, propertyName, referenceNode, depth + 1),
+    );
   }
   return false;
 };

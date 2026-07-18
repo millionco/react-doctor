@@ -1,7 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findSameFileTypeDeclaration } from "../../utils/find-same-file-type-declaration.js";
+import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -164,13 +164,15 @@ const typeProvesRequiredProperty = (
         if (extension.typeArguments || !isNodeOfType(extension.expression, "Identifier")) {
           return false;
         }
-        const declaration = findSameFileTypeDeclaration(referenceNode, extension.expression.name);
-        if (!declaration || visitedDeclarations.has(declaration)) return false;
-        return typeProvesRequiredProperty(
-          declaration,
-          propertyName,
-          referenceNode,
-          visitedDeclarations,
+        return findSameFileTypeDeclarations(referenceNode, extension.expression.name).some(
+          (declaration) =>
+            !visitedDeclarations.has(declaration) &&
+            typeProvesRequiredProperty(
+              declaration,
+              propertyName,
+              referenceNode,
+              visitedDeclarations,
+            ),
         );
       });
     visitedDeclarations.delete(typeNode);
@@ -209,9 +211,11 @@ const typeProvesRequiredProperty = (
   ) {
     return false;
   }
-  const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
-  if (!declaration || visitedDeclarations.has(declaration)) return false;
-  return typeProvesRequiredProperty(declaration, propertyName, referenceNode, visitedDeclarations);
+  return findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name).some(
+    (declaration) =>
+      !visitedDeclarations.has(declaration) &&
+      typeProvesRequiredProperty(declaration, propertyName, referenceNode, visitedDeclarations),
+  );
 };
 
 const patternTypeRequiresEveryFallback = (

@@ -3,7 +3,6 @@ import {
   TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
   TIMER_CLEANUP_CALLEE_NAMES,
 } from "../../constants/dom.js";
-import { MUTATING_ARRAY_METHODS, MUTATING_COLLECTION_METHODS } from "../../constants/js.js";
 import {
   BOUND_RESOURCE_RELEASE_METHOD_NAMES,
   EFFECT_HOOK_NAMES,
@@ -54,6 +53,18 @@ import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
 const CLEANUP_EFFECT_HOOK_NAMES = new Set([...EFFECT_HOOK_NAMES, "useInsertionEffect"]);
 const REPLAYABLE_ITERATOR_COLLECTION_CACHE = new WeakMap<RuleContext, Map<number, string | null>>();
+const REPLAY_ENTRY_DROPPING_ARRAY_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "pop",
+  "shift",
+  "splice",
+  "fill",
+  "copyWithin",
+]);
+const REPLAY_ENTRY_DROPPING_COLLECTION_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "clear",
+  "delete",
+  "set",
+]);
 
 interface SubscribeLikeUsage {
   kind: "subscribe" | "timer" | "socket";
@@ -2898,8 +2909,8 @@ const hasCollectionMutationBeforeRelease = (
       !isNodeOfType(callee, "MemberExpression") ||
       callee.computed ||
       !isNodeOfType(callee.property, "Identifier") ||
-      (!MUTATING_ARRAY_METHODS.has(callee.property.name) &&
-        !MUTATING_COLLECTION_METHODS.has(callee.property.name)) ||
+      (!REPLAY_ENTRY_DROPPING_ARRAY_METHOD_NAMES.has(callee.property.name) &&
+        !REPLAY_ENTRY_DROPPING_COLLECTION_METHOD_NAMES.has(callee.property.name)) ||
       !collectionKeys.has(resolveExpressionKey(callee.object, context) ?? "")
     ) {
       return;

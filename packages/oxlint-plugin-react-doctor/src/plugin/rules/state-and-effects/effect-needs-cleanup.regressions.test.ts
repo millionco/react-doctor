@@ -4758,6 +4758,43 @@ export const MediaQuery = ({ breakpoint }) => {
   );
 
   it.each([
+    "subscriptions.push({ event: 'extra', handler: extraHandler });",
+    "subscriptions.unshift({ event: 'extra', handler: extraHandler });",
+    "subscriptions.sort();",
+    "subscriptions.reverse();",
+    "subscriptions.add({ event: 'extra', handler: extraHandler });",
+  ])(
+    "accepts exhaustive projected cleanup after additive or order-only mutation with %s",
+    (mutation) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+      function Subscriptions({ emitter, extraHandler, subscriptions }) {
+        useEffect(() => {
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          return () => {
+            ${mutation}
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.off(event, handler);
+            });
+          };
+        }, [emitter, extraHandler, subscriptions]);
+
+        return null;
+      }
+    `,
+        { filename: "Subscriptions.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each([
     {
       name: "a different receiver collection",
       cleanup:

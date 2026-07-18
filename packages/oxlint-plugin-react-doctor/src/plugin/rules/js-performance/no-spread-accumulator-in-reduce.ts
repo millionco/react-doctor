@@ -10,7 +10,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
@@ -52,6 +52,14 @@ const isSpreadFreeObjectLiteral = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "ObjectExpression") &&
   node.properties.every((property) => !isNodeOfType(property, "SpreadElement"));
 
+const isFixedShapeObjectLiteral = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "ObjectExpression") &&
+  node.properties.every(
+    (property) =>
+      isNodeOfType(property, "Property") &&
+      getStaticPropertyKeyName(property, { allowComputedString: true }) !== null,
+  );
+
 const isRestParameterBinding = (bindingIdentifier: EsTreeNode): boolean => {
   const restCandidate = bindingIdentifier.parent;
   return Boolean(
@@ -80,8 +88,7 @@ const findRetainingAliasBinding = (expression: EsTreeNode): EsTreeNode | null =>
       parent.init === current &&
       isNodeOfType(parent.id, "Identifier") &&
       parent.parent &&
-      isNodeOfType(parent.parent, "VariableDeclaration") &&
-      parent.parent.kind === "const"
+      isNodeOfType(parent.parent, "VariableDeclaration")
     ) {
       return parent.id;
     }
@@ -93,36 +100,60 @@ const findRetainingAliasBinding = (expression: EsTreeNode): EsTreeNode | null =>
 const bindingMayHaveGrown = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
+  growthBySymbolId: Map<number, boolean>,
   visitedSymbolIds = new Set<number>(),
 ): boolean => {
   const candidate = stripParenExpression(expression);
   if (!isNodeOfType(candidate, "Identifier")) return false;
   const symbol = scopes.symbolFor(candidate);
   if (!symbol) return true;
+  const cachedResult = growthBySymbolId.get(symbol.id);
+  if (cachedResult !== undefined) return cachedResult;
   if (visitedSymbolIds.has(symbol.id)) return false;
   const nextVisitedSymbolIds = new Set(visitedSymbolIds);
   nextVisitedSymbolIds.add(symbol.id);
-  return symbol.references.some((reference) => {
+  const didBindingGrow = symbol.references.some((reference) => {
     if (reference.flag !== "read") return true;
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
     const aliasBinding = findRetainingAliasBinding(referenceRoot);
     if (aliasBinding && scopes.symbolFor(aliasBinding) !== symbol) {
-      return bindingMayHaveGrown(aliasBinding, scopes, nextVisitedSymbolIds);
+      return bindingMayHaveGrown(aliasBinding, scopes, growthBySymbolId, nextVisitedSymbolIds);
     }
     const directConsumer = referenceRoot.parent;
     if (
       directConsumer &&
       isNodeOfType(directConsumer, "CallExpression") &&
-      directConsumer.arguments[0] === referenceRoot
+      directConsumer.arguments.some(
+        (argument) =>
+          isAstNode(argument) &&
+          stripParenExpression(argument) === stripParenExpression(referenceRoot),
+      )
     ) {
       const directCallee = stripParenExpression(directConsumer.callee);
       if (
         isNodeOfType(directCallee, "MemberExpression") &&
-        isProvenGlobalNamespaceReference(directCallee.object, "Object", scopes) &&
+        isProvenUnmodifiedGlobalNamespaceReference(directCallee.object, "Object", scopes) &&
         OBJECT_GROWING_MUTATION_METHOD_NAMES.has(getStaticPropertyName(directCallee) ?? "")
       ) {
         return true;
       }
+      if (
+        isNodeOfType(directCallee, "MemberExpression") &&
+        ((isProvenUnmodifiedGlobalNamespaceReference(directCallee.object, "Array", scopes) &&
+          getStaticPropertyName(directCallee) === "from") ||
+          (isProvenUnmodifiedGlobalNamespaceReference(directCallee.object, "Object", scopes) &&
+            OBJECT_ENUMERATION_METHOD_NAMES.has(getStaticPropertyName(directCallee) ?? "")))
+      ) {
+        return false;
+      }
+      return isNodeOfType(directCallee, "Identifier");
+    }
+    if (
+      (isNodeOfType(directConsumer, "Property") && directConsumer.value === referenceRoot) ||
+      isNodeOfType(directConsumer, "ArrayExpression") ||
+      isNodeOfType(directConsumer, "SpreadElement")
+    ) {
+      return true;
     }
     const member = referenceRoot.parent;
     if (
@@ -149,6 +180,8 @@ const bindingMayHaveGrown = (
       ARRAY_LENGTH_GROWING_MUTATION_METHOD_NAMES.has(getStaticPropertyName(member) ?? "")
     );
   });
+  growthBySymbolId.set(symbol.id, didBindingGrow);
+  return didBindingGrow;
 };
 
 const isFixedLengthArrayConstruction = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -158,7 +191,7 @@ const isFixedLengthArrayConstruction = (expression: EsTreeNode, scopes: ScopeAna
   const callee = stripParenExpression(expression.callee);
   const lengthArgument = expression.arguments[0];
   return Boolean(
-    isProvenGlobalNamespaceReference(callee, "Array", scopes) &&
+    isProvenUnmodifiedGlobalNamespaceReference(callee, "Array", scopes) &&
     expression.arguments.length === 1 &&
     isAstNode(lengthArgument) &&
     isNodeOfType(lengthArgument, "Literal") &&
@@ -170,6 +203,7 @@ const isStaticallyBoundedCollectionExpression = (
   expression: EsTreeNode,
   collectionKind: "array" | "object",
   scopes: ScopeAnalysis,
+  growthBySymbolId: Map<number, boolean>,
 ): boolean => {
   const pendingExpressions = [stripParenExpression(expression)];
   const pendingVisitedSymbolIds = [new Set<number>()];
@@ -197,7 +231,7 @@ const isStaticallyBoundedCollectionExpression = (
         !isNodeOfType(declarator, "VariableDeclarator") ||
         declarator.init !== binding.initializer ||
         visitedSymbolIds.has(symbol.id) ||
-        bindingMayHaveGrown(currentExpression, scopes)
+        bindingMayHaveGrown(currentExpression, scopes, growthBySymbolId)
       ) {
         return false;
       }
@@ -220,7 +254,10 @@ const isStaticallyBoundedCollectionExpression = (
     const callee = stripParenExpression(currentExpression.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return false;
     const methodName = getStaticPropertyName(callee);
-    if (isProvenGlobalNamespaceReference(callee.object, "Array", scopes) && methodName === "from") {
+    if (
+      isProvenUnmodifiedGlobalNamespaceReference(callee.object, "Array", scopes) &&
+      methodName === "from"
+    ) {
       const sourceArgument = currentExpression.arguments[0];
       if (!isAstNode(sourceArgument)) return false;
       pendingExpressions.push(stripParenExpression(sourceArgument));
@@ -239,22 +276,28 @@ const isStaticallyBoundedCollectionExpression = (
 // arity), an array literal, or the keys/entries of a locally constructed
 // object literal — where n is tiny and fixed, so the O(n²) copy cost is
 // unobservable and the immutable idiom is deliberate.
-const isStaticallyBoundedReduceSource = (source: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const isStaticallyBoundedReduceSource = (
+  source: EsTreeNode,
+  scopes: ScopeAnalysis,
+  growthBySymbolId: Map<number, boolean>,
+): boolean => {
   const stripped = stripParenExpression(source);
   if (isSpreadFreeArrayLiteral(stripped, false)) return true;
-  if (isStaticallyBoundedCollectionExpression(stripped, "array", scopes)) return true;
+  if (isStaticallyBoundedCollectionExpression(stripped, "array", scopes, growthBySymbolId)) {
+    return true;
+  }
   if (isNodeOfType(stripped, "Identifier")) {
     const binding = findVariableInitializer(stripped, stripped.name);
     return Boolean(
       binding &&
       isRestParameterBinding(binding.bindingIdentifier) &&
-      !bindingMayHaveGrown(stripped, scopes),
+      !bindingMayHaveGrown(stripped, scopes, growthBySymbolId),
     );
   }
   if (!isNodeOfType(stripped, "CallExpression")) return false;
   const enumerationCallee = stripParenExpression(stripped.callee);
   if (!isNodeOfType(enumerationCallee, "MemberExpression")) return false;
-  if (!isProvenGlobalNamespaceReference(enumerationCallee.object, "Object", scopes)) {
+  if (!isProvenUnmodifiedGlobalNamespaceReference(enumerationCallee.object, "Object", scopes)) {
     return false;
   }
   const enumerationMethodName = getStaticPropertyName(enumerationCallee);
@@ -264,7 +307,7 @@ const isStaticallyBoundedReduceSource = (source: EsTreeNode, scopes: ScopeAnalys
   const enumeratedObject = stripped.arguments[0];
   return (
     isAstNode(enumeratedObject) &&
-    isStaticallyBoundedCollectionExpression(enumeratedObject, "object", scopes)
+    isStaticallyBoundedCollectionExpression(enumeratedObject, "object", scopes, growthBySymbolId)
   );
 };
 
@@ -456,9 +499,7 @@ const literalGrowsAccumulatorPerIteration = (
     ) {
       return false;
     }
-    return !(
-      isNodeOfType(spreadArgument, "ObjectExpression") && spreadArgument.properties.length === 0
-    );
+    return !isFixedShapeObjectLiteral(spreadArgument);
   });
 };
 
@@ -470,46 +511,50 @@ export const noSpreadAccumulatorInReduce = defineRule({
   category: "Performance",
   recommendation:
     "Mutate the accumulator and return it (`acc[key] = value; return acc`) so the fold stays O(n) instead of copying the whole accumulator every step.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const callee = stripParenExpression(node.callee);
-      if (!isNodeOfType(callee, "MemberExpression")) return;
-      const reducerMethodName = getStaticPropertyName(callee);
-      if (reducerMethodName !== "reduce" && reducerMethodName !== "reduceRight") return;
-      if (hasOwnReducerMethod(callee.object, reducerMethodName, context.scopes)) return;
-      if (!isFreshLiteralSeed(node.arguments[1])) return;
-      if (isStaticallyBoundedReduceSource(callee.object, context.scopes)) return;
+  create: (context: RuleContext) => {
+    const growthBySymbolId = new Map<number, boolean>();
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const callee = stripParenExpression(node.callee);
+        if (!isNodeOfType(callee, "MemberExpression")) return;
+        const reducerMethodName = getStaticPropertyName(callee);
+        if (reducerMethodName !== "reduce" && reducerMethodName !== "reduceRight") return;
+        if (hasOwnReducerMethod(callee.object, reducerMethodName, context.scopes)) return;
+        if (!isFreshLiteralSeed(node.arguments[1])) return;
+        if (isStaticallyBoundedReduceSource(callee.object, context.scopes, growthBySymbolId))
+          return;
 
-      const callbackArgument = node.arguments[0];
-      if (!callbackArgument || !isAstNode(callbackArgument)) return;
-      const callback = stripParenExpression(callbackArgument);
-      if (
-        !callback ||
-        (!isNodeOfType(callback, "ArrowFunctionExpression") &&
-          !isNodeOfType(callback, "FunctionExpression"))
-      ) {
-        return;
-      }
-      if (callback.async || callback.generator) return;
-      const accumulatorParam = callback.params[0];
-      if (!accumulatorParam || !isNodeOfType(accumulatorParam, "Identifier")) return;
-
-      const analysis = analyzeReducerReturns(callback, accumulatorParam, context);
-      if (analysis.hasAccumulatorPassthroughReturn) return;
-
-      for (const literal of analysis.returnedLiterals) {
+        const callbackArgument = node.arguments[0];
+        if (!callbackArgument || !isAstNode(callbackArgument)) return;
+        const callback = stripParenExpression(callbackArgument);
         if (
-          literalSpreadsAccumulator(literal, accumulatorParam, context.scopes) &&
-          literalGrowsAccumulatorPerIteration(literal, accumulatorParam, context.scopes)
+          !callback ||
+          (!isNodeOfType(callback, "ArrowFunctionExpression") &&
+            !isNodeOfType(callback, "FunctionExpression"))
         ) {
-          context.report({
-            node: literal,
-            message:
-              "This is O(n²) because spreading the accumulator copies the entire growing collection every step. Mutate and return the accumulator instead (acc[key] = value; return acc).",
-          });
           return;
         }
-      }
-    },
-  }),
+        if (callback.async || callback.generator) return;
+        const accumulatorParam = callback.params[0];
+        if (!accumulatorParam || !isNodeOfType(accumulatorParam, "Identifier")) return;
+
+        const analysis = analyzeReducerReturns(callback, accumulatorParam, context);
+        if (analysis.hasAccumulatorPassthroughReturn) return;
+
+        for (const literal of analysis.returnedLiterals) {
+          if (
+            literalSpreadsAccumulator(literal, accumulatorParam, context.scopes) &&
+            literalGrowsAccumulatorPerIteration(literal, accumulatorParam, context.scopes)
+          ) {
+            context.report({
+              node: literal,
+              message:
+                "This is O(n²) because spreading the accumulator copies the entire growing collection every step. Mutate and return the accumulator instead (acc[key] = value; return acc).",
+            });
+            return;
+          }
+        }
+      },
+    };
+  },
 });

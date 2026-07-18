@@ -132,6 +132,28 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a fixed-shape object literal spread", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const labels = items.reduce(
+         (acc, item) => ({ ...acc, ...{ label: item.name } }),
+         {},
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags object literal spreads with dynamic computed keys", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const labels = items.reduce(
+         (acc, item) => ({ ...acc, ...{ [item.id]: item.name } }),
+         {},
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an array that spreads the accumulator more than once", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
@@ -286,6 +308,54 @@ describe("no-spread-accumulator-in-reduce", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("keeps growth visible through mutable aliases, containers, and unknown calls", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const firstItems = [];
+       let alias = firstItems;
+       alias.push(...externalItems);
+       firstItems.reduce((acc, item) => [...acc, item], []);
+
+       const secondItems = [];
+       const box = { items: secondItems };
+       box.items.push(...externalItems);
+       secondItems.reduce((acc, item) => [...acc, item], []);
+
+       const thirdItems = [];
+       appendExternal(thirdItems);
+       thirdItems.reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("does not trust mutated global Object and Array aliases", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const BuiltinObject = Object;
+       BuiltinObject.keys = () => externalItems;
+       BuiltinObject.keys({ first: 1 }).reduce((acc, item) => [...acc, item], []);
+
+       const BuiltinArray = Array;
+       BuiltinArray.from = () => externalItems;
+       BuiltinArray.from(["first"]).reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("handles long bounded alias chains without repeated growth analysis", () => {
+    const aliasDeclarations = Array.from(
+      { length: 1_200 },
+      (_, index) => `const alias${index + 1} = alias${index};`,
+    ).join("\n");
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const alias0 = [];
+       ${aliasDeclarations}
+       alias1200.reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a reduce over an inline array literal (fixed tiny collection of UI flags)", () => {

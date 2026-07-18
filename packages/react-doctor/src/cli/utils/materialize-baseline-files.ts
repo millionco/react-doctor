@@ -5,36 +5,69 @@ import {
   type MaterializedTree,
   materializeSourceTree,
 } from "@react-doctor/core";
+import { isMaterializableGitSource } from "./is-materializable-git-source.js";
+
+export interface BaselineMaterializedTree extends MaterializedTree {
+  readonly baseFiles: ReadonlyArray<string>;
+  readonly headFiles: ReadonlyArray<string>;
+  readonly isComplete: boolean;
+  readonly untrackedFiles: ReadonlyArray<string>;
+}
 
 /**
- * Materializes the `ref` version of `files` into `tempDirectory` (via
- * `git show <ref>:<path>`), mirroring the project layout + head's config files
- * so the base lints under the same rules as head. Reuses the shared,
- * zip-slip-guarded `materializeSourceTree`. Per-file read misses (e.g. a file
- * the PR added, absent at base) are skipped, which is exactly what we want:
- * a brand-new file has no base counterpart, so all its findings are "new".
+ * Materializes the base side of the `ref` → worktree diff into
+ * `tempDirectory`, mirroring the project layout plus head's config files so
+ * both sides lint under the same rules. Git rename heuristics are disabled by
+ * the diff planner, so an old path is retained as a base deletion while its
+ * new path is a head addition. Missing head-only additions are expected;
+ * missing paths that the plan says must exist at base make `isComplete` false.
  */
 export const materializeBaselineFiles = (input: {
   directory: string;
   ref: string;
   files: ReadonlyArray<string>;
+  baseFiles?: ReadonlyArray<string>;
+  headFiles?: ReadonlyArray<string>;
   tempDirectory: string;
-}): Promise<MaterializedTree> =>
+}): Promise<BaselineMaterializedTree | null> =>
   Effect.runPromise(
     Effect.gen(function* () {
       const git = yield* Git;
-      return yield* materializeSourceTree({
+      const diffPlan = yield* git.baselineDiffPlan({
         directory: input.directory,
-        files: input.files,
+        ref: input.ref,
+      });
+      const baseFiles = input.baseFiles ?? diffPlan?.baseFiles;
+      const headFiles = input.headFiles ?? diffPlan?.headFiles;
+      const untrackedFiles = diffPlan?.untrackedFiles ?? [];
+      if (baseFiles === undefined || headFiles === undefined) return null;
+      const files = [...new Set([...input.files, ...baseFiles])];
+      const tree = yield* materializeSourceTree({
+        directory: input.directory,
+        files,
         tempDirectory: input.tempDirectory,
         readContent: (relativePath) =>
-          git.showRefContent({
-            directory: input.directory,
-            ref: input.ref,
-            relativePath,
-            options: { maxBufferBytes: GIT_SHOW_MAX_BUFFER_BYTES },
-          }),
+          git
+            .showRefContent({
+              directory: input.directory,
+              ref: input.ref,
+              relativePath,
+              options: { maxBufferBytes: GIT_SHOW_MAX_BUFFER_BYTES },
+            })
+            .pipe(
+              Effect.map((content) =>
+                content !== null && isMaterializableGitSource(content) ? content : null,
+              ),
+            ),
       });
+      const materializedFiles = new Set(tree.materializedFiles);
+      return {
+        ...tree,
+        baseFiles,
+        headFiles,
+        isComplete: baseFiles.every((filePath) => materializedFiles.has(filePath)),
+        untrackedFiles,
+      } satisfies BaselineMaterializedTree;
     }).pipe(Effect.provide(Git.layerNode)),
   );
 

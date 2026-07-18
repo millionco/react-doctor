@@ -1,6 +1,8 @@
-import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
+import { BUILTIN_HOOK_NAMES, EFFECT_HOOK_NAMES } from "../../../constants/react.js";
+import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { isReactHookCall } from "../../../utils/is-react-hook-call.js";
 import { isReactHookName } from "../../../utils/is-react-hook-name.js";
 import {
   addPatternBindings,
@@ -32,12 +34,19 @@ const collectRenderReachableNamesFromStatements = (
   statements: EsTreeNode[] | undefined,
   names: Set<string>,
   scope: BindingScope,
+  scopes: ScopeAnalysis,
   eventHandlerReferenceNames: Set<string> = new Set(),
 ): boolean => {
   let hasReturn = false;
   for (const statement of statements ?? []) {
     if (
-      collectRenderReachableNamesFromStatement(statement, names, scope, eventHandlerReferenceNames)
+      collectRenderReachableNamesFromStatement(
+        statement,
+        names,
+        scope,
+        scopes,
+        eventHandlerReferenceNames,
+      )
     ) {
       hasReturn = true;
     } else {
@@ -51,6 +60,7 @@ const collectRenderReachableNamesFromStatement = (
   statement: EsTreeNode,
   names: Set<string>,
   scope: BindingScope,
+  scopes: ScopeAnalysis,
   eventHandlerReferenceNames: Set<string>,
 ): boolean => {
   if (isNodeOfType(statement, "ReturnStatement")) {
@@ -73,9 +83,10 @@ const collectRenderReachableNamesFromStatement = (
   if (
     isNodeOfType(statement, "ExpressionStatement") &&
     isNodeOfType(statement.expression, "CallExpression") &&
-    isNodeOfType(statement.expression.callee, "Identifier") &&
-    isReactHookName(statement.expression.callee.name) &&
-    !EFFECT_HOOK_NAMES.has(statement.expression.callee.name)
+    ((isNodeOfType(statement.expression.callee, "Identifier") &&
+      isReactHookName(statement.expression.callee.name)) ||
+      isReactHookCall(statement.expression, BUILTIN_HOOK_NAMES, scopes)) &&
+    !isReactHookCall(statement.expression, EFFECT_HOOK_NAMES, scopes)
   ) {
     for (const argument of statement.expression.arguments ?? []) {
       addNames(names, collectScopedReferenceNames(argument, scope, eventHandlerReferenceNames));
@@ -88,6 +99,7 @@ const collectRenderReachableNamesFromStatement = (
       statement.body,
       names,
       createBlockBindingScope(scope),
+      scopes,
       eventHandlerReferenceNames,
     );
   }
@@ -97,6 +109,7 @@ const collectRenderReachableNamesFromStatement = (
       statement.consequent,
       names,
       scope,
+      scopes,
       eventHandlerReferenceNames,
     );
     const alternateHasReturn = statement.alternate
@@ -104,6 +117,7 @@ const collectRenderReachableNamesFromStatement = (
           statement.alternate,
           names,
           scope,
+          scopes,
           eventHandlerReferenceNames,
         )
       : false;
@@ -124,6 +138,7 @@ const collectRenderReachableNamesFromStatement = (
         switchCase.consequent,
         names,
         caseScope,
+        scopes,
         eventHandlerReferenceNames,
       );
       if (!caseHasReturn) continue;
@@ -149,6 +164,7 @@ const collectRenderReachableNamesFromStatement = (
       statement.block,
       names,
       scope,
+      scopes,
       eventHandlerReferenceNames,
     );
     const handlerHasReturn = statement.handler
@@ -156,6 +172,7 @@ const collectRenderReachableNamesFromStatement = (
           statement.handler,
           names,
           scope,
+          scopes,
           eventHandlerReferenceNames,
         )
       : false;
@@ -164,6 +181,7 @@ const collectRenderReachableNamesFromStatement = (
           statement.finalizer,
           names,
           scope,
+          scopes,
           eventHandlerReferenceNames,
         )
       : false;
@@ -177,6 +195,7 @@ const collectRenderReachableNamesFromStatement = (
       statement.body,
       names,
       catchScope,
+      scopes,
       eventHandlerReferenceNames,
     );
   }
@@ -186,6 +205,7 @@ const collectRenderReachableNamesFromStatement = (
       statement.body,
       names,
       scope,
+      scopes,
       eventHandlerReferenceNames,
     );
     if (bodyHasReturn) {
@@ -204,6 +224,7 @@ const collectRenderReachableNamesFromStatement = (
       statement.body,
       names,
       loopScope,
+      scopes,
       eventHandlerReferenceNames,
     );
     if (!bodyHasReturn) return false;
@@ -242,6 +263,7 @@ const collectRenderReachableNamesFromStatement = (
       statement.body,
       names,
       loopScope,
+      scopes,
       eventHandlerReferenceNames,
     );
     if (!bodyHasReturn) return false;
@@ -254,6 +276,7 @@ const collectRenderReachableNamesFromStatement = (
       statement.body,
       names,
       scope,
+      scopes,
       eventHandlerReferenceNames,
     );
   }
@@ -263,6 +286,7 @@ const collectRenderReachableNamesFromStatement = (
       statement.body,
       names,
       scope,
+      scopes,
       eventHandlerReferenceNames,
     );
     if (bodyHasReturn) {
@@ -279,6 +303,7 @@ const collectRenderReachableNamesFromStatement = (
 
 export const collectRenderReachableNames = (
   componentBody: EsTreeNode,
+  scopes: ScopeAnalysis,
   eventHandlerReferenceNames: Set<string> = new Set(),
 ): Set<string> => {
   const names = new Set<string>();
@@ -287,6 +312,7 @@ export const collectRenderReachableNames = (
     componentBody.body,
     names,
     createComponentBindingScope(),
+    scopes,
     eventHandlerReferenceNames,
   );
   return names;

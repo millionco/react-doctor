@@ -1,7 +1,7 @@
 import { TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isTrivialBuiltInConstruction } from "../../utils/is-trivial-built-in-construction.js";
@@ -50,7 +50,7 @@ export const rerenderLazyRefInit = defineRule({
     "Initialize the ref lazily so expensive values are not rebuilt and discarded on every render.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isHookCall(node, "useRef") || !node.arguments?.length) return;
+      if (!isReactHookCall(node, "useRef", context.scopes) || !node.arguments?.length) return;
       const initializer = stripParenExpression(node.arguments[0]);
 
       const isPlainCall = isNodeOfType(initializer, "CallExpression");

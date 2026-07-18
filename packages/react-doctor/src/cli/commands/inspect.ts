@@ -6,6 +6,7 @@ import * as fs from "node:fs";
 import {
   buildJsonReport,
   DEFAULT_PROJECT_SCAN_CONCURRENCY,
+  getBaselineDiffPlan,
   getChangedLineRanges,
   getDiffInfo,
   hasReactRuntime,
@@ -68,6 +69,7 @@ import {
   resolveProjectChangedLineRanges,
   resolveProjectDiffIncludePaths,
 } from "../utils/resolve-project-diff-include-paths.js";
+import { resolveProjectSourceFilePaths } from "../utils/resolve-project-source-file-paths.js";
 import { runExplain } from "../utils/run-explain.js";
 import { projectManifestChanged } from "../utils/project-manifest-changed.js";
 import { filterScansForSurface } from "../utils/filter-scans-for-surface.js";
@@ -523,6 +525,8 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         : null;
     // `changed` subtracts pre-existing findings (baseline); `files` / `lines` do not.
     const baselineRef = scope === "changed" ? comparisonBaseRef : null;
+    const baselineDiffPlan =
+      baselineRef === null ? null : await getBaselineDiffPlan(resolvedDirectory, baselineRef);
 
     // `--scope lines`: per-file changed line ranges (repo-relative). Working-tree
     // vs HEAD for uncommitted changes, vs the merge-base otherwise. When no base
@@ -602,6 +606,22 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
 
       let includePaths: string[] | undefined;
       let supplyChainManifestChanged = false;
+      const projectBaselineBaseFiles =
+        baselineDiffPlan === null
+          ? null
+          : resolveProjectSourceFilePaths(
+              resolvedDirectory,
+              scanDirectory,
+              baselineDiffPlan.baseFiles,
+            );
+      const projectBaselineHeadFiles =
+        baselineDiffPlan === null
+          ? null
+          : resolveProjectSourceFilePaths(
+              resolvedDirectory,
+              scanDirectory,
+              baselineDiffPlan.headFiles,
+            );
       if (isDiffMode) {
         const changedSourceFiles =
           diffInfo === null
@@ -614,7 +634,12 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
           supplyChainEnabled &&
           diffInfo !== null &&
           projectManifestChanged(resolvedDirectory, scanDirectory, diffInfo);
-        if (changedSourceFiles.length === 0 && !supplyChainManifestChanged) {
+        const hasBaselineOnlyFiles = (projectBaselineBaseFiles?.length ?? 0) > 0;
+        if (
+          changedSourceFiles.length === 0 &&
+          !supplyChainManifestChanged &&
+          !hasBaselineOnlyFiles
+        ) {
           if (!isQuiet) {
             logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
             logger.break();
@@ -627,6 +652,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         // materialize the base manifest, so the delta filters out pre-existing
         // low-score dependencies instead of reporting them as newly introduced.
         includePaths = [...changedSourceFiles];
+        if (includePaths.length === 0 && hasBaselineOnlyFiles) {
+          includePaths.push(...(projectBaselineBaseFiles ?? []));
+        }
         if (supplyChainManifestChanged) includePaths.push("package.json");
       }
 
@@ -643,7 +671,16 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         // Pool members overlap; they must not own the process-global Sentry
         // run state (see `InspectOptions.concurrentScan`).
         concurrentScan: isMultiProject,
-        baseline: baselineRef ? { ref: baselineRef } : undefined,
+        baseline:
+          baselineRef !== null &&
+          projectBaselineBaseFiles !== null &&
+          projectBaselineHeadFiles !== null
+            ? {
+                ref: baselineRef,
+                baseFiles: projectBaselineBaseFiles,
+                headFiles: projectBaselineHeadFiles,
+              }
+            : undefined,
         changedLineRanges:
           scope === "lines" && changedLineRanges !== null
             ? resolveProjectChangedLineRanges(resolvedDirectory, scanDirectory, changedLineRanges)

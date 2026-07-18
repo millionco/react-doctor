@@ -23,6 +23,7 @@ describe("diagnose() programmatic API", () => {
   // version explicitly.
   it("emits prefer-use-effect-event diagnostics on a React 19 project (the prefer-newer-api version-gated rule fires)", async () => {
     const projectDir = setupReactProject(tempRoot, "diagnose-prefer-use-effect-event-fires", {
+      reactVersion: "^19.2.0",
       files: {
         "src/Debounced.tsx": `import { useEffect, useState } from "react";
 

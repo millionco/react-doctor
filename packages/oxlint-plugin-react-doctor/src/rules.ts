@@ -60,7 +60,7 @@ export const EXTERNAL_RULES = [
   { key: "react-hooks-js/refs", source: "react-compiler", severity: "error" },
   { key: "react-hooks-js/purity", source: "react-compiler", severity: "error" },
   { key: "react-hooks-js/hooks", source: "react-compiler", severity: "error" },
-  { key: "react-hooks-js/set-state-in-effect", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/set-state-in-effect", source: "react-compiler", severity: "warn" },
   { key: "react-hooks-js/globals", source: "react-compiler", severity: "error" },
   { key: "react-hooks-js/error-boundaries", source: "react-compiler", severity: "error" },
   {

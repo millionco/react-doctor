@@ -44,6 +44,11 @@ export const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);
 
 export const GENERIC_EVENT_SUFFIXES = new Set(["Click", "Change", "Input", "Blur", "Focus"]);
 
+export const UNARY_LISTENER_ARGUMENT_COUNT = 1;
+export const UNARY_LISTENER_HANDLER_ARGUMENT_INDEX = 0;
+export const EVENT_LISTENER_HANDLER_ARGUMENT_INDEX = 1;
+export const WHOLE_RECEIVER_RELEASE_ARGUMENT_COUNT = 0;
+
 export const TRIVIAL_INITIALIZER_NAMES = new Set([
   "Boolean",
   "String",

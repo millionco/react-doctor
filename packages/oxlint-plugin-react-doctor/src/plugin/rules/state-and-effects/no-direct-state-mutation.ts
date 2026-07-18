@@ -328,7 +328,7 @@ export const noDirectStateMutation = defineRule({
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
-      const bindings = collectUseStateBindings(componentBody);
+      const bindings = collectUseStateBindings(componentBody, context.scopes);
       if (bindings.length === 0) return;
 
       const stateValueToSetter = new Map<string, string>(

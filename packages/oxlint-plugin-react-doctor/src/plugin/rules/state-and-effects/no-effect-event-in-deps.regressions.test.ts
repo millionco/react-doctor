@@ -29,7 +29,7 @@ describe("no-effect-event-in-deps — regressions: same-named non-React useEffec
     `);
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]?.message).toBe(
-      'Listing "onTick" in the deps re-runs your effect every render & defeats useEffectEvent.',
+      'Listing "onTick" in the deps defeats useEffectEvent — Effect Events are non-reactive and must be omitted from deps.',
     );
   });
 

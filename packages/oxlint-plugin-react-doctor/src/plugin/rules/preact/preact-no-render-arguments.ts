@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { stripThisParameter } from "../../utils/strip-this-parameter.js";
 
 // Preact code conventionally imports the namespace as `Preact` (e.g.
 // `import * as Preact from "preact"; class Foo extends Preact.Component`).
@@ -52,19 +53,6 @@ const isInsideEs6Component = (methodDefinition: EsTreeNode): boolean => {
   const owningClass = classBody.parent;
   if (!owningClass) return false;
   return isPreactOrReactComponentClass(owningClass);
-};
-
-// TypeScript lets users type the `this` binding via a leading `this:` parameter
-// declaration that has no runtime presence. It still surfaces in the ESTree AST
-// as `params[0]` with `name === "this"`, so we have to peel it off before
-// inspecting the actual user-supplied parameter list.
-const stripThisParameter = (params: ReadonlyArray<EsTreeNode>): ReadonlyArray<EsTreeNode> => {
-  const first = params[0];
-  if (!first) return params;
-  if (isNodeOfType(first, "Identifier") && first.name === "this") {
-    return params.slice(1);
-  }
-  return params;
 };
 
 // Preact forwards `props` and `state` as positional arguments to `render()`,

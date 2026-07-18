@@ -1464,6 +1464,9 @@ const resolveStaticString = (
   if (isNodeOfType(candidate, "Literal") && typeof candidate.value === "string") {
     return candidate.value;
   }
+  if (isNodeOfType(candidate, "TemplateLiteral") && candidate.expressions.length === 0) {
+    return candidate.quasis[0]?.value.cooked ?? candidate.quasis[0]?.value.raw ?? null;
+  }
   if (!isNodeOfType(candidate, "Identifier")) return null;
   const symbol = scopes.symbolFor(candidate);
   if (symbol?.kind !== "const" || !symbol.initializer || visitedSymbolIds.has(symbol.id)) {

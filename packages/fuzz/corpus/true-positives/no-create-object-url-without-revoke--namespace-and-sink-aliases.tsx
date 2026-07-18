@@ -1,11 +1,13 @@
 // rule: no-create-object-url-without-revoke
 // weakness: alias-resolution
 // source: PR #1344 deep audit
-const method = "setAttribute";
-const attribute = "href";
-const srcProperty = "src";
+const method = `setAttribute`;
+const attributeBase = `href`;
+const attribute = attributeBase;
+const srcProperty = `src`;
 const aliasedSrcProperty = srcProperty;
-const currentProperty = "current";
+const currentBaseProperty = `current`;
+const currentProperty = currentBaseProperty;
 const setter = Math.random() > 0.5 ? setPreview : setAvatar;
 
 export const attachPreviews = (

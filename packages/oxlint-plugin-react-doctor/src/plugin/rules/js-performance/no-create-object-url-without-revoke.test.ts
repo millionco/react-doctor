@@ -369,20 +369,25 @@ describe("no-create-object-url-without-revoke", () => {
   it("flags const-aliased computed URL escape properties", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
-      `const hrefProperty = "href";
+      `const hrefProperty = \`href\`;
        const srcProperty = "src";
        const aliasedSrcProperty = srcProperty;
-       const currentProperty = "current";
+       const currentBaseProperty = \`current\`;
+       const currentProperty = currentBaseProperty;
+       const setAttributeMethod = \`setAttribute\`;
+       const attributeBase = \`href\`;
+       const attributeName = attributeBase;
        anchor[hrefProperty] = URL.createObjectURL(firstBlob);
        image[aliasedSrcProperty] = URL.createObjectURL(secondBlob);
        previewRef[currentProperty] = URL.createObjectURL(thirdBlob);
+       element[setAttributeMethod](attributeName, URL.createObjectURL(fourthBlob));
        const make = (blob) => URL.createObjectURL(blob);
        const attachPreview = (blob) => {
          const url = make(blob);
          image[srcProperty] = url;
        };`,
     );
-    expect(result.diagnostics).toHaveLength(4);
+    expect(result.diagnostics).toHaveLength(5);
   });
 
   it("ignores computed properties that are not proven URL sinks", () => {

@@ -12,6 +12,7 @@ Pipeline:
 1. `rule-research` defines the rule contract.
 2. `rule-writing` turns the contract into tests and implementation.
 3. `rule-validate` verifies noise, correctness, PR copy, and review feedback.
+4. `run-parity` compares the finished PR against its base across the full corpus.
 
 Do not start implementation until the rule contract is clear. If the user already asked you to implement, make the contract concise and continue.
 
@@ -54,7 +55,9 @@ When enough is known, present a short rule contract and either ask for confirmat
    - Syntax-only: local syntax is enough.
    - Scope-aware: imports, aliases, or shadowed bindings matter.
    - Path-aware: order, branches, or same-path conditions matter.
-7. Use RDE idea validation when the rule is speculative, broad, or likely to catch valid idioms.
+7. Choose the validation path:
+   - Use `rde-eval` locally for targeted OSS evidence while the rule is still uncommitted.
+   - Use `run-parity` after a PR exists for an exact base/head full-corpus comparison.
 
 ## RDE Idea Prompt
 
@@ -79,6 +82,14 @@ Return:
 Prefer examples tied to real framework/library usage.
 Do not treat similar-looking valid code as a positive.
 ```
+
+## Validation Plan
+
+Do not run full PR parity during idea research. Record the intended handoff:
+
+- Use local `rde-eval` when OSS evidence would change the contract.
+- After implementation, tests, and a pushed PR head, invoke `Use $run-parity for PR <number-or-url>`.
+- Default full PR parity to required for a new rule or a behavior change to an existing rule. Record a concrete skip reason when credentials, a PR, or the Daytona service are unavailable.
 
 ## Rule Contract Output
 
@@ -117,6 +128,10 @@ Out of scope for v1:
 Test seeds:
 
 - <invalid and valid fixture ideas>
+
+Validation plan:
+
+- <local RDE scope and whether full PR parity is required>
 
 Open questions:
 

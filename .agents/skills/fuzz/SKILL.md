@@ -1,6 +1,6 @@
 ---
 name: fuzz
-description: Adversarially fuzz React Doctor rules with @react-doctor/fuzz — crash, slowness, and metamorphic-invariance oracles over generated, pathological, and real-world programs. Use after rule tests pass, when hunting false positives, when triaging a fuzz finding, or whenever a NEW false positive is confirmed from any source (user report, RDE eval, react-bench run, review) so it gets added to the evolving regression corpus.
+description: Adversarially fuzz React Doctor rules with @react-doctor/fuzz — crash, slowness, and metamorphic-invariance oracles over generated, pathological, and real-world programs. Use after rule tests pass, when hunting false positives, when triaging a fuzz finding, or whenever a NEW false positive is confirmed from any source (user report, RDE eval, PR parity, react-bench run, review) so it gets added to the evolving regression corpus.
 ---
 
 # Fuzz
@@ -19,19 +19,19 @@ its `README.md` for architecture; this skill is the operating manual.
 ## Run
 
 ```bash
-pnpm fuzz                                   # all rules, crash+slow oracles
-FUZZ_RULE=<id substring> pnpm fuzz          # one rule / one family
-FUZZ_ITERATIONS=200 FUZZ_SEED=42 pnpm fuzz  # more cases, fixed seed
-FUZZ_INVARIANTS=1 pnpm fuzz                 # + metamorphic + verdict-drop oracles (warn)
-FUZZ_STRICT=1 pnpm fuzz                     # fail on invariant violations + verdict drops
-FUZZ_CORPUS_DIR=<dir of repos> pnpm fuzz    # + real files & crossover
-FUZZ_PRINT_SILENT=1 pnpm fuzz               # list rules that never fired
+nr fuzz                                   # all rules, crash+slow oracles
+FUZZ_RULE=<id substring> nr fuzz          # one rule / one family
+FUZZ_ITERATIONS=200 FUZZ_SEED=42 nr fuzz  # more cases, fixed seed
+FUZZ_INVARIANTS=1 nr fuzz                 # + metamorphic + verdict-drop oracles (warn)
+FUZZ_STRICT=1 nr fuzz                     # fail on invariant violations + verdict drops
+FUZZ_CORPUS_DIR=<dir of repos> nr fuzz    # + real files & crossover
+FUZZ_PRINT_SILENT=1 nr fuzz               # list rules that never fired
 ```
 
 Recommended validation run for a new or changed rule:
 
 ```bash
-FUZZ_RULE=<rule-id> FUZZ_STRICT=1 FUZZ_ITERATIONS=500 pnpm fuzz
+FUZZ_RULE=<rule-id> FUZZ_STRICT=1 FUZZ_ITERATIONS=500 nr fuzz
 ```
 
 Recommended full sweep (e.g. before a rule-batch release), pointing the
@@ -43,7 +43,7 @@ extracts react-bench's diagnostic-dense RD-health target files:
 
 ```bash
 cd packages/fuzz && bun scripts/sync-fuzz-corpus.ts
-FUZZ_INVARIANTS=1 FUZZ_ITERATIONS=100 FUZZ_CORPUS_DIR=packages/fuzz/tmp/corpus-repos pnpm fuzz
+FUZZ_INVARIANTS=1 FUZZ_ITERATIONS=100 FUZZ_CORPUS_DIR=packages/fuzz/tmp/corpus-repos nr fuzz
 ```
 
 The direct FP oracle — every regression-corpus seed is ground-truth-valid
@@ -70,7 +70,7 @@ The run prints `fuzz fire-coverage: N/total rules produced a diagnostic`.
 rule, first confirm it FIRES under fuzz:
 
 ```bash
-FUZZ_RULE=<rule-id> FUZZ_PRINT_SILENT=1 pnpm fuzz
+FUZZ_RULE=<rule-id> FUZZ_PRINT_SILENT=1 nr fuzz
 ```
 
 If it is silent, add a triggering shape to the generator before trusting
@@ -93,7 +93,7 @@ rule/kind/seed headers. Every case replays from its seed alone.
 
 **crash** — always a real bug; rules must never throw on parseable input.
 
-1. Re-run just that rule and seed: `FUZZ_RULE=<id> FUZZ_SEED=<seed> FUZZ_ITERATIONS=1 pnpm fuzz`.
+1. Re-run just that rule and seed: `FUZZ_RULE=<id> FUZZ_SEED=<seed> FUZZ_ITERATIONS=1 nr fuzz`.
 2. Minimize the reproducer by deleting sections while the crash persists.
 3. Add the minimized program as an invalid-or-valid regression test in the
    rule's own `.test.ts` (asserting no throw), fix the visitor (typical
@@ -146,7 +146,7 @@ rewrite (comments, blank lines, trailing unused decl) changed diagnostics.
    exemption list in the harness.
 
 **false positive confirmed anywhere else** (user report via Plain, RDE
-eval, react-bench A/B run, code review, adversarial review): treat it as a
+eval, full PR parity, react-bench A/B run, code review, adversarial review): treat it as a
 fuzz finding of the highest value — feed the evolving loop below.
 
 ## The evolving loop (non-optional)
@@ -165,7 +165,7 @@ Whenever a NEW false positive is confirmed, before (or with) the rule fix:
 1. Add a minimal reproducer:
    `packages/fuzz/corpus/regressions/<rule-id>--<slug>.tsx` with the header
    (see `packages/fuzz/corpus/README.md`): rule id, weakness class, source.
-2. Run `pnpm test` in `packages/fuzz` — a smoke test enforces every seed
+2. Run `nr -C packages/fuzz test` — a smoke test enforces every seed
    parses cleanly.
 3. If the FP exposes a NEW weakness class or a shape the generator cannot
    produce, also add a snippet to the matching pool in

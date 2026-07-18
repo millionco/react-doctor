@@ -1,147 +1,105 @@
 ---
 name: rde-eval
-description: Run the react-doctor-evals (RDE) harness to test a local rule change against the OSS corpus — locally for fast iteration, or fanned out to the cloud (Vercel Sandbox) for scale. Use after rule tests pass, when checking a new or changed rule for false positives across real repos, or whenever rule-validate's "RDE Rule Validation" step calls for it.
+description: Run a targeted local react-doctor-evals (RDE) loop against an uncommitted React Doctor rule change, inspect target-rule hits, and hand a finished PR to Daytona full-corpus parity. Use after focused rule tests pass, while iterating on false positives in real OSS code, or whenever rule-validate calls for local RDE evidence before run-parity.
 ---
 
 # RDE Eval
 
-Test a react-doctor rule change against thousands of OSS repos with the
-`react-doctor-evals` (RDE) harness. Two modes:
+Use RDE locally for fast rule iteration. Use `run-parity` for the final full-corpus PR comparison.
 
-- **local** — spawn react-doctor as a child process on your laptop. Fast, no
-  creds, uses your working tree (incl. uncommitted edits).
-- **cloud** — Vercel Sandbox microVMs (4 vCPU / 8 GB). Fan out to 50+ repos in
-  parallel. Requires a **pushed** branch.
+| Need                                   | Workflow     |
+| -------------------------------------- | ------------ |
+| Uncommitted rule change, quick sample  | `rde-eval`   |
+| Filter and inspect one rule's OSS hits | `rde-eval`   |
+| Exact PR base versus head, full corpus | `run-parity` |
 
-> **Validating an oxlint lint rule? Use local.** Observed: cloud runs currently
-> fire only the **project-level analyzers** (dead-code, supply-chain, security —
-> ~15 rules) and **not the oxlint AST rule layer** (the 100+ per-element rules in
-> `oxlint-plugin-react-doctor`). A 139-repo cloud run produced 15 distinct rules /
-> **0** oxlint hits; the same corpus locally produced 150+ distinct rules / 1000s
-> of hits. So for any rule in the oxlint plugin, cloud will report a **misleading
-> 0** — run it **local**. Cloud is still valid for dead-code / supply-chain /
-> security rules. (Root cause not yet diagnosed — treat as a known limitation.)
+Do not use the old Vercel cloud path for oxlint rule validation. It can omit the AST rule layer and return a misleading zero. Daytona parity builds the full React Doctor checkout and is the canonical scaled run.
 
-`$RD` is your react-doctor checkout — the one with the rule changes, at the
-**monorepo root** (the CLI appends `packages/react-doctor/...`). `$EVALS` is the
-react-doctor-evals checkout. Run every `node dist/cli.js` command from `$EVALS`.
+## Local Setup
 
-## Setup (every run)
+Set checkout paths without changing either working tree:
 
 ```sh
-export RD=~/projects/million/react-doctor          # checkout with your rule changes (monorepo root)
-export EVALS=~/projects/million/react-doctor-evals # the harness
-cd $EVALS && git pull && pnpm install && pnpm build   # stale builds break cloud workers
-(cd $RD && pnpm build)                                # local mode needs the built bin
+export REACT_DOCTOR_CHECKOUT=/absolute/path/to/react-doctor
+export RDE_CHECKOUT=/absolute/path/to/react-doctor-evals
+
+git -C "$RDE_CHECKOUT" pull --ff-only
+ni -C "$RDE_CHECKOUT"
+nr -C "$RDE_CHECKOUT" build
+nr -C "$REACT_DOCTOR_CHECKOUT" build
 ```
 
-Cloud mode also needs `$EVALS/.env.local` with **five** vars — the harness won't
-boot (or sandbox provisioning 403s) if any is missing:
+Run all RDE CLI commands from the eval checkout. The `path:` spec reads the React Doctor working tree, including uncommitted edits.
 
-| var                 | how to get it                                                                                                                                                                                                                                              |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VERCEL_TOKEN`      | vercel.com → Account Settings → Tokens (with access to the team). An empty/expired value provisions a `403 invalidToken`. Sanity-check: `curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" https://api.vercel.com/v2/user` → `200`. |
-| `VERCEL_TEAM_ID`    | `node setup.mjs`, or `orgId` in `$EVALS/.vercel/project.json`.                                                                                                                                                                                             |
-| `VERCEL_PROJECT_ID` | `node setup.mjs`, or `projectId` in `$EVALS/.vercel/project.json`. ⚠️ `vercel env pull` does **not** always write this one — copy it from `project.json` if absent.                                                                                        |
-| `AXIOM_DATASET`     | Axiom dashboard. **Required even though traces only ship when `NODE_ENV=production`** — the harness reads it at boot, so a missing value is a hard `ConfigError`, not a silent no-op.                                                                      |
-| `AXIOM_TOKEN`       | Axiom dashboard → API token.                                                                                                                                                                                                                               |
+## Targeted Local Loop
 
-## Version specs
-
-| spec                                                  | reaches cloud?  | notes                                                                |
-| ----------------------------------------------------- | --------------- | -------------------------------------------------------------------- |
-| `path:$RD`                                            | NO — local only | your working tree incl. uncommitted edits; `--runner local` only     |
-| `git:https://github.com/millionco/react-doctor@<ref>` | yes             | sandbox clones + `turbo run build`s the monorepo; ref must be pushed |
-| `npm:<x.y.z>`                                         | yes             | published baseline                                                   |
-
-> `path:` does **not** work with `--pool vercel`: the Vercel worker only
-> uploads the evals tree, never the react-doctor checkout. (EVAL.md Flow 1 is
-> stale on this.) Rules live in `oxlint-plugin-react-doctor`, a `workspace:*`
-> dep of react-doctor, so you can't ship react-doctor alone — `git:` works
-> because it builds the whole monorepo in the sandbox. For uncommitted changes
-> in the cloud, push a scratch branch and use `git:`.
-
-`--take N` caps repos (default = all of repos.json, ~8.4k — always cap while
-iterating). `--dataset small|medium|large` = 50 | 500 | 1000.
-
-## Local fast loop (no push)
+Start with a capped sample. Increase it only after tests and the first sample are clean.
 
 ```sh
-node dist/cli.js run path:$RD --runner local --take 100
-node dist/cli.js digest path:$RD --rule <rule>             # all hits for your rule
-node dist/cli.js digest path:$RD --json --rule <rule> > hits.json
+cd "$RDE_CHECKOUT"
+node dist/cli.js run "path:$REACT_DOCTOR_CHECKOUT" --runner local --take 100
+node dist/cli.js digest "path:$REACT_DOCTOR_CHECKOUT" --rule <rule-id>
+node dist/cli.js digest "path:$REACT_DOCTOR_CHECKOUT" --json --rule <rule-id> > <artifact-path>/hits.json
 ```
 
-## Cloud loop (fan out)
+The full manifest contains thousands of project roots. Keep `--take` bounded while iterating.
 
-```sh
-# in $RD first: git push -u origin <branch>
-B=git:https://github.com/millionco/react-doctor@main
-C=git:https://github.com/millionco/react-doctor@<branch>
-node dist/cli.js run "$B" --runner worker-pool --pool vercel --take 100
-node dist/cli.js run "$C" --runner worker-pool --pool vercel --take 100
-node dist/cli.js parity "$B" "$C" --verbose                # +added / -removed by your branch
-node dist/cli.js parity "$B" "$C" --json > parity.json     # machine-readable
+## Inspect Results
+
+For every hit when counts are low, or a representative sample when counts are high:
+
+1. Open the pinned repository and exact `filePath:line:column`.
+2. Decide whether the code satisfies the rule contract.
+3. Classify it as a true positive, false positive, or unsupported case.
+4. Add a focused rule regression test for every false positive.
+5. Add confirmed false positives to the `fuzz` regression corpus.
+6. Rebuild React Doctor and rerun the same RDE sample until clean.
+
+Record distinct repositories separately from root-directory scans.
+
+## Full PR Parity Handoff
+
+After the rule is committed, pushed, and attached to a PR, invoke:
+
+```text
+Use $run-parity for PR <number-or-url>.
 ```
 
-## Force a fresh run (cache)
+`run-parity` requires `DAYTONA_API_KEY`, authenticated `gh`, and the sibling RDE checkout. It resolves the PR's immutable base/head SHAs, snapshots the corpus, defaults to concurrency 500, and writes:
 
-Results are cached per spec in `$EVALS/.evals/<sanitized-spec>.jsonl`. Re-running
-the same spec logs `N repos already processed. continuing…` and **serves the
-cache as-is — including repos that previously errored**, so a failed run blocks
-its own retry and returns stale/empty results. To force a clean run, delete that
-spec's file first:
+- `baseline.ndjson`
+- `candidate.ndjson`
+- `parity.json`
 
-```sh
-# cloud (git: spec) — slashes/colons become dashes
-rm "$EVALS/.evals/https---github-com-millionco-react-doctor-<branch>.jsonl"
-# local (path: spec) — the absolute path with slashes → dashes
-rm "$EVALS/.evals/-Users-...-<your-rd-checkout>.jsonl"
+Do not claim full parity from a capped local RDE run.
+
+## Report to Rule Validate
+
+```md
+Local RDE:
+
+- React Doctor checkout: <path and ref>
+- RDE checkout: <path and ref>
+- Target rule: <rule-id>
+- Distinct repositories: <count>
+- RootDir scans: <count>
+- Target diagnostics: <count>
+- Manually inspected: <count>
+- False positives found and fixed: <count and tests>
+- Hits artifact: <path>
+
+Full PR parity:
+
+- PR and exact base/head SHAs: <values or not run>
+- Compared/skipped projects: <counts>
+- Added/removed diagnostics: <counts>
+- Target rule delta: <counts>
+- Artifacts: <paths>
 ```
-
-Tip: check `wc -l` on the file and confirm entries aren't all `"error"` before
-trusting a digest. Pinning a commit SHA (`git:…@<sha>`) instead of a branch name
-is also a fresh cache key.
-
-## Read the diff
-
-- `+` = your branch adds a diagnostic; `-` = drops one.
-- New rule → every hit is a `+`. On an existing rule: net-negative = less noise
-  (good if dropping false positives), net-positive = more findings (good if
-  true positives).
-- Net 0 with identical files/lines = no functional change (likely message-text
-  diffs only).
-
-## Validate hits, then fix
-
-For each hit (or a sample per rule when counts are high):
-
-1. `git clone --depth 1 <url> /tmp/x` at the pinned `ref`.
-2. Read `filePath:line:column`; is the pattern really there, and is the rule's
-   call correct for that context?
-3. Classify true positive / false positive.
-4. Add a regression test for every false positive, re-run, confirm it's gone.
-
-Feed the counts (repos scanned, rootDir scans, target diagnostics, false
-positives found) into rule-validate's eval table.
 
 ## Troubleshooting
 
-- `checks skipped (likely OOM)` — oxlint OOM'd in a sandbox; huge single-project
-  repos can hit the 8 GB cap. Skip that repo.
-- `CreateSandboxError` / `InstallDepsError: npm install exited 1` — usually a
-  stale evals build shipped to the worker. `cd $EVALS && git pull && pnpm install && pnpm build`.
-- `ConfigError: Expected string … ["AXIOM_DATASET"]` — `.env.local` is missing
-  `AXIOM_DATASET` / `AXIOM_TOKEN`. Set both (required at boot even with tracing off).
-- `403 … "invalidToken": true` on sandbox create — `VERCEL_TOKEN` is empty or
-  expired. Refresh it; verify with the `curl … /v2/user → 200` check above.
-- `Service not found: rde/WorkerPool` — the `run` command's layer stack doesn't
-  provide the pool service. `Runner.layerWorkerPool` must
-  `Layer.provide(WorkerPool.layer)` (its `Worker` + `WorkerPoolConfig` deps are
-  supplied by the command). Without it, `--pool vercel` dies before any scan.
-- Whole run crashes mid-way on one repo (e.g. `ENOENT … pnpm-workspace.yaml` →
-  schema-decode defect) — a single repo's `PlatformError` must not be fatal. The
-  per-repo invoke in `Runner.run` isolates defects with `Effect.catchDefect`
-  (fold into `Repository.WithFailure`); otherwise one odd monorepo takes down all
-  N scans.
-- No Vercel creds — drop `--runner worker-pool --pool vercel`; local is the default.
+- Stale local results: use a commit SHA or a new checkout path as the spec cache key, then rerun.
+- Mostly error records: inspect the cached JSONL before trusting a digest and fix the first common setup failure.
+- Oxlint out of memory on one repository: record the skipped repository; do not reinterpret it as zero diagnostics.
+- Missing Daytona credentials: finish local RDE, record the blocker, and do not claim full PR parity.

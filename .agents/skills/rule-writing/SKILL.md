@@ -12,6 +12,7 @@ Pipeline:
 1. `rule-research` defines the rule contract.
 2. `rule-writing` turns the contract into tests and implementation.
 3. `rule-validate` verifies noise, correctness, PR copy, and review feedback.
+4. `run-parity` compares the finished PR against its base across the full corpus.
 
 If no rule contract exists, create a compact one first or use the research skill before editing.
 
@@ -37,6 +38,8 @@ If the user asked for direct implementation, keep the plan short and proceed.
 6. Add or reuse focused utilities only when they remove real duplication or encode subtle AST semantics.
 7. Update generated registry or metadata using the repository's existing commands.
 8. Run focused tests, then package checks as appropriate.
+9. Use `rde-eval` for a targeted local OSS loop when the detector needs real-code feedback.
+10. After the work is pushed to a PR, invoke `Use $run-parity for PR <number-or-url>` for the full-corpus gate. Do not use a branch name in place of the PR's exact SHAs.
 
 Use `@antfu/ni` commands in this repo:
 
@@ -125,5 +128,5 @@ Known v1 non-goals:
 
 Next stage:
 
-- Run `rule-validate`.
+- Run `rule-validate`, including full PR parity when required by the rule contract.
 ```

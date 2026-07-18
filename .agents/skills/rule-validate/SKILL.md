@@ -1,6 +1,6 @@
 ---
 name: rule-validate
-description: Validate implemented React Doctor rules before PR or merge. Use after rule tests pass to review correctness, run RDE against OSS, inspect false positives, generate changesets, write PR descriptions, and triage bot or human review comments.
+description: Validate implemented React Doctor rules before PR or merge. Use after rule tests pass to review correctness, run targeted local RDE and full-corpus PR parity, inspect false positives, generate changesets, write PR descriptions, and triage bot or human review comments.
 ---
 
 # Rule Validate
@@ -12,6 +12,7 @@ Pipeline:
 1. `rule-research` defines the rule contract.
 2. `rule-writing` turns the contract into tests and implementation.
 3. `rule-validate` verifies noise, correctness, changesets, PR copy, and review feedback.
+4. `run-parity` compares the finished PR against its base across the full corpus.
 
 Validation is not just running tests. It checks whether the rule still matches the contract on real code.
 
@@ -58,11 +59,22 @@ Before approving a new helper or utility in the diff, confirm it does not duplic
 
 Fix every real implementation bug with a targeted regression test.
 
-## RDE Rule Validation
+## OSS Validation
 
-Use RDE after implementation when the rule is broad, heuristic, scope-aware, path-aware, or touches common React idioms.
+Use two tiers:
 
-Run it via the `rde-eval` skill — a fast local loop (`--runner local`, uses your working tree) or a cloud fan-out across the corpus (push a branch, diff `git:…@main` vs `git:…@<branch>` with `--pool vercel`). `path:` is local-only; it never reaches the Vercel pool.
+1. Use `rde-eval` for a fast, targeted local loop against the uncommitted working tree. Filter to the target rule and use a capped repository sample while iterating.
+2. Use `run-parity` for the final full-corpus PR comparison. It resolves immutable base/head SHAs, runs both through Daytona using the same corpus snapshot, and writes baseline, candidate, and parity artifacts.
+
+Run full PR parity for every new rule and every detector behavior change unless the change is test-only or documentation-only. If it cannot run, record the exact blocker instead of implying parity.
+
+Invoke it after the PR head is pushed:
+
+```text
+Use $run-parity for PR <number-or-url>.
+```
+
+The run requires `DAYTONA_API_KEY`, authenticated `gh`, and the sibling `react-doctor-evals` checkout. Default concurrency is 500. Follow the `run-parity` skill for the exact commands and exit-code handling.
 
 Required handling:
 
@@ -76,16 +88,16 @@ Required handling:
 Record:
 
 ```md
-React Doctor checkout:
-RDE eval harness:
-Repo manifest:
-Distinct repos scanned:
-RootDir scans:
-Target rule:
-Filtered output:
-Target diagnostics:
+PR and exact base/head SHAs:
+Corpus snapshot:
+Baseline projects and diagnostics:
+Candidate projects and diagnostics:
+Skipped projects:
+Added and removed diagnostics:
+Target rule delta:
 Manually inspected hits:
-False positives found:
+False positives found and fixed:
+Artifacts:
 ```
 
 ## PR Description
@@ -121,14 +133,16 @@ After:
 
 ## Eval results
 
-| Check                 | Result                             |
-| --------------------- | ---------------------------------- |
-| Repos scanned         | `<distinct repo count>`            |
-| RootDir scans         | `<manifest/rootDir entries>`       |
-| Target rule           | `<rule-name>`                      |
-| Diagnostics           | `<target-rule diagnostics>`        |
-| False positives found | `<count after manual inspection>`  |
-| Output artifact       | `<filtered JSONL or summary path>` |
+| Check                 | Result                                      |
+| --------------------- | ------------------------------------------- |
+| Projects compared     | `<count>`                                   |
+| Skipped projects      | `<count>`                                   |
+| Baseline diagnostics  | `<count>`                                   |
+| Candidate diagnostics | `<count>`                                   |
+| Added / removed       | `<added> / <removed>`                       |
+| Target rule delta     | `<added> / <removed>`                       |
+| False positives found | `<count after manual inspection>`           |
+| Output artifacts      | `<baseline.ndjson, candidate.ndjson, JSON>` |
 
 ## Test plan
 
@@ -137,7 +151,7 @@ After:
 - `<lint/format command or Not run>`
 ````
 
-Do not include the eval table if RDE was not run; state why it was skipped when useful.
+Do not include the eval table if full PR parity was not run; state the skip reason.
 
 ## Changeset
 
@@ -171,7 +185,8 @@ Validation summary:
 
 - <commands and results>
 - <implementation review findings>
-- <RDE summary or skip reason>
+- <local RDE summary or skip reason>
+- <full PR parity summary or exact blocker>
 - <false positives found and fixed>
 - <regression tests added>
 - <changeset path or skip reason>

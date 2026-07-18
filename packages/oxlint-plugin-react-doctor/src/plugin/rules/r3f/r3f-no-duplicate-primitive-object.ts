@@ -1,3 +1,4 @@
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -17,10 +18,64 @@ const findAncestor = (node: EsTreeNode, type: string): EsTreeNode | null => {
   return null;
 };
 
-const canMountTogether = (first: EsTreeNode, second: EsTreeNode): boolean => {
+const findLogicalGuard = (node: EsTreeNode): EsTreeNode | null => {
+  let current = node.parent;
+  while (current) {
+    if (
+      isNodeOfType(current, "LogicalExpression") &&
+      current.operator === "&&" &&
+      isAstDescendant(node, current.right)
+    ) {
+      return current.left;
+    }
+    current = current.parent;
+  }
+  return null;
+};
+
+const areComplementaryGuards = (
+  first: EsTreeNode,
+  second: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const unwrappedFirst = stripParenExpression(first);
+  const unwrappedSecond = stripParenExpression(second);
+  const firstNegated =
+    isNodeOfType(unwrappedFirst, "UnaryExpression") && unwrappedFirst.operator === "!"
+      ? stripParenExpression(unwrappedFirst.argument)
+      : null;
+  const secondNegated =
+    isNodeOfType(unwrappedSecond, "UnaryExpression") && unwrappedSecond.operator === "!"
+      ? stripParenExpression(unwrappedSecond.argument)
+      : null;
+  const positiveIdentifier = firstNegated ? unwrappedSecond : unwrappedFirst;
+  const negatedIdentifier = firstNegated ?? secondNegated;
+  if (
+    !negatedIdentifier ||
+    Boolean(firstNegated) === Boolean(secondNegated) ||
+    !isNodeOfType(positiveIdentifier, "Identifier") ||
+    !isNodeOfType(negatedIdentifier, "Identifier")
+  ) {
+    return false;
+  }
+  const positiveSymbol = scopes.symbolFor(positiveIdentifier);
+  const negatedSymbol = scopes.symbolFor(negatedIdentifier);
+  return Boolean(positiveSymbol && negatedSymbol && positiveSymbol.id === negatedSymbol.id);
+};
+
+const canMountTogether = (
+  first: EsTreeNode,
+  second: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   const firstReturn = findAncestor(first, "ReturnStatement");
   const secondReturn = findAncestor(second, "ReturnStatement");
   if (firstReturn && secondReturn && firstReturn !== secondReturn) return false;
+  const firstGuard = findLogicalGuard(first);
+  const secondGuard = findLogicalGuard(second);
+  if (firstGuard && secondGuard && areComplementaryGuards(firstGuard, secondGuard, scopes)) {
+    return false;
+  }
   let current = first.parent;
   while (current) {
     if (
@@ -73,7 +128,11 @@ export const r3fNoDuplicatePrimitiveObject = defineRule({
         seenByFunction.set(owningFunction, seenSymbols);
         const previousMounts = seenSymbols.get(objectSymbol.id) ?? [];
         seenSymbols.set(objectSymbol.id, [...previousMounts, node]);
-        if (!previousMounts.some((previousMount) => canMountTogether(previousMount, node))) {
+        if (
+          !previousMounts.some((previousMount) =>
+            canMountTogether(previousMount, node, context.scopes),
+          )
+        ) {
           return;
         }
         context.report({

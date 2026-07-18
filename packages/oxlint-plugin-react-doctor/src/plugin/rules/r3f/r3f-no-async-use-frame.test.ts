@@ -19,6 +19,19 @@ describe("r3f-no-async-use-frame", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags async callbacks wrapped by React useCallback", () => {
+    const result = runRule(
+      r3fNoAsyncUseFrame,
+      `import * as Fiber from "@react-three/fiber";
+       import React from "react";
+       const Scene = () => {
+         const update = React.useCallback(async () => loadAssets(), []);
+         Fiber.useFrame(update);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it.each(["@react-three/fiber/native", "@react-three/fiber/legacy", "@react-three/fiber/webgpu"])(
     "recognizes the public %s entry point",
     (moduleSource) => {

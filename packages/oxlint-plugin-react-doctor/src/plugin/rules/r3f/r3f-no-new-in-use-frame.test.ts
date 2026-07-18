@@ -19,6 +19,32 @@ describe("r3f-no-new-in-use-frame", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("resolves callbacks wrapped by imported React useCallback", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `import { useFrame } from "@react-three/fiber";
+       import { useCallback as stabilize } from "react";
+       const Scene = () => {
+         const update = stabilize(() => new Vector3(), []);
+         useFrame(update);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores callbacks wrapped by an unrelated useCallback", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `import { useFrame } from "@react-three/fiber";
+       const useCallback = (callback) => callback;
+       const Scene = () => {
+         const update = useCallback(() => new Vector3(), []);
+         useFrame(update);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("ignores uncalled nested functions and homegrown hooks", () => {
     const result = runRule(
       r3fNoNewInUseFrame,

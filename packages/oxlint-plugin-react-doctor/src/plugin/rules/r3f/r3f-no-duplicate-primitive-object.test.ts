@@ -34,4 +34,12 @@ describe("r3f-no-duplicate-primitive-object", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("allows mounts guarded by complementary logical expressions", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `const Scene = ({ scene, detail }) => <>{detail && <primitive object={scene} />}{!detail && <primitive object={scene} />}</>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

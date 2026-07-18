@@ -165,10 +165,11 @@ const isDiscardedCallbackReference = (identifier: EsTreeNode, context: RuleConte
     isEffectCallbackReference(identifier, context.scopes)
   )
     return true;
-  const callExpression = identifier.parent;
+  const callbackValue = findCallbackSelectionRoot(identifier);
+  const callExpression = callbackValue.parent;
   return Boolean(
     isNodeOfType(callExpression, "CallExpression") &&
-    callExpression.arguments.some((argument) => argument === identifier) &&
+    callExpression.arguments.some((argument) => argument === callbackValue) &&
     isDiscardingCallbackHost(callExpression, context),
   );
 };
@@ -239,10 +240,11 @@ const isFunctionResultDiscarded = (
   nextVisitedFunctions.add(functionNode);
   if (isEventHandlerAttributeValue(functionNode)) return true;
   if (isEffectCallbackReference(functionNode, context.scopes)) return true;
-  const directParent = functionNode.parent;
+  const callbackValue = findCallbackSelectionRoot(functionNode);
+  const directParent = callbackValue.parent;
   if (
     isNodeOfType(directParent, "CallExpression") &&
-    directParent.arguments.some((argument) => argument === functionNode) &&
+    directParent.arguments.some((argument) => argument === callbackValue) &&
     isDiscardingCallbackHost(directParent, context)
   ) {
     return true;

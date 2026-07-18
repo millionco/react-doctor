@@ -274,6 +274,25 @@ describe("query-floating-mutate-async", () => {
   });
 
   it.each([
+    [
+      "conditional inline scheduler",
+      "setTimeout(enabled ? () => mutation.mutateAsync(payload) : fallback)",
+    ],
+    ["asserted named scheduler", "setTimeout((scheduledCallback as () => void), 0)"],
+    [
+      "conditional collection callback",
+      "items.forEach(enabled ? () => mutation.mutateAsync(payload) : fallback)",
+    ],
+  ])("flags a promise returned from a wrapped %s", (_wrapperName, invocation) => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const scheduledCallback = () => mutation.mutateAsync(payload);
+       ${invocation};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
     ["voided", "void mutation.mutateAsync(payload)"],
     ["rejection-handled", "mutation.mutateAsync(payload).catch(handleError)"],
   ])("accepts a %s promise inside a wrapped effect callback", (_usageName, promiseExpression) => {

@@ -22,6 +22,11 @@ interface ComponentDeclaration {
   readonly record: SourceRecord;
 }
 
+interface BindingCandidate {
+  readonly declaration: ts.Node;
+  readonly scope: ts.Node;
+}
+
 interface DiagnosticEvidenceReaderState {
   readonly aliasesByComponent: Map<string, ReadonlyMap<string, string>>;
   readonly recordByFilePath: Map<string, SourceRecord | null>;
@@ -30,6 +35,8 @@ interface DiagnosticEvidenceReaderState {
 
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"];
 
+// Core's equivalent AST helpers compile against TypeScript 6 while this package supports
+// TypeScript 5, so these adapters stay local to avoid crossing incompatible node types.
 const getScriptKind = (filePath: string): ts.ScriptKind => {
   const extension = path.extname(filePath).toLowerCase();
   if (extension === ".tsx") return ts.ScriptKind.TSX;
@@ -313,38 +320,89 @@ const getForwardingFunction = (declaration: ts.Declaration): ts.FunctionLikeDecl
   return null;
 };
 
+const getDeclaredBindingName = (node: ts.Node): string | null => {
+  if (
+    (ts.isVariableDeclaration(node) ||
+      ts.isParameter(node) ||
+      ts.isBindingElement(node) ||
+      ts.isFunctionDeclaration(node)) &&
+    node.name !== undefined &&
+    ts.isIdentifier(node.name)
+  ) {
+    return node.name.text;
+  }
+  if (ts.isImportClause(node)) return node.name?.text ?? null;
+  if (ts.isImportSpecifier(node) || ts.isNamespaceImport(node)) return node.name.text;
+  return null;
+};
+
+const findBindingScope = (node: ts.Node): ts.Node => {
+  let currentNode: ts.Node | undefined = node;
+  while (currentNode !== undefined) {
+    if (ts.isParameter(currentNode) && ts.isFunctionLike(currentNode.parent)) {
+      return currentNode.parent;
+    }
+    if (ts.isBlock(currentNode) || ts.isModuleBlock(currentNode) || ts.isSourceFile(currentNode)) {
+      return currentNode;
+    }
+    currentNode = currentNode.parent;
+  }
+  return node.getSourceFile();
+};
+
 const findBindingDeclaration = (
   record: SourceRecord,
-  bindingName: string,
-  usagePosition: number,
+  binding: ts.Identifier,
 ): ts.Declaration | null => {
-  const declarations: ts.Declaration[] = [];
+  const usagePosition = binding.getStart(record.sourceFile);
+  const candidates: BindingCandidate[] = [];
   const visit = (node: ts.Node): void => {
-    if (node.getStart(record.sourceFile) >= usagePosition) return;
-    if (
-      (ts.isVariableDeclaration(node) || ts.isFunctionDeclaration(node)) &&
-      node.name !== undefined &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === bindingName
-    ) {
-      declarations.push(node);
+    if (getDeclaredBindingName(node) === binding.text) {
+      const scope = findBindingScope(node);
+      const isVisibleScope =
+        usagePosition >= scope.getStart(record.sourceFile) && usagePosition <= scope.end;
+      const isVisibleDeclaration =
+        ts.isFunctionDeclaration(node) ||
+        ts.isParameter(node) ||
+        ts.isBindingElement(node) ||
+        ts.isImportClause(node) ||
+        ts.isImportSpecifier(node) ||
+        ts.isNamespaceImport(node) ||
+        node.getStart(record.sourceFile) < usagePosition;
+      if (isVisibleScope && isVisibleDeclaration) {
+        candidates.push({ declaration: node, scope });
+      }
     }
     ts.forEachChild(node, visit);
   };
   visit(record.sourceFile);
-  return declarations.length === 1 ? (declarations[0] ?? null) : null;
+  let nearestCandidate: BindingCandidate | null = null;
+  let nearestScopeWidth = Number.POSITIVE_INFINITY;
+  let isNearestScopeAmbiguous = false;
+  for (const candidate of candidates) {
+    const scopeWidth = candidate.scope.end - candidate.scope.getStart(record.sourceFile);
+    if (scopeWidth < nearestScopeWidth) {
+      nearestCandidate = candidate;
+      nearestScopeWidth = scopeWidth;
+      isNearestScopeAmbiguous = false;
+    } else if (scopeWidth === nearestScopeWidth) {
+      isNearestScopeAmbiguous = true;
+    }
+  }
+  if (isNearestScopeAmbiguous) return null;
+  const declaration = nearestCandidate?.declaration;
+  return declaration !== undefined &&
+    (ts.isVariableDeclaration(declaration) || ts.isFunctionDeclaration(declaration))
+    ? declaration
+    : null;
 };
 
-const resolveHandlerBinding = (
-  record: SourceRecord,
-  bindingName: string,
-  usagePosition: number,
-): string => {
-  const declaration = findBindingDeclaration(record, bindingName, usagePosition);
-  if (declaration === null) return bindingName;
+const resolveHandlerBinding = (record: SourceRecord, binding: ts.Identifier): string => {
+  const declaration = findBindingDeclaration(record, binding);
+  if (declaration === null) return binding.text;
   const forwardingFunction = getForwardingFunction(declaration);
   const target = forwardingFunction === null ? null : resolveTransparentTarget(forwardingFunction);
-  return target === null || target === bindingName ? bindingName : target;
+  return target === null || target === binding.text ? binding.text : target;
 };
 
 const getJsxTagName = (node: ts.JsxOpeningLikeElement): string | null =>
@@ -394,9 +452,7 @@ const getForwardedHandlerAliases = (
               continue;
             }
             const bindings = bindingsByPropName.get(propName) ?? new Set<string>();
-            bindings.add(
-              resolveHandlerBinding(record, binding.text, binding.getStart(record.sourceFile)),
-            );
+            bindings.add(resolveHandlerBinding(record, binding));
             bindingsByPropName.set(propName, bindings);
           }
         }

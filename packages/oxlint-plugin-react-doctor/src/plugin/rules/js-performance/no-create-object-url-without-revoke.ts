@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
@@ -31,7 +32,7 @@ const isUrlMethodCall = (
   return (
     isNodeOfType(callee, "MemberExpression") &&
     getStaticPropertyName(callee) === methodName &&
-    isProvenUnmodifiedGlobalNamespaceReference(callee.object, "URL", scopes)
+    isProvenUnmodifiedGlobalNamespaceReference(callee.object, "URL", scopes, methodName)
   );
 };
 
@@ -45,7 +46,22 @@ const LOOP_STATEMENT_TYPES = new Set([
   "WhileStatement",
 ]);
 
-const getModuleScopeCacheSymbolId = (node: EsTreeNode, scopes: ScopeAnalysis): number | null => {
+interface ModuleScopeCache {
+  readonly kind: "map" | "set";
+  readonly symbolId: number;
+}
+
+interface CacheRetention {
+  readonly kind: "map-key" | "map-value" | "set-element";
+  readonly propertyPath: readonly string[];
+}
+
+interface ProducedValueBinding {
+  readonly acquiredAt: number;
+  readonly binding: EsTreeNode;
+}
+
+const getModuleScopeCache = (node: EsTreeNode, scopes: ScopeAnalysis): ModuleScopeCache | null => {
   let cacheReference = stripParenExpression(node);
   const visitedSymbolIds = new Set<number>();
   let symbol = isNodeOfType(cacheReference, "Identifier") ? scopes.symbolFor(cacheReference) : null;
@@ -68,13 +84,18 @@ const getModuleScopeCacheSymbolId = (node: EsTreeNode, scopes: ScopeAnalysis): n
     return null;
   }
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
-  return initializer &&
-    isNodeOfType(initializer, "NewExpression") &&
-    (isProvenGlobalNamespaceReference(initializer.callee, "Map", scopes) ||
-      isProvenGlobalNamespaceReference(initializer.callee, "Set", scopes))
-    ? symbol.id
-    : null;
+  if (!initializer || !isNodeOfType(initializer, "NewExpression")) return null;
+  if (isProvenGlobalNamespaceReference(initializer.callee, "Map", scopes)) {
+    return { kind: "map", symbolId: symbol.id };
+  }
+  if (isProvenGlobalNamespaceReference(initializer.callee, "Set", scopes)) {
+    return { kind: "set", symbolId: symbol.id };
+  }
+  return null;
 };
+
+const getModuleScopeCacheSymbolId = (node: EsTreeNode, scopes: ScopeAnalysis): number | null =>
+  getModuleScopeCache(node, scopes)?.symbolId ?? null;
 
 const identifierResolvesToSymbolId = (
   expression: EsTreeNode,
@@ -151,6 +172,77 @@ const expressionRetainsCandidate = (
   });
 };
 
+const expressionsReferToSameValue = (
+  firstExpression: EsTreeNode,
+  secondExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const firstCandidate = stripParenExpression(firstExpression);
+  const secondCandidate = stripParenExpression(secondExpression);
+  if (firstCandidate === secondCandidate) return true;
+  if (
+    isNodeOfType(firstCandidate, "Literal") &&
+    isNodeOfType(secondCandidate, "Literal") &&
+    firstCandidate.value === secondCandidate.value
+  ) {
+    return true;
+  }
+  if (!isNodeOfType(firstCandidate, "Identifier") || !isNodeOfType(secondCandidate, "Identifier")) {
+    return false;
+  }
+  const firstSymbol = scopes.symbolFor(firstCandidate);
+  const secondSymbol = scopes.symbolFor(secondCandidate);
+  return Boolean(
+    (firstSymbol && identifierResolvesToSymbolId(secondCandidate, firstSymbol.id, scopes)) ||
+    (secondSymbol && identifierResolvesToSymbolId(firstCandidate, secondSymbol.id, scopes)),
+  );
+};
+
+const findRetainedPropertyPath = (
+  container: EsTreeNode,
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): readonly string[] | null => {
+  const candidate = stripParenExpression(container);
+  if (expressionsReferToSameValue(candidate, expression, scopes)) return [];
+  if (!isNodeOfType(candidate, "ObjectExpression")) return null;
+  for (const property of candidate.properties) {
+    if (!isNodeOfType(property, "Property")) continue;
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (!propertyName) continue;
+    const nestedPath = findRetainedPropertyPath(property.value, expression, scopes);
+    if (nestedPath) return [propertyName, ...nestedPath];
+  }
+  return null;
+};
+
+const getCacheRetention = (
+  store: EsTreeNodeOfType<"CallExpression">,
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): CacheRetention | null => {
+  const callee = stripParenExpression(store.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return null;
+  const cache = getModuleScopeCache(callee.object, scopes);
+  if (!cache) return null;
+  const methodName = getStaticPropertyName(callee);
+  if (cache.kind === "set" && methodName === "add") {
+    const element = store.arguments[0];
+    return isAstNode(element) && expressionRetainsCandidate(element, expression, scopes)
+      ? { kind: "set-element", propertyPath: [] }
+      : null;
+  }
+  if (cache.kind !== "map" || methodName !== "set") return null;
+  const key = store.arguments[0];
+  if (isAstNode(key) && expressionRetainsCandidate(key, expression, scopes)) {
+    return { kind: "map-key", propertyPath: [] };
+  }
+  const value = store.arguments[1];
+  if (!isAstNode(value)) return null;
+  const propertyPath = findRetainedPropertyPath(value, expression, scopes);
+  return propertyPath ? { kind: "map-value", propertyPath } : null;
+};
+
 const isCacheStoreOfExpression = (
   call: EsTreeNodeOfType<"CallExpression">,
   expression: EsTreeNode,
@@ -182,6 +274,27 @@ const isRevokeOfExpression = (
     isAstNode(revokedUrl) &&
     expressionRetainsCandidate(revokedUrl, expression, scopes)
   );
+};
+
+const isRevokeOfProducedBinding = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  binding: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const revokedUrl = call.arguments[0];
+  if (!isUrlMethodCall(call, "revokeObjectURL", scopes) || !isAstNode(revokedUrl)) return false;
+  const revokedCandidate = stripParenExpression(revokedUrl);
+  const bindingCandidate = stripParenExpression(binding);
+  if (revokedCandidate === bindingCandidate) return true;
+  if (
+    !isNodeOfType(revokedCandidate, "Identifier") ||
+    !isNodeOfType(bindingCandidate, "Identifier")
+  ) {
+    return false;
+  }
+  const revokedSymbol = scopes.symbolFor(revokedCandidate);
+  const bindingSymbol = scopes.symbolFor(bindingCandidate);
+  return Boolean(revokedSymbol && bindingSymbol && revokedSymbol.id === bindingSymbol.id);
 };
 
 const collectRetainedSymbolIds = (
@@ -364,11 +477,18 @@ const isReturnedCleanupFromBoundary = (
   return bindingIsReturnedFromBoundary(cleanupConsumer.id, executionBoundary, context);
 };
 
-const statementContainsFunctionExit = (statement: EsTreeNode): boolean => {
+const statementContainsBypassingControlFlow = (statement: EsTreeNode): boolean => {
   let didFindExit = false;
+  const rootIsLoop = LOOP_STATEMENT_TYPES.has(statement.type);
   walkAst(statement, (child) => {
     if (child !== statement && FUNCTION_LIKE_TYPES.has(child.type)) return false;
-    if (isNodeOfType(child, "ReturnStatement") || isNodeOfType(child, "ThrowStatement")) {
+    if (child !== statement && LOOP_STATEMENT_TYPES.has(child.type)) return false;
+    if (
+      isNodeOfType(child, "ReturnStatement") ||
+      isNodeOfType(child, "ThrowStatement") ||
+      (!rootIsLoop &&
+        (isNodeOfType(child, "BreakStatement") || isNodeOfType(child, "ContinueStatement")))
+    ) {
       didFindExit = true;
       return false;
     }
@@ -379,6 +499,7 @@ const statementContainsFunctionExit = (statement: EsTreeNode): boolean => {
 const isPositiveGuardOnResult = (
   candidate: EsTreeNode,
   resultExpression: EsTreeNode,
+  acquiredAt: number,
   executionBoundary: EsTreeNode | null,
   scopes: ScopeAnalysis,
 ): boolean => {
@@ -387,6 +508,7 @@ const isPositiveGuardOnResult = (
   const resultSymbol = scopes.symbolFor(resultCandidate);
   if (!resultSymbol) return false;
   let current = candidate;
+  let didFindPositiveResultGuard = false;
   let didCrossUnrelatedCondition = false;
   let didCrossInterveningExit = false;
   while (current.parent && current !== executionBoundary) {
@@ -404,14 +526,27 @@ const isPositiveGuardOnResult = (
       guardExpression = parent.test;
     }
     if (guardExpression) {
+      const guardAlsoControlsResult =
+        (isNodeOfType(parent, "IfStatement") &&
+          ((parent.consequent === current && nodeIsWithin(resultExpression, parent.consequent)) ||
+            (parent.alternate === current &&
+              parent.alternate !== null &&
+              nodeIsWithin(resultExpression, parent.alternate)))) ||
+        (isNodeOfType(parent, "LogicalExpression") &&
+          parent.right === current &&
+          nodeIsWithin(resultExpression, parent.right)) ||
+        (isNodeOfType(parent, "ConditionalExpression") &&
+          ((parent.consequent === current && nodeIsWithin(resultExpression, parent.consequent)) ||
+            (parent.alternate === current && nodeIsWithin(resultExpression, parent.alternate))));
       const guardCandidate = stripParenExpression(guardExpression);
       if (
         isNodeOfType(guardCandidate, "Identifier") &&
         identifierResolvesToSymbolId(guardCandidate, resultSymbol.id, scopes)
       ) {
-        return !didCrossUnrelatedCondition && !didCrossInterveningExit;
+        didFindPositiveResultGuard = true;
+      } else if (!guardAlsoControlsResult) {
+        didCrossUnrelatedCondition = true;
       }
-      didCrossUnrelatedCondition = true;
     } else if (
       (isNodeOfType(parent, "IfStatement") &&
         (parent.consequent === current || parent.alternate === current)) ||
@@ -419,6 +554,26 @@ const isPositiveGuardOnResult = (
       (isNodeOfType(parent, "ConditionalExpression") &&
         (parent.consequent === current || parent.alternate === current))
     ) {
+      const conditionalBranch = isNodeOfType(parent, "IfStatement")
+        ? parent.consequent === current
+          ? parent.consequent
+          : parent.alternate
+        : current;
+      if (!conditionalBranch || !nodeIsWithin(resultExpression, conditionalBranch)) {
+        didCrossUnrelatedCondition = true;
+      }
+    }
+    const optionalExecutionRegion =
+      ((isNodeOfType(parent, "WhileStatement") ||
+        isNodeOfType(parent, "ForStatement") ||
+        isNodeOfType(parent, "ForInStatement") ||
+        isNodeOfType(parent, "ForOfStatement")) &&
+        parent.body === current) ||
+      isNodeOfType(parent, "SwitchCase") ||
+      (isNodeOfType(parent, "CatchClause") && parent.body === current)
+        ? parent
+        : null;
+    if (optionalExecutionRegion && !nodeIsWithin(resultExpression, optionalExecutionRegion)) {
       didCrossUnrelatedCondition = true;
     }
     if (isNodeOfType(parent, "BlockStatement")) {
@@ -447,17 +602,38 @@ const isPositiveGuardOnResult = (
       });
       if (matchingExitGuardIndex >= 0) {
         const interveningStatements = priorStatements.slice(matchingExitGuardIndex + 1);
-        if (
-          !didCrossUnrelatedCondition &&
-          !didCrossInterveningExit &&
-          !interveningStatements.some(statementContainsFunctionExit)
-        ) {
-          return true;
+        didFindPositiveResultGuard = true;
+        if (interveningStatements.some(statementContainsBypassingControlFlow)) {
+          didCrossInterveningExit = true;
         }
       }
-      if (priorStatements.some(statementContainsFunctionExit)) {
+      const unrelatedPriorStatements = (
+        matchingExitGuardIndex >= 0
+          ? priorStatements.filter((_, index) => index !== matchingExitGuardIndex)
+          : priorStatements
+      ).filter((statement) => statement.range[1] > acquiredAt);
+      if (unrelatedPriorStatements.some(statementContainsBypassingControlFlow)) {
         didCrossInterveningExit = true;
       }
+    }
+    current = parent;
+  }
+  return didFindPositiveResultGuard && !didCrossUnrelatedCondition && !didCrossInterveningExit;
+};
+
+const isWithinConditionallyEvaluatedExpression = (
+  candidate: EsTreeNode,
+  executionBoundary: EsTreeNode | null,
+): boolean => {
+  let current = candidate;
+  while (current.parent && current !== executionBoundary) {
+    const parent = current.parent;
+    if (
+      (isNodeOfType(parent, "LogicalExpression") && parent.right === current) ||
+      (isNodeOfType(parent, "ConditionalExpression") &&
+        (parent.consequent === current || parent.alternate === current))
+    ) {
+      return true;
     }
     current = parent;
   }
@@ -467,33 +643,50 @@ const isPositiveGuardOnResult = (
 const consumerIsGuaranteedAfterResult = (
   consumer: EsTreeNode,
   resultCall: EsTreeNode,
-  resultExpression: EsTreeNode,
+  producedValue: ProducedValueBinding,
   executionBoundary: EsTreeNode | null,
   context: RuleContext,
 ): boolean => {
+  const resultExpression = producedValue.binding;
+  const hasPositiveResultGuard = isPositiveGuardOnResult(
+    consumer,
+    resultExpression,
+    producedValue.acquiredAt,
+    executionBoundary,
+    context.scopes,
+  );
+  const isConditionallyEvaluated = isWithinConditionallyEvaluatedExpression(
+    consumer,
+    executionBoundary,
+  );
   if (isReturnedCleanupFromBoundary(consumer, executionBoundary, context)) {
-    return (
-      context.cfg.isUnconditionalFromEntry(consumer) ||
-      isPositiveGuardOnResult(consumer, resultExpression, executionBoundary, context.scopes)
-    );
+    if (hasPositiveResultGuard) return true;
+    if (isConditionallyEvaluated) return false;
+    return context.cfg.isUnconditionalFromEntry(consumer);
   }
   if (context.cfg.enclosingFunction(consumer) !== executionBoundary) return false;
   const consumerRunsAfterResult =
     consumer.range[0] > resultCall.range[1] ||
     (consumer.range[0] <= resultCall.range[0] && consumer.range[1] >= resultCall.range[1]);
-  if (context.cfg.isUnconditionalFromEntry(consumer) && consumerRunsAfterResult) {
+  if (
+    !isConditionallyEvaluated &&
+    context.cfg.isUnconditionalFromEntry(consumer) &&
+    consumerRunsAfterResult
+  ) {
     return true;
   }
   const boundaryControlFlow = executionBoundary ? context.cfg.cfgFor(executionBoundary) : null;
   const resultBlock = boundaryControlFlow?.blockOf(resultCall);
   const consumerBlock = boundaryControlFlow?.blockOf(consumer);
-  if (resultBlock && resultBlock === consumerBlock && consumer.range[0] > resultCall.range[1]) {
+  if (
+    !isConditionallyEvaluated &&
+    resultBlock &&
+    resultBlock === consumerBlock &&
+    consumer.range[0] > resultCall.range[1]
+  ) {
     return true;
   }
-  return (
-    consumerRunsAfterResult &&
-    isPositiveGuardOnResult(consumer, resultExpression, executionBoundary, context.scopes)
-  );
+  return consumerRunsAfterResult && hasPositiveResultGuard;
 };
 
 const nodeIsWithin = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
@@ -505,26 +698,54 @@ const nodeIsWithin = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
   return false;
 };
 
+const identifierIsWithinAssignmentTarget = (identifier: EsTreeNode): boolean => {
+  let current = identifier;
+  while (current.parent) {
+    const parent = current.parent;
+    if (
+      (isNodeOfType(parent, "Property") && parent.value === current) ||
+      (isNodeOfType(parent, "RestElement") && parent.argument === current) ||
+      (isNodeOfType(parent, "AssignmentPattern") && parent.left === current) ||
+      isNodeOfType(parent, "ObjectPattern") ||
+      isNodeOfType(parent, "ArrayPattern")
+    ) {
+      current = parent;
+      continue;
+    }
+    return (
+      (isNodeOfType(parent, "AssignmentExpression") ||
+        isNodeOfType(parent, "ForInStatement") ||
+        isNodeOfType(parent, "ForOfStatement")) &&
+      parent.left === current
+    );
+  }
+  return false;
+};
+
+const bindingValueHasNoWritesBefore = (
+  producedValue: ProducedValueBinding,
+  consumer: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const binding = stripParenExpression(producedValue.binding);
+  if (!isNodeOfType(binding, "Identifier")) return true;
+  const symbol = scopes.symbolFor(binding);
+  if (!symbol) return false;
+  return !symbol.references.some(
+    (reference) =>
+      (reference.flag !== "read" || identifierIsWithinAssignmentTarget(reference.identifier)) &&
+      reference.identifier.range[0] > producedValue.acquiredAt &&
+      reference.identifier.range[0] < consumer.range[0],
+  );
+};
+
 const bindingValueRemainsCurrentAtConsumer = (
-  resultExpression: EsTreeNode,
+  producedValue: ProducedValueBinding,
   resultCall: EsTreeNode,
   consumer: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const resultCandidate = stripParenExpression(resultExpression);
-  if (!isNodeOfType(resultCandidate, "Identifier")) return true;
-  const resultSymbol = scopes.symbolFor(resultCandidate);
-  if (!resultSymbol) return false;
-  if (
-    resultSymbol.references.some(
-      (reference) =>
-        reference.flag !== "read" &&
-        reference.identifier.range[0] > resultCall.range[1] &&
-        reference.identifier.range[0] < consumer.range[0],
-    )
-  ) {
-    return false;
-  }
+  if (!bindingValueHasNoWritesBefore(producedValue, consumer, scopes)) return false;
   let current = resultCall.parent ?? null;
   while (current) {
     if (LOOP_STATEMENT_TYPES.has(current.type) && !nodeIsWithin(consumer, current)) return false;
@@ -536,14 +757,16 @@ const bindingValueRemainsCurrentAtConsumer = (
 
 const collectProvenValueBindings = (
   binding: EsTreeNode,
+  acquiredAt: number,
   scopes: ScopeAnalysis,
-  bindings: EsTreeNode[],
+  bindings: ProducedValueBinding[],
   visitedSymbolIds = new Set<number>(),
 ): void => {
   const symbol = scopes.symbolFor(binding);
   if (!symbol || visitedSymbolIds.has(symbol.id)) return;
   visitedSymbolIds.add(symbol.id);
-  bindings.push(binding);
+  const producedValue = { acquiredAt, binding };
+  bindings.push(producedValue);
   for (const reference of symbol.references) {
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
     const consumer = referenceRoot.parent;
@@ -553,9 +776,17 @@ const collectProvenValueBindings = (
       isNodeOfType(consumer.id, "Identifier") &&
       consumer.parent &&
       isNodeOfType(consumer.parent, "VariableDeclaration") &&
-      consumer.parent.kind === "const"
+      consumer.parent.kind === "const" &&
+      reference.identifier.range[0] > acquiredAt &&
+      bindingValueHasNoWritesBefore(producedValue, consumer, scopes)
     ) {
-      collectProvenValueBindings(consumer.id, scopes, bindings, visitedSymbolIds);
+      collectProvenValueBindings(
+        consumer.id,
+        consumer.range[1],
+        scopes,
+        bindings,
+        visitedSymbolIds,
+      );
     }
   }
 };
@@ -579,17 +810,29 @@ const statementAlwaysRevokesResult = (
       statementAlwaysRevokesResult(statement.alternate, resultExpression, scopes),
     );
   }
+  if (isNodeOfType(statement, "SwitchStatement")) {
+    if (!statement.cases.some((switchCase) => switchCase.test === null)) return false;
+    return statement.cases.every((_, caseIndex) => {
+      for (const switchCase of statement.cases.slice(caseIndex)) {
+        for (const child of switchCase.consequent) {
+          if (statementAlwaysRevokesResult(child, resultExpression, scopes)) return true;
+          if (statementAlwaysExits(child) || isNodeOfType(child, "BreakStatement")) return false;
+        }
+      }
+      return false;
+    });
+  }
   if (!isNodeOfType(statement, "ExpressionStatement")) return false;
   const expression = stripParenExpression(statement.expression);
   return (
     isNodeOfType(expression, "CallExpression") &&
-    isRevokeOfExpression(expression, resultExpression, scopes)
+    isRevokeOfProducedBinding(expression, resultExpression, scopes)
   );
 };
 
 const boundaryHasExhaustiveDisposal = (
   resultCall: EsTreeNode,
-  resultExpression: EsTreeNode,
+  producedValues: readonly ProducedValueBinding[],
   executionBoundary: EsTreeNode | null,
   context: RuleContext,
 ): boolean => {
@@ -598,11 +841,21 @@ const boundaryHasExhaustiveDisposal = (
   walkAst(executionBoundary, (child) => {
     if (child !== executionBoundary && FUNCTION_LIKE_TYPES.has(child.type)) return false;
     if (
-      isNodeOfType(child, "IfStatement") &&
+      (isNodeOfType(child, "IfStatement") || isNodeOfType(child, "SwitchStatement")) &&
       child.range[0] > resultCall.range[1] &&
-      bindingValueRemainsCurrentAtConsumer(resultExpression, resultCall, child, context.scopes) &&
       isNodeReachableWithinFunction(child, context) &&
-      statementAlwaysRevokesResult(child, resultExpression, context.scopes)
+      producedValues.some(
+        (producedValue) =>
+          bindingValueRemainsCurrentAtConsumer(producedValue, resultCall, child, context.scopes) &&
+          consumerIsGuaranteedAfterResult(
+            child,
+            resultCall,
+            producedValue,
+            executionBoundary,
+            context,
+          ) &&
+          statementAlwaysRevokesResult(child, producedValue.binding, context.scopes),
+      )
     ) {
       didFindExhaustiveDisposal = true;
       return false;
@@ -620,28 +873,23 @@ const boundCreationIsDisposed = (
   const resultSymbol = context.scopes.symbolFor(resultExpression);
   if (!resultSymbol) return false;
   const executionBoundary = context.cfg.enclosingFunction(createCall);
-  const valueBindings: EsTreeNode[] = [];
-  collectProvenValueBindings(resultExpression, context.scopes, valueBindings);
-  const didFindGuaranteedRevoke = valueBindings.some((binding) => {
-    const bindingSymbol = context.scopes.symbolFor(binding);
+  const valueBindings: ProducedValueBinding[] = [];
+  collectProvenValueBindings(resultExpression, createCall.range[1], context.scopes, valueBindings);
+  const didFindGuaranteedRevoke = valueBindings.some((producedValue) => {
+    const bindingSymbol = context.scopes.symbolFor(producedValue.binding);
     return bindingSymbol?.references.some((reference) => {
       const referenceRoot = findTransparentExpressionRoot(reference.identifier);
       const consumer = referenceRoot.parent;
       return Boolean(
         consumer &&
         isNodeOfType(consumer, "CallExpression") &&
-        isRevokeOfExpression(consumer, resultExpression, context.scopes) &&
-        bindingValueRemainsCurrentAtConsumer(
-          resultExpression,
-          createCall,
-          consumer,
-          context.scopes,
-        ) &&
+        isRevokeOfProducedBinding(consumer, producedValue.binding, context.scopes) &&
+        bindingValueRemainsCurrentAtConsumer(producedValue, createCall, consumer, context.scopes) &&
         isNodeReachableWithinFunction(consumer, context) &&
         consumerIsGuaranteedAfterResult(
           consumer,
           createCall,
-          resultExpression,
+          producedValue,
           executionBoundary,
           context,
         ),
@@ -650,13 +898,12 @@ const boundCreationIsDisposed = (
   });
   return (
     didFindGuaranteedRevoke ||
-    boundaryHasExhaustiveDisposal(createCall, resultExpression, executionBoundary, context)
+    boundaryHasExhaustiveDisposal(createCall, valueBindings, executionBoundary, context)
   );
 };
 
 interface ProgramDisposalIndex {
   readonly cacheEvictionsBySymbolId: Map<number, EsTreeNodeOfType<"CallExpression">[]>;
-  readonly cacheStoresByCacheSymbolId: Map<number, EsTreeNodeOfType<"CallExpression">[]>;
   readonly cacheStoresByRetainedSymbolId: Map<number, EsTreeNodeOfType<"CallExpression">[]>;
   readonly callsByInitializer: Map<EsTreeNode, EsTreeNodeOfType<"CallExpression">[]>;
   readonly callExpressions: EsTreeNodeOfType<"CallExpression">[];
@@ -691,7 +938,6 @@ const buildProgramDisposalIndex = (
   const { scopes } = context;
   const index: ProgramDisposalIndex = {
     cacheEvictionsBySymbolId: new Map(),
-    cacheStoresByCacheSymbolId: new Map(),
     cacheStoresByRetainedSymbolId: new Map(),
     callsByInitializer: new Map(),
     callExpressions: [],
@@ -734,9 +980,6 @@ const buildProgramDisposalIndex = (
       index.cacheEvictionsBySymbolId.set(cacheSymbolId, evictions);
       return;
     }
-    const cacheStores = index.cacheStoresByCacheSymbolId.get(cacheSymbolId) ?? [];
-    cacheStores.push(child);
-    index.cacheStoresByCacheSymbolId.set(cacheSymbolId, cacheStores);
     const retainedSymbolIds = new Set<number>();
     for (const argument of child.arguments) {
       if (isAstNode(argument)) collectRetainedSymbolIds(argument, scopes, retainedSymbolIds);
@@ -754,33 +997,45 @@ const boundResultIsRevokedBefore = (
   resultCall: EsTreeNodeOfType<"CallExpression">,
   beforeNode: EsTreeNode,
   context: RuleContext,
+  propertyPath: readonly string[] = [],
 ): boolean => {
   const resultExpression = findBoundCallResult(resultCall);
   if (!resultExpression) return false;
   const executionBoundary = context.cfg.enclosingFunction(resultCall);
   if (context.cfg.enclosingFunction(beforeNode) !== executionBoundary) return false;
-  const valueBindings: EsTreeNode[] = [];
-  collectProvenValueBindings(resultExpression, context.scopes, valueBindings);
-  return valueBindings.some((binding) => {
-    const symbol = context.scopes.symbolFor(binding);
+  const valueBindings: ProducedValueBinding[] = [];
+  collectProvenValueBindings(resultExpression, resultCall.range[1], context.scopes, valueBindings);
+  return valueBindings.some((producedValue) => {
+    const symbol = context.scopes.symbolFor(producedValue.binding);
     return symbol?.references.some((reference) => {
-      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      let referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      for (const propertyName of propertyPath) {
+        const member = referenceRoot.parent;
+        if (
+          !member ||
+          !isNodeOfType(member, "MemberExpression") ||
+          stripParenExpression(member.object) !== stripParenExpression(referenceRoot) ||
+          getStaticPropertyName(member) !== propertyName
+        ) {
+          return false;
+        }
+        referenceRoot = findTransparentExpressionRoot(member);
+      }
       const consumer = referenceRoot.parent;
       return Boolean(
         consumer &&
         isNodeOfType(consumer, "CallExpression") &&
         consumer.range[0] < beforeNode.range[0] &&
-        isRevokeOfExpression(consumer, resultExpression, context.scopes) &&
-        bindingValueRemainsCurrentAtConsumer(
-          resultExpression,
-          resultCall,
-          consumer,
-          context.scopes,
-        ) &&
+        (propertyPath.length === 0
+          ? isRevokeOfProducedBinding(consumer, producedValue.binding, context.scopes)
+          : isUrlMethodCall(consumer, "revokeObjectURL", context.scopes) &&
+            isAstNode(consumer.arguments[0]) &&
+            stripParenExpression(consumer.arguments[0]) === stripParenExpression(referenceRoot)) &&
+        bindingValueRemainsCurrentAtConsumer(producedValue, resultCall, consumer, context.scopes) &&
         consumerIsGuaranteedAfterResult(
           consumer,
           resultCall,
-          resultExpression,
+          producedValue,
           executionBoundary,
           context,
         ),
@@ -812,16 +1067,72 @@ const cacheKeyIsRevokedBefore = (
   beforeNode: EsTreeNode,
   index: ProgramDisposalIndex,
   context: RuleContext,
+  propertyPath: readonly string[] = [],
 ): boolean =>
   index.callExpressions.some(
     (call) =>
       call.range[0] < beforeNode.range[0] &&
       cacheGetMatchesKey(call, cacheSymbolId, keyExpression, context.scopes) &&
-      boundResultIsRevokedBefore(call, beforeNode, context),
+      boundResultIsRevokedBefore(call, beforeNode, context, propertyPath),
   );
 
-const callbackAlwaysRevokesFirstParameter = (
+const expressionMatchesBindingPath = (
+  expression: EsTreeNode,
+  binding: EsTreeNode,
+  propertyPath: readonly string[],
+  scopes: ScopeAnalysis,
+): boolean => {
+  let candidate = stripParenExpression(expression);
+  const observedPath: string[] = [];
+  while (isNodeOfType(candidate, "MemberExpression")) {
+    const propertyName = getStaticPropertyName(candidate);
+    if (!propertyName) return false;
+    observedPath.unshift(propertyName);
+    candidate = stripParenExpression(candidate.object);
+  }
+  return (
+    observedPath.length === propertyPath.length &&
+    observedPath.every((propertyName, index) => propertyName === propertyPath[index]) &&
+    expressionsReferToSameValue(candidate, binding, scopes)
+  );
+};
+
+const statementAlwaysRevokesBindingPath = (
+  statement: EsTreeNode,
+  binding: EsTreeNode,
+  propertyPath: readonly string[],
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (isNodeOfType(statement, "BlockStatement")) {
+    for (const child of statement.body) {
+      if (statementAlwaysRevokesBindingPath(child, binding, propertyPath, scopes)) return true;
+      if (statementAlwaysExits(child)) return false;
+    }
+    return false;
+  }
+  if (isNodeOfType(statement, "IfStatement")) {
+    return Boolean(
+      statement.alternate &&
+      statementAlwaysRevokesBindingPath(statement.consequent, binding, propertyPath, scopes) &&
+      statementAlwaysRevokesBindingPath(statement.alternate, binding, propertyPath, scopes),
+    );
+  }
+  if (!isNodeOfType(statement, "ExpressionStatement")) return false;
+  const expression = stripParenExpression(statement.expression);
+  const revokedExpression = isNodeOfType(expression, "CallExpression")
+    ? expression.arguments[0]
+    : null;
+  return Boolean(
+    isNodeOfType(expression, "CallExpression") &&
+    isUrlMethodCall(expression, "revokeObjectURL", scopes) &&
+    isAstNode(revokedExpression) &&
+    expressionMatchesBindingPath(revokedExpression, binding, propertyPath, scopes),
+  );
+};
+
+const callbackAlwaysRevokesRetention = (
   callback: EsTreeNode,
+  retention: CacheRetention,
   scopes: ScopeAnalysis,
 ): boolean => {
   const candidate = stripParenExpression(callback);
@@ -831,23 +1142,54 @@ const callbackAlwaysRevokesFirstParameter = (
   ) {
     return false;
   }
-  const parameter = candidate.params[0];
+  const parameterIndex = retention.kind === "map-key" ? 1 : 0;
+  const parameter = candidate.params[parameterIndex];
   if (!parameter || !isNodeOfType(parameter, "Identifier")) return false;
   const body = stripParenExpression(candidate.body);
-  return isNodeOfType(body, "CallExpression")
-    ? isRevokeOfExpression(body, parameter, scopes)
-    : statementAlwaysRevokesResult(body, parameter, scopes);
+  const revokedExpression = isNodeOfType(body, "CallExpression") ? body.arguments[0] : null;
+  if (
+    isNodeOfType(body, "CallExpression") &&
+    isUrlMethodCall(body, "revokeObjectURL", scopes) &&
+    isAstNode(revokedExpression)
+  ) {
+    return expressionMatchesBindingPath(
+      revokedExpression,
+      parameter,
+      retention.propertyPath,
+      scopes,
+    );
+  }
+  return statementAlwaysRevokesBindingPath(body, parameter, retention.propertyPath, scopes);
+};
+
+const expressionIsRevokedBefore = (
+  expression: EsTreeNode,
+  beforeNode: EsTreeNode,
+  index: ProgramDisposalIndex,
+  context: RuleContext,
+): boolean => {
+  const executionBoundary = context.cfg.enclosingFunction(beforeNode);
+  return index.callExpressions.some(
+    (call) =>
+      call.range[0] < beforeNode.range[0] &&
+      context.cfg.enclosingFunction(call) === executionBoundary &&
+      context.cfg.isUnconditionalFromEntry(call) &&
+      isRevokeOfExpression(call, expression, context.scopes),
+  );
 };
 
 const cacheClearIsSafe = (
   clearCall: EsTreeNodeOfType<"CallExpression">,
+  store: EsTreeNodeOfType<"CallExpression">,
   cacheSymbolId: number,
+  retention: CacheRetention,
   index: ProgramDisposalIndex,
   context: RuleContext,
 ): boolean => {
   const executionBoundary = context.cfg.enclosingFunction(clearCall);
   const hasForEachProtocol = index.callExpressions.some((call) => {
     if (
+      call.range[0] <= store.range[1] ||
       call.range[0] >= clearCall.range[0] ||
       context.cfg.enclosingFunction(call) !== executionBoundary
     ) {
@@ -860,7 +1202,7 @@ const cacheClearIsSafe = (
       getStaticPropertyName(callee) === "forEach" &&
       getModuleScopeCacheSymbolId(callee.object, context.scopes) === cacheSymbolId &&
       isAstNode(callback) &&
-      callbackAlwaysRevokesFirstParameter(callback, context.scopes) &&
+      callbackAlwaysRevokesRetention(callback, retention, context.scopes) &&
       context.cfg.isUnconditionalFromEntry(call),
     );
   });
@@ -884,10 +1226,12 @@ const cacheClearIsSafe = (
       return false;
     }
     const valuesCallee = stripParenExpression(right.callee);
+    const expectedIterationMethod = retention.kind === "map-key" ? "keys" : "values";
     return Boolean(
       isNodeOfType(valuesCallee, "MemberExpression") &&
-      getStaticPropertyName(valuesCallee) === "values" &&
+      getStaticPropertyName(valuesCallee) === expectedIterationMethod &&
       getModuleScopeCacheSymbolId(valuesCallee.object, context.scopes) === cacheSymbolId &&
+      retention.propertyPath.length === 0 &&
       statementAlwaysRevokesResult(loop.body, declaration.id, context.scopes),
     );
   });
@@ -895,7 +1239,9 @@ const cacheClearIsSafe = (
 
 const cacheEvictionIsSafe = (
   eviction: EsTreeNodeOfType<"CallExpression">,
+  store: EsTreeNodeOfType<"CallExpression">,
   cacheSymbolId: number,
+  retention: CacheRetention,
   index: ProgramDisposalIndex,
   context: RuleContext,
 ): boolean => {
@@ -903,25 +1249,45 @@ const cacheEvictionIsSafe = (
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const methodName = getStaticPropertyName(callee);
   if (methodName === "clear") {
-    return cacheClearIsSafe(eviction, cacheSymbolId, index, context);
+    return cacheClearIsSafe(eviction, store, cacheSymbolId, retention, index, context);
   }
   const keyExpression = eviction.arguments[0];
+  if (retention.kind === "set-element") {
+    return Boolean(
+      methodName === "delete" &&
+      isAstNode(keyExpression) &&
+      expressionIsRevokedBefore(keyExpression, eviction, index, context),
+    );
+  }
+  if (retention.kind !== "map-value" || retention.propertyPath.length > 0) return false;
   return Boolean(
     methodName === "delete" &&
     isAstNode(keyExpression) &&
-    cacheKeyIsRevokedBefore(cacheSymbolId, keyExpression, eviction, index, context),
+    cacheKeyIsRevokedBefore(
+      cacheSymbolId,
+      keyExpression,
+      eviction,
+      index,
+      context,
+      retention.propertyPath,
+    ),
   );
 };
 
 const cacheStoreHasSafeOwnership = (
   store: EsTreeNodeOfType<"CallExpression">,
+  expression: EsTreeNode,
   cacheSymbolId: number,
   index: ProgramDisposalIndex,
   context: RuleContext,
 ): boolean => {
+  const retention = getCacheRetention(store, expression, context.scopes);
+  if (!retention) return false;
   const evictions = index.cacheEvictionsBySymbolId.get(cacheSymbolId) ?? [];
   if (
-    !evictions.every((eviction) => cacheEvictionIsSafe(eviction, cacheSymbolId, index, context))
+    !evictions.every((eviction) =>
+      cacheEvictionIsSafe(eviction, store, cacheSymbolId, retention, index, context),
+    )
   ) {
     return false;
   }
@@ -931,27 +1297,17 @@ const cacheStoreHasSafeOwnership = (
   }
   const keyExpression = store.arguments[0];
   if (!isAstNode(keyExpression)) return true;
+  if (retention.kind === "map-key") return true;
   const executionBoundary = context.cfg.enclosingFunction(store);
   if (isNodeOfType(executionBoundary, "Program")) return true;
-  const hasSameKeyReplacement = (index.cacheStoresByCacheSymbolId.get(cacheSymbolId) ?? []).some(
-    (candidateStore) => {
-      if (
-        candidateStore === store ||
-        context.cfg.enclosingFunction(candidateStore) !== executionBoundary
-      ) {
-        return false;
-      }
-      const candidateKey = candidateStore.arguments[0];
-      return (
-        isAstNode(candidateKey) &&
-        expressionRetainsCandidate(candidateKey, keyExpression, context.scopes)
-      );
-    },
+  return cacheKeyIsRevokedBefore(
+    cacheSymbolId,
+    keyExpression,
+    store,
+    index,
+    context,
+    retention.propertyPath,
   );
-  if (!isNodeOfType(stripParenExpression(keyExpression), "Literal") && !hasSameKeyReplacement) {
-    return true;
-  }
-  return cacheKeyIsRevokedBefore(cacheSymbolId, keyExpression, store, index, context);
 };
 
 const moduleDisposesEveryReturnedResult = (
@@ -979,54 +1335,67 @@ const moduleDisposesEveryReturnedResult = (
       findBoundCallResult(child) ?? analyzeContainingExpression(child).expressionRoot;
     let didDisposeResult = false;
     const executionBoundary = context.cfg.enclosingFunction(child);
+    const producedValues: ProducedValueBinding[] = [];
     const resultCandidate = stripParenExpression(resultExpression);
-    const resultSymbol = isNodeOfType(resultCandidate, "Identifier")
-      ? scopes.symbolFor(resultCandidate)
-      : null;
-    const candidateConsumers = resultSymbol
-      ? [
-          ...(index.cacheStoresByRetainedSymbolId.get(resultSymbol.id) ?? []),
-          ...(index.revokeCallsByArgumentSymbolId.get(resultSymbol.id) ?? []),
-        ]
-      : (() => {
-          const ancestors: EsTreeNodeOfType<"CallExpression">[] = [];
-          let ancestor = resultExpression.parent ?? null;
-          while (ancestor && context.cfg.enclosingFunction(ancestor) === executionBoundary) {
-            if (isNodeOfType(ancestor, "CallExpression")) ancestors.push(ancestor);
-            ancestor = ancestor.parent ?? null;
-          }
-          return ancestors;
-        })();
-    for (const candidate of candidateConsumers) {
+    if (isNodeOfType(resultCandidate, "Identifier") && scopes.symbolFor(resultCandidate)) {
+      collectProvenValueBindings(resultCandidate, child.range[1], scopes, producedValues);
+    } else {
+      producedValues.push({ acquiredAt: child.range[1], binding: resultExpression });
+    }
+    for (const producedValue of producedValues) {
       if (didDisposeResult) break;
-      if (
-        isNodeReachableWithinFunction(candidate, context) &&
-        bindingValueRemainsCurrentAtConsumer(resultExpression, child, candidate, scopes) &&
-        consumerIsGuaranteedAfterResult(
-          candidate,
-          child,
-          resultExpression,
-          executionBoundary,
-          context,
-        )
-      ) {
-        if (isRevokeOfExpression(candidate, resultExpression, scopes)) {
-          didDisposeResult = true;
-          continue;
-        }
-        if (!isCacheStoreOfExpression(candidate, resultExpression, scopes)) continue;
-        const candidateCallee = stripParenExpression(candidate.callee);
-        if (isNodeOfType(candidateCallee, "MemberExpression")) {
-          const cacheSymbolId = getModuleScopeCacheSymbolId(candidateCallee.object, scopes);
-          didDisposeResult =
-            cacheSymbolId !== null &&
-            cacheStoreHasSafeOwnership(candidate, cacheSymbolId, index, context);
+      const producedSymbol = scopes.symbolFor(producedValue.binding);
+      const candidateConsumers = producedSymbol
+        ? [
+            ...(index.cacheStoresByRetainedSymbolId.get(producedSymbol.id) ?? []),
+            ...(index.revokeCallsByArgumentSymbolId.get(producedSymbol.id) ?? []),
+          ]
+        : (() => {
+            const ancestors: EsTreeNodeOfType<"CallExpression">[] = [];
+            let ancestor = resultExpression.parent ?? null;
+            while (ancestor && context.cfg.enclosingFunction(ancestor) === executionBoundary) {
+              if (isNodeOfType(ancestor, "CallExpression")) ancestors.push(ancestor);
+              ancestor = ancestor.parent ?? null;
+            }
+            return ancestors;
+          })();
+      for (const candidate of candidateConsumers) {
+        if (didDisposeResult) break;
+        if (
+          isNodeReachableWithinFunction(candidate, context) &&
+          bindingValueRemainsCurrentAtConsumer(producedValue, child, candidate, scopes) &&
+          consumerIsGuaranteedAfterResult(
+            candidate,
+            child,
+            producedValue,
+            executionBoundary,
+            context,
+          )
+        ) {
+          if (isRevokeOfProducedBinding(candidate, producedValue.binding, scopes)) {
+            didDisposeResult = true;
+            continue;
+          }
+          if (!isCacheStoreOfExpression(candidate, producedValue.binding, scopes)) continue;
+          const candidateCallee = stripParenExpression(candidate.callee);
+          if (isNodeOfType(candidateCallee, "MemberExpression")) {
+            const cacheSymbolId = getModuleScopeCacheSymbolId(candidateCallee.object, scopes);
+            didDisposeResult =
+              cacheSymbolId !== null &&
+              cacheStoreHasSafeOwnership(
+                candidate,
+                producedValue.binding,
+                cacheSymbolId,
+                index,
+                context,
+              );
+          }
         }
       }
     }
     if (
       !didDisposeResult &&
-      boundaryHasExhaustiveDisposal(child, resultExpression, executionBoundary, context)
+      boundaryHasExhaustiveDisposal(child, producedValues, executionBoundary, context)
     ) {
       didDisposeResult = true;
     }
@@ -1043,6 +1412,12 @@ const isStateSetterCallee = (
   visitedSymbolIds = new Set<number>(),
 ): boolean => {
   const candidate = stripParenExpression(callee);
+  if (isNodeOfType(candidate, "ConditionalExpression")) {
+    return (
+      isStateSetterCallee(candidate.consequent, scopes, new Set(visitedSymbolIds)) &&
+      isStateSetterCallee(candidate.alternate, scopes, new Set(visitedSymbolIds))
+    );
+  }
   if (!isNodeOfType(candidate, "Identifier")) return false;
   if (isSetterIdentifier(candidate.name)) return true;
   const symbol = scopes.symbolFor(candidate);
@@ -1090,14 +1465,8 @@ const isUrlSetAttributeCall = (
   if (methodName !== "setAttribute") return false;
   const [attributeName, attributeValue] = call.arguments;
   if (!isAstNode(attributeName) || !isAstNode(attributeValue)) return false;
-  const attributeNameCandidate = stripParenExpression(attributeName);
-  if (
-    !isNodeOfType(attributeNameCandidate, "Literal") ||
-    typeof attributeNameCandidate.value !== "string"
-  ) {
-    return false;
-  }
-  if (!SET_ATTRIBUTE_URL_NAMES.has(attributeNameCandidate.value)) return false;
+  const resolvedAttributeName = resolveStaticString(attributeName, scopes);
+  if (!resolvedAttributeName || !SET_ATTRIBUTE_URL_NAMES.has(resolvedAttributeName)) return false;
   return stripParenExpression(attributeValue) === stripParenExpression(urlArgument);
 };
 
@@ -1217,7 +1586,7 @@ const escapeIsLeaky = (callNode: EsTreeNode, context: RuleContext): boolean => {
     // The guarded creation assigned to a pre-declared variable is the same
     // "object URL for fetched data" leak as the guarded VariableDeclarator.
     if (isNodeOfType(target, "Identifier")) {
-      return storedResultIsGuarded;
+      return storedResultIsGuarded || boundValueHasHardEscape(target, context);
     }
     return false;
   }

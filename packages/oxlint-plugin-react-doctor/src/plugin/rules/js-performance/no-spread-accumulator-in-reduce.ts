@@ -221,17 +221,24 @@ const isStaticallyBoundedCollectionExpression = (
     if (isNodeOfType(currentExpression, "Identifier")) {
       const symbol = scopes.symbolFor(currentExpression);
       const binding = findVariableInitializer(currentExpression, currentExpression.name);
-      const declarator = binding?.bindingIdentifier.parent;
       if (
-        !symbol?.initializer ||
+        !symbol ||
+        !binding ||
+        visitedSymbolIds.has(symbol.id) ||
+        bindingMayHaveGrown(currentExpression, scopes, growthBySymbolId)
+      ) {
+        return false;
+      }
+      if (isRestParameterBinding(binding.bindingIdentifier)) continue;
+      const declarator = binding.bindingIdentifier.parent;
+      if (
+        !symbol.initializer ||
         symbol.kind !== "const" ||
-        !binding?.initializer ||
+        !binding.initializer ||
         symbol.initializer !== binding.initializer ||
         !declarator ||
         !isNodeOfType(declarator, "VariableDeclarator") ||
-        declarator.init !== binding.initializer ||
-        visitedSymbolIds.has(symbol.id) ||
-        bindingMayHaveGrown(currentExpression, scopes, growthBySymbolId)
+        declarator.init !== binding.initializer
       ) {
         return false;
       }
@@ -285,14 +292,6 @@ const isStaticallyBoundedReduceSource = (
   if (isSpreadFreeArrayLiteral(stripped, false)) return true;
   if (isStaticallyBoundedCollectionExpression(stripped, "array", scopes, growthBySymbolId)) {
     return true;
-  }
-  if (isNodeOfType(stripped, "Identifier")) {
-    const binding = findVariableInitializer(stripped, stripped.name);
-    return Boolean(
-      binding &&
-      isRestParameterBinding(binding.bindingIdentifier) &&
-      !bindingMayHaveGrown(stripped, scopes, growthBySymbolId),
-    );
   }
   if (!isNodeOfType(stripped, "CallExpression")) return false;
   const enumerationCallee = stripParenExpression(stripped.callee);

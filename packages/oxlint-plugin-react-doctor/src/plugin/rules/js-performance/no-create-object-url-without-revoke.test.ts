@@ -366,7 +366,7 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
-  it("stays quiet when every returned URL feeds a deliberate module cache", () => {
+  it("reports repeatable dynamic-key cache stores without replacement cleanup", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const previewCache = new Map();
@@ -376,10 +376,10 @@ describe("no-create-object-url-without-revoke", () => {
          previewCache.set(id, url);
        }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet when a const arrow helper feeds a deliberate module cache", () => {
+  it("reports repeatable async cache stores without replacement cleanup", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const previewCache = new Map();
@@ -392,10 +392,10 @@ describe("no-create-object-url-without-revoke", () => {
          previewCache.set(id, url);
        }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet when a concise arrow helper feeds a deliberate module cache", () => {
+  it("reports repeatable concise-helper cache stores without replacement cleanup", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const previewCache = new Map();
@@ -405,10 +405,10 @@ describe("no-create-object-url-without-revoke", () => {
          previewCache.set(id, url);
        };`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet when helper results are stored directly in a module cache", () => {
+  it("reports direct repeatable cache stores without replacement cleanup", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const previewCache = new Map();
@@ -418,10 +418,10 @@ describe("no-create-object-url-without-revoke", () => {
          previewCache.set(id + '-sync', renderPreview(blob));
        };`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet when every guarded helper result feeds a deliberate module cache", () => {
+  it("reports guarded helper results stored without replacement cleanup", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const previewCache = new Map();
@@ -430,7 +430,7 @@ describe("no-create-object-url-without-revoke", () => {
          previewCache.set(id, renderPreview(blob));
        };`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("correlates helper results through call-site value-flow wrappers", () => {
@@ -444,7 +444,7 @@ describe("no-create-object-url-without-revoke", () => {
          if (url) URL.revokeObjectURL(url);
        };`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not treat cleanup of a previous binding value as cleanup of a later result", () => {
@@ -510,7 +510,7 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet for a truthy result guard inside the helper call's loop iteration", () => {
+  it("reports a loop cache store without replacement cleanup", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const previewCache = new Map();
@@ -522,7 +522,7 @@ describe("no-create-object-url-without-revoke", () => {
          }
        };`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not trust a cache store behind a nested unrelated condition", () => {
@@ -578,7 +578,7 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet when a returned URL is stored through a module cache alias", () => {
+  it("reports repeatable cache alias stores without replacement cleanup", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const previewCache = new Map();
@@ -588,7 +588,7 @@ describe("no-create-object-url-without-revoke", () => {
          cacheAlias.set(id, make(blob));
        };`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not trust a cache constructed through an unproven collection alias", () => {
@@ -647,7 +647,7 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("accepts cache delete and clear protocols that revoke retained URLs first", () => {
+  it("requires replacement cleanup even when later eviction cleanup exists", () => {
     const deleteResult = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const previewCache = new Map();
@@ -659,7 +659,7 @@ describe("no-create-object-url-without-revoke", () => {
          previewCache.delete(id);
        };`,
     );
-    expect(deleteResult.diagnostics).toHaveLength(0);
+    expect(deleteResult.diagnostics).toHaveLength(1);
 
     const clearResult = runRule(
       noCreateObjectUrlWithoutRevoke,
@@ -671,7 +671,25 @@ describe("no-create-object-url-without-revoke", () => {
          previewCache.clear();
        };`,
     );
-    expect(clearResult.diagnostics).toHaveLength(0);
+    expect(clearResult.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts repeatable cache stores that revoke the replaced value first", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const cachePreview = (blob, id) => {
+         const previousUrl = previewCache.get(id);
+         if (previousUrl) URL.revokeObjectURL(previousUrl);
+         previewCache.set(id, make(blob));
+       };
+       const clearPreviews = () => {
+         previewCache.forEach((url) => URL.revokeObjectURL(url));
+         previewCache.clear();
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("rejects repeated static cache replacement without cleanup", () => {
@@ -982,5 +1000,342 @@ describe("no-create-object-url-without-revoke", () => {
        const leaked = renderPreview(otherBlob);`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not accept a cache sweep that runs before the retained URL is stored", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const use = (blob, id) => {
+         previewCache.forEach((url) => URL.revokeObjectURL(url));
+         previewCache.set(id, make(blob));
+         previewCache.clear();
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("matches cache sweeps to the retained Map slot", () => {
+    const nestedSafeResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const use = (blob) => {
+         const previous = previewCache.get("preview");
+         if (previous) URL.revokeObjectURL(previous.url);
+         previewCache.set("preview", { url: make(blob) });
+       };
+       const clear = () => {
+         previewCache.forEach((entry) => URL.revokeObjectURL(entry.url));
+         previewCache.clear();
+       };`,
+    );
+    expect(nestedSafeResult.diagnostics).toHaveLength(0);
+
+    const nestedUnsafeResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       previewCache.set("preview", { url: make(blob) });
+       previewCache.forEach((entry) => URL.revokeObjectURL(entry));
+       previewCache.clear();`,
+    );
+    expect(nestedUnsafeResult.diagnostics).toHaveLength(1);
+
+    const keyUnsafeResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       previewCache.set(make(blob), metadata);
+       previewCache.forEach((value) => URL.revokeObjectURL(value));
+       previewCache.clear();`,
+    );
+    expect(keyUnsafeResult.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts Set element cleanup before deletion", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Set();
+       const make = (blob) => URL.createObjectURL(blob);
+       const url = make(blob);
+       previewCache.add(url);
+       URL.revokeObjectURL(url);
+       previewCache.delete(url);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects conditional cache eviction cleanup", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       const cachePreview = (blob, id) => {
+         const previous = previewCache.get(id);
+         if (previous) URL.revokeObjectURL(previous);
+         previewCache.set(id, make(blob));
+       };
+       const evict = (id, enabled) => {
+         const oldUrl = previewCache.get(id);
+         enabled && URL.revokeObjectURL(oldUrl);
+         previewCache.delete(id);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags hard escapes through pre-declared bindings", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const use = (blob) => {
+         let url;
+         url = URL.createObjectURL(blob);
+         const alias = url;
+         anchor.href = alias;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("invalidates direct and downstream mutated global URL namespaces", () => {
+    const createResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `URL.createObjectURL = fake;
+       anchor.href = URL.createObjectURL(blob);`,
+    );
+    expect(createResult.diagnostics).toHaveLength(0);
+
+    const downstreamAliasResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const BrowserURL = URL;
+       const MutableURL = BrowserURL;
+       MutableURL.createObjectURL = fake;
+       anchor.href = BrowserURL.createObjectURL(blob);`,
+    );
+    expect(downstreamAliasResult.diagnostics).toHaveLength(0);
+
+    const revokeResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const use = (blob) => {
+         const url = make(blob);
+         anchor.href = url;
+         URL.revokeObjectURL = fake;
+         URL.revokeObjectURL(url);
+       };`,
+    );
+    expect(revokeResult.diagnostics).toHaveLength(1);
+  });
+
+  it("flags conditional state setters and computed attribute aliases", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const setter = enabled ? setPreview : setAvatar;
+       setter(URL.createObjectURL(firstBlob));
+       const method = "setAttribute";
+       const attribute = "href";
+       element[method](attribute, URL.createObjectURL(secondBlob));`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("tracks the exact produced binding version through aliases and writes", () => {
+    const staleAliasResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       let url;
+       const oldUrl = url;
+       url = make(blob);
+       anchor.href = url;
+       URL.revokeObjectURL(oldUrl);`,
+    );
+    expect(staleAliasResult.diagnostics).toHaveLength(1);
+
+    const destructuringWriteResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       let url = make(blob);
+       anchor.href = url;
+       ({ url } = getOther());
+       URL.revokeObjectURL(url);`,
+    );
+    expect(destructuringWriteResult.diagnostics).toHaveLength(1);
+
+    const preservedAliasResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       let url = make(blob);
+       const originalUrl = url;
+       anchor.href = originalUrl;
+       url = getFallback();
+       URL.revokeObjectURL(originalUrl);`,
+    );
+    expect(preservedAliasResult.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects returned cleanup behind unrelated conditional execution", () => {
+    const cases = [
+      `return () => { if (enabled) { if (url) URL.revokeObjectURL(url); } };`,
+      `return () => enabled && URL.revokeObjectURL(url);`,
+      `return () => enabled ? URL.revokeObjectURL(url) : undefined;`,
+      `return () => { if (skip) return; if (!url) return; URL.revokeObjectURL(url); };`,
+    ];
+    for (const cleanup of cases) {
+      const result = runRule(
+        noCreateObjectUrlWithoutRevoke,
+        `const make = (blob) => URL.createObjectURL(blob);
+         const use = (blob, enabled, skip) => {
+           const url = make(blob);
+           setPreview(url);
+           ${cleanup}
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("requires exhaustive cleanup to dominate the created URL", () => {
+    const cases = [
+      `if (enabled) { if (mode) URL.revokeObjectURL(url); else URL.revokeObjectURL(url); }`,
+      `if (skip) return; if (mode) URL.revokeObjectURL(url); else URL.revokeObjectURL(url);`,
+      `while (enabled) { if (mode) URL.revokeObjectURL(url); else URL.revokeObjectURL(url); break; }`,
+    ];
+    for (const cleanup of cases) {
+      const result = runRule(
+        noCreateObjectUrlWithoutRevoke,
+        `const make = (blob) => URL.createObjectURL(blob);
+         const use = (blob, enabled, skip, mode) => {
+           const url = make(blob);
+           setPreview(url);
+           ${cleanup}
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("recognizes exhaustive switch cleanup with a default", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const use = (blob, mode) => {
+         const url = make(blob);
+         setPreview(url);
+         switch (mode) {
+           case 1:
+             URL.revokeObjectURL(url);
+             break;
+           default:
+             URL.revokeObjectURL(url);
+         }
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("uses exact produced aliases for exhaustive cleanup", () => {
+    const staleAliasResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       let url;
+       const oldUrl = url;
+       url = make(blob);
+       anchor.href = url;
+       if (mode) URL.revokeObjectURL(oldUrl);
+       else URL.revokeObjectURL(oldUrl);`,
+    );
+    expect(staleAliasResult.diagnostics).toHaveLength(1);
+
+    const preservedAliasResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       let url = make(blob);
+       const originalUrl = url;
+       anchor.href = originalUrl;
+       url = fallback();
+       if (mode) URL.revokeObjectURL(originalUrl);
+       else URL.revokeObjectURL(originalUrl);`,
+    );
+    expect(preservedAliasResult.diagnostics).toHaveLength(0);
+  });
+
+  it("detects destructuring writes in for-of targets", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       let url = make(blob);
+       anchor.href = url;
+       for ({ url } of items) {}
+       URL.revokeObjectURL(url);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects positive URL guards inside optionally executed regions", () => {
+    const cleanupBodies = [
+      `while (enabled) { if (url) URL.revokeObjectURL(url); break; }`,
+      `for (; enabled; ) { if (url) URL.revokeObjectURL(url); break; }`,
+      `switch (mode) { case 1: if (url) URL.revokeObjectURL(url); }`,
+      `try { use(url); } catch { if (url) URL.revokeObjectURL(url); }`,
+    ];
+    for (const cleanupBody of cleanupBodies) {
+      const result = runRule(
+        noCreateObjectUrlWithoutRevoke,
+        `const make = (blob) => URL.createObjectURL(blob);
+         const usePreview = (blob, enabled, mode) => {
+           const url = make(blob);
+           setPreview(url);
+           return () => { ${cleanupBody} };
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("rejects cleanup bypassed by a loop continue", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const usePreviews = (blobs, skip) => {
+         for (const blob of blobs) {
+           const url = make(blob);
+           setPreview(url);
+           if (skip) continue;
+           if (url) URL.revokeObjectURL(url);
+           break;
+         }
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("only treats control transfers after acquisition as cleanup bypasses", () => {
+    const safeResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const usePreviews = (blobs, skip) => {
+         for (const blob of blobs) {
+           if (skip) continue;
+           const url = make(blob);
+           setPreview(url);
+           if (url) URL.revokeObjectURL(url);
+         }
+       };`,
+    );
+    expect(safeResult.diagnostics).toHaveLength(0);
+
+    const unsafeResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const usePreview = (blob, skip) => {
+         const url = make(blob);
+         setPreview(url);
+         if (skip) return;
+         if (url) URL.revokeObjectURL(url);
+       };`,
+    );
+    expect(unsafeResult.diagnostics).toHaveLength(1);
   });
 });

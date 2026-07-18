@@ -4,6 +4,8 @@
 const previewCache = new Map<string, string>();
 
 export const cachePreview = (blob: Blob, id: string) => {
+  const previousUrl = previewCache.get(id);
+  if (previousUrl) URL.revokeObjectURL(previousUrl);
   previewCache.set(id, URL.createObjectURL(blob));
 };
 

@@ -289,6 +289,52 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("keeps bounded rest parameters quiet through aliases and non-growing wrappers", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const directAlias = (...items) => {
+         const boundedItems = items;
+         return boundedItems.reduce((acc, item) => [...acc, item], []);
+       };
+       const wrappedAlias = (...items) => {
+         const boundedItems = items as readonly string[];
+         return boundedItems!.reduce((acc, item) => [...acc, item], []);
+       };
+       const selectedAlias = (...items) => {
+         const boundedItems = condition ? items : items;
+         return boundedItems.reduce((acc, item) => [...acc, item], []);
+       };
+       const copiedAlias = (...items) => Array.from(items)
+         .reduce((acc, item) => [...acc, item], []);
+       const slicedAlias = (...items) => items.slice()
+         .reduce((acc, item) => [...acc, item], []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still reports grown, mutable, and externally sourced rest aliases", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const grownAlias = (...items) => {
+         const boundedItems = items;
+         boundedItems.push(...externalItems);
+         return boundedItems.reduce((acc, item) => [...acc, item], []);
+       };
+       const mutableAlias = (...items) => {
+         let selectedItems = items;
+         selectedItems = externalItems;
+         return selectedItems.reduce((acc, item) => [...acc, item], []);
+       };
+       const externalAlias = (...items) => {
+         const selectedItems = condition ? items : externalItems;
+         return selectedItems.reduce((acc, item) => [...acc, item], []);
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
   it("flags rest parameters that grow before reduce, including through aliases and wrappers", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,

@@ -112,6 +112,18 @@ describe("radio-input-missing-name", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([`name=""`, `name={null}`, `name={undefined}`])(
+    "flags a radio whose %s value does not create a group",
+    (nameAttribute) => {
+      const result = runRule(
+        radioInputMissingName,
+        `<input type="radio" ${nameAttribute} value="yes" />;`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("does not flag a radio with a dynamic name expression", () => {
     const result = runRule(
       radioInputMissingName,

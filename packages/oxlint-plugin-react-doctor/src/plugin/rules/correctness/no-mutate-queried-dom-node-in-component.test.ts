@@ -583,6 +583,70 @@ export const Modal = ({ open, children }) => {
     expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("flags opposite class operations when the original class state is unknown", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Row({ active }) {
+         const row = document.getElementById("row");
+         row.classList.remove("active");
+         row.classList.add("active");
+         return <div id="row" className={active ? "active" : ""} />;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("flags a mutation through an alias of a queried node's style object", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Row({ opacity }) {
+         const row = document.getElementById("row");
+         const rowStyle = row.style;
+         rowStyle.opacity = "0";
+         return <div id="row" style={{ opacity }} />;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes cleanup returned from an aliased React effect hook", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `import { useEffect as useBrowserEffect } from "react";
+       function Row({ opacity }) {
+         useBrowserEffect(() => {
+           return () => {
+             const row = document.getElementById("row");
+             row.style.opacity = "";
+           };
+         }, []);
+         return <div id="row" style={{ opacity }} />;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a shadowing local callback runner as a React effect hook", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `import { useEffect as useBrowserEffect } from "react";
+       function Row({ opacity, useBrowserEffect }) {
+         useBrowserEffect(() => {
+           return () => {
+             const row = document.getElementById("row");
+             row.style.opacity = "";
+           };
+         });
+         return <div id="row" style={{ opacity }} />;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat a restore that happens before the mutation as cleanup", () => {
     const result = runRule(
       noMutateQueriedDomNodeInComponent,

@@ -363,6 +363,13 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
        export default dynamic(async () => ClientPage, { ssr: false });`,
     ],
     [
+      "a component that is also rendered outside its client-only wrapper",
+      `import dynamic from "next/dynamic";
+       export const Page = () => <div>{window.innerWidth}</div>;
+       export const Layout = () => <Page />;
+       export default dynamic(async () => Page, { ssr: false });`,
+    ],
+    [
       "a module server check that does not terminate evaluation",
       `if (typeof window === "undefined") console.log("server");
        export const Page = () => <div>{window.innerWidth}</div>;`,

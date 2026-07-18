@@ -277,6 +277,16 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat an unrelated cache-dir path as Gatsby browser runtime", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `const language = navigator.language;`,
+      { filename: "/repo/packages/app/cache-dir/runtime.js" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet in Remix .client. module files", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
@@ -380,6 +390,51 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not treat an unrelated terminating branch as a browser-only module guard", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (shouldAbort) throw new Error("disabled");
+       const width = window.innerWidth;`,
+      { filename: "/repo/src/runtime.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat client as a browser-only suffix when it is not next to the extension", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `const width = window.innerWidth;`,
+      { filename: "/repo/src/dashboard.client.shared.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a guard-named local binding with a shadowed browser global", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `const window = {};
+       const canUseDOM = typeof window !== "undefined";
+       const userAgent = canUseDOM ? navigator.userAgent : "";`,
+      { filename: "/project/src/browser-state.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a guard-named local binding with a shadowed process", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `const process = { browser: true };
+       const canUseDOM = process.browser;
+       const userAgent = canUseDOM ? navigator.userAgent : "";`,
+      { filename: "/project/src/browser-state.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   describe("cross-file imported guards", () => {
     let temporaryDirectory = "";
 
@@ -449,6 +504,67 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
       );
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not trust a foreign typeof check against a shadowed window binding", () => {
+      createProjectFile(
+        "src/env.ts",
+        `const window = {};
+         export const canUseDOM = typeof window !== "undefined";\n`,
+      );
+      const result = runRule(noUnguardedBrowserGlobalAtModuleScope, guardedByImportedConst, {
+        filename: moduleFilename(),
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("does not trust a foreign typeof check against an imported window binding", () => {
+      createProjectFile(
+        "src/env.ts",
+        `import window from "./window-shim";
+         export const canUseDOM = typeof window !== "undefined";\n`,
+      );
+      const result = runRule(noUnguardedBrowserGlobalAtModuleScope, guardedByImportedConst, {
+        filename: moduleFilename(),
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("does not trust a foreign guard function whose parameter shadows window", () => {
+      createProjectFile(
+        "src/env.ts",
+        `export const canUseDOM = (window = {}) => typeof window !== "undefined";\n`,
+      );
+      const result = runRule(
+        noUnguardedBrowserGlobalAtModuleScope,
+        `import { canUseDOM } from "./env";
+         if (canUseDOM()) consume(window.innerWidth);`,
+        { filename: moduleFilename() },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("preserves the polarity of an imported server guard", () => {
+      createProjectFile("src/env.ts", `export const isServer = typeof window === "undefined";\n`);
+      const browserBranch = runRule(
+        noUnguardedBrowserGlobalAtModuleScope,
+        `import { isServer } from "./env";
+         if (!isServer) consume(window.innerWidth);`,
+        { filename: moduleFilename() },
+      );
+      const serverBranch = runRule(
+        noUnguardedBrowserGlobalAtModuleScope,
+        `import { isServer } from "./env";
+         if (isServer) consume(window.innerWidth);`,
+        { filename: moduleFilename() },
+      );
+      expect(browserBranch.parseErrors).toEqual([]);
+      expect(serverBranch.parseErrors).toEqual([]);
+      expect(browserBranch.diagnostics).toHaveLength(0);
+      expect(serverBranch.diagnostics).toHaveLength(1);
     });
 
     it("keeps the guard-name fallback when the import does not resolve", () => {

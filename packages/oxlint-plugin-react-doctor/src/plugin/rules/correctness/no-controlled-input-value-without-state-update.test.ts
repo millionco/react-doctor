@@ -266,6 +266,61 @@ const C = () => <input value="" onChange={(e) => setQuery(e.currentTarget.value)
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each(["readOnly", "disabled"])(
+    "does not treat a static false %s prop as a read-only escape hatch",
+    (attributeName) => {
+      const result = runRule(
+        noControlledInputValueWithoutStateUpdate,
+        `<input value="fixed" ${attributeName}={false} onChange={submit} />;`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("recognizes a string-valued negative tabIndex as a hidden decoy signal", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `<input value="" tabIndex="-1" onChange={captureBotInput} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes any static negative tabIndex as an unfocusable decoy signal", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `<input value="" tabIndex={-2} onChange={captureBotInput} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each(["readOnly={null}", "disabled={void 0}"])(
+    "does not treat static nullish %s as a read-only escape hatch",
+    (attribute) => {
+      const result = runRule(
+        noControlledInputValueWithoutStateUpdate,
+        `<input value="fixed" ${attribute} onChange={submit} />;`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("does not use a nested callback return as a state-driven component alternative", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ draft }) => {
+         const renderPreview = () => <input value={draft} onChange={setDraft} />;
+         if (showPreview) renderPreview();
+         return <input value="fixed" onChange={submit} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a lone frozen input even when the component renders another literal-value input", () => {
     const result = runRule(
       noControlledInputValueWithoutStateUpdate,

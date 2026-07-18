@@ -3,8 +3,10 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isJsxAttributePotentiallyTruthy } from "../../utils/is-jsx-attribute-potentially-truthy.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -55,6 +57,7 @@ const NON_COMMIT_CALL_PROPERTIES = new Set([
   "stopPropagation",
   "stopImmediatePropagation",
 ]);
+const NON_COMMIT_CONSOLE_METHODS = new Set(["debug", "error", "info", "log", "trace", "warn"]);
 const MODIFIER_PROPERTIES = new Set(["metaKey", "ctrlKey", "shiftKey", "altKey"]);
 const COMPOSITION_TEXT_PATTERN = /composi/i;
 const IME_COMPOSITION_KEYCODE = 229;
@@ -203,7 +206,12 @@ const isEditableContentEditable = (node: EsTreeNodeOfType<"JSXOpeningElement">):
 const isTextEntryElement = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   const role = getStringAttr(node, "role");
   if (role && NON_TEXT_ENTRY_ROLES.has(role)) return false;
-  if (hasJsxPropIgnoreCase(node.attributes, "readOnly")) return false;
+  if (
+    isJsxAttributePotentiallyTruthy(hasJsxPropIgnoreCase(node.attributes, "readOnly")) ||
+    isJsxAttributePotentiallyTruthy(hasJsxPropIgnoreCase(node.attributes, "disabled"))
+  ) {
+    return false;
+  }
 
   const inputMode = getStringAttr(node, "inputMode");
   if (inputMode && NUMERIC_INPUT_MODES.has(inputMode.toLowerCase())) return false;
@@ -282,19 +290,54 @@ const analyzeEnterBranch = (enterTest: EsTreeNode): EnterBranch | null => {
 // The modifier gate may be extracted into a same-file helper —
 // `if (e.key === 'Enter' && isModEnter(e))` — so scan the resolved bodies of
 // helpers called from the test expression alongside the test itself.
-const testUsesModifierOrSpace = (testExpr: EsTreeNode): boolean =>
-  [testExpr, ...handlerCalleeInitializers(testExpr)].some(scopeUsesModifierOrSpace);
+const expressionRequiresModifier = (expression: EsTreeNode, predicateResult: boolean): boolean => {
+  const strippedExpression = stripGroupingParens(expression);
+  if (isNodeOfType(strippedExpression, "UnaryExpression") && strippedExpression.operator === "!") {
+    return expressionRequiresModifier(strippedExpression.argument, !predicateResult);
+  }
+  if (isNodeOfType(strippedExpression, "LogicalExpression")) {
+    if (strippedExpression.operator === "&&" && predicateResult) {
+      return (
+        expressionRequiresModifier(strippedExpression.left, true) ||
+        expressionRequiresModifier(strippedExpression.right, true)
+      );
+    }
+    if (strippedExpression.operator === "||" && !predicateResult) {
+      return (
+        expressionRequiresModifier(strippedExpression.left, false) ||
+        expressionRequiresModifier(strippedExpression.right, false)
+      );
+    }
+    if (strippedExpression.operator === "||" && predicateResult) {
+      return (
+        expressionRequiresModifier(strippedExpression.left, true) &&
+        expressionRequiresModifier(strippedExpression.right, true)
+      );
+    }
+    return false;
+  }
+  const propertyName = memberPropertyName(strippedExpression);
+  if (propertyName && MODIFIER_PROPERTIES.has(propertyName)) return predicateResult;
+  if (isNodeOfType(strippedExpression, "CallExpression")) {
+    const calledFunction = resolveCalledFunction(strippedExpression);
+    if (calledFunction) {
+      const returnedExpression = getSingleReturnExpression(calledFunction);
+      return Boolean(
+        returnedExpression && expressionRequiresModifier(returnedExpression, predicateResult),
+      );
+    }
+  }
+  return false;
+};
 
-const scopeUsesModifierOrSpace = (testExpr: EsTreeNode): boolean => {
+const testUsesModifierOrSpace = (testExpr: EsTreeNode): boolean =>
+  expressionRequiresModifier(testExpr, true) || scopeUsesSpace(testExpr);
+
+const scopeUsesSpace = (testExpr: EsTreeNode): boolean => {
   let found = false;
   walkAst(testExpr, (child) => {
     if (found) return false;
     if (isNodeOfType(child, "UnaryExpression") && child.operator === "!") return false;
-    const property = memberPropertyName(child);
-    if (property && MODIFIER_PROPERTIES.has(property)) {
-      found = true;
-      return false;
-    }
     if (
       isNodeOfType(child, "BinaryExpression") &&
       (child.operator === "===" || child.operator === "==")
@@ -323,14 +366,25 @@ const scopeUsesModifierOrSpace = (testExpr: EsTreeNode): boolean => {
   return found;
 };
 
-const branchPerformsCommit = (actionNode: EsTreeNode): boolean => {
+const branchPerformsCommit = (actionNode: EsTreeNode, context: RuleContext): boolean => {
   let found = false;
   walkAst(actionNode, (child) => {
     if (found) return false;
     if (child !== actionNode && isFunctionLike(child)) return false;
     if (isNodeOfType(child, "CallExpression")) {
-      const calleeProperty = memberPropertyName(stripGroupingParens(child.callee as EsTreeNode));
+      const callee = stripGroupingParens(child.callee as EsTreeNode);
+      const calleeProperty = memberPropertyName(callee);
       if (calleeProperty && NON_COMMIT_CALL_PROPERTIES.has(calleeProperty)) return;
+      if (
+        calleeProperty &&
+        NON_COMMIT_CONSOLE_METHODS.has(calleeProperty) &&
+        isNodeOfType(callee, "MemberExpression") &&
+        isNodeOfType(callee.object, "Identifier") &&
+        callee.object.name === "console" &&
+        context.scopes.isGlobalReference(callee.object)
+      ) {
+        return;
+      }
       found = true;
       return false;
     }
@@ -367,6 +421,88 @@ const subtreeHasCompositionSignal = (scope: EsTreeNode): boolean => {
   return found;
 };
 
+const mergeCompositionState = (
+  leftState: boolean | null,
+  rightState: boolean | null,
+): boolean | null => {
+  if (leftState === null) return rightState;
+  if (rightState === null) return leftState;
+  return leftState === rightState ? leftState : null;
+};
+
+const compositionIsActiveWhenPredicate = (
+  expression: EsTreeNode,
+  predicateResult: boolean,
+): boolean | null => {
+  const strippedExpression = stripGroupingParens(expression);
+  if (isNodeOfType(strippedExpression, "UnaryExpression") && strippedExpression.operator === "!") {
+    return compositionIsActiveWhenPredicate(strippedExpression.argument, !predicateResult);
+  }
+  if (isNodeOfType(strippedExpression, "LogicalExpression")) {
+    if (strippedExpression.operator === "&&" && predicateResult) {
+      return mergeCompositionState(
+        compositionIsActiveWhenPredicate(strippedExpression.left, true),
+        compositionIsActiveWhenPredicate(strippedExpression.right, true),
+      );
+    }
+    if (strippedExpression.operator === "||" && !predicateResult) {
+      return mergeCompositionState(
+        compositionIsActiveWhenPredicate(strippedExpression.left, false),
+        compositionIsActiveWhenPredicate(strippedExpression.right, false),
+      );
+    }
+    return null;
+  }
+  if (
+    (isNodeOfType(strippedExpression, "Identifier") ||
+      isNodeOfType(strippedExpression, "MemberExpression") ||
+      isNodeOfType(strippedExpression, "CallExpression")) &&
+    subtreeHasCompositionSignal(strippedExpression)
+  ) {
+    return predicateResult;
+  }
+  if (!isNodeOfType(strippedExpression, "BinaryExpression")) return null;
+  if (
+    strippedExpression.operator !== "===" &&
+    strippedExpression.operator !== "==" &&
+    strippedExpression.operator !== "!==" &&
+    strippedExpression.operator !== "!="
+  ) {
+    return null;
+  }
+  const left = stripGroupingParens(strippedExpression.left);
+  const right = stripGroupingParens(strippedExpression.right);
+  const isImeKeyCodeMember = (candidate: EsTreeNode): boolean => {
+    const propertyName = memberPropertyName(candidate);
+    return propertyName === "keyCode" || propertyName === "which";
+  };
+  const isImeKeyCodeValue = (candidate: EsTreeNode): boolean =>
+    (isNodeOfType(candidate, "Literal") && candidate.value === IME_COMPOSITION_KEYCODE) ||
+    (isNodeOfType(candidate, "Identifier") && identifierHasImeWord(candidate.name));
+  const isEquality = strippedExpression.operator === "===" || strippedExpression.operator === "==";
+  if (
+    (isImeKeyCodeMember(left) && isImeKeyCodeValue(right)) ||
+    (isImeKeyCodeMember(right) && isImeKeyCodeValue(left))
+  ) {
+    return predicateResult === isEquality;
+  }
+  const compositionSide = subtreeHasCompositionSignal(left)
+    ? left
+    : subtreeHasCompositionSignal(right)
+      ? right
+      : null;
+  const valueSide = compositionSide === left ? right : left;
+  if (!compositionSide || !isNodeOfType(valueSide, "Literal")) return null;
+  if (typeof valueSide.value === "boolean") {
+    const comparisonResultWhenActive = isEquality ? valueSide.value : !valueSide.value;
+    return predicateResult === comparisonResultWhenActive;
+  }
+  if (valueSide.value === IME_COMPOSITION_KEYCODE) {
+    return predicateResult === isEquality;
+  }
+  return null;
+};
+
 const statementTerminatesFlow = (statement: EsTreeNode): boolean => {
   if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
     return true;
@@ -388,7 +524,7 @@ const hasPriorCompositionEarlyExit = (handler: EsTreeNode, branchTest: EsTreeNod
           const statement = parent.body[statementIndex];
           if (
             isNodeOfType(statement, "IfStatement") &&
-            subtreeHasCompositionSignal(statement.test) &&
+            compositionIsActiveWhenPredicate(statement.test, true) === true &&
             statementTerminatesFlow(statement.consequent)
           ) {
             return true;
@@ -429,52 +565,6 @@ const resolveClassMemberFunction = (
     cursor = cursor.parent ?? null;
   }
   return null;
-};
-
-// Same-file function bodies reachable from the handler through bare
-// identifier calls (`commitEdit()` resolved to its `const commitEdit = …`
-// or `function commitEdit` initializer, then that body's own callees,
-// transitively) or `this.commitEdit()` class-member calls — a composition
-// guard may live inside the commit helper chain rather than the inline
-// handler.
-const handlerCalleeInitializers = (handler: EsTreeNode): EsTreeNode[] => {
-  const initializers: EsTreeNode[] = [];
-  const seenCalleeNames = new Set<string>();
-  const pendingScopes: EsTreeNode[] = [handler];
-  while (pendingScopes.length > 0) {
-    const scope = pendingScopes.pop();
-    if (!scope) continue;
-    walkAst(scope, (child) => {
-      if (!isNodeOfType(child, "CallExpression")) return;
-      const callee = stripGroupingParens(child.callee as EsTreeNode);
-      if (isNodeOfType(callee, "Identifier")) {
-        if (seenCalleeNames.has(callee.name)) return;
-        seenCalleeNames.add(callee.name);
-        const binding = findVariableInitializer(callee, callee.name);
-        if (binding?.initializer) {
-          initializers.push(binding.initializer);
-          pendingScopes.push(binding.initializer);
-        }
-        return;
-      }
-      if (
-        isNodeOfType(callee, "MemberExpression") &&
-        isNodeOfType(callee.object, "ThisExpression") &&
-        !callee.computed &&
-        isNodeOfType(callee.property, "Identifier")
-      ) {
-        const memberName = `this.${callee.property.name}`;
-        if (seenCalleeNames.has(memberName)) return;
-        seenCalleeNames.add(memberName);
-        const memberFunction = resolveClassMemberFunction(child, callee.property.name);
-        if (memberFunction) {
-          initializers.push(memberFunction);
-          pendingScopes.push(memberFunction);
-        }
-      }
-    });
-  }
-  return initializers;
 };
 
 const isInsideCompositionCondition = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
@@ -614,13 +704,13 @@ export const noEnterSubmitWithoutImeCompositionGuard = defineRule({
         const branch = analyzeEnterBranch(enterTest);
         if (!branch) continue;
         if (
-          subtreeHasCompositionSignal(branch.testExpr) ||
+          compositionIsActiveWhenPredicate(branch.testExpr, true) === false ||
           hasPriorCompositionEarlyExit(handler, branch.testExpr)
         ) {
           continue;
         }
         if (testUsesModifierOrSpace(branch.testExpr)) continue;
-        if (!branchPerformsCommit(branch.actionNode)) continue;
+        if (!branchPerformsCommit(branch.actionNode, context)) continue;
         if (scopeCommitsAreCompositionGuarded(branch.actionNode, new Set())) continue;
         hasBareEnterCommit = true;
         break;

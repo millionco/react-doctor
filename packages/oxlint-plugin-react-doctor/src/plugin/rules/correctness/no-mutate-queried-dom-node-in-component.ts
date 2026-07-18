@@ -1,6 +1,11 @@
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
+import {
+  getImportedNameFromModule,
+  isDefaultImportFromModule,
+  isNamespaceImportFromModule,
+} from "../../utils/find-import-source-for-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
@@ -48,12 +53,6 @@ interface ClassNameAttributeInfo {
 interface QueryTarget {
   kind: "id" | "class" | "testid";
   value: string;
-}
-
-interface ClassMutationRecord {
-  node: EsTreeNodeOfType<"CallExpression">;
-  methodName: string;
-  blockId: number;
 }
 
 const literalStringFromJsxAttributeValue = (
@@ -391,7 +390,43 @@ const enclosingFunctionOf = (node: EsTreeNode): EsTreeNode | null => {
 
 // A mutation inside an effect CLEANUP restores/clears state on teardown —
 // that is the rule's remediation, not the hazard.
-const isInsideEffectCleanup = (node: EsTreeNode): boolean => {
+const isReactEffectHookCall = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(call.callee);
+  if (isNodeOfType(callee, "Identifier")) {
+    const symbol = context.scopes.symbolFor(callee);
+    const importedName = getImportedNameFromModule(callee, callee.name, "react");
+    if (importedName && symbol && isNodeOfType(symbol.declarationNode, "ImportSpecifier")) {
+      return CLEANUP_EFFECT_HOOKS.has(importedName);
+    }
+    return CLEANUP_EFFECT_HOOKS.has(callee.name) && context.scopes.isGlobalReference(callee);
+  }
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.computed ||
+    !isNodeOfType(callee.object, "Identifier") ||
+    !isNodeOfType(callee.property, "Identifier") ||
+    !CLEANUP_EFFECT_HOOKS.has(callee.property.name)
+  ) {
+    return false;
+  }
+  const objectSymbol = context.scopes.symbolFor(callee.object);
+  if (
+    !objectSymbol ||
+    (!isNodeOfType(objectSymbol.declarationNode, "ImportNamespaceSpecifier") &&
+      !isNodeOfType(objectSymbol.declarationNode, "ImportDefaultSpecifier"))
+  ) {
+    return false;
+  }
+  return (
+    isNamespaceImportFromModule(callee.object, callee.object.name, "react") ||
+    isDefaultImportFromModule(callee.object, callee.object.name, "react")
+  );
+};
+
+const isInsideEffectCleanup = (node: EsTreeNode, context: RuleContext): boolean => {
   let cursor: EsTreeNode | null = enclosingFunctionOf(node);
   while (cursor) {
     const maybeReturn = cursor.parent;
@@ -402,8 +437,7 @@ const isInsideEffectCleanup = (node: EsTreeNode): boolean => {
         effectCallback &&
         effectCall &&
         isNodeOfType(effectCall, "CallExpression") &&
-        isNodeOfType(effectCall.callee, "Identifier") &&
-        CLEANUP_EFFECT_HOOKS.has(effectCall.callee.name) &&
+        isReactEffectHookCall(effectCall, context) &&
         effectCall.arguments?.[0] === effectCallback
       ) {
         return true;
@@ -412,65 +446,6 @@ const isInsideEffectCleanup = (node: EsTreeNode): boolean => {
     cursor = enclosingFunctionOf(cursor);
   }
   return false;
-};
-
-const OPPOSITE_CLASS_METHOD: Record<string, string> = { add: "remove", remove: "add" };
-
-const collectBalancedClassToggleCalls = (
-  functionNode: EsTreeNode,
-  context: RuleContext,
-): WeakSet<EsTreeNode> => {
-  const recordsByKey = new Map<string, ClassMutationRecord[]>();
-  walkAst(functionNode, (node) => {
-    if (!isNodeOfType(node, "CallExpression")) return;
-    const callee = node.callee;
-    if (!isNodeOfType(callee, "MemberExpression") || !isNodeOfType(callee.property, "Identifier")) {
-      return;
-    }
-    const methodName = callee.property.name;
-    if (!OPPOSITE_CLASS_METHOD[methodName]) return;
-    const receiver = classListMutationReceiver(callee);
-    const receiverIdentifier = receiver ? stripParenExpression(receiver) : null;
-    if (!receiverIdentifier || !isNodeOfType(receiverIdentifier, "Identifier")) return;
-    const receiverSymbol = context.scopes.symbolFor(receiverIdentifier);
-    const classArgument = node.arguments?.[0];
-    const scope = enclosingFunctionOf(node);
-    const functionControlFlow = scope ? context.cfg.cfgFor(scope) : null;
-    const block = functionControlFlow?.blockOf(node) ?? null;
-    if (
-      !receiverSymbol ||
-      !classArgument ||
-      !isNodeOfType(classArgument, "Literal") ||
-      typeof classArgument.value !== "string" ||
-      !scope ||
-      !block
-    ) {
-      return;
-    }
-    const key = `${scope.range[0]}:${receiverSymbol.id}:${classArgument.value}`;
-    const records = recordsByKey.get(key) ?? [];
-    records.push({ node, methodName, blockId: block.id });
-    recordsByKey.set(key, records);
-  });
-  const balancedCalls = new WeakSet<EsTreeNode>();
-  for (const records of recordsByKey.values()) {
-    records.sort((left, right) => left.node.range[0] - right.node.range[0]);
-    for (let recordIndex = 0; recordIndex + 1 < records.length; recordIndex += 1) {
-      const current = records[recordIndex];
-      const next = records[recordIndex + 1];
-      if (
-        current &&
-        next &&
-        current.blockId === next.blockId &&
-        OPPOSITE_CLASS_METHOD[current.methodName] === next.methodName
-      ) {
-        balancedCalls.add(current.node);
-        balancedCalls.add(next.node);
-        recordIndex += 1;
-      }
-    }
-  }
-  return balancedCalls;
 };
 
 const nodeDominates = (
@@ -669,7 +644,7 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
 
     const analyzeComponent = (functionNode: EsTreeNode, owned: OwnedTokens): void => {
       const ownedQueryVariables = new Map<number, OwnedElementInfo[]>();
-      const balancedClassToggleCalls = collectBalancedClassToggleCalls(functionNode, context);
+      const ownedStyleVariables = new Map<number, OwnedElementInfo[]>();
       walkAst(functionNode, (node: EsTreeNode) => {
         if (isNodeOfType(node, "VariableDeclarator") && isNodeOfType(node.id, "Identifier")) {
           const queryInfos = node.init
@@ -679,6 +654,23 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
             const bindingSymbol = context.scopes.symbolFor(node.id);
             if (bindingSymbol) ownedQueryVariables.set(bindingSymbol.id, queryInfos);
             return;
+          }
+          if (
+            node.init &&
+            isNodeOfType(node.init, "MemberExpression") &&
+            !node.init.computed &&
+            isNodeOfType(node.init.property, "Identifier") &&
+            node.init.property.name === "style"
+          ) {
+            const styleElementInfos = elementInfosForReceiver(
+              node.init.object,
+              ownedQueryVariables,
+              owned,
+            );
+            const bindingSymbol = context.scopes.symbolFor(node.id);
+            if (bindingSymbol && styleElementInfos.length > 0) {
+              ownedStyleVariables.set(bindingSymbol.id, styleElementInfos);
+            }
           }
         }
         const iterationBinding =
@@ -695,10 +687,22 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
       walkAst(functionNode, (node: EsTreeNode) => {
         if (isNodeOfType(node, "AssignmentExpression")) {
           const receiver = styleAssignmentReceiver(node.left);
-          if (!receiver) return;
-          const elementInfos = elementInfosForReceiver(receiver, ownedQueryVariables, owned);
+          let elementInfos = receiver
+            ? elementInfosForReceiver(receiver, ownedQueryVariables, owned)
+            : NO_OWNED_ELEMENTS;
+          if (
+            elementInfos.length === 0 &&
+            isNodeOfType(node.left, "MemberExpression") &&
+            isNodeOfType(node.left.object, "Identifier")
+          ) {
+            const styleSymbol = context.scopes.symbolFor(node.left.object);
+            elementInfos = styleSymbol
+              ? (ownedStyleVariables.get(styleSymbol.id) ?? NO_OWNED_ELEMENTS)
+              : NO_OWNED_ELEMENTS;
+          }
+          if (elementInfos.length === 0) return;
           if (canReactClobberStyleMutation(elementInfos, mutatedStylePropertyName(node.left))) {
-            if (isInsideEffectCleanup(node) || hasStyleSaveRestore(node, context)) return;
+            if (isInsideEffectCleanup(node, context) || hasStyleSaveRestore(node, context)) return;
             reportMutation(node, "style");
           }
           return;
@@ -712,16 +716,32 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
               owned,
             );
             if (canReactClobberClassMutation(elementInfos)) {
-              if (isInsideEffectCleanup(node) || balancedClassToggleCalls.has(node)) return;
+              if (isInsideEffectCleanup(node, context)) return;
               reportMutation(node, "classList");
             }
             return;
           }
           const styleReceiver = stylePropertyCallReceiver(node.callee);
-          if (styleReceiver) {
-            const elementInfos = elementInfosForReceiver(styleReceiver, ownedQueryVariables, owned);
-            if (canReactClobberStyleMutation(elementInfos, setPropertyArgumentName(node))) {
-              if (isInsideEffectCleanup(node)) return;
+          let styleElementInfos = styleReceiver
+            ? elementInfosForReceiver(styleReceiver, ownedQueryVariables, owned)
+            : NO_OWNED_ELEMENTS;
+          const callee = stripParenExpression(node.callee);
+          if (
+            styleElementInfos.length === 0 &&
+            isNodeOfType(callee, "MemberExpression") &&
+            !callee.computed &&
+            isNodeOfType(callee.property, "Identifier") &&
+            callee.property.name === "setProperty" &&
+            isNodeOfType(callee.object, "Identifier")
+          ) {
+            const styleSymbol = context.scopes.symbolFor(callee.object);
+            styleElementInfos = styleSymbol
+              ? (ownedStyleVariables.get(styleSymbol.id) ?? NO_OWNED_ELEMENTS)
+              : NO_OWNED_ELEMENTS;
+          }
+          if (styleElementInfos.length > 0) {
+            if (canReactClobberStyleMutation(styleElementInfos, setPropertyArgumentName(node))) {
+              if (isInsideEffectCleanup(node, context)) return;
               reportMutation(node, "style");
             }
           }

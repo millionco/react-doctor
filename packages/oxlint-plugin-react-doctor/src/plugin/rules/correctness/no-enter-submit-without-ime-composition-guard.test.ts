@@ -250,6 +250,100 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an Enter commit that runs only while composition is active", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = () => (
+         <input onKeyDown={(event) => {
+           if (event.key === "Enter" && event.nativeEvent.isComposing) save();
+         }} />
+       );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an Enter commit after an inverted composition early return", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = () => (
+         <input onKeyDown={(event) => {
+           if (!event.nativeEvent.isComposing) return;
+           if (event.key === "Enter") save();
+         }} />
+       );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags Enter when a modifier is only an alternative trigger", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = () => (
+         <textarea onKeyDown={(event) => {
+           if (event.key === "Enter" || event.metaKey) save();
+         }} />
+       );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a static false readOnly prop as non-editable", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = () => (
+         <input readOnly={false} onKeyDown={(event) => {
+           if (event.key === "Enter") save();
+         }} />
+       );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when an Enter branch only logs diagnostic information", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = () => (
+         <input onKeyDown={(event) => {
+           if (event.key === "Enter") console.log(event.currentTarget.value);
+         }} />
+       );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a shadowed console logger as non-committing", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = ({ save }) => {
+         const console = { log: save };
+         return <input onKeyDown={(event) => {
+           if (event.key === "Enter") console.log();
+         }} />;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["readOnly={null}", "disabled={void 0}"])(
+    "does not treat static nullish %s as non-editable",
+    (attribute) => {
+      const result = runRule(
+        noEnterSubmitWithoutImeCompositionGuard,
+        `<input ${attribute} onKeyDown={(event) => {
+           if (event.key === "Enter") save();
+         }} />`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("flags an unguarded Enter-commit even when nearby names contain 'composer'", () => {
     const result = runRule(
       noEnterSubmitWithoutImeCompositionGuard,

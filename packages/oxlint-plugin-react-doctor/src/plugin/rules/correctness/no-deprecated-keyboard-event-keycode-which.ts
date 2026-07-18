@@ -1,7 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -44,16 +43,18 @@ const KEYBOARD_LISTENER_EVENTS = new Set(["keydown", "keyup", "keypress"]);
 const MESSAGE =
   "`KeyboardEvent.keyCode`/`which`/`charCode` are deprecated, and this comparison targets a character code that varies by keyboard layout, browser, and input method, so the branch fires on the wrong key (or never) for untested layouts. Branch on the standardized `event.key` (logical key) or `event.code` (physical key) instead.";
 
-const resolveNumericValue = (operand: EsTreeNode): number | null => {
+const resolveNumericValue = (operand: EsTreeNode, context: RuleContext): number | null => {
   const valueNode = stripGroupingParens(operand);
   if (isNodeOfType(valueNode, "Literal") && typeof valueNode.value === "number") {
     return valueNode.value;
   }
   if (isNodeOfType(valueNode, "Identifier")) {
-    const binding = findVariableInitializer(valueNode, valueNode.name);
-    const initializer = binding?.initializer ?? null;
+    const symbol = context.scopes.symbolFor(valueNode);
+    if (!symbol || symbol.kind !== "const") return null;
+    const initializer = symbol.initializer;
     if (
       initializer &&
+      !symbol.references.some((reference) => reference.flag !== "read") &&
       isNodeOfType(initializer, "Literal") &&
       typeof initializer.value === "number"
     ) {
@@ -68,7 +69,10 @@ interface DeprecatedReadComparison {
   comparedValue: number | null;
 }
 
-const getComparison = (memberNode: EsTreeNode): DeprecatedReadComparison | null => {
+const getComparison = (
+  memberNode: EsTreeNode,
+  context: RuleContext,
+): DeprecatedReadComparison | null => {
   const parent = findTransparentExpressionRoot(memberNode).parent;
   if (!parent || !isNodeOfType(parent, "BinaryExpression")) return null;
   if (!COMPARISON_OPERATORS.has(parent.operator)) return null;
@@ -78,14 +82,17 @@ const getComparison = (memberNode: EsTreeNode): DeprecatedReadComparison | null 
       : parent.left;
   return {
     operator: parent.operator,
-    comparedValue: resolveNumericValue(otherOperand as EsTreeNode),
+    comparedValue: resolveNumericValue(otherOperand as EsTreeNode, context),
   };
 };
 
 const isLayoutSensitiveCode = (value: number): boolean =>
   !LEGACY_IME_KEYCODES.has(value) && !LAYOUT_INVARIANT_CONTROL_KEYCODES.has(value);
 
-const switchTargetsLayoutSensitiveCode = (conditionRoot: EsTreeNode): boolean => {
+const switchTargetsLayoutSensitiveCode = (
+  conditionRoot: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   const parent = conditionRoot.parent ?? null;
   if (
     !parent ||
@@ -97,7 +104,7 @@ const switchTargetsLayoutSensitiveCode = (conditionRoot: EsTreeNode): boolean =>
   return parent.cases.some((switchCase) => {
     const testNode = switchCase.test;
     if (!testNode) return false;
-    const caseValue = resolveNumericValue(testNode as EsTreeNode);
+    const caseValue = resolveNumericValue(testNode as EsTreeNode, context);
     return caseValue !== null && isLayoutSensitiveCode(caseValue);
   });
 };
@@ -491,6 +498,7 @@ const relationalRangeIsLayoutInvariant = (
   if (!comparisonNode || !isNodeOfType(comparisonNode, "BinaryExpression")) return false;
   let logicalRoot: EsTreeNode = comparisonNode;
   while (logicalRoot.parent && isNodeOfType(logicalRoot.parent, "LogicalExpression")) {
+    if (logicalRoot.parent.operator !== "&&") return false;
     logicalRoot = logicalRoot.parent;
   }
   let lowerBound: number | null = null;
@@ -521,7 +529,7 @@ const relationalRangeIsLayoutInvariant = (
       operator = operator === "<" ? ">" : operator === ">" ? "<" : operator === "<=" ? ">=" : "<=";
     }
     if (!valueSide) return;
-    const value = resolveNumericValue(stripGroupingParens(valueSide));
+    const value = resolveNumericValue(stripGroupingParens(valueSide), context);
     if (value === null) return;
     if (operator === ">=") lowerBound = lowerBound === null ? value : Math.max(lowerBound, value);
     if (operator === ">") {
@@ -603,7 +611,7 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
         return;
       }
 
-      const comparison = getComparison(node as EsTreeNode);
+      const comparison = getComparison(node as EsTreeNode, context);
       const comparedValue = comparison ? comparison.comparedValue : null;
       if (comparedValue !== null && LEGACY_IME_KEYCODES.has(comparedValue)) return;
       if (
@@ -665,7 +673,10 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
         );
         const comparesLayoutSensitiveCode =
           comparedValue !== null && isLayoutSensitiveCode(comparedValue);
-        const switchesOnLayoutSensitiveCode = switchTargetsLayoutSensitiveCode(conditionRoot);
+        const switchesOnLayoutSensitiveCode = switchTargetsLayoutSensitiveCode(
+          conditionRoot,
+          context,
+        );
         if (
           !isRelationalRangeCheck &&
           !comparesLayoutSensitiveCode &&

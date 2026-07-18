@@ -8,9 +8,37 @@ import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isLiteralVoidExpression } from "../../utils/is-literal-void-expression.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const RADIO_COMPONENTS_SETTING = "radioInputMissingName.radioComponents";
+
+const nameAttributeMayCreateGroup = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+  context: RuleContext,
+): boolean => {
+  if (!attribute.value) return true;
+  if (isNodeOfType(attribute.value, "Literal")) {
+    if (attribute.value.value === null) return false;
+    return typeof attribute.value.value !== "string" || attribute.value.value.trim().length > 0;
+  }
+  if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return true;
+  const expression = stripParenExpression(attribute.value.expression);
+  if (isNodeOfType(expression, "Literal")) {
+    if (expression.value === null) return false;
+    return typeof expression.value !== "string" || expression.value.trim().length > 0;
+  }
+  if (isLiteralVoidExpression(expression)) return false;
+  if (
+    isNodeOfType(expression, "Identifier") &&
+    expression.name === "undefined" &&
+    context.scopes.isGlobalReference(expression)
+  ) {
+    return false;
+  }
+  return true;
+};
 const isGroupProviderName = (elementName: string): boolean => {
   const nameSegments = elementName.split(".");
   const finalSegment = nameSegments.at(-1) ?? "";
@@ -67,7 +95,8 @@ export const radioInputMissingName = defineRule({
         // `RadioGroup`, …) supply `name` to their radios via context.
         if (isAllowlistedRadioComponent && hasGroupProviderAncestor(node)) return;
 
-        if (findJsxAttribute(attributes, "name")) return;
+        const nameAttribute = findJsxAttribute(attributes, "name");
+        if (nameAttribute && nameAttributeMayCreateGroup(nameAttribute, context)) return;
 
         context.report({
           node,

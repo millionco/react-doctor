@@ -58,9 +58,9 @@ const isBrowserOnlyModuleFilename = (rawFilename: string | undefined): boolean =
   if (!rawFilename) return false;
   const filename = rawFilename.replaceAll("\\", "/").toLowerCase();
   const basename = filename.slice(filename.lastIndexOf("/") + 1);
-  if (basename.includes(".client.")) return true;
+  if (/\.client\.[^.]+$/.test(basename)) return true;
   const rootedFilename = filename.startsWith("/") ? filename : `/${filename}`;
-  return rootedFilename.includes("/cache-dir/");
+  return rootedFilename.includes("/gatsby/cache-dir/");
 };
 
 const isFlowTerminatingStatement = (statement: EsTreeNode): boolean => {
@@ -106,7 +106,63 @@ const isProcessBrowserRead = (node: EsTreeNodeOfType<"MemberExpression">): boole
   if (node.computed) return false;
   if (!isNodeOfType(node.property, "Identifier") || node.property.name !== "browser") return false;
   const processObject = stripParenExpression(node.object);
-  return isNodeOfType(processObject, "Identifier") && processObject.name === "process";
+  return (
+    isNodeOfType(processObject, "Identifier") &&
+    processObject.name === "process" &&
+    !findVariableInitializer(processObject, processObject.name)
+  );
+};
+
+const getTypeofGuardGlobalName = (expression: EsTreeNode): string | null => {
+  const strippedExpression = stripParenExpression(expression);
+  if (
+    !isNodeOfType(strippedExpression, "UnaryExpression") ||
+    strippedExpression.operator !== "typeof"
+  ) {
+    return null;
+  }
+  const argument = stripParenExpression(strippedExpression.argument);
+  return isNodeOfType(argument, "Identifier") &&
+    GUARD_GLOBAL_NAMES.has(argument.name) &&
+    !findVariableInitializer(argument, argument.name)
+    ? argument.name
+    : null;
+};
+
+const browserAvailabilityWhenExpressionIsTrue = (expression: EsTreeNode): boolean | null => {
+  const strippedExpression = stripParenExpression(expression);
+  if (isNodeOfType(strippedExpression, "UnaryExpression") && strippedExpression.operator === "!") {
+    const innerAvailability = browserAvailabilityWhenExpressionIsTrue(strippedExpression.argument);
+    return innerAvailability === null ? null : !innerAvailability;
+  }
+  if (isNodeOfType(strippedExpression, "MemberExpression")) {
+    if (isImportMetaEnvSsrRead(strippedExpression)) return false;
+    if (isProcessBrowserRead(strippedExpression)) return true;
+  }
+  if (!isNodeOfType(strippedExpression, "BinaryExpression")) return null;
+  const leftGlobalName = getTypeofGuardGlobalName(strippedExpression.left);
+  const rightGlobalName = getTypeofGuardGlobalName(strippedExpression.right);
+  const leftString =
+    isNodeOfType(strippedExpression.left, "Literal") &&
+    typeof strippedExpression.left.value === "string"
+      ? strippedExpression.left.value
+      : null;
+  const rightString =
+    isNodeOfType(strippedExpression.right, "Literal") &&
+    typeof strippedExpression.right.value === "string"
+      ? strippedExpression.right.value
+      : null;
+  const globalName = leftGlobalName ?? rightGlobalName;
+  const comparedType = leftGlobalName ? rightString : leftString;
+  if (!globalName || !comparedType) return null;
+  const isEquality = strippedExpression.operator === "===" || strippedExpression.operator === "==";
+  const isInequality =
+    strippedExpression.operator === "!==" || strippedExpression.operator === "!=";
+  if (!isEquality && !isInequality) return null;
+  const browserType = globalName === "matchMedia" ? "function" : "object";
+  const browserResult = isEquality ? browserType === comparedType : browserType !== comparedType;
+  const serverResult = isEquality ? comparedType === "undefined" : comparedType !== "undefined";
+  return browserResult === serverResult ? null : browserResult;
 };
 
 // The literal environment checks this rule trusts on their own: a
@@ -120,7 +176,11 @@ const subtreeProvesBrowserEnvironmentCheck = (subtree: EsTreeNode): boolean => {
     if (found) return false;
     if (isNodeOfType(child, "UnaryExpression") && child.operator === "typeof") {
       const argument = stripParenExpression(child.argument);
-      if (isNodeOfType(argument, "Identifier") && GUARD_GLOBAL_NAMES.has(argument.name)) {
+      if (
+        isNodeOfType(argument, "Identifier") &&
+        GUARD_GLOBAL_NAMES.has(argument.name) &&
+        !findVariableInitializer(argument, argument.name)
+      ) {
         found = true;
         return false;
       }
@@ -138,8 +198,9 @@ const subtreeProvesBrowserEnvironmentCheck = (subtree: EsTreeNode): boolean => {
 
 // How an import-bound identifier in a guard position is classified after
 // following the import into its source file:
-// - "browser-guard": the export is (or boolean-derives from) a literal
-//   environment check — a const initializer like
+// - "browser-when-true" / "browser-when-false": the export is (or
+//   boolean-derives from) a literal environment check with known polarity —
+//   a const initializer like
 //   `export const canUseDOM = typeof window !== "undefined"` or a function
 //   returning one — so it guards exactly like a same-file alias;
 // - "resolved-not-guard": the export resolved to something that provably is
@@ -148,7 +209,11 @@ const subtreeProvesBrowserEnvironmentCheck = (subtree: EsTreeNode): boolean => {
 // - "unresolved": the import could not be followed (specifier that doesn't
 //   resolve, node_modules, no absolute filename, resolution budget spent) —
 //   keep the current name-heuristic behavior.
-type ImportedGuardResolution = "browser-guard" | "resolved-not-guard" | "unresolved";
+type ImportedGuardResolution =
+  | "browser-when-true"
+  | "browser-when-false"
+  | "resolved-not-guard"
+  | "unresolved";
 
 interface ClassifyImportedGuardIdentifier {
   (identifier: EsTreeNodeOfType<"Identifier">): ImportedGuardResolution | null;
@@ -163,30 +228,34 @@ const classifyNoImportedGuards: ClassifyImportedGuardIdentifier = () => null;
 // An imported guard FUNCTION (`export const canUseDOM = () => typeof window
 // !== "undefined"`, exenv-style) counts when a returned expression contains
 // a literal environment check.
-const functionBodyReturnsBrowserEnvironmentCheck = (functionNode: EsTreeNode): boolean => {
-  if (
-    !isNodeOfType(functionNode, "FunctionDeclaration") &&
-    !isNodeOfType(functionNode, "FunctionExpression") &&
-    !isNodeOfType(functionNode, "ArrowFunctionExpression")
-  ) {
-    return false;
-  }
+const functionBrowserAvailabilityWhenTrue = (functionNode: EsTreeNode): boolean | null => {
+  if (!isFunctionLike(functionNode)) return null;
   const body = functionNode.body;
-  if (!body) return false;
-  if (!isNodeOfType(body, "BlockStatement")) return subtreeProvesBrowserEnvironmentCheck(body);
-  let returnsCheck = false;
+  if (!isNodeOfType(body, "BlockStatement")) {
+    return browserAvailabilityWhenExpressionIsTrue(body);
+  }
+  let availability: boolean | null = null;
+  let hasReturn = false;
+  let hasInvalidReturn = false;
   walkAst(body, (child) => {
-    if (returnsCheck) return false;
-    if (
-      isNodeOfType(child, "ReturnStatement") &&
-      child.argument &&
-      subtreeProvesBrowserEnvironmentCheck(child.argument)
-    ) {
-      returnsCheck = true;
+    if (hasInvalidReturn) return false;
+    if (child !== body && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "ReturnStatement") || !child.argument) return;
+    const returnAvailability = browserAvailabilityWhenExpressionIsTrue(child.argument);
+    if (returnAvailability === null) {
+      availability = null;
+      hasInvalidReturn = true;
       return false;
     }
+    if (hasReturn && availability !== returnAvailability) {
+      availability = null;
+      hasInvalidReturn = true;
+      return false;
+    }
+    availability = returnAvailability;
+    hasReturn = true;
   });
-  return returnsCheck;
+  return hasReturn && !hasInvalidReturn ? availability : null;
 };
 
 const subtreeHasBrowserEnvironmentGuard = (
@@ -200,7 +269,7 @@ const subtreeHasBrowserEnvironmentGuard = (
     if (found) return false;
     if (!isNodeOfType(child, "Identifier")) return;
     const importedResolution = classifyImportedGuardIdentifier(child);
-    if (importedResolution === "browser-guard") {
+    if (importedResolution === "browser-when-true" || importedResolution === "browser-when-false") {
       found = true;
       return false;
     }
@@ -212,7 +281,11 @@ const subtreeHasBrowserEnvironmentGuard = (
     // identifiers (`canUseDOM`, `IS_BROWSER`, …) that may be imported from a
     // shared browser-utils module — the initializer is out of reach there,
     // but the name is an unambiguous environment check.
-    if (guardAliasNames.has(child.name) || isDomGuardIdentifierName(child.name)) {
+    if (
+      guardAliasNames.has(child.name) ||
+      ((importedResolution === "unresolved" || !findVariableInitializer(child, child.name)) &&
+        isDomGuardIdentifierName(child.name))
+    ) {
       found = true;
       return false;
     }
@@ -227,7 +300,7 @@ const browserIsAvailableWhenPredicate = (
   context: RuleContext,
   guardAliasNames: ReadonlySet<string>,
   classifyImportedGuardIdentifier: ClassifyImportedGuardIdentifier,
-): boolean => {
+): boolean | null => {
   const literalAvailability = readBrowserGlobalAvailability(
     expression,
     globalName,
@@ -256,15 +329,20 @@ const browserIsAvailableWhenPredicate = (
         isNodeOfType(stripParenExpression(strippedExpression.callee), "Identifier")
       ? stripParenExpression(strippedExpression.callee)
       : null;
-  if (!guardIdentifier || !isNodeOfType(guardIdentifier, "Identifier")) return false;
+  if (!guardIdentifier || !isNodeOfType(guardIdentifier, "Identifier")) return null;
   const importedResolution = classifyImportedGuardIdentifier(guardIdentifier);
-  if (importedResolution === "resolved-not-guard") return false;
-  return (
-    predicateResult &&
-    (importedResolution === "browser-guard" ||
-      guardAliasNames.has(guardIdentifier.name) ||
-      isDomGuardIdentifierName(guardIdentifier.name))
-  );
+  if (importedResolution === "browser-when-true") return predicateResult;
+  if (importedResolution === "browser-when-false") return !predicateResult;
+  if (importedResolution === "resolved-not-guard") return null;
+  if (
+    importedResolution === null &&
+    findVariableInitializer(guardIdentifier, guardIdentifier.name)
+  ) {
+    return null;
+  }
+  return guardAliasNames.has(guardIdentifier.name) || isDomGuardIdentifierName(guardIdentifier.name)
+    ? predicateResult
+    : null;
 };
 
 const collectBrowserOnlyGuardEndOffsets = (
@@ -469,13 +547,21 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
       );
       let resolution: ImportedGuardResolution = "unresolved";
       if (resolvedExport?.kind === "initializer") {
-        resolution = subtreeProvesBrowserEnvironmentCheck(resolvedExport.node)
-          ? "browser-guard"
-          : "resolved-not-guard";
+        const browserAvailability = browserAvailabilityWhenExpressionIsTrue(resolvedExport.node);
+        resolution =
+          browserAvailability === null
+            ? "resolved-not-guard"
+            : browserAvailability
+              ? "browser-when-true"
+              : "browser-when-false";
       } else if (resolvedExport?.kind === "function") {
-        resolution = functionBodyReturnsBrowserEnvironmentCheck(resolvedExport.node)
-          ? "browser-guard"
-          : "resolved-not-guard";
+        const browserAvailability = functionBrowserAvailabilityWhenTrue(resolvedExport.node);
+        resolution =
+          browserAvailability === null
+            ? "resolved-not-guard"
+            : browserAvailability
+              ? "browser-when-true"
+              : "browser-when-false";
       }
       importedGuardResolutionByName.set(identifier.name, resolution);
       return resolution;

@@ -208,7 +208,15 @@ const resolveClientOnlyDynamicTarget = (
   const target = stripParenExpression(returnedExpression);
   if (!isNodeOfType(target, "Identifier")) return null;
   const symbol = context.scopes.symbolFor(target);
-  return symbol ? resolveFunctionNode(symbol) : null;
+  if (
+    !symbol ||
+    symbol.references.some(
+      (reference) => reference.identifier !== target || reference.flag !== "read",
+    )
+  ) {
+    return null;
+  }
+  return resolveFunctionNode(symbol);
 };
 
 const collectClientOnlyDynamicTargets = (

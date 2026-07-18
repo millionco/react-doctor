@@ -414,6 +414,30 @@ const labelKeyDownEntry = (entry: ReplayKeystroke) =>
     expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("still flags bounds joined by OR because they do not form a closed invariant range", () => {
+    const result = runRule(
+      noDeprecatedKeyboardEventKeycodeWhich,
+      `const onKeyDown = (event: KeyboardEvent) => {
+         if (event.keyCode >= 37 || event.keyCode <= 40) moveFocus();
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not resolve a mutable key code binding from its stale initializer", () => {
+    const result = runRule(
+      noDeprecatedKeyboardEventKeycodeWhich,
+      `const onKeyDown = (event: KeyboardEvent) => {
+         let enterCode = 65;
+         enterCode = 13;
+         if (event.keyCode === enterCode) submit();
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("still flags a one-sided relational check with no invariant upper bound", () => {
     const result = runRule(
       noDeprecatedKeyboardEventKeycodeWhich,

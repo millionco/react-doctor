@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isLiteralVoidExpression } from "../../utils/is-literal-void-expression.js";
+import { isJsxAttributePotentiallyTruthy } from "../../utils/is-jsx-attribute-potentially-truthy.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -101,13 +102,18 @@ const hasHiddenOrDecoySignal = (attributes: EsTreeNode[]): boolean => {
     if (ariaHidden.value === null || staticValue === "true") return true;
   }
   const tabIndex = findJsxAttribute(attributes, "tabIndex");
+  if (tabIndex?.value && isNodeOfType(tabIndex.value, "Literal")) {
+    const tabIndexValue = Number(tabIndex.value.value);
+    if (Number.isFinite(tabIndexValue) && tabIndexValue < 0) return true;
+  }
   if (tabIndex?.value && isNodeOfType(tabIndex.value, "JSXExpressionContainer")) {
     const expression = stripParenExpression(tabIndex.value.expression);
     if (
       isNodeOfType(expression, "UnaryExpression") &&
       expression.operator === "-" &&
       isNodeOfType(expression.argument, "Literal") &&
-      expression.argument.value === 1
+      typeof expression.argument.value === "number" &&
+      expression.argument.value > 0
     ) {
       return true;
     }
@@ -172,6 +178,7 @@ const componentRendersStateDrivenAlternative = (
   let foundSibling = false;
   walkAst(enclosingFunction, (child) => {
     if (foundSibling) return false;
+    if (child !== enclosingFunction && isFunctionLike(child)) return false;
     if (child === flaggedElement || !isNodeOfType(child, "JSXOpeningElement")) return;
     if (!isNodeOfType(child.name, "JSXIdentifier") || !CONTROLLED_INPUT_TAGS.has(child.name.name)) {
       return;
@@ -215,7 +222,12 @@ export const noControlledInputValueWithoutStateUpdate = defineRule({
 
         const onChangeAttribute = findJsxAttribute(attributes, "onChange");
         if (!onChangeAttribute || isNoOpChangeHandler(onChangeAttribute)) return;
-        if (READONLY_ATTRIBUTES.some((name) => findJsxAttribute(attributes, name))) return;
+        if (
+          READONLY_ATTRIBUTES.some((name) =>
+            isJsxAttributePotentiallyTruthy(findJsxAttribute(attributes, name)),
+          )
+        )
+          return;
 
         if (tagName === "input") {
           if (findJsxAttribute(attributes, "checked")) return;

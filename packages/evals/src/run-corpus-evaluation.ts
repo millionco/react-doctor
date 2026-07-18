@@ -71,7 +71,7 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
       completedProjects += 1;
       if (record.error) failedProjects += 1;
       if (completedProjects % PROGRESS_INTERVAL_PROJECTS === 0) {
-        process.stderr.write(`Completed ${completedProjects}/${repositories.length} projects\n`);
+        process.stderr.write(`Processed ${completedProjects}/${repositories.length} projects\n`);
       }
     };
 
@@ -125,9 +125,13 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
     }
   }
 
-  const completionRate = (completedProjects / repositories.length) * PERCENT_MULTIPLIER;
+  const successfulProjects = completedProjects - failedProjects;
+  const completionRate = (successfulProjects / repositories.length) * PERCENT_MULTIPLIER;
   const elapsedSeconds = (globalThis.performance.now() - startedAt) / MILLISECONDS_PER_SECOND;
   process.stderr.write(
-    `Completion: ${completionRate.toFixed(SUMMARY_DECIMAL_PLACES)}% (${completedProjects}/${repositories.length}), failures: ${failedProjects}, elapsed: ${elapsedSeconds.toFixed(SUMMARY_DECIMAL_PLACES)}s\n`,
+    `Completion: ${completionRate.toFixed(SUMMARY_DECIMAL_PLACES)}% (${successfulProjects}/${repositories.length}), failures: ${failedProjects}, elapsed: ${elapsedSeconds.toFixed(SUMMARY_DECIMAL_PLACES)}s\n`,
   );
+  if (failedProjects !== 0) {
+    throw new Error(`Evaluation failed for ${failedProjects} projects`);
+  }
 };

@@ -4479,6 +4479,228 @@ export const MediaQuery = ({ breakpoint }) => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("accepts matching listener setup and cleanup through nested ref collections", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [];
+          enabledEvents.push({ event: "focus", listener: handleFocus, capture: true });
+
+          enabledEvents.forEach(({ event, listener, capture }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(event, listener, capture);
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event, listener, capture }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(event, listener, capture);
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    {
+      name: "a different receiver collection",
+      cleanup:
+        "cleanupRefs.forEach((elementRef) => elementRef.current?.removeEventListener(event, listener, capture));",
+      extra: "const cleanupRefs = new Set(otherAnchorRefs);",
+    },
+    {
+      name: "a different event projection",
+      cleanup:
+        "elementRefs.forEach((elementRef) => elementRef.current?.removeEventListener(cleanupEvent, listener, capture));",
+      extra: "",
+    },
+    {
+      name: "a different capture value",
+      cleanup:
+        "elementRefs.forEach((elementRef) => elementRef.current?.removeEventListener(event, listener, false));",
+      extra: "",
+    },
+    {
+      name: "a different handler projection",
+      cleanup:
+        "elementRefs.forEach((elementRef) => elementRef.current?.removeEventListener(event, cleanupListener, capture));",
+      extra: "",
+    },
+    {
+      name: "swapped event and handler projections",
+      cleanup:
+        "elementRefs.forEach((elementRef) => elementRef.current?.removeEventListener(listener, event, capture));",
+      extra: "",
+    },
+    {
+      name: "a conditional release",
+      cleanup:
+        "elementRefs.forEach((elementRef) => { if (shouldCleanup) elementRef.current?.removeEventListener(event, listener, capture); });",
+      extra: "",
+    },
+  ])("rejects $name in nested listener collections", ({ cleanup, extra }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs, otherAnchorRefs, shouldCleanup }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          ${extra}
+          const enabledEvents = [
+            {
+              event: "focus",
+              cleanupEvent: "blur",
+              listener: handleFocus,
+              cleanupListener: () => {},
+              capture: true,
+            },
+          ];
+
+          enabledEvents.forEach(({ event, listener, capture }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(event, listener, capture);
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event, cleanupEvent, listener, cleanupListener, capture }) => {
+              ${cleanup}
+            });
+          };
+        }, [anchorRefs, otherAnchorRefs, shouldCleanup]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "a second callback parameter",
+      setupParameters: "event, listener",
+      setupEvent: "event.event",
+      setupListener: "listener.listener",
+      cleanupParameters: "event, listener",
+      cleanupEvent: "event.event",
+      cleanupListener: "listener.listener",
+    },
+    {
+      name: "array destructuring",
+      setupParameters: "[event, listener]",
+      setupEvent: "event",
+      setupListener: "listener",
+      cleanupParameters: "[event, listener]",
+      cleanupEvent: "event",
+      cleanupListener: "listener",
+    },
+    {
+      name: "defaulted object properties",
+      setupParameters: '{ event = "focus", listener = handleFocus }',
+      setupEvent: "event",
+      setupListener: "listener",
+      cleanupParameters: '{ event = "focus", listener = handleFocus }',
+      cleanupEvent: "event",
+      cleanupListener: "listener",
+    },
+  ])("does not infer cleanup identity through $name", (fixture) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+          enabledEvents.forEach((${fixture.setupParameters}) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(${fixture.setupEvent}, ${fixture.setupListener});
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach((${fixture.cleanupParameters}) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(${fixture.cleanupEvent}, ${fixture.cleanupListener});
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["enabledEvents.pop();", "elementRefs.clear();"])(
+    "rejects replay cleanup after the registered collection mutates with %s",
+    (mutation) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+        function Tooltip({ anchorRefs }) {
+          const handleFocus = () => {};
+
+          useEffect(() => {
+            const elementRefs = new Set(anchorRefs);
+            const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+            enabledEvents.forEach(({ event, listener }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.addEventListener(event, listener);
+              });
+            });
+
+            ${mutation}
+
+            return () => {
+              enabledEvents.forEach(({ event, listener }) => {
+                elementRefs.forEach((elementRef) => {
+                  elementRef.current?.removeEventListener(event, listener);
+                });
+              });
+            };
+          }, [anchorRefs]);
+
+          return null;
+        }
+      `,
+        { filename: "Tooltip.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("rejects a legacy media listener cleanup with a changed handler", () => {
     const result = runRule(
       effectNeedsCleanup,

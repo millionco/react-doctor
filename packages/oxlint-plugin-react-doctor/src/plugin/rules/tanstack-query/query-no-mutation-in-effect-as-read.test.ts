@@ -721,6 +721,23 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each(["undefined as unknown", "null satisfies null"])(
+    "accepts a wrapped %s data-availability guard",
+    (nullishExpression) => {
+      const result = runMutationReadRule(
+        `function Component() {
+           const { mutateAsync: fetchCount, data } = useMutation(options);
+           useEffect(() => {
+             if (data !== (${nullishExpression})) return;
+             void fetchCount(params).then((response) => setCount(response.count));
+           }, [data, params]);
+           return <output>{data}</output>;
+         }`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
   it("does not accept a guard from a different effect", () => {
     const result = runMutationReadRule(
       `function Component() {

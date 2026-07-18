@@ -436,6 +436,14 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags promises returned from an explicitly voided map result", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       void items.map((item) => mutation.mutateAsync(item));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps promises reachable through a consumed map result", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);

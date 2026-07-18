@@ -129,6 +129,7 @@ const isExpressionValueDiscarded = (expression: EsTreeNode): boolean => {
       parent = current.parent ?? null;
       continue;
     }
+    if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "void") return true;
     if (isNodeOfType(parent, "SequenceExpression")) {
       if (parent.expressions.at(-1) !== current) return true;
       current = parent;

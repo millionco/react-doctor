@@ -19,13 +19,16 @@ export const isSubscribeLikeCallExpression = (node: EsTreeNode): boolean => {
   return methodName !== null && SUBSCRIPTION_METHOD_NAMES.has(methodName);
 };
 
-export const isSubscribeOrObserveCallExpression = (node: EsTreeNode): boolean => {
+export const getSubscribeOrObserveMethodName = (node: EsTreeNode): string | null => {
   const methodName = getSubscribeLikeMethodName(node);
-  return (
+  const isSubscribeOrObserve =
     methodName !== null &&
-    (SUBSCRIPTION_METHOD_NAMES.has(methodName) || methodName === OBSERVER_REGISTRATION_METHOD_NAME)
-  );
+    (SUBSCRIPTION_METHOD_NAMES.has(methodName) || methodName === OBSERVER_REGISTRATION_METHOD_NAME);
+  return isSubscribeOrObserve ? methodName : null;
 };
+
+export const isSubscribeOrObserveCallExpression = (node: EsTreeNode): boolean =>
+  getSubscribeOrObserveMethodName(node) !== null;
 
 export const isCleanupReturningSubscribeLikeCallExpression = (node: EsTreeNode): boolean => {
   const methodName = getSubscribeLikeMethodName(node);

@@ -39,6 +39,7 @@ import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blo
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import {
+  getSubscribeOrObserveMethodName,
   isCleanupReturningSubscribeLikeCallExpression,
   isSubscribeOrObserveCallExpression,
   OBSERVER_REGISTRATION_METHOD_NAME,
@@ -299,13 +300,13 @@ const findSubscribeLikeUsages = (
       return;
     }
 
-    if (isSubscribeOrObserveCallExpression(child)) {
+    const subscribeOrObserveMethodName = getSubscribeOrObserveMethodName(child);
+    if (subscribeOrObserveMethodName !== null) {
       const registrationDetails = getCallRegistrationDetails(child, context);
-      if (registrationDetails.registrationVerbName === null) return;
       usages.push({
         kind: "subscribe",
         node: child,
-        resourceName: registrationDetails.registrationVerbName,
+        resourceName: subscribeOrObserveMethodName,
         handleKey: findAssignedResourceKey(child, context),
         ...registrationDetails,
       });

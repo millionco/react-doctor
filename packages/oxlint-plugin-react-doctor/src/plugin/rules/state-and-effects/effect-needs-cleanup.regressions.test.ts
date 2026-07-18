@@ -3477,6 +3477,19 @@ export const Computed = ({ el }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("preserves identifier-computed subscribe detection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `function Example({ source, subscribe }) {
+        useEffect(() => {
+          source[subscribe](() => refresh());
+        }, [source, subscribe]);
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a retained function whose setInterval id is captured but never cleared", () => {
     const result = runRule(
       effectNeedsCleanup,

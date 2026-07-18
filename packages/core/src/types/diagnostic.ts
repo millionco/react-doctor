@@ -83,11 +83,12 @@ export interface Diagnostic {
    * Set when the finding's identity is the flagged element itself (a missing
    * attribute, a wrong element) rather than the flagged line's text — every
    * Accessibility-category finding, plus rules that opt in via their
-   * `matchByOccurrence` metadata flag. `computeDiagnosticDelta` matches these
-   * by `(filePath, plugin/rule)` occurrence count, so reformatting the flagged
-   * line doesn't reclassify a pre-existing finding as new. Resolved at
-   * diagnostic creation, where rule metadata is available. Absent means
-   * line-text-sensitive matching (the default).
+   * `matchByOccurrence` metadata flag. After strict evidence matching,
+   * `computeDiagnosticDelta` may match these by same-file `(plugin/rule,
+   * message)` occurrence count, so reformatting the flagged element doesn't
+   * reclassify a pre-existing finding as new. Resolved at diagnostic creation,
+   * where rule metadata is available. Absent means diagnosed-source-sensitive
+   * matching (the default).
    */
   matchByOccurrence?: boolean;
   /**

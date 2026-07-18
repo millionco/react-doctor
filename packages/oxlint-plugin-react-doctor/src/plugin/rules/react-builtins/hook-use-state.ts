@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
 
@@ -81,9 +82,17 @@ export const hookUseState = defineRule({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const callExpressionNode: EsTreeNode = node;
         if (!isReactFunctionCall(callExpressionNode, "useState")) return;
+        const expressionRoot = findTransparentExpressionRoot(callExpressionNode);
+        const expressionParent = expressionRoot.parent;
+        if (isNodeOfType(expressionParent, "ReturnStatement")) return;
+        if (
+          isNodeOfType(expressionParent, "ArrowFunctionExpression") &&
+          expressionParent.body === expressionRoot
+        ) {
+          return;
+        }
         const parent = node.parent;
         if (!parent) return;
-        if (isNodeOfType(parent, "ReturnStatement")) return;
         if (!isNodeOfType(parent, "VariableDeclarator")) {
           context.report({ node, message: REQUIRE_DESTRUCTURE_MESSAGE });
           return;

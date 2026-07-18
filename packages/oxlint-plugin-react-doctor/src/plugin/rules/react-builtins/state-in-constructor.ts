@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
@@ -29,19 +30,6 @@ const isStateKey = (key: EsTreeNode): boolean => {
   if (isNodeOfType(key, "Identifier")) return key.name === "state";
   if (isNodeOfType(key, "Literal") && typeof key.value === "string") return key.value === "state";
   return false;
-};
-
-const findEnclosingClass = (
-  node: EsTreeNode,
-): EsTreeNodeOfType<"ClassDeclaration" | "ClassExpression"> | null => {
-  let ancestor: EsTreeNode | null | undefined = node.parent;
-  while (ancestor) {
-    if (isNodeOfType(ancestor, "ClassDeclaration") || isNodeOfType(ancestor, "ClassExpression")) {
-      return ancestor;
-    }
-    ancestor = ancestor.parent ?? null;
-  }
-  return null;
 };
 
 const isInConstructor = (node: EsTreeNode): boolean => {

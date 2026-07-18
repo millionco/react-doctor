@@ -95,6 +95,44 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an imported React 19 context shorthand", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `
+      import { AccordionExpansionContext } from "./context";
+
+      function Accordion({ expandedKeys, onToggle, registerItemKey }) {
+        return (
+          <AccordionExpansionContext
+            value={{ expandedKeys, onToggle, registerItemKey }}
+          />
+        );
+      }
+    `,
+      { filename: "Accordion.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a renamed imported React 19 context shorthand", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `
+      import { AccordionExpansionContext as ExpansionProvider } from "./context";
+
+      function Accordion({ value }) {
+        return <ExpansionProvider value={{ value }} />;
+      }
+    `,
+      { filename: "Accordion.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a primitive value on the React 19 shorthand", () => {
     const result = runRule(
       jsxNoConstructedContextValues,
@@ -121,6 +159,54 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
 
       function App() {
         return <Component value={{ a: 1 }} />;
+      }
+    `,
+      { filename: "fixture.jsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag an ordinary imported component with a value prop", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `
+      import { ValuePanel } from "./value-panel";
+
+      function App() {
+        return <ValuePanel value={{ a: 1 }} />;
+      }
+    `,
+      { filename: "fixture.jsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not infer a context from an imported component name alone", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `
+      import { UserContext } from "./components";
+
+      function App() {
+        return <UserContext value={{ a: 1 }} />;
+      }
+    `,
+      { filename: "fixture.jsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag an imported context shadowed by a prop", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `
+      import { ThemeContext } from "./context";
+
+      function App({ ThemeContext }) {
+        return <ThemeContext value={{ a: 1 }} />;
       }
     `,
       { filename: "fixture.jsx" },

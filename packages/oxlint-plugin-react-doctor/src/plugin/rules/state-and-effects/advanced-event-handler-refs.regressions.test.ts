@@ -91,6 +91,24 @@ describe("advanced-event-handler-refs — regressions", () => {
     }
   });
 
+  it("stays silent for a non-React useEffectEvent polyfill", () => {
+    const result = runRule(
+      advancedEventHandlerRefs,
+      `import { useEffectEvent } from "@rocket.chat/fuselage-hooks";
+      import { useEffect } from "react";
+      function C() {
+        const onScroll = useEffectEvent(() => syncState());
+        useEffect(() => {
+          window.addEventListener('scroll', onScroll);
+          return () => window.removeEventListener('scroll', onScroll);
+        }, [onScroll]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // Docs-validation r2: tracecat use-window-size (useThrottledCallback with
   // internal useMemo) and cloudscape collapsible-flashbar (useThrottleCallback
   // with `.cancel()` cleanup) — throttle/debounce wrapper hooks memoize

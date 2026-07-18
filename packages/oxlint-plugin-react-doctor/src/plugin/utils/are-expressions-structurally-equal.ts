@@ -7,8 +7,8 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 // (e.g. `prefer-use-sync-external-store` checks that the
 // `useState(getSnapshot())` initializer matches the
 // `setSnapshot(getSnapshot())` inside the subscribe handler).
-// Deliberately conservative - we only model Identifier / Literal /
-// MemberExpression / CallExpression because any other shape
+// Deliberately conservative - we only model Identifier / PrivateIdentifier /
+// Literal / MemberExpression / CallExpression because any other shape
 // (assignments, ternaries, template strings) shouldn't be relied on
 // for a "same external store read" claim.
 export const areExpressionsStructurallyEqual = (
@@ -24,6 +24,9 @@ export const areExpressionsStructurallyEqual = (
   if (a.type !== b.type) return false;
   if (isNodeOfType(a, "ThisExpression")) return true;
   if (isNodeOfType(a, "Identifier") && isNodeOfType(b, "Identifier")) return a.name === b.name;
+  if (isNodeOfType(a, "PrivateIdentifier") && isNodeOfType(b, "PrivateIdentifier")) {
+    return a.name === b.name;
+  }
   if (isNodeOfType(a, "Literal") && isNodeOfType(b, "Literal")) return a.value === b.value;
   if (isNodeOfType(a, "MemberExpression") && isNodeOfType(b, "MemberExpression")) {
     if (a.computed !== b.computed) return false;

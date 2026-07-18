@@ -13,6 +13,7 @@ describe("runOxlint", () => {
       project: buildTestProject({
         rootDirectory: BASIC_REACT_DIRECTORY,
         hasTanStackQuery: true,
+        hasSsrDependency: true,
       }),
     });
   });

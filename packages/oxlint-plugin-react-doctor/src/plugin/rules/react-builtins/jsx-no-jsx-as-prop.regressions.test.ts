@@ -3,6 +3,20 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { jsxNoJsxAsProp } from "./jsx-no-jsx-as-prop.js";
 
 describe("react-builtins/jsx-no-jsx-as-prop regressions", () => {
+  // `memo(fn, arePropsEqual)` compares props with the author's own
+  // function, which routinely ignores reference identity — fresh JSX
+  // cannot break that bailout. Same gate as the jsx-no-new-*-as-prop
+  // siblings.
+  it("does not flag when the memo consumer has a custom comparator", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `import { memo } from "react";
+      const Item = memo((props) => props.children, (prev, next) => prev.id === next.id);
+      const View = () => <Item id={1} marker={<Pin />} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // `separator` is a canonical layout slot — `<Join separator={<Spacer />}>`,
   // `<Stack separator={<Divider />}>` — on children-taking layout primitives
   // that never memoize. The inline element is the intended API, not a footgun.

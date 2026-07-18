@@ -32,3 +32,17 @@ Each project includes:
 uses `mode: "baseline"` and includes the optional `baseline` block. Consumers
 must not infer coverage from an empty `diagnostics` array: use each project's
 `complete` and `analyzedFiles` fields.
+
+Baseline comparison identifies a finding by its plugin/rule, diagnostic
+message, and normalized diagnosed source range. The identity is independent of
+file and line, so unchanged findings remain pre-existing after a rename or
+component extraction. Identical findings are compared as a multiset, so an
+additional occurrence is still reported as introduced. When a handler moves
+behind a component prop, the comparison follows the prop only if every
+discovered callsite resolves through the TypeScript syntax tree to one
+unambiguous handler. Git supplies separate base and head path sets with rename
+detection disabled, so pure renames, deletions, copies, case-only path changes,
+and unusual filenames do not depend on heuristic similarity scores. A missing,
+binary, or unsmudged Git LFS base blob, unresolved index conflict, missing head
+file, or partial lint degrades the run to ordinary diff reporting instead of
+assigning unsupported new/fixed results.

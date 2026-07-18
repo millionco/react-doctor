@@ -482,8 +482,8 @@ export const DIAGNOSTIC_CATEGORY_BUCKETS = [
 // Categories whose findings are matched by occurrence in the CI baseline
 // delta — the finding's identity is the flagged element (a missing
 // attribute, a wrong element), not the flagged line's text — so the delta
-// matches them by `(file, rule)` occurrence count instead of a line-text
-// hash. Every Accessibility rule is element-level; rules in other
+// may match them by same-file `(rule, message)` occurrence count after strict
+// evidence matching. Every Accessibility rule is element-level; rules in other
 // categories opt in individually via their per-rule `matchByOccurrence`
 // flag (see `resolveMatchByOccurrence` in `runners/oxlint/parse-output`).
 export const OCCURRENCE_MATCHED_CATEGORIES: ReadonlySet<string> = new Set(["Accessibility"]);

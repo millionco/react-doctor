@@ -455,12 +455,18 @@ describe("buildRunEventAttributes", () => {
   it("emits the baseline delta on a computed baseline run", () => {
     const result = buildResult({
       diagnostics: [buildDiagnostic(), buildDiagnostic({ filePath: "src/B.tsx" })],
-      baselineDelta: { baseRef: "abc1234", fixedCount: 3, baseTotalCount: 7 },
+      baselineDelta: {
+        baseRef: "abc1234",
+        fixedCount: 3,
+        baseTotalCount: 7,
+        crossFileMatchCount: 2,
+      },
     });
     const attributes = buildRunEventAttributes(baseInput({ result, mode: "baseline" }));
     expect(attributes["baseline.new"]).toBe(2);
     expect(attributes["baseline.fixed"]).toBe(3);
     expect(attributes["baseline.baseTotal"]).toBe(7);
+    expect(attributes["baseline.crossFileMatches"]).toBe(2);
     expect(attributes["baseline.degraded"]).toBe(false);
   });
 

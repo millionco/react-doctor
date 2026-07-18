@@ -32,3 +32,11 @@ Each project includes:
 uses `mode: "baseline"` and includes the optional `baseline` block. Consumers
 must not infer coverage from an empty `diagnostics` array: use each project's
 `complete` and `analyzedFiles` fields.
+
+Baseline comparison identifies a finding by its plugin/rule, diagnostic
+message, and normalized diagnosed source range. The identity is independent of
+file and line, so unchanged findings remain pre-existing after a rename or
+component extraction. Identical findings are compared as a multiset, so an
+additional occurrence is still reported as introduced. When a handler moves
+behind a component prop, the comparison follows the prop only if every
+discovered callsite resolves to one unambiguous handler.

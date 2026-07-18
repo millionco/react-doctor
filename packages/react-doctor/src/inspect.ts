@@ -47,6 +47,7 @@ import { diagnosticIntersectsLineRanges } from "./cli/utils/diagnostic-intersect
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
 import { materializeBaselineFiles } from "./cli/utils/materialize-baseline-files.js";
 import { createSourceLineReader } from "./cli/utils/read-source-line.js";
+import { createDiagnosticEvidenceReader } from "./cli/utils/read-diagnostic-evidence.js";
 import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
 import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
 import {
@@ -513,6 +514,10 @@ const runBaselineComparison = async (
       baseDiagnostics: baseOutput.diagnostics,
       readHeadLine: createSourceLineReader(params.directory),
       readBaseLine: createSourceLineReader(snapshot.tempDirectory),
+      readHeadEvidence: createDiagnosticEvidenceReader(params.directory, {
+        resolveForwardedHandlers: true,
+      }),
+      readBaseEvidence: createDiagnosticEvidenceReader(snapshot.tempDirectory),
     });
     return {
       displayDiagnostics: delta.newDiagnostics,
@@ -520,6 +525,7 @@ const runBaselineComparison = async (
         baseRef: params.baselineRef,
         fixedCount: delta.fixedCount,
         baseTotalCount: baseOutput.diagnostics.length,
+        crossFileMatchCount: delta.crossFileMatchCount,
       },
     };
   } finally {

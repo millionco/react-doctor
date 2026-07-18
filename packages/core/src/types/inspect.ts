@@ -92,6 +92,8 @@ export interface InspectResult {
     fixedCount: number;
     /** Total findings at base (over the same files), for context. */
     baseTotalCount: number;
+    /** Pre-existing findings matched after moving to a different file. */
+    crossFileMatchCount?: number;
   };
 }
 

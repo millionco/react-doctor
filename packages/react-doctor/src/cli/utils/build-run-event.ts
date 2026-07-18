@@ -445,6 +445,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
         new: summary.totalDiagnosticCount,
         fixed: result.baselineDelta.fixedCount,
         baseTotal: result.baselineDelta.baseTotalCount,
+        crossFileMatches: result.baselineDelta.crossFileMatchCount ?? null,
         degraded: false,
       }),
     );

@@ -6,7 +6,7 @@ export const UserProfile = ({ userId }: { userId: string }) => {
   const { mutateAsync: fetchUser } = useMutation({ mutationFn: fetchUserById });
 
   useEffect(() => {
-    if (handled.current === (true as const)) return;
+    if ((handled.current as boolean) === (true as const)) return;
     handled.current = true as boolean;
     void fetchUser(userId).then((response) => renderUser(response.user));
   }, [fetchUser, userId]);

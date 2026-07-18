@@ -522,10 +522,10 @@ const getPositiveRefGuardSymbol = (
   if (!isNodeOfType(candidate, "BinaryExpression") || !["==", "==="].includes(candidate.operator)) {
     return null;
   }
-  const leftSymbol = getRefCurrentSymbol(candidate.left, context);
-  const rightSymbol = getRefCurrentSymbol(candidate.right, context);
   const leftValue = stripParenExpression(candidate.left);
   const rightValue = stripParenExpression(candidate.right);
+  const leftSymbol = getRefCurrentSymbol(leftValue, context);
+  const rightSymbol = getRefCurrentSymbol(rightValue, context);
   if (leftSymbol && isNodeOfType(rightValue, "Literal") && rightValue.value === true) {
     return leftSymbol;
   }
@@ -562,7 +562,7 @@ const getAssignedTrueRefSymbol = (
   ) {
     return null;
   }
-  return getRefCurrentSymbol(expression.left, context);
+  return getRefCurrentSymbol(stripParenExpression(expression.left), context);
 };
 
 const refSymbolHasResettingWrite = (refSymbol: SymbolDescriptor, context: RuleContext): boolean =>
@@ -657,7 +657,8 @@ const testPositivelyMatchesStatusTarget = (
   }
   const leftMatches = expressionMatchesStatusTarget(candidate.left, target, context);
   const rightMatches = expressionMatchesStatusTarget(candidate.right, target, context);
-  const other = leftMatches ? candidate.right : rightMatches ? candidate.left : null;
+  const otherOperand = leftMatches ? candidate.right : rightMatches ? candidate.left : null;
+  const other = otherOperand ? stripParenExpression(otherOperand) : null;
   if (!other) return false;
   if (target.sourcePropertyName === "data") {
     return ["!=", "!=="].includes(candidate.operator) && isNullishExpression(other);

@@ -446,13 +446,16 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("accepts TypeScript-wrapped run-once latch booleans", () => {
+  it.each([
+    ["wrapped ref on the left", `(handled.current as boolean) === (true as const)`],
+    ["wrapped ref on the right", `(true as const) === (handled.current as boolean)`],
+  ])("accepts TypeScript-wrapped run-once latch booleans with %s", (_caseName, guard) => {
     const result = runMutationReadRule(
       `import { useRef } from "react";
        const { mutateAsync: fetchUser } = useMutation(options);
        const handled = useRef(false);
        useEffect(() => {
-         if (handled.current === (true as const)) return;
+         if (${guard}) return;
          handled.current = true as boolean;
          void fetchUser(params).then((response) => setUser(response.user));
        }, [params]);`,
@@ -653,6 +656,36 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(successAlias.diagnostics).toHaveLength(0);
     expect(statusAlias.diagnostics).toHaveLength(0);
     expect(dataAlias.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["isSuccess", `(isSuccess as boolean) === (true as const)`],
+    ["status", `(status as string) === ("success" as const)`],
+  ])("accepts a TypeScript-wrapped %s status guard", (_guardName, guardExpression) => {
+    const result = runMutationReadRule(
+      `const { mutateAsync: fetchUser, data, isSuccess, status } = useMutation(options);
+       useEffect(() => {
+         if (${guardExpression}) return;
+         fetchUser(params);
+       }, [isSuccess, params, status]);
+       const user = data?.user;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["isSuccess", `(isSuccess as boolean) === (false as const)`],
+    ["status", `(status as string) === ("pending" as const)`],
+  ])("does not accept a mismatched wrapped %s status guard", (_guardName, guardExpression) => {
+    const result = runMutationReadRule(
+      `const { mutateAsync: fetchUser, data, isSuccess, status } = useMutation(options);
+       useEffect(() => {
+         if (${guardExpression}) return;
+         fetchUser(params);
+       }, [isSuccess, params, status]);
+       const user = data?.user;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("accepts a dominating void-zero data guard", () => {

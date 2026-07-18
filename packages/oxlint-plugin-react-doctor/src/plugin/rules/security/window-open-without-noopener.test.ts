@@ -328,7 +328,7 @@ describe("window-open-without-noopener", () => {
        window.open(buildDestination(window.origin, userControlledSuffix), '_blank');`,
     ]) {
       const result = runRule(windowOpenWithoutNoopener, code);
-      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics, code).toHaveLength(1);
     }
   });
 
@@ -2054,6 +2054,210 @@ window.open(deltaPage, '_blank');
        links.forEach((item) => window.open(item.href));`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects nested writes before destructured config iteration", () => {
+    for (const code of [
+      `const links = [{ href: "/safe" }];
+       links[0].href = userControlledUrl;
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       links[index].href = userControlledUrl;
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       const linksAlias = links;
+       linksAlias[0].href = userControlledUrl;
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       const entry = links[0];
+       entry.href = userControlledUrl;
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       const entry = links[0];
+       const entryAlias = entry;
+       entryAlias.href = userControlledUrl;
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       const [entry] = links;
+       entry.href = userControlledUrl;
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       const linksAlias = links;
+       linksAlias.push({ href: userControlledUrl });
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       links[0] = { href: userControlledUrl };
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       const linksAlias = links;
+       linksAlias[0] = { href: userControlledUrl };
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       const linksAlias = links;
+       linksAlias.splice(0, 1, { href: userControlledUrl });
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       Object.assign(links[0], { href: userControlledUrl });
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       Object.defineProperty(links[0], "href", { value: userControlledUrl });
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       Reflect.set(links[0], "href", userControlledUrl);
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }, { href: "/other" }];
+       const [, ...remainingLinks] = links;
+       remainingLinks[0].href = userControlledUrl;
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       const alias1 = links;
+       const alias2 = alias1;
+       const alias3 = alias2;
+       const alias4 = alias3;
+       const alias5 = alias4;
+       const alias6 = alias5;
+       const alias7 = alias6;
+       const alias8 = alias7;
+       const alias9 = alias8;
+       const alias10 = alias9;
+       alias10[0].href = userControlledUrl;
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach(({ href }, index) => {
+         window.open(href);
+         if (index === 0) links[1].href = userControlledUrl;
+       });`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach((_, index) => {
+         const currentEntry = links[index];
+         currentEntry.href = userControlledUrl;
+         window.open(currentEntry.href);
+       });`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach((_, index) => {
+         const currentEntry = links[index];
+         window.open(currentEntry.href);
+         links[index + 1].href = userControlledUrl;
+       });`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach((_, index) => {
+         const currentEntry = links[index];
+         const openCurrentEntry = () => window.open(currentEntry.href);
+         currentEntry.href = userControlledUrl;
+         openCurrentEntry();
+       });`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach((_, index) => {
+         const currentEntry = links[index];
+         const openCurrentEntry = () => window.open(currentEntry.href);
+         const openCurrentEntryAlias = openCurrentEntry;
+         currentEntry.href = userControlledUrl;
+         openCurrentEntryAlias();
+       });`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach((_, index) => {
+         const currentEntry = links[index];
+         const openCurrentEntry = () => { window.open(currentEntry.href); };
+         consume(openCurrentEntry);
+         currentEntry.href = userControlledUrl;
+       });`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(1);
+    }
+  });
+
+  it("keeps destructured config iteration safe from irrelevant or later writes", () => {
+    for (const code of [
+      `const links = [{ href: "/safe", label: "Safe" }];
+       links[0].label = userControlledLabel;
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       links.forEach(({ href }) => window.open(href));
+       links[0].href = userControlledUrl;`,
+      `const links = [{ href: "/safe" }];
+       let linksAlias = links;
+       linksAlias = [{ href: "/other" }];
+       linksAlias[0].href = userControlledUrl;
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach(({ href }, index) => {
+         const currentEntry = links[index];
+         window.open(href);
+         currentEntry.href = userControlledUrl;
+       });`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach((_, index) => {
+         const currentEntry = links[index];
+         window.open(currentEntry.href);
+         currentEntry.href = userControlledUrl;
+       });`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach(({ href }, index) => {
+         window.open(href);
+         links[index] = { href: userControlledUrl };
+       });`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach((_, index) => {
+         const currentEntry = links[index];
+         const currentEntryAlias = currentEntry;
+         window.open(currentEntryAlias.href);
+       });`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach((_, index) => {
+         const currentEntry = links[index];
+         const openCurrentEntry = () => window.open(currentEntry.href);
+         openCurrentEntry();
+         currentEntry.href = userControlledUrl;
+       });`,
+      `const links = [{ href: "/one" }, { href: "/two" }];
+       links.forEach((_, index) => {
+         const currentEntry = links[index];
+         const openCurrentEntry = () => window.open(currentEntry.href);
+         openCurrentEntry();
+         openCurrentEntry();
+         currentEntry.href = userControlledUrl;
+       });`,
+      `const links = [{ href: "/safe", label: "Safe" }];
+       Object.assign(links[0], { label: userControlledLabel });
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe", label: "Safe" }];
+       Object.defineProperty(links[0], "label", { value: userControlledLabel });
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe", label: "Safe" }];
+       Reflect.set(links[0], "label", userControlledLabel);
+       links.forEach(({ href }) => window.open(href));`,
+      `const links = [{ href: "/safe" }];
+       links.forEach(({ href }) => window.open(href));
+       Object.assign(links[0], { href: userControlledUrl });`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(0);
+    }
+  });
+
+  it("fails closed when indexed-entry opener helpers escape exact direct calls", () => {
+    for (const code of [
+      `const links=[{href:"/a"}];links.forEach((_,i)=>{const e=links[i];e.href=user;(()=>window.open(e.href))();});`,
+      `const links=[{href:"/a"}];links.forEach((_,i)=>{const e=links[i];const f=()=>window.open(e.href);const handlers=[f];e.href=user;consume(handlers);});`,
+      `const links=[{href:"/a"}];links.forEach((_,i)=>{const e=links[i];const f=()=>window.open(e.href);const handlers={f};e.href=user;consume(handlers);});`,
+      `const links=[{href:"/a"}];links.forEach((_,i)=>{const e=links[i];const f=()=>window.open(e.href);return f;});`,
+      `const links=[{href:"/a"}];links.forEach((_,i)=>{const e=links[i];const f=()=>window.open(e.href);setTimeout(f,0);e.href=user;});`,
+      `const links=[{href:"/a"}];links.forEach((_,i)=>{const e=links[i];const f=()=>window.open(e.href);e.href=user;setTimeout(f,0);});`,
+      `const links=[{href:"/a"}];links.forEach((_,i)=>{const e=links[i];const f=()=>window.open(e.href);let a=f;e.href=user;a();});`,
+      `const links=[{href:"/a"}];links.forEach((_,i)=>{const e=links[i];const f=()=>window.open(e.href);const bound=f.bind(null);e.href=user;bound();});`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(1);
+    }
+  });
+
+  it("trusts an indexed-entry IIFE that runs before the current entry changes", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const links=[{href:"/a"}];links.forEach((_,i)=>{const e=links[i];(()=>window.open(e.href))();e.href=user;});`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("rejects leading template bases that can end in a slash", () => {

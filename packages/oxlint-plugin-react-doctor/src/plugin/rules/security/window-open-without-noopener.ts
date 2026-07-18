@@ -5,6 +5,8 @@ import {
   type SymbolDescriptor,
 } from "../../semantic/scope-analysis.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -13,6 +15,7 @@ import { isSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
@@ -361,44 +364,284 @@ const resolveIteratedConstArrayLiteral = (
   return null;
 };
 
+const isRepeatedArrayIterationCallback = (functionNode: EsTreeNode): boolean => {
+  const callExpression = functionNode.parent;
+  if (
+    !callExpression ||
+    !isNodeOfType(callExpression, "CallExpression") ||
+    !(callExpression.arguments ?? []).includes(functionNode as never) ||
+    !isNodeOfType(callExpression.callee, "MemberExpression")
+  ) {
+    return false;
+  }
+  const methodName = getStaticPropertyName(callExpression.callee);
+  return methodName === "map" || methodName === "forEach";
+};
+
+const collectDirectLocalFunctionCalls = (
+  functionNode: EsTreeNode,
+): Array<EsTreeNodeOfType<"CallExpression">> | null => {
+  const nameIdentifier = resolveLocalFunctionNameIdentifier(functionNode);
+  const scopes = currentScopes;
+  const symbol = nameIdentifier ? scopes?.symbolFor(nameIdentifier) : null;
+  if (!scopes || !symbol) return null;
+  const calls: Array<EsTreeNodeOfType<"CallExpression">> = [];
+  for (const aliasSymbol of collectConstAliasSymbols(symbol, scopes)) {
+    for (const reference of aliasSymbol.references) {
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const parent = referenceRoot.parent;
+      if (
+        parent &&
+        isNodeOfType(parent, "VariableDeclarator") &&
+        parent.init === referenceRoot &&
+        isNodeOfType(parent.id, "Identifier") &&
+        scopes.symbolFor(parent.id)?.kind === "const"
+      ) {
+        continue;
+      }
+      if (!parent || !isNodeOfType(parent, "CallExpression") || parent.callee !== referenceRoot) {
+        return [];
+      }
+      calls.push(parent);
+    }
+  }
+  return calls.length > 0 ? calls : null;
+};
+
+const mutationMayAffectConfigRead = (
+  mutationNode: EsTreeNode,
+  referenceNode: EsTreeNode,
+  isCurrentIterationElement = false,
+): boolean => {
+  const referenceFunction = findEnclosingFunction(referenceNode);
+  const mutationFunction = findEnclosingFunction(mutationNode);
+  if (
+    referenceFunction &&
+    mutationFunction !== referenceFunction &&
+    resolveLocalFunctionNameIdentifier(referenceFunction)
+  ) {
+    const invocationReferences = collectDirectLocalFunctionCalls(referenceFunction);
+    if (!invocationReferences || invocationReferences.length === 0) return true;
+    return invocationReferences.some((invocationReference) =>
+      mutationMayAffectConfigRead(
+        mutationNode,
+        currentLocalFunctionInvocationReference ?? invocationReference,
+        isCurrentIterationElement,
+      ),
+    );
+  }
+  if (mutationNode.range == null || referenceNode.range == null) return true;
+  if (mutationNode.range[0] < referenceNode.range[0]) return true;
+  return Boolean(
+    !isCurrentIterationElement &&
+    referenceFunction &&
+    mutationFunction === referenceFunction &&
+    isRepeatedArrayIterationCallback(referenceFunction),
+  );
+};
+
+const isCurrentIterationIndex = (indexNode: EsTreeNode, referenceNode: EsTreeNode): boolean => {
+  const lexicalReferenceFunction = findEnclosingFunction(referenceNode);
+  const directCalls = lexicalReferenceFunction
+    ? collectDirectLocalFunctionCalls(lexicalReferenceFunction)
+    : null;
+  const referenceFunction = findEnclosingFunction(
+    currentLocalFunctionInvocationReference ?? directCalls?.[0] ?? referenceNode,
+  );
+  if (!referenceFunction || !isRepeatedArrayIterationCallback(referenceFunction)) return false;
+  const indexParameter =
+    isNodeOfType(referenceFunction, "FunctionDeclaration") ||
+    isNodeOfType(referenceFunction, "FunctionExpression") ||
+    isNodeOfType(referenceFunction, "ArrowFunctionExpression")
+      ? referenceFunction.params?.[1]
+      : null;
+  const indexIdentifier = stripParenExpression(indexNode);
+  return Boolean(
+    indexParameter &&
+    isNodeOfType(indexParameter, "Identifier") &&
+    isNodeOfType(indexIdentifier, "Identifier") &&
+    currentScopes?.symbolFor(indexParameter) === currentScopes?.symbolFor(indexIdentifier),
+  );
+};
+
+const isMutationTarget = (targetNode: EsTreeNode): boolean => {
+  const targetRoot = findTransparentExpressionRoot(targetNode);
+  const parent = targetRoot.parent;
+  return Boolean(
+    parent &&
+    ((isNodeOfType(parent, "AssignmentExpression") && parent.left === targetRoot) ||
+      (isNodeOfType(parent, "UpdateExpression") && parent.argument === targetRoot) ||
+      (isNodeOfType(parent, "UnaryExpression") &&
+        parent.operator === "delete" &&
+        parent.argument === targetRoot)),
+  );
+};
+
+const collectPatternSymbols = (
+  pattern: EsTreeNode,
+  scopes: ScopeAnalysis,
+  symbols: Set<SymbolDescriptor>,
+): void => {
+  if (isNodeOfType(pattern, "Identifier")) {
+    const symbol = scopes.symbolFor(pattern);
+    if (symbol?.kind === "const") symbols.add(symbol);
+    return;
+  }
+  if (isNodeOfType(pattern, "AssignmentPattern")) {
+    collectPatternSymbols(pattern.left as EsTreeNode, scopes, symbols);
+    return;
+  }
+  if (isNodeOfType(pattern, "ArrayPattern")) {
+    for (const element of pattern.elements ?? []) {
+      if (element) collectPatternSymbols(element as EsTreeNode, scopes, symbols);
+    }
+  }
+};
+
+const expressionHasPropertyMutationBefore = (
+  expression: EsTreeNode,
+  propertyName: string,
+  referenceNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  isCurrentIterationElement: boolean,
+): boolean => {
+  const expressionRoot = findTransparentExpressionRoot(expression);
+  const parent = expressionRoot.parent;
+  if (
+    parent &&
+    isNodeOfType(parent, "MemberExpression") &&
+    parent.object === expressionRoot &&
+    getStaticPropertyName(parent) === propertyName &&
+    isMutationTarget(parent) &&
+    mutationMayAffectConfigRead(parent, referenceNode, isCurrentIterationElement)
+  ) {
+    return true;
+  }
+  return Boolean(
+    parent &&
+    isNodeOfType(parent, "CallExpression") &&
+    parent.arguments?.[0] === expressionRoot &&
+    globalObjectMutationMayWriteProperty(parent, propertyName, scopes) &&
+    mutationMayAffectConfigRead(parent, referenceNode, isCurrentIterationElement),
+  );
+};
+
+const symbolHasPropertyMutationBefore = (
+  symbol: SymbolDescriptor,
+  propertyName: string,
+  referenceNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  isCurrentIterationElement: boolean,
+): boolean =>
+  collectConstAliasSymbols(symbol, scopes).some((aliasSymbol) =>
+    aliasSymbol.references.some((reference) =>
+      expressionHasPropertyMutationBefore(
+        reference.identifier,
+        propertyName,
+        referenceNode,
+        scopes,
+        isCurrentIterationElement,
+      ),
+    ),
+  );
+
 const hasNestedIndexedPropertyWriteBefore = (
   arrayIdentifier: EsTreeNodeOfType<"Identifier">,
   propertyName: string,
   referenceNode: EsTreeNode,
 ): boolean => {
-  const arraySymbol = currentScopes?.symbolFor(arrayIdentifier);
-  if (!arraySymbol) return false;
-  return arraySymbol.references.some((reference) => {
-    if (reference.identifier.range[0] >= referenceNode.range[0]) return false;
-    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-    const indexedMember = referenceRoot.parent;
-    if (
-      !indexedMember ||
-      !isNodeOfType(indexedMember, "MemberExpression") ||
-      indexedMember.object !== referenceRoot ||
-      !indexedMember.computed
-    ) {
-      return false;
+  const scopes = currentScopes;
+  const arraySymbol = scopes?.symbolFor(arrayIdentifier);
+  if (!scopes || !arraySymbol) return false;
+  const elementSymbols = new Map<SymbolDescriptor, boolean>();
+  const arraySymbols = new Set(collectConstAliasSymbols(arraySymbol, scopes));
+
+  for (const aliasSymbol of arraySymbols) {
+    for (const reference of aliasSymbol.references) {
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const declarator = referenceRoot.parent;
+      if (
+        declarator &&
+        isNodeOfType(declarator, "VariableDeclarator") &&
+        declarator.init === referenceRoot &&
+        isNodeOfType(declarator.id, "ArrayPattern")
+      ) {
+        for (const element of declarator.id.elements ?? []) {
+          if (!element) continue;
+          if (isNodeOfType(element, "RestElement")) {
+            const restArgument = element.argument as EsTreeNode;
+            if (isNodeOfType(restArgument, "Identifier")) {
+              const restSymbol = scopes.symbolFor(restArgument);
+              if (restSymbol?.kind === "const") {
+                for (const restAliasSymbol of collectConstAliasSymbols(restSymbol, scopes)) {
+                  arraySymbols.add(restAliasSymbol);
+                }
+              }
+            }
+            continue;
+          }
+          const destructuredSymbols = new Set<SymbolDescriptor>();
+          collectPatternSymbols(element as EsTreeNode, scopes, destructuredSymbols);
+          for (const destructuredSymbol of destructuredSymbols) {
+            elementSymbols.set(destructuredSymbol, false);
+          }
+        }
+      }
+      const indexedMember = referenceRoot.parent;
+      if (
+        !indexedMember ||
+        !isNodeOfType(indexedMember, "MemberExpression") ||
+        indexedMember.object !== referenceRoot ||
+        !indexedMember.computed
+      ) {
+        continue;
+      }
+      const indexedRoot = findTransparentExpressionRoot(indexedMember);
+      const isCurrentIterationElement = isCurrentIterationIndex(
+        indexedMember.property as EsTreeNode,
+        referenceNode,
+      );
+      const indexedParent = indexedRoot.parent;
+      if (
+        indexedParent &&
+        isNodeOfType(indexedParent, "VariableDeclarator") &&
+        indexedParent.init === indexedRoot &&
+        isNodeOfType(indexedParent.id, "Identifier")
+      ) {
+        const elementSymbol = scopes.symbolFor(indexedParent.id);
+        if (elementSymbol?.kind === "const") {
+          elementSymbols.set(elementSymbol, isCurrentIterationElement);
+        }
+      }
+      if (
+        isMutationTarget(indexedMember) &&
+        mutationMayAffectConfigRead(indexedMember, referenceNode, isCurrentIterationElement)
+      ) {
+        return true;
+      }
+      if (
+        expressionHasPropertyMutationBefore(
+          indexedMember,
+          propertyName,
+          referenceNode,
+          scopes,
+          isCurrentIterationElement,
+        )
+      ) {
+        return true;
+      }
     }
-    const propertyMember = indexedMember.parent;
-    if (
-      !propertyMember ||
-      !isNodeOfType(propertyMember, "MemberExpression") ||
-      propertyMember.object !== indexedMember ||
-      getStaticPropertyName(propertyMember) !== propertyName
-    ) {
-      return false;
-    }
-    const mutation = findTransparentExpressionRoot(propertyMember).parent;
-    return Boolean(
-      mutation &&
-      ((isNodeOfType(mutation, "AssignmentExpression") && mutation.left === propertyMember) ||
-        (isNodeOfType(mutation, "UpdateExpression") && mutation.argument === propertyMember) ||
-        (isNodeOfType(mutation, "UnaryExpression") &&
-          mutation.operator === "delete" &&
-          mutation.argument === propertyMember)),
-    );
-  });
+  }
+
+  return [...elementSymbols].some(([elementSymbol, isCurrentIterationElement]) =>
+    symbolHasPropertyMutationBefore(
+      elementSymbol,
+      propertyName,
+      referenceNode,
+      scopes,
+      isCurrentIterationElement,
+    ),
+  );
 };
 
 const ARRAY_MUTATING_METHOD_NAMES = new Set([
@@ -417,40 +660,68 @@ const hasArrayMutationBefore = (
   arrayIdentifier: EsTreeNodeOfType<"Identifier">,
   referenceNode: EsTreeNode,
 ): boolean => {
-  const arraySymbol = currentScopes?.symbolFor(arrayIdentifier);
-  if (!arraySymbol) return false;
-  return arraySymbol.references.some((reference) => {
-    if (reference.identifier.range[0] >= referenceNode.range[0]) return false;
-    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-    const memberExpression = referenceRoot.parent;
-    if (
-      !memberExpression ||
-      !isNodeOfType(memberExpression, "MemberExpression") ||
-      memberExpression.object !== referenceRoot
-    ) {
-      return false;
-    }
-    const memberRoot = findTransparentExpressionRoot(memberExpression);
-    const memberParent = memberRoot.parent;
-    const methodName = getStaticPropertyName(memberExpression);
-    if (
-      methodName &&
-      ARRAY_MUTATING_METHOD_NAMES.has(methodName) &&
-      memberParent &&
-      isNodeOfType(memberParent, "CallExpression") &&
-      memberParent.callee === memberRoot
-    ) {
-      return true;
-    }
-    return Boolean(
-      memberParent &&
-      ((isNodeOfType(memberParent, "AssignmentExpression") && memberParent.left === memberRoot) ||
-        (isNodeOfType(memberParent, "UpdateExpression") && memberParent.argument === memberRoot) ||
-        (isNodeOfType(memberParent, "UnaryExpression") &&
-          memberParent.operator === "delete" &&
-          memberParent.argument === memberRoot)),
-    );
-  });
+  const scopes = currentScopes;
+  const arraySymbol = scopes?.symbolFor(arrayIdentifier);
+  if (!scopes || !arraySymbol) return false;
+  return collectConstAliasSymbols(arraySymbol, scopes).some((aliasSymbol) =>
+    aliasSymbol.references.some((reference) => {
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const memberExpression = referenceRoot.parent;
+      if (
+        !memberExpression ||
+        !isNodeOfType(memberExpression, "MemberExpression") ||
+        memberExpression.object !== referenceRoot
+      ) {
+        return false;
+      }
+      const memberRoot = findTransparentExpressionRoot(memberExpression);
+      const memberParent = memberRoot.parent;
+      const isCurrentIterationElement = Boolean(
+        memberExpression.computed &&
+        isCurrentIterationIndex(memberExpression.property as EsTreeNode, referenceNode),
+      );
+      if (
+        !memberParent ||
+        !mutationMayAffectConfigRead(memberParent, referenceNode, isCurrentIterationElement)
+      ) {
+        return false;
+      }
+      const methodName = getStaticPropertyName(memberExpression);
+      if (
+        methodName &&
+        ARRAY_MUTATING_METHOD_NAMES.has(methodName) &&
+        isNodeOfType(memberParent, "CallExpression") &&
+        memberParent.callee === memberRoot
+      ) {
+        return true;
+      }
+      return isMutationTarget(memberExpression);
+    }),
+  );
+};
+
+const hasArrayMethodWriteBefore = (
+  arrayIdentifier: EsTreeNodeOfType<"Identifier">,
+  methodName: string,
+  referenceNode: EsTreeNode,
+): boolean => {
+  const scopes = currentScopes;
+  const arraySymbol = scopes?.symbolFor(arrayIdentifier);
+  if (!scopes || !arraySymbol) return true;
+  return collectConstAliasSymbols(arraySymbol, scopes).some((aliasSymbol) =>
+    aliasSymbol.references.some((reference) => {
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const memberExpression = referenceRoot.parent;
+      return Boolean(
+        memberExpression &&
+        isNodeOfType(memberExpression, "MemberExpression") &&
+        memberExpression.object === referenceRoot &&
+        getStaticPropertyName(memberExpression) === methodName &&
+        isMutationTarget(memberExpression) &&
+        mutationMayAffectConfigRead(memberExpression, referenceNode),
+      );
+    }),
+  );
 };
 
 // `EXTERNAL_LINKS.docs` — property read off a same-file const object of
@@ -466,15 +737,43 @@ const isTrustedConstConfigMember = (
   const receiver = stripParenExpression(memberNode.object as EsTreeNode);
   if (!isNodeOfType(receiver, "Identifier")) return false;
   if (!bindingIsUnmodifiedBeforeCurrentOpen(receiver)) return false;
-  if (hasArrayMutationBefore(receiver, memberNode)) return false;
-  if (
-    currentScopes &&
-    hasPossibleStaticPropertyWriteBefore(receiver, propertyName, memberNode, currentScopes)
-  ) {
-    return false;
-  }
 
   const constInitializer = resolveConstInitializer(receiver);
+  const scopes = currentScopes;
+  const elementSymbol = scopes ? resolveConstIdentifierAlias(receiver, scopes) : null;
+  const elementInitializer = elementSymbol?.initializer
+    ? stripParenExpression(elementSymbol.initializer)
+    : null;
+  if (
+    scopes &&
+    elementInitializer &&
+    isNodeOfType(elementInitializer, "MemberExpression") &&
+    elementInitializer.computed &&
+    isNodeOfType(elementInitializer.object, "Identifier") &&
+    isCurrentIterationIndex(elementInitializer.property as EsTreeNode, memberNode)
+  ) {
+    const arraySymbol = resolveConstIdentifierAlias(elementInitializer.object, scopes);
+    const arrayIdentifier = arraySymbol?.bindingIdentifier;
+    const arrayInitializer = arraySymbol?.initializer
+      ? stripParenExpression(arraySymbol.initializer)
+      : null;
+    if (
+      arrayIdentifier &&
+      isNodeOfType(arrayIdentifier, "Identifier") &&
+      arrayInitializer &&
+      isNodeOfType(arrayInitializer, "ArrayExpression") &&
+      bindingIsUnmodifiedBeforeCurrentOpen(arrayIdentifier) &&
+      !hasNestedIndexedPropertyWriteBefore(arrayIdentifier, propertyName, memberNode) &&
+      !hasArrayMutationBefore(arrayIdentifier, memberNode)
+    ) {
+      return everyArrayElementSuppliesTrustedProperty(arrayInitializer, propertyName, depth);
+    }
+  }
+
+  if (hasArrayMutationBefore(receiver, memberNode)) return false;
+  if (scopes && hasPossibleStaticPropertyWriteBefore(receiver, propertyName, memberNode, scopes)) {
+    return false;
+  }
   if (constInitializer && isNodeOfType(constInitializer, "ObjectExpression")) {
     return objectLiteralSuppliesTrustedProperty(constInitializer, propertyName, depth);
   }
@@ -518,31 +817,31 @@ const isTrustedConstConfigMember = (
 const isTrustedDestructuredIterationMember = (
   identifier: EsTreeNodeOfType<"Identifier">,
   depth: number,
-): boolean => {
-  if (!bindingIsUnmodifiedBeforeCurrentOpen(identifier)) return false;
+): boolean | null => {
+  if (!bindingIsUnmodifiedBeforeCurrentOpen(identifier)) return null;
   const binding = findVariableInitializer(identifier, identifier.name);
-  if (!binding) return false;
+  if (!binding) return null;
   let propertyNode = binding.bindingIdentifier.parent;
   if (propertyNode && isNodeOfType(propertyNode, "AssignmentPattern")) {
     propertyNode = propertyNode.parent;
   }
   if (!propertyNode || !isNodeOfType(propertyNode, "Property") || propertyNode.computed) {
-    return false;
+    return null;
   }
-  if (!isNodeOfType(propertyNode.key, "Identifier")) return false;
+  if (!isNodeOfType(propertyNode.key, "Identifier")) return null;
   const propertyName = propertyNode.key.name;
   const objectPattern = propertyNode.parent;
-  if (!objectPattern || !isNodeOfType(objectPattern, "ObjectPattern")) return false;
+  if (!objectPattern || !isNodeOfType(objectPattern, "ObjectPattern")) return null;
   const callbackFunction = objectPattern.parent;
   if (
     !callbackFunction ||
     !isFunctionLike(callbackFunction) ||
     !(callbackFunction.params ?? []).includes(objectPattern as never)
   ) {
-    return false;
+    return null;
   }
   const arrayLiteral = resolveIteratedConstArrayLiteral(callbackFunction);
-  if (!arrayLiteral) return false;
+  if (!arrayLiteral) return null;
   const iterationCall = callbackFunction.parent;
   const iterationCallee =
     iterationCall && isNodeOfType(iterationCall, "CallExpression") ? iterationCall.callee : null;
@@ -553,7 +852,8 @@ const isTrustedDestructuredIterationMember = (
   if (
     iteratedReceiver &&
     isNodeOfType(iteratedReceiver, "Identifier") &&
-    hasArrayMutationBefore(iteratedReceiver, identifier)
+    (hasNestedIndexedPropertyWriteBefore(iteratedReceiver, propertyName, identifier) ||
+      hasArrayMutationBefore(iteratedReceiver, identifier))
   ) {
     return false;
   }
@@ -1761,6 +2061,80 @@ const isGlobalObjectMutationCall = (
   );
 };
 
+const staticMutationPropertyName = (node: EsTreeNode | undefined): string | null => {
+  if (!node) return null;
+  const unwrappedNode = stripParenExpression(node);
+  if (isStringLiteral(unwrappedNode)) return unwrappedNode.value;
+  if (
+    isNodeOfType(unwrappedNode, "TemplateLiteral") &&
+    (unwrappedNode.expressions?.length ?? 0) === 0
+  ) {
+    return unwrappedNode.quasis?.[0]?.value?.cooked ?? null;
+  }
+  return null;
+};
+
+const objectExpressionMayWriteProperty = (
+  node: EsTreeNode | undefined,
+  propertyName: string,
+): boolean => {
+  if (!node) return true;
+  const unwrappedNode = stripParenExpression(node);
+  if (!isNodeOfType(unwrappedNode, "ObjectExpression")) return true;
+  return (unwrappedNode.properties ?? []).some((property) => {
+    if (!isNodeOfType(property, "Property")) return true;
+    const staticPropertyName = getStaticPropertyKeyName(property, {
+      allowComputedString: true,
+    });
+    return staticPropertyName === null || staticPropertyName === propertyName;
+  });
+};
+
+const globalObjectMutationMayWriteProperty = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  propertyName: string,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const resolvesObjectMethod = (methodName: string): boolean =>
+    calleeResolvesToGlobalMutationMethod(
+      callExpression.callee as EsTreeNode,
+      "Object",
+      new Set([methodName]),
+      scopes,
+      0,
+    );
+  const resolvesReflectMethod = (methodName: string): boolean =>
+    calleeResolvesToGlobalMutationMethod(
+      callExpression.callee as EsTreeNode,
+      "Reflect",
+      new Set([methodName]),
+      scopes,
+      0,
+    );
+  if (resolvesObjectMethod("assign")) {
+    return (callExpression.arguments ?? [])
+      .slice(1)
+      .some((argument) => objectExpressionMayWriteProperty(argument as EsTreeNode, propertyName));
+  }
+  if (resolvesObjectMethod("defineProperties")) {
+    return objectExpressionMayWriteProperty(
+      callExpression.arguments?.[1] as EsTreeNode | undefined,
+      propertyName,
+    );
+  }
+  if (
+    resolvesObjectMethod("defineProperty") ||
+    resolvesReflectMethod("defineProperty") ||
+    resolvesReflectMethod("set")
+  ) {
+    const mutationPropertyName = staticMutationPropertyName(
+      callExpression.arguments?.[1] as EsTreeNode | undefined,
+    );
+    return mutationPropertyName === null || mutationPropertyName === propertyName;
+  }
+  return resolvesObjectMethod("setPrototypeOf") || resolvesReflectMethod("setPrototypeOf");
+};
+
 const globalNamespaceBindingIsUnmodifiedBefore = (
   namespaceName: string,
   referenceNode: EsTreeNode,
@@ -2111,8 +2485,12 @@ const isTrustedDestination = (
     if (isLetAssignedOnlyTrustedLiterals(urlArgument, depth + 1)) return true;
     if (isTrustedLocalComponentPropLiteral(urlArgument, depth + 1)) return true;
     if (isTrustedUseStateUrlBinding(urlArgument, depth + 1)) return true;
+    const destructuredIterationVerdict = isTrustedDestructuredIterationMember(
+      urlArgument,
+      depth + 1,
+    );
+    if (destructuredIterationVerdict != null) return destructuredIterationVerdict;
     if (isTrustedLocalWrapperParam(urlArgument, depth + 1)) return true;
-    if (isTrustedDestructuredIterationMember(urlArgument, depth + 1)) return true;
     return isRouterCoNavigatedIdentifier(urlArgument);
   }
   if (isNodeOfType(urlArgument, "ChainExpression")) {
@@ -2313,8 +2691,7 @@ const isProvenBuiltInArrayReceiver = (
   scopes: ScopeAnalysis,
 ): boolean => {
   if (!bindingIsUnmodifiedBefore(receiver, referenceNode)) return false;
-  if (hasPossibleStaticPropertyWriteBefore(receiver, "forEach", referenceNode, scopes))
-    return false;
+  if (hasArrayMethodWriteBefore(receiver, "forEach", referenceNode)) return false;
   const receiverBinding = scopes.symbolFor(receiver)?.bindingIdentifier;
   if (
     receiverBinding &&
@@ -2401,6 +2778,10 @@ const isArrowReturnDiscarded = (arrow: EsTreeNode): boolean => {
   }
   if (isNodeOfType(parent, "ExpressionStatement")) return true;
   if (isNodeOfType(parent, "CallExpression")) {
+    if (parent.callee === arrow) {
+      currentLocalFunctionInvocationReference = parent;
+      return isDiscardedWindowHandle(parent);
+    }
     if (!(parent.arguments?.some((argument) => argument === arrow) ?? false)) return false;
     return callDiscardsCallbackReturn(parent);
   }
@@ -2432,6 +2813,12 @@ const isArrowReturnDiscarded = (arrow: EsTreeNode): boolean => {
       createElementCall.arguments?.[1] === propsObject &&
       isProvenCreateElementCall,
     );
+  }
+  const directCalls = collectDirectLocalFunctionCalls(arrow);
+  if (directCalls?.length === 0) return true;
+  if (directCalls?.every((call) => isDiscardedWindowHandle(call))) {
+    currentLocalFunctionInvocationReference = directCalls.length === 1 ? directCalls[0] : undefined;
+    return true;
   }
   return false;
 };

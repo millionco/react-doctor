@@ -1,0 +1,25 @@
+{
+  "name": "@react-doctor/evals",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Minimal Daytona evaluation runner for React Doctor.",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "eval": "ulimit -n unlimited && tsx src/cli.ts",
+    "test": "vp test run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@daytona/sdk": "^0.196.0",
+    "p-limit": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.22.4"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  }
+}

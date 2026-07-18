@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run Parity"
+  short_description: "Compare PR diagnostics across the full corpus"
+  default_prompt: "Use $run-parity to run full-corpus parity for my current pull request."

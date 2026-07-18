@@ -1,0 +1,49 @@
+export const DEFAULT_REACT_DOCTOR_REPOSITORY = "https://github.com/millionco/react-doctor.git";
+export const DEFAULT_REACT_DOCTOR_REF = "main";
+export const DEFAULT_REPOSITORIES_SOURCE = "../../../react-doctor-evals/repos.json";
+export const DEFAULT_CORPUS_CONCURRENCY = 500;
+
+export const SANDBOX_IMAGE = "node:22-bookworm";
+export const SANDBOX_CPU_CORES = 2;
+export const SANDBOX_MEMORY_GIB = 4;
+export const SANDBOX_DISK_GIB = 10;
+export const SANDBOX_AUTO_STOP_INTERVAL_MINUTES = 15;
+export const SANDBOX_CREATE_TIMEOUT_SECONDS = 600;
+export const SANDBOX_SETUP_TIMEOUT_SECONDS = 1_800;
+export const SANDBOX_SCAN_TIMEOUT_SECONDS = 900;
+export const SANDBOX_FORK_TIMEOUT_SECONDS = 600;
+export const SANDBOX_DELETE_TIMEOUT_SECONDS = 120;
+
+export const EVALUATION_SCHEMA_VERSION = 1;
+export const FAILURE_EXIT_CODE = 1;
+export const PROGRESS_INTERVAL_PROJECTS = 100;
+export const MILLISECONDS_PER_SECOND = 1_000;
+export const PERCENT_MULTIPLIER = 100;
+export const SUMMARY_DECIMAL_PLACES = 1;
+
+export const SETUP_REACT_DOCTOR_COMMAND = `set -eu
+mkdir -p /workspace/react-doctor
+git -C /workspace/react-doctor init -q
+git -C /workspace/react-doctor remote add origin "$REACT_DOCTOR_REPOSITORY"
+git -C /workspace/react-doctor fetch -q --depth 1 origin "$REACT_DOCTOR_REF"
+git -C /workspace/react-doctor checkout -q --detach FETCH_HEAD
+cd /workspace/react-doctor
+npx --yes --package @antfu/ni ni --frozen
+./node_modules/.bin/turbo run build --filter=react-doctor`;
+
+export const SETUP_TARGET_REPOSITORY_COMMAND = `set -eu
+mkdir -p /workspace/target
+git -C /workspace/target init -q
+git -C /workspace/target remote add origin "$TARGET_REPOSITORY"
+git -C /workspace/target fetch -q --depth 1 origin "$TARGET_REF"
+git -C /workspace/target checkout -q --detach FETCH_HEAD`;
+
+export const SCAN_COMMAND = `node /workspace/react-doctor/packages/react-doctor/bin/react-doctor.js \
+  --json \
+  --offline \
+  --diff false \
+  --no-parallel \
+  --no-dead-code \
+  --no-telemetry \
+  --no-score \
+  "/workspace/target/$TARGET_ROOT_DIRECTORY"`;

@@ -3,9 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseEvaluationArguments } from "../src/parse-evaluation-arguments.js";
 
 describe("parseEvaluationArguments", () => {
-  it("defaults to the full corpus at 500 concurrent repositories", () => {
+  it("defaults to the selected corpus at 500 concurrent repositories", () => {
     expect(parseEvaluationArguments([])).toEqual({
-      repositoriesSources: ["../../../react-doctor-evals/repos.json", "./repositories"],
+      repositoriesSources: ["./repositories.json"],
       concurrency: 500,
       reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
       reactDoctorRef: "main",

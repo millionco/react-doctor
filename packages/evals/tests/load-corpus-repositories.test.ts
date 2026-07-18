@@ -4,6 +4,7 @@ import * as Path from "node:path";
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
+import { DEFAULT_CORPUS_REPOSITORY_COUNT } from "../src/constants.js";
 import { loadCorpusRepositories } from "../src/load-corpus-repositories.js";
 
 const temporaryDirectories: Array<string> = [];
@@ -21,6 +22,15 @@ const makeTemporaryDirectory = async (): Promise<string> => {
 };
 
 describe("loadCorpusRepositories", () => {
+  it("keeps the default corpus at the selected repository count", async () => {
+    const repositories = await loadCorpusRepositories(["./repositories.json"]);
+    const repositoryNames = new Set(
+      repositories.map((repository) => `${repository.org}/${repository.name}`.toLowerCase()),
+    );
+
+    expect(repositoryNames.size).toBe(DEFAULT_CORPUS_REPOSITORY_COUNT);
+  });
+
   it("loads and deduplicates repository lists from a directory", async () => {
     const directory = await makeTemporaryDirectory();
     await writeFile(

@@ -1,12 +1,10 @@
 export const DEFAULT_REACT_DOCTOR_REPOSITORY = "https://github.com/millionco/react-doctor.git";
 export const DEFAULT_REACT_DOCTOR_REF = "main";
-export const DEFAULT_REPOSITORIES_SOURCES: ReadonlyArray<string> = [
-  "../../../react-doctor-evals/repos.json",
-  "./repositories",
-];
+export const DEFAULT_REPOSITORIES_SOURCES: ReadonlyArray<string> = ["./repositories.json"];
 export const DEFAULT_TARGET_REPOSITORY_REF = "HEAD";
 export const DEFAULT_TARGET_ROOT_DIRECTORY = ".";
 export const REPOSITORY_SOURCE_EXTENSIONS: ReadonlyArray<string> = [".json", ".ndjson", ".txt"];
+export const DEFAULT_CORPUS_REPOSITORY_COUNT = 2_000;
 export const DEFAULT_CORPUS_CONCURRENCY = 500;
 
 export const SANDBOX_IMAGE = "node:22-bookworm";

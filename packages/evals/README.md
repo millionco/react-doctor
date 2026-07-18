@@ -1,30 +1,28 @@
 # React Doctor evals
 
-This package runs a pushed React Doctor ref across the combined React Doctor and React Bench corpus with Daytona. It builds React Doctor once, forks that seed sandbox for each repository, scans every project root, and streams versioned NDJSON results.
+Run a pushed React Doctor revision against 2,000 selected repositories with Daytona. The evaluator builds React Doctor once, forks one sandbox per repository, and writes newline-delimited JSON (NDJSON) results.
 
 Set `DAYTONA_API_KEY`, then run:
 
 ```sh
 cd packages/evals
-nr eval -- --react-doctor-ref <pushed-react-doctor-commit> > results.ndjson
+nr eval -- --react-doctor-ref <pushed_commit> > results.ndjson
 ```
 
-The default corpus combines pinned projects from the sibling `react-doctor-evals/repos.json` with the repository-mining lists copied from `react-bench-internal/pipeline/generator/data`. It currently contains 30,702 project roots across 25,469 repositories. Duplicate React Bench entries are removed, and a pinned RDE repository takes precedence over a matching default-branch entry. The default concurrency is 500 repository sandboxes.
+The default [repository corpus](./repositories.json) contains 2,000 repositories and 3,675 project roots. React Bench ranks repositories by recommended React pull requests, candidate count, issue-linked pull requests, and merged pull requests scanned. Matching React Doctor Evals entries retain their pinned revisions and monorepo roots.
 
-Pass JSON arrays, React Bench-style `owner/name` text files, result NDJSON, or directories containing `.json` and `.txt` sources. Repeat `--repositories` to combine inputs:
+The evaluator accepts corpus JSON, `owner/name` text files, prior result NDJSON, URLs, and directories. Repeat `--repositories` to combine sources:
 
 ```sh
 nr eval -- \
   --repositories ./repositories.json \
-  --repositories ./repositories \
+  --repositories ./extra-repositories.txt \
   --concurrency 10 \
-  --react-doctor-ref <pushed-react-doctor-commit>
+  --react-doctor-ref <pushed_commit>
 ```
 
-Text-list repositories start from the remote default branch. The evaluator replaces `HEAD` with the resolved commit SHA in every output record, so a baseline NDJSON file can be used directly as the candidate corpus for an exact comparison.
+Text entries use each repository's default branch. Output records replace `HEAD` with the resolved commit hash, so a baseline NDJSON file can pin the candidate run.
 
-Each stdout line has `schemaVersion`, resolved repository identity, and either `report` or `error`. Progress and the final completion-rate metric go to stderr. Every fork and the seed sandbox are deleted after the run.
+Progress and completion metrics use stderr. Results use stdout. The evaluator deletes every fork and seed sandbox after the run.
 
-The React Doctor ref must be available from `https://github.com/millionco/react-doctor.git`. Use `--react-doctor-repository` when evaluating another fork.
-
-If fewer than 95% of corpus projects complete in three consecutive full runs, lower the default concurrency.
+The React Doctor revision must exist in the configured Git repository. Use `--react-doctor-repository` for a fork.

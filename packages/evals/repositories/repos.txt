@@ -1,6 +1,0 @@
-# One repo per line. Accepts "owner/name" or a full GitHub URL.
-# Lines starting with "#" and blank lines are ignored.
-facebook/react
-vuejs/core
-https://github.com/sveltejs/svelte
-solidjs/solid

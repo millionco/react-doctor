@@ -1,47 +1,53 @@
 ---
 name: rule-writing
-description: Write React Doctor rules from a validated rule contract. Use when implementing oxlint plugin rules, planning AST/scope/control-flow detection, designing adversarial tests, adding utilities, or updating rule registration.
+description: Implement React Doctor rules from a validated contract. Use when writing oxlint rules, planning syntax or control-flow detection, designing adversarial tests, reusing syntax tree utilities, or updating rule registration.
 ---
 
-# Rule Writing
+# Write a rule
 
-Use this as stage 2 of the React Doctor rule pipeline.
+Implement the `rule-research` contract. If none exists, define a compact contract before editing.
 
-Pipeline:
+## Plan the detector
 
-1. `rule-research` defines the rule contract.
-2. `rule-writing` turns the contract into tests and implementation.
-3. `rule-validate` verifies noise, correctness, PR copy, and review feedback.
-4. `run-parity` compares the finished PR against its base across the full corpus.
+State the diagnostic condition, required syntax and bindings, unsupported cases, and adversarial tests. Keep this plan short when the user already requested implementation.
 
-If no rule contract exists, create a compact one first or use the research skill before editing.
+Before adding a helper, search for one to reuse:
 
-## Interactive Coaching
+```sh
+bunx @rayhanadev/truffler "<symbol-or-behavior>" \
+  packages/oxlint-plugin-react-doctor/src/plugin \
+  --kind function,interface,type,constant --limit 20
+```
 
-Before substantial edits, show the implementation plan:
+Read `docs/HOW_TO_WRITE_A_RULE.md`, nearby rules, utilities, and tests.
 
-- Exact diagnostic condition.
-- Detector precision: syntax-only, scope-aware, or path-aware.
-- AST nodes and bindings that matter.
-- Unsupported v1 cases.
-- Adversarial test matrix.
+## Implement and test
 
-If the user asked for direct implementation, keep the plan short and proceed.
+1. Write detector pseudocode.
+2. Add adversarial valid and invalid tests.
+3. Implement only the contract's supported behavior.
+4. Reuse utilities before creating new ones.
+5. Update generated registration with repository commands.
+6. Run focused tests and package checks.
+7. Use `rde-eval` when real-code feedback could expose noise.
+8. Hand the finished change to `rule-validate`.
 
-## Implementation Workflow
+Account for:
 
-1. Read the rule contract and `docs/HOW_TO_WRITE_A_RULE.md` when available.
-2. Inspect nearby rules and utilities before adding new abstractions. Use `truffler` (the `find-similar-functions` skill) to fuzzy-search for an existing detector or utility to reuse or extend before writing one: `bunx @rayhanadev/truffler "<symbol or behavior>" packages/oxlint-plugin-react-doctor/src/plugin --kind function,interface,type,constant --limit 20`.
-3. Write detector pseudocode before editing files.
-4. Write or update adversarial tests first when practical.
-5. Implement the detector to match the rule contract exactly.
-6. Add or reuse focused utilities only when they remove real duplication or encode subtle AST semantics.
-7. Update generated registry or metadata using the repository's existing commands.
-8. Run focused tests, then package checks as appropriate.
-9. Use `rde-eval` for a targeted local OSS loop when the detector needs real-code feedback.
-10. After the work is pushed to a PR, invoke `Use $run-parity for PR <number-or-url>` for the full-corpus gate. Do not use a branch name in place of the PR's exact SHAs.
+- import aliases and shadowed bindings
+- nested functions that do not execute immediately
+- transparent JavaScript and TypeScript wrappers
+- dynamic computed properties
+- imported or unresolved values
+- framework escape hatches
+- control-flow paths required by the diagnostic claim
+- regressions found by reviews or evals
 
-Use `@antfu/ni` commands in this repo:
+Keep uncertain cases quiet. Match the message to the condition the detector proves.
+
+## Run repository checks
+
+Use `@antfu/ni` commands:
 
 ```sh
 nr test
@@ -51,82 +57,8 @@ nr format
 nr smoke:json-report
 ```
 
-Use narrower package or file-specific commands when iterating, then record what passed.
+Use focused commands while iterating. Record each command that ran.
 
-## Detector Planning
+## Report the implementation
 
-Plan against real AST behavior:
-
-- Use node fields, not source-text string matching.
-- Resolve imports and bindings when identifier identity matters.
-- Treat shadowed bindings as different variables.
-- Skip imported or unknown code unless v1 explicitly supports it.
-- Do not walk nested functions as if they execute immediately.
-- Strip transparent wrappers when needed, such as parentheses, TypeScript wrappers, and optional-chain wrappers.
-- Treat dynamic computed properties as unknown unless the static value is provable.
-- Model only the control flow needed for the diagnostic claim.
-
-Pseudocode shape:
-
-```ts
-for each file:
-  collect framework/library imports and aliases
-  find candidate syntax
-  resolve bindings needed for identity
-  skip unsupported or unknown cases
-  analyze only the local paths required by the rule
-  report only when the exact diagnostic condition is proven
-```
-
-## Adversarial Test Matrix
-
-Design varied invalid and valid cases:
-
-- Direct invalid cases.
-- Alias invalid cases.
-- Import alias and namespace import cases.
-- Same-looking valid cases.
-- Scope shadowing.
-- Nested functions that should not be treated as immediate execution.
-- Dynamic computed properties.
-- Imported or unresolved references.
-- Framework or library escape hatches.
-- Regression cases from review or eval findings.
-
-Include valid tests for v1 non-goals so the rule stays quiet where it should.
-
-## Code Quality Rules
-
-- Match the detector to the one-sentence rule definition.
-- Match the diagnostic message to the exact reported condition.
-- Use descriptive helper names that state precise semantics.
-- Avoid comments unless they explain non-obvious control flow, lossy modeling, or v1 boundaries.
-- Put shared subtle AST helpers in `utils/` only when there is real reuse.
-- Keep the implementation conservative when precision is uncertain.
-
-## Writing Output
-
-When the writing stage is done, report:
-
-```md
-Implemented:
-
-- <rule, tests, registry, utilities>
-
-Detector behavior:
-
-- <what reports>
-- <what intentionally stays quiet>
-
-Validation run:
-
-- <focused tests/checks>
-
-Known v1 non-goals:
-
-- <unsupported cases preserved from the rule contract>
-
-Next stage:
-
-- Run `rule-validate`, including full PR parity when required by the rule contract.
-```
+Report changed rules, tests, registration, reused or added utilities, reported behavior, intentional non-goals, and validation results. End with the `rule-validate` handoff.

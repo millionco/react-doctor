@@ -94,6 +94,13 @@ const isProvenArrayReceiver = (
   }
   if (!isNodeOfType(receiver, "CallExpression")) return false;
   const callee = stripParenExpression(receiver.callee);
+  if (
+    isNodeOfType(callee, "Identifier") &&
+    callee.name === "Array" &&
+    scopes.isGlobalReference(callee)
+  ) {
+    return true;
+  }
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const arrayIdentifier = stripParenExpression(callee.object);
   return Boolean(

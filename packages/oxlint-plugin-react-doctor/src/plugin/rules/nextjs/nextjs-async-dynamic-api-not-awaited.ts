@@ -68,8 +68,14 @@ const ITERABLE_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
 const COERCIVE_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   "BigInt",
   "Boolean",
+  "decodeURI",
+  "decodeURIComponent",
   "Number",
   "String",
+  "encodeURI",
+  "encodeURIComponent",
+  "isFinite",
+  "isNaN",
   "parseFloat",
   "parseInt",
 ]);
@@ -566,58 +572,65 @@ const assignmentUnwrapsOfficialProperty = (
   }
   const right = stripParenExpression(assignment.right);
   if (isNodeOfType(right, "AwaitExpression")) {
-    return memberExpressionMatchesOfficialProperty(
-      context,
-      right.argument,
-      sourceSymbol,
-      propertyName,
-    );
+    return true;
   }
-  return Boolean(
+  if (
     isNodeOfType(right, "CallExpression") &&
     isReactApiCall(right, "use", context.scopes, { resolveNamedAliases: true }) &&
     right.arguments[0] &&
-    !isNodeOfType(right.arguments[0], "SpreadElement") &&
-    memberExpressionMatchesOfficialProperty(
-      context,
-      right.arguments[0],
-      sourceSymbol,
-      propertyName,
-    ),
-  );
+    !isNodeOfType(right.arguments[0], "SpreadElement")
+  ) {
+    return true;
+  }
+  if (isNextHeadersDynamicCall(context, right)) return false;
+  if (isNodeOfType(right, "Identifier")) {
+    return !findOfficialAsyncRequestPropReference(context, right);
+  }
+  if (isNodeOfType(right, "MemberExpression")) {
+    const receiver = stripParenExpression(right.object);
+    const rightPropertyName = getResolvedStaticPropertyName(context, right);
+    const propsSource = isNodeOfType(receiver, "Identifier")
+      ? findOfficialPropsObjectSource(context, receiver)
+      : null;
+    if (
+      propsSource &&
+      rightPropertyName &&
+      propsSource.contract.propertyNames.has(rightPropertyName)
+    ) {
+      return false;
+    }
+  }
+  return true;
 };
 
-const officialPropertyIsClearedBefore = (
+const collectOfficialPropertyClearingNodes = (
   context: RuleContext,
   source: OfficialPropsObjectSource,
   propertyName: string,
-  referenceNode: EsTreeNode,
-): boolean => {
-  const owner = context.cfg.enclosingFunction(referenceNode);
-  if (!owner) return false;
-  let isCleared = false;
+): EsTreeNode[] => {
+  const owner = context.cfg.enclosingFunction(source.sourceExpression);
+  if (!owner) return [];
+  const clearingNodes: EsTreeNode[] = [];
   walkAst(owner, (node) => {
-    if (!isNodeOfType(node, "AssignmentExpression")) return;
-    if (
-      !assignmentUnwrapsOfficialProperty(context, node, source.symbol, propertyName) ||
-      !nodeDominatesNode(node, referenceNode, context)
-    ) {
+    if (node !== owner && isFunctionLike(node)) return false;
+    if (isNodeOfType(node, "AssignmentExpression")) {
+      if (
+        node.operator === "="
+          ? assignmentUnwrapsOfficialProperty(context, node, source.symbol, propertyName)
+          : memberExpressionMatchesOfficialProperty(context, node.left, source.symbol, propertyName)
+      ) {
+        clearingNodes.push(node);
+      }
       return;
     }
-    const caughtTryStatement = findCaughtTryStatement(node);
     if (
-      caughtTryStatement &&
-      isNodeOfType(caughtTryStatement, "TryStatement") &&
-      caughtTryStatement.handler &&
-      !statementAlwaysExits(caughtTryStatement.handler.body) &&
-      !isDescendantOf(referenceNode, caughtTryStatement.block)
+      isNodeOfType(node, "UpdateExpression") &&
+      memberExpressionMatchesOfficialProperty(context, node.argument, source.symbol, propertyName)
     ) {
-      return;
+      clearingNodes.push(node);
     }
-    isCleared = true;
-    return false;
   });
-  return isCleared;
+  return clearingNodes;
 };
 
 const findOfficialAsyncRequestPropReference = (
@@ -644,8 +657,8 @@ const findOfficialAsyncRequestPropReference = (
         context,
         propsSource.symbol,
         propsSource.sourceExpression,
-      ).isClearedBefore(node) ||
-      officialPropertyIsClearedBefore(context, propsSource, propertyName, node)
+        collectOfficialPropertyClearingNodes(context, propsSource, propertyName),
+      ).isClearedBefore(node)
     ) {
       return null;
     }
@@ -954,10 +967,21 @@ const isGlobalCoercionCallForArgument = (
   argumentExpression: EsTreeNode,
 ): boolean => {
   const callee = stripParenExpression(callExpression.callee);
-  return Boolean(
+  if (
     isNodeOfType(callee, "Identifier") &&
     COERCIVE_GLOBAL_NAMES.has(callee.name) &&
     context.scopes.isGlobalReference(callee) &&
+    callExpression.arguments[0] === argumentExpression
+  ) {
+    return true;
+  }
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object);
+  return Boolean(
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "JSON" &&
+    context.scopes.isGlobalReference(receiver) &&
+    getResolvedStaticPropertyName(context, callee) === "stringify" &&
     callExpression.arguments[0] === argumentExpression,
   );
 };
@@ -1018,6 +1042,13 @@ const expressionIsSynchronouslyConsumed = (
       isNodeOfType(parent, "TemplateLiteral") &&
       parent.expressions.some((expression) => expression === current)
     ) {
+      if (
+        parent.parent &&
+        isNodeOfType(parent.parent, "TaggedTemplateExpression") &&
+        parent.parent.quasi === parent
+      ) {
+        return false;
+      }
       return true;
     }
     if (isNodeOfType(parent, "JSXExpressionContainer") && parent.expression === current) {
@@ -1275,7 +1306,7 @@ const isConditionallyExecutedWithinExpression = (node: EsTreeNode): boolean => {
 };
 
 const findDirectConditionalBranch = (
-  assignment: EsTreeNodeOfType<"AssignmentExpression">,
+  assignment: EsTreeNode,
 ): { conditionalExpression: EsTreeNode; isConsequent: boolean } | null => {
   const assignmentRoot = findTransparentExpressionRoot(assignment);
   const parent = assignmentRoot.parent;
@@ -1347,12 +1378,13 @@ const createPendingSymbolFlow = (
   context: RuleContext,
   symbol: SymbolDescriptor,
   sourceExpression: EsTreeNode,
+  additionalClearingNodes: ReadonlyArray<EsTreeNode> = [],
 ): PendingSymbolFlow => {
   const owner = context.cfg.enclosingFunction(sourceExpression);
   const sourceStart = getNodeStartIndex(sourceExpression);
   if (sourceStart < 0) return { isClearedBefore: () => false };
 
-  const clearingAssignmentSet = new Set<EsTreeNodeOfType<"AssignmentExpression">>();
+  const clearingAssignmentSet = new Set<EsTreeNode>(additionalClearingNodes);
   for (const reference of symbol.references) {
     if (context.cfg.enclosingFunction(reference.identifier) !== owner) continue;
     const assignment = getProvenanceClearingAssignment(context, symbol, reference.identifier);
@@ -1840,7 +1872,13 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
       reportNestedOfficialParameterDestructure(context, node);
     },
     MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
-      if (node.computed) reportOfficialDirectValueConsumption(context, node.property);
+      const receiver = stripParenExpression(node.object);
+      const isStaticallySkippedOptionalMember = Boolean(
+        node.optional && isNodeOfType(receiver, "Literal") && receiver.value === null,
+      );
+      if (node.computed && !isStaticallySkippedOptionalMember) {
+        reportOfficialDirectValueConsumption(context, node.property);
+      }
       if (memberExpressionIsAssignmentTarget(node)) {
         const assignment = findTransparentExpressionRoot(node).parent;
         if (
@@ -1936,6 +1974,13 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
       if (node.operator !== "void") reportOfficialDirectValueConsumption(context, node.argument);
     },
     TemplateLiteral(node: EsTreeNodeOfType<"TemplateLiteral">) {
+      if (
+        node.parent &&
+        isNodeOfType(node.parent, "TaggedTemplateExpression") &&
+        node.parent.quasi === node
+      ) {
+        return;
+      }
       for (const expression of node.expressions) {
         reportOfficialDirectValueConsumption(context, expression);
       }

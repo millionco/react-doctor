@@ -1210,11 +1210,14 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     },
   );
 
-  it.each(["[0].map(readPending)", "new Array(1).map(readPending)", "new Promise(readPending)"])(
-    "reports a named synchronous callback passed through %s",
-    (expression) => {
-      expectDiagnosticCount(
-        `import { cookies } from "next/headers";
+  it.each([
+    "[0].map(readPending)",
+    "Array(1).map(readPending)",
+    "new Array(1).map(readPending)",
+    "new Promise(readPending)",
+  ])("reports a named synchronous callback passed through %s", (expression) => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
          export const read = async () => {
            let pending = cookies();
            const readPending = () => pending.get("session");
@@ -1222,10 +1225,9 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
            pending = await pending;
            return value;
          };`,
-        1,
-      );
-    },
-  );
+      1,
+    );
+  });
 
   it("reports a named callback on an immutable array alias", () => {
     expectDiagnosticCount(
@@ -1242,11 +1244,27 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     );
   });
 
+  it("reports a named callback on an immutable global Array call alias", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async () => {
+         let pending = cookies();
+         const values = Array(1);
+         const readPending = () => pending.get("session");
+         const result = values.map(readPending);
+         pending = await pending;
+         return result;
+       };`,
+      1,
+    );
+  });
+
   it.each([
     "let values = [0]; values.map(readPending);",
     "const values = scheduler.values; values.map(readPending);",
     "const values = [0]; values.map = scheduler.map; values.map(readPending);",
     "const Array = scheduler.Array; Array.of(0).map(readPending);",
+    "const Array = scheduler.Array; Array(1).map(readPending);",
     "const Array = scheduler.Array; new Array(1).map(readPending);",
   ])("fails closed for an unproven synchronous callback host through %s", (invocation) => {
     expectDiagnosticCount(
@@ -1587,6 +1605,22 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
       filename: "app/blog/[slug]/opengraph-image.tsx",
     },
     {
+      code: `export default function Image({ id }) { return isNaN(id); }`,
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
+      code: `export default function Image({ id }) { return isFinite(id); }`,
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
+      code: `export default function Image({ id }) { return encodeURIComponent(id); }`,
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
+      code: `export default function Image({ id }) { return JSON.stringify(id); }`,
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
       code: `export default function Image({ id }) { id++; return null; }`,
       filename: "app/blog/[slug]/opengraph-image.tsx",
     },
@@ -1619,6 +1653,9 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `export default function Image({ id }) { return [id]; }`,
     `export default function Image({ id }) { return consume(id); }`,
     `export default function Image({ id }) { return Promise.resolve(id); }`,
+    "export default function Image({ id }) { return consume`/${id}`; }",
+    `export default function Image({ id }) { return null?.[id]; }`,
+    `export default function Image({ id }) { const parseInt = consume; return parseInt(id); }`,
     `export default function Image({ id }) { return id.then((imageId) => imageId * 50000); }`,
   ])("does not report safe or propagating Next.js 16 id usage", (code) => {
     const result = runRule(nextjsAsyncDynamicApiNotAwaited, code, {
@@ -1647,6 +1684,26 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     },
     {
       code: `export default async function Page(props) { const alias = props; alias.params = await alias.params; return alias.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+      capabilities: ["nextjs:15"],
+    },
+    {
+      code: `export default async function Page(props, other) { props.params = await other.params; return props.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+      capabilities: ["nextjs:15"],
+    },
+    {
+      code: `import { use } from "react"; export default function Page(props, other) { props.params = use(other.params); return props.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+      capabilities: ["nextjs:15"],
+    },
+    {
+      code: `export default function Page(props) { props.params = { slug: "local" }; return props.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+      capabilities: ["nextjs:15"],
+    },
+    {
+      code: `export default async function Page(props) { try { props.params = await props.params; } catch { props.params = { slug: "fallback" }; } return props.params.slug; }`,
       filename: "app/[slug]/page.tsx",
       capabilities: ["nextjs:15"],
     },
@@ -1680,15 +1737,17 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
   it.each([
     `export default async function Page(props, shouldAwait) { if (shouldAwait) props.params = await props.params; return props.params.slug; }`,
     `export default async function Page(props) { props.searchParams = await props.searchParams; return props.params.slug; }`,
+    `export default function Page(props) { props.params = props.searchParams; return props.params.slug; }`,
     `export default async function Page(props) { try { props.params = await props.params; } catch {} return props.params.slug; }`,
+    `export default async function Page(props, shouldFallback) { try { props.params = await props.params; } catch { if (shouldFallback) props.params = { slug: "fallback" }; } return props.params.slug; }`,
   ])("reports an official prop without unconditional matching self-unwrapping", (code) => {
     expectDiagnosticCount(code, 1, "app/[slug]/page.tsx");
   });
 
-  it("reports both a compound official prop write and the following read", () => {
+  it("reports a compound official prop write and clears the following read", () => {
     expectDiagnosticCount(
       `export default function Page(props) { props.params += fallback; return props.params.slug; }`,
-      2,
+      1,
       "app/[slug]/page.tsx",
     );
   });

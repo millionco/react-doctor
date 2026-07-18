@@ -51,4 +51,12 @@ describe("r3f-no-inline-primitive-object", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("respects JSX spread override order", () => {
+    const result = runRule(
+      r3fNoInlinePrimitiveObject,
+      `import { Canvas } from "@react-three/fiber"; const Scene = ({ props }) => <><primitive object={scene.clone()} {...props} /><primitive {...props} object={scene.clone()} /><primitive object={scene.clone()} {...{ visible: true }} /><primitive object={scene.clone()} {...{ object: stableScene }} /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
 });

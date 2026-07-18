@@ -86,4 +86,12 @@ describe("r3f-no-unstable-args", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("respects JSX spread override order", () => {
+    const result = runRule(
+      r3fNoUnstableArgs,
+      `import { Canvas } from "@react-three/fiber"; const Scene = ({ props }) => <><mesh args={[{ width: 1 }]} {...props} /><mesh {...props} args={[{ width: 1 }]} /><mesh args={[{ width: 1 }]} {...{ visible: true }} /><mesh args={[{ width: 1 }]} {...{ args: stableArgs }} /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
 });

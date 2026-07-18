@@ -1,4 +1,7 @@
 // rule: r3f-no-inline-resource-prop
 import "@react-three/fiber";
+import { MeshBasicMaterial } from "three";
 
-export const Scene = ({ material }) => <mesh material={material.clone()} />;
+const material = new MeshBasicMaterial();
+
+export const Scene = () => <mesh material={material.clone()} />;

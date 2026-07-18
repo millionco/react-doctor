@@ -7,13 +7,13 @@ import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 import { isApiCallFromModules } from "./utils/is-api-call-from-modules.js";
 import { isR3fCallbackStateProperty } from "./utils/is-r3f-callback-state-property.js";
 import { R3F_WEBGPU_MODULES } from "./utils/r3f-webgpu-modules.js";
+import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
 
 const WEBGPU_GRAPH_HOOKS = new Set(["useLocalNodes", "useNodes", "useRenderPipeline"]);
 
@@ -109,7 +109,7 @@ export const r3fWebgpuNoJsUniformBranch = defineRule({
         hookName === "useRenderPipeline" ? node.arguments.slice(0, 2) : [node.arguments[0]];
       for (const callbackArgument of callbackArguments) {
         if (!callbackArgument || isNodeOfType(callbackArgument, "SpreadElement")) continue;
-        const callback = resolveExactLocalFunction(callbackArgument, context.scopes);
+        const callback = resolveLocalReactCallback(callbackArgument, context.scopes);
         if (!isFunctionLike(callback)) continue;
         const reportedControlFlowTests = new Set<EsTreeNode>();
         walkFunctionExecution(callback, context.scopes, (candidate) => {

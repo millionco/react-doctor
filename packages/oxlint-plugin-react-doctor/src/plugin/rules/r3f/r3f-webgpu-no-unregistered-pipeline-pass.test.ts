@@ -26,6 +26,17 @@ describe("r3f-webgpu-no-unregistered-pipeline-pass", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("resolves pipeline callbacks wrapped by TypeScript import-equals React useCallback", () => {
+    const result = runRule(
+      r3fWebgpuNoUnregisteredPipelinePass,
+      `import Fiber = require("@react-three/fiber/webgpu");
+       import React = require("react");
+       const buildPipeline = React.useCallback(({ passes }) => { passes.custom = customPass; }, []);
+       Fiber.useRenderPipeline(buildPipeline);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows returned passes and mutation of registered pass objects", () => {
     const result = runRule(
       r3fWebgpuNoUnregisteredPipelinePass,

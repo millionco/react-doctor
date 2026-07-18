@@ -24,6 +24,37 @@ const GEOMETRY_RESOURCE_HOST_NAMES = new Set([
   "skinnedMesh",
 ]);
 const MATERIAL_RESOURCE_HOST_NAMES = new Set([...GEOMETRY_RESOURCE_HOST_NAMES, "sprite"]);
+const GEOMETRY_RESOURCE_METHODS = new Set([
+  "applyMatrix4",
+  "applyQuaternion",
+  "center",
+  "clone",
+  "copy",
+  "deleteAttribute",
+  "lookAt",
+  "rotateX",
+  "rotateY",
+  "rotateZ",
+  "scale",
+  "setAttribute",
+  "setFromPoints",
+  "setIndex",
+  "setIndirect",
+  "toNonIndexed",
+  "translate",
+]);
+const MATERIAL_RESOURCE_METHODS = new Set(["clone", "copy"]);
+const GEOMETRY_OWNER_CONSTRUCTORS = new Set([
+  "BatchedMesh",
+  "InstancedMesh",
+  "Line",
+  "LineLoop",
+  "LineSegments",
+  "Mesh",
+  "Points",
+  "SkinnedMesh",
+]);
+const MATERIAL_OWNER_CONSTRUCTORS = new Set([...GEOMETRY_OWNER_CONSTRUCTORS, "Sprite"]);
 
 const isThreeModuleSource = (source: unknown): source is string =>
   typeof source === "string" &&
@@ -36,6 +67,136 @@ const getThreeConstructorName = (
   const constructor = stripParenExpression(constructorExpression);
   const provenance = getApiReferenceProvenance(constructor, scopes);
   return provenance && isThreeModuleSource(provenance.moduleSource) ? provenance.apiName : null;
+};
+
+const hasThreeResourceOwnerProvenance = (
+  expression: EsTreeNode,
+  ownerConstructors: ReadonlySet<string>,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number>,
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "NewExpression")) {
+    const constructorName = getThreeConstructorName(candidate.callee, scopes);
+    return Boolean(constructorName && ownerConstructors.has(constructorName));
+  }
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = scopes.symbolFor(candidate);
+    if (
+      symbol?.kind !== "const" ||
+      !symbol.initializer ||
+      visitedSymbolIds.has(symbol.id) ||
+      !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+      symbol.declarationNode.id !== symbol.bindingIdentifier
+    ) {
+      return false;
+    }
+    visitedSymbolIds.add(symbol.id);
+    return hasThreeResourceOwnerProvenance(
+      symbol.initializer,
+      ownerConstructors,
+      scopes,
+      visitedSymbolIds,
+    );
+  }
+  return Boolean(
+    isNodeOfType(candidate, "CallExpression") &&
+    isNodeOfType(candidate.callee, "MemberExpression") &&
+    getStaticPropertyName(candidate.callee) === "clone" &&
+    hasThreeResourceOwnerProvenance(
+      candidate.callee.object,
+      ownerConstructors,
+      scopes,
+      visitedSymbolIds,
+    ),
+  );
+};
+
+const getResourceMethods = (constructorSuffix: string): ReadonlySet<string> =>
+  constructorSuffix === "Geometry" ? GEOMETRY_RESOURCE_METHODS : MATERIAL_RESOURCE_METHODS;
+
+const hasThreeResourceProvenance = (
+  expression: EsTreeNode,
+  constructorSuffix: string,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "NewExpression")) {
+    return getThreeConstructorName(candidate.callee, scopes)?.endsWith(constructorSuffix) ?? false;
+  }
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = scopes.symbolFor(candidate);
+    if (
+      symbol?.kind !== "const" ||
+      !symbol.initializer ||
+      visitedSymbolIds.has(symbol.id) ||
+      !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+      symbol.declarationNode.id !== symbol.bindingIdentifier
+    ) {
+      return false;
+    }
+    visitedSymbolIds.add(symbol.id);
+    return hasThreeResourceProvenance(
+      symbol.initializer,
+      constructorSuffix,
+      scopes,
+      visitedSymbolIds,
+    );
+  }
+  if (isNodeOfType(candidate, "ConditionalExpression")) {
+    return (
+      hasThreeResourceProvenance(
+        candidate.consequent,
+        constructorSuffix,
+        scopes,
+        new Set(visitedSymbolIds),
+      ) &&
+      hasThreeResourceProvenance(
+        candidate.alternate,
+        constructorSuffix,
+        scopes,
+        new Set(visitedSymbolIds),
+      )
+    );
+  }
+  if (isNodeOfType(candidate, "LogicalExpression")) {
+    return (
+      hasThreeResourceProvenance(
+        candidate.left,
+        constructorSuffix,
+        scopes,
+        new Set(visitedSymbolIds),
+      ) &&
+      hasThreeResourceProvenance(
+        candidate.right,
+        constructorSuffix,
+        scopes,
+        new Set(visitedSymbolIds),
+      )
+    );
+  }
+  if (isNodeOfType(candidate, "MemberExpression")) {
+    const propertyName = getStaticPropertyName(candidate);
+    const resourcePropertyName = constructorSuffix === "Geometry" ? "geometry" : "material";
+    const ownerConstructors =
+      constructorSuffix === "Geometry" ? GEOMETRY_OWNER_CONSTRUCTORS : MATERIAL_OWNER_CONSTRUCTORS;
+    return (
+      propertyName === resourcePropertyName &&
+      hasThreeResourceOwnerProvenance(candidate.object, ownerConstructors, scopes, visitedSymbolIds)
+    );
+  }
+  return Boolean(
+    isNodeOfType(candidate, "CallExpression") &&
+    isNodeOfType(candidate.callee, "MemberExpression") &&
+    getResourceMethods(constructorSuffix).has(getStaticPropertyName(candidate.callee) ?? "") &&
+    hasThreeResourceProvenance(
+      candidate.callee.object,
+      constructorSuffix,
+      scopes,
+      visitedSymbolIds,
+    ),
+  );
 };
 
 const hasFreshThreeResource = (
@@ -97,7 +258,16 @@ const hasFreshThreeResource = (
     isNodeOfType(candidate, "CallExpression") &&
     isNodeOfType(candidate.callee, "MemberExpression")
   ) {
-    if (getStaticPropertyName(candidate.callee) === "clone") return true;
+    const methodName = getStaticPropertyName(candidate.callee);
+    if (methodName === "clone") {
+      return hasThreeResourceProvenance(
+        candidate.callee.object,
+        constructorSuffix,
+        scopes,
+        visitedSymbolIds,
+      );
+    }
+    if (!methodName || !getResourceMethods(constructorSuffix).has(methodName)) return false;
     return hasFreshThreeResource(
       candidate.callee.object,
       constructorSuffix,

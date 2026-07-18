@@ -3,14 +3,15 @@ import { SVG_TAGS } from "../../constants/svg-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
+import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const POINTER_CAPTURE_METHODS = new Set([
@@ -115,13 +116,14 @@ export const r3fNoObjectPointerCapture = defineRule({
           const attributeName = getJsxAttributeName(attribute.name);
           if (
             !attributeName?.startsWith("onPointer") ||
+            getAuthoritativeJsxAttribute(node.attributes, attributeName) !== attribute ||
             !attribute.value ||
             !isNodeOfType(attribute.value, "JSXExpressionContainer") ||
             isNodeOfType(attribute.value.expression, "JSXEmptyExpression")
           ) {
             continue;
           }
-          const handler = resolveExactLocalFunction(attribute.value.expression, context.scopes);
+          const handler = resolveLocalReactCallback(attribute.value.expression, context.scopes);
           if (!handler) continue;
           for (const invalidCall of findInvalidPointerCaptureCalls(handler, context)) {
             context.report({

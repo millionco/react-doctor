@@ -4,6 +4,7 @@ import { getDestructuredBindingPropertyName } from "../../../utils/get-destructu
 import { getImportDeclarationForSymbol } from "../../../utils/get-import-declaration-for-symbol.js";
 import { getImportedName } from "../../../utils/get-imported-name.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
+import { hasPossibleStaticPropertyWriteBefore } from "../../../utils/has-static-property-write-before.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { getModuleNamespaceSource } from "./get-module-namespace-source.js";
@@ -21,6 +22,14 @@ export const getApiReferenceProvenance = (
   const candidate = stripParenExpression(reference);
   if (isNodeOfType(candidate, "MemberExpression")) {
     const apiName = getStaticPropertyName(candidate);
+    const receiver = stripParenExpression(candidate.object);
+    if (
+      apiName &&
+      isNodeOfType(receiver, "Identifier") &&
+      hasPossibleStaticPropertyWriteBefore(receiver, apiName, candidate, scopes)
+    ) {
+      return null;
+    }
     const moduleSource = getModuleNamespaceSource(candidate.object, scopes);
     return apiName && moduleSource ? { apiName, moduleSource } : null;
   }
@@ -38,6 +47,27 @@ export const getApiReferenceProvenance = (
   const importedName = getImportedName(symbol.declarationNode);
   if (importDeclaration && importedName && typeof importDeclaration.source.value === "string") {
     return { apiName: importedName, moduleSource: importDeclaration.source.value };
+  }
+  if (
+    symbol.kind === "ts-import-equals" &&
+    isNodeOfType(symbol.declarationNode, "TSImportEqualsDeclaration") &&
+    isNodeOfType(symbol.declarationNode.moduleReference, "TSQualifiedName")
+  ) {
+    const namespaceReference = symbol.declarationNode.moduleReference.left;
+    const apiName = symbol.declarationNode.moduleReference.right.name;
+    if (
+      isNodeOfType(namespaceReference, "Identifier") &&
+      hasPossibleStaticPropertyWriteBefore(
+        namespaceReference,
+        apiName,
+        symbol.declarationNode,
+        scopes,
+      )
+    ) {
+      return null;
+    }
+    const moduleSource = getModuleNamespaceSource(namespaceReference, scopes);
+    return moduleSource ? { apiName, moduleSource } : null;
   }
   if (symbol.kind !== "const" || !symbol.initializer) return null;
   const destructuredName = getDestructuredBindingPropertyName(symbol.bindingIdentifier);

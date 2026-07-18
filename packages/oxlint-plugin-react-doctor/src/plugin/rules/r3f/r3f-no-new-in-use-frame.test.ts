@@ -39,6 +39,22 @@ describe("r3f-no-new-in-use-frame", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("ignores mutated CommonJS hook namespaces", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `const Fiber = require("@react-three/fiber"); Fiber.useFrame = runOnce; Fiber.useFrame(() => new Vector3());`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps calls before a later CommonJS namespace mutation reportable", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `const Fiber = require("@react-three/fiber"); Fiber.useFrame(() => new Vector3()); Fiber.useFrame = runOnce;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not reinterpret a CommonJS member binding as the module namespace", () => {
     const result = runRule(
       r3fNoNewInUseFrame,
@@ -66,6 +82,48 @@ describe("r3f-no-new-in-use-frame", () => {
        };`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `const { useFrame } = require("@react-three/fiber"); const React = require("react"); const update = React.useCallback(() => new Vector3(), []); useFrame(update);`,
+    `const { useFrame } = require("@react-three/fiber"); const { useCallback: stabilize } = require("react"); const update = stabilize(() => new Vector3(), []); useFrame(update);`,
+    `const { useFrame } = require("@react-three/fiber"); useFrame(require("react").useCallback(() => new Vector3(), []));`,
+    `import Fiber = require("@react-three/fiber"); import React = require("react"); Fiber.useFrame(React.useCallback(() => new Vector3(), []));`,
+  ])("resolves callbacks wrapped by CommonJS React useCallback", (code) => {
+    const result = runRule(r3fNoNewInUseFrame, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores React callbacks loaded through a shadowed require", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `const { useFrame } = require("@react-three/fiber"); const Scene = (require) => { const React = require("react"); useFrame(React.useCallback(() => new Vector3(), [])); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores mutated CommonJS React callback namespaces", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `const Fiber = require("@react-three/fiber"); const React = require("react"); React.useCallback = discard; const update = React.useCallback(() => new Vector3(), []); Fiber.useFrame(update);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("resolves qualified TypeScript import-equals aliases", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `import Fiber = require("@react-three/fiber"); import React = require("react"); import frame = Fiber.useFrame; import memo = React.useCallback; frame(memo(() => new Vector3(), []));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores qualified TypeScript aliases captured after a namespace mutation", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `import Fiber = require("@react-three/fiber"); Fiber.useFrame = runOnce; import frame = Fiber.useFrame; frame(() => new Vector3());`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("ignores callbacks wrapped by an unrelated useCallback", () => {

@@ -7,12 +7,12 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { isApiCallFromModules } from "./utils/is-api-call-from-modules.js";
 import { isR3fCallbackStateProperty } from "./utils/is-r3f-callback-state-property.js";
 import { R3F_WEBGPU_MODULES } from "./utils/r3f-webgpu-modules.js";
+import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
 
 const isWebgpuUseThreeResult = (
   expression: EsTreeNode,
@@ -102,7 +102,7 @@ export const r3fWebgpuNoGlState = defineRule({
       if (!isUseThree && !isUseFrame) return;
       const callbackArgument = node.arguments[0];
       if (!callbackArgument || isNodeOfType(callbackArgument, "SpreadElement")) return;
-      const callback = resolveExactLocalFunction(callbackArgument, context.scopes);
+      const callback = resolveLocalReactCallback(callbackArgument, context.scopes);
       if (!callback) return;
       const glRead = findCallbackGlRead(callback, context);
       if (!glRead) return;

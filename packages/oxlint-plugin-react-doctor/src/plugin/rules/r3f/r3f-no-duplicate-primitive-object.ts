@@ -3,10 +3,10 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
-import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -180,7 +180,7 @@ export const r3fNoDuplicatePrimitiveObject = defineRule({
         ) {
           return;
         }
-        const objectAttribute = findJsxAttribute(node.attributes, "object");
+        const objectAttribute = getAuthoritativeJsxAttribute(node.attributes, "object");
         if (
           !objectAttribute?.value ||
           !isNodeOfType(objectAttribute.value, "JSXExpressionContainer") ||

@@ -43,6 +43,33 @@ describe("r3f-no-inline-resource-prop", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("ignores constructors from mutated CommonJS Three.js namespaces", () => {
+    const code = `
+      import { Canvas } from "@react-three/fiber";
+      const THREE = require("three");
+      THREE.BufferGeometry = ReplacementGeometry;
+      function Scene() {
+        return <mesh geometry={new THREE.BufferGeometry()} />;
+      }
+    `;
+    const result = runRule(r3fNoInlineResourceProp, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("resolves qualified TypeScript import-equals Three.js aliases", () => {
+    const code = `
+      import "@react-three/fiber";
+      import THREE = require("three");
+      import Geometry = THREE.BufferGeometry;
+      const geometry = new Geometry();
+      function Scene() {
+        return <mesh geometry={geometry.clone()} />;
+      }
+    `;
+    const result = runRule(r3fNoInlineResourceProp, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports chained geometry construction and fresh entries in material arrays", () => {
     const code = `
       import { Canvas } from "@react-three/fiber";
@@ -58,12 +85,65 @@ describe("r3f-no-inline-resource-prop", () => {
   it("reports render-time resource clones", () => {
     const code = `
       import { Canvas } from "@react-three/fiber";
-      function Scene({ geometry, material, stableMaterial }) {
+      import { BufferGeometry, MeshBasicMaterial } from "three";
+      function Scene({ stableMaterial }) {
+        const geometry = new BufferGeometry();
+        const material = new MeshBasicMaterial();
         return <><mesh geometry={geometry.clone()} material={material.clone()} /><mesh material={[stableMaterial, material.clone()]} /></>;
       }
     `;
     const result = runRule(r3fNoInlineResourceProp, code);
     expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("ignores clone methods without Three.js resource provenance", () => {
+    const code = `
+      import { Canvas } from "@react-three/fiber";
+      function Scene({ cloneableGeometryConfig, cloneableMaterialConfig }) {
+        return <mesh geometry={cloneableGeometryConfig.clone()} material={cloneableMaterialConfig.clone()} />;
+      }
+    `;
+    const result = runRule(r3fNoInlineResourceProp, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("follows resources owned by proven Three.js objects", () => {
+    const code = `
+      import { Canvas } from "@react-three/fiber";
+      import { BufferGeometry, Mesh } from "three";
+      function Scene() {
+        const mesh = new Mesh(new BufferGeometry());
+        return <mesh geometry={mesh.geometry.clone()} />;
+      }
+    `;
+    const result = runRule(r3fNoInlineResourceProp, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat arbitrary Three.js method results as geometry or material", () => {
+    const code = `
+      import { Canvas } from "@react-three/fiber";
+      import { BufferGeometry, MeshBasicMaterial } from "three";
+      function Scene() {
+        const geometry = new BufferGeometry();
+        const material = new MeshBasicMaterial();
+        return <mesh geometry={geometry.getAttribute("position").clone()} material={material.toJSON().clone()} />;
+      }
+    `;
+    const result = runRule(r3fNoInlineResourceProp, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat void BufferGeometry method results as geometries", () => {
+    const code = `
+      import { Canvas } from "@react-three/fiber";
+      import { BufferGeometry } from "three";
+      function Scene() {
+        return <><mesh geometry={new BufferGeometry().computeBoundingBox()} /><mesh geometry={new BufferGeometry().addGroup(0, 3)} /></>;
+      }
+    `;
+    const result = runRule(r3fNoInlineResourceProp, code);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("allows module, memoized, lazy-state, and loader-owned resources", () => {

@@ -28,6 +28,17 @@ describe("r3f-no-object-pointer-capture", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("resolves pointer handlers wrapped by CommonJS React useCallback", () => {
+    const result = runRule(
+      r3fNoObjectPointerCapture,
+      `const Fiber = require("@react-three/fiber");
+       const React = require("react");
+       const handlePointer = React.useCallback((event) => event.object.setPointerCapture(event.pointerId), []);
+       const scene = <mesh onPointerDown={handlePointer} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("recognizes the R3F line intrinsic despite its SVG name collision", () => {
     const result = runRule(
       r3fNoObjectPointerCapture,
@@ -35,6 +46,16 @@ describe("r3f-no-object-pointer-capture", () => {
        const scene = <line onPointerDown={(event) => event.object.setPointerCapture(event.pointerId)} />;`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("respects pointer-handler JSX spread authority", () => {
+    const result = runRule(
+      r3fNoObjectPointerCapture,
+      `import { Canvas } from "@react-three/fiber";
+       const badHandler = (event) => event.object.setPointerCapture(event.pointerId);
+       const scene = <><mesh onPointerDown={badHandler} {...props} /><mesh {...props} onPointerDown={badHandler} /><mesh onPointerDown={badHandler} {...{ visible: true }} /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("allows capture methods on target and currentTarget", () => {

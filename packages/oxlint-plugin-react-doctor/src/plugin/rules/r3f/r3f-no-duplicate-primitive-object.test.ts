@@ -108,4 +108,20 @@ describe("r3f-no-duplicate-primitive-object", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not count object props hidden by a trailing JSX spread", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `${R3F_RUNTIME_IMPORT} const Scene = ({ scene, props }) => <><primitive object={scene} {...props} /><primitive object={scene} /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("counts object props followed by a statically nonconflicting spread", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `${R3F_RUNTIME_IMPORT} const Scene = ({ scene }) => <><primitive object={scene} {...{ visible: true }} /><primitive object={scene} /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

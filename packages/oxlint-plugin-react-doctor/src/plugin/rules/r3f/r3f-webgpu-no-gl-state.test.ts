@@ -37,6 +37,17 @@ describe("r3f-webgpu-no-gl-state", () => {
     expect(result.diagnostics).toHaveLength(4);
   });
 
+  it("resolves WebGPU callbacks wrapped by CommonJS React useCallback", () => {
+    const result = runRule(
+      r3fWebgpuNoGlState,
+      `const { useFrame } = require("@react-three/fiber/webgpu");
+       const { useCallback } = require("react");
+       const update = useCallback((state) => state.gl.render(scene, camera), []);
+       useFrame(update);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows renderer and version-ambiguous gl state", () => {
     const result = runRule(
       r3fWebgpuNoGlState,

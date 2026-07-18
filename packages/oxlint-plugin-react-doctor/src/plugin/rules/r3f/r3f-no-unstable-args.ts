@@ -2,8 +2,8 @@ import { HTML_TAGS } from "../../constants/html-tags.js";
 import { SVG_TAGS } from "../../constants/svg-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { isInsideStableReactHookInitializer } from "../../utils/is-inside-stable-react-hook-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -36,7 +36,7 @@ export const r3fNoUnstableArgs = defineRule({
         ) {
           return;
         }
-        const attribute = findJsxAttribute(node.attributes, "args");
+        const attribute = getAuthoritativeJsxAttribute(node.attributes, "args");
         if (
           !attribute ||
           !attribute.value ||

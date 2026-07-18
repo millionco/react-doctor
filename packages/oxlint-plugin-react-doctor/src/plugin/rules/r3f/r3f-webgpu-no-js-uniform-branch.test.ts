@@ -50,6 +50,17 @@ describe("r3f-webgpu-no-js-uniform-branch", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("resolves graph callbacks wrapped by React useCallback", () => {
+    const result = runRule(
+      r3fWebgpuNoJsUniformBranch,
+      `import { useNodes } from "@react-three/fiber/webgpu";
+       import { useCallback } from "react";
+       const buildNodes = useCallback(({ uniforms }) => uniforms.enabled.value ? enabled : disabled, []);
+       useNodes(buildNodes);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows TSL control flow and static JavaScript feature branches", () => {
     const result = runRule(
       r3fWebgpuNoJsUniformBranch,

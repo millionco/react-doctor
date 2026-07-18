@@ -1,5 +1,6 @@
 import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
-import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { BasicBlock } from "../../semantic/control-flow-graph.js";
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -8,10 +9,12 @@ import {
   isNamespaceImportFromModule,
 } from "../../utils/find-import-source-for-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { findVisibleSymbol } from "../../utils/find-visible-symbol.js";
 import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
+import { isDescendantOf } from "../../utils/is-descendant-of.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
@@ -53,18 +56,13 @@ interface PendingSymbolFlow {
   isClearedBefore: (referenceIdentifier: EsTreeNode) => boolean;
 }
 
-const resolvesToImportBinding = (context: RuleContext, identifier: EsTreeNode): boolean => {
-  const referenceSymbol = context.scopes.symbolFor(identifier);
-  if (referenceSymbol) return referenceSymbol.kind === "import";
-  if (!isNodeOfType(identifier, "Identifier")) return false;
-  let scope: ScopeDescriptor | null = context.scopes.scopeFor(identifier);
-  while (scope) {
-    const lexicalSymbol = scope.symbolsByName.get(identifier.name);
-    if (lexicalSymbol) return lexicalSymbol.kind === "import";
-    scope = scope.parent;
-  }
-  return false;
-};
+interface ExitingCatchAssignment {
+  assignment: EsTreeNodeOfType<"AssignmentExpression">;
+  tryStatement: EsTreeNode;
+}
+
+const resolvesToImportBinding = (context: RuleContext, identifier: EsTreeNode): boolean =>
+  findVisibleSymbol(identifier, context.scopes)?.kind === "import";
 
 const isNextHeadersDynamicCall = (context: RuleContext, expression: EsTreeNode): boolean => {
   const node = stripParenExpression(expression);
@@ -89,13 +87,23 @@ const isNextHeadersDynamicCall = (context: RuleContext, expression: EsTreeNode):
   return isNamespaceImportFromModule(node, namespaceObject.name, "next/headers");
 };
 
-const isUnsafeUnwrappedType = (context: RuleContext, typeNode: EsTreeNode): boolean => {
+const isUnsafeUnwrappedType = (
+  context: RuleContext,
+  typeNode: EsTreeNode,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
   if (!isNodeOfType(typeNode, "TSTypeReference")) return false;
   const typeName = typeNode.typeName;
   if (isNodeOfType(typeName, "Identifier")) {
-    if (!resolvesToImportBinding(context, typeName)) return false;
-    const importedName = getImportedNameFromModule(typeNode, typeName.name, "next/headers");
-    return importedName !== null && UNSAFE_UNWRAPPED_TYPE_NAMES.has(importedName);
+    const symbol = findVisibleSymbol(typeName, context.scopes);
+    if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+    if (symbol.kind === "import") {
+      const importedName = getImportedNameFromModule(typeNode, typeName.name, "next/headers");
+      return importedName !== null && UNSAFE_UNWRAPPED_TYPE_NAMES.has(importedName);
+    }
+    if (!isNodeOfType(symbol.declarationNode, "TSTypeAliasDeclaration")) return false;
+    visitedSymbolIds.add(symbol.id);
+    return isUnsafeUnwrappedType(context, symbol.declarationNode.typeAnnotation, visitedSymbolIds);
   }
   if (
     !isNodeOfType(typeName, "TSQualifiedName") ||
@@ -504,17 +512,12 @@ const isConditionallyExecutedWithinExpression = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const getCaughtTryHandlerExitStatus = (node: EsTreeNode): boolean | null => {
+const findCaughtTryStatement = (node: EsTreeNode): EsTreeNode | null => {
   let current = node;
   while (current.parent) {
     const parent = current.parent;
-    if (
-      isNodeOfType(parent, "TryStatement") &&
-      parent.block === current &&
-      parent.handler &&
-      parent.handler
-    ) {
-      return statementAlwaysExits(parent.handler.body);
+    if (isNodeOfType(parent, "TryStatement") && parent.block === current && parent.handler) {
+      return parent;
     }
     if (
       isNodeOfType(parent, "ArrowFunctionExpression") ||
@@ -528,11 +531,7 @@ const getCaughtTryHandlerExitStatus = (node: EsTreeNode): boolean | null => {
   return null;
 };
 
-const isClearingWriteSkippableThroughCatch = (node: EsTreeNode): boolean =>
-  getCaughtTryHandlerExitStatus(node) === false;
-
-const isClearingWriteProtectedByExitingCatch = (node: EsTreeNode): boolean =>
-  getCaughtTryHandlerExitStatus(node) === true;
+const edgeKey = (from: BasicBlock, to: BasicBlock): string => `${from.id}:${to.id}`;
 
 const createPendingSymbolFlow = (
   context: RuleContext,
@@ -548,11 +547,7 @@ const createPendingSymbolFlow = (
     if (reference.flag === "read") continue;
     if (context.cfg.enclosingFunction(reference.identifier) !== owner) continue;
     const assignment = getProvenanceClearingAssignment(context, symbol, reference.identifier);
-    if (
-      !assignment ||
-      isConditionallyExecutedWithinExpression(assignment) ||
-      isClearingWriteSkippableThroughCatch(assignment)
-    ) {
+    if (!assignment || isConditionallyExecutedWithinExpression(assignment)) {
       continue;
     }
     const assignmentStart = getNodeStartIndex(assignment);
@@ -576,13 +571,87 @@ const createPendingSymbolFlow = (
   const sourceBlock = functionCfg?.blockOf(sourceExpression);
   if (!functionCfg || !sourceBlock) return { isClearedBefore: () => false };
 
-  const clearingStartsByBlock = new Map<number, number[]>();
+  const clearingStartsByBlock = new Map<BasicBlock, number[]>();
+  const exceptionalCatchEdgeKeys = new Set<string>();
+  const exitingCatchAssignments: ExitingCatchAssignment[] = [];
   for (const assignment of clearingAssignments) {
     const assignmentBlock = functionCfg.blockOf(assignment);
     if (!assignmentBlock) continue;
-    const starts = clearingStartsByBlock.get(assignmentBlock.id) ?? [];
+    const starts = clearingStartsByBlock.get(assignmentBlock) ?? [];
     starts.push(getNodeStartIndex(assignment));
-    clearingStartsByBlock.set(assignmentBlock.id, starts);
+    clearingStartsByBlock.set(assignmentBlock, starts);
+
+    const caughtTryStatement = findCaughtTryStatement(assignment);
+    if (!caughtTryStatement || !isNodeOfType(caughtTryStatement, "TryStatement")) continue;
+    const catchBlock = functionCfg.blockOf(caughtTryStatement.handler?.body ?? caughtTryStatement);
+    if (catchBlock) {
+      for (const predecessor of catchBlock.predecessors) {
+        if (predecessor.kind === "cond") {
+          exceptionalCatchEdgeKeys.add(edgeKey(predecessor.from, predecessor.to));
+        }
+      }
+    }
+    if (caughtTryStatement.handler && statementAlwaysExits(caughtTryStatement.handler.body)) {
+      exitingCatchAssignments.push({ assignment, tryStatement: caughtTryStatement });
+    }
+  }
+
+  const reachableBlocks = new Set<BasicBlock>([sourceBlock]);
+  const pendingBlocks = [sourceBlock];
+  while (pendingBlocks.length > 0) {
+    const block = pendingBlocks.pop();
+    if (!block) continue;
+    for (const successor of block.successors) {
+      if (reachableBlocks.has(successor.to)) continue;
+      reachableBlocks.add(successor.to);
+      pendingBlocks.push(successor.to);
+    }
+  }
+
+  const incomingClearedByBlock = new Map<BasicBlock, boolean>();
+  const outgoingClearedByBlock = new Map<BasicBlock, boolean>();
+  for (const block of reachableBlocks) {
+    incomingClearedByBlock.set(block, true);
+    outgoingClearedByBlock.set(block, true);
+  }
+  const sourceHasClearingWrite = (clearingStartsByBlock.get(sourceBlock) ?? []).some(
+    (start) => start > sourceStart,
+  );
+  incomingClearedByBlock.set(sourceBlock, false);
+  outgoingClearedByBlock.set(sourceBlock, sourceHasClearingWrite);
+
+  const pendingFlowBlocks = sourceBlock.successors.map((successor) => successor.to);
+  const queuedFlowBlocks = new Set(pendingFlowBlocks);
+  for (let flowBlockIndex = 0; flowBlockIndex < pendingFlowBlocks.length; flowBlockIndex += 1) {
+    const block = pendingFlowBlocks[flowBlockIndex];
+    if (!block) continue;
+    queuedFlowBlocks.delete(block);
+    if (block === sourceBlock) continue;
+    const reachablePredecessors = block.predecessors.filter((predecessor) =>
+      reachableBlocks.has(predecessor.from),
+    );
+    const isClearedOnEntry =
+      reachablePredecessors.length > 0 &&
+      reachablePredecessors.every((predecessor) => {
+        if (exceptionalCatchEdgeKeys.has(edgeKey(predecessor.from, predecessor.to))) {
+          return Boolean(incomingClearedByBlock.get(predecessor.from));
+        }
+        return Boolean(outgoingClearedByBlock.get(predecessor.from));
+      });
+    const isClearedOnExit = isClearedOnEntry || (clearingStartsByBlock.get(block)?.length ?? 0) > 0;
+    if (
+      incomingClearedByBlock.get(block) === isClearedOnEntry &&
+      outgoingClearedByBlock.get(block) === isClearedOnExit
+    ) {
+      continue;
+    }
+    incomingClearedByBlock.set(block, isClearedOnEntry);
+    outgoingClearedByBlock.set(block, isClearedOnExit);
+    for (const successor of block.successors) {
+      if (!reachableBlocks.has(successor.to) || queuedFlowBlocks.has(successor.to)) continue;
+      queuedFlowBlocks.add(successor.to);
+      pendingFlowBlocks.push(successor.to);
+    }
   }
 
   return {
@@ -590,38 +659,69 @@ const createPendingSymbolFlow = (
       if (context.cfg.enclosingFunction(referenceIdentifier) !== owner) return false;
       const referenceStart = getNodeStartIndex(referenceIdentifier);
       const referenceBlock = functionCfg.blockOf(referenceIdentifier);
-      if (referenceStart < 0 || !referenceBlock) return false;
+      if (referenceStart <= sourceStart || !referenceBlock) return false;
       if (
-        clearingAssignments.some(
-          (assignment) =>
+        exitingCatchAssignments.some(
+          ({ assignment, tryStatement }) =>
             getNodeStartIndex(assignment) < referenceStart &&
-            isClearingWriteProtectedByExitingCatch(assignment) &&
+            !isDescendantOf(referenceIdentifier, tryStatement) &&
             context.cfg.isUnconditionalFromEntry(assignment),
         )
       ) {
         return true;
       }
-
-      const everyPathHasClearingWrite = (
-        block: typeof referenceBlock,
-        cutoff: number,
-        visitedBlockIds: Set<number>,
-      ): boolean => {
-        const clearingStarts = clearingStartsByBlock.get(block.id) ?? [];
-        if (clearingStarts.some((start) => start < cutoff)) return true;
-        if (block === sourceBlock) return false;
-        if (visitedBlockIds.has(block.id)) return false;
-        if (block.predecessors.length === 0) return false;
-        const nextVisitedBlockIds = new Set(visitedBlockIds);
-        nextVisitedBlockIds.add(block.id);
-        return block.predecessors.every((edge) =>
-          everyPathHasClearingWrite(edge.from, Number.POSITIVE_INFINITY, nextVisitedBlockIds),
-        );
-      };
-
-      return everyPathHasClearingWrite(referenceBlock, referenceStart, new Set());
+      const startsInReferenceBlock = clearingStartsByBlock.get(referenceBlock) ?? [];
+      const hasClearingWriteBeforeReference = startsInReferenceBlock.some(
+        (start) =>
+          start < referenceStart && (referenceBlock !== sourceBlock || start > sourceStart),
+      );
+      if (hasClearingWriteBeforeReference) return true;
+      if (referenceBlock === sourceBlock) return false;
+      return Boolean(incomingClearedByBlock.get(referenceBlock));
     },
   };
+};
+
+const getDirectInvocationSites = (
+  context: RuleContext,
+  functionNode: EsTreeNode,
+): EsTreeNodeOfType<"CallExpression">[] => {
+  const functionRoot = findTransparentExpressionRoot(functionNode);
+  const directParent = functionRoot.parent;
+  if (
+    directParent &&
+    isNodeOfType(directParent, "CallExpression") &&
+    directParent.callee === functionRoot
+  ) {
+    return [directParent];
+  }
+
+  let functionSymbol: SymbolDescriptor | null = null;
+  if (isNodeOfType(functionNode, "FunctionDeclaration") && functionNode.id) {
+    functionSymbol = context.scopes.symbolFor(functionNode.id);
+  } else {
+    const declarationParent = functionRoot.parent;
+    if (
+      declarationParent &&
+      isNodeOfType(declarationParent, "VariableDeclarator") &&
+      declarationParent.init === functionRoot &&
+      isNodeOfType(declarationParent.id, "Identifier")
+    ) {
+      functionSymbol = context.scopes.symbolFor(declarationParent.id);
+    }
+  }
+  if (!functionSymbol) return [];
+
+  const invocationSites: EsTreeNodeOfType<"CallExpression">[] = [];
+  for (const reference of functionSymbol.references) {
+    if (reference.flag === "write") continue;
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const parent = referenceRoot.parent;
+    if (parent && isNodeOfType(parent, "CallExpression") && parent.callee === referenceRoot) {
+      invocationSites.push(parent);
+    }
+  }
+  return invocationSites;
 };
 
 const symbolHasSynchronousAccess = (
@@ -641,10 +741,29 @@ const symbolHasSynchronousAccess = (
     const owner = context.cfg.enclosingFunction(candidate.sourceExpression);
     const hasAnyWrite = candidate.symbol.references.some((reference) => reference.flag !== "read");
     const flow = createPendingSymbolFlow(context, candidate.symbol, candidate.sourceExpression);
+    const sourceStart = getNodeStartIndex(candidate.sourceExpression);
 
     for (const reference of candidate.symbol.references) {
       if (reference.flag === "write") continue;
-      if (context.cfg.enclosingFunction(reference.identifier) !== owner && hasAnyWrite) continue;
+      const referenceStart = getNodeStartIndex(reference.identifier);
+      if (referenceStart <= sourceStart) continue;
+      const referenceOwner = context.cfg.enclosingFunction(reference.identifier);
+      if (referenceOwner !== owner && hasAnyWrite) {
+        if (!referenceOwner) continue;
+        const hasWriteInReferenceOwner = candidate.symbol.references.some(
+          (innerReference) =>
+            innerReference.flag !== "read" &&
+            context.cfg.enclosingFunction(innerReference.identifier) === referenceOwner,
+        );
+        if (hasWriteInReferenceOwner) continue;
+        const hasUnclearedDirectInvocation = getDirectInvocationSites(context, referenceOwner).some(
+          (invocation) =>
+            context.cfg.enclosingFunction(invocation) === owner &&
+            getNodeStartIndex(invocation) > sourceStart &&
+            !flow.isClearedBefore(invocation),
+        );
+        if (!hasUnclearedDirectInvocation) continue;
+      }
       if (flow.isClearedBefore(reference.identifier)) continue;
       const referenceRoot = findTransparentExpressionRoot(reference.identifier);
       if (expressionIsSynchronouslyConsumed(context, referenceRoot)) return true;

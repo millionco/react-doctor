@@ -790,6 +790,191 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     );
   });
 
+  it("does not attribute an earlier read to a later request API source", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async () => {
+         let pending = cookies();
+         const first = pending.get("first");
+         pending = cookies();
+         pending = await pending;
+         return first;
+       };`,
+      1,
+    );
+  });
+
+  it("accepts a local alias of an official compatibility type", () => {
+    expectDiagnosticCount(
+      `import { cookies, type UnsafeUnwrappedCookies } from "next/headers";
+       type LegacyCookieStore = UnsafeUnwrappedCookies;
+       export const read = () => (cookies() as unknown as LegacyCookieStore).get("session");`,
+      0,
+    );
+  });
+
+  it("accepts a local alias of a namespace compatibility type", () => {
+    expectDiagnosticCount(
+      `import * as nextHeaders from "next/headers";
+       type LegacyHeaderStore = nextHeaders.UnsafeUnwrappedHeaders;
+       export const read = () => (nextHeaders.headers() as unknown as LegacyHeaderStore).get("x-request-id");`,
+      0,
+    );
+  });
+
+  it("does not trust a local type alias with an official-looking name", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       type UnsafeUnwrappedCookies = { get(name: string): string };
+       export const read = () => (cookies() as unknown as UnsafeUnwrappedCookies).get("session");`,
+      1,
+    );
+  });
+
+  it("does not report when both the try and continuing catch paths clear provenance", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async () => {
+         let pending = cookies();
+         try { pending = await pending; }
+         catch { pending = getFallbackCookieStore(); }
+         return pending.get("session");
+       };`,
+      0,
+    );
+  });
+
+  it("does not report when every continuing catch branch clears provenance", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async (usePrimaryFallback) => {
+         let pending = cookies();
+         try { pending = await pending; }
+         catch {
+           if (usePrimaryFallback) pending = getPrimaryCookieStore();
+           else pending = getSecondaryCookieStore();
+         }
+         return pending.get("session");
+       };`,
+      0,
+    );
+  });
+
+  it("reports a catch read when the clearing assignment right side throws", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = () => {
+         let pending = cookies();
+         try { pending = getCookieStoreOrThrow(); }
+         catch { return pending.get("session"); }
+       };`,
+      1,
+    );
+  });
+
+  it("reports a mutable pending binding read by an immediately invoked closure", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async () => {
+         let pending = cookies();
+         const value = (() => pending.get("session"))();
+         pending = await pending;
+         return value;
+       };`,
+      1,
+    );
+  });
+
+  it("reports a mutable pending binding read by a directly called local closure", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async () => {
+         let pending = cookies();
+         const readPending = () => pending.get("session");
+         const value = readPending();
+         pending = await pending;
+         return value;
+       };`,
+      1,
+    );
+  });
+
+  it("does not report a mutable closure that is called only after provenance clears", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async () => {
+         let pending = cookies();
+         const readPending = () => pending.get("session");
+         pending = await pending;
+         return readPending();
+       };`,
+      0,
+    );
+  });
+
+  it("does not report after nested branches all clear provenance", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async (useRequestCookies, usePrimaryFallback) => {
+         let pending = cookies();
+         if (useRequestCookies) pending = await pending;
+         else if (usePrimaryFallback) pending = getPrimaryCookieStore();
+         else pending = getSecondaryCookieStore();
+         return pending.get("session");
+       };`,
+      0,
+    );
+  });
+
+  it("does not report after a do-while body clears provenance on every branch", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async (useRequestCookies) => {
+         let pending = cookies();
+         do {
+           if (useRequestCookies) pending = await pending;
+           else pending = getFallbackCookieStore();
+         } while (false);
+         return pending.get("session");
+       };`,
+      0,
+    );
+  });
+
+  it("does not report after a do-while body clears before a possible continue", () => {
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async (shouldContinue) => {
+         let pending = cookies();
+         do {
+           pending = await pending;
+           if (shouldContinue) continue;
+         } while (false);
+         return pending.get("session");
+       };`,
+      0,
+    );
+  });
+
+  it("analyzes many reconverging branches without path explosion", () => {
+    const branchCount = 40;
+    const reconvergingBranches = Array.from(
+      { length: branchCount },
+      (_, branchIndex) =>
+        `if (flags[${branchIndex}]) observe(${branchIndex}); else observe(-${branchIndex});`,
+    ).join("\n");
+    expectDiagnosticCount(
+      `import { cookies } from "next/headers";
+       export const read = async (flags) => {
+         let pending = cookies();
+         pending = await pending;
+         ${reconvergingBranches}
+         return pending.get("session");
+       };`,
+      0,
+    );
+  });
+
   it("declares the Next.js 15 capability gate", () => {
     expect(nextjsAsyncDynamicApiNotAwaited.requires).toEqual(["nextjs:15"]);
   });

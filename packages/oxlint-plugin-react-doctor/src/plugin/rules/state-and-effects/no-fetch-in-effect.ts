@@ -8,6 +8,7 @@ import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isDescendantOf } from "../../utils/is-descendant-of.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
@@ -405,15 +406,6 @@ const isCompletionSinkGuardedByCancellationFlag = (
 ): boolean =>
   isCompletionSinkInsideCancellationGuard(completionSink, cancellationFlagKey, context) ||
   isCompletionSinkAfterCancellationEarlyExit(completionSink, cancellationFlagKey, context);
-
-const isDescendantOf = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
-  let currentNode: EsTreeNode | null | undefined = node;
-  while (currentNode) {
-    if (currentNode === ancestor) return true;
-    currentNode = currentNode.parent ?? null;
-  }
-  return false;
-};
 
 const isPromiseContinuationForRequest = (
   functionNode: EsTreeNode,

@@ -8,3 +8,17 @@ const _Scene = ({ scene, detail }) => (
     {!detail && <primitive object={scene} />}
   </>
 );
+
+const _TernaryScene = ({ scene, detail }) => (
+  <>
+    {detail ? <primitive object={scene} /> : null}
+    {!detail ? <primitive object={scene} /> : null}
+  </>
+);
+
+const _AlternateTernaryScene = ({ scene, detail }) => (
+  <>
+    {detail ? <primitive object={scene} /> : null}
+    {detail ? null : <primitive object={scene} />}
+  </>
+);

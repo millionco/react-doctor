@@ -12,6 +12,11 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
+interface MountGuard {
+  identifier: EsTreeNodeOfType<"Identifier">;
+  isNegated: boolean;
+}
+
 const findAncestor = (node: EsTreeNode, type: string): EsTreeNode | null => {
   let current = node.parent;
   while (current) {
@@ -21,7 +26,17 @@ const findAncestor = (node: EsTreeNode, type: string): EsTreeNode | null => {
   return null;
 };
 
-const findLogicalGuard = (node: EsTreeNode): EsTreeNode | null => {
+const readMountGuard = (expression: EsTreeNode, isNegated = false): MountGuard | null => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier")) return { identifier: candidate, isNegated };
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
+    return readMountGuard(candidate.argument, !isNegated);
+  }
+  return null;
+};
+
+const findMountGuards = (node: EsTreeNode): MountGuard[] => {
+  const guards: MountGuard[] = [];
   let current = node.parent;
   while (current) {
     if (
@@ -29,11 +44,20 @@ const findLogicalGuard = (node: EsTreeNode): EsTreeNode | null => {
       current.operator === "&&" &&
       isAstDescendant(node, current.right)
     ) {
-      return current.left;
+      const guard = readMountGuard(current.left);
+      if (guard) guards.push(guard);
+    }
+    if (isNodeOfType(current, "ConditionalExpression")) {
+      const isConsequent = isAstDescendant(node, current.consequent);
+      const isAlternate = isAstDescendant(node, current.alternate);
+      if (isConsequent || isAlternate) {
+        const guard = readMountGuard(current.test, isAlternate);
+        if (guard) guards.push(guard);
+      }
     }
     current = current.parent;
   }
-  return null;
+  return guards;
 };
 
 const findMountingRenderOwner = (node: EsTreeNode, scopes: ScopeAnalysis): EsTreeNode | null => {
@@ -62,34 +86,15 @@ const findMountingRenderOwner = (node: EsTreeNode, scopes: ScopeAnalysis): EsTre
   return renderOwner;
 };
 
-const areComplementaryGuards = (
-  first: EsTreeNode,
-  second: EsTreeNode,
+const areComplementaryMountGuards = (
+  first: MountGuard,
+  second: MountGuard,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const unwrappedFirst = stripParenExpression(first);
-  const unwrappedSecond = stripParenExpression(second);
-  const firstNegated =
-    isNodeOfType(unwrappedFirst, "UnaryExpression") && unwrappedFirst.operator === "!"
-      ? stripParenExpression(unwrappedFirst.argument)
-      : null;
-  const secondNegated =
-    isNodeOfType(unwrappedSecond, "UnaryExpression") && unwrappedSecond.operator === "!"
-      ? stripParenExpression(unwrappedSecond.argument)
-      : null;
-  const positiveIdentifier = firstNegated ? unwrappedSecond : unwrappedFirst;
-  const negatedIdentifier = firstNegated ?? secondNegated;
-  if (
-    !negatedIdentifier ||
-    Boolean(firstNegated) === Boolean(secondNegated) ||
-    !isNodeOfType(positiveIdentifier, "Identifier") ||
-    !isNodeOfType(negatedIdentifier, "Identifier")
-  ) {
-    return false;
-  }
-  const positiveSymbol = scopes.symbolFor(positiveIdentifier);
-  const negatedSymbol = scopes.symbolFor(negatedIdentifier);
-  return Boolean(positiveSymbol && negatedSymbol && positiveSymbol.id === negatedSymbol.id);
+  if (first.isNegated === second.isNegated) return false;
+  const firstSymbol = scopes.symbolFor(first.identifier);
+  const secondSymbol = scopes.symbolFor(second.identifier);
+  return Boolean(firstSymbol && secondSymbol && firstSymbol.id === secondSymbol.id);
 };
 
 const canMountTogether = (
@@ -110,9 +115,15 @@ const canMountTogether = (
   ) {
     return false;
   }
-  const firstGuard = findLogicalGuard(first);
-  const secondGuard = findLogicalGuard(second);
-  if (firstGuard && secondGuard && areComplementaryGuards(firstGuard, secondGuard, scopes)) {
+  const firstGuards = findMountGuards(first);
+  const secondGuards = findMountGuards(second);
+  if (
+    firstGuards.some((firstGuard) =>
+      secondGuards.some((secondGuard) =>
+        areComplementaryMountGuards(firstGuard, secondGuard, scopes),
+      ),
+    )
+  ) {
     return false;
   }
   let current = first.parent;

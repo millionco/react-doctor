@@ -43,6 +43,25 @@ describe("r3f-no-duplicate-primitive-object", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows sibling ternary mounts with complementary identifier guards", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `
+        const First = ({ scene, detail }) => <>{detail ? <primitive object={scene} /> : null}{!detail ? <primitive object={scene} /> : null}</>;
+        const Second = ({ scene, detail }) => <>{detail ? <primitive object={scene} /> : null}{detail ? null : <primitive object={scene} />}</>;
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps opaque complementary ternary guards reportable", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `const Scene = ({ scene, detail }) => <>{detail.ready ? <primitive object={scene} /> : null}{!detail.ready ? <primitive object={scene} /> : null}</>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a mount returned by an inline render helper alongside its parent", () => {
     const result = runRule(
       r3fNoDuplicatePrimitiveObject,

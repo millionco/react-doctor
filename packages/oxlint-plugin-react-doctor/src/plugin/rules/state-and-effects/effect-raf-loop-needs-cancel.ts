@@ -303,6 +303,7 @@ const cancellableHandleKey = (
 const cleanupCancelsCollectionValues = (
   cleanupFunction: EsTreeNode,
   collectionKey: string,
+  scopes: ScopeAnalysis,
 ): boolean => {
   let didCancel = false;
   walkSynchronousCallbackFlow(cleanupFunction, (child: EsTreeNode) => {
@@ -331,7 +332,8 @@ const cleanupCancelsCollectionValues = (
       if (
         isCancelAnimationFrameCall(callbackChild) &&
         isNodeOfType(argument, "Identifier") &&
-        argument.name === valueParameter.name
+        scopes.symbolFor(argument)?.bindingIdentifier ===
+          scopes.symbolFor(valueParameter)?.bindingIdentifier
       ) {
         didCancel = true;
         return false;
@@ -341,11 +343,16 @@ const cleanupCancelsCollectionValues = (
   return didCancel;
 };
 
-const cleanupCancelsHandle = (cleanupFunction: EsTreeNode, handleKey: string): boolean => {
+const cleanupCancelsHandle = (
+  cleanupFunction: EsTreeNode,
+  handleKey: string,
+  scopes: ScopeAnalysis,
+): boolean => {
   if (handleKey.startsWith(COLLECTION_VALUES_HANDLE_PREFIX)) {
     return cleanupCancelsCollectionValues(
       cleanupFunction,
       handleKey.slice(COLLECTION_VALUES_HANDLE_PREFIX.length),
+      scopes,
     );
   }
   let didCancel = false;
@@ -389,25 +396,26 @@ const isCancelAnimationFrameCall = (call: EsTreeNodeOfType<"CallExpression">): b
   );
 };
 
-const collectWrittenNames = (root: EsTreeNode, writtenNames: Set<string>): void => {
-  walkAst(root, (child: EsTreeNode) => {
+const collectWrittenKeys = (root: EsTreeNode, writtenKeys: Set<string>): void => {
+  walkSynchronousCallbackFlow(root, (child: EsTreeNode) => {
     const writeTarget = isNodeOfType(child, "AssignmentExpression")
       ? child.left
       : isNodeOfType(child, "UpdateExpression")
         ? child.argument
         : null;
     if (isNodeOfType(writeTarget, "Identifier")) {
-      writtenNames.add(writeTarget.name);
+      const referenceKey = serializeHandleKey(writeTarget);
+      if (referenceKey) writtenKeys.add(referenceKey);
     } else if (isNodeOfType(writeTarget, "MemberExpression")) {
       const referenceKey = serializeHandleKey(writeTarget as EsTreeNode);
-      if (referenceKey) writtenNames.add(referenceKey);
+      if (referenceKey) writtenKeys.add(referenceKey);
     }
   });
 };
 
 const isMonotonicIdentifierWrite = (
   write: EsTreeNode,
-  identifierName: string,
+  identifierKey: string,
   isIncreasing: boolean,
 ): boolean => {
   if (isNodeOfType(write, "UpdateExpression")) {
@@ -426,56 +434,59 @@ const isMonotonicIdentifierWrite = (
     isNodeOfType(value, "BinaryExpression") &&
     value.operator === (isIncreasing ? "+" : "-") &&
     isNodeOfType(leftOperand, "Identifier") &&
-    leftOperand.name === identifierName &&
+    serializeHandleKey(leftOperand) === identifierKey &&
     isPositiveNumericLiteral(value.right)
   );
 };
 
-const collectMonotonicMutationNames = (root: EsTreeNode, isIncreasing: boolean): Set<string> => {
-  const monotonicNames = new Set<string>();
-  const nonMonotonicNames = new Set<string>();
-  walkAst(root, (child: EsTreeNode) => {
+const collectMonotonicMutationKeys = (root: EsTreeNode, isIncreasing: boolean): Set<string> => {
+  const monotonicKeys = new Set<string>();
+  const nonMonotonicKeys = new Set<string>();
+  walkSynchronousCallbackFlow(root, (child: EsTreeNode) => {
     const writeTarget = isNodeOfType(child, "AssignmentExpression")
       ? child.left
       : isNodeOfType(child, "UpdateExpression")
         ? child.argument
         : null;
     if (!isNodeOfType(writeTarget, "Identifier")) return;
-    if (isMonotonicIdentifierWrite(child, writeTarget.name, isIncreasing)) {
-      monotonicNames.add(writeTarget.name);
+    const referenceKey = serializeHandleKey(writeTarget);
+    if (!referenceKey) return;
+    if (isMonotonicIdentifierWrite(child, referenceKey, isIncreasing)) {
+      monotonicKeys.add(referenceKey);
     } else {
-      nonMonotonicNames.add(writeTarget.name);
+      nonMonotonicKeys.add(referenceKey);
     }
   });
-  for (const nonMonotonicName of nonMonotonicNames) monotonicNames.delete(nonMonotonicName);
-  return monotonicNames;
+  for (const nonMonotonicKey of nonMonotonicKeys) monotonicKeys.delete(nonMonotonicKey);
+  return monotonicKeys;
 };
 
 // Names the cleanup neutralizes: direct writes, the roots of anything it
 // CALLS (`controller.abort()`, `stop()`, `stopRef.current()`), the writes
 // inside same-effect functions those calls resolve to, and the writes of
 // functions assigned to `<root>.current` (custom stop-through-a-ref hooks).
-const collectCleanupWrittenNames = (
+const collectCleanupWrittenKeys = (
   cleanupFunction: EsTreeNode,
   effectCallback: EsTreeNode,
 ): Set<string> => {
-  const writtenNames = new Set<string>();
-  collectWrittenNames(cleanupFunction, writtenNames);
-  walkAst(cleanupFunction, (child: EsTreeNode) => {
+  const writtenKeys = new Set<string>();
+  collectWrittenKeys(cleanupFunction, writtenKeys);
+  walkSynchronousCallbackFlow(cleanupFunction, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = child.callee;
     if (isNodeOfType(callee, "Identifier")) {
-      writtenNames.add(callee.name);
+      const calleeKey = serializeHandleKey(callee);
+      if (calleeKey) writtenKeys.add(calleeKey);
       // `return () => stop()` — merge the writes of the same-effect helper.
       walkAst(effectCallback, (candidate: EsTreeNode) => {
         if (
           isNodeOfType(candidate, "VariableDeclarator") &&
           isNodeOfType(candidate.id, "Identifier") &&
-          candidate.id.name === callee.name &&
+          serializeHandleKey(candidate.id) === calleeKey &&
           candidate.init &&
           isFunctionLike(candidate.init as EsTreeNode)
         ) {
-          collectWrittenNames(candidate.init as EsTreeNode, writtenNames);
+          collectWrittenKeys(candidate.init as EsTreeNode, writtenKeys);
         }
       });
       return;
@@ -485,7 +496,7 @@ const collectCleanupWrittenNames = (
       if (!calleeKey) return;
       if (getStaticPropertyName(callee) === "abort") {
         const receiverKey = serializeHandleKey(callee.object as EsTreeNode);
-        if (receiverKey) writtenNames.add(`${receiverKey}.signal.aborted`);
+        if (receiverKey) writtenKeys.add(`${receiverKey}.signal.aborted`);
       }
       // `stopRef.current()` — merge the writes of the function assigned to
       // `stopRef.current` inside the effect.
@@ -497,29 +508,28 @@ const collectCleanupWrittenNames = (
           candidate.right &&
           isFunctionLike(candidate.right as EsTreeNode)
         ) {
-          collectWrittenNames(candidate.right as EsTreeNode, writtenNames);
+          collectWrittenKeys(candidate.right as EsTreeNode, writtenKeys);
         }
       });
     }
   });
-  return writtenNames;
+  return writtenKeys;
 };
 
-const testReferencesAnyGuardName = (test: EsTreeNode, guardNames: ReadonlySet<string>): boolean => {
-  let didFindGuardName = false;
+const testReferencesAnyGuardKey = (test: EsTreeNode, guardKeys: ReadonlySet<string>): boolean => {
+  let didFindGuardKey = false;
   walkAst(test, (child: EsTreeNode) => {
-    if (didFindGuardName) return false;
-    const referenceKey = isNodeOfType(child, "MemberExpression")
-      ? serializeHandleKey(child)
-      : isNodeOfType(child, "Identifier")
-        ? child.name
+    if (didFindGuardKey) return false;
+    const referenceKey =
+      isNodeOfType(child, "MemberExpression") || isNodeOfType(child, "Identifier")
+        ? serializeHandleKey(child)
         : null;
-    if (referenceKey && guardNames.has(referenceKey)) {
-      didFindGuardName = true;
+    if (referenceKey && guardKeys.has(referenceKey)) {
+      didFindGuardKey = true;
       return false;
     }
   });
-  return didFindGuardName;
+  return didFindGuardKey;
 };
 
 const guardBodyAlwaysExits = (statement: EsTreeNode): boolean => {
@@ -535,7 +545,7 @@ const guardBodyAlwaysExits = (statement: EsTreeNode): boolean => {
 const hasDominatingGuard = (
   call: EsTreeNode,
   scheduledFunction: EsTreeNode,
-  guardNames: ReadonlySet<string>,
+  guardKeys: ReadonlySet<string>,
 ): boolean => {
   let cursor: EsTreeNode | null | undefined = call;
   while (cursor && cursor !== scheduledFunction) {
@@ -544,10 +554,10 @@ const hasDominatingGuard = (
     if (
       ((isNodeOfType(parent, "IfStatement") || isNodeOfType(parent, "ConditionalExpression")) &&
         (parent.consequent === cursor || parent.alternate === cursor) &&
-        testReferencesAnyGuardName(parent.test as EsTreeNode, guardNames)) ||
+        testReferencesAnyGuardKey(parent.test as EsTreeNode, guardKeys)) ||
       (isNodeOfType(parent, "LogicalExpression") &&
         parent.right === cursor &&
-        testReferencesAnyGuardName(parent.left as EsTreeNode, guardNames))
+        testReferencesAnyGuardKey(parent.left as EsTreeNode, guardKeys))
     ) {
       return true;
     }
@@ -559,7 +569,7 @@ const hasDominatingGuard = (
           if (
             isNodeOfType(previousNode, "IfStatement") &&
             guardBodyAlwaysExits(previousNode.consequent as EsTreeNode) &&
-            testReferencesAnyGuardName(previousNode.test as EsTreeNode, guardNames)
+            testReferencesAnyGuardKey(previousNode.test as EsTreeNode, guardKeys)
           ) {
             return true;
           }
@@ -573,14 +583,14 @@ const hasDominatingGuard = (
 
 const doesCleanupGuardEveryReschedule = (
   rafLoop: SelfReschedulingRafLoop,
-  guardNames: ReadonlySet<string>,
+  guardKeys: ReadonlySet<string>,
   scopes: ScopeAnalysis,
 ): boolean => {
   const recursiveSchedulingCalls = collectLoopSchedulingCalls(rafLoop, scopes).slice(1);
   return (
     recursiveSchedulingCalls.length > 0 &&
     recursiveSchedulingCalls.every((call) =>
-      hasDominatingGuard(call, rafLoop.scheduledFunction, guardNames),
+      hasDominatingGuard(call, rafLoop.scheduledFunction, guardKeys),
     )
   );
 };
@@ -590,32 +600,35 @@ const isPositiveNumericLiteral = (node: EsTreeNode): boolean =>
 
 const isStableNumericOffset = (
   expression: EsTreeNode,
-  mutatedNames: ReadonlySet<string>,
+  mutatedKeys: ReadonlySet<string>,
 ): boolean => {
   const node = stripParenExpression(expression);
   return (
     (isNodeOfType(node, "Literal") && typeof node.value === "number") ||
-    (isNodeOfType(node, "Identifier") && !mutatedNames.has(node.name))
+    (isNodeOfType(node, "Identifier") && !mutatedKeys.has(serializeHandleKey(node) ?? ""))
   );
 };
 
 const isMonotonicExpression = (
   expression: EsTreeNode,
-  monotonicNames: ReadonlySet<string>,
-  mutatedNames: ReadonlySet<string>,
+  monotonicKeys: ReadonlySet<string>,
+  mutatedKeys: ReadonlySet<string>,
 ): boolean => {
   const node = stripParenExpression(expression);
-  if (isNodeOfType(node, "Identifier")) return monotonicNames.has(node.name);
+  if (isNodeOfType(node, "Identifier")) {
+    const referenceKey = serializeHandleKey(node);
+    return referenceKey ? monotonicKeys.has(referenceKey) : false;
+  }
   if (isNodeOfType(node, "BinaryExpression")) {
     if (node.operator === "+" || node.operator === "-") {
       return (
-        isMonotonicExpression(node.left, monotonicNames, mutatedNames) &&
-        isStableNumericOffset(node.right, mutatedNames)
+        isMonotonicExpression(node.left, monotonicKeys, mutatedKeys) &&
+        isStableNumericOffset(node.right, mutatedKeys)
       );
     }
     if (node.operator === "*" || node.operator === "/") {
       return (
-        isMonotonicExpression(node.left, monotonicNames, mutatedNames) &&
+        isMonotonicExpression(node.left, monotonicKeys, mutatedKeys) &&
         isPositiveNumericLiteral(node.right)
       );
     }
@@ -629,13 +642,14 @@ const isMonotonicExpression = (
     !isNodeOfType(callee, "MemberExpression") ||
     !isNodeOfType(calleeObject, "Identifier") ||
     calleeObject.name !== "Math" ||
+    findVariableInitializer(calleeObject, calleeObject.name) ||
     !MONOTONIC_MATH_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")
   ) {
     return false;
   }
   let didFindMonotonicArgument = false;
   for (const argument of node.arguments) {
-    if (isMonotonicExpression(argument, monotonicNames, mutatedNames)) {
+    if (isMonotonicExpression(argument, monotonicKeys, mutatedKeys)) {
       didFindMonotonicArgument = true;
       continue;
     }
@@ -646,18 +660,18 @@ const isMonotonicExpression = (
 
 const isNumericProgressBoundTest = (
   test: EsTreeNode,
-  increasingNames: ReadonlySet<string>,
-  decreasingNames: ReadonlySet<string>,
-  mutatedNames: ReadonlySet<string>,
+  increasingKeys: ReadonlySet<string>,
+  decreasingKeys: ReadonlySet<string>,
+  mutatedKeys: ReadonlySet<string>,
   expectedTestValue: boolean,
 ): boolean => {
   const stripped = stripParenExpression(test);
   if (isNodeOfType(stripped, "UnaryExpression") && stripped.operator === "!") {
     return isNumericProgressBoundTest(
       stripped.argument,
-      increasingNames,
-      decreasingNames,
-      mutatedNames,
+      increasingKeys,
+      decreasingKeys,
+      mutatedKeys,
       !expectedTestValue,
     );
   }
@@ -665,29 +679,29 @@ const isNumericProgressBoundTest = (
     return (
       isNumericProgressBoundTest(
         stripped.left,
-        increasingNames,
-        decreasingNames,
-        mutatedNames,
+        increasingKeys,
+        decreasingKeys,
+        mutatedKeys,
         expectedTestValue,
       ) &&
       isNumericProgressBoundTest(
         stripped.right,
-        increasingNames,
-        decreasingNames,
-        mutatedNames,
+        increasingKeys,
+        decreasingKeys,
+        mutatedKeys,
         expectedTestValue,
       )
     );
   }
   if (!isNodeOfType(stripped, "BinaryExpression")) return false;
   const leftIsProgressExpression =
-    isMonotonicExpression(stripped.left, increasingNames, mutatedNames) &&
+    isMonotonicExpression(stripped.left, increasingKeys, mutatedKeys) &&
     isNodeOfType(stripped.right, "Literal") &&
     typeof stripped.right.value === "number";
   const rightIsProgressExpression =
     isNodeOfType(stripped.left, "Literal") &&
     typeof stripped.left.value === "number" &&
-    isMonotonicExpression(stripped.right, increasingNames, mutatedNames);
+    isMonotonicExpression(stripped.right, increasingKeys, mutatedKeys);
   const truthyIncreasingBound =
     ((stripped.operator === "<" || stripped.operator === "<=") && leftIsProgressExpression) ||
     ((stripped.operator === ">" || stripped.operator === ">=") && rightIsProgressExpression);
@@ -698,13 +712,13 @@ const isNumericProgressBoundTest = (
     return true;
   }
   const leftIsCountdownExpression =
-    isMonotonicExpression(stripped.left, decreasingNames, mutatedNames) &&
+    isMonotonicExpression(stripped.left, decreasingKeys, mutatedKeys) &&
     isNodeOfType(stripped.right, "Literal") &&
     typeof stripped.right.value === "number";
   const rightIsCountdownExpression =
     isNodeOfType(stripped.left, "Literal") &&
     typeof stripped.left.value === "number" &&
-    isMonotonicExpression(stripped.right, decreasingNames, mutatedNames);
+    isMonotonicExpression(stripped.right, decreasingKeys, mutatedKeys);
   const truthyDecreasingBound =
     ((stripped.operator === ">" || stripped.operator === ">=") && leftIsCountdownExpression) ||
     ((stripped.operator === "<" || stripped.operator === "<=") && rightIsCountdownExpression);
@@ -719,40 +733,44 @@ const everyRescheduleIsProgressBounded = (
   scopes: ScopeAnalysis,
 ): boolean => {
   const scheduledFunction = rafLoop.scheduledFunction;
-  const mutatedNames = new Set<string>();
-  collectWrittenNames(scheduledFunction, mutatedNames);
-  const increasingNames = collectMonotonicMutationNames(scheduledFunction, true);
-  const decreasingNames = collectMonotonicMutationNames(scheduledFunction, false);
+  const mutatedKeys = new Set<string>();
+  collectWrittenKeys(scheduledFunction, mutatedKeys);
+  const increasingKeys = collectMonotonicMutationKeys(scheduledFunction, true);
+  const decreasingKeys = collectMonotonicMutationKeys(scheduledFunction, false);
   if (isFunctionLike(scheduledFunction)) {
     for (const parameter of scheduledFunction.params ?? []) {
-      if (isNodeOfType(parameter, "Identifier") && !mutatedNames.has(parameter.name)) {
-        increasingNames.add(parameter.name);
+      if (isNodeOfType(parameter, "Identifier")) {
+        const parameterKey = serializeHandleKey(parameter);
+        if (parameterKey && !mutatedKeys.has(parameterKey)) increasingKeys.add(parameterKey);
       }
     }
   }
   let didGrow = true;
   while (didGrow) {
     didGrow = false;
-    walkAst(scheduledFunction, (child: EsTreeNode) => {
+    walkSynchronousCallbackFlow(scheduledFunction, (child: EsTreeNode) => {
       if (!isNodeOfType(child, "VariableDeclarator") || !child.init) return;
+      const declarationKey = isNodeOfType(child.id, "Identifier")
+        ? serializeHandleKey(child.id)
+        : null;
       if (
-        !isNodeOfType(child.id, "Identifier") ||
-        increasingNames.has(child.id.name) ||
-        decreasingNames.has(child.id.name) ||
-        mutatedNames.has(child.id.name)
+        !declarationKey ||
+        increasingKeys.has(declarationKey) ||
+        decreasingKeys.has(declarationKey) ||
+        mutatedKeys.has(declarationKey)
       ) {
         return;
       }
-      if (isMonotonicExpression(child.init as EsTreeNode, increasingNames, mutatedNames)) {
-        increasingNames.add(child.id.name);
+      if (isMonotonicExpression(child.init as EsTreeNode, increasingKeys, mutatedKeys)) {
+        increasingKeys.add(declarationKey);
         didGrow = true;
-      } else if (isMonotonicExpression(child.init as EsTreeNode, decreasingNames, mutatedNames)) {
-        decreasingNames.add(child.id.name);
+      } else if (isMonotonicExpression(child.init as EsTreeNode, decreasingKeys, mutatedKeys)) {
+        decreasingKeys.add(declarationKey);
         didGrow = true;
       }
     });
   }
-  if (increasingNames.size === 0 && decreasingNames.size === 0) return false;
+  if (increasingKeys.size === 0 && decreasingKeys.size === 0) return false;
   const reschedulingCalls = collectLoopSchedulingCalls(rafLoop, scopes).slice(1);
   if (reschedulingCalls.length === 0) return false;
   for (const child of reschedulingCalls) {
@@ -765,9 +783,9 @@ const everyRescheduleIsProgressBounded = (
         (cursor.consequent === branchChild || cursor.alternate === branchChild) &&
         isNumericProgressBoundTest(
           cursor.test as EsTreeNode,
-          increasingNames,
-          decreasingNames,
-          mutatedNames,
+          increasingKeys,
+          decreasingKeys,
+          mutatedKeys,
           cursor.consequent === branchChild,
         )
       ) {
@@ -802,14 +820,14 @@ export const effectRafLoopNeedsCancel = defineRule({
         if (
           handleKey &&
           cleanupFunctions.some((cleanupFunction) =>
-            cleanupCancelsHandle(cleanupFunction, handleKey),
+            cleanupCancelsHandle(cleanupFunction, handleKey, context.scopes),
           )
         ) {
           continue;
         }
         const hasCleanupGuard = cleanupFunctions.some((cleanupFunction) => {
-          const cleanupWrittenNames = collectCleanupWrittenNames(cleanupFunction, callback);
-          return doesCleanupGuardEveryReschedule(rafLoop, cleanupWrittenNames, context.scopes);
+          const cleanupWrittenKeys = collectCleanupWrittenKeys(cleanupFunction, callback);
+          return doesCleanupGuardEveryReschedule(rafLoop, cleanupWrittenKeys, context.scopes);
         });
         if (hasCleanupGuard) continue;
         context.report({

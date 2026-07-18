@@ -203,6 +203,85 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("accepts proven disposeOnUnmount cleanup for the acquired resource", () => {
+    const aliasedImportListener = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount as dispose } from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           window.addEventListener("resize", this.handleResize);
+           dispose(this, () => window.removeEventListener("resize", this.handleResize));
+         }
+         render() { return null; }
+       }`,
+    );
+    const namespaceTimer = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import * as MobxReact from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           this.timer = setInterval(() => this.tick(), 1000);
+           MobxReact.disposeOnUnmount(this, () => clearInterval(this.timer));
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(aliasedImportListener.diagnostics).toHaveLength(0);
+    expect(namespaceTimer.diagnostics).toHaveLength(0);
+  });
+
+  it("requires proven disposeOnUnmount provenance, owner, and matching cleanup", () => {
+    const localHomonym = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `const disposeOnUnmount = (owner, cleanup) => cleanup;
+       class C extends React.Component {
+         componentDidMount() {
+           window.addEventListener("resize", this.handleResize);
+           disposeOnUnmount(this, () => window.removeEventListener("resize", this.handleResize));
+         }
+         render() { return null; }
+       }`,
+    );
+    const wrongOwner = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount } from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           window.addEventListener("resize", this.handleResize);
+           disposeOnUnmount(other, () => window.removeEventListener("resize", this.handleResize));
+         }
+         render() { return null; }
+       }`,
+    );
+    const wrongListener = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount } from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           window.addEventListener("resize", this.handleResize);
+           disposeOnUnmount(this, () => window.removeEventListener("scroll", this.handleResize));
+         }
+         render() { return null; }
+       }`,
+    );
+    const shadowedNamespace = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import * as MobxReact from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           const MobxReact = fakeMobxReact;
+           window.addEventListener("resize", this.handleResize);
+           MobxReact.disposeOnUnmount(this, () => window.removeEventListener("resize", this.handleResize));
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(localHomonym.diagnostics).toHaveLength(1);
+    expect(wrongOwner.diagnostics).toHaveLength(1);
+    expect(wrongListener.diagnostics).toHaveLength(1);
+    expect(shadowedNamespace.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a pure data-fetch mount with no resource to release", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

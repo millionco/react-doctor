@@ -1,7 +1,11 @@
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import {
+  getImportedNameFromModule,
+  isNamespaceImportFromModule,
+} from "../../utils/find-import-source-for-name.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { hasPossibleStaticPropertyWriteBefore } from "../../utils/has-static-property-write-before.js";
@@ -35,6 +39,20 @@ const LISTENER_REGISTRATION_METHODS = new Set([
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "global", "self"]);
 const MOUNT_LOCAL_RESOURCE_FACTORY_NAMES = new Set(["initPlaces", "places"]);
 const COMPONENT_MUTATION_METHOD_NAMES = new Set(["forceUpdate", "setState"]);
+const MOBX_REACT_MODULE = "mobx-react";
+const DISPOSE_ON_UNMOUNT_NAME = "disposeOnUnmount";
+const LISTENER_RELEASE_METHODS = new Map([
+  ["addEventListener", "removeEventListener"],
+  ["addListener", "removeListener"],
+  ["on", "off"],
+  ["subscribe", "unsubscribe"],
+]);
+const LISTENER_RELEASE_METHOD_NAMES = new Set(LISTENER_RELEASE_METHODS.values());
+
+interface MountHazard {
+  node: EsTreeNodeOfType<"CallExpression">;
+  releaseKey: string | null;
+}
 
 const getBareCalleeName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
@@ -377,6 +395,107 @@ const listenerIdentityKey = (
   return `${receiverKey}|${eventKey}|${handlerKey}|${captureKey}`;
 };
 
+const listenerReleaseKey = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  releaseMethodName: string,
+  scopes: ScopeAnalysis,
+): string | null => {
+  const identityKey = listenerIdentityKey(call, scopes);
+  return identityKey ? `listener:${releaseMethodName}:${identityKey}` : null;
+};
+
+const storedTimerHandleKey = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): string | null => {
+  const expressionRoot = findTransparentExpressionRoot(call);
+  const parent = expressionRoot.parent;
+  const storageTarget =
+    isNodeOfType(parent, "AssignmentExpression") && parent.right === expressionRoot
+      ? parent.left
+      : isNodeOfType(parent, "VariableDeclarator") && parent.init === expressionRoot
+        ? parent.id
+        : null;
+  return storageTarget ? serializeReferenceKey({ node: storageTarget, scopes }) : null;
+};
+
+const isProvenDisposeOnUnmountCall = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callee = stripParenExpression(call.callee);
+  if (isNodeOfType(callee, "Identifier")) {
+    return (
+      scopes.symbolFor(callee)?.kind === "import" &&
+      getImportedNameFromModule(call, callee.name, MOBX_REACT_MODULE) === DISPOSE_ON_UNMOUNT_NAME
+    );
+  }
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object);
+  return (
+    getStaticPropertyName(callee) === DISPOSE_ON_UNMOUNT_NAME &&
+    isNodeOfType(receiver, "Identifier") &&
+    scopes.symbolFor(receiver)?.kind === "import" &&
+    isNamespaceImportFromModule(call, receiver.name, MOBX_REACT_MODULE)
+  );
+};
+
+const cleanupReleaseKey = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): string | null => {
+  const callee = stripParenExpression(call.callee);
+  if (isNodeOfType(callee, "MemberExpression")) {
+    const methodName = getStaticPropertyName(callee);
+    if (methodName && LISTENER_RELEASE_METHOD_NAMES.has(methodName)) {
+      return listenerReleaseKey(call, methodName, scopes);
+    }
+  }
+  const timerCalleeName = getTimerCalleeName(call);
+  const handleArgument = call.arguments?.[0];
+  if (
+    (timerCalleeName === "clearInterval" || timerCalleeName === "clearTimeout") &&
+    handleArgument &&
+    !isNodeOfType(handleArgument, "SpreadElement")
+  ) {
+    const handleKey = serializeReferenceKey({ node: handleArgument, scopes });
+    return handleKey ? `timer:${timerCalleeName}:${handleKey}` : null;
+  }
+  return null;
+};
+
+const collectMobxDisposalReleaseKeys = (
+  mountBody: EsTreeNode,
+  classBody: EsTreeNode | null,
+  scopes: ScopeAnalysis,
+): Set<string> => {
+  const releaseKeys = new Set<string>();
+  walkSynchronousCallbackFlow(mountBody, (candidate) => {
+    if (!isNodeOfType(candidate, "CallExpression")) return;
+    const ownerArgument = candidate.arguments?.[0];
+    const owner =
+      ownerArgument && !isNodeOfType(ownerArgument, "SpreadElement")
+        ? stripParenExpression(ownerArgument)
+        : null;
+    if (
+      !isProvenDisposeOnUnmountCall(candidate, scopes) ||
+      !isNodeOfType(owner, "ThisExpression")
+    ) {
+      return;
+    }
+    const cleanupArgument = candidate.arguments?.[1];
+    if (!cleanupArgument || isNodeOfType(cleanupArgument, "SpreadElement")) return;
+    const cleanupFunction = resolveTimeoutCallbackFunction(cleanupArgument, classBody);
+    if (!isFunctionLike(cleanupFunction)) return;
+    walkSynchronousCallbackFlow(cleanupFunction, (cleanupCandidate) => {
+      if (!isNodeOfType(cleanupCandidate, "CallExpression")) return;
+      const releaseKey = cleanupReleaseKey(cleanupCandidate, scopes);
+      if (releaseKey) releaseKeys.add(releaseKey);
+    });
+  });
+  return releaseKeys;
+};
+
 const collectSynchronouslyRemovedListeners = (
   mountBody: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -434,8 +553,8 @@ const isMountHazard = (
   removedListeners: Map<string, number>,
   classBody: EsTreeNode | null,
   scopes: ScopeAnalysis,
-): boolean => {
-  if (!isNodeOfType(node, "CallExpression")) return false;
+): MountHazard | null => {
+  if (!isNodeOfType(node, "CallExpression")) return null;
   const callee = stripParenExpression(node.callee);
   const methodName = isNodeOfType(callee, "MemberExpression")
     ? getStaticPropertyName(callee)
@@ -472,20 +591,30 @@ const isMountHazard = (
     const isSelfRemovingListener =
       (methodName === "addEventListener" && isOneShotListenerOptions(callArguments[2], scopes)) ||
       isSynchronouslyRemoved;
-    return (
+    const isHazard =
       !isFunctionFactoryOnce &&
       !isLocalReceiver &&
       !isSelfRemovingListener &&
-      !receiverIsRefOwnedNode
-    );
+      !receiverIsRefOwnedNode;
+    if (!isHazard) return null;
+    const releaseMethodName = LISTENER_RELEASE_METHODS.get(methodName);
+    return {
+      node,
+      releaseKey: releaseMethodName ? listenerReleaseKey(node, releaseMethodName, scopes) : null,
+    };
   }
 
   const timerCalleeName = getTimerCalleeName(node);
-  if (timerCalleeName === "setInterval") return true;
-  if (timerCalleeName === "setTimeout" && node.arguments?.[0]) {
-    return timeoutCallbackMutatesComponent(node.arguments[0], classBody, scopes);
+  if (timerCalleeName === "setInterval") {
+    const handleKey = storedTimerHandleKey(node, scopes);
+    return { node, releaseKey: handleKey ? `timer:clearInterval:${handleKey}` : null };
   }
-  return false;
+  if (timerCalleeName === "setTimeout" && node.arguments?.[0]) {
+    if (!timeoutCallbackMutatesComponent(node.arguments[0], classBody, scopes)) return null;
+    const handleKey = storedTimerHandleKey(node, scopes);
+    return { node, releaseKey: handleKey ? `timer:clearTimeout:${handleKey}` : null };
+  }
+  return null;
 };
 
 const getMemberFunctionBody = (member: EsTreeNode): EsTreeNode | null => {
@@ -529,17 +658,25 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
 
         const localReceiverSymbolIds = collectMountLocalReceiverSymbolIds(body, context.scopes);
         const removedListeners = collectSynchronouslyRemovedListeners(body, context.scopes);
-        let hazardNode: EsTreeNode | null = null;
+        const mountHazards: MountHazard[] = [];
         walkSynchronousCallbackFlow(body, (candidate) => {
-          if (hazardNode) return;
-          if (
-            isMountHazard(candidate, localReceiverSymbolIds, removedListeners, node, context.scopes)
-          ) {
-            hazardNode = candidate;
-          }
+          const candidateHazard = isMountHazard(
+            candidate,
+            localReceiverSymbolIds,
+            removedListeners,
+            node,
+            context.scopes,
+          );
+          if (candidateHazard) mountHazards.push(candidateHazard);
         });
-        if (hazardNode) {
-          context.report({ node: hazardNode, message: MESSAGE });
+        if (mountHazards.length === 0) continue;
+        const mobxDisposalReleaseKeys = collectMobxDisposalReleaseKeys(body, node, context.scopes);
+        const undisposedHazard = mountHazards.find(
+          (mountHazard) =>
+            !mountHazard.releaseKey || !mobxDisposalReleaseKeys.has(mountHazard.releaseKey),
+        );
+        if (undisposedHazard) {
+          context.report({ node: undisposedHazard.node, message: MESSAGE });
           return;
         }
       }

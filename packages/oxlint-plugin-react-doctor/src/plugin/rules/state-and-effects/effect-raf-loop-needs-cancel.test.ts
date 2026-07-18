@@ -522,6 +522,86 @@ describe("effect-raf-loop-needs-cancel", () => {
     expect(unboundedConsequent.diagnostics).toHaveLength(1);
   });
 
+  it("compares RAF progress and cleanup guards by binding identity", () => {
+    const boundedOuterCounter = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let frame = 0;
+        const step = () => {
+          frame++;
+          { let frame = 0; frame = random(); }
+          if (frame < 10) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const shadowedProgressCounter = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let frame = 0;
+        const step = () => {
+          { let frame = 0; frame++; }
+          if (frame < 10) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const shadowedCleanupGuard = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let active = true;
+        const step = () => {
+          if (active) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+        return () => { { let active = true; active = false; } };
+      }, []);`,
+    );
+    const shadowedStopHelper = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let active = true;
+        const stop = () => { active = false; };
+        const step = () => {
+          if (active) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+        return () => { const stop = () => {}; stop(); };
+      }, []);`,
+    );
+    const unusedNonMonotonicHelper = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let frame = 0;
+        const step = () => {
+          frame++;
+          const debug = () => { frame = random(); };
+          if (frame < 10) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const invokedNonMonotonicHelper = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let frame = 0;
+        const step = () => {
+          frame++;
+          const mutate = () => { frame = random(); };
+          mutate();
+          if (frame < 10) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    expect(boundedOuterCounter.diagnostics).toHaveLength(0);
+    expect(shadowedProgressCounter.diagnostics).toHaveLength(1);
+    expect(shadowedCleanupGuard.diagnostics).toHaveLength(1);
+    expect(shadowedStopHelper.diagnostics).toHaveLength(1);
+    expect(unusedNonMonotonicHelper.diagnostics).toHaveLength(0);
+    expect(invokedNonMonotonicHelper.diagnostics).toHaveLength(1);
+  });
+
   it("only follows nested reschedules through synchronously invoked helpers", () => {
     const unusedHelper = runRule(
       effectRafLoopNeedsCancel,

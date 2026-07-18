@@ -878,7 +878,7 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
-    it("still flags an unknown local useSyncExternalStore wrapper", () => {
+    it("stays silent when a custom-named local hook delegates to useSyncExternalStore", () => {
       const result = runRule(
         noPassDataToParent,
         `const useSidebarStatus = (query) =>
@@ -900,7 +900,7 @@ describe("no-pass-data-to-parent — regressions", () => {
         };`,
       );
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics).toEqual([]);
     });
 
     it("still flags media-query state that a user handler can also update", () => {

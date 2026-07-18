@@ -1312,8 +1312,6 @@ const getLocalHookExternalStateProof = (
   ref: Reference,
   scopes: ScopeAnalysis,
 ): boolean | null => {
-  const referenceIdentifier = ref.identifier as unknown as EsTreeNode;
-  let hookName = isNodeOfType(referenceIdentifier, "Identifier") ? referenceIdentifier.name : null;
   let hookFunction = resolveToFunction(ref);
   if (!hookFunction) {
     for (const definition of ref.resolved?.defs ?? []) {
@@ -1326,16 +1324,11 @@ const getLocalHookExternalStateProof = (
       const calleeReference = getRef(analysis, callee);
       if (!calleeReference) continue;
       hookFunction = resolveToFunction(calleeReference);
-      if (hookFunction) {
-        hookName = callee.name;
-        break;
-      }
+      if (hookFunction) break;
     }
   }
   if (!hookFunction) return null;
   if (
-    hookName !== null &&
-    EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(hookName) &&
     isNodeOfType(hookFunction, "ArrowFunctionExpression") &&
     !isNodeOfType(hookFunction.body, "BlockStatement") &&
     isReactHookCall(hookFunction.body, "useSyncExternalStore", scopes)

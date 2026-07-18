@@ -640,12 +640,34 @@ const isNumericProgressBoundTest = (
   increasingNames: ReadonlySet<string>,
   decreasingNames: ReadonlySet<string>,
   mutatedNames: ReadonlySet<string>,
+  expectedTestValue: boolean,
 ): boolean => {
   const stripped = stripParenExpression(test);
+  if (isNodeOfType(stripped, "UnaryExpression") && stripped.operator === "!") {
+    return isNumericProgressBoundTest(
+      stripped.argument,
+      increasingNames,
+      decreasingNames,
+      mutatedNames,
+      !expectedTestValue,
+    );
+  }
   if (isNodeOfType(stripped, "LogicalExpression") && stripped.operator !== "??") {
     return (
-      isNumericProgressBoundTest(stripped.left, increasingNames, decreasingNames, mutatedNames) &&
-      isNumericProgressBoundTest(stripped.right, increasingNames, decreasingNames, mutatedNames)
+      isNumericProgressBoundTest(
+        stripped.left,
+        increasingNames,
+        decreasingNames,
+        mutatedNames,
+        expectedTestValue,
+      ) &&
+      isNumericProgressBoundTest(
+        stripped.right,
+        increasingNames,
+        decreasingNames,
+        mutatedNames,
+        expectedTestValue,
+      )
     );
   }
   if (!isNodeOfType(stripped, "BinaryExpression")) return false;
@@ -657,10 +679,13 @@ const isNumericProgressBoundTest = (
     isNodeOfType(stripped.left, "Literal") &&
     typeof stripped.left.value === "number" &&
     isMonotonicExpression(stripped.right, increasingNames, mutatedNames);
-  if (
+  const truthyIncreasingBound =
     ((stripped.operator === "<" || stripped.operator === "<=") && leftIsProgressExpression) ||
-    ((stripped.operator === ">" || stripped.operator === ">=") && rightIsProgressExpression)
-  ) {
+    ((stripped.operator === ">" || stripped.operator === ">=") && rightIsProgressExpression);
+  const falsyIncreasingBound =
+    ((stripped.operator === ">" || stripped.operator === ">=") && leftIsProgressExpression) ||
+    ((stripped.operator === "<" || stripped.operator === "<=") && rightIsProgressExpression);
+  if (expectedTestValue ? truthyIncreasingBound : falsyIncreasingBound) {
     return true;
   }
   const leftIsCountdownExpression =
@@ -671,10 +696,13 @@ const isNumericProgressBoundTest = (
     isNodeOfType(stripped.left, "Literal") &&
     typeof stripped.left.value === "number" &&
     isMonotonicExpression(stripped.right, decreasingNames, mutatedNames);
-  return (
+  const truthyDecreasingBound =
     ((stripped.operator === ">" || stripped.operator === ">=") && leftIsCountdownExpression) ||
-    ((stripped.operator === "<" || stripped.operator === "<=") && rightIsCountdownExpression)
-  );
+    ((stripped.operator === "<" || stripped.operator === "<=") && rightIsCountdownExpression);
+  const falsyDecreasingBound =
+    ((stripped.operator === "<" || stripped.operator === "<=") && leftIsCountdownExpression) ||
+    ((stripped.operator === ">" || stripped.operator === ">=") && rightIsCountdownExpression);
+  return expectedTestValue ? truthyDecreasingBound : falsyDecreasingBound;
 };
 
 const everyRescheduleIsProgressBounded = (scheduledFunction: EsTreeNode): boolean => {
@@ -719,20 +747,24 @@ const everyRescheduleIsProgressBounded = (scheduledFunction: EsTreeNode): boolea
     if (!isRequestAnimationFrameCall(child)) return;
     sawReschedule = true;
     let bounded = false;
+    let branchChild: EsTreeNode = child;
     let cursor: EsTreeNode | null | undefined = child.parent;
     while (cursor && cursor !== scheduledFunction) {
       if (
         (isNodeOfType(cursor, "IfStatement") || isNodeOfType(cursor, "ConditionalExpression")) &&
+        (cursor.consequent === branchChild || cursor.alternate === branchChild) &&
         isNumericProgressBoundTest(
           cursor.test as EsTreeNode,
           increasingNames,
           decreasingNames,
           mutatedNames,
+          cursor.consequent === branchChild,
         )
       ) {
         bounded = true;
         break;
       }
+      branchChild = cursor;
       cursor = cursor.parent ?? null;
     }
     if (!bounded) sawUnboundedReschedule = true;

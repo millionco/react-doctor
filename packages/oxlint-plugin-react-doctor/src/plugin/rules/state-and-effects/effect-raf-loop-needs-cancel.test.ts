@@ -469,6 +469,59 @@ describe("effect-raf-loop-needs-cancel", () => {
     expect(unstableLowerBound.diagnostics).toHaveLength(1);
   });
 
+  it("requires the reschedule branch to preserve the progress bound", () => {
+    const boundedConsequent = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let frame = 0;
+        const step = () => {
+          frame++;
+          if (frame < 10) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const unboundedAlternate = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let frame = 0;
+        const step = () => {
+          frame++;
+          if (frame < 10) finish();
+          else requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const boundedAlternate = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let frame = 0;
+        const step = () => {
+          frame++;
+          if (frame >= 10) finish();
+          else requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    const unboundedConsequent = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let frame = 0;
+        const step = () => {
+          frame++;
+          if (frame >= 10) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }, []);`,
+    );
+    expect(boundedConsequent.diagnostics).toHaveLength(0);
+    expect(unboundedAlternate.diagnostics).toHaveLength(1);
+    expect(boundedAlternate.diagnostics).toHaveLength(0);
+    expect(unboundedConsequent.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet: Custom useRafLoop hook whose cleanup invokes the stop closure through a ref", () => {
     const result = runRule(
       effectRafLoopNeedsCancel,

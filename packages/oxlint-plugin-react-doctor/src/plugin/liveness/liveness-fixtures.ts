@@ -1727,6 +1727,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "void-dom-elements-no-children": {
     code: "const a = <img>hi</img>;",
   },
+  "waapi-animation-in-render": {
+    code: 'const Card = () => { const node = document.createElement("div"); node.animate([{ opacity: 0 }, { opacity: 1 }], 200); return <div />; };',
+  },
+  "web-animation-offsets-valid": {
+    code: 'const node = document.createElement("div"); node.animate([{ opacity: 0, offset: 0.8 }, { opacity: 1, offset: 0.2 }], 200);',
+  },
   "webhook-signature-risk": {
     code: "export async function POST(request: Request) {\n  const event = await request.json();\n  await applyEvent(event);\n  return Response.json({ ok: true });\n}\n",
     filePath: "src/app/api/webhooks/github/route.ts",
@@ -1749,17 +1755,32 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "motion-animate-presence-requires-key": {
     code: 'import { AnimatePresence } from "motion/react";\nconst Stack = () => <AnimatePresence><Panel /><Panel /></AnimatePresence>;',
   },
+  "motion-animate-presence-must-outlive-child": {
+    code: 'import { AnimatePresence, motion } from "motion/react";\nconst Panel = ({ open }) => open && <AnimatePresence><motion.div exit={{ opacity: 0 }} /></AnimatePresence>;',
+  },
   "motion-animate-presence-wait-single-child": {
     code: 'import { AnimatePresence } from "motion/react";\nconst Stack = () => <AnimatePresence mode="wait"><Panel key="a" /><Panel key="b" /></AnimatePresence>;',
   },
   "motion-create-in-render": {
     code: 'import { motion } from "motion/react";\nconst Card = () => { const MotionCard = motion.create("article"); return <MotionCard />; };',
   },
+  "motion-imperative-animation-in-render": {
+    code: 'import { animate } from "motion/react";\nconst Card = () => { animate(".card", { opacity: 1 }); return <article className="card" />; };',
+  },
+  "motion-drag-axis-constraint-mismatch": {
+    code: 'import { motion } from "motion/react";\nconst Slider = () => <motion.div drag="x" dragConstraints={{ top: -20, bottom: 20 }} />;',
+  },
   "motion-keyframe-times-mismatch": {
     code: 'import { motion } from "motion/react";\nconst Fade = () => <motion.div animate={{ opacity: [0, 1, 0] }} transition={{ times: [0, 1] }} />;',
   },
+  "motion-layout-on-inline-element": {
+    code: 'import { motion } from "motion/react";\nconst Label = () => <motion.span layout className="inline">Label</motion.span>;',
+  },
   "motion-use-transform-range-length": {
     code: 'import { useTransform } from "motion/react";\nconst opacity = useTransform(progress, [0, 0.5, 1], [0, 1]);',
+  },
+  "motion-unstable-layout-id-in-iteration": {
+    code: 'import { motion } from "motion/react";\nconst Cards = ({ cards }) => cards.map(() => <motion.article layoutId="card" />);',
   },
   "motion-value-constructor-in-render": {
     code: 'import { motionValue } from "motion/react";\nconst Meter = ({ value }) => { const progress = motionValue(value); return <output>{progress.get()}</output>; };',
@@ -1776,6 +1797,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-inert-sticky-position": {
     code: 'const Header = () => <header className="sticky" />;',
   },
+  "no-invalid-progress-range": {
+    code: "const Progress = () => <progress value={11} max={10} />;",
+  },
+  "no-pointer-disabled-enabled-control": {
+    code: 'const Action = () => <button className="pointer-events-none">Save</button>;',
+  },
   "no-layout-shifting-interaction-state": {
     code: 'const Button = () => <button className="hover:px-6">Save</button>;',
   },
@@ -1790,6 +1817,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-aria-invalid-without-description": {
     code: "const Field = () => <input aria-invalid />;",
+  },
+  "role-button-requires-complete-keyboard-activation": {
+    code: 'const Action = () => <div role="button" tabIndex={0} onClick={activate} onKeyDown={(event) => { if (event.key === "Enter") activate(); }}>Save</div>;',
   },
   "no-fixed-inside-transformed-ancestor": {
     code: 'const Overlay = () => <div className="scale-95"><div className="fixed" /></div>;',

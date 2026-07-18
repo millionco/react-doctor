@@ -116,6 +116,8 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "no-call-component-as-function",
   "no-string-false-on-boolean-attribute",
   "hook-import-rename-loses-use-prefix",
+  "no-invalid-progress-range",
+  "role-button-requires-complete-keyboard-activation",
 ]);
 
 // Rule ids whose source files are kept on disk but intentionally NOT

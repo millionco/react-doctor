@@ -142,10 +142,15 @@ import { mediaHasCaption } from "./rules/a11y/media-has-caption.js";
 import { mobxNoMakeAutoObservableInInheritance } from "./rules/mobx/mobx-no-make-auto-observable-in-inheritance.js";
 import { mobxNoObserverWrappedMemo } from "./rules/mobx/mobx-no-observer-wrapped-memo.js";
 import { mobxReactionDisposerDiscarded } from "./rules/mobx/mobx-reaction-disposer-discarded.js";
+import { motionAnimatePresenceMustOutliveChild } from "./rules/correctness/motion-animate-presence-must-outlive-child.js";
 import { motionAnimatePresenceRequiresKey } from "./rules/correctness/motion-animate-presence-requires-key.js";
 import { motionAnimatePresenceWaitSingleChild } from "./rules/correctness/motion-animate-presence-wait-single-child.js";
 import { motionCreateInRender } from "./rules/correctness/motion-create-in-render.js";
+import { motionDragAxisConstraintMismatch } from "./rules/correctness/motion-drag-axis-constraint-mismatch.js";
+import { motionImperativeAnimationInRender } from "./rules/correctness/motion-imperative-animation-in-render.js";
 import { motionKeyframeTimesMismatch } from "./rules/correctness/motion-keyframe-times-mismatch.js";
+import { motionLayoutOnInlineElement } from "./rules/correctness/motion-layout-on-inline-element.js";
+import { motionUnstableLayoutIdInIteration } from "./rules/correctness/motion-unstable-layout-id-in-iteration.js";
 import { motionUseTransformRangeLength } from "./rules/correctness/motion-use-transform-range-length.js";
 import { motionValueConstructorInRender } from "./rules/performance/motion-value-constructor-in-render.js";
 import { motionValueSubscriptionInRender } from "./rules/correctness/motion-value-subscription-in-render.js";
@@ -291,6 +296,7 @@ import { noInlineExhaustiveStyle } from "./rules/design/no-inline-exhaustive-sty
 import { noInlineHocOnComponent } from "./rules/architecture/no-inline-hoc-on-component.js";
 import { noInlinePropOnMemoComponent } from "./rules/performance/no-inline-prop-on-memo-component.js";
 import { noInteractiveElementToNoninteractiveRole } from "./rules/a11y/no-interactive-element-to-noninteractive-role.js";
+import { noInvalidProgressRange } from "./rules/a11y/no-invalid-progress-range.js";
 import { noIsMounted } from "./rules/react-builtins/no-is-mounted.js";
 import { noItalicSerifDisplayHeading } from "./rules/design/no-italic-serif-display-heading.js";
 import { noJsonParseStringifyClone } from "./rules/js-performance/no-json-parse-stringify-clone.js";
@@ -347,6 +353,7 @@ import { noPermanentWillChange } from "./rules/performance/no-permanent-will-cha
 import { noPillNavigationCount } from "./rules/design/no-pill-navigation-count.js";
 import { noPlaceholderOnlyField } from "./rules/a11y/no-placeholder-only-field.js";
 import { noPlaceholderPersonaCopy } from "./rules/design/no-placeholder-persona-copy.js";
+import { noPointerDisabledEnabledControl } from "./rules/design/no-pointer-disabled-enabled-control.js";
 import { noPolymorphicChildren } from "./rules/correctness/no-polymorphic-children.js";
 import { noPredicateFunctionReferenceInBooleanPosition } from "./rules/correctness/no-predicate-function-reference-in-boolean-position.js";
 import { noPresentationRoleConflict } from "./rules/a11y/no-presentation-role-conflict.js";
@@ -546,6 +553,7 @@ import { rnPressableSharedValueMutation } from "./rules/react-native/rn-pressabl
 import { rnScrollviewDynamicPadding } from "./rules/react-native/rn-scrollview-dynamic-padding.js";
 import { rnScrollviewFlexInContentContainer } from "./rules/react-native/rn-scrollview-flex-in-content-container.js";
 import { rnStylePreferBoxShadow } from "./rules/react-native/rn-style-prefer-box-shadow.js";
+import { roleButtonRequiresCompleteKeyboardActivation } from "./rules/a11y/role-button-requires-complete-keyboard-activation.js";
 import { roleHasRequiredAriaProps } from "./rules/a11y/role-has-required-aria-props.js";
 import { roleSupportsAriaProps } from "./rules/a11y/role-supports-aria-props.js";
 import { rulesOfHooks } from "./rules/react-builtins/rules-of-hooks.js";
@@ -592,6 +600,8 @@ import { useLazyMotion } from "./rules/bundle-size/use-lazy-motion.js";
 import { valtioNoProxyReadInRender } from "./rules/valtio/valtio-no-proxy-read-in-render.js";
 import { valtioNoSnapshotInCallback } from "./rules/valtio/valtio-no-snapshot-in-callback.js";
 import { voidDomElementsNoChildren } from "./rules/react-builtins/void-dom-elements-no-children.js";
+import { waapiAnimationInRender } from "./rules/correctness/waapi-animation-in-render.js";
+import { webAnimationOffsetsValid } from "./rules/correctness/web-animation-offsets-valid.js";
 import { webhookSignatureRisk } from "./rules/security-scan/webhook-signature-risk.js";
 import { windowOpenWithoutNoopener } from "./rules/security/window-open-without-noopener.js";
 import { zodV4NoDeprecatedErrorApis } from "./rules/zod/zod-v4-no-deprecated-error-apis.js";
@@ -2216,6 +2226,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/motion-animate-presence-must-outlive-child",
+    id: "motion-animate-presence-must-outlive-child",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...motionAnimatePresenceMustOutliveChild,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/motion-animate-presence-requires-key",
     id: "motion-animate-presence-requires-key",
     source: "react-doctor",
@@ -2249,12 +2270,56 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/motion-drag-axis-constraint-mismatch",
+    id: "motion-drag-axis-constraint-mismatch",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...motionDragAxisConstraintMismatch,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/motion-imperative-animation-in-render",
+    id: "motion-imperative-animation-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...motionImperativeAnimationInRender,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/motion-keyframe-times-mismatch",
     id: "motion-keyframe-times-mismatch",
     source: "react-doctor",
     originallyExternal: false,
     rule: {
       ...motionKeyframeTimesMismatch,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/motion-layout-on-inline-element",
+    id: "motion-layout-on-inline-element",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...motionLayoutOnInlineElement,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/motion-unstable-layout-id-in-iteration",
+    id: "motion-unstable-layout-id-in-iteration",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...motionUnstableLayoutIdInIteration,
       framework: "global",
       category: "Bugs",
     },
@@ -3994,6 +4059,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-invalid-progress-range",
+    id: "no-invalid-progress-range",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noInvalidProgressRange,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(noInvalidProgressRange.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-is-mounted",
     id: "no-is-mounted",
     source: "react-doctor",
@@ -4665,6 +4742,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       tags: [...new Set(["design", ...(noPlaceholderPersonaCopy.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-pointer-disabled-enabled-control",
+    id: "no-pointer-disabled-enabled-control",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPointerDisabledEnabledControl,
+      framework: "global",
+      category: "Accessibility",
+      tags: [...new Set(["design", ...(noPointerDisabledEnabledControl.tags ?? [])])],
     },
   },
   {
@@ -7055,6 +7144,23 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/role-button-requires-complete-keyboard-activation",
+    id: "role-button-requires-complete-keyboard-activation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...roleButtonRequiresCompleteKeyboardActivation,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          ...(roleButtonRequiresCompleteKeyboardActivation.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/role-has-required-aria-props",
     id: "role-has-required-aria-props",
     source: "react-doctor",
@@ -7266,6 +7372,7 @@ export const reactDoctorRules = [
       ...styledComponentsDuplicateCssPropertyInBlock,
       framework: "global",
       category: "Maintainability",
+      tags: [...new Set(["design", ...(styledComponentsDuplicateCssPropertyInBlock.tags ?? [])])],
     },
   },
   {
@@ -7586,6 +7693,28 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(voidDomElementsNoChildren.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/waapi-animation-in-render",
+    id: "waapi-animation-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...waapiAnimationInRender,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/web-animation-offsets-valid",
+    id: "web-animation-offsets-valid",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...webAnimationOffsetsValid,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

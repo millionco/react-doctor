@@ -319,7 +319,10 @@ const consumerIsGuaranteedAfterResult = (
   context: RuleContext,
 ): boolean => {
   if (isReturnedCleanupFromBoundary(consumer, executionBoundary, context)) {
-    return context.cfg.isUnconditionalFromEntry(consumer);
+    return (
+      context.cfg.isUnconditionalFromEntry(consumer) ||
+      isPositiveGuardOnResult(consumer, resultExpression, executionBoundary, context.scopes)
+    );
   }
   if (context.cfg.enclosingFunction(consumer) !== executionBoundary) return false;
   const consumerRunsAfterResult =

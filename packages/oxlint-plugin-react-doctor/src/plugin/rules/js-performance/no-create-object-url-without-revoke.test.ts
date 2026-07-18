@@ -589,6 +589,47 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("recognizes returned cleanup closures guarded by the created URL", () => {
+    const ifGuardResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const usePreview = (blob) => {
+         const url = make(blob);
+         setPreview(url);
+         return () => {
+           if (url) URL.revokeObjectURL(url);
+         };
+       };`,
+    );
+    expect(ifGuardResult.diagnostics).toHaveLength(0);
+
+    const logicalGuardResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const usePreview = (blob) => {
+         const url = make(blob);
+         setPreview(url);
+         return () => url && URL.revokeObjectURL(url);
+       };`,
+    );
+    expect(logicalGuardResult.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust an unrelated guard inside a returned cleanup", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const make = (blob) => URL.createObjectURL(blob);
+       const usePreview = (blob, shouldCleanUp) => {
+         const url = make(blob);
+         setPreview(url);
+         return () => {
+           if (shouldCleanUp) URL.revokeObjectURL(url);
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("recognizes a stored cleanup returned through TypeScript wrappers", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

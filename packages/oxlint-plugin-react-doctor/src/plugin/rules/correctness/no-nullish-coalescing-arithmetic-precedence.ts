@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const ARITHMETIC_OPERATORS = new Set(["*", "/", "%", "-", "+", "**"]);
 const OPERATOR_DESCRIPTIONS = new Map([
@@ -15,19 +16,36 @@ const OPERATOR_DESCRIPTIONS = new Map([
 ]);
 
 const isNumericLiteralLeaf = (node: EsTreeNode): boolean => {
-  if (isNodeOfType(node, "UnaryExpression") && (node.operator === "-" || node.operator === "+")) {
-    return isNumericLiteralLeaf(node.argument as EsTreeNode);
+  const expression = stripParenExpression(node);
+  if (
+    isNodeOfType(expression, "UnaryExpression") &&
+    (expression.operator === "-" || expression.operator === "+")
+  ) {
+    return isNumericLiteralLeaf(expression.argument as EsTreeNode);
   }
-  return isNodeOfType(node, "Literal") && typeof node.value === "number";
+  return (
+    isNodeOfType(expression, "Literal") &&
+    (typeof expression.value === "number" || "bigint" in expression)
+  );
 };
 
 const resolveNumericLeafValue = (node: EsTreeNode): number | null => {
-  if (isNodeOfType(node, "UnaryExpression") && (node.operator === "-" || node.operator === "+")) {
-    const innerValue = resolveNumericLeafValue(node.argument as EsTreeNode);
+  const expression = stripParenExpression(node);
+  if (
+    isNodeOfType(expression, "UnaryExpression") &&
+    (expression.operator === "-" || expression.operator === "+")
+  ) {
+    const innerValue = resolveNumericLeafValue(expression.argument as EsTreeNode);
     if (innerValue === null) return null;
-    return node.operator === "-" ? -innerValue : innerValue;
+    return expression.operator === "-" ? -innerValue : innerValue;
   }
-  if (isNodeOfType(node, "Literal") && typeof node.value === "number") return node.value;
+  if (isNodeOfType(expression, "Literal") && typeof expression.value === "number") {
+    return expression.value;
+  }
+  if (isNodeOfType(expression, "Literal") && "bigint" in expression && expression.bigint) {
+    const value = Number(expression.bigint);
+    return Number.isSafeInteger(value) ? value : null;
+  }
   return null;
 };
 
@@ -44,8 +62,10 @@ const resolveNumericLeafValue = (node: EsTreeNode): number | null => {
 // a leftmost identifier/member (`x ?? count - max`, `x ?? itemGap / 2`).
 const isSentinelLiteralSwallow = (node: EsTreeNodeOfType<"BinaryExpression">): boolean => {
   let innermost = node;
-  while (isNodeOfType(innermost.left, "BinaryExpression")) {
-    innermost = innermost.left;
+  while (isNodeOfType(stripParenExpression(innermost.left as EsTreeNode), "BinaryExpression")) {
+    innermost = stripParenExpression(
+      innermost.left as EsTreeNode,
+    ) as EsTreeNodeOfType<"BinaryExpression">;
   }
   const leftmostValue = resolveNumericLeafValue(innermost.left as EsTreeNode);
   if (leftmostValue === null) return false;
@@ -76,10 +96,12 @@ const isZeroMinusTimezoneOffsetIdiom = (node: EsTreeNodeOfType<"BinaryExpression
 };
 
 const hasStringLiteralLeaf = (node: EsTreeNode): boolean => {
-  if (isNodeOfType(node, "Literal")) return typeof node.value === "string";
-  if (!isNodeOfType(node, "BinaryExpression") || node.operator !== "+") return false;
+  const expression = stripParenExpression(node);
+  if (isNodeOfType(expression, "Literal")) return typeof expression.value === "string";
+  if (!isNodeOfType(expression, "BinaryExpression") || expression.operator !== "+") return false;
   return (
-    hasStringLiteralLeaf(node.left as EsTreeNode) || hasStringLiteralLeaf(node.right as EsTreeNode)
+    hasStringLiteralLeaf(expression.left as EsTreeNode) ||
+    hasStringLiteralLeaf(expression.right as EsTreeNode)
   );
 };
 
@@ -87,13 +109,14 @@ const hasStringLiteralLeaf = (node: EsTreeNode): boolean => {
 // evaluates to a fixed value regardless of precedence — the swallowed-fallback
 // bug needs an identifier/member operand in the arithmetic.
 const hasNonNumericLiteralLeaf = (node: EsTreeNode): boolean => {
-  if (isNodeOfType(node, "BinaryExpression")) {
+  const expression = stripParenExpression(node);
+  if (isNodeOfType(expression, "BinaryExpression")) {
     return (
-      hasNonNumericLiteralLeaf(node.left as EsTreeNode) ||
-      hasNonNumericLiteralLeaf(node.right as EsTreeNode)
+      hasNonNumericLiteralLeaf(expression.left as EsTreeNode) ||
+      hasNonNumericLiteralLeaf(expression.right as EsTreeNode)
     );
   }
-  return !isNumericLiteralLeaf(node);
+  return !isNumericLiteralLeaf(expression);
 };
 
 export const noNullishCoalescingArithmeticPrecedence = defineRule({

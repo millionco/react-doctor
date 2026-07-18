@@ -16,7 +16,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 const REGEX_RESULT_METHOD_NAMES = new Set(["exec", "match"]);
-const TOUCH_LIST_PROPERTY_NAMES = new Set(["touches", "targetTouches"]);
+const TOUCH_LIST_PROPERTY_NAMES = new Set(["changedTouches", "touches", "targetTouches"]);
 const TOUCH_END_EVENT_NAMES = new Set(["touchend", "touchcancel"]);
 const TOUCH_END_HANDLER_PROP_PATTERN = /^ontouch(?:end|cancel)$/i;
 
@@ -291,6 +291,23 @@ const isRegexResultDerefGuarded = (
 ): boolean => {
   const pattern = regexPatternForResultCall(regexResultCall);
   if (!pattern || !isCaptureDefinitelyPresent(pattern, partIndex)) return false;
+  if (
+    partIndex > 0 &&
+    isNodeOfType(regexResultCall, "CallExpression") &&
+    isNodeOfType(regexResultCall.callee, "MemberExpression") &&
+    getStaticPropertyName(regexResultCall.callee) === "match"
+  ) {
+    const regexArgument = regexResultCall.arguments[0];
+    const regexLiteral = regexArgument ? stripParenExpression(regexArgument as EsTreeNode) : null;
+    if (
+      regexLiteral &&
+      isNodeOfType(regexLiteral, "Literal") &&
+      "regex" in regexLiteral &&
+      String(regexLiteral.regex?.flags ?? "").includes("g")
+    ) {
+      return false;
+    }
+  }
   return someDominatingTestHasCall(node, (call) => areGuardExpressionsEqual(call, regexResultCall));
 };
 
@@ -566,18 +583,38 @@ const testPositivelyHasTouchRead = (test: EsTreeNode, touchListAccess: EsTreeNod
       );
     }
   }
-  let didFindTouchListRead = false;
-  walkAst(expression, (child: EsTreeNode) => {
-    if (didFindTouchListRead) return false;
+  const readLength = (candidate: EsTreeNode): EsTreeNodeOfType<"MemberExpression"> | null => {
+    const target = stripParenExpression(candidate);
+    return isNodeOfType(target, "MemberExpression") &&
+      getStaticPropertyName(target) === "length" &&
+      areGuardExpressionsEqual(stripParenExpression(target.object as EsTreeNode), touchListAccess)
+      ? target
+      : null;
+  };
+  if (readLength(expression)) return true;
+  if (!isNodeOfType(expression, "BinaryExpression")) return false;
+  const operandPairs: Array<[EsTreeNode, EsTreeNode, boolean]> = [
+    [expression.left as EsTreeNode, expression.right as EsTreeNode, true],
+    [expression.right as EsTreeNode, expression.left as EsTreeNode, false],
+  ];
+  for (const [candidateLength, candidateThreshold, isLengthOnLeft] of operandPairs) {
+    if (!readLength(candidateLength)) continue;
+    const threshold = stripParenExpression(candidateThreshold);
+    if (!isNumericLiteral(threshold)) continue;
+    const thresholdValue = Number((threshold as EsTreeNodeOfType<"Literal">).value);
     if (
-      isNodeOfType(child, "MemberExpression") &&
-      areGuardExpressionsEqual(stripParenExpression(child.object as EsTreeNode), touchListAccess)
+      (isLengthOnLeft &&
+        ((expression.operator === ">" && thresholdValue >= 0) ||
+          (expression.operator === ">=" && thresholdValue >= 1))) ||
+      (!isLengthOnLeft &&
+        ((expression.operator === "<" && thresholdValue >= 0) ||
+          (expression.operator === "<=" && thresholdValue >= 1))) ||
+      ((expression.operator === "!==" || expression.operator === "!=") && thresholdValue === 0)
     ) {
-      didFindTouchListRead = true;
-      return false;
+      return true;
     }
-  });
-  return didFindTouchListRead;
+  }
+  return false;
 };
 
 const isTouchDerefGuarded = (node: EsTreeNode, touchListAccess: EsTreeNode): boolean =>

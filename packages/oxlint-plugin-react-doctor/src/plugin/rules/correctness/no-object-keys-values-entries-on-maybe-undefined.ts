@@ -11,6 +11,7 @@ import {
 } from "../../utils/strip-paren-expression.js";
 import { unwrapNegativeGuardForm } from "../../utils/unwrap-negative-guard-form.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { subtreeWritesSymbol } from "../../utils/subtree-writes-symbol.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const OBJECT_ITERATION_METHODS = new Set(["keys", "values", "entries"]);
@@ -287,8 +288,9 @@ const isValueGuardedBeforeCall = (
   callNode: EsTreeNode,
   guardProvesValue: (guard: EsTreeNode) => boolean,
   earlierStatementNormalizesValue?: (statement: EsTreeNode) => boolean,
+  nodeInvalidatesValue?: (node: EsTreeNode) => boolean,
 ): boolean => {
-  if (isPresenceProvenBeforeNode(callNode, guardProvesValue)) return true;
+  if (isPresenceProvenBeforeNode(callNode, guardProvesValue, nodeInvalidatesValue)) return true;
   let child: EsTreeNode = callNode;
   let ancestor: EsTreeNode | null = callNode.parent ?? null;
   while (ancestor) {
@@ -360,12 +362,20 @@ export const noObjectKeysValuesEntriesOnMaybeUndefined = defineRule({
       if (argumentContainsOptionalChain) {
         const chainPath = guardComparablePathForChain(argument as EsTreeNode);
         const chainRoot = rootIdentifier(argument as EsTreeNode);
+        const chainRootSymbol = chainRoot ? context.scopes.symbolFor(chainRoot) : null;
         const chainRootBindingKey = chainRoot ? bindingKeyForIdentifier(chainRoot, context) : null;
+        const chainRootSymbolIds = chainRootSymbol ? new Set([chainRootSymbol.id]) : null;
         const isChainGuarded =
           chainPath !== null &&
           chainRootBindingKey !== null &&
-          isValueGuardedBeforeCall(node, (guard: EsTreeNode) =>
-            testPositivelyProvesPath(guard, chainPath, chainRootBindingKey, context),
+          isValueGuardedBeforeCall(
+            node,
+            (guard: EsTreeNode) =>
+              testPositivelyProvesPath(guard, chainPath, chainRootBindingKey, context),
+            undefined,
+            chainRootSymbolIds
+              ? (candidate) => subtreeWritesSymbol(candidate, chainRootSymbolIds, context)
+              : undefined,
           );
         if (!isChainGuarded) context.report({ node, message: MESSAGE });
         return;
@@ -379,6 +389,7 @@ export const noObjectKeysValuesEntriesOnMaybeUndefined = defineRule({
         const parameterName = unwrapped.name;
         const parameterSymbol = context.scopes.symbolFor(unwrapped);
         if (!parameterSymbol) return;
+        const parameterSymbolIds = new Set([parameterSymbol.id]);
         const isParameterGuarded = isValueGuardedBeforeCall(
           node,
           (guard: EsTreeNode) =>
@@ -388,7 +399,9 @@ export const noObjectKeysValuesEntriesOnMaybeUndefined = defineRule({
             if (
               !assignment ||
               !isNodeOfType(assignment, "AssignmentExpression") ||
-              assignment.operator !== "=" ||
+              (assignment.operator !== "=" &&
+                assignment.operator !== "??=" &&
+                assignment.operator !== "||=") ||
               !isNodeOfType(assignment.left, "Identifier") ||
               context.scopes.symbolFor(assignment.left)?.id !== parameterSymbol.id
             ) {
@@ -428,6 +441,15 @@ export const noObjectKeysValuesEntriesOnMaybeUndefined = defineRule({
             }
             return false;
           },
+          (candidate: EsTreeNode) =>
+            subtreeWritesSymbol(candidate, parameterSymbolIds, context, (assignment) => {
+              const left = stripParenExpression(assignment.left as EsTreeNode);
+              return (
+                isNodeOfType(left, "Identifier") &&
+                context.scopes.symbolFor(left)?.id === parameterSymbol.id &&
+                (assignment.operator === "??=" || assignment.operator === "||=")
+              );
+            }),
         );
         if (isParameterGuarded) return;
         context.report({ node, message: MESSAGE });

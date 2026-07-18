@@ -5,7 +5,10 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import {
+  stripParenExpression,
+  TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
+} from "../../utils/strip-paren-expression.js";
 import { unwrapNegativeGuardForm } from "../../utils/unwrap-negative-guard-form.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -52,7 +55,10 @@ const hasArrayCallbackFirstArgument = (
   node: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
-  const firstArgument = node.arguments?.[0];
+  const rawFirstArgument = node.arguments?.[0];
+  const firstArgument = rawFirstArgument
+    ? stripParenExpression(rawFirstArgument as EsTreeNode)
+    : null;
   if (!firstArgument) return false;
   if (
     isNodeOfType(firstArgument, "ArrowFunctionExpression") ||
@@ -65,7 +71,16 @@ const hasArrayCallbackFirstArgument = (
   // predicate — except for known global predicates like `Boolean`. An
   // identifier that resolves to an object literal is a query filter
   // (`collection.find(filter)`, a MongoDB cursor), not a callback.
-  if (isNodeOfType(firstArgument, "MemberExpression")) return true;
+  if (isNodeOfType(firstArgument, "MemberExpression")) {
+    const callee = stripParenExpression(node.callee as EsTreeNode);
+    if (!isNodeOfType(callee, "MemberExpression")) return false;
+    const receiver = stripParenExpression(callee.object as EsTreeNode);
+    if (isNodeOfType(receiver, "ArrayExpression")) return true;
+    if (!isNodeOfType(receiver, "Identifier")) return false;
+    const binding = findVariableInitializer(receiver, receiver.name);
+    const initializer = binding?.initializer ? stripParenExpression(binding.initializer) : null;
+    return Boolean(initializer && isNodeOfType(initializer, "ArrayExpression"));
+  }
   if (!isNodeOfType(firstArgument, "Identifier")) return false;
   if (
     KNOWN_GLOBAL_PREDICATE_NAMES.has(firstArgument.name) &&
@@ -386,7 +401,11 @@ export const noArrayFindResultMemberAccessWithoutGuard = defineRule({
 
       let consumed: EsTreeNode = node;
       let consumer: EsTreeNode | null = node.parent ?? null;
-      while (consumer && GROUPING_EXPRESSION_TYPES.has(consumer.type)) {
+      while (
+        consumer &&
+        TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(consumer.type) &&
+        consumer.type !== "TSNonNullExpression"
+      ) {
         consumed = consumer;
         consumer = consumer.parent ?? null;
       }

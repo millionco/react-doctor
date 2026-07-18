@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -10,6 +11,7 @@ import { isPresenceProvenBeforeNode } from "../../utils/is-presence-proven-befor
 import type { RuleContext } from "../../utils/rule-context.js";
 import { unwrapNegativeGuardForm } from "../../utils/unwrap-negative-guard-form.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { subtreeWritesSymbol } from "../../utils/subtree-writes-symbol.js";
 
 const MESSAGE =
   "Multiplying or dividing an optional-chained value yields NaN when the chain short-circuits to undefined, and NaN spreads silently into formatting and comparisons. Add a `?? fallback` or guard the value before the math.";
@@ -398,16 +400,6 @@ const nodeStartOffset = (node: EsTreeNode): number => {
     : Number.MAX_SAFE_INTEGER;
 };
 
-// A same-named inner binding (shadowing parameter or nested declarator) is
-// not a use of the arithmetic result — only identifiers that resolve back to
-// the declarator's own id count.
-const isReferenceToBinding = (
-  referenceIdentifier: EsTreeNodeOfType<"Identifier">,
-  bindingIdentifier: EsTreeNode,
-): boolean =>
-  findVariableInitializer(referenceIdentifier, referenceIdentifier.name)?.bindingIdentifier ===
-  bindingIdentifier;
-
 // A numeric consumer reached through an intermediate binding:
 // `const share = a?.b / total; share.toFixed(2)`. Order-aware: a NaN check or
 // finite-value replacement suppresses only the consumers that come after it — a
@@ -436,35 +428,34 @@ const flowsIntoNumericConsumerViaBinding = (
   const consumerSiteGuardNames = bindingSymbol
     ? [...guardNames, `${bindingSymbol.id}:${bindingIdentifier.name}`]
     : guardNames;
-  const scopeOwner = findScopeOwner(binaryNode);
-  if (!scopeOwner) return false;
   let firstConsumerOffset: number | null = null;
   let firstNanHandledOffset: number | null = null;
-  walkAst(scopeOwner, (child: EsTreeNode) => {
+  for (const reference of bindingSymbol?.references ?? []) {
+    const child = reference.identifier;
     if (
       !isNodeOfType(child, "Identifier") ||
       child.name !== bindingIdentifier.name ||
       child === bindingIdentifier ||
-      !isReferenceToBinding(child, bindingIdentifier)
+      context.scopes.symbolFor(child)?.id !== bindingSymbol?.id
     ) {
-      return;
+      continue;
     }
     if (isNanHandledReference(child, context)) {
       const handledOffset = nodeStartOffset(child);
       if (firstNanHandledOffset === null || handledOffset < firstNanHandledOffset) {
         firstNanHandledOffset = handledOffset;
       }
-      return;
+      continue;
     }
     if (isDirectNumericConsumer(child, context, true)) {
-      if (isGuardedByEnclosingTest(child, consumerSiteGuardNames, context)) return;
-      if (isGuardedByPrecedingEarlyExit(child, consumerSiteGuardNames, context)) return;
+      if (isGuardedByEnclosingTest(child, consumerSiteGuardNames, context)) continue;
+      if (isGuardedByPrecedingEarlyExit(child, consumerSiteGuardNames, context)) continue;
       const consumerOffset = nodeStartOffset(child);
       if (firstConsumerOffset === null || consumerOffset < firstConsumerOffset) {
         firstConsumerOffset = consumerOffset;
       }
     }
-  });
+  }
   if (firstConsumerOffset === null) return false;
   return firstNanHandledOffset === null || firstConsumerOffset < firstNanHandledOffset;
 };
@@ -546,6 +537,58 @@ const testPositivelyReferencesAnyName = (
   return subtreeReferencesAnyName(expression, guardNames, context);
 };
 
+const subtreeWritesAnyGuardPath = (
+  node: EsTreeNode,
+  guardNames: string[],
+  context: RuleContext,
+): boolean => {
+  const symbolIds = new Set(
+    guardNames
+      .map((guardName) => Number(guardName.slice(0, guardName.indexOf(":"))))
+      .filter(Number.isFinite),
+  );
+  return subtreeWritesSymbol(node, symbolIds, context);
+};
+
+const writtenSymbolKeysByScope = new WeakMap<EsTreeNode, Set<string>>();
+
+const indexWrittenSymbolKeys = (scopeOwner: EsTreeNode, context: RuleContext): Set<string> => {
+  const existing = writtenSymbolKeysByScope.get(scopeOwner);
+  if (existing) return existing;
+  const writtenSymbolKeys = new Set<string>();
+  walkAst(scopeOwner, (child) => {
+    if (child !== scopeOwner && isFunctionLike(child)) return false;
+    if (
+      !isNodeOfType(child, "AssignmentExpression") &&
+      !isNodeOfType(child, "UpdateExpression") &&
+      !(isNodeOfType(child, "UnaryExpression") && child.operator === "delete")
+    ) {
+      return;
+    }
+    const writeTarget = isNodeOfType(child, "AssignmentExpression")
+      ? (child.left as EsTreeNode)
+      : (child.argument as EsTreeNode);
+    const writeRoot = getRootIdentifier(writeTarget);
+    const writeSymbol = writeRoot ? context.scopes.symbolFor(writeRoot) : null;
+    if (writeSymbol) writtenSymbolKeys.add(String(writeSymbol.id));
+  });
+  writtenSymbolKeysByScope.set(scopeOwner, writtenSymbolKeys);
+  return writtenSymbolKeys;
+};
+
+const guardPathsMayBeWritten = (
+  node: EsTreeNode,
+  guardNames: string[],
+  context: RuleContext,
+): boolean => {
+  const scopeOwner = findScopeOwner(node);
+  if (!scopeOwner) return false;
+  const writtenSymbolKeys = indexWrittenSymbolKeys(scopeOwner, context);
+  return guardNames.some((guardName) =>
+    writtenSymbolKeys.has(guardName.slice(0, guardName.indexOf(":"))),
+  );
+};
+
 // The chain can never short-circuit because an enclosing `if`/ternary
 // test or `&&`-guard already narrowed the chain root or its alias binding.
 // The arithmetic must sit in the guarded BRANCH, not in the test itself
@@ -570,8 +613,12 @@ const isGuardedByEnclosingTest = (
     }
     ancestor = ancestor.parent ?? null;
   }
-  return isPresenceProvenBeforeNode(binaryNode, (test) =>
-    testPositivelyReferencesAnyName(test, guardNames, context),
+  return isPresenceProvenBeforeNode(
+    binaryNode,
+    (test) => testPositivelyReferencesAnyName(test, guardNames, context),
+    guardPathsMayBeWritten(binaryNode, guardNames, context)
+      ? (candidate) => subtreeWritesAnyGuardPath(candidate, guardNames, context)
+      : undefined,
   );
 };
 
@@ -583,8 +630,12 @@ const isGuardedByPrecedingEarlyExit = (
   guardNames: string[],
   context: RuleContext,
 ): boolean => {
-  return isPresenceProvenBeforeNode(binaryNode, (test) =>
-    testPositivelyReferencesAnyName(test, guardNames, context),
+  return isPresenceProvenBeforeNode(
+    binaryNode,
+    (test) => testPositivelyReferencesAnyName(test, guardNames, context),
+    guardPathsMayBeWritten(binaryNode, guardNames, context)
+      ? (candidate) => subtreeWritesAnyGuardPath(candidate, guardNames, context)
+      : undefined,
   );
 };
 

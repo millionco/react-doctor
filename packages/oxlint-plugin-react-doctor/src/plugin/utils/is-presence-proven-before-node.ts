@@ -47,26 +47,35 @@ const indexBlockGuards = (block: EsTreeNode) => {
 export const isPresenceProvenBeforeNode = (
   node: EsTreeNode,
   testProvesPresence: (test: EsTreeNode) => boolean,
+  nodeInvalidatesPresence?: (node: EsTreeNode) => boolean,
 ): boolean => {
   let child = node;
   let ancestor = node.parent ?? null;
+  const enclosingBranchPrefixes: EsTreeNode[][] = [];
+  const hasEnclosingInvalidation = (): boolean =>
+    Boolean(
+      nodeInvalidatesPresence &&
+      enclosingBranchPrefixes.some((prefix) => prefix.some(nodeInvalidatesPresence)),
+    );
   while (ancestor && !isFunctionLike(ancestor)) {
     if (isNodeOfType(ancestor, "LogicalExpression") && ancestor.right === child) {
       if (ancestor.operator === "&&" && testProvesPresence(ancestor.left as EsTreeNode)) {
-        return true;
+        return !hasEnclosingInvalidation();
       }
       const positiveForm = positiveFormForFalsyBranch(ancestor.left as EsTreeNode);
       if (ancestor.operator === "||" && positiveForm && testProvesPresence(positiveForm)) {
-        return true;
+        return !hasEnclosingInvalidation();
       }
     }
     if (isNodeOfType(ancestor, "IfStatement") || isNodeOfType(ancestor, "ConditionalExpression")) {
       if (ancestor.consequent === child && testProvesPresence(ancestor.test as EsTreeNode)) {
-        return true;
+        return !hasEnclosingInvalidation();
       }
       if (ancestor.alternate === child) {
         const positiveForm = positiveFormForFalsyBranch(ancestor.test as EsTreeNode);
-        if (positiveForm && testProvesPresence(positiveForm)) return true;
+        if (positiveForm && testProvesPresence(positiveForm)) {
+          return !hasEnclosingInvalidation();
+        }
       }
     }
     if (
@@ -75,15 +84,23 @@ export const isPresenceProvenBeforeNode = (
       ancestor.test &&
       testProvesPresence(ancestor.test as EsTreeNode)
     ) {
-      return true;
+      return !hasEnclosingInvalidation();
     }
     if (isNodeOfType(ancestor, "BlockStatement") || isNodeOfType(ancestor, "Program")) {
       const indexed = indexBlockGuards(ancestor);
       const childIndex = indexed.statementIndexes.get(child) ?? -1;
       for (const guard of indexed.earlyExitGuards) {
         if (guard.index >= childIndex) break;
-        if (testProvesPresence(guard.positiveTest)) return true;
+        const hasInvalidatingStatement = nodeInvalidatesPresence
+          ? ancestor.body
+              .slice(guard.index + 1, childIndex)
+              .some((statement) => nodeInvalidatesPresence(statement as EsTreeNode))
+          : false;
+        if (!hasInvalidatingStatement && testProvesPresence(guard.positiveTest)) return true;
       }
+      enclosingBranchPrefixes.push(
+        ancestor.body.slice(0, childIndex).map((statement) => statement as EsTreeNode),
+      );
     }
     child = ancestor;
     ancestor = ancestor.parent ?? null;

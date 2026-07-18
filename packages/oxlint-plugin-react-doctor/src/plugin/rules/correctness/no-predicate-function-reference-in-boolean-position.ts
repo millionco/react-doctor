@@ -105,6 +105,8 @@ const resolvesToLocalFunction = (
   const initializer = binding?.initializer;
   if (!binding || !initializer) return false;
   if (isNodeOfType(initializer, "Identifier")) {
+    if (initializer.name === "Boolean" && context.scopes.isGlobalReference(initializer))
+      return true;
     const symbol = context.scopes.symbolFor(initializer);
     if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
     visitedSymbolIds.add(symbol.id);

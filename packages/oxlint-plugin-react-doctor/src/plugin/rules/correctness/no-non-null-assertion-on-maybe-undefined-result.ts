@@ -5,6 +5,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import { isAlwaysMatchingRegexPattern } from "../../utils/is-always-matching-regex-pattern.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
@@ -19,6 +20,7 @@ import {
   stripParenExpression,
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
 } from "../../utils/strip-paren-expression.js";
+import { subtreeWritesSymbol } from "../../utils/subtree-writes-symbol.js";
 import { unwrapNegativeGuardForm } from "../../utils/unwrap-negative-guard-form.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -86,6 +88,18 @@ const NO_MATCH_MESSAGES: Readonly<Record<string, string>> = {
     "`.match(...)` returns `null` when the pattern does not match, so asserting `!` here crashes on the next index or access; check the result before reading it.",
   get: "`.get(...)` returns `undefined` when the key is absent, so asserting `!` here crashes on the next access when the key misses; check for the key or handle the missing value.",
 };
+
+const MUTATING_ARRAY_METHOD_NAMES = new Set([
+  "copyWithin",
+  "fill",
+  "pop",
+  "push",
+  "reverse",
+  "shift",
+  "sort",
+  "splice",
+  "unshift",
+]);
 
 // Normalize a `.get(...)` receiver to a comparable path key so the
 // presence proof can match the exact same map: `sides` (Identifier),
@@ -157,6 +171,7 @@ const isUnconditionallyBefore = (
   if (candidate.range[0] >= assertion.range[0]) return false;
   let ancestor = candidate.parent ?? null;
   while (ancestor && ancestor !== scope) {
+    if (isFunctionLike(ancestor)) return false;
     if (
       isNodeOfType(ancestor, "IfStatement") ||
       isNodeOfType(ancestor, "ConditionalExpression") ||
@@ -216,6 +231,44 @@ const scopeProvesKeyPresence = (
     ) {
       const methodName = getStaticPropertyName(callee);
       if (methodName === "set" && !areNodesLooselyEqual(child.arguments[0], lookupKey)) continue;
+      if (methodName === "set") {
+        const lookupKeyExpression = stripParenExpression(lookupKey);
+        const lookupKeySymbol = isNodeOfType(lookupKeyExpression, "Identifier")
+          ? context.scopes.symbolFor(lookupKeyExpression)
+          : null;
+        const didWriteLookupKey = Boolean(
+          lookupKeySymbol?.references.some(
+            (reference) =>
+              reference.flag !== "read" &&
+              reference.identifier.range[0] > child.range[0] &&
+              reference.identifier.range[0] < assertion.range[0],
+          ),
+        );
+        if (didWriteLookupKey) continue;
+        const isInvalidated = indexedRelevantCalls(scope).some((laterCall) => {
+          if (
+            laterCall.range[0] <= child.range[0] ||
+            laterCall.range[0] >= assertion.range[0] ||
+            !isUnconditionallyBefore(laterCall, assertion, scope)
+          ) {
+            return false;
+          }
+          const laterCallee = laterCall.callee;
+          if (
+            !isNodeOfType(laterCallee, "MemberExpression") ||
+            !receiverMatches(laterCallee.object as EsTreeNode)
+          ) {
+            return false;
+          }
+          const laterMethodName = getStaticPropertyName(laterCallee);
+          return (
+            laterMethodName === "clear" ||
+            (laterMethodName === "delete" &&
+              areNodesLooselyEqual(laterCall.arguments[0], lookupKey))
+          );
+        });
+        if (isInvalidated) continue;
+      }
       return true;
     }
     if ((child.arguments ?? []).some((argument) => receiverMatches(argument as EsTreeNode))) {
@@ -785,13 +838,18 @@ const scopeProvesFindMatch = (
   findReceiver: EsTreeNode,
   findPredicate: EsTreeNode,
   context: RuleContext,
-): boolean =>
-  isPresenceProvenBeforeNode(assertion, (test) =>
+): boolean => {
+  if (!isStablePredicate(findPredicate, context)) return false;
+  return isPresenceProvenBeforeNode(assertion, (test) =>
     testPositivelyContainsCall(test, (call) => {
       const callee = call.callee;
       if (!isNodeOfType(callee, "MemberExpression")) return false;
       const methodName = getStaticPropertyName(callee);
       if (methodName === "some" || methodName === "findIndex") {
+        const guardPredicate = call.arguments[0]
+          ? stripParenExpression(call.arguments[0] as EsTreeNode)
+          : null;
+        if (!guardPredicate || !isStablePredicate(guardPredicate, context)) return false;
         if (methodName === "findIndex") {
           const comparison = call.parent;
           if (!comparison || !isNodeOfType(comparison, "BinaryExpression")) return false;
@@ -869,6 +927,40 @@ const scopeProvesFindMatch = (
       );
     }),
   );
+};
+
+const isStablePredicate = (predicate: EsTreeNode, context: RuleContext): boolean => {
+  const expression = stripParenExpression(predicate);
+  if (
+    isNodeOfType(expression, "Identifier") &&
+    expression.name === "Boolean" &&
+    context.scopes.isGlobalReference(expression)
+  ) {
+    return true;
+  }
+  const predicateFunction = resolveExactLocalFunction(expression, context.scopes);
+  const functionNode =
+    predicateFunction && isFunctionLike(predicateFunction)
+      ? predicateFunction
+      : isFunctionLike(expression)
+        ? expression
+        : null;
+  if (!functionNode) return false;
+  let isStable = true;
+  walkAst(functionNode.body as EsTreeNode, (child) => {
+    if (!isStable) return false;
+    if (child !== functionNode.body && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "CallExpression") ||
+      isNodeOfType(child, "AssignmentExpression") ||
+      isNodeOfType(child, "UpdateExpression")
+    ) {
+      isStable = false;
+      return false;
+    }
+  });
+  return isStable;
+};
 
 const findEqualityLookupParts = (
   predicate: EsTreeNode,
@@ -904,7 +996,14 @@ const findEqualityLookupParts = (
       isNodeOfType(memberObject, "Identifier") &&
       memberObject.name === parameter.name
     ) {
-      const propertyName = getStaticPropertyName(member);
+      const computedProperty = stripParenExpression(member.property as EsTreeNode);
+      const propertyName =
+        getStaticPropertyName(member) ??
+        (member.computed &&
+        isNodeOfType(computedProperty, "Literal") &&
+        (typeof computedProperty.value === "number" || typeof computedProperty.value === "string")
+          ? String(computedProperty.value)
+          : null);
       if (propertyName) return { propertyName, comparedValue };
     }
   }
@@ -972,11 +1071,153 @@ const isEnsureThenFind = (
 const getPropertyName = (memberExpression: EsTreeNodeOfType<"MemberExpression">): string | null =>
   getStaticPropertyName(memberExpression);
 
-const isPredicateArgument = (node: EsTreeNode | null | undefined): boolean =>
-  Boolean(
-    node &&
-    (isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression")),
+const isPredicateArgument = (
+  node: EsTreeNode | null | undefined,
+  context: RuleContext,
+): boolean => {
+  if (!node) return false;
+  const expression = stripParenExpression(node);
+  if (
+    isNodeOfType(expression, "ArrowFunctionExpression") ||
+    isNodeOfType(expression, "FunctionExpression")
+  ) {
+    return true;
+  }
+  if (!isNodeOfType(expression, "Identifier")) return false;
+  if (expression.name === "Boolean" && context.scopes.isGlobalReference(expression)) return true;
+  return Boolean(resolveExactLocalFunction(expression, context.scopes));
+};
+
+const literalValueKey = (node: EsTreeNode): string | null => {
+  const expression = stripParenExpression(node);
+  if (!isNodeOfType(expression, "Literal")) return null;
+  if (
+    typeof expression.value !== "string" &&
+    typeof expression.value !== "number" &&
+    typeof expression.value !== "boolean"
+  ) {
+    return null;
+  }
+  return `${typeof expression.value}:${String(expression.value)}`;
+};
+
+const collectLiteralUnionValues = (
+  typeNode: EsTreeNode,
+  context: RuleContext,
+): Set<string> | null => {
+  let expression = typeNode;
+  if (expression.type === "TSTypeAnnotation" && "typeAnnotation" in expression) {
+    expression = expression.typeAnnotation as EsTreeNode;
+  }
+  if (expression.type === "TSTypeReference" && "typeName" in expression) {
+    const typeName = expression.typeName as EsTreeNode;
+    if (!isNodeOfType(typeName, "Identifier")) return null;
+    const typeSymbol = context.scopes.symbolFor(typeName);
+    let declaration = typeSymbol?.declarationNode ?? null;
+    if (!declaration) {
+      const program = findProgramRoot(typeNode);
+      declaration =
+        program?.body.find(
+          (candidate) =>
+            candidate.type === "TSTypeAliasDeclaration" &&
+            "id" in candidate &&
+            isNodeOfType(candidate.id as EsTreeNode, "Identifier") &&
+            candidate.id.name === typeName.name,
+        ) ?? null;
+    }
+    if (
+      !declaration ||
+      declaration.type !== "TSTypeAliasDeclaration" ||
+      !("typeAnnotation" in declaration)
+    ) {
+      return null;
+    }
+    expression = declaration.typeAnnotation as EsTreeNode;
+  }
+  const unionMembers =
+    expression.type === "TSUnionType" && "types" in expression
+      ? (expression.types as EsTreeNode[])
+      : [expression];
+  const values = new Set<string>();
+  for (const member of unionMembers) {
+    if (member.type !== "TSLiteralType" || !("literal" in member)) return null;
+    const valueKey = literalValueKey(member.literal as EsTreeNode);
+    if (!valueKey) return null;
+    values.add(valueKey);
+  }
+  return values.size > 0 ? values : null;
+};
+
+const isExhaustiveLiteralTupleMapping = (
+  findReceiver: EsTreeNode,
+  findPredicate: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const receiver = stripParenExpression(findReceiver);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const receiverSymbol = context.scopes.symbolFor(receiver);
+  if (
+    !receiverSymbol ||
+    receiverSymbol.kind !== "const" ||
+    receiverSymbol.references.some((reference) => reference.flag !== "read")
+  ) {
+    return false;
+  }
+  const program = findProgramRoot(receiver);
+  if (program && subtreeWritesSymbol(program, new Set([receiverSymbol.id]), context)) return false;
+  const hasMutatingCall = receiverSymbol.references.some((reference) => {
+    const member = reference.identifier.parent;
+    const call = member?.parent;
+    return Boolean(
+      member &&
+      isNodeOfType(member, "MemberExpression") &&
+      member.object === reference.identifier &&
+      call &&
+      isNodeOfType(call, "CallExpression") &&
+      call.callee === member &&
+      MUTATING_ARRAY_METHOD_NAMES.has(getStaticPropertyName(member) ?? ""),
+    );
+  });
+  if (hasMutatingCall) return false;
+  const table = receiverSymbol.initializer
+    ? stripParenExpression(receiverSymbol.initializer)
+    : null;
+  if (!table || !isNodeOfType(table, "ArrayExpression") || table.elements.length === 0) {
+    return false;
+  }
+  const lookup = findEqualityLookupParts(findPredicate);
+  if (!lookup || lookup.propertyName !== "0") return false;
+  const comparedValue = stripParenExpression(lookup.comparedValue);
+  if (!isNodeOfType(comparedValue, "Identifier")) return false;
+  const comparedSymbol = context.scopes.symbolFor(comparedValue);
+  if (
+    !comparedSymbol ||
+    comparedSymbol.references.some((reference) => reference.flag !== "read") ||
+    !("typeAnnotation" in comparedSymbol.bindingIdentifier) ||
+    !comparedSymbol.bindingIdentifier.typeAnnotation
+  ) {
+    return false;
+  }
+  const expectedValues = collectLiteralUnionValues(
+    comparedSymbol.bindingIdentifier.typeAnnotation as EsTreeNode,
+    context,
   );
+  if (!expectedValues) return false;
+  const tableValues = new Set<string>();
+  for (const element of table.elements) {
+    const tuple = element ? stripParenExpression(element as EsTreeNode) : null;
+    if (!tuple || !isNodeOfType(tuple, "ArrayExpression")) return false;
+    const keyElement = tuple.elements[0];
+    if (!keyElement) return false;
+    const valueKey = literalValueKey(keyElement as EsTreeNode);
+    if (!valueKey) return false;
+    tableValues.add(valueKey);
+  }
+  return (
+    tableValues.size === expectedValues.size &&
+    [...expectedValues].every((value) => tableValues.has(value))
+  );
+};
 
 export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
   id: "no-non-null-assertion-on-maybe-undefined-result",
@@ -1003,8 +1244,11 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
         const args = inner.arguments ?? [];
         if (methodName === "find" || methodName === "findLast") {
           const predicate = args[0] ? stripParenExpression(args[0]) : null;
-          if (!isPredicateArgument(predicate)) return;
+          if (!isPredicateArgument(predicate, context)) return;
           const findReceiver = callee.object as EsTreeNode;
+          if (predicate && isExhaustiveLiteralTupleMapping(findReceiver, predicate, context)) {
+            return;
+          }
           if (
             predicate &&
             scopeProvesFindMatch(node as EsTreeNode, findReceiver, predicate, context)

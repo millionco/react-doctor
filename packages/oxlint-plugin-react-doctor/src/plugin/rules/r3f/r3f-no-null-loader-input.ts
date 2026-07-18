@@ -52,6 +52,52 @@ const readStaticTruthiness = (
     return null;
   }
   if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "void") return false;
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
+    const argumentTruthiness = readStaticTruthiness(
+      candidate.argument,
+      scopes,
+      new Set(visitedSymbolIds),
+    );
+    return argumentTruthiness === null ? null : !argumentTruthiness;
+  }
+  if (isNodeOfType(candidate, "ConditionalExpression")) {
+    const testTruthiness = readStaticTruthiness(candidate.test, scopes, new Set(visitedSymbolIds));
+    if (testTruthiness !== null) {
+      return readStaticTruthiness(
+        testTruthiness ? candidate.consequent : candidate.alternate,
+        scopes,
+        new Set(visitedSymbolIds),
+      );
+    }
+    const consequentTruthiness = readStaticTruthiness(
+      candidate.consequent,
+      scopes,
+      new Set(visitedSymbolIds),
+    );
+    const alternateTruthiness = readStaticTruthiness(
+      candidate.alternate,
+      scopes,
+      new Set(visitedSymbolIds),
+    );
+    return consequentTruthiness !== null && consequentTruthiness === alternateTruthiness
+      ? consequentTruthiness
+      : null;
+  }
+  if (isNodeOfType(candidate, "LogicalExpression")) {
+    const leftTruthiness = readStaticTruthiness(candidate.left, scopes, new Set(visitedSymbolIds));
+    if (candidate.operator === "&&" && leftTruthiness === false) return false;
+    if (candidate.operator === "||" && leftTruthiness === true) return true;
+    if (candidate.operator !== "&&" && candidate.operator !== "||") return null;
+    const rightTruthiness = readStaticTruthiness(
+      candidate.right,
+      scopes,
+      new Set(visitedSymbolIds),
+    );
+    if (leftTruthiness !== null) return rightTruthiness;
+    if (candidate.operator === "&&" && rightTruthiness === false) return false;
+    if (candidate.operator === "||" && rightTruthiness === true) return true;
+    return null;
+  }
   if (
     isNodeOfType(candidate, "ArrayExpression") ||
     isNodeOfType(candidate, "ObjectExpression") ||

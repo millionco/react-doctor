@@ -79,6 +79,23 @@ describe("r3f-no-null-loader-input", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("propagates truthiness through logical and conditional expressions", () => {
+    const code = `
+      import { useGLTF } from "@react-three/drei";
+      const alwaysEnabled = true;
+      const alwaysDisabled = false;
+      const modelUrl = "/model.glb";
+      useGLTF((alwaysEnabled && modelUrl) || null);
+      useGLTF((alwaysDisabled || modelUrl) || null);
+      useGLTF((!alwaysDisabled && modelUrl) || null);
+      useGLTF((enabled ? modelUrl : "/fallback.glb") || null);
+      useGLTF((enabled || modelUrl) || null);
+      useGLTF((enabled && modelUrl) || null);
+    `;
+    const result = runRule(r3fNoNullLoaderInput, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows real asset inputs and nullish values in later arguments", () => {
     const code = `
       import { useLoader } from "@react-three/fiber";

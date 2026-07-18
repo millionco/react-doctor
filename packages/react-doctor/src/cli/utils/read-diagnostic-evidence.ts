@@ -137,14 +137,15 @@ const unwrapExpression = (expression: ts.Expression): ts.Expression => {
   return currentExpression;
 };
 
+const getCalleeName = (expression: ts.Expression): string | null => {
+  const unwrappedExpression = unwrapExpression(expression);
+  if (ts.isIdentifier(unwrappedExpression)) return unwrappedExpression.text;
+  if (ts.isPropertyAccessExpression(unwrappedExpression)) return unwrappedExpression.name.text;
+  return null;
+};
+
 const isComponentWrapperCall = (node: ts.CallExpression): boolean => {
-  const expression = unwrapExpression(node.expression);
-  let wrapperName: string | null = null;
-  if (ts.isIdentifier(expression)) {
-    wrapperName = expression.text;
-  } else if (ts.isPropertyAccessExpression(expression)) {
-    wrapperName = expression.name.text;
-  }
+  const wrapperName = getCalleeName(node.expression);
   return wrapperName !== null && COMPONENT_WRAPPER_NAMES.has(wrapperName);
 };
 
@@ -337,11 +338,7 @@ const getForwardingFunction = (declaration: ts.Declaration): ts.FunctionLikeDecl
   if (!ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) return null;
   const initializer = unwrapExpression(declaration.initializer);
   if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) return initializer;
-  if (
-    ts.isCallExpression(initializer) &&
-    ts.isIdentifier(initializer.expression) &&
-    initializer.expression.text === "useCallback"
-  ) {
+  if (ts.isCallExpression(initializer) && getCalleeName(initializer.expression) === "useCallback") {
     const callback = initializer.arguments[0];
     if (
       callback !== undefined &&
@@ -449,9 +446,9 @@ const getHandlerBinding = (
     if (!ts.isJsxAttribute(property) || property.name.getText() !== propName) continue;
     const initializer = property.initializer;
     if (initializer === undefined || !ts.isJsxExpression(initializer)) return null;
-    return initializer.expression !== undefined && ts.isIdentifier(initializer.expression)
-      ? initializer.expression
-      : null;
+    if (initializer.expression === undefined) return null;
+    const expression = unwrapExpression(initializer.expression);
+    return ts.isIdentifier(expression) ? expression : null;
   }
   return null;
 };

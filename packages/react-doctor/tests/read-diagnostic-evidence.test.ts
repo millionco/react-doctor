@@ -66,6 +66,70 @@ describe("createDiagnosticEvidenceReader", () => {
     expect(delta.crossFileMatchCount).toBe(1);
   });
 
+  it("resolves a handler through a qualified React.useCallback call", () => {
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/wrapper-before.tsx"),
+      "function WrapperBefore() {\n  return <span onClick={() => handleSendMessage(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-message-bubble.tsx"),
+      "export function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-page.tsx"),
+      'import { ChatMessageBubble } from "./chat-message-bubble";\nconst handleSuggestion = React.useCallback((text) => {\n  handleSendMessage(text);\n}, [handleSendMessage]);\n<ChatMessageBubble onSuggestion={handleSuggestion} />;\n',
+    );
+
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [
+        makeDiagnostic({ filePath: "src/chat-message-bubble.tsx", line: 2, endLine: 4 }),
+      ],
+      baseDiagnostics: [makeDiagnostic({ line: 2, endLine: 4 })],
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+      readHeadEvidence: createDiagnosticEvidenceReader(rootDirectory, {
+        resolveForwardedHandlers: true,
+      }),
+      readBaseEvidence: createDiagnosticEvidenceReader(rootDirectory),
+    });
+
+    expect(delta.newDiagnostics).toHaveLength(0);
+    expect(delta.fixedCount).toBe(0);
+    expect(delta.crossFileMatchCount).toBe(1);
+  });
+
+  it("unwraps typed handler bindings at component callsites", () => {
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/wrapper-before.tsx"),
+      "function WrapperBefore() {\n  return <span onClick={() => handleSendMessage(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-message-bubble.tsx"),
+      "export function ChatMessageBubble({ onSuggestion }) {\n  return <span onClick={() => onSuggestion(question)}>\n    {question}\n  </span>\n}\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/chat-page.tsx"),
+      'import { ChatMessageBubble } from "./chat-message-bubble";\ntype Handler = (text: string) => void;\n<ChatMessageBubble onSuggestion={handleSendMessage as Handler} />;\n',
+    );
+
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [
+        makeDiagnostic({ filePath: "src/chat-message-bubble.tsx", line: 2, endLine: 4 }),
+      ],
+      baseDiagnostics: [makeDiagnostic({ line: 2, endLine: 4 })],
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+      readHeadEvidence: createDiagnosticEvidenceReader(rootDirectory, {
+        resolveForwardedHandlers: true,
+      }),
+      readBaseEvidence: createDiagnosticEvidenceReader(rootDirectory),
+    });
+
+    expect(delta.newDiagnostics).toHaveLength(0);
+    expect(delta.fixedCount).toBe(0);
+    expect(delta.crossFileMatchCount).toBe(1);
+  });
+
   it("ignores recursive renders inside the diagnosed component", () => {
     fs.writeFileSync(
       path.join(rootDirectory, "src/wrapper-before.tsx"),

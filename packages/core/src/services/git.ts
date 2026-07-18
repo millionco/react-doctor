@@ -165,6 +165,7 @@ const splitNullSeparated = (value: string): ReadonlyArray<string> =>
 export interface GitBaselineDiffPlan {
   readonly baseFiles: ReadonlyArray<string>;
   readonly headFiles: ReadonlyArray<string>;
+  readonly untrackedFiles: ReadonlyArray<string>;
 }
 
 const parseBaselineDiffPlan = (value: string): GitBaselineDiffPlan | null => {
@@ -190,7 +191,7 @@ const parseBaselineDiffPlan = (value: string): GitBaselineDiffPlan | null => {
     }
     return null;
   }
-  return { baseFiles: [...baseFiles], headFiles: [...headFiles] };
+  return { baseFiles: [...baseFiles], headFiles: [...headFiles], untrackedFiles: [] };
 };
 
 // An untracked file has no base to diff against, so `--scope lines` treats
@@ -775,7 +776,8 @@ export class Git extends Context.Service<
             if (untracked.status !== 0) return null;
             return {
               baseFiles: plan.baseFiles,
-              headFiles: [...new Set([...plan.headFiles, ...splitNullSeparated(untracked.stdout)])],
+              headFiles: plan.headFiles,
+              untrackedFiles: splitNullSeparated(untracked.stdout),
             } satisfies GitBaselineDiffPlan;
           }).pipe(
             Effect.catch(() => Effect.succeed(null)),

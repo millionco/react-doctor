@@ -40,6 +40,7 @@ describe("baseline pure renames", () => {
       initGitRepo(directory);
       const baseRef = commitAll(directory, "base");
       fs.renameSync(oldPath, newPath);
+      writeFile(path.join(directory, "src/unrelated-untracked.tsx"), "export const value = 1;\n");
 
       const result = await inspect(directory, {
         lint: true,

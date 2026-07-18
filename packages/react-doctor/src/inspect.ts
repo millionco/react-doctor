@@ -465,8 +465,9 @@ const runBaselineComparison = async (
     if (!snapshot.isComplete) return null;
     const analyzedHeadFiles = new Set(params.headAnalyzedFiles.map(toForwardSlashes));
     const baseFiles = new Set(snapshot.baseFiles.map(toForwardSlashes));
+    const trackedHeadFiles = new Set(snapshot.headFiles.map(toForwardSlashes));
     const expectedHeadFiles = new Set([
-      ...snapshot.headFiles.map(toForwardSlashes),
+      ...trackedHeadFiles,
       ...params.options.includePaths
         .map(toForwardSlashes)
         .filter((filePath) => !baseFiles.has(filePath)),
@@ -537,6 +538,9 @@ const runBaselineComparison = async (
     if (baseOutput.didLintFail || countIncompleteLintFiles(baseOutput.lintPartialFailures) > 0) {
       return null;
     }
+    const hasUnscannedUntrackedSourceFiles = filterSourceFiles(
+      snapshot.untrackedFiles.map(toForwardSlashes),
+    ).some((filePath) => !analyzedHeadFiles.has(filePath));
     const delta = computeDiagnosticDelta({
       headDiagnostics: params.headDiagnostics,
       baseDiagnostics: baseOutput.diagnostics,
@@ -551,7 +555,7 @@ const runBaselineComparison = async (
       displayDiagnostics: delta.newDiagnostics,
       baselineDelta: {
         baseRef: params.baselineRef,
-        fixedCount: delta.fixedCount,
+        fixedCount: hasUnscannedUntrackedSourceFiles ? 0 : delta.fixedCount,
         baseTotalCount: baseOutput.diagnostics.length,
         crossFileMatchCount: delta.crossFileMatchCount,
       },

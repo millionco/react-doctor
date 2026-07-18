@@ -50,6 +50,7 @@ describe("materializeBaselineFiles", () => {
     expect(snapshot?.isComplete).toBe(true);
     expect(snapshot?.baseFiles).toEqual(["src/old-name.tsx"]);
     expect(snapshot?.headFiles).toEqual(["src/new-name.tsx"]);
+    expect(snapshot?.untrackedFiles).toEqual([]);
     expect(snapshot?.materializedFiles).toEqual(["src/old-name.tsx"]);
     expect(fs.readFileSync(path.join(tempDirectory, "src/old-name.tsx"), "utf-8")).toBe(
       "export const value = 1;\n",
@@ -75,6 +76,7 @@ describe("materializeBaselineFiles", () => {
     expect(snapshot?.isComplete).toBe(true);
     expect(snapshot?.baseFiles).toEqual([]);
     expect(snapshot?.headFiles).toEqual(["src/added.tsx"]);
+    expect(snapshot?.untrackedFiles).toEqual([]);
     expect(snapshot?.materializedFiles).toEqual([]);
     expect(snapshot?.unmaterializedFiles).toEqual(["src/added.tsx"]);
     snapshot?.cleanup();

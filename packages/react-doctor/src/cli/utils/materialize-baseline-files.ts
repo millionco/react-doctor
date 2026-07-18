@@ -11,6 +11,7 @@ export interface BaselineMaterializedTree extends MaterializedTree {
   readonly baseFiles: ReadonlyArray<string>;
   readonly headFiles: ReadonlyArray<string>;
   readonly isComplete: boolean;
+  readonly untrackedFiles: ReadonlyArray<string>;
 }
 
 /**
@@ -32,12 +33,13 @@ export const materializeBaselineFiles = (input: {
   Effect.runPromise(
     Effect.gen(function* () {
       const git = yield* Git;
-      const diffPlan =
-        input.baseFiles === undefined || input.headFiles === undefined
-          ? yield* git.baselineDiffPlan({ directory: input.directory, ref: input.ref })
-          : null;
+      const diffPlan = yield* git.baselineDiffPlan({
+        directory: input.directory,
+        ref: input.ref,
+      });
       const baseFiles = input.baseFiles ?? diffPlan?.baseFiles;
       const headFiles = input.headFiles ?? diffPlan?.headFiles;
+      const untrackedFiles = diffPlan?.untrackedFiles ?? [];
       if (baseFiles === undefined || headFiles === undefined) return null;
       const files = [...new Set([...input.files, ...baseFiles])];
       const tree = yield* materializeSourceTree({
@@ -64,6 +66,7 @@ export const materializeBaselineFiles = (input: {
         baseFiles,
         headFiles,
         isComplete: baseFiles.every((filePath) => materializedFiles.has(filePath)),
+        untrackedFiles,
       } satisfies BaselineMaterializedTree;
     }).pipe(Effect.provide(Git.layerNode)),
   );

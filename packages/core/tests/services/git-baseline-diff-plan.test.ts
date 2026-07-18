@@ -55,6 +55,7 @@ describe("Git.baselineDiffPlan", () => {
     await expect(readPlan(directory, baseRef)).resolves.toEqual({
       baseFiles: ["src/old-name.tsx"],
       headFiles: ["src/new-name.tsx"],
+      untrackedFiles: [],
     });
   });
 
@@ -68,7 +69,8 @@ describe("Git.baselineDiffPlan", () => {
 
     await expect(readPlan(directory, baseRef)).resolves.toEqual({
       baseFiles: ["src/old-name.tsx"],
-      headFiles: ["src/new-name.tsx"],
+      headFiles: [],
+      untrackedFiles: ["src/new-name.tsx"],
     });
   });
 
@@ -84,6 +86,7 @@ describe("Git.baselineDiffPlan", () => {
     await expect(readPlan(directory, baseRef)).resolves.toEqual({
       baseFiles: [],
       headFiles: ["src/copied.tsx"],
+      untrackedFiles: [],
     });
   });
 
@@ -96,6 +99,7 @@ describe("Git.baselineDiffPlan", () => {
     await expect(readPlan(directory, baseRef)).resolves.toEqual({
       baseFiles: ["src/deleted.tsx"],
       headFiles: [],
+      untrackedFiles: [],
     });
   });
 
@@ -110,6 +114,7 @@ describe("Git.baselineDiffPlan", () => {
       await expect(readPlan(directory, baseRef)).resolves.toEqual({
         baseFiles: [filePath],
         headFiles: [filePath],
+        untrackedFiles: [],
       });
     },
   );

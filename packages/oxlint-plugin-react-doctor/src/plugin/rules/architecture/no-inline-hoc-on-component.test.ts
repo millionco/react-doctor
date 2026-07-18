@@ -368,6 +368,32 @@ describe("no-inline-hoc-on-component", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags JSX returned through an imported useMemo callback", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `import { useMemo } from "react";
+      const Rows = withTracking(({ items }) => {
+        useRows(items);
+        return useMemo(() => <RowList items={items} />, [items]);
+      });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a shadowed useMemo callback as React render output", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const useMemo = (callback) => ({ callback });
+      const Rows = withTracking(({ items }) => {
+        useRows(items);
+        return useMemo(() => <RowList items={items} />, [items]);
+      });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it.each([
     ["forEach", `items.forEach((item) => <Row key={item.id} item={item} />)`],
     ["filter", `items.filter((item) => <Row key={item.id} item={item} />)`],

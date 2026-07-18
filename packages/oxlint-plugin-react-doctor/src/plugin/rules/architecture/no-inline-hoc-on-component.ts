@@ -7,9 +7,11 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { hasStableCallTarget } from "../../utils/has-stable-call-target.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isJsxElementOrFragment } from "../../utils/is-jsx-element-or-fragment.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -92,13 +94,20 @@ const isNamedComponentFunctionExpression = (functionNode: EsTreeNode): boolean =
   functionNode.id != null &&
   isUppercaseName(functionNode.id.name);
 
-const isSynchronousRenderOutputMappingCallback = (
+const isSynchronousRenderOutputCallback = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
   const callbackExpression = findTransparentExpressionRoot(functionNode);
   const call = callbackExpression.parent;
   if (!call || !isNodeOfType(call, "CallExpression")) return false;
+  if (
+    call.arguments[0] === callbackExpression &&
+    isReactApiCall(call, "useMemo", scopes, { resolveNamedAliases: true }) &&
+    hasStableCallTarget(call, scopes)
+  ) {
+    return true;
+  }
   const isArrayFromMapper = call.arguments[1] === callbackExpression;
   if (isArrayFromMapper) return executesDuringRender(callbackExpression, scopes);
   if (call.arguments[0] !== callbackExpression) return false;
@@ -116,7 +125,7 @@ const containsJsxInOwnExpression = (root: EsTreeNode, scopes: ScopeAnalysis): bo
     if (didFindJsx) return false;
     if (isFunctionLike(node)) {
       if (
-        isSynchronousRenderOutputMappingCallback(node, scopes) &&
+        isSynchronousRenderOutputCallback(node, scopes) &&
         functionReturnValueIsJsx(node, scopes)
       ) {
         didFindJsx = true;

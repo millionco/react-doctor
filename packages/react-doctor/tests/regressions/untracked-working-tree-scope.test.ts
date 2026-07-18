@@ -109,6 +109,9 @@ describe("--include-untracked folds untracked files into working-tree scopes", (
       "export const Staged = () => <button>Save</button>;\n",
     );
     execFileSync("git", ["add", "src/staged.tsx"], { cwd: repositoryDirectory });
+    execFileSync("git", ["config", "diff.external", "false"], {
+      cwd: repositoryDirectory,
+    });
 
     const lineRanges = await getChangedLineRanges({
       directory: repositoryDirectory,

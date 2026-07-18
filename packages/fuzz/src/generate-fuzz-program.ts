@@ -223,8 +223,15 @@ const buildClassComponent: SnippetBuilder = (random) => {
   const hasWillUnmount = random.chance(0.6);
   const usesRefNode = random.chance(0.4);
   const mountTarget = usesRefNode ? "this.containerRef.current" : "window";
+  const renderParameters = random.pick([
+    "",
+    "props",
+    "props, state",
+    `this: ${componentName}, props`,
+  ]);
   return [
     `export class ${componentName} extends React.Component {`,
+    `  state = { top: 0 };`,
     `  containerRef = React.createRef();`,
     `  handleScroll = () => { this.setState({ top: window.scrollY }); };`,
     `  componentDidMount() {`,
@@ -238,7 +245,10 @@ const buildClassComponent: SnippetBuilder = (random) => {
           `  }`,
         ].join("\n")
       : ``,
-    `  render() {`,
+    `  componentDidUpdate() {`,
+    `    this.setState({ top: window.scrollY });`,
+    `  }`,
+    `  render(${renderParameters}) {`,
     `    return <div ref={this.containerRef}>{this.props.children}</div>;`,
     `  }`,
     `}`,

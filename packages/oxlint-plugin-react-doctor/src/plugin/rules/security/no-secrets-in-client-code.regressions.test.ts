@@ -103,6 +103,15 @@ describe("security/no-secrets-in-client-code — regressions", () => {
     ).toHaveLength(0);
   });
 
+  it("stays silent on camelCase segments in storage key names (mailing shape)", () => {
+    expect(
+      runClient(`const LOCAL_API_KEYS_STORAGE_KEY = "mailing.settings.localApiKeys";`),
+    ).toHaveLength(0);
+    expect(
+      runClient(`const LOCAL_API_KEYS_STORAGE_KEY = "mailing:settings:localApiKeys";`),
+    ).toHaveLength(0);
+  });
+
   // …while high-entropy values mixing case, digits, and separators still flag.
   it("still flags separator-joined values with entropy (not key-name-shaped)", () => {
     expect(

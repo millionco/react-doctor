@@ -16,12 +16,12 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInlineIntrinsicRefCallback } from "../../utils/is-inline-intrinsic-ref-callback.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenBrowserApiReceiver } from "../../utils/is-proven-browser-api-receiver.js";
@@ -30,6 +30,7 @@ import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
@@ -71,28 +72,48 @@ import { isCleanupReturn } from "./utils/is-cleanup-return.js";
 // cascade where each effect re-fetches based on the previous step's
 // result. Those effects all have `isExternalSync = true` because they
 // contain `fetch`, so the rule won't fire.
-const findTopLevelEffectCalls = (componentBody: EsTreeNode): EsTreeNode[] => {
+const findTopLevelEffectCalls = (
+  componentBody: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode[] => {
   const effectCalls: EsTreeNode[] = [];
   if (!isNodeOfType(componentBody, "BlockStatement")) return effectCalls;
   for (const statement of componentBody.body ?? []) {
     if (!isNodeOfType(statement, "ExpressionStatement")) continue;
     const expression = unwrapDiscardedExpression(statement);
     if (!isNodeOfType(expression, "CallExpression")) continue;
-    if (!isHookCall(expression, EFFECT_HOOK_NAMES)) continue;
+    if (
+      !isReactApiCall(expression, EFFECT_HOOK_NAMES, scopes, {
+        allowGlobalReactNamespace: true,
+        allowUnboundBareCalls: true,
+        resolveConditionalAliases: true,
+        resolveNamedAliases: true,
+      })
+    ) {
+      continue;
+    }
     effectCalls.push(expression);
   }
   return effectCalls;
 };
 
-const collectDepIdentifierNames = (effectNode: EsTreeNode): Set<string> => {
-  const depNames = new Set<string>();
-  if (!isNodeOfType(effectNode, "CallExpression")) return depNames;
+const collectDependencyStateSymbolIds = (
+  effectNode: EsTreeNode,
+  stateSymbolIds: ReadonlySet<number>,
+  scopes: ScopeAnalysis,
+): Set<number> => {
+  const dependencyStateSymbolIds = new Set<number>();
+  if (!isNodeOfType(effectNode, "CallExpression")) return dependencyStateSymbolIds;
   const depsNode = effectNode.arguments?.[1];
-  if (!isNodeOfType(depsNode, "ArrayExpression")) return depNames;
+  if (!isNodeOfType(depsNode, "ArrayExpression")) return dependencyStateSymbolIds;
   for (const element of depsNode.elements ?? []) {
-    if (isNodeOfType(element, "Identifier")) depNames.add(element.name);
+    if (!element || isNodeOfType(element, "SpreadElement")) continue;
+    const rootIdentifier = getRootIdentifier(element);
+    if (!isNodeOfType(rootIdentifier, "Identifier")) continue;
+    const symbol = resolveConstIdentifierAlias(rootIdentifier, scopes, true);
+    if (symbol && stateSymbolIds.has(symbol.id)) dependencyStateSymbolIds.add(symbol.id);
   }
-  return depNames;
+  return dependencyStateSymbolIds;
 };
 
 const collectSynchronouslyInvokedFunctions = (
@@ -342,14 +363,15 @@ const readStaticSetterValue = (
 // async-fetch shape that real codebases use.
 const collectStateWritesInEffect = (
   analysisFunctions: ReadonlySet<EsTreeNode>,
-  setterToStateName: Map<string, string>,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
   scopes: ScopeAnalysis,
 ): Map<string, EffectStateWriteInfo> => {
   const stateWrites = new Map<string, EffectStateWriteInfo>();
   visitSynchronousFunctionBodies(analysisFunctions, (child) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier")) return;
-    const stateName = setterToStateName.get(child.callee.name);
+    const setterSymbol = resolveConstIdentifierAlias(child.callee, scopes, true);
+    const stateName = setterSymbol ? setterSymbolIdToStateName.get(setterSymbol.id) : undefined;
     if (!stateName) return;
     const writeInfo = stateWrites.get(stateName) ?? {
       values: new Set<boolean | number | string | null | undefined>(),
@@ -504,6 +526,8 @@ const NON_CONTAMINATING_MAP_METHOD_NAMES = new Set([
 const isFunctionShapedReturn = (
   returnedValue: EsTreeNode,
   setterToStateName: ReadonlyMap<string, string>,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
+  scopes: ScopeAnalysis,
   isExplicitReturnStatement: boolean,
 ): boolean => {
   if (
@@ -521,7 +545,13 @@ const isFunctionShapedReturn = (
   // state write (`return setSource(1)`) is never cleanup.
   if (isNodeOfType(returnedValue, "CallExpression")) {
     if (isNodeOfType(returnedValue.callee, "Identifier")) {
-      if (setterToStateName.has(returnedValue.callee.name)) return false;
+      const setterSymbol = resolveConstIdentifierAlias(returnedValue.callee, scopes, true);
+      if (
+        setterToStateName.has(returnedValue.callee.name) ||
+        (setterSymbol && setterSymbolIdToStateName.has(setterSymbol.id))
+      ) {
+        return false;
+      }
       if (isSetterIdentifier(returnedValue.callee.name)) return true;
     }
     return isCleanupReturn(returnedValue, EMPTY_CLEANUP_NAME_SET, EMPTY_CLEANUP_NAME_SET, {
@@ -887,6 +917,7 @@ const isExternalSyncEffect = (
   effectCallback: EsTreeNode,
   analysisFunctions: ReadonlySet<EsTreeNode>,
   setterToStateName: ReadonlyMap<string, string>,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
   scopes: ScopeAnalysis,
   allowCommittedDomSync: boolean,
 ): boolean => {
@@ -895,13 +926,29 @@ const isExternalSyncEffect = (
   // an external resource — once we see one, we don't need to inspect
   // the body for an external-sync call shape.
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
-    if (isFunctionShapedReturn(effectCallback.body, setterToStateName, false)) return true;
+    if (
+      isFunctionShapedReturn(
+        effectCallback.body,
+        setterToStateName,
+        setterSymbolIdToStateName,
+        scopes,
+        false,
+      )
+    ) {
+      return true;
+    }
   } else {
     for (const statement of effectCallback.body.body ?? []) {
       if (
         isNodeOfType(statement, "ReturnStatement") &&
         statement.argument &&
-        isFunctionShapedReturn(statement.argument, setterToStateName, true)
+        isFunctionShapedReturn(
+          statement.argument,
+          setterToStateName,
+          setterSymbolIdToStateName,
+          scopes,
+          true,
+        )
       ) {
         return true;
       }
@@ -923,7 +970,7 @@ const isExternalSyncEffect = (
 
 interface EffectInfo {
   node: EsTreeNode;
-  depNames: Set<string>;
+  dependencyStateSymbolIds: Set<number>;
   stateWrites: Map<string, EffectStateWriteInfo>;
   analysisFunctions: ReadonlySet<EsTreeNode>;
   isExternalSync: boolean;
@@ -940,10 +987,11 @@ export const noEffectChain = defineRule({
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
 
-      const useStateBindings = collectUseStateBindings(componentBody);
+      const useStateBindings = collectUseStateBindings(componentBody, context.scopes);
       if (useStateBindings.length === 0) return;
       const setterToStateName = new Map<string, string>();
       const stateSymbolIds = new Map<string, number>();
+      const setterSymbolIdToStateName = new Map<number, string>();
       for (const binding of useStateBindings) {
         setterToStateName.set(binding.setterName, binding.valueName);
         if (!isNodeOfType(binding.declarator.id, "ArrayPattern")) continue;
@@ -952,24 +1000,34 @@ export const noEffectChain = defineRule({
           const stateSymbol = context.scopes.symbolFor(stateIdentifier);
           if (stateSymbol) stateSymbolIds.set(binding.valueName, stateSymbol.id);
         }
+        const setterIdentifier = binding.declarator.id.elements[1];
+        if (isNodeOfType(setterIdentifier, "Identifier")) {
+          const setterSymbol = context.scopes.symbolFor(setterIdentifier);
+          if (setterSymbol) setterSymbolIdToStateName.set(setterSymbol.id, binding.valueName);
+        }
       }
 
       const storageSetterNames = collectStorageHookSetterNames(componentBody);
+      const stateSymbolIdSet = new Set(stateSymbolIds.values());
 
       const effectInfos: EffectInfo[] = [];
-      for (const effectCall of findTopLevelEffectCalls(componentBody)) {
+      for (const effectCall of findTopLevelEffectCalls(componentBody, context.scopes)) {
         const callback = getEffectCallback(effectCall, context.scopes);
         if (!callback || !isFunctionLike(callback) || callback.async) continue;
         const analysisFunctions = collectSynchronouslyInvokedFunctions(callback, context.scopes);
         const stateWrites = collectStateWritesInEffect(
           analysisFunctions,
-          setterToStateName,
+          setterSymbolIdToStateName,
           context.scopes,
         );
         const writtenStateNames = new Set(stateWrites.keys());
         effectInfos.push({
           node: effectCall,
-          depNames: collectDepIdentifierNames(effectCall),
+          dependencyStateSymbolIds: collectDependencyStateSymbolIds(
+            effectCall,
+            stateSymbolIdSet,
+            context.scopes,
+          ),
           stateWrites,
           analysisFunctions,
           isExternalSync:
@@ -977,6 +1035,7 @@ export const noEffectChain = defineRule({
               callback,
               analysisFunctions,
               setterToStateName,
+              setterSymbolIdToStateName,
               context.scopes,
               writtenStateNames.size === 0,
             ) ||
@@ -994,11 +1053,17 @@ export const noEffectChain = defineRule({
         for (const readerEffect of effectInfos) {
           if (readerEffect === writerEffect) continue;
           if (readerEffect.isExternalSync) continue;
-          if (readerEffect.depNames.size === 0) continue;
+          if (readerEffect.dependencyStateSymbolIds.size === 0) continue;
 
           let chainedStateName: string | null = null;
           for (const [writtenName, writeInfo] of writerEffect.stateWrites) {
-            if (!readerEffect.depNames.has(writtenName)) continue;
+            const writtenStateSymbolId = stateSymbolIds.get(writtenName);
+            if (
+              writtenStateSymbolId === undefined ||
+              !readerEffect.dependencyStateSymbolIds.has(writtenStateSymbolId)
+            ) {
+              continue;
+            }
             if (
               !canStateWriteReachReaderWork(
                 writeInfo,

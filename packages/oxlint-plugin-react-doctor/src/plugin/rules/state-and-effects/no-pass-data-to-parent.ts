@@ -1,9 +1,11 @@
 import type { Reference } from "eslint-scope";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import {
@@ -11,6 +13,7 @@ import {
   STRING_READ_METHOD_NAMES,
 } from "../../constants/data-sink-method-names.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
+import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -36,6 +39,7 @@ import {
   isProp,
   isRefCall,
   isRefCurrent,
+  isState,
   isUseEffect,
   isWholePropsObjectReference,
 } from "./utils/effect/react.js";
@@ -43,6 +47,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
+import { getParentCallbackPropNames } from "./utils/resolve-parent-callback-provenance.js";
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`, narrowed to
 // DIRECT parent-callback call sites. The verification run showed the
@@ -116,8 +121,18 @@ const FUNCTION_WRAPPER_HOOK_NAMES: ReadonlySet<string> = new Set([
   "useCallbackRef",
 ]);
 
-const getWrapperHookWrappedFunction = (initializer: EsTreeNode): EsTreeNode | null => {
+const getWrapperHookWrappedFunction = (
+  initializer: EsTreeNode,
+  resultSymbol: SymbolDescriptor | null,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
   if (!isNodeOfType(initializer, "CallExpression")) return null;
+  const transparentReactArgument = getTransparentReactCallbackWrapperArgument(
+    initializer,
+    resultSymbol,
+    scopes,
+  );
+  if (transparentReactArgument) return transparentReactArgument;
   const callee = initializer.callee;
   const calleeName = isNodeOfType(callee, "Identifier")
     ? callee.name
@@ -126,8 +141,10 @@ const getWrapperHookWrappedFunction = (initializer: EsTreeNode): EsTreeNode | nu
       : null;
   if (!calleeName || !FUNCTION_WRAPPER_HOOK_NAMES.has(calleeName)) return null;
   const wrapped = initializer.arguments?.[0] as EsTreeNode | undefined;
-  if (!wrapped || !isFunctionLike(wrapped)) return null;
-  return wrapped;
+  if (!wrapped) return null;
+  if (calleeName === "useEffectEvent") return null;
+  if (isFunctionLike(wrapped)) return wrapped;
+  return null;
 };
 
 const HANDLER_NAMED_PROP_PATTERN = /^(on|handle)[A-Z]/;
@@ -166,17 +183,60 @@ const wrappedFunctionNotifiesParent = (
 // A binding produced by CALLING anything else (`const { setValue } =
 // useForm({ defaultValues: props.initial })`) is a local utility, no
 // matter how many props appear in the call.
-const isDirectParentCallbackRef = (analysis: ProgramAnalysis, ref: Reference): boolean => {
+const isDirectParentCallbackRef = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  scopes: ScopeAnalysis,
+): boolean => {
   if (isProp(analysis, ref)) return true;
+  if (hasMutableBindingWrite(ref)) {
+    const bindingWrites =
+      ref.resolved?.references.filter(
+        (candidateReference) => candidateReference.isWrite() && !candidateReference.init,
+      ) ?? [];
+    const writesOnlyParentCallbacks = bindingWrites.every((candidateReference) => {
+      const candidateIdentifier = candidateReference.identifier as unknown as EsTreeNode;
+      const assignment = candidateIdentifier.parent;
+      if (
+        !assignment ||
+        !isNodeOfType(assignment, "AssignmentExpression") ||
+        assignment.operator !== "=" ||
+        assignment.left !== (candidateIdentifier as unknown as typeof assignment.left)
+      ) {
+        return false;
+      }
+      const assignedReferences = getDownstreamRefs(analysis, assignment.right as EsTreeNode);
+      return (
+        assignedReferences.length > 0 &&
+        assignedReferences.every((assignedReference) => isProp(analysis, assignedReference))
+      );
+    });
+    if (!writesOnlyParentCallbacks) return false;
+  }
   return Boolean(
     ref.resolved?.defs.some((def) => {
       const node = def.node as unknown as EsTreeNode;
       if (!isNodeOfType(node, "VariableDeclarator") || !node.init) return false;
       const initializer = unwrapChainExpression(node.init as EsTreeNode);
-      const wrappedFunction = getWrapperHookWrappedFunction(initializer);
+      const resultSymbol = isNodeOfType(node.id, "Identifier")
+        ? (scopes.symbolFor(node.id) ?? null)
+        : null;
+      const wrappedFunction = getWrapperHookWrappedFunction(initializer, resultSymbol, scopes);
       if (wrappedFunction) {
         if ((wrappedFunction as { async?: boolean }).async) return false;
-        return wrappedFunctionNotifiesParent(analysis, wrappedFunction);
+        if (isFunctionLike(wrappedFunction)) {
+          return wrappedFunctionNotifiesParent(analysis, wrappedFunction);
+        }
+        const directName = getParentCallbackPropName(analysis, wrappedFunction);
+        const downstreamReferences = getDownstreamRefs(analysis, wrappedFunction);
+        if (directName !== null) return true;
+        return downstreamReferences.some(
+          (wrappedReference) =>
+            !hasMutableBindingWrite(wrappedReference) &&
+            getUpstreamRefs(analysis, wrappedReference).some((upstreamReference) =>
+              isProp(analysis, upstreamReference),
+            ),
+        );
       }
       if (
         !isNodeOfType(initializer, "Identifier") &&
@@ -865,12 +925,25 @@ const getCommandCallbackPropName = (
 // (`fireNonCancelableEvent(onNavigationChange, { open: isOpen })`), so the
 // direct call's arguments alone can be all-literal; scan the call-chain
 // arguments the way the pre-narrowing rule did.
-const isWrapperHookCallbackRef = (analysis: ProgramAnalysis, ref: Reference): boolean =>
+const isWrapperHookCallbackRef = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  scopes: ScopeAnalysis,
+): boolean =>
   Boolean(
     ref.resolved?.defs.some((def) => {
       const node = def.node as unknown as EsTreeNode;
       if (!isNodeOfType(node, "VariableDeclarator") || !node.init) return false;
-      return getWrapperHookWrappedFunction(unwrapChainExpression(node.init as EsTreeNode)) !== null;
+      const resultSymbol = isNodeOfType(node.id, "Identifier")
+        ? (scopes.symbolFor(node.id) ?? null)
+        : null;
+      return (
+        getWrapperHookWrappedFunction(
+          unwrapChainExpression(node.init as EsTreeNode),
+          resultSymbol,
+          scopes,
+        ) !== null
+      );
     }),
   );
 
@@ -916,11 +989,32 @@ const HOOK_NAME_PATTERN = /^use[A-Z0-9]/;
 const EXTERNAL_SUBSCRIPTION_HOOK_NAMES: ReadonlySet<string> = new Set([
   "useIntersectionObserver",
   "useMatchMedia",
+  "useMediaJobProgress",
   "useMediaQuery",
+  "useMediaQueryState",
   "useResizeObserver",
   "useVisibility",
   "useWindowSize",
 ]);
+
+const isCallbackPropReference = (analysis: ProgramAnalysis, ref: Reference): boolean => {
+  if (!isProp(analysis, ref)) return false;
+  const identifier = ref.identifier as unknown as EsTreeNode;
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  if (!isWholePropsObjectReference(analysis, ref)) {
+    return HANDLER_NAMED_PROP_PATTERN.test(identifier.name);
+  }
+  const member = identifier.parent;
+  if (
+    !member ||
+    !isNodeOfType(member, "MemberExpression") ||
+    member.object !== (identifier as unknown as typeof member.object)
+  ) {
+    return false;
+  }
+  const propertyName = getStaticMemberPropertyName(member);
+  return Boolean(propertyName && HANDLER_NAMED_PROP_PATTERN.test(propertyName));
+};
 
 // A value produced by a custom hook that is itself WIRED TO the component's
 // props (`useMarqueeSelection({ containerRef, onSelectionChange, ... })`)
@@ -942,7 +1036,7 @@ const isParentWiredHookResultRef = (analysis: ProgramAnalysis, ref: Reference): 
       }
       return (init.arguments ?? []).some((hookArgument) =>
         getDownstreamRefs(analysis, hookArgument as EsTreeNode).some((downstreamRef) =>
-          isProp(analysis, downstreamRef),
+          isCallbackPropReference(analysis, downstreamRef),
         ),
       );
     }),
@@ -977,14 +1071,49 @@ const isParentWiredHookCalleeRef = (analysis: ProgramAnalysis, ref: Reference): 
   }
   return (parent.arguments ?? []).some((hookArgument) =>
     getDownstreamRefs(analysis, hookArgument as EsTreeNode).some((downstreamRef) =>
-      isProp(analysis, downstreamRef),
+      isCallbackPropReference(analysis, downstreamRef),
     ),
   );
 };
 
-const isExternalSubscriptionHookRef = (ref: Reference): boolean => {
+const getLocalHookExternalStateProof = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+): boolean | null => {
+  let hookFunction = resolveToFunction(ref);
+  if (!hookFunction) {
+    for (const definition of ref.resolved?.defs ?? []) {
+      const definitionNode = definition.node as unknown as EsTreeNode;
+      if (!isNodeOfType(definitionNode, "VariableDeclarator") || !definitionNode.init) continue;
+      const initializer = stripParenExpression(definitionNode.init as EsTreeNode);
+      if (!isNodeOfType(initializer, "CallExpression")) continue;
+      const callee = stripParenExpression(initializer.callee as EsTreeNode);
+      if (!isNodeOfType(callee, "Identifier")) continue;
+      const calleeReference = getRef(analysis, callee);
+      if (!calleeReference) continue;
+      hookFunction = resolveToFunction(calleeReference);
+      if (hookFunction) break;
+    }
+  }
+  if (!hookFunction) return null;
+  const returnedReferences = collectFunctionReturnStatements(hookFunction).flatMap(
+    (returnStatement) =>
+      returnStatement.argument
+        ? getDownstreamRefs(analysis, returnStatement.argument as EsTreeNode)
+        : [],
+  );
+  if (returnedReferences.length === 0) return null;
+  return returnedReferences.every(
+    (returnedReference) =>
+      isState(analysis, returnedReference) && isExternallyDrivenState(analysis, returnedReference),
+  );
+};
+
+const isExternalSubscriptionHookRef = (analysis: ProgramAnalysis, ref: Reference): boolean => {
   const identifier = ref.identifier as unknown as EsTreeNode;
   if (!isNodeOfType(identifier, "Identifier")) return false;
+  const localHookProof = getLocalHookExternalStateProof(analysis, ref);
+  if (localHookProof !== null) return localHookProof;
   if (EXTERNAL_SUBSCRIPTION_HOOK_NAMES.has(identifier.name) && isCalleePosition(identifier)) {
     return true;
   }
@@ -1053,15 +1182,26 @@ export const noPassDataToParent = defineRule({
             isReactUseRefCall,
             isReactUseEffectCall,
           );
-          if (isRefCall(analysis, ref) && !callbackRefProvenance) continue;
           if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
 
           const calleeNode = unwrapChainExpression(callExpr.callee as EsTreeNode);
           const identifier = ref.identifier as unknown as EsTreeNode;
+          const resolvedCallbackPropNames =
+            isNodeOfType(calleeNode, "MemberExpression") &&
+            getStaticMemberPropertyName(calleeNode) === "current"
+              ? null
+              : getParentCallbackPropNames({
+                  analysis,
+                  expression: calleeNode,
+                  scopes: context.scopes,
+                });
+          const callbackPropNames =
+            callbackRefProvenance?.callbackPropNames ?? resolvedCallbackPropNames;
+          if (isRefCall(analysis, ref) && !callbackPropNames) continue;
 
-          if (callbackRefProvenance) {
+          if (callbackPropNames) {
             if (
-              [...callbackRefProvenance.callbackPropNames].some((callbackPropName) =>
+              [...callbackPropNames].some((callbackPropName) =>
                 COMMAND_PROP_NAME_PATTERN.test(callbackPropName),
               )
             ) {
@@ -1079,7 +1219,7 @@ export const noPassDataToParent = defineRule({
             if (callbackPropName && COMMAND_PROP_NAME_PATTERN.test(callbackPropName)) {
               continue;
             }
-            if (!isDirectParentCallbackRef(analysis, ref)) continue;
+            if (!isDirectParentCallbackRef(analysis, ref, context.scopes)) continue;
             if (
               isNodeOfType(identifier, "Identifier") &&
               COMMAND_PROP_NAME_PATTERN.test(identifier.name)
@@ -1120,7 +1260,8 @@ export const noPassDataToParent = defineRule({
           if (
             methodName &&
             DATA_SINK_METHOD_NAMES.has(methodName) &&
-            !isPropCallbackNamedLikeStringRead
+            !isPropCallbackNamedLikeStringRead &&
+            !callbackPropNames
           ) {
             continue;
           }
@@ -1128,10 +1269,10 @@ export const noPassDataToParent = defineRule({
           // `editor.commands.setSelection(...)`, `props.store.dispatch(...)`,
           // `props.queryClient.invalidate(...)` etc. — calling a method
           // on a namespaced API object, not handing data back to a parent.
-          if (!callbackRefProvenance && isNamespacedApiCallee(calleeNode)) continue;
+          if (!callbackPropNames && isNamespacedApiCallee(calleeNode)) continue;
 
-          const isSetterNamedCallee = callbackRefProvenance
-            ? [...callbackRefProvenance.callbackPropNames].every((callbackPropName) =>
+          const isSetterNamedCallee = callbackPropNames
+            ? [...callbackPropNames].every((callbackPropName) =>
                 SETTER_NAMED_PROP_PATTERN.test(callbackPropName),
               )
             : Boolean(
@@ -1162,7 +1303,8 @@ export const noPassDataToParent = defineRule({
               return getDownstreamRefs(analysis, argument as EsTreeNode);
             })
             .flatMap((argumentRef) =>
-              isExternallyDrivenState(analysis, argumentRef)
+              isExternallyDrivenState(analysis, argumentRef) ||
+              isExternalSubscriptionHookRef(analysis, argumentRef)
                 ? []
                 : getUpstreamRefs(analysis, argumentRef),
             )
@@ -1170,13 +1312,16 @@ export const noPassDataToParent = defineRule({
           // A wrapper-hook callee hides the hand-off in its wrapped body, so
           // its data refs live on the eventual call chain, not the direct
           // call's arguments.
-          if (calleeNode === identifier && isWrapperHookCallbackRef(analysis, ref)) {
+          if (
+            calleeNode === identifier &&
+            isWrapperHookCallbackRef(analysis, ref, context.scopes)
+          ) {
             argsUpstreamRefs.push(...getArgsUpstreamRefs(analysis, ref).filter(isLeafRef));
           }
 
           const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
             if (isUseStateIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
-            if (isExternalSubscriptionHookRef(argRef)) return false;
+            if (isExternalSubscriptionHookRef(analysis, argRef)) return false;
             if (isProp(analysis, argRef)) return false;
             if (isUseRefIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
             if (isRefCurrent(argRef)) return false;

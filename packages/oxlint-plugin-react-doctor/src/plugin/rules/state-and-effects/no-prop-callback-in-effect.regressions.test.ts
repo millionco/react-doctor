@@ -8,6 +8,38 @@ import { noPropCallbackInEffect } from "./no-prop-callback-in-effect.js";
 // externally driven and silence the onError-in-effect report.
 
 describe("no-prop-callback-in-effect — must-detect regressions", () => {
+  it("preserves local-state flow through direct React useEffectEvent wrappers", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `import { useEffect, useEffectEvent, useState } from "react";
+      const Child = ({ onChange }) => {
+        const [value] = useState("");
+        const notify = useEffectEvent(onChange);
+        useEffect(() => {
+          notify(value);
+        }, [value]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust an imported useEffectEvent polyfill", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `import { useEffectEvent } from "effect-event-polyfill";
+      const Child = ({ onChange }) => {
+        const [value] = useState("");
+        const notify = useEffectEvent(onChange);
+        useEffect(() => notify(value), [value]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("fires on onError(error) in an effect when the setter is also called in async handlers (inrupt Image)", () => {
     const result = runRule(
       noPropCallbackInEffect,

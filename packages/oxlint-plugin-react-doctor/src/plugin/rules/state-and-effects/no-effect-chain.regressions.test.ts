@@ -3,6 +3,95 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noEffectChain } from "./no-effect-chain.js";
 
 describe("no-effect-chain — regressions", () => {
+  it("reports effect chains through effect, setter, and dependency aliases", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      const runEffect = useEffect;
+      const Example = ({ source }) => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        const writeStep = setStep;
+        const writeReady = setReady;
+        const currentStep = step;
+        runEffect(() => writeStep(1), [source, writeStep]);
+        runEffect(() => {
+          if (currentStep > 0) writeReady(true);
+        }, [currentStep, writeReady]);
+        return ready;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an effect chain when the writer explicitly returns a setter alias call", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      const Example = ({ source }) => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        const writeStep = setStep;
+        useEffect(() => {
+          return writeStep(1);
+        }, [source]);
+        useEffect(() => setReady(step > 0), [step]);
+        return ready;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a chain through a member dependency of state", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      const Example = ({ source }) => {
+        const [state, setState] = useState({ step: 0 });
+        const [ready, setReady] = useState(false);
+        useEffect(() => setState({ step: 1 }), [source]);
+        useEffect(() => {
+          if (state.step > 0) setReady(true);
+        }, [state.step]);
+        return ready;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "a userland effect",
+      `const useEffect = (callback) => callback();
+      const Example = ({ source }) => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        useEffect(() => setStep(1), [source]);
+        useEffect(() => setReady(step > 0), [step]);
+        return ready;
+      };`,
+    ],
+    [
+      "a mutable setter alias",
+      `import { useEffect, useState } from "react";
+      const Example = ({ source }) => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        let writeStep = setStep;
+        writeStep = console.log;
+        useEffect(() => writeStep(1), [source]);
+        useEffect(() => setReady(step > 0), [step]);
+        return ready;
+      };`,
+    ],
+  ])("stays silent for %s", (_name, code) => {
+    const result = runRule(noEffectChain, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
   it("stays silent when a clear-only effect cannot satisfy the downstream truthy guard", () => {
     const result = runRule(
       noEffectChain,

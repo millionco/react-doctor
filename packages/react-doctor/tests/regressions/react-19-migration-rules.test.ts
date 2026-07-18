@@ -87,6 +87,53 @@ void hydrateRoot;
   });
 });
 
+describe("no-ref-callback-cleanup-before-react-19", () => {
+  const source = `
+    export const Component = ({ release }) => (
+      <div ref={(node) => {
+        if (!node) return;
+        return () => release(node);
+      }} />
+    );
+  `;
+
+  it("reports when the supported React range includes 18", async () => {
+    const projectDir = setupReactProject(tempRoot, "ref-cleanup-react-18-range", {
+      reactVersion: "^18.1.0 || ^19.0.0",
+      files: { "src/component.tsx": source },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-ref-callback-cleanup-before-react-19", {
+      reactMajorVersion: 18,
+    });
+    expect(hits).toHaveLength(1);
+  });
+
+  it("stays silent for React 19-only projects", async () => {
+    const projectDir = setupReactProject(tempRoot, "ref-cleanup-react-19", {
+      reactVersion: "^19.0.0",
+      files: { "src/component.tsx": source },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-ref-callback-cleanup-before-react-19", {
+      reactMajorVersion: 19,
+    });
+    expect(hits).toEqual([]);
+  });
+
+  it("stays silent outside the narrow React 18 compatibility gate", async () => {
+    const projectDir = setupReactProject(tempRoot, "ref-cleanup-react-17", {
+      reactVersion: "^17.0.0",
+      files: { "src/component.tsx": source },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-ref-callback-cleanup-before-react-19", {
+      reactMajorVersion: 17,
+    });
+    expect(hits).toEqual([]);
+  });
+});
+
 describe("no-legacy-class-lifecycles", () => {
   it("flags componentWillMount / componentWillReceiveProps / componentWillUpdate", async () => {
     const projectDir = setupReactProject(tempRoot, "no-legacy-class-lifecycles-pos", {

@@ -4,8 +4,7 @@
 
 interface MailingApiKeyRecord {
   id: string;
-  key: string;
-  status: string;
+  active: boolean;
   createdAt: string;
 }
 

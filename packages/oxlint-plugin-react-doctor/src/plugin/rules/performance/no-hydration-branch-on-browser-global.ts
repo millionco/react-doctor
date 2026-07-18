@@ -16,9 +16,11 @@ import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initia
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { readInitialStateBoolean } from "../../utils/read-initial-state-boolean.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
@@ -36,6 +38,17 @@ interface BrowserPredicateMatch {
 interface HydrationConditionMatch {
   readonly predicateMatch: BrowserPredicateMatch;
   readonly predicateNode: EsTreeNode;
+}
+
+interface HydrationResolutionState {
+  readonly parameterValuesBySymbolId: Map<number, EsTreeNode>;
+  readonly visitedFunctionNodes: Set<EsTreeNode>;
+  readonly visitedSymbolIds: Set<number>;
+}
+
+interface HydrationStatementResult {
+  readonly didReturn: boolean;
+  readonly value: boolean | null;
 }
 
 const evaluateEquality = (operator: string, left: string, right: string): boolean | null => {
@@ -141,12 +154,91 @@ const readHydrationConditionResult = (
   expression: EsTreeNode,
   context: RuleContext,
   runtime: "client" | "server",
+  state: HydrationResolutionState,
 ): boolean | null => {
   const unwrappedExpression = stripParenExpression(expression);
   const predicateMatch = matchBrowserPredicate(unwrappedExpression, context);
   if (predicateMatch) return predicateMatch[`${runtime}Result`];
   const staticResult = readInitialStateBoolean(unwrappedExpression, context.scopes);
   if (staticResult !== null) return staticResult;
+  const expressionSymbol = isNodeOfType(unwrappedExpression, "Identifier")
+    ? context.scopes.symbolFor(unwrappedExpression)
+    : null;
+  const parameterValue = expressionSymbol
+    ? state.parameterValuesBySymbolId.get(expressionSymbol.id)
+    : null;
+  if (expressionSymbol && parameterValue && !state.visitedSymbolIds.has(expressionSymbol.id)) {
+    state.visitedSymbolIds.add(expressionSymbol.id);
+    const result = readHydrationConditionResult(parameterValue, context, runtime, state);
+    state.visitedSymbolIds.delete(expressionSymbol.id);
+    return result;
+  }
+  if (
+    expressionSymbol &&
+    expressionSymbol.kind === "const" &&
+    expressionSymbol.initializer &&
+    expressionSymbol.references.every((reference) => reference.flag === "read") &&
+    !state.visitedSymbolIds.has(expressionSymbol.id)
+  ) {
+    state.visitedSymbolIds.add(expressionSymbol.id);
+    const result = readHydrationConditionResult(
+      expressionSymbol.initializer,
+      context,
+      runtime,
+      state,
+    );
+    state.visitedSymbolIds.delete(expressionSymbol.id);
+    return result;
+  }
+  if (isNodeOfType(unwrappedExpression, "CallExpression")) {
+    const callArguments = unwrappedExpression.arguments ?? [];
+    if (
+      isReactApiCall(unwrappedExpression, "useMemo", context.scopes, {
+        allowGlobalReactNamespace: true,
+        resolveNamedAliases: true,
+      })
+    ) {
+      const callbackArgument = callArguments[0];
+      if (!callbackArgument || isNodeOfType(callbackArgument, "SpreadElement")) return null;
+      const callbackFunction = resolveExactLocalFunction(callbackArgument, context.scopes);
+      return isFunctionLike(callbackFunction) && callbackFunction.params.length === 0
+        ? readHydrationFunctionResult(callbackFunction, context, runtime, state)
+        : null;
+    }
+    const callee = stripParenExpression(unwrappedExpression.callee);
+    if (
+      isNodeOfType(callee, "Identifier") &&
+      callee.name === "Boolean" &&
+      context.scopes.isGlobalReference(callee) &&
+      callArguments.length === 1 &&
+      !isNodeOfType(callArguments[0], "SpreadElement")
+    ) {
+      return readHydrationConditionResult(callArguments[0], context, runtime, state);
+    }
+    const helperFunction = resolveExactLocalFunction(callee, context.scopes);
+    if (
+      !isFunctionLike(helperFunction) ||
+      helperFunction.async ||
+      (isNodeOfType(helperFunction, "FunctionDeclaration") && helperFunction.generator) ||
+      (isNodeOfType(helperFunction, "FunctionExpression") && helperFunction.generator) ||
+      helperFunction.params.some((parameter) => !isNodeOfType(parameter, "Identifier")) ||
+      callArguments.some((argument) => isNodeOfType(argument, "SpreadElement"))
+    ) {
+      return null;
+    }
+    const parameterValuesBySymbolId = new Map(state.parameterValuesBySymbolId);
+    for (let parameterIndex = 0; parameterIndex < helperFunction.params.length; parameterIndex++) {
+      const parameter = helperFunction.params[parameterIndex];
+      const argument = callArguments[parameterIndex];
+      if (!argument || !isNodeOfType(parameter, "Identifier")) continue;
+      const parameterSymbol = context.scopes.symbolFor(parameter);
+      if (parameterSymbol) parameterValuesBySymbolId.set(parameterSymbol.id, argument);
+    }
+    return readHydrationFunctionResult(helperFunction, context, runtime, {
+      ...state,
+      parameterValuesBySymbolId,
+    });
+  }
   if (
     isNodeOfType(unwrappedExpression, "UnaryExpression") &&
     unwrappedExpression.operator === "!"
@@ -155,6 +247,7 @@ const readHydrationConditionResult = (
       unwrappedExpression.argument,
       context,
       runtime,
+      state,
     );
     return argumentResult === null ? null : !argumentResult;
   }
@@ -166,23 +259,224 @@ const readHydrationConditionResult = (
   }
   return readLogicalConditionResult(
     unwrappedExpression.operator,
-    readHydrationConditionResult(unwrappedExpression.left, context, runtime),
-    readHydrationConditionResult(unwrappedExpression.right, context, runtime),
+    readHydrationConditionResult(unwrappedExpression.left, context, runtime, state),
+    readHydrationConditionResult(unwrappedExpression.right, context, runtime, state),
   );
 };
 
-const matchHydrationCondition = (
+const readHydrationStatementResult = (
+  statement: EsTreeNode,
+  context: RuleContext,
+  runtime: "client" | "server",
+  state: HydrationResolutionState,
+): HydrationStatementResult => {
+  if (isNodeOfType(statement, "ReturnStatement")) {
+    return {
+      didReturn: true,
+      value: statement.argument
+        ? readHydrationConditionResult(statement.argument, context, runtime, state)
+        : null,
+    };
+  }
+  if (isNodeOfType(statement, "BlockStatement")) {
+    for (const childStatement of statement.body) {
+      const result = readHydrationStatementResult(childStatement, context, runtime, state);
+      if (result.didReturn) return result;
+      if (statementAlwaysExits(childStatement)) break;
+    }
+    return { didReturn: false, value: null };
+  }
+  if (!isNodeOfType(statement, "IfStatement")) return { didReturn: false, value: null };
+  const conditionResult = readHydrationConditionResult(statement.test, context, runtime, state);
+  if (conditionResult !== null) {
+    const selectedBranch = conditionResult ? statement.consequent : statement.alternate;
+    return selectedBranch
+      ? readHydrationStatementResult(selectedBranch, context, runtime, state)
+      : { didReturn: false, value: null };
+  }
+  const consequentResult = readHydrationStatementResult(
+    statement.consequent,
+    context,
+    runtime,
+    state,
+  );
+  const alternateResult = statement.alternate
+    ? readHydrationStatementResult(statement.alternate, context, runtime, state)
+    : { didReturn: false, value: null };
+  return consequentResult.didReturn &&
+    alternateResult.didReturn &&
+    consequentResult.value !== null &&
+    consequentResult.value === alternateResult.value
+    ? consequentResult
+    : { didReturn: consequentResult.didReturn || alternateResult.didReturn, value: null };
+};
+
+const readHydrationFunctionResult = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+  runtime: "client" | "server",
+  state: HydrationResolutionState,
+): boolean | null => {
+  if (!isFunctionLike(functionNode) || state.visitedFunctionNodes.has(functionNode)) return null;
+  state.visitedFunctionNodes.add(functionNode);
+  const result = isNodeOfType(functionNode.body, "BlockStatement")
+    ? readHydrationStatementResult(functionNode.body, context, runtime, state).value
+    : readHydrationConditionResult(functionNode.body, context, runtime, state);
+  state.visitedFunctionNodes.delete(functionNode);
+  return result;
+};
+
+const doEquivalentExpressionBindingsMatch = (
+  leftExpression: EsTreeNode,
+  rightExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const left = stripParenExpression(leftExpression);
+  const right = stripParenExpression(rightExpression);
+  if (isNodeOfType(left, "Identifier") && isNodeOfType(right, "Identifier")) {
+    const leftSymbol = scopes.symbolFor(left);
+    const rightSymbol = scopes.symbolFor(right);
+    return leftSymbol || rightSymbol ? leftSymbol?.id === rightSymbol?.id : true;
+  }
+  if (isNodeOfType(left, "MemberExpression") && isNodeOfType(right, "MemberExpression")) {
+    return (
+      doEquivalentExpressionBindingsMatch(left.object, right.object, scopes) &&
+      (!left.computed || doEquivalentExpressionBindingsMatch(left.property, right.property, scopes))
+    );
+  }
+  if (isNodeOfType(left, "CallExpression") && isNodeOfType(right, "CallExpression")) {
+    const rightArguments = right.arguments ?? [];
+    return (
+      doEquivalentExpressionBindingsMatch(left.callee, right.callee, scopes) &&
+      (left.arguments ?? []).every((argument, index) => {
+        const rightArgument = rightArguments[index];
+        return Boolean(
+          rightArgument && doEquivalentExpressionBindingsMatch(argument, rightArgument, scopes),
+        );
+      })
+    );
+  }
+  return true;
+};
+
+const areHelperReturnValuesEquivalent = (
+  leftValue: EsTreeNode,
+  rightValue: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (areExpressionsStructurallyEqual(leftValue, rightValue))
+    return doEquivalentExpressionBindingsMatch(leftValue, rightValue, context.scopes);
+  const leftBoolean = readInitialStateBoolean(leftValue, context.scopes);
+  const rightBoolean = readInitialStateBoolean(rightValue, context.scopes);
+  return leftBoolean !== null && rightBoolean !== null && leftBoolean === rightBoolean;
+};
+
+const doHelperReturnValuesDiffer = (
+  leftValues: ReadonlyArray<EsTreeNode>,
+  rightValues: ReadonlyArray<EsTreeNode>,
+  context: RuleContext,
+): boolean => {
+  const everyValueHasEquivalent = (
+    values: ReadonlyArray<EsTreeNode>,
+    candidateValues: ReadonlyArray<EsTreeNode>,
+  ): boolean =>
+    values.every((value) =>
+      candidateValues.some((candidateValue) =>
+        areHelperReturnValuesEquivalent(value, candidateValue, context),
+      ),
+    );
+
+  return (
+    !everyValueHasEquivalent(leftValues, rightValues) ||
+    !everyValueHasEquivalent(rightValues, leftValues)
+  );
+};
+
+const matchHydrationConditionInternal = (
   expression: EsTreeNode,
   context: RuleContext,
+  state: HydrationResolutionState,
 ): HydrationConditionMatch | null => {
   const unwrappedExpression = stripParenExpression(expression);
   const predicateMatch = matchBrowserPredicate(unwrappedExpression, context);
   if (predicateMatch) return { predicateMatch, predicateNode: unwrappedExpression };
+  if (isNodeOfType(unwrappedExpression, "Identifier")) {
+    const symbol = context.scopes.symbolFor(unwrappedExpression);
+    const parameterValue = symbol ? state.parameterValuesBySymbolId.get(symbol.id) : null;
+    if (symbol && parameterValue && !state.visitedSymbolIds.has(symbol.id)) {
+      state.visitedSymbolIds.add(symbol.id);
+      const match = matchHydrationConditionInternal(parameterValue, context, state);
+      state.visitedSymbolIds.delete(symbol.id);
+      return match;
+    }
+    if (
+      !symbol ||
+      symbol.kind !== "const" ||
+      !symbol.initializer ||
+      symbol.references.some((reference) => reference.flag !== "read") ||
+      state.visitedSymbolIds.has(symbol.id)
+    ) {
+      return null;
+    }
+    state.visitedSymbolIds.add(symbol.id);
+    const match = matchHydrationConditionInternal(symbol.initializer, context, state);
+    state.visitedSymbolIds.delete(symbol.id);
+    return match;
+  }
+  if (isNodeOfType(unwrappedExpression, "CallExpression")) {
+    const callArguments = unwrappedExpression.arguments ?? [];
+    if (
+      isReactApiCall(unwrappedExpression, "useMemo", context.scopes, {
+        allowGlobalReactNamespace: true,
+        resolveNamedAliases: true,
+      })
+    ) {
+      const callbackArgument = callArguments[0];
+      if (!callbackArgument || isNodeOfType(callbackArgument, "SpreadElement")) return null;
+      const callbackFunction = resolveExactLocalFunction(callbackArgument, context.scopes);
+      return isFunctionLike(callbackFunction) && callbackFunction.params.length === 0
+        ? matchHydrationFunctionResult(callbackFunction, context, state)
+        : null;
+    }
+    const callee = stripParenExpression(unwrappedExpression.callee);
+    if (
+      isNodeOfType(callee, "Identifier") &&
+      callee.name === "Boolean" &&
+      context.scopes.isGlobalReference(callee) &&
+      callArguments.length === 1 &&
+      !isNodeOfType(callArguments[0], "SpreadElement")
+    ) {
+      return matchHydrationConditionInternal(callArguments[0], context, state);
+    }
+    const helperFunction = resolveExactLocalFunction(callee, context.scopes);
+    if (
+      !isFunctionLike(helperFunction) ||
+      helperFunction.async ||
+      (isNodeOfType(helperFunction, "FunctionDeclaration") && helperFunction.generator) ||
+      (isNodeOfType(helperFunction, "FunctionExpression") && helperFunction.generator) ||
+      helperFunction.params.some((parameter) => !isNodeOfType(parameter, "Identifier")) ||
+      callArguments.some((argument) => isNodeOfType(argument, "SpreadElement"))
+    ) {
+      return null;
+    }
+    const parameterValuesBySymbolId = new Map(state.parameterValuesBySymbolId);
+    for (let parameterIndex = 0; parameterIndex < helperFunction.params.length; parameterIndex++) {
+      const parameter = helperFunction.params[parameterIndex];
+      const argument = callArguments[parameterIndex];
+      if (!argument || !isNodeOfType(parameter, "Identifier")) continue;
+      const parameterSymbol = context.scopes.symbolFor(parameter);
+      if (parameterSymbol) parameterValuesBySymbolId.set(parameterSymbol.id, argument);
+    }
+    return matchHydrationFunctionResult(helperFunction, context, {
+      ...state,
+      parameterValuesBySymbolId,
+    });
+  }
   if (
     isNodeOfType(unwrappedExpression, "UnaryExpression") &&
     unwrappedExpression.operator === "!"
   ) {
-    return matchHydrationCondition(unwrappedExpression.argument, context);
+    return matchHydrationConditionInternal(unwrappedExpression.argument, context, state);
   }
   if (
     !isNodeOfType(unwrappedExpression, "LogicalExpression") ||
@@ -190,27 +484,80 @@ const matchHydrationCondition = (
   ) {
     return null;
   }
-  const leftMatch = matchHydrationCondition(unwrappedExpression.left, context);
-  const rightMatch = matchHydrationCondition(unwrappedExpression.right, context);
-  if (leftMatch && rightMatch) {
-    const clientResult = readHydrationConditionResult(unwrappedExpression, context, "client");
-    const serverResult = readHydrationConditionResult(unwrappedExpression, context, "server");
-    return clientResult !== null && serverResult !== null && clientResult !== serverResult
-      ? leftMatch
-      : null;
-  }
+  const leftMatch = matchHydrationConditionInternal(unwrappedExpression.left, context, state);
+  const rightMatch = matchHydrationConditionInternal(unwrappedExpression.right, context, state);
   const nestedMatch = leftMatch ?? rightMatch;
   if (!nestedMatch) return null;
-  const otherOperand = leftMatch ? unwrappedExpression.right : unwrappedExpression.left;
-  const otherResult = readInitialStateBoolean(otherOperand, context.scopes);
-  if (
-    (unwrappedExpression.operator === "&&" && otherResult === false) ||
-    (unwrappedExpression.operator === "||" && otherResult === true)
-  ) {
-    return null;
-  }
-  return nestedMatch;
+  const clientResult = readHydrationConditionResult(unwrappedExpression, context, "client", state);
+  const serverResult = readHydrationConditionResult(unwrappedExpression, context, "server", state);
+  return clientResult !== null && serverResult !== null && clientResult === serverResult
+    ? null
+    : nestedMatch;
 };
+
+const matchHydrationReturningStatement = (
+  statement: EsTreeNode,
+  context: RuleContext,
+  state: HydrationResolutionState,
+): HydrationConditionMatch | null => {
+  if (isNodeOfType(statement, "ReturnStatement")) {
+    return statement.argument
+      ? matchHydrationConditionInternal(statement.argument, context, state)
+      : null;
+  }
+  if (isNodeOfType(statement, "IfStatement")) {
+    const conditionMatch = matchHydrationConditionInternal(statement.test, context, state);
+    const consequentValues = getReturnedValues(statement.consequent);
+    const alternateValues = statement.alternate
+      ? getReturnedValues(statement.alternate)
+      : findFollowingReturnedValues(statement);
+    if (
+      conditionMatch &&
+      consequentValues.length > 0 &&
+      alternateValues.length > 0 &&
+      doHelperReturnValuesDiffer(consequentValues, alternateValues, context)
+    ) {
+      return conditionMatch;
+    }
+    return (
+      matchHydrationReturningStatement(statement.consequent, context, state) ??
+      (statement.alternate
+        ? matchHydrationReturningStatement(statement.alternate, context, state)
+        : null)
+    );
+  }
+  if (!isNodeOfType(statement, "BlockStatement")) return null;
+  for (const childStatement of statement.body) {
+    const match = matchHydrationReturningStatement(childStatement, context, state);
+    if (match) return match;
+    if (statementAlwaysExits(childStatement)) break;
+  }
+  return null;
+};
+
+const matchHydrationFunctionResult = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+  state: HydrationResolutionState,
+): HydrationConditionMatch | null => {
+  if (!isFunctionLike(functionNode) || state.visitedFunctionNodes.has(functionNode)) return null;
+  state.visitedFunctionNodes.add(functionNode);
+  const match = isNodeOfType(functionNode.body, "BlockStatement")
+    ? matchHydrationReturningStatement(functionNode.body, context, state)
+    : matchHydrationConditionInternal(functionNode.body, context, state);
+  state.visitedFunctionNodes.delete(functionNode);
+  return match;
+};
+
+const matchHydrationCondition = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): HydrationConditionMatch | null =>
+  matchHydrationConditionInternal(expression, context, {
+    parameterValuesBySymbolId: new Map(),
+    visitedFunctionNodes: new Set(),
+    visitedSymbolIds: new Set(),
+  });
 
 const areNodeArraysEquivalent = (
   leftNodes: ReadonlyArray<EsTreeNode>,
@@ -495,23 +842,23 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
       const { predicateMatch, predicateNode } = conditionMatch;
       if (reportedNodes.has(predicateNode)) return;
       if (rightBranch && areRenderedBranchesEquivalent(leftBranch, rightBranch)) return;
-      const componentOrHookNode = findRenderPhaseComponentOrHook(predicateNode, context.scopes);
+      const componentOrHookNode = findRenderPhaseComponentOrHook(conditionNode, context.scopes);
       if (!componentOrHookNode) return;
       if (!hasClientRenderEvidence(componentOrHookNode, fileHasUseClientDirective)) return;
       if (
         requiresRenderedContext &&
-        !isInRenderedOutput(predicateNode, componentOrHookNode, context.scopes)
+        !isInRenderedOutput(conditionNode, componentOrHookNode, context.scopes)
       )
         return;
       if (!isRenderedValue(leftBranch) && (!rightBranch || !isRenderedValue(rightBranch))) {
-        const attribute = findEnclosingJsxAttribute(predicateNode);
+        const attribute = findEnclosingJsxAttribute(conditionNode);
         if (!attribute || isEventHandlerAttribute(attribute)) return;
       }
-      if (fileIsEmailTemplate || isGatedByFalsyInitialState(predicateNode, context.scopes)) {
+      if (fileIsEmailTemplate || isGatedByFalsyInitialState(conditionNode, context.scopes)) {
         return;
       }
-      if (isAfterClientOnlyEarlyReturn(predicateNode, componentOrHookNode, context.scopes)) return;
-      const openingElement = findEnclosingJsxOpeningElement(predicateNode);
+      if (isAfterClientOnlyEarlyReturn(conditionNode, componentOrHookNode, context.scopes)) return;
+      const openingElement = findEnclosingJsxOpeningElement(conditionNode);
       if (
         hasSuppressHydrationWarningAttribute(openingElement) &&
         !isStructuralRenderedValue(leftBranch) &&

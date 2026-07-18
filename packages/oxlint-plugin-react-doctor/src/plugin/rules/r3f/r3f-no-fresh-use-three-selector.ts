@@ -4,10 +4,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { walkAst } from "../../utils/walk-ast.js";
-import { resolveR3fFreshValue } from "./utils/resolve-r3f-fresh-value.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
+import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
+import { resolveR3fFreshValue } from "./utils/resolve-r3f-fresh-value.js";
 
 const findFreshSelectorReturn = (selector: EsTreeNode, context: RuleContext): EsTreeNode | null => {
   if (!isFunctionLike(selector)) return null;
@@ -41,7 +41,7 @@ export const r3fNoFreshUseThreeSelector = defineRule({
       if (!isR3fApiCall(node, "useThree", context.scopes) || node.arguments.length > 1) return;
       const selectorArgument = node.arguments[0];
       if (!selectorArgument || isNodeOfType(selectorArgument, "SpreadElement")) return;
-      const selector = resolveExactLocalFunction(selectorArgument, context.scopes);
+      const selector = resolveLocalReactCallback(selectorArgument, context.scopes);
       if (!selector) return;
       const freshReturn = findFreshSelectorReturn(selector, context);
       if (!freshReturn) return;

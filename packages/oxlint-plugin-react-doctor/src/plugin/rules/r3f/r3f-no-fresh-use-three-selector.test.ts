@@ -11,6 +11,17 @@ describe("r3f-no-fresh-use-three-selector", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it.each([
+    `import { useThree } from "@react-three/fiber"; import { useCallback } from "react"; const selector = useCallback((state) => ({ camera: state.camera }), []); useThree(selector);`,
+    `const { useThree } = require("@react-three/fiber"); const React = require("react"); const selector = React.useCallback((state) => [state.camera], []); useThree(selector);`,
+    `const Fiber = require("@react-three/fiber"); const { useCallback: stabilize } = require("react"); Fiber.useThree(stabilize((state) => ({ scene: state.scene }), []));`,
+    `import Fiber = require("@react-three/fiber"); import React = require("react"); Fiber.useThree(React.useCallback((state) => [state.scene], []));`,
+    `import Fiber = require("@react-three/fiber"); import React = require("react"); import select = Fiber.useThree; import stabilize = React.useCallback; select(stabilize((state) => ({ camera: state.camera }), []));`,
+  ])("flags fresh selectors wrapped by React useCallback", (code) => {
+    const result = runRule(r3fNoFreshUseThreeSelector, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows stable fields and explicit equality", () => {
     const result = runRule(
       r3fNoFreshUseThreeSelector,
@@ -23,6 +34,14 @@ describe("r3f-no-fresh-use-three-selector", () => {
     const result = runRule(
       r3fNoFreshUseThreeSelector,
       `import { useThree } from "@react-three/fiber"; const camera = useThree((state) => { items.map((item) => { return { item }; }); function build() { return [state.scene]; } return state.camera; });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores selectors wrapped by unrelated or shadowed useCallback implementations", () => {
+    const result = runRule(
+      r3fNoFreshUseThreeSelector,
+      `import { useThree } from "@react-three/fiber"; import { useCallback } from "other-hooks"; const first = useCallback((state) => ({ camera: state.camera }), []); const Scene = (require) => { const React = require("react"); const second = React.useCallback((state) => [state.scene], []); useThree(second); }; useThree(first);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

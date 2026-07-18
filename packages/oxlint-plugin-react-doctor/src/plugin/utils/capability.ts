@@ -60,6 +60,7 @@ export type Capability =
   | "i18n"
   | "styled-components"
   | "styled-components:6"
+  | "r3f"
   | "pre-es2023"
   // Major-version ladders (`react:17`…) plus minor-versioned gates like
   // `react:19.2` — both parse as numeric template members. Bounds live in
@@ -69,7 +70,8 @@ export type Capability =
   | `remotion:${number}`
   | `valtio:${number}`
   | `mobx:${number}`
-  | `zustand:${number}`;
+  | `zustand:${number}`
+  | `r3f:${number}`;
 
 // The shape rules use to query the project's capability set — implemented
 // by core (over the memoized set) and by `hasCapability` (over the

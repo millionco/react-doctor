@@ -92,6 +92,7 @@ export const r3fWebgpuNoGlState = defineRule({
   id: "r3f-webgpu-no-gl-state",
   title: "WebGPU root reads deprecated gl state",
   category: "Correctness",
+  requires: ["r3f:10"],
   severity: "warn",
   recommendation: "Read state.renderer from the R3F WebGPU root instead of state.gl",
   create: (context: RuleContext) => ({

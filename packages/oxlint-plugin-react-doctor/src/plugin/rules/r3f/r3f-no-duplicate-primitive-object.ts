@@ -11,6 +11,7 @@ import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 
 interface MountGuard {
   identifier: EsTreeNodeOfType<"Identifier">;
@@ -166,9 +167,19 @@ export const r3fNoDuplicatePrimitiveObject = defineRule({
     "Mount a Three.js object through one <primitive>, or clone it deliberately when two independent instances are required",
   create: (context: RuleContext) => {
     const seenByFunction = new WeakMap<EsTreeNode, Map<number, EsTreeNode[]>>();
+    let importsReactThreeFiber = false;
     return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        importsReactThreeFiber = hasR3fRuntimeImport(node, context.scopes);
+      },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "primitive") return;
+        if (
+          !importsReactThreeFiber ||
+          !isNodeOfType(node.name, "JSXIdentifier") ||
+          node.name.name !== "primitive"
+        ) {
+          return;
+        }
         const objectAttribute = findJsxAttribute(node.attributes, "object");
         if (
           !objectAttribute?.value ||

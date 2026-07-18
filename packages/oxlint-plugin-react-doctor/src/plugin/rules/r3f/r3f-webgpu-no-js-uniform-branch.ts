@@ -97,6 +97,7 @@ export const r3fWebgpuNoJsUniformBranch = defineRule({
   id: "r3f-webgpu-no-js-uniform-branch",
   title: "JavaScript branch reads a TSL uniform value",
   category: "Correctness",
+  requires: ["r3f:10"],
   severity: "warn",
   recommendation:
     "Express uniform-dependent control flow with TSL If, select, or Loop nodes so it runs on the GPU",

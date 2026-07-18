@@ -29,6 +29,7 @@ export const r3fWebgpuNoUnregisteredPipelinePass = defineRule({
   id: "r3f-webgpu-no-unregistered-pipeline-pass",
   title: "Unregistered WebGPU pipeline pass",
   category: "Correctness",
+  requires: ["r3f:10"],
   severity: "error",
   recommendation:
     "Return custom passes from the useRenderPipeline callback so R3F registers them in state.passes",

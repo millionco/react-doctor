@@ -6,15 +6,40 @@ describe("r3f-no-inline-primitive-object", () => {
   it("flags an inline clone", () => {
     const result = runRule(
       r3fNoInlinePrimitiveObject,
-      `const Scene = () => <primitive object={scene.clone()} />;`,
+      `import { Canvas } from "@react-three/fiber"; const Scene = () => <primitive object={scene.clone()} />;`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires a runtime R3F import", () => {
+    const result = runRule(
+      r3fNoInlinePrimitiveObject,
+      `const Scene = () => <primitive object={scene.clone()} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    `const Fiber = require("@react-three/fiber"); const Scene = () => <primitive object={model.clone()} />;`,
+    `require("@react-three/fiber"); const Scene = () => <primitive object={model.clone()} />;`,
+    `import Fiber = require("@react-three/fiber"); const Scene = () => <primitive object={model.clone()} />;`,
+  ])("recognizes CommonJS R3F runtime evidence", (code) => {
+    const result = runRule(r3fNoInlinePrimitiveObject, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores shadowed CommonJS runtime evidence", () => {
+    const result = runRule(
+      r3fNoInlinePrimitiveObject,
+      `const require = loadModule; require("@react-three/fiber"); const Scene = () => <primitive object={model.clone()} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("allows a stable object binding", () => {
     const result = runRule(
       r3fNoInlinePrimitiveObject,
-      `const Scene = ({ scene }) => <primitive object={scene} />;`,
+      `import { Canvas } from "@react-three/fiber"; const Scene = ({ scene }) => <primitive object={scene} />;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -22,7 +47,7 @@ describe("r3f-no-inline-primitive-object", () => {
   it("allows primitive JSX created once in a stable context", () => {
     const result = runRule(
       r3fNoInlinePrimitiveObject,
-      `import { useMemo, useState } from "react"; const moduleNode = <primitive object={scene.clone()} />; const Scene = () => { const memoized = useMemo(() => <primitive object={scene.clone()} />, []); const [lazy] = useState(() => <primitive object={scene.clone()} />); return <>{memoized}{lazy}</>; };`,
+      `import { Canvas } from "@react-three/fiber"; import { useMemo, useState } from "react"; const moduleNode = <primitive object={scene.clone()} />; const Scene = () => { const memoized = useMemo(() => <primitive object={scene.clone()} />, []); const [lazy] = useState(() => <primitive object={scene.clone()} />); return <>{memoized}{lazy}</>; };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

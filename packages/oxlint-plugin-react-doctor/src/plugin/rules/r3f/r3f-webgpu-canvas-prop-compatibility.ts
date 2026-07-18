@@ -3,39 +3,13 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
-import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
-import { getImportedName } from "../../utils/get-imported-name.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { getApiReferenceModuleSource } from "./utils/get-api-reference-module-source.js";
 import { R3F_PUBLIC_MODULES } from "./utils/r3f-public-modules.js";
 
 const getCanvasImportSource = (name: EsTreeNode, scopes: ScopeAnalysis): string | null => {
-  if (isNodeOfType(name, "JSXIdentifier")) {
-    const symbol = resolveConstIdentifierAlias(name, scopes);
-    const importDeclaration = symbol ? getImportDeclarationForSymbol(symbol) : null;
-    return symbol &&
-      getImportedName(symbol.declarationNode) === "Canvas" &&
-      typeof importDeclaration?.source.value === "string" &&
-      R3F_PUBLIC_MODULES.has(importDeclaration.source.value)
-      ? importDeclaration.source.value
-      : null;
-  }
-  if (
-    !isNodeOfType(name, "JSXMemberExpression") ||
-    name.property.name !== "Canvas" ||
-    !isNodeOfType(name.object, "JSXIdentifier")
-  ) {
-    return null;
-  }
-  const namespaceSymbol = resolveConstIdentifierAlias(name.object, scopes);
-  const importDeclaration = namespaceSymbol ? getImportDeclarationForSymbol(namespaceSymbol) : null;
-  return namespaceSymbol &&
-    isNodeOfType(namespaceSymbol.declarationNode, "ImportNamespaceSpecifier") &&
-    typeof importDeclaration?.source.value === "string" &&
-    R3F_PUBLIC_MODULES.has(importDeclaration.source.value)
-    ? importDeclaration.source.value
-    : null;
+  const moduleSource = getApiReferenceModuleSource(name, "Canvas", scopes);
+  return moduleSource !== null && R3F_PUBLIC_MODULES.has(moduleSource) ? moduleSource : null;
 };
 
 export const r3fWebgpuCanvasPropCompatibility = defineRule({
@@ -43,6 +17,7 @@ export const r3fWebgpuCanvasPropCompatibility = defineRule({
   title: "Incompatible R3F Canvas renderer prop",
   category: "Correctness",
   tags: ["react-jsx-only"],
+  requires: ["r3f:10"],
   severity: "error",
   recommendation:
     "Use renderer with @react-three/fiber/webgpu, gl with /legacy, and never pass both renderer APIs to one Canvas",

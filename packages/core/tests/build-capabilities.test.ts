@@ -32,6 +32,9 @@ const baseProject: ProjectInfo = {
   valtioVersion: null,
   valtioMajorVersion: null,
   hasRemotion: false,
+  hasReactThreeFiber: false,
+  reactThreeFiberVersion: null,
+  reactThreeFiberMajorVersion: null,
   hasSsrDependency: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
@@ -83,6 +86,27 @@ describe("buildCapabilities", () => {
 
   it("omits the remotion capability when the dependency is absent", () => {
     expect(buildCapabilities(baseProject).has("remotion")).toBe(false);
+  });
+
+  it("emits the R3F capability only when React Three Fiber is present", () => {
+    expect(buildCapabilities(baseProject).has("r3f")).toBe(false);
+    expect(buildCapabilities({ ...baseProject, hasReactThreeFiber: true }).has("r3f")).toBe(true);
+  });
+
+  it("emits the R3F major ladder only for detected Fiber versions", () => {
+    const r3fNine = buildCapabilities({
+      ...baseProject,
+      hasReactThreeFiber: true,
+      reactThreeFiberVersion: "^9.6.1",
+      reactThreeFiberMajorVersion: 9,
+    });
+    expect(r3fNine.has("r3f:8")).toBe(true);
+    expect(r3fNine.has("r3f:9")).toBe(true);
+    expect(r3fNine.has("r3f:10")).toBe(false);
+
+    const dreiOnly = buildCapabilities({ ...baseProject, hasReactThreeFiber: true });
+    expect(dreiOnly.has("r3f")).toBe(true);
+    expect(dreiOnly.has("r3f:8")).toBe(false);
   });
 
   it("emits exactly the expected token set for a fully-featured Next.js project", () => {

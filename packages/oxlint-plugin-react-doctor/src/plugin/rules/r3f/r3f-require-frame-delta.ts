@@ -1,6 +1,4 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
-import { getImportedName } from "../../utils/get-imported-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -8,10 +6,10 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
+import { getApiReferenceModuleSource } from "./utils/get-api-reference-module-source.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const TRANSFORM_PROPERTIES = new Set(["position", "rotation", "scale", "quaternion"]);
@@ -115,31 +113,8 @@ const resolveStaticNumber = (
   return result !== null && Number.isFinite(result) ? result : null;
 };
 
-const isThreeNamespace = (expression: EsTreeNode, context: RuleContext): boolean => {
-  if (!isNodeOfType(expression, "Identifier")) return false;
-  const symbol = resolveConstIdentifierAlias(expression, context.scopes);
-  return Boolean(
-    symbol &&
-    isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier") &&
-    getImportDeclarationForSymbol(symbol)?.source.value === "three",
-  );
-};
-
 const isThreeMathUtils = (expression: EsTreeNode, context: RuleContext): boolean => {
-  const candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "Identifier")) {
-    const symbol = resolveConstIdentifierAlias(candidate, context.scopes);
-    return Boolean(
-      symbol &&
-      getImportedName(symbol.declarationNode) === "MathUtils" &&
-      getImportDeclarationForSymbol(symbol)?.source.value === "three",
-    );
-  }
-  return (
-    isNodeOfType(candidate, "MemberExpression") &&
-    getStaticPropertyName(candidate) === "MathUtils" &&
-    isThreeNamespace(stripParenExpression(candidate.object), context)
-  );
+  return getApiReferenceModuleSource(expression, "MathUtils", context.scopes) === "three";
 };
 
 const hasInterpolationReceiverProvenance = (expression: EsTreeNode): boolean => {

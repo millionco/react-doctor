@@ -1,5 +1,7 @@
 // rule: r3f-no-duplicate-primitive-object
 // source: adversarial ownership regression
+import "@react-three/fiber";
+
 const scene = {};
 
 export const Scene = () => (

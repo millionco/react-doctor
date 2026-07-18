@@ -6,12 +6,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { R3F_PUBLIC_MODULES } from "./utils/r3f-public-modules.js";
+import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const POINTER_CAPTURE_METHODS = new Set([
@@ -95,19 +94,13 @@ export const r3fNoObjectPointerCapture = defineRule({
   recommendation:
     "Call pointer-capture methods on the R3F event target or currentTarget, not object or eventObject",
   create: (context: RuleContext) => {
-    let hasR3fRuntimeImport = false;
+    let importsReactThreeFiber = false;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        hasR3fRuntimeImport = node.body.some(
-          (statement) =>
-            isNodeOfType(statement, "ImportDeclaration") &&
-            !isTypeOnlyImport(statement) &&
-            typeof statement.source.value === "string" &&
-            R3F_PUBLIC_MODULES.has(statement.source.value),
-        );
+        importsReactThreeFiber = hasR3fRuntimeImport(node, context.scopes);
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (!hasR3fRuntimeImport) return;
+        if (!importsReactThreeFiber) return;
         const elementType = resolveJsxElementType(node);
         if (
           !elementType ||

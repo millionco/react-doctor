@@ -37,6 +37,11 @@ const MOBX_REACT_PACKAGE_NAME = "mobx-react";
 const MOBX_REACT_LITE_PACKAGE_NAME = "mobx-react-lite";
 const MOBX_STATE_TREE_PACKAGE_NAME = "mobx-state-tree";
 const MOBX_REACT_OBSERVER_PACKAGE_NAME = "mobx-react-observer";
+const REACT_THREE_FIBER_DEPENDENCY_NAMES = ["@react-three/fiber", "react-three-fiber"] as const;
+const REACT_THREE_DEPENDENCY_NAMES = [
+  ...REACT_THREE_FIBER_DEPENDENCY_NAMES,
+  "@react-three/drei",
+] as const;
 
 // A dependency's declared spec plus the directory whose manifest supplied
 // it — the scan root, or the workspace package that declares the package.
@@ -46,6 +51,10 @@ const MOBX_REACT_OBSERVER_PACKAGE_NAME = "mobx-react-observer";
 interface DependencyFact {
   version: string | null;
   sourceDirectory: string | null;
+}
+
+interface ReactThreeFiberDependencyFact extends DependencyFact {
+  packageName: string | null;
 }
 
 export interface WorkspaceFacts {
@@ -84,6 +93,8 @@ export interface WorkspaceFacts {
   hasRemotionDependency: boolean;
   hasUnknownRemotionVersion: boolean;
   remotionVersion: string | null;
+  hasReactThreeFiber: boolean;
+  reactThreeFiber: ReactThreeFiberDependencyFact;
   reanimatedVersion: string | null;
 }
 
@@ -322,6 +333,14 @@ const evaluateManifestFacts = (
     facts.styledComponentsVersion = styledComponentsVersion;
   }
   facts.hasI18nLibrary = facts.hasI18nLibrary || hasI18nDependency(packageJson);
+  if (facts.reactThreeFiber.version === null) {
+    for (const packageName of REACT_THREE_FIBER_DEPENDENCY_NAMES) {
+      const version = getDependencySpec(packageJson, packageName);
+      if (version === null) continue;
+      facts.reactThreeFiber = { packageName, version, sourceDirectory: directory };
+      break;
+    }
+  }
   facts.hasReactNativeAwarePackage =
     facts.hasReactNativeAwarePackage || isPackageJsonReactNativeAware(packageJson);
   facts.hasReanimatedAwarePackage =
@@ -352,6 +371,11 @@ const evaluateManifestFacts = (
       }
     }
   }
+  facts.hasReactThreeFiber =
+    facts.hasReactThreeFiber ||
+    REACT_THREE_DEPENDENCY_NAMES.some(
+      (dependencyName) => getDependencySpec(packageJson, dependencyName) !== null,
+    );
 };
 
 interface CollectWorkspaceFactsOptions {
@@ -399,6 +423,8 @@ export const collectWorkspaceFacts = (
     hasRemotionDependency: false,
     hasUnknownRemotionVersion: false,
     remotionVersion: null,
+    hasReactThreeFiber: false,
+    reactThreeFiber: { packageName: null, version: null, sourceDirectory: null },
     reanimatedVersion: null,
   };
 

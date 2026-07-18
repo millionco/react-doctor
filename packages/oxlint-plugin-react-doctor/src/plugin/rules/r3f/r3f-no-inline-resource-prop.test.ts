@@ -17,6 +17,32 @@ describe("r3f-no-inline-resource-prop", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
+  it("reports CommonJS Three.js resource constructions", () => {
+    const code = `
+      const Fiber = require("@react-three/fiber");
+      const { BoxGeometry: Geometry } = require("three");
+      const THREE = require("three");
+      const Material = require("three").MeshBasicMaterial;
+      function Scene() {
+        return <><mesh geometry={new Geometry()} /><mesh material={new THREE.MeshStandardMaterial()} /><mesh material={new Material()} /></>;
+      }
+    `;
+    const result = runRule(r3fNoInlineResourceProp, code);
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("ignores Three.js constructors loaded through a shadowed require", () => {
+    const code = `
+      import { Canvas } from "@react-three/fiber";
+      function Scene(require) {
+        const { MeshBasicMaterial } = require("three");
+        return <mesh material={new MeshBasicMaterial()} />;
+      }
+    `;
+    const result = runRule(r3fNoInlineResourceProp, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("reports chained geometry construction and fresh entries in material arrays", () => {
     const code = `
       import { Canvas } from "@react-three/fiber";

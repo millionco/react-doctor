@@ -29,6 +29,15 @@ describe("r3f-no-null-loader-input", () => {
     expect(result.diagnostics).toHaveLength(4);
   });
 
+  it.each([
+    `const { useGLTF } = require("@react-three/drei"); useGLTF(null);`,
+    `const Drei = require("@react-three/drei"); Drei.useGLTF(null);`,
+    `const loadModel = require("@react-three/drei").useGLTF; loadModel(null);`,
+  ])("reports nullish inputs through CommonJS Drei provenance", (code) => {
+    const result = runRule(r3fNoNullLoaderInput, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("models reachable logical and conditional branches", () => {
     const code = `
       import { useGLTF } from "@react-three/drei";

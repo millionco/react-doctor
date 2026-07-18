@@ -38,6 +38,12 @@ export interface ProjectInfo {
   hasI18nLibrary?: boolean;
   tanstackQueryVersion?: string | null;
   styledComponentsVersion?: string | null;
+  /** Whether the project or one of its workspaces declares React Three Fiber or Drei. */
+  hasReactThreeFiber?: boolean;
+  /** Declared version of @react-three/fiber or its legacy package name, when directly present. */
+  reactThreeFiberVersion?: string | null;
+  /** Parsed major from reactThreeFiberVersion, or null when absent or unparseable. */
+  reactThreeFiberMajorVersion?: number | null;
   /**
    * The declared `valtio` version spec, or `null` when no package in the
    * analyzed project declares Valtio. `useSnapshot` has kept the same

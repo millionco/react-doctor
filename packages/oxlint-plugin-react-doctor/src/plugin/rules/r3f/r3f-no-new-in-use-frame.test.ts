@@ -11,6 +11,42 @@ describe("r3f-no-new-in-use-frame", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    `const { useFrame } = require("@react-three/fiber"); useFrame(() => new Vector3());`,
+    `const { useFrame: frame } = require("@react-three/fiber"); frame(() => new Vector3());`,
+    `const Fiber = require("@react-three/fiber"); Fiber.useFrame(() => new Vector3());`,
+    `const frame = require("@react-three/fiber").useFrame; frame(() => new Vector3());`,
+    `require("@react-three/fiber").useFrame(() => new Vector3());`,
+    `import Fiber = require("@react-three/fiber"); Fiber.useFrame(() => new Vector3());`,
+  ])("flags allocations through CommonJS and import-equals provenance", (code) => {
+    const result = runRule(r3fNoNewInUseFrame, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores a shadowed CommonJS require", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `const Scene = (require) => { const { useFrame } = require("@react-three/fiber"); useFrame(() => new Vector3()); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores CommonJS hooks from unrelated modules", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `const { useFrame } = require("scene-runtime"); useFrame(() => new Vector3());`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not reinterpret a CommonJS member binding as the module namespace", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `const scheduler = require("@react-three/fiber").advance; scheduler.useFrame(() => new Vector3());`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("follows synchronously called callbacks", () => {
     const result = runRule(
       r3fNoNewInUseFrame,

@@ -1738,7 +1738,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame(() => mesh.current.position.clone());',
   },
   "r3f-no-duplicate-primitive-object": {
-    code: "const Scene = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;",
+    code: 'import "@react-three/fiber"; const Scene = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;',
   },
   "r3f-no-fresh-use-three-selector": {
     code: 'import { useThree } from "@react-three/fiber"; const pair = useThree((state) => [state.camera, state.scene]);',
@@ -1750,7 +1750,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { Canvas } from "@react-three/fiber"; import { MeshBasicMaterial } from "three"; const Scene = () => <Canvas><mesh material={new MeshBasicMaterial()} /></Canvas>;',
   },
   "r3f-no-inline-primitive-object": {
-    code: "const Scene = () => <primitive object={scene.clone()} />;",
+    code: 'import "@react-three/fiber"; const Scene = () => <primitive object={scene.clone()} />;',
   },
   "r3f-no-internal-imports": {
     code: 'import internal from "@react-three/fiber/dist/internal";',

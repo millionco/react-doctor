@@ -54,6 +54,20 @@ describe("r3f-require-frame-delta", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it.each([
+    `const { MathUtils } = require("three");`,
+    `const THREE = require("three"); const MathUtils = THREE.MathUtils;`,
+    `const MathUtils = require("three").MathUtils;`,
+  ])("supports CommonJS Three.js MathUtils provenance", (threeImport) => {
+    const result = runRule(
+      r3fRequireFrameDelta,
+      `${threeImport}
+       const { useFrame } = require("@react-three/fiber");
+       useFrame(() => { value.current = MathUtils.lerp(value.current, targetValue, 0.2); });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows callback-delta-derived, endpoint, guarded, and unrelated interpolation", () => {
     const result = runRule(
       r3fRequireFrameDelta,

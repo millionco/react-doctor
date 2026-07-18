@@ -3,12 +3,14 @@ import type { Framework, ProjectInfo } from "../types/index.js";
 import {
   EARLIEST_GATED_MOBX_MAJOR,
   EARLIEST_GATED_PREACT_MAJOR,
+  EARLIEST_GATED_R3F_MAJOR,
   EARLIEST_GATED_REACT_MAJOR,
   EARLIEST_GATED_REMOTION_MAJOR,
   EARLIEST_GATED_STYLED_COMPONENTS_MAJOR,
   EARLIEST_GATED_VALTIO_MAJOR,
   EARLIEST_GATED_ZUSTAND_MAJOR,
   LATEST_KNOWN_PREACT_MAJOR,
+  LATEST_KNOWN_R3F_MAJOR,
   LATEST_KNOWN_REACT_MAJOR,
   LATEST_KNOWN_REMOTION_MAJOR,
   LATEST_KNOWN_VALTIO_MAJOR,
@@ -51,7 +53,7 @@ const SSR_FRAMEWORKS: ReadonlySet<Framework> = new Set([
 
 const addMajorLadder = (
   capabilities: Set<Capability>,
-  name: "react" | "remotion" | "preact" | "valtio" | "mobx" | "zustand",
+  name: "react" | "remotion" | "preact" | "r3f" | "valtio" | "mobx" | "zustand",
   major: number | null,
   earliest: number,
   latest: number,
@@ -258,6 +260,16 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
       project.remotionMajorVersion ?? null,
       EARLIEST_GATED_REMOTION_MAJOR,
       LATEST_KNOWN_REMOTION_MAJOR,
+    );
+  }
+  if (project.hasReactThreeFiber) {
+    capabilities.add("r3f");
+    addMajorLadder(
+      capabilities,
+      "r3f",
+      project.reactThreeFiberMajorVersion ?? null,
+      EARLIEST_GATED_R3F_MAJOR,
+      LATEST_KNOWN_R3F_MAJOR,
     );
   }
   if (project.hasTypeScript) capabilities.add("typescript");

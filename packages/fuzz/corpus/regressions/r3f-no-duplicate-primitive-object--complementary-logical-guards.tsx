@@ -2,6 +2,8 @@
 // weakness: control-flow
 // source: deep fuzz semantic review of PR #1371 against react-bench-5
 
+import "@react-three/fiber";
+
 const _Scene = ({ scene, detail }) => (
   <>
     {detail && <primitive object={scene} />}

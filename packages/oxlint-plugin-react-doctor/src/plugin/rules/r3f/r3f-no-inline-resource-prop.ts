@@ -4,16 +4,13 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
-import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
-import { getImportedName } from "../../utils/get-imported-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isInsideStableReactHookInitializer } from "../../utils/is-inside-stable-react-hook-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
-import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { R3F_PUBLIC_MODULES } from "./utils/r3f-public-modules.js";
+import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
+import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 
 const GEOMETRY_RESOURCE_HOST_NAMES = new Set([
   "batchedMesh",
@@ -37,24 +34,8 @@ const getThreeConstructorName = (
   scopes: ScopeAnalysis,
 ): string | null => {
   const constructor = stripParenExpression(constructorExpression);
-  if (isNodeOfType(constructor, "Identifier")) {
-    const symbol = resolveConstIdentifierAlias(constructor, scopes);
-    const importSource = symbol && getImportDeclarationForSymbol(symbol)?.source.value;
-    return symbol && isThreeModuleSource(importSource)
-      ? (getImportedName(symbol.declarationNode) ?? null)
-      : null;
-  }
-  if (!isNodeOfType(constructor, "MemberExpression")) return null;
-  const constructorName = getStaticPropertyName(constructor);
-  const namespace = stripParenExpression(constructor.object);
-  if (!constructorName || !isNodeOfType(namespace, "Identifier")) return null;
-  const symbol = resolveConstIdentifierAlias(namespace, scopes);
-  const importSource = symbol && getImportDeclarationForSymbol(symbol)?.source.value;
-  return symbol &&
-    isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier") &&
-    isThreeModuleSource(importSource)
-    ? constructorName
-    : null;
+  const provenance = getApiReferenceProvenance(constructor, scopes);
+  return provenance && isThreeModuleSource(provenance.moduleSource) ? provenance.apiName : null;
 };
 
 const hasFreshThreeResource = (
@@ -161,13 +142,7 @@ export const r3fNoInlineResourceProp = defineRule({
     let importsReactThreeFiber = false;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        importsReactThreeFiber = node.body.some(
-          (statement) =>
-            isNodeOfType(statement, "ImportDeclaration") &&
-            !isTypeOnlyImport(statement) &&
-            typeof statement.source.value === "string" &&
-            R3F_PUBLIC_MODULES.has(statement.source.value),
-        );
+        importsReactThreeFiber = hasR3fRuntimeImport(node, context.scopes);
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (

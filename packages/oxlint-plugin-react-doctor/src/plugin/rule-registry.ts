@@ -6686,7 +6686,7 @@ export const reactDoctorRules = [
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoAdvancingClockInUseFrame.tags ?? [])])],
       requires: [
-        ...new Set<Capability>(["react", ...(r3fNoAdvancingClockInUseFrame.requires ?? [])]),
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoAdvancingClockInUseFrame.requires ?? [])]),
       ],
     },
   },
@@ -6700,7 +6700,7 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoAsyncUseFrame.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoAsyncUseFrame.requires ?? [])])],
+      requires: [...new Set<Capability>(["react", "r3f", ...(r3fNoAsyncUseFrame.requires ?? [])])],
     },
   },
   {
@@ -6713,7 +6713,9 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoCloneInUseFrame.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoCloneInUseFrame.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoCloneInUseFrame.requires ?? [])]),
+      ],
     },
   },
   {
@@ -6727,7 +6729,7 @@ export const reactDoctorRules = [
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoDuplicatePrimitiveObject.tags ?? [])])],
       requires: [
-        ...new Set<Capability>(["react", ...(r3fNoDuplicatePrimitiveObject.requires ?? [])]),
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoDuplicatePrimitiveObject.requires ?? [])]),
       ],
     },
   },
@@ -6741,7 +6743,9 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoFreshPortalContainer.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoFreshPortalContainer.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoFreshPortalContainer.requires ?? [])]),
+      ],
     },
   },
   {
@@ -6754,7 +6758,9 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoFreshUseThreeSelector.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoFreshUseThreeSelector.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoFreshUseThreeSelector.requires ?? [])]),
+      ],
     },
   },
   {
@@ -6767,7 +6773,9 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoInlinePrimitiveObject.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoInlinePrimitiveObject.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoInlinePrimitiveObject.requires ?? [])]),
+      ],
     },
   },
   {
@@ -6780,7 +6788,9 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoInlineResourceProp.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoInlineResourceProp.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoInlineResourceProp.requires ?? [])]),
+      ],
     },
   },
   {
@@ -6793,7 +6803,9 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoInternalImports.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoInternalImports.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoInternalImports.requires ?? [])]),
+      ],
     },
   },
   {
@@ -6806,7 +6818,7 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoNewInUseFrame.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoNewInUseFrame.requires ?? [])])],
+      requires: [...new Set<Capability>(["react", "r3f", ...(r3fNoNewInUseFrame.requires ?? [])])],
     },
   },
   {
@@ -6819,7 +6831,9 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoNullLoaderInput.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoNullLoaderInput.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoNullLoaderInput.requires ?? [])]),
+      ],
     },
   },
   {
@@ -6832,7 +6846,9 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoObjectPointerCapture.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoObjectPointerCapture.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoObjectPointerCapture.requires ?? [])]),
+      ],
     },
   },
   {
@@ -6845,7 +6861,9 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoStateInUseFrame.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoStateInUseFrame.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoStateInUseFrame.requires ?? [])]),
+      ],
     },
   },
   {
@@ -6859,7 +6877,7 @@ export const reactDoctorRules = [
       category: "Performance",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoSyncReadbackInUseFrame.tags ?? [])])],
       requires: [
-        ...new Set<Capability>(["react", ...(r3fNoSyncReadbackInUseFrame.requires ?? [])]),
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoSyncReadbackInUseFrame.requires ?? [])]),
       ],
     },
   },
@@ -6873,7 +6891,7 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoUnstableArgs.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fNoUnstableArgs.requires ?? [])])],
+      requires: [...new Set<Capability>(["react", "r3f", ...(r3fNoUnstableArgs.requires ?? [])])],
     },
   },
   {
@@ -6887,7 +6905,7 @@ export const reactDoctorRules = [
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoUseFrameDependencyArray.tags ?? [])])],
       requires: [
-        ...new Set<Capability>(["react", ...(r3fNoUseFrameDependencyArray.requires ?? [])]),
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoUseFrameDependencyArray.requires ?? [])]),
       ],
     },
   },
@@ -6901,7 +6919,9 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fRequireFrameDelta.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fRequireFrameDelta.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireFrameDelta.requires ?? [])]),
+      ],
     },
   },
   {
@@ -6915,7 +6935,7 @@ export const reactDoctorRules = [
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fRequireGlobalEffectCleanup.tags ?? [])])],
       requires: [
-        ...new Set<Capability>(["react", ...(r3fRequireGlobalEffectCleanup.requires ?? [])]),
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireGlobalEffectCleanup.requires ?? [])]),
       ],
     },
   },
@@ -6930,7 +6950,11 @@ export const reactDoctorRules = [
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fWebgpuCanvasPropCompatibility.tags ?? [])])],
       requires: [
-        ...new Set<Capability>(["react", ...(r3fWebgpuCanvasPropCompatibility.requires ?? [])]),
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fWebgpuCanvasPropCompatibility.requires ?? []),
+        ]),
       ],
     },
   },
@@ -6944,7 +6968,7 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fWebgpuNoGlState.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fWebgpuNoGlState.requires ?? [])])],
+      requires: [...new Set<Capability>(["react", "r3f", ...(r3fWebgpuNoGlState.requires ?? [])])],
     },
   },
   {
@@ -6957,7 +6981,9 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fWebgpuNoJsUniformBranch.tags ?? [])])],
-      requires: [...new Set<Capability>(["react", ...(r3fWebgpuNoJsUniformBranch.requires ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fWebgpuNoJsUniformBranch.requires ?? [])]),
+      ],
     },
   },
   {
@@ -6971,7 +6997,11 @@ export const reactDoctorRules = [
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fWebgpuNoUnregisteredPipelinePass.tags ?? [])])],
       requires: [
-        ...new Set<Capability>(["react", ...(r3fWebgpuNoUnregisteredPipelinePass.requires ?? [])]),
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fWebgpuNoUnregisteredPipelinePass.requires ?? []),
+        ]),
       ],
     },
   },

@@ -120,6 +120,9 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     hasI18nLibrary: false,
     tanstackQueryVersion: null,
     styledComponentsVersion: null,
+    hasReactThreeFiber: false,
+    reactThreeFiberVersion: null,
+    reactThreeFiberMajorVersion: null,
     hasSsrDependency: false,
     preactVersion: null,
     preactMajorVersion: null,
@@ -307,6 +310,14 @@ export const discoverProject = (directory: string): ProjectInfo => {
   const remotionVersion = workspaceFacts.remotionVersion;
   const tanstackQueryVersion =
     getTanStackQueryVersion(packageJson) ?? workspaceFacts.tanstackQueryVersion;
+  const reactThreeFiberVersion = workspaceFacts.reactThreeFiber.packageName
+    ? resolveCatalogBackedDependencyVersion({
+        rootDirectory: directory,
+        rootPackageJson: packageJson,
+        packageName: workspaceFacts.reactThreeFiber.packageName,
+        version: workspaceFacts.reactThreeFiber.version,
+      })
+    : null;
   const isPreES2023Target = hasTypeScript && detectPreES2023Target(directory);
 
   const projectInfo: ProjectInfo = {
@@ -344,6 +355,10 @@ export const discoverProject = (directory: string): ProjectInfo => {
     remotionVersion,
     remotionMajorVersion:
       remotionVersion === null ? null : getLowestDependencyMajor(remotionVersion),
+    hasReactThreeFiber: workspaceFacts.hasReactThreeFiber,
+    reactThreeFiberVersion,
+    reactThreeFiberMajorVersion:
+      reactThreeFiberVersion === null ? null : getLowestDependencyMajor(reactThreeFiberVersion),
     hasSsrDependency: workspaceFacts.hasSsrDependency,
     preactVersion,
     preactMajorVersion: parseReactMajor(preactVersion),

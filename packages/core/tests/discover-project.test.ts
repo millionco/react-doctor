@@ -1882,6 +1882,66 @@ describe("discoverReactSubprojects", () => {
   });
 });
 
+describe("discoverProject — React Three Fiber", () => {
+  it("detects React Three Fiber from the project manifest", () => {
+    const projectDirectory = path.join(tempDirectory, "r3f-project");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "r3f-project",
+        dependencies: { react: "^19.0.0", "@react-three/fiber": "^9.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactThreeFiber).toBe(true);
+    expect(projectInfo.reactThreeFiberVersion).toBe("^9.0.0");
+    expect(projectInfo.reactThreeFiberMajorVersion).toBe(9);
+  });
+
+  it("detects the R3F ecosystem from workspace manifests", () => {
+    const projectDirectory = path.join(tempDirectory, "r3f-workspace");
+    const sceneDirectory = path.join(projectDirectory, "packages", "scene");
+    fs.mkdirSync(sceneDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "r3f-workspace",
+        private: true,
+        dependencies: { react: "^19.0.0" },
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(sceneDirectory, "package.json"),
+      JSON.stringify({ name: "scene", dependencies: { "@react-three/drei": "^10.0.0" } }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactThreeFiber).toBe(true);
+    expect(projectInfo.reactThreeFiberVersion).toBeNull();
+    expect(projectInfo.reactThreeFiberMajorVersion).toBeNull();
+  });
+
+  it("detects the legacy CommonJS-era package name and version", () => {
+    const projectDirectory = path.join(tempDirectory, "legacy-r3f-project");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "legacy-r3f-project",
+        dependencies: { react: "^16.8.0", "react-three-fiber": "^5.3.22" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactThreeFiber).toBe(true);
+    expect(projectInfo.reactThreeFiberVersion).toBe("^5.3.22");
+    expect(projectInfo.reactThreeFiberMajorVersion).toBe(5);
+  });
+});
+
 describe("discoverProject — hasReactNativeWorkspace", () => {
   it("is true when the entry-point package itself declares `react-native`", () => {
     const projectDirectory = path.join(tempDirectory, "rn-aware-self");

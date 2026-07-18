@@ -13,6 +13,7 @@ export const r3fNoAdvancingClockInUseFrame = defineRule({
   id: "r3f-no-advancing-clock-in-use-frame",
   title: "Clock advanced inside useFrame",
   category: "Correctness",
+  disabledWhen: ["r3f:10"],
   severity: "warn",
   recommendation:
     "Use the delta argument supplied to useFrame or read clock.elapsedTime without advancing the shared clock",

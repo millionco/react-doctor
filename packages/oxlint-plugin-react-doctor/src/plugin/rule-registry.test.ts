@@ -122,6 +122,26 @@ describe("rule registry", () => {
     }
   });
 
+  it("requires the R3F capability for every R3F rule", () => {
+    for (const [ruleId, rule] of Object.entries(ruleRegistry)) {
+      if (!(rule.tags ?? []).includes("r3f")) continue;
+      expect(rule.requires, `${ruleId} should require R3F`).toContain("r3f");
+    }
+  });
+
+  it("applies version capabilities to R3F runtime-specific contracts", () => {
+    const webgpuRuleIds = [
+      "r3f-webgpu-canvas-prop-compatibility",
+      "r3f-webgpu-no-gl-state",
+      "r3f-webgpu-no-js-uniform-branch",
+      "r3f-webgpu-no-unregistered-pipeline-pass",
+    ];
+    for (const ruleId of webgpuRuleIds) {
+      expect(ruleRegistry[ruleId]?.requires, `${ruleId} should require R3F 10`).toContain("r3f:10");
+    }
+    expect(ruleRegistry["r3f-no-advancing-clock-in-use-frame"]?.disabledWhen).toContain("r3f:10");
+  });
+
   it("wraps rules for host context compatibility", () => {
     for (const [ruleId, rule] of Object.entries(ruleRegistry)) {
       const hostRule = plugin.rules[ruleId];

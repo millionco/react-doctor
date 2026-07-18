@@ -12,6 +12,24 @@ describe("r3f-webgpu-canvas-prop-compatibility", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    `const { Canvas } = require("@react-three/fiber/webgpu"); const scene = <Canvas gl={{}} />;`,
+    `const Fiber = require("@react-three/fiber/webgpu"); const scene = <Fiber.Canvas gl={{}} />;`,
+    `const Canvas = require("@react-three/fiber/webgpu").Canvas; const scene = <Canvas gl={{}} />;`,
+    `import Fiber = require("@react-three/fiber/webgpu"); const scene = <Fiber.Canvas gl={{}} />;`,
+  ])("reports incompatible props through CommonJS Canvas provenance", (code) => {
+    const result = runRule(r3fWebgpuCanvasPropCompatibility, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores a Canvas loaded through a shadowed require", () => {
+    const result = runRule(
+      r3fWebgpuCanvasPropCompatibility,
+      `const Scene = (require) => { const { Canvas } = require("@react-three/fiber/webgpu"); return <Canvas gl={{}} />; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("reports renderer on the legacy Canvas and conflicting root props", () => {
     const result = runRule(
       r3fWebgpuCanvasPropCompatibility,

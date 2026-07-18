@@ -6,9 +6,8 @@ import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { isInsideStableReactHookInitializer } from "../../utils/is-inside-stable-react-hook-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { R3F_PUBLIC_MODULES } from "./utils/r3f-public-modules.js";
+import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 import { resolveR3fUnstableArgsElement } from "./utils/resolve-r3f-unstable-args-element.js";
 
 export const r3fNoUnstableArgs = defineRule({
@@ -22,13 +21,7 @@ export const r3fNoUnstableArgs = defineRule({
     let importsReactThreeFiber = false;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        importsReactThreeFiber = node.body.some(
-          (statement) =>
-            isNodeOfType(statement, "ImportDeclaration") &&
-            !isTypeOnlyImport(statement) &&
-            typeof statement.source.value === "string" &&
-            R3F_PUBLIC_MODULES.has(statement.source.value),
-        );
+        importsReactThreeFiber = hasR3fRuntimeImport(node, context.scopes);
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (

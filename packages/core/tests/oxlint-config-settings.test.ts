@@ -22,6 +22,9 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   styledComponentsVersion: null,
   valtioVersion: null,
   valtioMajorVersion: null,
+  hasReactThreeFiber: false,
+  reactThreeFiberVersion: null,
+  reactThreeFiberMajorVersion: null,
   nextjsVersion: null,
   nextjsMajorVersion: null,
   hasReactNativeWorkspace: true,
@@ -110,6 +113,41 @@ describe("createOxlintConfig settings", () => {
     expect(futureZustand.rules).not.toHaveProperty(ruleKey);
     expect(zustand1.rules[ruleKey]).toBe("warn");
     expect(zustand5.rules[ruleKey]).toBe("warn");
+  });
+
+  it("registers R3F rules only for compatible declared library versions", () => {
+    const withoutR3f = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+    });
+    const withR3fNine = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        hasReactThreeFiber: true,
+        reactThreeFiberVersion: "^9.6.1",
+        reactThreeFiberMajorVersion: 9,
+      }),
+    });
+    const withR3fTen = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        hasReactThreeFiber: true,
+        reactThreeFiberVersion: "^10.0.0-alpha.2",
+        reactThreeFiberMajorVersion: 10,
+      }),
+    });
+
+    expect(Object.keys(withoutR3f.rules).some((ruleId) => ruleId.includes("/r3f-"))).toBe(false);
+    expect(withR3fNine.rules).toHaveProperty("react-doctor/r3f-no-advancing-clock-in-use-frame");
+    expect(withR3fNine.rules).not.toHaveProperty(
+      "react-doctor/r3f-webgpu-canvas-prop-compatibility",
+    );
+    expect(withR3fTen.rules).not.toHaveProperty("react-doctor/r3f-no-advancing-clock-in-use-frame");
+    expect(withR3fTen.rules).toHaveProperty("react-doctor/r3f-webgpu-canvas-prop-compatibility");
   });
 
   it("forwards the detected @shopify/flash-list major version", () => {

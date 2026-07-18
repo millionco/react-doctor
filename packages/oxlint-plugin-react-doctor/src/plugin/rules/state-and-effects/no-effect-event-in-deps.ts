@@ -4,7 +4,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
@@ -103,7 +103,7 @@ export const noEffectEventInDeps = defineRule({
         if (!isNodeOfType(declaratorNode.id, "Identifier")) return;
         const initializer = declaratorNode.init;
         if (!initializer || !isNodeOfType(initializer, "CallExpression")) return;
-        if (!isHookCall(initializer, "useEffectEvent")) return;
+        if (!isReactHookCall(initializer, "useEffectEvent", context.scopes)) return;
         // A same-named `useEffectEvent` imported from a non-React package OR
         // defined in this module (userland polyfill) returns a STABLE
         // callback — listing it in deps is fine, so it must not taint the
@@ -119,7 +119,9 @@ export const noEffectEventInDeps = defineRule({
     return {
       ...componentBindings.visitors,
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isHookCall(node, HOOKS_WITH_DEPS) || node.arguments.length < 2) return;
+        if (!isReactHookCall(node, HOOKS_WITH_DEPS, context.scopes) || node.arguments.length < 2) {
+          return;
+        }
         if (!componentBindings.isInsideComponent()) return;
         const depsNode = node.arguments[1];
         if (!isNodeOfType(depsNode, "ArrayExpression")) return;

@@ -123,4 +123,147 @@ function ColumnHeader({ releaseWidth, columnIndex }) {
 }`,
     );
   });
+
+  it("stays silent when selection restoration immediately follows flushSync", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+const acceptRemoteEvents = (selectionSync, selection, operations) => {
+  flushSync(() => {
+    setText(readRemoteText());
+  });
+  if (selection && operations.length > 0) {
+    selectionSync.restoreSelection(mapSelection(selection, operations));
+  }
+};`,
+    );
+  });
+
+  it("stays silent on a nested selection restoration member", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+const integrateRemoteEvents = (context, selection) => {
+  flushSync(() => {
+    context.setText(readRemoteText());
+  });
+  if (selection) {
+    context.selectionSync.restoreSelection(selection);
+  }
+};`,
+    );
+  });
+
+  it("stays silent when an adjacent local helper mutates the DOM", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+const restoreSelection = (textarea, selection) => {
+  textarea.setSelectionRange(selection.start, selection.end);
+};
+const updateText = (textarea, selection) => {
+  flushSync(() => setText(readRemoteText()));
+  restoreSelection(textarea, selection);
+};`,
+    );
+  });
+
+  it("still flags an adjacent unknown helper", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const updateText = () => {
+  flushSync(() => setText(readRemoteText()));
+  notifyTextUpdated();
+};`,
+    );
+  });
+
+  it("still flags a non-adjacent imperative mutation", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const updateText = (textarea, selection) => {
+  flushSync(() => setText(readRemoteText()));
+  notifyTextUpdated();
+  textarea.setSelectionRange(selection.start, selection.end);
+};`,
+    );
+  });
+
+  it("still flags an imperative mutation outside a bare control-flow branch", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const updateText = (textarea, shouldUpdate) => {
+  if (shouldUpdate) flushSync(() => setText(readRemoteText()));
+  textarea.focus();
+};`,
+    );
+  });
+
+  it("still flags an adjacent generic select method", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const updateSelection = (store) => {
+  flushSync(() => setText(readRemoteText()));
+  store.select("activeDocument");
+};`,
+    );
+  });
+
+  it("still flags a deferred imperative helper call", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const restoreSelection = (textarea, selection) => {
+  textarea.setSelectionRange(selection.start, selection.end);
+};
+const updateText = (textarea, selection) => {
+  flushSync(() => setText(readRemoteText()));
+  const restoreLater = () => restoreSelection(textarea, selection);
+  queueMicrotask(restoreLater);
+};`,
+    );
+  });
+
+  it("still flags an adjacent imperative function declaration", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const updateText = (textarea) => {
+  flushSync(() => setText(readRemoteText()));
+  function restoreLater() {
+    textarea.focus();
+  }
+  queueMicrotask(restoreLater);
+};`,
+    );
+  });
+
+  it("stays silent on a top-level imperative handoff", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+flushSync(() => setText(readRemoteText()));
+textarea.focus();`,
+    );
+  });
+
+  it("stays silent on an imperative handoff in a switch case", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+const updateText = (textarea, mode) => {
+  switch (mode) {
+    case "edit":
+      flushSync(() => setText(readRemoteText()));
+      textarea.focus();
+      break;
+  }
+};`,
+    );
+  });
+
+  it("stays silent on an imperative handoff in a static block", () => {
+    expectPass(
+      `import { flushSync } from "react-dom";
+class Editor {
+  static {
+    flushSync(() => setText(readRemoteText()));
+    textarea.focus();
+  }
+}`,
+    );
+  });
 });

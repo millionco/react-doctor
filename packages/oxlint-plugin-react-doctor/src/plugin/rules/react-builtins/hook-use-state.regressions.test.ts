@@ -8,4 +8,24 @@ describe("react-builtins/hook-use-state — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it.each([
+    `const useStateTuple = () => useState(0);`,
+    `const useStateTuple = () => (useState(0));`,
+    `const useStateTuple = () => (useState(0) as readonly [number, unknown]);`,
+    `const useStateTuple = () => { return useState(0); };`,
+  ])("allows returning a useState tuple without local destructuring", (code) => {
+    const result = runRule(hookUseState, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([`const state = useState(0);`, `consume(useState(0));`, `useState(0);`])(
+    "still reports a non-returned useState tuple",
+    (code) => {
+      const result = runRule(hookUseState, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
 });

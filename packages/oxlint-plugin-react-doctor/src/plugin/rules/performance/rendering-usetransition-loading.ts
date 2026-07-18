@@ -1,11 +1,18 @@
 import { LOADING_STATE_PATTERN } from "../../constants/react.js";
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 // Walks up to find the function-like that owns this VariableDeclarator
@@ -90,6 +97,254 @@ const RESOURCE_LOAD_EVENT_ATTRIBUTE_PATTERN =
 const JSX_EVENT_HANDLER_ATTRIBUTE_PATTERN = /^on[A-Z]/;
 
 const REDUX_DISPATCH_HOOK_PATTERN = /^use\w*Dispatch$/;
+
+const FILE_READER_READ_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "readAsArrayBuffer",
+  "readAsBinaryString",
+  "readAsDataURL",
+  "readAsText",
+]);
+
+const isGlobalFileReaderConstruction = (
+  expression: EsTreeNode | null,
+  context: RuleContext,
+): boolean => {
+  if (!expression) return false;
+  const unwrappedExpression = stripParenExpression(expression);
+  if (
+    !isNodeOfType(unwrappedExpression, "NewExpression") ||
+    !isNodeOfType(unwrappedExpression.callee, "Identifier")
+  ) {
+    return false;
+  }
+  return (
+    unwrappedExpression.callee.name === "FileReader" &&
+    context.scopes.isGlobalReference(unwrappedExpression.callee)
+  );
+};
+
+const getFileReaderOriginStartBefore = (
+  readerSymbol: SymbolDescriptor,
+  readCall: EsTreeNode,
+  context: RuleContext,
+): number | null => {
+  const readFunction = findEnclosingFunction(readCall);
+  let latestValue: EsTreeNode | null = null;
+  let latestStart: number | null = null;
+  if (
+    readerSymbol.initializer &&
+    findEnclosingFunction(readerSymbol.declarationNode) === readFunction &&
+    readerSymbol.declarationNode.range[0] < readCall.range[0]
+  ) {
+    latestValue = readerSymbol.initializer;
+    latestStart = readerSymbol.declarationNode.range[0];
+  }
+  for (const reference of readerSymbol.references) {
+    if (
+      reference.flag === "read" ||
+      reference.identifier.range[0] >= readCall.range[0] ||
+      (latestStart !== null && reference.identifier.range[0] <= latestStart) ||
+      findEnclosingFunction(reference.identifier) !== readFunction
+    ) {
+      continue;
+    }
+    const assignment = reference.identifier.parent;
+    if (
+      !assignment ||
+      !isNodeOfType(assignment, "AssignmentExpression") ||
+      assignment.operator !== "=" ||
+      assignment.left !== reference.identifier
+    ) {
+      continue;
+    }
+    latestValue = assignment.right;
+    latestStart = reference.identifier.range[0];
+  }
+  return isGlobalFileReaderConstruction(latestValue, context) ? latestStart : null;
+};
+
+const resolveLoadingCompletionFunction = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const directFunction = resolveExactLocalFunction(expression, context.scopes);
+  if (directFunction) return directFunction;
+  const unwrappedExpression = stripParenExpression(expression);
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
+  const symbol = context.scopes.symbolFor(unwrappedExpression);
+  const initializer = symbol ? getDirectUnreassignedInitializer(symbol) : null;
+  if (
+    !initializer ||
+    !isNodeOfType(initializer, "CallExpression") ||
+    !isReactApiCall(initializer, "useCallback", context.scopes)
+  ) {
+    return null;
+  }
+  const callback = initializer.arguments?.[0];
+  return callback && isFunctionLike(callback) ? callback : null;
+};
+
+const isSetterBooleanCall = (
+  node: EsTreeNode,
+  setterSymbol: SymbolDescriptor,
+  value: boolean,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = stripParenExpression(node.callee);
+  const argument = node.arguments?.[0];
+  const unwrappedArgument = argument ? stripParenExpression(argument) : null;
+  return Boolean(
+    isNodeOfType(callee, "Identifier") &&
+    context.scopes.symbolFor(callee) === setterSymbol &&
+    unwrappedArgument &&
+    isNodeOfType(unwrappedArgument, "Literal") &&
+    unwrappedArgument.value === value,
+  );
+};
+
+const functionClearsLoadingState = (
+  functionNode: EsTreeNode,
+  setterSymbol: SymbolDescriptor,
+  context: RuleContext,
+  visitedFunctions: Set<EsTreeNode>,
+): boolean => {
+  if (visitedFunctions.has(functionNode) || !isFunctionLike(functionNode)) return false;
+  visitedFunctions.add(functionNode);
+  let didClearLoadingState = false;
+  walkAst(functionNode.body, (child) => {
+    if (didClearLoadingState) return false;
+    if (child !== functionNode.body && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (isSetterBooleanCall(child, setterSymbol, false, context)) {
+      didClearLoadingState = true;
+      return false;
+    }
+    const helperFunction = resolveLoadingCompletionFunction(child.callee, context);
+    if (
+      helperFunction &&
+      functionClearsLoadingState(helperFunction, setterSymbol, context, visitedFunctions)
+    ) {
+      didClearLoadingState = true;
+      return false;
+    }
+  });
+  return didClearLoadingState;
+};
+
+const getLatestFileReaderCallbackBefore = (
+  readCall: EsTreeNode,
+  readerSymbol: SymbolDescriptor,
+  propertyName: "onerror" | "onload",
+  originStart: number,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const readFunction = findEnclosingFunction(readCall);
+  if (!readFunction || !isFunctionLike(readFunction)) return null;
+  let callback: EsTreeNode | null = null;
+  let callbackStart = originStart;
+  walkAst(readFunction.body, (child) => {
+    if (child !== readFunction.body && isFunctionLike(child)) return false;
+    if (
+      !isNodeOfType(child, "AssignmentExpression") ||
+      child.operator !== "=" ||
+      child.range[0] >= readCall.range[0] ||
+      child.range[0] <= callbackStart ||
+      !isNodeOfType(child.left, "MemberExpression") ||
+      getStaticPropertyName(child.left) !== propertyName
+    ) {
+      return;
+    }
+    const receiver = stripParenExpression(child.left.object);
+    if (
+      !isNodeOfType(receiver, "Identifier") ||
+      context.scopes.symbolFor(receiver) !== readerSymbol
+    ) {
+      return;
+    }
+    callback = child.right;
+    callbackStart = child.range[0];
+  });
+  return callback;
+};
+
+const setterStartsLoadingBefore = (
+  readCall: EsTreeNode,
+  setterSymbol: SymbolDescriptor,
+  context: RuleContext,
+): boolean => {
+  const readFunction = findEnclosingFunction(readCall);
+  if (!readFunction || !isFunctionLike(readFunction)) return false;
+  let didStartLoading = false;
+  walkAst(readFunction.body, (child) => {
+    if (didStartLoading) return false;
+    if (child !== readFunction.body && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "CallExpression") || child.range[0] >= readCall.range[0]) {
+      return;
+    }
+    if (isSetterBooleanCall(child, setterSymbol, true, context)) {
+      didStartLoading = true;
+      return false;
+    }
+  });
+  return didStartLoading;
+};
+
+const setterTracksFileReader = (
+  functionBody: EsTreeNode,
+  setterSymbol: SymbolDescriptor,
+  context: RuleContext,
+): boolean => {
+  let didFindFileReaderLifecycle = false;
+  walkAst(functionBody, (child) => {
+    if (didFindFileReaderLifecycle) return false;
+    if (
+      !isNodeOfType(child, "CallExpression") ||
+      !isNodeOfType(child.callee, "MemberExpression") ||
+      !FILE_READER_READ_METHOD_NAMES.has(getStaticPropertyName(child.callee) ?? "")
+    ) {
+      return;
+    }
+    const receiver = stripParenExpression(child.callee.object);
+    if (!isNodeOfType(receiver, "Identifier")) return;
+    const readerSymbol = context.scopes.symbolFor(receiver);
+    if (!readerSymbol) return;
+    const originStart = getFileReaderOriginStartBefore(readerSymbol, child, context);
+    if (originStart === null || !setterStartsLoadingBefore(child, setterSymbol, context)) {
+      return;
+    }
+    const loadCallback = getLatestFileReaderCallbackBefore(
+      child,
+      readerSymbol,
+      "onload",
+      originStart,
+      context,
+    );
+    const errorCallback = getLatestFileReaderCallbackBefore(
+      child,
+      readerSymbol,
+      "onerror",
+      originStart,
+      context,
+    );
+    const loadFunction = loadCallback
+      ? resolveLoadingCompletionFunction(loadCallback, context)
+      : null;
+    const errorFunction = errorCallback
+      ? resolveLoadingCompletionFunction(errorCallback, context)
+      : null;
+    if (
+      loadFunction &&
+      errorFunction &&
+      functionClearsLoadingState(loadFunction, setterSymbol, context, new Set()) &&
+      functionClearsLoadingState(errorFunction, setterSymbol, context, new Set())
+    ) {
+      didFindFileReaderLifecycle = true;
+      return false;
+    }
+  });
+  return didFindFileReaderLifecycle;
+};
 
 // One pass over the component body computes every async-work signal the
 // caller ORs together, short-circuiting on the first hit:
@@ -371,6 +626,10 @@ export const renderingUsetransitionLoading = defineRule({
       if (fnBody && hasAsyncLoadingWork(fnBody, setterName)) return;
 
       if (fnBody && setterName) {
+        const setterSymbol = isNodeOfType(secondBinding, "Identifier")
+          ? context.scopes.symbolFor(secondBinding)
+          : null;
+        if (setterSymbol && setterTracksFileReader(fnBody, setterSymbol, context)) return;
         if (setterEscapes(fnBody, setterName, node as EsTreeNode)) return;
         if (setterCalledAlongsideAsyncSignal(fnBody, setterName)) return;
         if (setterCalledInEventListenerHandler(fnBody, setterName)) return;

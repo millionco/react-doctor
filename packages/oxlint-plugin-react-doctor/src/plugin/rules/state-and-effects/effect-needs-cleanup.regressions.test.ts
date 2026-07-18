@@ -273,6 +273,216 @@ export const Measurer = () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts observers retained and disconnected through the same collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    for (let node = element; node; node = node.parentElement) {
+      const observer = new MutationObserver(update);
+      observer.observe(node, { attributes: true });
+      observers.push(observer);
+    }
+    return () => observers.forEach((observer) => observer.disconnect());
+  }, [element]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts multiple observers pushed into the same cleanup collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, parentElement }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const elementObserver = new MutationObserver(update);
+    elementObserver.observe(element, { attributes: true });
+    observers.push(elementObserver);
+    const parentObserver = new MutationObserver(update);
+    parentObserver.observe(parentElement, { attributes: true });
+    observers.push(parentObserver);
+    return () => observers.forEach((observer) => observer.disconnect());
+  }, [element, parentElement]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects conditionally retaining an observed resource for collection cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, shouldRetain }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(element, { attributes: true });
+    if (shouldRetain) observers.push(observer);
+    return () => observers.forEach((retainedObserver) => retainedObserver.disconnect());
+  }, [element, shouldRetain]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects disconnecting a different observer collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, previousObservers }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(element, { attributes: true });
+    observers.push(observer);
+    return () => previousObservers.forEach((retainedObserver) => retainedObserver.disconnect());
+  }, [element, previousObservers]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects conditionally iterating the observer collection during cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, shouldCleanup }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(element, { attributes: true });
+    observers.push(observer);
+    return () => {
+      if (shouldCleanup) {
+        observers.forEach((retainedObserver) => retainedObserver.disconnect());
+      }
+    };
+  }, [element, shouldCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects short-circuit iteration of the observer collection during cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(element, { attributes: true });
+    observers.push(observer);
+    return () => observers.some((retainedObserver) => {
+      retainedObserver.disconnect();
+      return true;
+    });
+  }, [element]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts observer collection cleanup through a direct for-of loop", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const ObserverGroup = ({ nodes }) => {
+  useEffect(() => {
+    const observers = [];
+    for (const node of nodes) {
+      const observer = new ResizeObserver(updateSize);
+      observer.observe(node);
+      observers.push(observer);
+    }
+    return () => {
+      for (const observer of observers) {
+        observer.disconnect();
+      }
+    };
+  }, [nodes]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts matching unobserve cleanup through an observer collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const ObserverGroup = ({ target }) => {
+  useEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(target, { attributes: true });
+    observers.push(observer);
+    return () => observers.forEach((retainedObserver) => retainedObserver.unobserve(target));
+  }, [target]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects unobserving a different target through an observer collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const ObserverGroup = ({ target, otherTarget }) => {
+  useEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(target, { attributes: true });
+    observers.push(observer);
+    return () =>
+      observers.forEach((retainedObserver) => retainedObserver.unobserve(otherTarget));
+  }, [target, otherTarget]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects mutating an observer collection after retaining the resource", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element }) => {
+  useLayoutEffect(() => {
+    const observers = [];
+    const observer = new MutationObserver(update);
+    observer.observe(element, { attributes: true });
+    observers.push(observer);
+    observers.pop();
+    return () => observers.forEach((retainedObserver) => retainedObserver.disconnect());
+  }, [element]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a MutationObserver cleaned up via unobserve", () => {
     const result = runRule(
       effectNeedsCleanup,
@@ -699,6 +909,377 @@ export const DevServer = ({ app }) => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("effect-needs-cleanup retained disposer refs", () => {
+  it.each([
+    {
+      name: "98wDqG6 direct unmount cleanup",
+      source: `import { useCallback, useEffect, useRef } from "react";
+export const useMouseDrag = () => {
+  const dragCleanupRef = useRef(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+  const handleMouseDown = useCallback(() => {
+    dragCleanupRef.current?.();
+    const handleMove = () => undefined;
+    const handleUp = () => dragCleanupRef.current?.();
+    dragCleanupRef.current = () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      dragCleanupRef.current = null;
+    };
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+  }, []);
+  return { handleMouseDown };
+};`,
+    },
+    {
+      name: "3eK8hRx branch-specific disposer",
+      source: `import { useCallback, useEffect, useRef } from "react";
+export const useDrag = () => {
+  const detachRef = useRef(null);
+  useEffect(() => () => detachRef.current?.(), []);
+  const beginDrag = useCallback((pointer) => {
+    const handleMove = () => undefined;
+    const handleEnd = () => detachRef.current?.();
+    if (pointer) {
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleEnd);
+      detachRef.current = () => {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleEnd);
+      };
+    } else {
+      window.addEventListener("mousemove", handleMove);
+      window.addEventListener("mouseup", handleEnd);
+      detachRef.current = () => {
+        window.removeEventListener("mousemove", handleMove);
+        window.removeEventListener("mouseup", handleEnd);
+      };
+    }
+  }, []);
+  return { beginDrag };
+};`,
+    },
+    {
+      name: "qpcGDXC named disposer",
+      source: `import { useCallback, useEffect, useRef } from "react";
+export const useMouseDrag = () => {
+  const cleanupRef = useRef(null);
+  useEffect(() => () => cleanupRef.current?.(), []);
+  const handleMouseDown = useCallback(() => {
+    function handleMove() {}
+    function cleanup() {
+      window.removeEventListener("mousemove", handleMove);
+      cleanupRef.current = null;
+    }
+    cleanupRef.current = cleanup;
+    window.addEventListener("mousemove", handleMove);
+  }, []);
+  return { handleMouseDown };
+};`,
+    },
+    {
+      name: "EtLZbea callback-ref disposer with effect fallback",
+      source: `import { useCallback, useEffect, useRef } from "react";
+export const useWheelTarget = () => {
+  const detachRef = useRef(null);
+  const buttonRef = useCallback((node) => {
+    detachRef.current?.();
+    detachRef.current = null;
+    if (!node) return;
+    const handleWheel = () => undefined;
+    node.addEventListener("wheel", handleWheel);
+    detachRef.current = () => node.removeEventListener("wheel", handleWheel);
+  }, []);
+  useEffect(() => () => detachRef.current?.(), []);
+  return { buttonRef };
+};`,
+    },
+    {
+      name: "nnYUFLa returned callback ref cleanup",
+      source: `import { useCallback, useRef } from "react";
+export const useViewport = () => {
+  const detachRef = useRef(null);
+  const setViewportRef = useCallback((node) => {
+    detachRef.current?.();
+    detachRef.current = null;
+    if (!node) return;
+    const onWheel = () => undefined;
+    const onMove = () => undefined;
+    node.addEventListener("wheel", onWheel);
+    node.addEventListener("pointermove", onMove);
+    detachRef.current = () => {
+      node.removeEventListener("wheel", onWheel);
+      node.removeEventListener("pointermove", onMove);
+    };
+  }, []);
+  return { setViewportRef };
+};`,
+    },
+    {
+      name: "fy5ENpL callback ref forwarded through a prop",
+      source: `import { useCallback, useRef } from "react";
+const Viewport = ({ buttonRef }) => <button ref={buttonRef} />;
+const usePhotoZoom = () => {
+  const detachRef = useRef(null);
+  const setViewportNode = useCallback((node) => {
+    detachRef.current?.();
+    detachRef.current = null;
+    if (!node) return;
+    const handleWheel = () => undefined;
+    node.addEventListener("wheel", handleWheel);
+    detachRef.current = () => node.removeEventListener("wheel", handleWheel);
+  }, []);
+  return { setViewportNode };
+};
+export const Gallery = () => {
+  const zoom = usePhotoZoom();
+  return <Viewport buttonRef={zoom.setViewportNode} />;
+};`,
+    },
+    {
+      name: "5ggdJBZ stable callback returned as cleanup",
+      source: `import { useCallback, useEffect, useRef } from "react";
+export const useWindowPan = () => {
+  const detachRef = useRef(null);
+  const detachWindowListeners = useCallback(() => {
+    detachRef.current?.();
+    detachRef.current = null;
+  }, []);
+  const attachWindowListeners = useCallback(() => {
+    const handleMove = () => undefined;
+    const handleEnd = () => detachWindowListeners();
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleEnd);
+    detachRef.current = () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleEnd);
+    };
+  }, [detachWindowListeners]);
+  useEffect(() => detachWindowListeners, [detachWindowListeners]);
+  return { attachWindowListeners };
+};`,
+    },
+  ])("accepts $name", ({ source }) => {
+    const result = runRule(effectNeedsCleanup, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a callback ref returned from a non-hook function", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+const userPhotoZoom = () => {
+  const detachRef = useRef(null);
+  const setViewportNode = useCallback((node) => {
+    detachRef.current?.();
+    detachRef.current = null;
+    if (!node) return;
+    const handleWheel = () => undefined;
+    node.addEventListener("wheel", handleWheel);
+    detachRef.current = () => node.removeEventListener("wheel", handleWheel);
+  }, []);
+  return { setViewportNode };
+};
+export const Gallery = () => {
+  const zoom = userPhotoZoom();
+  return <button ref={zoom.setViewportNode} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "cleanup effect calls a different ref",
+      cleanup: `useEffect(() => () => otherRef.current?.(), []);`,
+      registration: `cleanupRef.current = () => window.removeEventListener("mousemove", handleMove);
+    window.addEventListener("mousemove", handleMove);`,
+    },
+    {
+      name: "stored disposer removes a different handler",
+      cleanup: `useEffect(() => () => cleanupRef.current?.(), []);`,
+      registration: `cleanupRef.current = () => window.removeEventListener("mousemove", otherHandler);
+    window.addEventListener("mousemove", handleMove);`,
+    },
+    {
+      name: "disposer storage is conditional",
+      cleanup: `useEffect(() => () => cleanupRef.current?.(), []);`,
+      registration: `if (enabled) cleanupRef.current = () => window.removeEventListener("mousemove", handleMove);
+    window.addEventListener("mousemove", handleMove);`,
+    },
+    {
+      name: "cleanup ref is overwritten",
+      cleanup: `useEffect(() => () => cleanupRef.current?.(), []);`,
+      registration: `cleanupRef.current = () => window.removeEventListener("mousemove", handleMove);
+    window.addEventListener("mousemove", handleMove);
+    cleanupRef.current = null;`,
+    },
+    {
+      name: "cleanup ref is conditionally overwritten",
+      cleanup: `useEffect(() => () => cleanupRef.current?.(), []);`,
+      registration: `cleanupRef.current = () => window.removeEventListener("mousemove", handleMove);
+    window.addEventListener("mousemove", handleMove);
+    if (enabled) cleanupRef.current = null;`,
+    },
+  ])("reports when $name", ({ cleanup, registration }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+export const useMouseDrag = ({ enabled, otherHandler }) => {
+  const cleanupRef = useRef(null);
+  const otherRef = useRef(null);
+  ${cleanup}
+  const handleMouseDown = useCallback(() => {
+    const handleMove = () => undefined;
+    ${registration}
+  }, [enabled, otherHandler]);
+  return { handleMouseDown };
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("effect-needs-cleanup self-releasing gesture listeners", () => {
+  it("accepts the react-bnb mouseup-owned release protocol", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const useZoomPan = () => {
+  const dragRef = useRef(null);
+  const panBy = useCallback(() => {}, []);
+  const onMouseDown = useCallback((event) => {
+    dragRef.current = { startX: event.clientX, startY: event.clientY };
+    function handleMouseMove(moveEvent) {
+      panBy(moveEvent.clientX, moveEvent.clientY);
+    }
+    function handleMouseUp() {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    }
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }, [panBy]);
+  return { onMouseDown };
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a const-bound end listener that releases itself and its peer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const useDrag = () => {
+  const onMouseDown = useCallback(() => {
+    const handleMouseMove = () => updatePosition();
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }, []);
+  return onMouseDown;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts the end listener registered before its peer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const useDrag = () => {
+  const onMouseDown = useCallback(() => {
+    function handleMouseMove() {
+      updatePosition();
+    }
+    function handleMouseUp() {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    }
+    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("mousemove", handleMouseMove);
+  }, []);
+  return onMouseDown;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "a conditionally registered end listener",
+      moveOptions: "",
+      releaseBody:
+        'window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp);',
+      endRegistration: 'if (shouldAttachEnd) window.addEventListener("mouseup", handleMouseUp);',
+      endPrefix: "",
+    },
+    {
+      name: "a conditionally executed release",
+      moveOptions: "",
+      releaseBody:
+        'if (shouldRelease) { window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp); }',
+      endRegistration: 'window.addEventListener("mouseup", handleMouseUp);',
+      endPrefix: "",
+    },
+    {
+      name: "an async end listener",
+      moveOptions: "",
+      releaseBody:
+        'window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp);',
+      endRegistration: 'window.addEventListener("mouseup", handleMouseUp);',
+      endPrefix: "async ",
+    },
+    {
+      name: "an end listener on a different receiver",
+      moveOptions: "",
+      releaseBody:
+        'window.removeEventListener("mousemove", handleMouseMove); document.removeEventListener("mouseup", handleMouseUp);',
+      endRegistration: 'document.addEventListener("mouseup", handleMouseUp);',
+      endPrefix: "",
+    },
+    {
+      name: "a capture mismatch",
+      moveOptions: ", true",
+      releaseBody:
+        'window.removeEventListener("mousemove", handleMouseMove, false); window.removeEventListener("mouseup", handleMouseUp);',
+      endRegistration: 'window.addEventListener("mouseup", handleMouseUp);',
+      endPrefix: "",
+    },
+  ])("rejects $name", ({ moveOptions, releaseBody, endRegistration, endPrefix }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const useDrag = ({ shouldAttachEnd, shouldRelease }) => {
+  const onMouseDown = useCallback(() => {
+    function handleMouseMove() {
+      updatePosition();
+    }
+    ${endPrefix}function handleMouseUp() {
+      ${releaseBody}
+    }
+    window.addEventListener("mousemove", handleMouseMove${moveOptions});
+    ${endRegistration}
+  }, [shouldAttachEnd, shouldRelease]);
+  return onMouseDown;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });
 
@@ -2894,6 +3475,19 @@ export const Computed = ({ el }) => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves identifier-computed subscribe detection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `function Example({ source, subscribe }) {
+        useEffect(() => {
+          source[subscribe](() => refresh());
+        }, [source, subscribe]);
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags a retained function whose setInterval id is captured but never cleared", () => {
@@ -6879,5 +7473,316 @@ export const Component = ({ load }) => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts listener replacement owned by a JSX callback ref", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (previous) {
+      previous.removeEventListener("wheel", onWheel);
+    }
+    viewportNodeRef.current = node;
+    if (node) {
+      node.addEventListener("wheel", onWheel, { passive: false });
+    }
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts an unreassigned let alias for the previous callback-ref node", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    let previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts an unreassigned alias for the callback-ref node", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    const currentNode = node;
+    const previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = currentNode;
+    if (currentNode) currentNode.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts listener replacement exposed as a hook ref property", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const useViewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const attachViewportListeners = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return { viewportRef: attachViewportListeners };
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts listener replacement exposed as a bare hook ref property", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const useViewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const attachViewportListeners = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return { ref: attachViewportListeners };
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects listener replacement exposed by a non-hook function", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const userViewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const attachViewportListeners = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return { viewportRef: attachViewportListeners };
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "a different event",
+      release: 'previous.removeEventListener("scroll", onWheel);',
+    },
+    {
+      name: "a different handler",
+      release: 'previous.removeEventListener("wheel", onScroll);',
+    },
+  ])("rejects callback-ref replacement with $name", ({ release }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel, onScroll }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (previous) {
+      ${release}
+    }
+    viewportNodeRef.current = node;
+    if (node) {
+      node.addEventListener("wheel", onWheel, { passive: false });
+    }
+  }, [onWheel, onScroll]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects replacement logic that is not used as a JSX callback ref", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const attachViewport = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = node;
+    node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button onClick={() => attachViewport(document.body)} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects callback-ref replacement that overwrites ownership before release", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    viewportNodeRef.current = node;
+    const current = viewportNodeRef.current;
+    if (current) current.removeEventListener("wheel", onWheel);
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects callback-ref replacement that conditionally skips release", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel, shouldRelease }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (shouldRelease && previous) {
+      previous.removeEventListener("wheel", onWheel);
+    }
+    viewportNodeRef.current = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel, shouldRelease]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects callback-ref replacement that skips release on null unmount", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    if (node) {
+      const previous = viewportNodeRef.current;
+      if (previous) previous.removeEventListener("wheel", onWheel);
+      viewportNodeRef.current = node;
+      node.addEventListener("wheel", onWheel, { passive: false });
+    }
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects callback-ref ownership assigned only to a value alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    let previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    previous = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a reassigned let alias for the previous callback-ref node", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    let previous = viewportNodeRef.current;
+    previous = node;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects callback-ref ownership through a logical assignment", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (previous) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current ||= node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    { name: "loose null", guard: "previous != null" },
+    { name: "strict null", guard: "previous !== null" },
+  ])("accepts callback-ref replacement guarded by $name", ({ guard }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Viewport = ({ onWheel }) => {
+  const viewportNodeRef = useRef(null);
+  const viewportRef = useCallback((node) => {
+    const previous = viewportNodeRef.current;
+    if (${guard}) previous.removeEventListener("wheel", onWheel);
+    viewportNodeRef.current = node;
+    if (node) node.addEventListener("wheel", onWheel, { passive: false });
+  }, [onWheel]);
+  return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
   });
 });

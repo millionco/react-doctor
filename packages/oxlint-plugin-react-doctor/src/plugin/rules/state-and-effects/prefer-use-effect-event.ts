@@ -11,7 +11,7 @@ import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -401,7 +401,7 @@ export const preferUseEffectEvent = defineRule({
         if (!isNodeOfType(statement, "ExpressionStatement")) continue;
         const effectCall = statement.expression;
         if (!isNodeOfType(effectCall, "CallExpression")) continue;
-        if (!isHookCall(effectCall, EFFECT_HOOK_NAMES)) continue;
+        if (!isReactHookCall(effectCall, EFFECT_HOOK_NAMES, context.scopes)) continue;
         if ((effectCall.arguments?.length ?? 0) < 2) continue;
 
         const depsNode = effectCall.arguments[1];

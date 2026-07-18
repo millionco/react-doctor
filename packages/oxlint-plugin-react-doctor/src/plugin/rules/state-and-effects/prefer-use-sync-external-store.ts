@@ -1,4 +1,5 @@
 import { EFFECT_HOOK_NAMES, SUBSCRIPTION_METHOD_NAMES } from "../../constants/react.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
@@ -7,7 +8,7 @@ import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
@@ -41,12 +42,18 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 //
 // The combined match is so specific that real-world false positives
 // are essentially impossible.
-const findUseEffectsInComponent = (componentBody: EsTreeNode | undefined): EsTreeNode[] => {
+const findUseEffectsInComponent = (
+  componentBody: EsTreeNode | undefined,
+  scopes: ScopeAnalysis,
+): EsTreeNode[] => {
   const effectCalls: EsTreeNode[] = [];
   if (!isNodeOfType(componentBody, "BlockStatement")) return effectCalls;
   for (const statement of componentBody.body ?? []) {
     walkAst(statement, (child: EsTreeNode) => {
-      if (isNodeOfType(child, "CallExpression") && isHookCall(child, EFFECT_HOOK_NAMES)) {
+      if (
+        isNodeOfType(child, "CallExpression") &&
+        isReactHookCall(child, EFFECT_HOOK_NAMES, scopes)
+      ) {
         effectCalls.push(child);
       }
     });
@@ -376,7 +383,7 @@ export const preferUseSyncExternalStore = defineRule({
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
 
-      const useStateBindings = collectUseStateBindings(componentBody);
+      const useStateBindings = collectUseStateBindings(componentBody, context.scopes);
       if (useStateBindings.length === 0) return;
 
       const useStateInitializerByValueName = new Map<string, EsTreeNode>();
@@ -404,7 +411,7 @@ export const preferUseSyncExternalStore = defineRule({
         setterNameToValueName.set(binding.setterName, binding.valueName);
       }
 
-      for (const effectCall of findUseEffectsInComponent(componentBody)) {
+      for (const effectCall of findUseEffectsInComponent(componentBody, context.scopes)) {
         if (!isNodeOfType(effectCall, "CallExpression")) continue;
         if ((effectCall.arguments?.length ?? 0) < 2) continue;
         const depsNode = effectCall.arguments[1];
@@ -485,7 +492,7 @@ export const preferUseSyncExternalStore = defineRule({
       if (snapshotBindings.length === 0) return;
 
       const reportedDeclarators = new Set<EsTreeNode>();
-      for (const effectCall of findUseEffectsInComponent(componentBody)) {
+      for (const effectCall of findUseEffectsInComponent(componentBody, context.scopes)) {
         if (!isNodeOfType(effectCall, "CallExpression")) continue;
         if ((effectCall.arguments?.length ?? 0) < 2) continue;
         const depsNode = effectCall.arguments[1];

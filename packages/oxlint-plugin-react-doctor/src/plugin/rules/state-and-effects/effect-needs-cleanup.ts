@@ -7,7 +7,6 @@ import {
   BOUND_RESOURCE_RELEASE_METHOD_NAMES,
   EFFECT_HOOK_NAMES,
   GLOBAL_RELEASE_METHOD_NAMES,
-  SUBSCRIPTION_METHOD_NAMES,
 } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import {
@@ -41,7 +40,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import {
   isCleanupReturningSubscribeLikeCallExpression,
-  isSubscribeLikeCallExpression,
+  isSubscribeOrObserveCallExpression,
+  OBSERVER_REGISTRATION_METHOD_NAME,
 } from "./utils/is-subscribe-like-call-expression.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -50,11 +50,6 @@ import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-wit
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
-// `observer.observe(el)` is the registration moment for ResizeObserver /
-// MutationObserver / IntersectionObserver et al. — subscription-shaped,
-// but not in `SUBSCRIPTION_METHOD_NAMES` (other consumers of that set
-// treat subscriptions as store-like).
-const OBSERVER_REGISTRATION_METHOD_NAME = "observe";
 const CLEANUP_EFFECT_HOOK_NAMES = new Set([...EFFECT_HOOK_NAMES, "useInsertionEffect"]);
 const REPLAYABLE_ITERATOR_COLLECTION_CACHE = new WeakMap<RuleContext, Map<number, string | null>>();
 
@@ -142,16 +137,6 @@ const isSocketConstruction = (node: EsTreeNode): node is EsTreeNodeOfType<"NewEx
   isNodeOfType(node, "NewExpression") &&
   isNodeOfType(node.callee, "Identifier") &&
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP.has(node.callee.name);
-
-const isSubscribeOrObserveCall = (node: EsTreeNode): boolean => {
-  if (isSubscribeLikeCallExpression(node)) return true;
-  return (
-    isNodeOfType(node, "CallExpression") &&
-    isNodeOfType(node.callee, "MemberExpression") &&
-    isNodeOfType(node.callee.property, "Identifier") &&
-    node.callee.property.name === OBSERVER_REGISTRATION_METHOD_NAME
-  );
-};
 
 const resolveExpressionKey = (
   expression: EsTreeNode | null | undefined,
@@ -314,17 +299,13 @@ const findSubscribeLikeUsages = (
       return;
     }
 
-    if (
-      isNodeOfType(child.callee, "MemberExpression") &&
-      isNodeOfType(child.callee.property, "Identifier") &&
-      (SUBSCRIPTION_METHOD_NAMES.has(child.callee.property.name) ||
-        child.callee.property.name === OBSERVER_REGISTRATION_METHOD_NAME)
-    ) {
+    if (isSubscribeOrObserveCallExpression(child)) {
       const registrationDetails = getCallRegistrationDetails(child, context);
+      if (registrationDetails.registrationVerbName === null) return;
       usages.push({
         kind: "subscribe",
         node: child,
-        resourceName: child.callee.property.name,
+        resourceName: registrationDetails.registrationVerbName,
         handleKey: findAssignedResourceKey(child, context),
         ...registrationDetails,
       });
@@ -3990,7 +3971,7 @@ const findRetainedFunctionLeak = (
     }
 
     if (
-      isSubscribeOrObserveCall(child) &&
+      isSubscribeOrObserveCallExpression(child) &&
       (!doesResourceResultEscape(
         child,
         allowReturnedResourceEscape,

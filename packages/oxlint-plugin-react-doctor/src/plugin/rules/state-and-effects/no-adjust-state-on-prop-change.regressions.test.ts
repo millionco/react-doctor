@@ -101,6 +101,23 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on a synchronous reset beside observer registration", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Feed({ source }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          const observer = new ResizeObserver(() => refresh());
+          observer.observe(source);
+        }, [source]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a synchronous reset beside a member-style HTTP request", () => {
     const result = runRule(
       noAdjustStateOnPropChange,

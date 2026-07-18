@@ -10,7 +10,7 @@ import { resolveExactLocalFunction } from "../../../utils/resolve-exact-local-fu
 import { walkAst } from "../../../utils/walk-ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
 import { getEffectFn } from "./effect/react.js";
-import { isSubscribeLikeCallExpression } from "./is-subscribe-like-call-expression.js";
+import { isSubscribeOrObserveCallExpression } from "./is-subscribe-like-call-expression.js";
 
 const DEFERRED_MEMBER_NAMES: ReadonlySet<string> = new Set(["catch", "finally", "then"]);
 
@@ -40,7 +40,7 @@ export const hasDeferredOrExternalEffectWork = (
       }
     }
     if (!isNodeOfType(child, "CallExpression")) return;
-    if (isSubscribeLikeCallExpression(child)) {
+    if (isSubscribeOrObserveCallExpression(child)) {
       didFindDeferredOrExternalWork = true;
       return false;
     }

@@ -256,18 +256,22 @@ const collectCallbackObserverRelease = (
 
 const isTrackedObserverReference = (
   expression: EsTreeNode,
-  bindingIdentifier: EsTreeNode,
+  bindingIdentifiers: ReadonlySet<EsTreeNode>,
 ): boolean => {
   const reference = stripParenExpression(expression);
+  const bindingIdentifier = isNodeOfType(reference, "Identifier")
+    ? findVariableInitializer(reference, reference.name)?.bindingIdentifier
+    : null;
   return (
-    isNodeOfType(reference, "Identifier") &&
-    findVariableInitializer(reference, reference.name)?.bindingIdentifier === bindingIdentifier
+    bindingIdentifier !== null &&
+    bindingIdentifier !== undefined &&
+    bindingIdentifiers.has(bindingIdentifier)
   );
 };
 
 const isBoundObserverDisconnect = (
   returnExpression: EsTreeNode,
-  bindingIdentifier: EsTreeNode,
+  bindingIdentifiers: ReadonlySet<EsTreeNode>,
   visitedExpressions = new Set<EsTreeNode>(),
 ): boolean => {
   const expression = stripParenExpression(returnExpression);
@@ -276,7 +280,7 @@ const isBoundObserverDisconnect = (
   if (isNodeOfType(expression, "Identifier")) {
     const initializer = findVariableInitializer(expression, expression.name)?.initializer;
     return initializer
-      ? isBoundObserverDisconnect(initializer, bindingIdentifier, visitedExpressions)
+      ? isBoundObserverDisconnect(initializer, bindingIdentifiers, visitedExpressions)
       : false;
   }
   const callee = isNodeOfType(expression, "CallExpression")
@@ -297,8 +301,8 @@ const isBoundObserverDisconnect = (
   const boundReceiver = expression.arguments?.[0];
   return Boolean(
     boundReceiver &&
-    isTrackedObserverReference(boundMethod.object, bindingIdentifier) &&
-    isTrackedObserverReference(boundReceiver, bindingIdentifier),
+    isTrackedObserverReference(boundMethod.object, bindingIdentifiers) &&
+    isTrackedObserverReference(boundReceiver, bindingIdentifiers),
   );
 };
 
@@ -420,7 +424,7 @@ export const effectObserverNeedsDisconnect = defineRule({
       for (const tracked of trackedObservers) {
         if (
           returnedExpressions.some((returnExpression) =>
-            isBoundObserverDisconnect(returnExpression, tracked.bindingIdentifier),
+            isBoundObserverDisconnect(returnExpression, tracked.bindingIdentifiers),
           )
         ) {
           tracked.didReleaseAll = true;

@@ -788,4 +788,27 @@ describe("effect-observer-needs-disconnect", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("matches bound disconnect cleanups through observer aliases", () => {
+    const released = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => {});
+         const localObserver = observer;
+         localObserver.observe(element);
+         return localObserver.disconnect.bind(localObserver);
+       }, [element]);`,
+    );
+    const wrongReceiver = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => {});
+         const localObserver = observer;
+         localObserver.observe(element);
+         return localObserver.disconnect.bind(otherObserver);
+       }, [element, otherObserver]);`,
+    );
+    expect(released.diagnostics).toHaveLength(0);
+    expect(wrongReceiver.diagnostics).toHaveLength(1);
+  });
 });

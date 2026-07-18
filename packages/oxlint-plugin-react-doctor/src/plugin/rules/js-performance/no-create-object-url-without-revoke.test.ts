@@ -1285,6 +1285,13 @@ describe("no-create-object-url-without-revoke", () => {
          const { preview: { url } } = entry;
          URL.revokeObjectURL(url);
          previewCache.delete(id);
+       };
+       const evictPreviewStaticComputedDestructure = (id) => {
+         const entry = previewCache.get(id);
+         if (!entry) return;
+         const { ["preview"]: { [\`url\`]: url } } = entry;
+         URL.revokeObjectURL(url);
+         previewCache.delete(id);
        };`,
     );
     expect(nestedValueResult.diagnostics).toHaveLength(0);
@@ -1336,6 +1343,20 @@ describe("no-create-object-url-without-revoke", () => {
        };`,
     );
     expect(conditionalNestedValueResult.diagnostics).toHaveLength(1);
+
+    const dynamicDestructureResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const previewCache = new Map();
+       const make = (blob) => URL.createObjectURL(blob);
+       previewCache.set("preview", { preview: { url: make(blob) } });
+       const evictPreview = (propertyName) => {
+         const entry = previewCache.get("preview");
+         const { [propertyName]: { url } } = entry;
+         URL.revokeObjectURL(url);
+         previewCache.delete("preview");
+       };`,
+    );
+    expect(dynamicDestructureResult.diagnostics).toHaveLength(1);
   });
 
   it("rejects conditional cache eviction cleanup", () => {

@@ -15,7 +15,7 @@ export const evictPreview = (id: string) => {
   const entry = previewCache.get(id);
   if (!entry) return;
   const {
-    preview: { url },
+    ["preview"]: { [`url`]: url },
   } = entry;
   URL.revokeObjectURL(url);
   previewCache.delete(id);

@@ -1048,10 +1048,7 @@ const isPropertyPathPrefix = (
 ): boolean => prefix.every((propertyName, index) => propertyPath[index] === propertyName);
 
 const getPatternPropertyName = (property: EsTreeNodeOfType<"Property">): string | null => {
-  const key = property.key;
-  if (!property.computed && isNodeOfType(key, "Identifier")) return key.name;
-  if (isNodeOfType(key, "Literal") && typeof key.value === "string") return key.value;
-  return null;
+  return getStaticPropertyKeyName(property, { allowComputedString: true });
 };
 
 const collectBindingPathAliasesFromPattern = (

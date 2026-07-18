@@ -15,4 +15,15 @@ describe("hasVisibleTailwindFillOrEdge", () => {
     expect(hasVisibleTailwindFillOrEdge(["border", "border-transparent"])).toBe(false);
     expect(hasVisibleTailwindFillOrEdge(["ring-0"])).toBe(false);
   });
+
+  it("uses the effective background color and opacity utilities", () => {
+    expect(hasVisibleTailwindFillOrEdge(["bg-blue-100", "bg-transparent"])).toBe(false);
+    expect(hasVisibleTailwindFillOrEdge(["bg-transparent", "bg-blue-100"])).toBe(true);
+    expect(hasVisibleTailwindFillOrEdge(["bg-blue-100", "bg-opacity-0", "bg-opacity-100"])).toBe(
+      true,
+    );
+    expect(hasVisibleTailwindFillOrEdge(["bg-blue-100", "bg-opacity-100", "bg-opacity-0"])).toBe(
+      false,
+    );
+  });
 });

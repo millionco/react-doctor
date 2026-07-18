@@ -238,6 +238,24 @@ describe("role-button-requires-complete-keyboard-activation", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not mistake unrelated calls for activation when the click action is opaque", () => {
+    const result = run(`
+      const Control = ({ activate, track }) => (
+        <div
+          role="button"
+          onClick={() => {
+            activate();
+            track("click");
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") track("keyboard");
+          }}
+        />
+      );
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("ignores spreads, native buttons, custom components, and non-button roles", () => {
     const result = run(`
       const Control = ({ activate, props }) => (

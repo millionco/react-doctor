@@ -132,29 +132,25 @@ const getDirectCallCallee = (handlerExpression: EsTreeNode): EsTreeNode | null =
 
 const callMatchesClickAction = (
   call: EsTreeNodeOfType<"CallExpression">,
-  expectedClickCalleeKey: string | null,
+  expectedClickCalleeKey: string,
   context: RuleContext,
-): boolean =>
-  Boolean(
-    expectedClickCalleeKey && resolveExpressionKey(call.callee, context) === expectedClickCalleeKey,
-  );
+): boolean => resolveExpressionKey(call.callee, context) === expectedClickCalleeKey;
 
 const isPlausibleActivationCall = (
   call: EsTreeNodeOfType<"CallExpression">,
-  expectedClickCalleeKey: string | null,
+  expectedClickCalleeKey: string,
   context: RuleContext,
 ): boolean => {
   const methodName = isNodeOfType(call.callee, "MemberExpression")
     ? getStaticPropertyName(call.callee)
     : null;
   if (methodName && NON_ACTIVATION_METHOD_NAMES.has(methodName)) return false;
-  if (!expectedClickCalleeKey) return true;
   return callMatchesClickAction(call, expectedClickCalleeKey, context);
 };
 
 const containsPlausibleActivationCall = (
   root: EsTreeNode | null | undefined,
-  expectedClickCalleeKey: string | null,
+  expectedClickCalleeKey: string,
   context: RuleContext,
 ): boolean => {
   if (!root) return false;
@@ -175,7 +171,7 @@ const containsPlausibleActivationCall = (
 
 const equalityControlsActivation = (
   comparison: EsTreeNodeOfType<"BinaryExpression">,
-  expectedClickCalleeKey: string | null,
+  expectedClickCalleeKey: string,
   context: RuleContext,
 ): boolean => {
   let current = findTransparentExpressionRoot(comparison);
@@ -207,7 +203,7 @@ const equalityControlsActivation = (
 const switchCasePathContainsActivation = (
   switchCases: ReadonlyArray<EsTreeNode>,
   startIndex: number,
-  expectedClickCalleeKey: string | null,
+  expectedClickCalleeKey: string,
   context: RuleContext,
 ): boolean => {
   for (let caseIndex = startIndex; caseIndex < switchCases.length; caseIndex += 1) {
@@ -230,7 +226,7 @@ const switchCasePathContainsActivation = (
 
 const collectRecognizedActivationKeys = (
   handler: EsTreeNode,
-  expectedClickCalleeKey: string | null,
+  expectedClickCalleeKey: string,
   context: RuleContext,
 ): Set<string> | null => {
   if (!isFunctionLike(handler)) return null;
@@ -309,6 +305,7 @@ export const roleButtonRequiresCompleteKeyboardActivation = defineRule({
       const expectedClickCalleeKey = directClickCallee
         ? resolveExpressionKey(directClickCallee, context)
         : null;
+      if (!expectedClickCalleeKey) return;
 
       const activationKeys = new Set<string>();
       for (const handlerName of KEYBOARD_HANDLER_NAMES) {

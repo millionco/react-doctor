@@ -69,21 +69,37 @@ const containsExitBearingMotionElement = (
   return didFindExit;
 };
 
-const isConditionallyMounted = (node: EsTreeNodeOfType<"JSXElement">): boolean => {
+const getMountCondition = (node: EsTreeNodeOfType<"JSXElement">): EsTreeNode | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
-    if (isNodeOfType(current, "LogicalExpression")) return true;
-    if (isNodeOfType(current, "ConditionalExpression")) return true;
+    if (isNodeOfType(current, "LogicalExpression")) return current;
+    if (isNodeOfType(current, "ConditionalExpression")) return current;
     if (
       isNodeOfType(current, "ArrowFunctionExpression") ||
       isNodeOfType(current, "FunctionExpression") ||
       isNodeOfType(current, "FunctionDeclaration")
     ) {
-      return false;
+      return null;
     }
     current = current.parent;
   }
-  return false;
+  return null;
+};
+
+const isOwnedByAncestorAnimatePresence = (condition: EsTreeNode, context: RuleContext): boolean => {
+  const expressionContainer = condition.parent;
+  const parentElement = expressionContainer?.parent;
+  return Boolean(
+    expressionContainer &&
+    isNodeOfType(expressionContainer, "JSXExpressionContainer") &&
+    parentElement &&
+    isNodeOfType(parentElement, "JSXElement") &&
+    isProvenMotionReactComponent(
+      parentElement.openingElement.name,
+      "AnimatePresence",
+      context.scopes,
+    ),
+  );
 };
 
 const hasAncestorAnimatePresence = (
@@ -128,7 +144,9 @@ export const motionAnimatePresenceMustOutliveChild = defineRule({
         return;
       }
       if (!containsExitBearingMotionElement(node, context)) return;
-      if (!isConditionallyMounted(node)) return;
+      const mountCondition = getMountCondition(node);
+      if (!mountCondition) return;
+      if (isOwnedByAncestorAnimatePresence(mountCondition, context)) return;
       context.report({
         node: node.openingElement,
         message:

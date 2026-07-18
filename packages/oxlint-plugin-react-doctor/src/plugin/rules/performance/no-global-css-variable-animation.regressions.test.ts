@@ -14,6 +14,17 @@ describe("performance/no-global-css-variable-animation — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("flags transparent wrappers around the document root style", () => {
+    const result = runRule(
+      noGlobalCssVariableAnimation,
+      `requestAnimationFrame(() => {
+  (document.documentElement.style as any).setProperty("--scroll", String(window.scrollY));
+  document.body.style!.setProperty("--progress", String(progress));
+});`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("stays silent when the property set is not a CSS variable", () => {
     const result = runRule(
       noGlobalCssVariableAnimation,

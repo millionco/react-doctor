@@ -1,3 +1,5 @@
+import { getLastMatchingToken } from "./get-last-matching-token.js";
+
 const BORDER_WIDTH_PATTERN = /^border(?:-[trblxy])?(?:-(px|[\d.]+|\[[\d.]+px\]))?$/;
 const CLOSED_BORDER_WIDTH_PATTERN = /^border(?:-(px|[\d.]+|\[[\d.]+px\]))?$/;
 const RING_WIDTH_PATTERN = /^ring(?:-(px|[\d.]+|\[[\d.]+px\]))?$/;
@@ -29,9 +31,24 @@ export const hasVisibleTailwindRing = (tokens: string[]): boolean =>
   !tokens.some((token) => /^(?:ring-(?:opacity-0|transparent)|ring-.+\/0)$/.test(token)) &&
   tokens.some((token) => hasPositiveLength(token, RING_WIDTH_PATTERN));
 
-export const hasVisibleTailwindBackground = (tokens: string[]): boolean =>
-  !tokens.some((token) => /^(?:bg-opacity-0|bg-(?:\[transparent\]|.+\/0))$/.test(token)) &&
-  tokens.some((token) => token.startsWith("bg-") && !NON_SURFACE_BACKGROUND_PATTERN.test(token));
+export const hasVisibleTailwindBackground = (tokens: string[]): boolean => {
+  const effectiveBackgroundOpacity = getLastMatchingToken(tokens, (token) =>
+    token.startsWith("bg-opacity-"),
+  );
+  if (effectiveBackgroundOpacity === "bg-opacity-0") return false;
+  const effectiveBackground = getLastMatchingToken(
+    tokens,
+    (token) =>
+      token === "bg-transparent" ||
+      (token.startsWith("bg-") &&
+        !token.startsWith("bg-opacity-") &&
+        !NON_SURFACE_BACKGROUND_PATTERN.test(token)),
+  );
+  return Boolean(
+    effectiveBackground &&
+    !/^(?:bg-transparent|bg-\[transparent\]|bg-.+\/0)$/.test(effectiveBackground),
+  );
+};
 
 export const hasVisibleTailwindShadow = (tokens: string[]): boolean =>
   !tokens.some((token) => /^(?:shadow-(?:none|transparent)|shadow-.+\/0)$/.test(token)) &&

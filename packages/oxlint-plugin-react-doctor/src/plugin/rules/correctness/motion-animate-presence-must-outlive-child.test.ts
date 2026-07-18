@@ -40,6 +40,40 @@ describe("motion-animate-presence-must-outlive-child", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("allows a nested boundary when the outer boundary owns the mount condition", () => {
+    const result = runRule(
+      motionAnimatePresenceMustOutliveChild,
+      `import { AnimatePresence, motion } from "motion/react";
+       const Legend = ({ visible, page }) => (
+         <AnimatePresence>
+           {visible && (
+             <motion.section exit={{ opacity: 0 }}>
+               <AnimatePresence>
+                 <motion.div key={page} exit={{ x: -10 }} />
+               </AnimatePresence>
+             </motion.section>
+           )}
+         </AnimatePresence>
+       );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports a nested boundary whose mount condition is below the outer boundary", () => {
+    const result = runRule(
+      motionAnimatePresenceMustOutliveChild,
+      `import { AnimatePresence, motion } from "motion/react";
+       const Legend = ({ visible }) => (
+         <AnimatePresence>
+           <motion.section>
+             {visible && <AnimatePresence><motion.div exit={{ x: -10 }} /></AnimatePresence>}
+           </motion.section>
+         </AnimatePresence>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("ignores boundaries without exit behavior, propagated nested boundaries, and userland lookalikes", () => {
     const result = runRule(
       motionAnimatePresenceMustOutliveChild,

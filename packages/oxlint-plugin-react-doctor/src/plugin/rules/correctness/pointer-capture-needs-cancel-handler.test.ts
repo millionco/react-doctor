@@ -29,6 +29,17 @@ describe("pointer-capture-needs-cancel-handler", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("recognizes transparent wrappers around the captured pointer", () => {
+    const result = runRule(
+      pointerCaptureNeedsCancelHandler,
+      `const Slider = () => <>
+        <div onPointerDown={(event) => (event.currentTarget as any).setPointerCapture(event.pointerId)} onPointerMove={move} onPointerUp={finish} />
+        <div onPointerDown={(event) => event.currentTarget!.setPointerCapture(event.pointerId!)} onPointerMove={move} onPointerUp={finish} />
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("accepts pointer-cancel and lost-capture cleanup", () => {
     const result = runRule(
       pointerCaptureNeedsCancelHandler,
@@ -55,6 +66,19 @@ describe("pointer-capture-needs-cancel-handler", () => {
        const B = () => <div onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)} onPointerMove={move} onPointerUp={finish} {...props} />;
        const C = () => <div onPointerDown={(event) => () => event.currentTarget.setPointerCapture(event.pointerId)} onPointerMove={move} onPointerUp={finish} />;
        const D = () => <div onPointerDown={(event) => event.currentTarget.setPointerCapture(other.pointerId)} onPointerMove={move} onPointerUp={finish} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores a shadowed pointer event binding", () => {
+    const result = runRule(
+      pointerCaptureNeedsCancelHandler,
+      `const Slider = () => <div onPointerDown={(event) => {
+        {
+          const event = otherEvent;
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }
+      }} onPointerMove={move} onPointerUp={finish} />;`,
     );
     expect(result.diagnostics).toEqual([]);
   });

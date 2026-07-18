@@ -35,6 +35,14 @@ describe("no-cramped-container-padding", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("uses the final background utility when deciding whether a surface is visible", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Labels = () => <><div className="bg-blue-500 bg-transparent p-1">Plain</div><div className="bg-transparent bg-blue-500 p-1">Surface</div></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not combine padding and boundaries from different variants", () => {
     const result = runRule(
       noCrampedContainerPadding,

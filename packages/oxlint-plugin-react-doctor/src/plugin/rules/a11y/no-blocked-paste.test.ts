@@ -20,10 +20,33 @@ describe("no-blocked-paste", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags transparent event wrappers and unconditional block returns", () => {
+    const result = run(`
+      const Fields = () => <>
+        <input type="password" onPaste={(event) => (event as any).preventDefault()} />
+        <input type="password" onPaste={(event) => event!.preventDefault()} />
+        <input type="password" onPaste={(event) => { return event["preventDefault"](); }} />
+      </>;
+    `);
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
   it("ignores preventDefault called on another object", () => {
     const result = run(
       `const Field = () => <input type="password" onPaste={(event) => controller.preventDefault(event)} />;`,
     );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores a shadowed event binding", () => {
+    const result = run(`
+      const Field = () => <input type="password" onPaste={(event) => {
+        {
+          const event = controller;
+          event.preventDefault();
+        }
+      }} />;
+    `);
     expect(result.diagnostics).toEqual([]);
   });
 

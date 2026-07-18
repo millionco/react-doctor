@@ -8,6 +8,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const getHandlerExpression = (attribute: EsTreeNode | null): EsTreeNode | null => {
@@ -22,33 +23,49 @@ const getHandlerExpression = (attribute: EsTreeNode | null): EsTreeNode | null =
   return attribute.value.expression;
 };
 
-const handlerCapturesItsPointer = (handler: EsTreeNode): boolean => {
+const handlerCapturesItsPointer = (handler: EsTreeNode, context: RuleContext): boolean => {
   if (!isFunctionLike(handler)) return false;
   const eventParameter = handler.params?.[0];
   if (!isNodeOfType(eventParameter, "Identifier")) return false;
+  const eventSymbol = context.scopes.symbolFor(eventParameter);
+  if (!eventSymbol) return false;
   let capturesPointer = false;
   walkAst(handler.body, (child) => {
     if (capturesPointer) return false;
     if (isFunctionLike(child)) return false;
-    if (!isNodeOfType(child, "CallExpression") || !isNodeOfType(child.callee, "MemberExpression")) {
-      return;
-    }
-    if (getStaticPropertyName(child.callee) !== "setPointerCapture") return;
-    const captureReceiver = child.callee.object;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = stripParenExpression(child.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return;
+    if (getStaticPropertyName(callee) !== "setPointerCapture") return;
+    const captureReceiver = stripParenExpression(callee.object);
     if (
       !isNodeOfType(captureReceiver, "MemberExpression") ||
       getStaticPropertyName(captureReceiver) !== "currentTarget" ||
-      !isNodeOfType(captureReceiver.object, "Identifier") ||
-      captureReceiver.object.name !== eventParameter.name
+      !isNodeOfType(stripParenExpression(captureReceiver.object), "Identifier")
     ) {
       return;
     }
-    const pointerId = child.arguments?.[0];
+    const captureEvent = stripParenExpression(captureReceiver.object);
+    if (
+      !isNodeOfType(captureEvent, "Identifier") ||
+      context.scopes.referenceFor(captureEvent)?.resolvedSymbol?.id !== eventSymbol.id
+    ) {
+      return;
+    }
+    const pointerIdArgument = child.arguments?.[0];
+    if (!pointerIdArgument || isNodeOfType(pointerIdArgument, "SpreadElement")) return;
+    const pointerId = stripParenExpression(pointerIdArgument);
     if (
       !isNodeOfType(pointerId, "MemberExpression") ||
       getStaticPropertyName(pointerId) !== "pointerId" ||
-      !isNodeOfType(pointerId.object, "Identifier") ||
-      pointerId.object.name !== eventParameter.name
+      !isNodeOfType(stripParenExpression(pointerId.object), "Identifier")
+    ) {
+      return;
+    }
+    const pointerEvent = stripParenExpression(pointerId.object);
+    if (
+      !isNodeOfType(pointerEvent, "Identifier") ||
+      context.scopes.referenceFor(pointerEvent)?.resolvedSymbol?.id !== eventSymbol.id
     ) {
       return;
     }
@@ -89,7 +106,7 @@ export const pointerCaptureNeedsCancelHandler = defineRule({
       const pointerDownExpression = getHandlerExpression(pointerDownAttribute);
       if (!pointerDownExpression) return;
       const pointerDownHandler = resolveExactLocalFunction(pointerDownExpression, context.scopes);
-      if (!pointerDownHandler || !handlerCapturesItsPointer(pointerDownHandler)) return;
+      if (!pointerDownHandler || !handlerCapturesItsPointer(pointerDownHandler, context)) return;
 
       context.report({
         node: pointerDownAttribute,

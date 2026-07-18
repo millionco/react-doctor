@@ -372,7 +372,7 @@ describe("window-open-without-noopener", () => {
        window.open(destinationPrefix + slug, "_blank");`,
     ]) {
       const result = runRule(windowOpenWithoutNoopener, code);
-      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics, code).toHaveLength(1);
     }
   });
 
@@ -418,7 +418,7 @@ describe("window-open-without-noopener", () => {
         `import { POPUP_FEATURES } from './popup';
          window.open(url, '_blank', ${features});`,
       );
-      expect(result.diagnostics).toHaveLength(0);
+      expect(result.diagnostics, features).toHaveLength(0);
     }
   });
 
@@ -1383,6 +1383,40 @@ window.open(storeUrl, '_blank');
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not reuse a local opener invocation while analyzing imported URL values", () => {
+    writeFile(
+      "src/config.ts",
+      "export const storeUrl = new URL('/store', window.location.origin);\n",
+    );
+    const unsafeResult = runRuleAt(
+      "src/App.tsx",
+      `import { storeUrl } from './config';
+const openFirst = () => window.open('/safe');
+openFirst();
+URL.prototype.toString = () => userControlledUrl;
+const openStore = () => window.open(storeUrl);
+openStore();
+`,
+    );
+    expect(unsafeResult.diagnostics).toHaveLength(1);
+
+    writeFile(
+      "src/config.ts",
+      "export const storeUrl = `${new URL('/store', window.location.origin)}`;\n",
+    );
+    const safeResult = runRuleAt(
+      "src/Other.tsx",
+      `import { storeUrl } from './config';
+URL.prototype.toString = () => userControlledUrl;
+const openFirst = () => window.open('/safe');
+openFirst();
+const openStore = () => window.open(storeUrl);
+openStore();
+`,
+    );
+    expect(safeResult.diagnostics).toHaveLength(0);
+  });
+
   it("still flags when a barrel hides a re-export behind a same-named local decoy helper", () => {
     writeFile(
       "src/impl.ts",
@@ -2177,6 +2211,40 @@ window.open(deltaPage, '_blank');
       const result = runRule(windowOpenWithoutNoopener, code);
       expect(result.diagnostics, code).toHaveLength(1);
     }
+
+    for (const code of [
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => { window.open(popupUrl.toString()); };
+       openPopup();
+       URL.prototype.toString = () => userControlledUrl;
+       openPopup();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => { window.open(popupUrl.toString()); };
+       URL.prototype.toString = () => userControlledUrl;
+       openPopup();
+       openPopup();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => { window.open(popupUrl.toString()); };
+       consume(openPopup);
+       URL.prototype.toString = () => userControlledUrl;`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(1);
+    }
+
+    for (const code of [
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => { window.open(popupUrl.toString()); };
+       openPopup();
+       openPopup();
+       URL.prototype.toString = () => userControlledUrl;`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => { window.open(popupUrl.toString()); };
+       consume(openPopup);`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(0);
+    }
   });
 
   it("keeps destructured config iteration safe from irrelevant or later writes", () => {
@@ -2612,7 +2680,7 @@ window.open(deltaPage, '_blank');
        window.open(popupAlias);`,
     ]) {
       const result = runRule(windowOpenWithoutNoopener, code);
-      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics, code).toHaveLength(1);
     }
   });
 
@@ -2664,7 +2732,157 @@ window.open(deltaPage, '_blank');
        window.open(serializedPopupUrl);`,
     ]) {
       const result = runRule(windowOpenWithoutNoopener, code);
-      expect(result.diagnostics).toHaveLength(0);
+      expect(result.diagnostics, code).toHaveLength(0);
+    }
+  });
+
+  it("scopes local invocation references to one opener analysis", () => {
+    for (const code of [
+      `const popupUrl = new URL("/safe", window.origin);
+       const openFirst = () => window.open("/safe");
+       openFirst();
+       URL.prototype.toString = () => userControlledUrl;
+       window.open(popupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       (() => window.open("/safe"))();
+       URL.prototype.href = userControlledUrl;
+       window.open(popupUrl.href);`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(1);
+    }
+
+    for (const code of [
+      `const popupUrl = new URL("/safe", window.origin);
+       const serializedPopupUrl = popupUrl.toString();
+       URL.prototype.toString = () => userControlledUrl;
+       const openFirst = () => window.open("/safe");
+       openFirst();
+       window.open(serializedPopupUrl);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const popupHref = popupUrl.href;
+       URL.prototype.href = userControlledUrl;
+       (() => window.open("/safe"))();
+       window.open(popupHref);`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const serializedPopupUrl = popupUrl.toString();
+       URL.prototype.toString = () => userControlledUrl;
+       const openSnapshot = () => window.open(serializedPopupUrl);
+       openSnapshot();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const popupHref = popupUrl.href;
+       URL.prototype.href = userControlledUrl;
+       const openSnapshot = () => window.open(popupHref);
+       openSnapshot();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const serializedPopupUrl = popupUrl.toJSON();
+       URL.prototype.toJSON = () => userControlledUrl;
+       const openSnapshot = () => window.open(serializedPopupUrl);
+       openSnapshot();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const serializedPopupUrl = \`\${popupUrl}\`;
+       URL.prototype.toString = () => userControlledUrl;
+       const openSnapshot = () => window.open(serializedPopupUrl);
+       openSnapshot();`,
+      `const run = () => {
+         const popupUrl = new URL("/safe", window.origin);
+         const serializedPopupUrl = popupUrl.toString();
+         URL.prototype.toString = () => userControlledUrl;
+         const openSnapshot = () => window.open(serializedPopupUrl);
+         openSnapshot();
+       };
+       run();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const serializedPopupUrl = popupUrl.toString();
+       const firstAlias = serializedPopupUrl;
+       const secondAlias = firstAlias;
+       URL.prototype.toString = () => userControlledUrl;
+       const openSnapshot = () => window.open(secondAlias);
+       openSnapshot();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const outer = () => {
+         const serializedPopupUrl = popupUrl.toString();
+         const inner = () => window.open(serializedPopupUrl);
+         inner();
+       };
+       outer();
+       URL.prototype.toString = () => userControlledUrl;`,
+      `const popupUrl = new URL("/safe", window.origin);
+       [1].forEach(() => window.open(popupUrl.toString()));
+       URL.prototype.toString = () => userControlledUrl;`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => window.open(popupUrl.toString());
+       openPopup();
+       popupUrl.toString = () => userControlledUrl;`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => window.open(popupUrl.toJSON());
+       openPopup();
+       popupUrl.toJSON = () => userControlledUrl;`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => window.open(popupUrl.href);
+       openPopup();
+       popupUrl.href = userControlledUrl;`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => window.open(popupUrl.toString());
+       openPopup();
+       Object.defineProperty(popupUrl, "toString", { value: () => userControlledUrl });`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(0);
+    }
+
+    for (const code of [
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => window.open(popupUrl.toString());
+       URL.prototype.toString = () => userControlledUrl;
+       openPopup();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const serializePopupUrl = () => popupUrl.toJSON();
+       const openPopup = () => window.open(serializePopupUrl());
+       URL.prototype.toJSON = () => userControlledUrl;
+       openPopup();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => {
+         const serializedPopupUrl = popupUrl.toString();
+         window.open(serializedPopupUrl);
+       };
+       URL.prototype.toString = () => userControlledUrl;
+       openPopup();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const outer = () => {
+         const serializedPopupUrl = popupUrl.toString();
+         const inner = () => window.open(serializedPopupUrl);
+         inner();
+       };
+       URL.prototype.toString = () => userControlledUrl;
+       outer();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const outer = () => {
+         const popupHref = popupUrl.href;
+         const inner = () => window.open(popupHref);
+         inner();
+       };
+       popupUrl.href = userControlledUrl;
+       outer();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const outer = () => {
+         const serializedPopupUrl = popupUrl.toString();
+         const inner = () => window.open(serializedPopupUrl);
+         inner();
+       };
+       outer();
+       URL.prototype.toString = () => userControlledUrl;
+       outer();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       URL.prototype.toString = () => userControlledUrl;
+       [1].forEach(() => window.open(popupUrl.toString()));`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const openPopup = () => window.open(popupUrl.toString());
+       popupUrl.toString = () => userControlledUrl;
+       openPopup();`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(1);
     }
   });
 

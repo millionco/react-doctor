@@ -8,6 +8,7 @@ import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getExecutionReferenceOffset } from "../../utils/get-execution-reference-offset.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { hasPossibleStaticPropertyWriteBefore } from "../../utils/has-static-property-write-before.js";
@@ -40,7 +41,12 @@ let currentScopes: ScopeAnalysis | undefined;
 let currentRuleContext: RuleContext | undefined;
 let currentWindowOpenCall: EsTreeNode | undefined;
 let currentDestinationCoercionReference: EsTreeNode | undefined;
+let currentDestinationCoercionBoundaryReference: EsTreeNode | undefined;
 let currentLocalFunctionInvocationReference: EsTreeNode | undefined;
+let currentLocalFunctionSerializationReference: EsTreeNode | undefined;
+let currentAnalyzedLocalFunction: EsTreeNode | undefined;
+let currentOpaqueLocalFunctionSerializationReference: EsTreeNode | undefined;
+let currentDeferredLocalFunctions: EsTreeNode[] = [];
 let trustedTopLevelDestinationMemo = new WeakMap<EsTreeNode, boolean>();
 let symbolHasNonReadReferenceMemo = new WeakMap<SymbolDescriptor, boolean>();
 let localFunctionCallArgumentsMemo = new WeakMap<
@@ -53,6 +59,12 @@ let routerCallsByFunctionMemo = new WeakMap<
 >();
 let globalNamespaceMutationNodesMemo = new WeakMap<ScopeAnalysis, Map<string, EsTreeNode[]>>();
 let objectMutationCallsBySymbolMemo = new WeakMap<SymbolDescriptor, EsTreeNode[]>();
+
+interface LocalFunctionExecutionContext {
+  functions: EsTreeNode[];
+  immediateReferences: Array<EsTreeNodeOfType<"CallExpression">> | null;
+  references: Array<EsTreeNodeOfType<"CallExpression">> | null;
+}
 
 const writeExecutesBeforeDestinationReference = (
   writeNode: EsTreeNode,
@@ -85,7 +97,7 @@ const bindingIsUnmodifiedBefore = (identifier: EsTreeNode, referenceNode: EsTree
             reference.flag !== "read" &&
             (writeExecutesBeforeDestinationReference(reference.identifier, referenceNode, scopes) ||
               (!isAnalyzingForeignExport &&
-                reference.identifier.range[0] < referenceNode.range[0])),
+                reference.identifier.range[0] < getExecutionReferenceOffset(referenceNode))),
         ))),
   );
 };
@@ -408,10 +420,66 @@ const collectDirectLocalFunctionCalls = (
   return calls.length > 0 ? calls : null;
 };
 
+const resolveLocalFunctionExecutionContext = (
+  functionNode: EsTreeNode,
+  depth: number,
+): LocalFunctionExecutionContext => {
+  if (depth > MAX_BINDING_RESOLUTION_DEPTH) {
+    return { functions: [functionNode], immediateReferences: null, references: null };
+  }
+  const functionRoot = findTransparentExpressionRoot(functionNode);
+  const parent = functionRoot.parent;
+  let directCalls: Array<EsTreeNodeOfType<"CallExpression">> | null;
+  const isInlineSynchronousCallback = Boolean(
+    parent &&
+    isNodeOfType(parent, "CallExpression") &&
+    (parent.arguments ?? []).includes(functionRoot as never) &&
+    isRepeatedArrayIterationCallback(functionNode) &&
+    callDiscardsCallbackReturn(parent),
+  );
+  if (
+    parent &&
+    isNodeOfType(parent, "CallExpression") &&
+    (parent.callee === functionRoot || isInlineSynchronousCallback)
+  ) {
+    directCalls = [parent];
+  } else {
+    directCalls = collectDirectLocalFunctionCalls(functionNode);
+  }
+  if (!directCalls || directCalls.length === 0) {
+    return { functions: [functionNode], immediateReferences: null, references: null };
+  }
+  const functions = [functionNode];
+  const references: Array<EsTreeNodeOfType<"CallExpression">> = [];
+  for (const directCall of directCalls) {
+    const enclosingFunction = findEnclosingFunction(directCall);
+    if (!enclosingFunction) {
+      references.push(directCall);
+      continue;
+    }
+    const enclosingContext = resolveLocalFunctionExecutionContext(enclosingFunction, depth + 1);
+    functions.push(...enclosingContext.functions);
+    if (!enclosingContext.references) {
+      return {
+        functions,
+        immediateReferences: isInlineSynchronousCallback ? null : directCalls,
+        references: null,
+      };
+    }
+    references.push(...enclosingContext.references);
+  }
+  return {
+    functions,
+    immediateReferences: isInlineSynchronousCallback ? null : directCalls,
+    references,
+  };
+};
+
 const mutationMayAffectConfigRead = (
   mutationNode: EsTreeNode,
   referenceNode: EsTreeNode,
   isCurrentIterationElement = false,
+  visitedFunctions: ReadonlySet<EsTreeNode> = new Set(),
 ): boolean => {
   const referenceFunction = findEnclosingFunction(referenceNode);
   const mutationFunction = findEnclosingFunction(mutationNode);
@@ -420,18 +488,22 @@ const mutationMayAffectConfigRead = (
     mutationFunction !== referenceFunction &&
     resolveLocalFunctionNameIdentifier(referenceFunction)
   ) {
+    if (visitedFunctions.has(referenceFunction)) return true;
     const invocationReferences = collectDirectLocalFunctionCalls(referenceFunction);
     if (!invocationReferences || invocationReferences.length === 0) return true;
+    const nextVisitedFunctions = new Set(visitedFunctions);
+    nextVisitedFunctions.add(referenceFunction);
     return invocationReferences.some((invocationReference) =>
       mutationMayAffectConfigRead(
         mutationNode,
-        currentLocalFunctionInvocationReference ?? invocationReference,
+        invocationReference,
         isCurrentIterationElement,
+        nextVisitedFunctions,
       ),
     );
   }
   if (mutationNode.range == null || referenceNode.range == null) return true;
-  if (mutationNode.range[0] < referenceNode.range[0]) return true;
+  if (mutationNode.range[0] < getExecutionReferenceOffset(referenceNode)) return true;
   return Boolean(
     !isCurrentIterationElement &&
     referenceFunction &&
@@ -1959,13 +2031,19 @@ const isTrustedLocalFunctionCall = (
     : null;
   if (!localFunction || !returnedExpressions || returnedExpressions.length === 0) return false;
   const previousInvocationReference = currentLocalFunctionInvocationReference;
+  const previousSerializationReference = currentLocalFunctionSerializationReference;
+  const previousAnalyzedLocalFunction = currentAnalyzedLocalFunction;
   currentLocalFunctionInvocationReference ??= callExpression;
+  currentLocalFunctionSerializationReference ??= callExpression;
+  currentAnalyzedLocalFunction = localFunction;
   try {
     return returnedExpressions.every((returnedExpression) =>
       isTrustedLocalFunctionReturn(returnedExpression, localFunction, callExpression, depth),
     );
   } finally {
     currentLocalFunctionInvocationReference = previousInvocationReference;
+    currentLocalFunctionSerializationReference = previousSerializationReference;
+    currentAnalyzedLocalFunction = previousAnalyzedLocalFunction;
   }
 };
 
@@ -2137,13 +2215,21 @@ const globalObjectMutationMayWriteProperty = (
 const globalNamespaceBindingIsUnmodifiedBefore = (
   namespaceName: string,
   referenceNode: EsTreeNode,
+  lexicalBoundaryNode: EsTreeNode = referenceNode,
 ): boolean => {
   const scopes = currentScopes;
   const program = findProgramRoot(referenceNode);
   if (!scopes || !program) return false;
   const mutationExecutesBeforeReference = (mutationNode: EsTreeNode): boolean => {
     if (mutationNode.range == null || referenceNode.range == null) return true;
-    if (!isAnalyzingForeignExport) return mutationNode.range[0] < referenceNode.range[0];
+    if (!isAnalyzingForeignExport) {
+      const lexicalBoundaryFunction = findEnclosingFunction(lexicalBoundaryNode);
+      const comparisonReference =
+        lexicalBoundaryFunction && findEnclosingFunction(mutationNode) === lexicalBoundaryFunction
+          ? lexicalBoundaryNode
+          : referenceNode;
+      return mutationNode.range[0] < getExecutionReferenceOffset(comparisonReference);
+    }
     return (
       isSymbolWriteBefore(mutationNode, referenceNode, scopes) ||
       (isAnalyzingDeferredForeignExport && isSymbolWriteBefore(mutationNode, program, scopes))
@@ -2286,21 +2372,40 @@ const isGlobalUrlInstanceExpression = (node: EsTreeNode): boolean => {
 
 const withDestinationCoercionReference = <Value>(
   referenceNode: EsTreeNode,
+  boundaryNode: EsTreeNode,
   operation: () => Value,
 ): Value => {
   const previousReference = currentDestinationCoercionReference;
+  const previousBoundaryReference = currentDestinationCoercionBoundaryReference;
   currentDestinationCoercionReference = referenceNode;
+  currentDestinationCoercionBoundaryReference = boundaryNode;
   try {
     return operation();
   } finally {
     currentDestinationCoercionReference = previousReference;
+    currentDestinationCoercionBoundaryReference = previousBoundaryReference;
   }
 };
 
-const destinationSerializationReference = (boundaryNode: EsTreeNode): EsTreeNode =>
-  currentLocalFunctionInvocationReference ??
-  (isAnalyzingDeferredForeignExport ? currentDestinationCoercionReference : undefined) ??
-  boundaryNode;
+const destinationSerializationReference = (boundaryNode: EsTreeNode): EsTreeNode => {
+  const boundaryFunction = findEnclosingFunction(boundaryNode);
+  const currentOpenFunction = currentWindowOpenCall
+    ? findEnclosingFunction(currentWindowOpenCall)
+    : null;
+  const localInvocationReference =
+    boundaryFunction &&
+    (boundaryFunction === currentOpenFunction ||
+      boundaryFunction === currentAnalyzedLocalFunction ||
+      currentDeferredLocalFunctions.includes(boundaryFunction))
+      ? (currentLocalFunctionSerializationReference ??
+        currentOpaqueLocalFunctionSerializationReference)
+      : undefined;
+  return (
+    localInvocationReference ??
+    (isAnalyzingDeferredForeignExport ? currentDestinationCoercionReference : undefined) ??
+    boundaryNode
+  );
+};
 
 const isTrustedUrlInstanceHrefRead = (
   memberNode: EsTreeNodeOfType<"MemberExpression">,
@@ -2314,9 +2419,16 @@ const isTrustedUrlInstanceHrefRead = (
     return false;
   }
   const serializationReference = destinationSerializationReference(memberNode);
-  if (!globalNamespaceBindingIsUnmodifiedBefore("URL", serializationReference)) return false;
-  if (hasUrlOriginMutationBefore(receiver, serializationReference)) return false;
-  return withDestinationCoercionReference(serializationReference, () =>
+  if (!globalNamespaceBindingIsUnmodifiedBefore("URL", serializationReference, memberNode)) {
+    return false;
+  }
+  if (
+    hasUrlOriginMutationBefore(receiver, memberNode) &&
+    hasUrlOriginMutationBefore(receiver, serializationReference)
+  ) {
+    return false;
+  }
+  return withDestinationCoercionReference(serializationReference, memberNode, () =>
     isTrustedDestination(initializer, depth + 1),
   );
 };
@@ -2530,11 +2642,11 @@ const isTrustedDestination = (
     const serializationReference = destinationSerializationReference(urlArgument);
     if (
       isGlobalUrlInstanceExpression(urlReceiver) &&
-      !globalNamespaceBindingIsUnmodifiedBefore("URL", serializationReference)
+      !globalNamespaceBindingIsUnmodifiedBefore("URL", serializationReference, urlArgument)
     ) {
       return false;
     }
-    return withDestinationCoercionReference(serializationReference, () =>
+    return withDestinationCoercionReference(serializationReference, urlArgument, () =>
       isTrustedDestination(stripParenExpression(urlReceiver), depth + 1),
     );
   }
@@ -2548,7 +2660,11 @@ const isTrustedDestination = (
       constructionProgram !== coercionProgram ||
       !isProvenGlobalNamespaceReference(urlArgument.callee as EsTreeNode, "URL", currentScopes) ||
       !globalNamespaceBindingIsUnmodifiedBefore("URL", urlArgument) ||
-      !globalNamespaceBindingIsUnmodifiedBefore("URL", coercionReference)
+      !globalNamespaceBindingIsUnmodifiedBefore(
+        "URL",
+        coercionReference,
+        currentDestinationCoercionBoundaryReference ?? urlArgument,
+      )
     ) {
       return false;
     }
@@ -2579,15 +2695,16 @@ const isTrustedDestination = (
     if (crossFileVerdict != null) return crossFileVerdict;
     const constInitializer = resolveConstInitializer(urlArgument);
     if (constInitializer != null) {
+      const coercionBoundaryReference = currentDestinationCoercionBoundaryReference ?? urlArgument;
+      const coercionExecutionReference = currentDestinationCoercionReference ?? urlArgument;
       if (
         isNodeOfType(stripParenExpression(constInitializer), "NewExpression") &&
-        (hasUrlOriginMutationBefore(
-          urlArgument,
-          currentDestinationCoercionReference ?? urlArgument,
-        ) ||
+        ((hasUrlOriginMutationBefore(urlArgument, coercionBoundaryReference) &&
+          hasUrlOriginMutationBefore(urlArgument, coercionExecutionReference)) ||
           !globalNamespaceBindingIsUnmodifiedBefore(
             "URL",
-            currentDestinationCoercionReference ?? urlArgument,
+            coercionExecutionReference,
+            coercionBoundaryReference,
           ))
       ) {
         return false;
@@ -2625,16 +2742,19 @@ const isTrustedDestination = (
           ? resolvedFirstExpressionSymbol.initializer
           : firstExpressionNode;
       const followingQuasiText = urlArgument.quasis?.[1]?.value?.raw ?? "";
-      return withDestinationCoercionReference(destinationSerializationReference(urlArgument), () =>
-        Boolean(
-          isSafeInterpolatedDestinationSuffix(
-            followingQuasiText,
-            (urlArgument.expressions?.length ?? 0) > 1,
-          ) &&
-          (!followingQuasiText.startsWith("/") ||
-            isProvenSafeSlashJoinedBase(trustedFirstExpression, depth + 1)) &&
-          isTrustedInterpolatedDestinationBase(trustedFirstExpression, depth + 1),
-        ),
+      return withDestinationCoercionReference(
+        destinationSerializationReference(urlArgument),
+        urlArgument,
+        () =>
+          Boolean(
+            isSafeInterpolatedDestinationSuffix(
+              followingQuasiText,
+              (urlArgument.expressions?.length ?? 0) > 1,
+            ) &&
+            (!followingQuasiText.startsWith("/") ||
+              isProvenSafeSlashJoinedBase(trustedFirstExpression, depth + 1)) &&
+            isTrustedInterpolatedDestinationBase(trustedFirstExpression, depth + 1),
+          ),
       );
     }
     return false;
@@ -2696,7 +2816,7 @@ const isTrustedTopLevelDestination = (urlExpression: EsTreeNode | null | undefin
   const memoKey = strippedExpression;
   const memoizedVerdict = trustedTopLevelDestinationMemo.get(memoKey);
   if (memoizedVerdict !== undefined) return memoizedVerdict;
-  const verdict = withDestinationCoercionReference(strippedExpression, () =>
+  const verdict = withDestinationCoercionReference(strippedExpression, strippedExpression, () =>
     isTrustedOrNullishDestination(urlExpression, 0),
   );
   trustedTopLevelDestinationMemo.set(memoKey, verdict);
@@ -2998,7 +3118,12 @@ export const windowOpenWithoutNoopener = defineRule({
     currentRuleContext = context;
     currentWindowOpenCall = undefined;
     currentDestinationCoercionReference = undefined;
+    currentDestinationCoercionBoundaryReference = undefined;
     currentLocalFunctionInvocationReference = undefined;
+    currentLocalFunctionSerializationReference = undefined;
+    currentAnalyzedLocalFunction = undefined;
+    currentOpaqueLocalFunctionSerializationReference = undefined;
+    currentDeferredLocalFunctions = [];
     trustedTopLevelDestinationMemo = new WeakMap();
     symbolHasNonReadReferenceMemo = new WeakMap();
     localFunctionCallArgumentsMemo = new WeakMap();
@@ -3017,29 +3142,84 @@ export const windowOpenWithoutNoopener = defineRule({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         currentScopes = context.scopes;
         if (!isWindowOpenCallee(node.callee, context.scopes)) return;
-        if (!isDiscardedWindowHandle(node)) return;
-        currentWindowOpenCall = node;
+        const previousWindowOpenCall = currentWindowOpenCall;
+        const previousDestinationCoercionReference = currentDestinationCoercionReference;
+        const previousDestinationCoercionBoundaryReference =
+          currentDestinationCoercionBoundaryReference;
+        const previousLocalFunctionInvocationReference = currentLocalFunctionInvocationReference;
+        const previousLocalFunctionSerializationReference =
+          currentLocalFunctionSerializationReference;
+        const previousAnalyzedLocalFunction = currentAnalyzedLocalFunction;
+        const previousOpaqueLocalFunctionSerializationReference =
+          currentOpaqueLocalFunctionSerializationReference;
+        const previousDeferredLocalFunctions = currentDeferredLocalFunctions;
+        currentWindowOpenCall = undefined;
+        currentDestinationCoercionReference = undefined;
+        currentDestinationCoercionBoundaryReference = undefined;
+        currentLocalFunctionInvocationReference = undefined;
+        currentLocalFunctionSerializationReference = undefined;
+        currentAnalyzedLocalFunction = undefined;
+        currentOpaqueLocalFunctionSerializationReference = undefined;
+        currentDeferredLocalFunctions = [];
+        try {
+          if (!isDiscardedWindowHandle(node)) return;
+          const enclosingFunction = findEnclosingFunction(node);
+          const executionContext = enclosingFunction
+            ? resolveLocalFunctionExecutionContext(enclosingFunction, 0)
+            : null;
+          currentDeferredLocalFunctions = executionContext?.functions ?? [];
+          currentLocalFunctionInvocationReference = executionContext?.immediateReferences?.length
+            ? executionContext.immediateReferences.reduce((latestReference, executionReference) =>
+                executionReference.range[0] > latestReference.range[0]
+                  ? executionReference
+                  : latestReference,
+              )
+            : undefined;
+          currentLocalFunctionSerializationReference = executionContext?.references?.length
+            ? executionContext.references.reduce((latestReference, executionReference) =>
+                executionReference.range[0] > latestReference.range[0]
+                  ? executionReference
+                  : latestReference,
+              )
+            : undefined;
+          currentOpaqueLocalFunctionSerializationReference =
+            !currentLocalFunctionSerializationReference && enclosingFunction
+              ? (findProgramRoot(node) ?? undefined)
+              : undefined;
+          currentWindowOpenCall = node;
 
-        const urlArgument = node.arguments?.[0];
-        if (isTrustedTopLevelDestination(urlArgument)) return;
+          const urlArgument = node.arguments?.[0];
+          if (isTrustedTopLevelDestination(urlArgument)) return;
 
-        const targetArgument = node.arguments?.[1];
-        if (isStringLiteral(targetArgument) && NAVIGATING_TARGETS.has(targetArgument.value)) {
-          return;
+          const targetArgument = node.arguments?.[1];
+          if (isStringLiteral(targetArgument) && NAVIGATING_TARGETS.has(targetArgument.value)) {
+            return;
+          }
+
+          const featuresArgument = node.arguments?.[2];
+          if (featuresArgument != null && !isNullishExpression(featuresArgument)) {
+            const featuresText = resolveStaticStringText(featuresArgument, 0);
+            if (featuresText == null) return;
+            if (featuresMayProtectOpener(featuresText)) return;
+          }
+
+          context.report({
+            node,
+            message:
+              "This `window.open` call leaves the opened page able to redirect your tab via `window.opener`, so pass `'noopener'` in the features argument.",
+          });
+        } finally {
+          currentWindowOpenCall = previousWindowOpenCall;
+          currentDestinationCoercionReference = previousDestinationCoercionReference;
+          currentDestinationCoercionBoundaryReference =
+            previousDestinationCoercionBoundaryReference;
+          currentLocalFunctionInvocationReference = previousLocalFunctionInvocationReference;
+          currentLocalFunctionSerializationReference = previousLocalFunctionSerializationReference;
+          currentAnalyzedLocalFunction = previousAnalyzedLocalFunction;
+          currentOpaqueLocalFunctionSerializationReference =
+            previousOpaqueLocalFunctionSerializationReference;
+          currentDeferredLocalFunctions = previousDeferredLocalFunctions;
         }
-
-        const featuresArgument = node.arguments?.[2];
-        if (featuresArgument != null && !isNullishExpression(featuresArgument)) {
-          const featuresText = resolveStaticStringText(featuresArgument, 0);
-          if (featuresText == null) return;
-          if (featuresMayProtectOpener(featuresText)) return;
-        }
-
-        context.report({
-          node,
-          message:
-            "This `window.open` call leaves the opened page able to redirect your tab via `window.opener`, so pass `'noopener'` in the features argument.",
-        });
       },
     };
   },

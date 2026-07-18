@@ -3,11 +3,23 @@
 // source: PR #1344 deep audit
 const method = "setAttribute";
 const attribute = "href";
+const srcProperty = "src";
+const aliasedSrcProperty = srcProperty;
+const currentProperty = "current";
 const setter = Math.random() > 0.5 ? setPreview : setAvatar;
 
-export const attachPreviews = (element: HTMLElement, firstBlob: Blob, secondBlob: Blob) => {
+export const attachPreviews = (
+  element: HTMLElement,
+  previewRef: { current: string },
+  firstBlob: Blob,
+  secondBlob: Blob,
+  thirdBlob: Blob,
+  fourthBlob: Blob,
+) => {
   setter(URL.createObjectURL(firstBlob));
   element[method](attribute, URL.createObjectURL(secondBlob));
+  element[aliasedSrcProperty] = URL.createObjectURL(thirdBlob);
+  previewRef[currentProperty] = URL.createObjectURL(fourthBlob);
 };
 
 declare const setAvatar: (url: string) => void;

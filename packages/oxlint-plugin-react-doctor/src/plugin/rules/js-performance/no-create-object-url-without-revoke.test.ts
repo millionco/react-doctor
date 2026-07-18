@@ -366,6 +366,36 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("flags const-aliased computed URL escape properties", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const hrefProperty = "href";
+       const srcProperty = "src";
+       const aliasedSrcProperty = srcProperty;
+       const currentProperty = "current";
+       anchor[hrefProperty] = URL.createObjectURL(firstBlob);
+       image[aliasedSrcProperty] = URL.createObjectURL(secondBlob);
+       previewRef[currentProperty] = URL.createObjectURL(thirdBlob);
+       const make = (blob) => URL.createObjectURL(blob);
+       const attachPreview = (blob) => {
+         const url = make(blob);
+         image[srcProperty] = url;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(4);
+  });
+
+  it("ignores computed properties that are not proven URL sinks", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const titleProperty = "title";
+       const dynamicProperty = getProperty();
+       element[titleProperty] = URL.createObjectURL(firstBlob);
+       element[dynamicProperty] = URL.createObjectURL(secondBlob);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("reports repeatable dynamic-key cache stores without replacement cleanup", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,

@@ -1474,6 +1474,15 @@ const resolveStaticString = (
   return resolveStaticString(symbol.initializer, scopes, nextVisitedSymbolIds);
 };
 
+const getResolvedMemberPropertyName = (
+  member: EsTreeNodeOfType<"MemberExpression">,
+  scopes: ScopeAnalysis,
+): string | null =>
+  getStaticPropertyName(member) ??
+  (member.computed && isAstNode(member.property)
+    ? resolveStaticString(member.property, scopes)
+    : null);
+
 const isUrlSetAttributeCall = (
   call: EsTreeNodeOfType<"CallExpression">,
   urlArgument: EsTreeNode,
@@ -1481,11 +1490,7 @@ const isUrlSetAttributeCall = (
 ): boolean => {
   const callee = stripParenExpression(call.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
-  const methodName =
-    getStaticPropertyName(callee) ??
-    (callee.computed && isAstNode(callee.property)
-      ? resolveStaticString(callee.property, scopes)
-      : null);
+  const methodName = getResolvedMemberPropertyName(callee, scopes);
   if (methodName !== "setAttribute") return false;
   const [attributeName, attributeValue] = call.arguments;
   if (!isAstNode(attributeName) || !isAstNode(attributeValue)) return false;
@@ -1573,7 +1578,9 @@ const boundValueHasHardEscape = (
       isNodeOfType(consumer, "AssignmentExpression") &&
       consumer.right === referenceRoot &&
       isNodeOfType(consumer.left, "MemberExpression") &&
-      ESCAPE_ASSIGNMENT_TARGET_PROPERTIES.has(getStaticPropertyName(consumer.left) ?? "")
+      ESCAPE_ASSIGNMENT_TARGET_PROPERTIES.has(
+        getResolvedMemberPropertyName(consumer.left, context.scopes) ?? "",
+      )
     ) {
       return true;
     }
@@ -1603,7 +1610,9 @@ const escapeIsLeaky = (callNode: EsTreeNode, context: RuleContext): boolean => {
     const target = parent.left;
     if (
       isNodeOfType(target, "MemberExpression") &&
-      ESCAPE_ASSIGNMENT_TARGET_PROPERTIES.has(getStaticPropertyName(target) ?? "")
+      ESCAPE_ASSIGNMENT_TARGET_PROPERTIES.has(
+        getResolvedMemberPropertyName(target, context.scopes) ?? "",
+      )
     ) {
       return true;
     }

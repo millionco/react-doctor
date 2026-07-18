@@ -841,4 +841,52 @@ function SearchBox({ query }) {
     expect(matchingRelease.diagnostics).toHaveLength(0);
     expect(wrongRelease.diagnostics).toHaveLength(1);
   });
+
+  it("does not treat a persistent boolean ref as an unmount-cleared DOM ref", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `${LODASH_DEBOUNCE_IMPORT}
+       function Search() {
+         const alive = useRef(true);
+         const search = useMemo(() => debounce(() => {
+           if (!alive.current) return;
+           document.title = "late";
+         }, 100), []);
+         useEffect(() => search(), [search]);
+         return null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a ref parameter as unmount-cleared", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `${LODASH_DEBOUNCE_IMPORT}
+       function Search({ targetRef }) {
+         const search = useMemo(() => debounce(() => {
+           if (!targetRef.current) return;
+           document.title = "late";
+         }, 100), [targetRef]);
+         useEffect(() => search(), [search]);
+         return null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not suppress DOM work based on a sync-prefixed binding name", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `${LODASH_DEBOUNCE_IMPORT}
+       function Search() {
+         const syncPosition = useMemo(() => debounce(() => {
+           document.body.scrollTop = 0;
+         }, 100), []);
+         useEffect(() => syncPosition(), [syncPosition]);
+         return null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

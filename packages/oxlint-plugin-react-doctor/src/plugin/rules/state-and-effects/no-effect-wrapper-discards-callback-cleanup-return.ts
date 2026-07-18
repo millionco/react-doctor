@@ -5,6 +5,10 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import {
+  getImportedNameFromModule,
+  getImportSourceForName,
+} from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenEffectHookCall } from "../../utils/is-proven-effect-hook-call.js";
@@ -12,6 +16,7 @@ import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
 const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 
@@ -54,16 +59,55 @@ const functionTypeCanReturnCleanup = (typeNode: EsTreeNode): boolean => {
   );
 };
 
-const parameterIsEffectCallback = (parameter: EsTreeNode): boolean => {
+const symbolForTypeIdentifier = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor | null => {
+  if (!isNodeOfType(identifier, "Identifier")) return null;
+  const directSymbol = scopes.symbolFor(identifier);
+  if (directSymbol) return directSymbol;
+  let scope: ScopeAnalysis["rootScope"] | null = scopes.scopeFor(identifier);
+  while (scope) {
+    const symbol = scope.symbolsByName.get(identifier.name);
+    if (symbol) return symbol;
+    scope = scope.parent;
+  }
+  return null;
+};
+
+const isImportedOrGlobalReactIdentifier = (
+  identifier: EsTreeNode,
+  exportedName: string,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  const symbol = symbolForTypeIdentifier(identifier, scopes);
+  if (!symbol) return identifier.name === exportedName;
+  return (
+    symbol.kind === "import" &&
+    getImportedNameFromModule(identifier, identifier.name, "react") === exportedName
+  );
+};
+
+const isReactNamespaceOrGlobalIdentifier = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(identifier, "Identifier") || identifier.name !== "React") return false;
+  const symbol = symbolForTypeIdentifier(identifier, scopes);
+  return (
+    !symbol || (symbol.kind === "import" && getImportSourceForName(identifier, "React") === "react")
+  );
+};
+
+const parameterIsEffectCallback = (parameter: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const typeNode = parameterTypeNode(parameter);
   if (!typeNode) return false;
   if (
     isNodeOfType(typeNode, "TSTypeReference") &&
-    ((isNodeOfType(typeNode.typeName, "Identifier") &&
-      typeNode.typeName.name === "EffectCallback") ||
+    (isImportedOrGlobalReactIdentifier(typeNode.typeName as EsTreeNode, "EffectCallback", scopes) ||
       (isNodeOfType(typeNode.typeName, "TSQualifiedName") &&
-        isNodeOfType(typeNode.typeName.left, "Identifier") &&
-        typeNode.typeName.left.name === "React" &&
+        isReactNamespaceOrGlobalIdentifier(typeNode.typeName.left as EsTreeNode, scopes) &&
         isNodeOfType(typeNode.typeName.right, "Identifier") &&
         typeNode.typeName.right.name === "EffectCallback"))
   ) {
@@ -72,7 +116,10 @@ const parameterIsEffectCallback = (parameter: EsTreeNode): boolean => {
   return functionTypeCanReturnCleanup(typeNode);
 };
 
-const wrapperBindingIsTypedAsEffectHook = (hookFunction: EsTreeNode): boolean => {
+const wrapperBindingIsTypedAsEffectHook = (
+  hookFunction: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   const declarator = hookFunction.parent;
   if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
   if (!isNodeOfType(declarator.id, "Identifier")) return false;
@@ -81,26 +128,31 @@ const wrapperBindingIsTypedAsEffectHook = (hookFunction: EsTreeNode): boolean =>
   const query = annotation.typeAnnotation as EsTreeNode;
   if (!isNodeOfType(query, "TSTypeQuery")) return false;
   if (isNodeOfType(query.exprName, "Identifier")) {
-    return EFFECT_HOOK_NAMES.has(query.exprName.name);
+    return (
+      EFFECT_HOOK_NAMES.has(query.exprName.name) &&
+      isImportedOrGlobalReactIdentifier(query.exprName, query.exprName.name, scopes)
+    );
   }
   return (
     isNodeOfType(query.exprName, "TSQualifiedName") &&
-    isNodeOfType(query.exprName.left, "Identifier") &&
-    query.exprName.left.name === "React" &&
+    isReactNamespaceOrGlobalIdentifier(query.exprName.left as EsTreeNode, scopes) &&
     isNodeOfType(query.exprName.right, "Identifier") &&
     EFFECT_HOOK_NAMES.has(query.exprName.right.name)
   );
 };
 
-const forwardedEffectCallbackParameterName = (hookFunction: EsTreeNode): string | null => {
+const forwardedEffectCallbackParameterName = (
+  hookFunction: EsTreeNode,
+  scopes: ScopeAnalysis,
+): string | null => {
   if (!isFunctionLike(hookFunction)) return null;
   const params = hookFunction.params ?? [];
-  if (wrapperBindingIsTypedAsEffectHook(hookFunction)) {
+  if (wrapperBindingIsTypedAsEffectHook(hookFunction, scopes)) {
     const firstParam = params[0];
     return firstParam ? (parameterIdentifier(firstParam as EsTreeNode)?.name ?? null) : null;
   }
   for (const param of params) {
-    if (parameterIsEffectCallback(param)) {
+    if (parameterIsEffectCallback(param, scopes)) {
       return parameterIdentifier(param)?.name ?? null;
     }
   }
@@ -252,7 +304,7 @@ export const noEffectWrapperDiscardsCallbackCleanupReturn = defineRule({
       const hookName = componentOrHookDisplayNameForFunction(hookFunction);
       if (!hookName || !isReactHookName(hookName)) return;
 
-      const callbackName = forwardedEffectCallbackParameterName(hookFunction);
+      const callbackName = forwardedEffectCallbackParameterName(hookFunction, context.scopes);
       if (!callbackName) return;
       const callbackBinding = (hookFunction.params ?? [])
         .map((parameter) => parameterIdentifier(parameter as EsTreeNode))

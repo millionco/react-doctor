@@ -186,7 +186,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag when the class uses disposeOnUnmount", () => {
+  it("still flags unrelated listeners when the class uses disposeOnUnmount", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
       `
@@ -200,7 +200,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
       }
       `,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a pure data-fetch mount with no resource to release", () => {
@@ -1153,5 +1153,70 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
        }`,
     );
     expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("flags a mount-local emitter that escapes through an unknown call", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import React from "react";
+       class Panel extends React.Component {
+         componentDidMount() {
+           const emitter = new EventTarget();
+           registry.add(emitter);
+           emitter.addEventListener("change", () => this.setState({ ready: true }));
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores a shadowed runInAction that does not mutate the component", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import React from "react";
+       const runInAction = (callback) => callback();
+       class Panel extends React.Component {
+         componentDidMount() {
+           setTimeout(() => runInAction(() => console.log("done")), 100);
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores a local runInAction shadowing the MobX import", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import React from "react";
+       import { runInAction } from "mobx";
+       class Panel extends React.Component {
+         componentDidMount() {
+           const runInAction = (callback) => callback();
+           setTimeout(() => runInAction(() => console.log("done")), 100);
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores component mutations inside an uninvoked nested class helper", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import React from "react";
+       class Panel extends React.Component {
+         componentDidMount() {
+           setTimeout(() => this.logReady(), 100);
+         }
+         logReady() {
+           const unused = () => this.setState({ ready: true });
+           console.log("ready");
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 });

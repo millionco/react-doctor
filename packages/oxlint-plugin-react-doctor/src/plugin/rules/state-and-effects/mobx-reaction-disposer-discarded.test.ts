@@ -461,4 +461,46 @@ export const themeStore = new ThemeStore();`,
     );
     expect(result.diagnostics).toHaveLength(4);
   });
+
+  it("flags app-lifetime-named helpers that are invoked per component mount", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `import { autorun } from "mobx";
+       import { useEffect } from "react";
+       export const initStores = () => {
+         autorun(() => sync());
+       };
+       export const Panel = () => {
+         useEffect(() => initStores(), []);
+         return null;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet for a process-lifetime module IIFE", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `import { autorun } from "mobx";
+       (() => {
+         autorun(() => sync());
+       })();`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("indexes module singleton constructors once for large generated stores", () => {
+    const stores = Array.from(
+      { length: 1200 },
+      (_, storeIndex) =>
+        `class Store${storeIndex} { constructor() { autorun(() => state.value); } }\n` +
+        `const store${storeIndex} = new Store${storeIndex}();`,
+    ).join("\n");
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `import { autorun } from "mobx";\n${stores}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

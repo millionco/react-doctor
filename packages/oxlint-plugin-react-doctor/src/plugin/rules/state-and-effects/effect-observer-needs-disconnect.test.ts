@@ -718,4 +718,49 @@ describe("effect-observer-needs-disconnect", () => {
     expect(partialRelease.diagnostics).toHaveLength(1);
     expect(wrongRelease.diagnostics).toHaveLength(1);
   });
+
+  it("does not treat one callback-parameter unobserve as releasing every target", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver((_entries, currentObserver) => {
+           currentObserver.unobserve(first);
+         });
+         observer.observe(first);
+         observer.observe(second);
+       }, [first, second]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat one observer entry unobserve as releasing every target", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver((entries, currentObserver) => {
+           currentObserver.unobserve(entries[0].target);
+         });
+         observer.observe(first);
+         observer.observe(second);
+       }, [first, second]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a short-circuiting entry iterator as releasing every target", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver((entries, currentObserver) => {
+           entries.find((entry) => {
+             currentObserver.unobserve(entry.target);
+             return true;
+           });
+         });
+         observer.observe(first);
+         observer.observe(second);
+       }, [first, second]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

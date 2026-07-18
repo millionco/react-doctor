@@ -10,7 +10,6 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -41,6 +40,17 @@ const getBareCalleeName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
   const callee = stripParenExpression(node.callee);
   return isNodeOfType(callee, "Identifier") ? callee.name : null;
+};
+
+const isImportedMobxRunInActionCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const calleeName = getBareCalleeName(node);
+  const callee = isNodeOfType(node, "CallExpression") ? stripParenExpression(node.callee) : null;
+  return Boolean(
+    calleeName &&
+    isNodeOfType(callee, "Identifier") &&
+    scopes.symbolFor(callee)?.kind === "import" &&
+    getImportedNameFromModule(node, calleeName, "mobx") === "runInAction",
+  );
 };
 
 // Timers are registered either bare (`setInterval(...)`) or via the global
@@ -102,14 +112,15 @@ const classMemberFunction = (
 const functionSetsComponentState = (
   functionNode: EsTreeNode,
   classBody: EsTreeNode | null,
+  scopes: ScopeAnalysis,
   visitedFunctions = new Set<EsTreeNode>(),
 ): boolean => {
   if (visitedFunctions.has(functionNode)) return false;
   visitedFunctions.add(functionNode);
   let mutates = false;
-  walkAst(functionNode, (node: EsTreeNode) => {
+  walkSynchronousCallbackFlow(functionNode, (node: EsTreeNode) => {
     if (mutates) return false;
-    if (getBareCalleeName(node) === "runInAction") {
+    if (isImportedMobxRunInActionCall(node, scopes)) {
       mutates = true;
       return false;
     }
@@ -127,7 +138,10 @@ const functionSetsComponentState = (
       return false;
     }
     const nestedFunction = memberName ? classMemberFunction(classBody, memberName) : null;
-    if (nestedFunction && functionSetsComponentState(nestedFunction, classBody, visitedFunctions)) {
+    if (
+      nestedFunction &&
+      functionSetsComponentState(nestedFunction, classBody, scopes, visitedFunctions)
+    ) {
       mutates = true;
       return false;
     }
@@ -173,6 +187,7 @@ const resolveTimeoutCallbackFunction = (
 const timeoutCallbackMutatesComponent = (
   callback: EsTreeNode,
   classBody: EsTreeNode | null,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const resolvedCallback = resolveTimeoutCallbackFunction(callback, classBody);
   if (!isFunctionLike(resolvedCallback)) return false;
@@ -181,7 +196,7 @@ const timeoutCallbackMutatesComponent = (
   let mutates = false;
   walkSynchronousCallbackFlow(body, (node) => {
     if (mutates) return;
-    if (getBareCalleeName(node) === "runInAction") {
+    if (isImportedMobxRunInActionCall(node, scopes)) {
       mutates = true;
       return;
     }
@@ -200,7 +215,7 @@ const timeoutCallbackMutatesComponent = (
         return;
       }
       const memberFunction = memberName ? classMemberFunction(classBody, memberName) : null;
-      if (memberFunction && !functionSetsComponentState(memberFunction, classBody)) return;
+      if (memberFunction && !functionSetsComponentState(memberFunction, classBody, scopes)) return;
       mutates = true;
     }
   });
@@ -265,6 +280,17 @@ const collectMountLocalReceiverSymbolIds = (
         ? scopes.symbolFor(assignedValue)
         : null;
       if (assignedSymbol) escapedSymbolIds.add(assignedSymbol.id);
+    }
+    if (isNodeOfType(node, "CallExpression")) {
+      for (const argument of node.arguments ?? []) {
+        const argumentExpression = stripParenExpression(argument as EsTreeNode);
+        const argumentSymbol = isNodeOfType(argumentExpression, "Identifier")
+          ? scopes.symbolFor(argumentExpression)
+          : null;
+        if (argumentSymbol && declaredSymbolIds.has(argumentSymbol.id)) {
+          escapedSymbolIds.add(argumentSymbol.id);
+        }
+      }
     }
   });
   for (const escapedSymbolId of escapedSymbolIds) declaredSymbolIds.delete(escapedSymbolId);
@@ -440,7 +466,7 @@ const isMountHazard = (
   const timerCalleeName = getTimerCalleeName(node);
   if (timerCalleeName === "setInterval") return true;
   if (timerCalleeName === "setTimeout" && node.arguments?.[0]) {
-    return timeoutCallbackMutatesComponent(node.arguments[0], classBody);
+    return timeoutCallbackMutatesComponent(node.arguments[0], classBody, scopes);
   }
   return false;
 };
@@ -449,26 +475,6 @@ const getMemberFunctionBody = (member: EsTreeNode): EsTreeNode | null => {
   const isRelevantMember =
     isNodeOfType(member, "MethodDefinition") || isNodeOfType(member, "PropertyDefinition");
   return isRelevantMember && isFunctionLike(member.value) ? (member.value.body ?? null) : null;
-};
-
-// MobX auto-manages teardown when `disposeOnUnmount` is used anywhere in the
-// class, so the missing `componentWillUnmount` is not a leak.
-const classUsesDisposeOnUnmount = (classNode: EsTreeNode): boolean => {
-  let found = false;
-  walkAst(classNode, (child: EsTreeNode) => {
-    if (found || !isNodeOfType(child, "CallExpression")) return;
-    const callee = stripParenExpression(child.callee);
-    if (
-      isNodeOfType(callee, "Identifier") &&
-      getImportedNameFromModule(callee, callee.name, "mobx-react") === "disposeOnUnmount"
-    ) {
-      const target = child.arguments?.[0];
-      if (!target || !isNodeOfType(stripParenExpression(target), "ThisExpression")) return;
-      found = true;
-      return false;
-    }
-  });
-  return found;
 };
 
 // KNOWN ACCEPTED NOISE: an app-root class component that never unmounts
@@ -497,7 +503,6 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
         (member) => getClassMemberName(member) === "componentWillUnmount",
       );
       if (hasComponentWillUnmount) return;
-      if (classUsesDisposeOnUnmount(classNode)) return;
 
       for (const member of members) {
         const memberName = getClassMemberName(member);

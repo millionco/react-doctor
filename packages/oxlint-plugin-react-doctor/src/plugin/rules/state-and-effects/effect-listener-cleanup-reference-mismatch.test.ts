@@ -291,4 +291,16 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
     expect(matchingReference.diagnostics).toHaveLength(0);
     expect(wrongReceiver.diagnostics).toHaveLength(0);
   });
+
+  it("follows synchronously invoked registration helpers", () => {
+    const result = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `useEffect(() => {
+         const setup = () => store.subscribe(() => render());
+         setup();
+         return () => store.unsubscribe(() => render());
+       }, [store]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

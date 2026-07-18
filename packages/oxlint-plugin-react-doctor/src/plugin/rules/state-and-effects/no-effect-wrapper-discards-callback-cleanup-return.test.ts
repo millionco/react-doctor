@@ -294,4 +294,27 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
     expect(sequenceResult.diagnostics).toHaveLength(1);
     expect(returnedResult.diagnostics).toHaveLength(0);
   });
+
+  it("does not trust a local type alias named EffectCallback", () => {
+    const result = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `import { useEffect } from "react";
+       type EffectCallback = () => number;
+       export const useValue = (effect: EffectCallback) => {
+         useEffect(() => { effect(); }, [effect]);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("resolves aliased React EffectCallback type imports", () => {
+    const result = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `import { useEffect, type EffectCallback as ReactEffectCallback } from "react";
+       export const useValue = (effect: ReactEffectCallback) => {
+         useEffect(() => { effect(); }, [effect]);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

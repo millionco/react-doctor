@@ -2,12 +2,11 @@ import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cl
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenEffectHookCall } from "../../utils/is-proven-effect-hook-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { walkAst } from "../../utils/walk-ast.js";
+import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callback-flow.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -160,8 +159,7 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
       const registerUsages: ListenerUsage[] = [];
       const releaseUsages: ListenerUsage[] = [];
 
-      walkAst(callback, (child: EsTreeNode) => {
-        if (child !== callback && isFunctionLike(child)) return false;
+      walkSynchronousCallbackFlow(callback, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "CallExpression")) return;
         const callee = stripParenExpression(child.callee);
         if (!isNodeOfType(callee, "MemberExpression")) return;
@@ -182,8 +180,7 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
       });
 
       for (const cleanupFunction of collectReturnedCleanupFunctions(callback)) {
-        walkAst(cleanupFunction, (child: EsTreeNode) => {
-          if (child !== cleanupFunction && isFunctionLike(child)) return false;
+        walkSynchronousCallbackFlow(cleanupFunction, (child: EsTreeNode) => {
           if (!isNodeOfType(child, "CallExpression")) return;
           const callee = stripParenExpression(child.callee);
           if (!isNodeOfType(callee, "MemberExpression")) return;

@@ -13,6 +13,7 @@ import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callba
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const REQUEST_ANIMATION_FRAME_NAME = "requestAnimationFrame";
 const CANCEL_ANIMATION_FRAME_NAME = "cancelAnimationFrame";
@@ -69,14 +70,16 @@ const resolveFunctionNode = (expression: EsTreeNode | null | undefined): EsTreeN
   return null;
 };
 
-const collectScheduledSelfNames = (
+const collectScheduledSelfBindings = (
   scheduledArgument: EsTreeNode,
   scheduledFunction: EsTreeNode,
-): Set<string> => {
-  const selfNames = new Set<string>();
+  scopes: ScopeAnalysis,
+): Set<EsTreeNode> => {
+  const selfBindings = new Set<EsTreeNode>();
   const strippedArgument = stripParenExpression(scheduledArgument);
   if (isNodeOfType(strippedArgument, "Identifier")) {
-    selfNames.add(strippedArgument.name);
+    const argumentBinding = scopes.symbolFor(strippedArgument)?.bindingIdentifier;
+    if (argumentBinding) selfBindings.add(argumentBinding);
   }
   if (
     (isNodeOfType(scheduledFunction, "FunctionExpression") ||
@@ -84,20 +87,36 @@ const collectScheduledSelfNames = (
     scheduledFunction.id &&
     isNodeOfType(scheduledFunction.id, "Identifier")
   ) {
-    selfNames.add(scheduledFunction.id.name);
+    const functionBinding = scopes.symbolFor(scheduledFunction.id)?.bindingIdentifier;
+    if (functionBinding) selfBindings.add(functionBinding);
   }
-  return selfNames;
+  return selfBindings;
 };
 
-const doesSubtreeRescheduleAnyName = (root: EsTreeNode, selfNames: Set<string>): boolean => {
+const isScheduledSelfReference = (
+  expression: EsTreeNode,
+  selfBindings: ReadonlySet<EsTreeNode>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const reference = stripParenExpression(expression);
+  return (
+    isNodeOfType(reference, "Identifier") &&
+    selfBindings.has(scopes.symbolFor(reference)?.bindingIdentifier ?? reference)
+  );
+};
+
+const doesSubtreeRescheduleSelf = (
+  root: EsTreeNode,
+  selfBindings: ReadonlySet<EsTreeNode>,
+  scopes: ScopeAnalysis,
+): boolean => {
   let didReschedule = false;
   walkAst(root, (child: EsTreeNode) => {
     if (didReschedule) return false;
     if (!isRequestAnimationFrameCall(child)) return;
     const innerArgument = child.arguments?.[0];
     if (!innerArgument) return;
-    const strippedInner = stripParenExpression(innerArgument);
-    if (isNodeOfType(strippedInner, "Identifier") && selfNames.has(strippedInner.name)) {
+    if (isScheduledSelfReference(innerArgument, selfBindings, scopes)) {
       didReschedule = true;
       return false;
     }
@@ -105,7 +124,10 @@ const doesSubtreeRescheduleAnyName = (root: EsTreeNode, selfNames: Set<string>):
   return didReschedule;
 };
 
-const findSelfReschedulingRafLoops = (effectCallback: EsTreeNode): SelfReschedulingRafLoop[] => {
+const findSelfReschedulingRafLoops = (
+  effectCallback: EsTreeNode,
+  scopes: ScopeAnalysis,
+): SelfReschedulingRafLoop[] => {
   const foundLoops: SelfReschedulingRafLoop[] = [];
   walkSynchronousCallbackFlow(effectCallback, (child: EsTreeNode) => {
     if (!isRequestAnimationFrameCall(child)) return;
@@ -113,8 +135,8 @@ const findSelfReschedulingRafLoops = (effectCallback: EsTreeNode): SelfReschedul
     if (!scheduledArgument) return;
     const scheduledFunction = resolveFunctionNode(scheduledArgument);
     if (!scheduledFunction) return;
-    const selfNames = collectScheduledSelfNames(scheduledArgument, scheduledFunction);
-    if (doesSubtreeRescheduleAnyName(scheduledFunction, selfNames)) {
+    const selfBindings = collectScheduledSelfBindings(scheduledArgument, scheduledFunction, scopes);
+    if (doesSubtreeRescheduleSelf(scheduledFunction, selfBindings, scopes)) {
       foundLoops.push({ rafCall: child, scheduledFunction });
     }
   });
@@ -170,28 +192,103 @@ const storedHandleKeyForCall = (call: EsTreeNodeOfType<"CallExpression">): strin
 
 const collectLoopSchedulingCalls = (
   rafLoop: SelfReschedulingRafLoop,
+  scopes: ScopeAnalysis,
 ): EsTreeNodeOfType<"CallExpression">[] => {
   const initialArgument = rafLoop.rafCall.arguments?.[0];
   if (!initialArgument) return [];
-  const selfNames = collectScheduledSelfNames(initialArgument, rafLoop.scheduledFunction);
+  const selfBindings = collectScheduledSelfBindings(
+    initialArgument,
+    rafLoop.scheduledFunction,
+    scopes,
+  );
   const calls = [rafLoop.rafCall];
   walkAst(rafLoop.scheduledFunction, (child: EsTreeNode) => {
     if (!isRequestAnimationFrameCall(child)) return;
     const scheduledArgument = child.arguments?.[0];
-    const expression = scheduledArgument ? stripParenExpression(scheduledArgument) : null;
-    if (expression && isNodeOfType(expression, "Identifier") && selfNames.has(expression.name)) {
+    if (scheduledArgument && isScheduledSelfReference(scheduledArgument, selfBindings, scopes)) {
       calls.push(child);
     }
   });
   return calls;
 };
 
-const cancellableHandleKey = (rafLoop: SelfReschedulingRafLoop): string | null => {
-  const handleKeys = collectLoopSchedulingCalls(rafLoop).map(storedHandleKeyForCall);
+const storageTargetForCall = (call: EsTreeNodeOfType<"CallExpression">): EsTreeNode | null => {
+  const expressionRoot = findTransparentExpressionRoot(call);
+  const parent = expressionRoot.parent;
+  if (isNodeOfType(parent, "AssignmentExpression") && parent.right === expressionRoot) {
+    return parent.left as EsTreeNode;
+  }
+  if (
+    isNodeOfType(parent, "VariableDeclarator") &&
+    parent.init === expressionRoot &&
+    isNodeOfType(parent.id, "Identifier")
+  ) {
+    return parent.id;
+  }
+  return null;
+};
+
+const hasNonSchedulingHandleWrite = (
+  root: EsTreeNode,
+  handleKey: string,
+  schedulingStorageTargets: ReadonlySet<EsTreeNode>,
+): boolean => {
+  const schedulingWritePositions = [...schedulingStorageTargets]
+    .filter((storageTarget) => {
+      let cursor: EsTreeNode | null | undefined = storageTarget;
+      while (cursor && cursor !== root) {
+        if (isFunctionLike(cursor)) return false;
+        cursor = cursor.parent;
+      }
+      return cursor === root;
+    })
+    .map((storageTarget) => storageTarget.range[0]);
+  let didFindWrite = false;
+  walkAst(root, (child: EsTreeNode) => {
+    if (didFindWrite) return false;
+    if (child !== root && isFunctionLike(child)) return false;
+    const writeTarget = isNodeOfType(child, "AssignmentExpression")
+      ? child.left
+      : isNodeOfType(child, "UpdateExpression")
+        ? child.argument
+        : null;
+    if (
+      writeTarget &&
+      !schedulingStorageTargets.has(writeTarget as EsTreeNode) &&
+      serializeHandleKey(writeTarget as EsTreeNode) === handleKey &&
+      schedulingWritePositions.some(
+        (schedulingWritePosition) => schedulingWritePosition < writeTarget.range[0],
+      )
+    ) {
+      didFindWrite = true;
+      return false;
+    }
+  });
+  return didFindWrite;
+};
+
+const cancellableHandleKey = (
+  rafLoop: SelfReschedulingRafLoop,
+  effectCallback: EsTreeNode,
+  scopes: ScopeAnalysis,
+): string | null => {
+  const schedulingCalls = collectLoopSchedulingCalls(rafLoop, scopes);
+  const handleKeys = schedulingCalls.map(storedHandleKeyForCall);
   const firstHandleKey = handleKeys[0];
-  return firstHandleKey && handleKeys.every((handleKey) => handleKey === firstHandleKey)
-    ? firstHandleKey
-    : null;
+  if (!firstHandleKey || !handleKeys.every((handleKey) => handleKey === firstHandleKey)) {
+    return null;
+  }
+  if (firstHandleKey.startsWith(COLLECTION_VALUES_HANDLE_PREFIX)) return firstHandleKey;
+  const schedulingStorageTargets = new Set(
+    schedulingCalls.flatMap((call) => {
+      const storageTarget = storageTargetForCall(call);
+      return storageTarget ? [storageTarget] : [];
+    }),
+  );
+  return hasNonSchedulingHandleWrite(effectCallback, firstHandleKey, schedulingStorageTargets) ||
+    hasNonSchedulingHandleWrite(rafLoop.scheduledFunction, firstHandleKey, schedulingStorageTargets)
+    ? null
+    : firstHandleKey;
 };
 
 const cleanupCancelsCollectionValues = (
@@ -399,37 +496,84 @@ const collectCleanupWrittenNames = (
   return writtenNames;
 };
 
-const doesLoopGuardOnAnyName = (loopFunction: EsTreeNode, guardNames: Set<string>): boolean => {
-  let didFindGuard = false;
-  walkAst(loopFunction, (child: EsTreeNode) => {
-    if (didFindGuard) return false;
-    let guardTest: EsTreeNode | null = null;
-    if (
-      isNodeOfType(child, "IfStatement") ||
-      isNodeOfType(child, "ConditionalExpression") ||
-      isNodeOfType(child, "WhileStatement") ||
-      isNodeOfType(child, "DoWhileStatement")
-    ) {
-      guardTest = child.test;
-    } else if (isNodeOfType(child, "LogicalExpression")) {
-      guardTest = child.left;
-    }
-    if (guardTest) {
-      walkAst(guardTest, (guardChild: EsTreeNode) => {
-        if (didFindGuard) return false;
-        if (isNodeOfType(guardChild, "MemberExpression")) {
-          if (guardNames.has(serializeHandleKey(guardChild) ?? "")) didFindGuard = true;
-          return false;
-        }
-        if (isNodeOfType(guardChild, "Identifier") && guardNames.has(guardChild.name)) {
-          didFindGuard = true;
-          return false;
-        }
-      });
-      if (didFindGuard) return false;
+const testReferencesAnyGuardName = (test: EsTreeNode, guardNames: ReadonlySet<string>): boolean => {
+  let didFindGuardName = false;
+  walkAst(test, (child: EsTreeNode) => {
+    if (didFindGuardName) return false;
+    const referenceKey = isNodeOfType(child, "MemberExpression")
+      ? serializeHandleKey(child)
+      : isNodeOfType(child, "Identifier")
+        ? child.name
+        : null;
+    if (referenceKey && guardNames.has(referenceKey)) {
+      didFindGuardName = true;
+      return false;
     }
   });
-  return didFindGuard;
+  return didFindGuardName;
+};
+
+const guardBodyAlwaysExits = (statement: EsTreeNode): boolean => {
+  if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
+    return true;
+  }
+  return (
+    isNodeOfType(statement, "BlockStatement") &&
+    Boolean(statement.body?.some((child) => guardBodyAlwaysExits(child as EsTreeNode)))
+  );
+};
+
+const hasDominatingGuard = (
+  call: EsTreeNode,
+  scheduledFunction: EsTreeNode,
+  guardNames: ReadonlySet<string>,
+): boolean => {
+  let cursor: EsTreeNode | null | undefined = call;
+  while (cursor && cursor !== scheduledFunction) {
+    const parent: EsTreeNode | null | undefined = cursor.parent;
+    if (!parent) return false;
+    if (
+      ((isNodeOfType(parent, "IfStatement") || isNodeOfType(parent, "ConditionalExpression")) &&
+        (parent.consequent === cursor || parent.alternate === cursor) &&
+        testReferencesAnyGuardName(parent.test as EsTreeNode, guardNames)) ||
+      (isNodeOfType(parent, "LogicalExpression") &&
+        parent.right === cursor &&
+        testReferencesAnyGuardName(parent.left as EsTreeNode, guardNames))
+    ) {
+      return true;
+    }
+    if (isNodeOfType(parent, "BlockStatement")) {
+      const statementIndex = parent.body.findIndex((statement) => statement === cursor);
+      if (statementIndex >= 0) {
+        for (const previousStatement of parent.body.slice(0, statementIndex)) {
+          const previousNode: EsTreeNode = previousStatement;
+          if (
+            isNodeOfType(previousNode, "IfStatement") &&
+            guardBodyAlwaysExits(previousNode.consequent as EsTreeNode) &&
+            testReferencesAnyGuardName(previousNode.test as EsTreeNode, guardNames)
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+    cursor = parent;
+  }
+  return false;
+};
+
+const doesCleanupGuardEveryReschedule = (
+  rafLoop: SelfReschedulingRafLoop,
+  guardNames: ReadonlySet<string>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const recursiveSchedulingCalls = collectLoopSchedulingCalls(rafLoop, scopes).slice(1);
+  return (
+    recursiveSchedulingCalls.length > 0 &&
+    recursiveSchedulingCalls.every((call) =>
+      hasDominatingGuard(call, rafLoop.scheduledFunction, guardNames),
+    )
+  );
 };
 
 const isPositiveNumericLiteral = (node: EsTreeNode): boolean =>
@@ -610,9 +754,9 @@ export const effectRafLoopNeedsCancel = defineRule({
       if (!callback) return;
 
       const cleanupFunctions = collectReturnedCleanupFunctions(callback);
-      for (const rafLoop of findSelfReschedulingRafLoops(callback)) {
+      for (const rafLoop of findSelfReschedulingRafLoops(callback, context.scopes)) {
         if (everyRescheduleIsProgressBounded(rafLoop.scheduledFunction)) continue;
-        const handleKey = cancellableHandleKey(rafLoop);
+        const handleKey = cancellableHandleKey(rafLoop, callback, context.scopes);
         if (
           handleKey &&
           cleanupFunctions.some((cleanupFunction) =>
@@ -623,7 +767,7 @@ export const effectRafLoopNeedsCancel = defineRule({
         }
         const hasCleanupGuard = cleanupFunctions.some((cleanupFunction) => {
           const cleanupWrittenNames = collectCleanupWrittenNames(cleanupFunction, callback);
-          return doesLoopGuardOnAnyName(rafLoop.scheduledFunction, cleanupWrittenNames);
+          return doesCleanupGuardEveryReschedule(rafLoop, cleanupWrittenNames, context.scopes);
         });
         if (hasCleanupGuard) continue;
         context.report({

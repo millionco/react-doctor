@@ -24,11 +24,12 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { resolveStableOptionsObject } from "../../utils/resolve-stable-options-object.js";
 
 const DEBOUNCE_WRAPPER_HOOK_NAMES = new Set(["useMemo", "useCallback", "useRef"]);
+const USE_REF_HOOK_NAMES = new Set(["useRef"]);
 const DEBOUNCE_FACTORY_NAMES = new Set(["debounce", "throttle"]);
 const DEBOUNCE_RELEASE_METHOD_NAMES = new Set(["cancel", "flush"]);
 const BROWSER_GLOBAL_NAMES = new Set(["document", "window"]);
 const PROMISE_CHAIN_METHOD_NAMES = new Set(["then", "catch", "finally"]);
-const SAVE_LIKE_BINDING_NAME_PATTERN = /save|persist|submit|commit|(?:^|[^a])sync/i;
+const SAVE_LIKE_BINDING_NAME_PATTERN = /save|persist|submit|commit/i;
 
 type FunctionEsTreeNode = EsTreeNodeOfType<
   "ArrowFunctionExpression" | "FunctionExpression" | "FunctionDeclaration"
@@ -508,7 +509,43 @@ const hasAsyncOrDomWork = (wrappedFunction: FunctionEsTreeNode): boolean => {
   return didFindWork;
 };
 
-const startsWithNullRefGuard = (wrappedFunction: FunctionEsTreeNode): boolean => {
+const isNullishRefInitializer = (expression: EsTreeNode | undefined): boolean => {
+  if (!expression) return true;
+  const initializer = stripParenExpression(expression);
+  return (
+    (isNodeOfType(initializer, "Literal") && initializer.value === null) ||
+    (isNodeOfType(initializer, "Identifier") && initializer.name === "undefined") ||
+    (isNodeOfType(initializer, "UnaryExpression") && initializer.operator === "void")
+  );
+};
+
+const isUnmountClearedRefCurrentRead = (
+  memberExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !isNodeOfType(memberExpression, "MemberExpression") ||
+    getStaticPropertyName(memberExpression) !== "current"
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(memberExpression.object);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const symbol = scopes.symbolFor(receiver);
+  if (!symbol) return true;
+  if (!symbol.initializer) return false;
+  const initializer = stripParenExpression(symbol.initializer);
+  return (
+    isNodeOfType(initializer, "CallExpression") &&
+    isProvenReactHookCall(initializer, USE_REF_HOOK_NAMES, scopes) &&
+    isNullishRefInitializer(initializer.arguments?.[0] as EsTreeNode | undefined)
+  );
+};
+
+const startsWithNullRefGuard = (
+  wrappedFunction: FunctionEsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   if (!isNodeOfType(wrappedFunction.body, "BlockStatement")) return false;
   // TS narrowing hoists the read: `const el = ref.current; if (!el) return;`
   // (or an optional-chained measurement) — collect leading bindings seeded
@@ -519,7 +556,7 @@ const startsWithNullRefGuard = (wrappedFunction: FunctionEsTreeNode): boolean =>
     let found = false;
     walkAst(root, (child: EsTreeNode) => {
       if (found) return false;
-      if (isNodeOfType(child, "MemberExpression") && getStaticPropertyName(child) === "current") {
+      if (isUnmountClearedRefCurrentRead(child, scopes)) {
         found = true;
         return false;
       }
@@ -621,7 +658,7 @@ export const debounceNoCleanup = defineRule({
         );
         if (!wrappedCallback) return;
         if (!hasAsyncOrDomWork(wrappedCallback)) return;
-        if (startsWithNullRefGuard(wrappedCallback)) return;
+        if (startsWithNullRefGuard(wrappedCallback, context.scopes)) return;
 
         context.report({
           node: debounceCall,

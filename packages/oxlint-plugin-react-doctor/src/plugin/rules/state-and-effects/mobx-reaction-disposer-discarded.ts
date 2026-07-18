@@ -13,9 +13,11 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { resolveStableOptionsObject } from "../../utils/resolve-stable-options-object.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const MESSAGE =
   "This `reaction`/`autorun` returns a disposer that is discarded, so the tracked computation can outlive its owner; keep the disposer and call it on teardown, or pass the call to `disposeOnUnmount`.";
@@ -74,7 +76,18 @@ const isEvaluatedAtModuleScope = (node: EsTreeNode): boolean => {
       ancestor = ancestor.parent ?? null;
       continue;
     }
-    if (isFunctionLike(ancestor)) return false;
+    if (isFunctionLike(ancestor)) {
+      const functionRoot = findTransparentExpressionRoot(ancestor);
+      const invocation = functionRoot.parent;
+      if (
+        isNodeOfType(invocation, "CallExpression") &&
+        stripParenExpression(invocation.callee) === functionRoot
+      ) {
+        ancestor = invocation.parent ?? null;
+        continue;
+      }
+      return false;
+    }
     ancestor = ancestor.parent ?? null;
   }
   return true;
@@ -110,10 +123,53 @@ const isModuleScopedFunction = (functionNode: EsTreeNode): boolean => {
   return false;
 };
 
+const directCallsOfFunction = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNodeOfType<"CallExpression">[] => {
+  const bindingIdentifier = isNodeOfType(functionNode, "FunctionDeclaration")
+    ? functionNode.id
+    : isNodeOfType(functionNode.parent, "VariableDeclarator")
+      ? functionNode.parent.id
+      : null;
+  if (!bindingIdentifier || !isNodeOfType(bindingIdentifier, "Identifier")) return [];
+  const symbol = scopes.symbolFor(bindingIdentifier);
+  if (!symbol) return [];
+  return symbol.references.flatMap((reference) => {
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const parent = referenceRoot.parent;
+    return isNodeOfType(parent, "CallExpression") && parent.callee === referenceRoot
+      ? [parent]
+      : [];
+  });
+};
+
+const moduleInstantiatedClassSymbolIdsByAnalysis = new WeakMap<ScopeAnalysis, Set<number>>();
+
+const getModuleInstantiatedClassSymbolIds = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): Set<number> => {
+  const cachedSymbolIds = moduleInstantiatedClassSymbolIdsByAnalysis.get(scopes);
+  if (cachedSymbolIds) return cachedSymbolIds;
+  const symbolIds = new Set<number>();
+  const program = findProgramRoot(node);
+  if (program) {
+    walkAst(program, (candidate) => {
+      if (!isNodeOfType(candidate, "NewExpression") || !isEvaluatedAtModuleScope(candidate)) return;
+      const callee = stripParenExpression(candidate.callee);
+      const symbol = isNodeOfType(callee, "Identifier") ? scopes.symbolFor(callee) : null;
+      if (symbol?.kind === "class") symbolIds.add(symbol.id);
+    });
+  }
+  moduleInstantiatedClassSymbolIdsByAnalysis.set(scopes, symbolIds);
+  return symbolIds;
+};
+
 // The constructor of a class instantiated at module scope in the same file
 // (`export const themeStore = new ThemeStore()`) also runs once per process:
 // the singleton's reactions live as long as the app.
-const isProcessLifetimeWiring = (node: EsTreeNode): boolean => {
+const isProcessLifetimeWiring = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let ancestor = node.parent;
   while (ancestor) {
     if (isFunctionLike(ancestor)) {
@@ -123,7 +179,8 @@ const isProcessLifetimeWiring = (node: EsTreeNode): boolean => {
         PROCESS_LIFETIME_WIRING_NAME_PATTERN.test(wiringName) &&
         isModuleScopedFunction(ancestor)
       ) {
-        return true;
+        const directCalls = directCallsOfFunction(ancestor, scopes);
+        return directCalls.length === 0 || directCalls.every(isEvaluatedAtModuleScope);
       }
       const methodDefinition = ancestor.parent;
       if (
@@ -135,26 +192,12 @@ const isProcessLifetimeWiring = (node: EsTreeNode): boolean => {
           classNode = classNode.parent ?? null;
         }
         if (classNode && isNodeOfType(classNode.id, "Identifier")) {
-          const className = classNode.id.name;
-          let programRoot: EsTreeNode | null | undefined = classNode;
-          while (programRoot && !isNodeOfType(programRoot, "Program")) {
-            programRoot = programRoot.parent ?? null;
-          }
-          if (programRoot) {
-            let instantiatedAtModuleScope = false;
-            walkAst(programRoot, (child: EsTreeNode) => {
-              if (instantiatedAtModuleScope) return false;
-              if (
-                isNodeOfType(child, "NewExpression") &&
-                isNodeOfType(child.callee, "Identifier") &&
-                child.callee.name === className &&
-                isEvaluatedAtModuleScope(child)
-              ) {
-                instantiatedAtModuleScope = true;
-                return false;
-              }
-            });
-            if (instantiatedAtModuleScope) return true;
+          const classSymbol = scopes.symbolFor(classNode.id);
+          if (
+            classSymbol &&
+            getModuleInstantiatedClassSymbolIds(node, scopes).has(classSymbol.id)
+          ) {
+            return true;
           }
         }
       }
@@ -246,7 +289,7 @@ export const mobxReactionDisposerDiscarded = defineRule({
       if (!isDisposerOwnershipDiscarded(node)) return;
 
       if (isEvaluatedAtModuleScope(node)) return;
-      if (isProcessLifetimeWiring(node)) return;
+      if (isProcessLifetimeWiring(node, context.scopes)) return;
 
       // A `signal` option is MobX's documented alternative disposal mechanism,
       // so discarding the disposer is correct there; opaque (non-literal)

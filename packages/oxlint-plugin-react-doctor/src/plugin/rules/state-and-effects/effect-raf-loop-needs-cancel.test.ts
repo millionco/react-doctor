@@ -686,4 +686,68 @@ describe("effect-raf-loop-needs-cancel", () => {
     expect(matchingRelease.diagnostics).toHaveLength(0);
     expect(wrongRelease.diagnostics).toHaveLength(1);
   });
+
+  it("does not confuse a nested callback parameter with the RAF loop binding", () => {
+    const result = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+         function frame() {
+           const schedule = (frame) => requestAnimationFrame(frame);
+           schedule(() => {});
+         }
+         requestAnimationFrame(frame);
+       }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires the cleanup guard to dominate every recursive schedule", () => {
+    const result = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+         let active = true;
+         const frame = () => {
+           if (active) tick();
+           requestAnimationFrame(frame);
+         };
+         requestAnimationFrame(frame);
+         return () => { active = false; };
+       }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a cancellation handle overwritten after every schedule", () => {
+    const result = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+         let frameId;
+         const frame = () => {
+           frameId = requestAnimationFrame(frame);
+           frameId = 0;
+         };
+         frameId = requestAnimationFrame(frame);
+         frameId = 0;
+         return () => cancelAnimationFrame(frameId);
+       }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows an earlier handle write that every schedule replaces", () => {
+    const result = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+         let frameId;
+         const frame = () => {
+           frameId = 0;
+           frameId = requestAnimationFrame(frame);
+         };
+         frameId = 0;
+         frameId = requestAnimationFrame(frame);
+         return () => cancelAnimationFrame(frameId);
+       }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

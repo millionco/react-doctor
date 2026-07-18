@@ -4,6 +4,7 @@ import { collectFunctionReturnStatements } from "../../utils/collect-function-re
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -16,7 +17,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
 
-const OBSERVER_RELEASE_METHOD_NAMES = new Set(["disconnect", "unobserve"]);
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "self"]);
 
 interface TrackedObserver {
@@ -25,9 +25,16 @@ interface TrackedObserver {
   didObserve: boolean;
   didObserveUnknownTarget: boolean;
   didReleaseAll: boolean;
-  didReleaseViaCallbackParameter: boolean;
+  didReleaseAllViaCallbackParameter: boolean;
+  callbackReleasedTargetKeys: Set<string>;
   didEscape: boolean;
   observedTargetKeys: Set<string>;
+}
+
+interface CallbackObserverRelease {
+  didReleaseAll: boolean;
+  didReleaseObservedEntries: boolean;
+  releasedTargetKeys: Set<string>;
 }
 
 const recordObserverUsage = (
@@ -111,10 +118,77 @@ const recordObserverUsage = (
 // obs.disconnect() })` — the spec-provided reference to the observer
 // itself. A release through that alias is as real as one through the
 // binding.
-const callbackReleasesViaObserverParameter = (
-  construction: EsTreeNodeOfType<"NewExpression">,
+const expressionReferencesBinding = (
+  expression: EsTreeNode,
+  bindingIdentifier: EsTreeNode,
   scopes: RuleContext["scopes"],
 ): boolean => {
+  let didReferenceBinding = false;
+  walkSynchronousCallbackFlow(expression, (child) => {
+    if (
+      isNodeOfType(child, "Identifier") &&
+      scopes.symbolFor(child)?.bindingIdentifier === bindingIdentifier
+    ) {
+      didReferenceBinding = true;
+    }
+  });
+  return didReferenceBinding;
+};
+
+const isObserverEntryTarget = (
+  expression: EsTreeNode,
+  observerCallback: EsTreeNode,
+  entriesBindingIdentifier: EsTreeNode | null,
+  scopes: RuleContext["scopes"],
+): boolean => {
+  if (!entriesBindingIdentifier) return false;
+  const targetMember = stripParenExpression(expression);
+  if (
+    !isNodeOfType(targetMember, "MemberExpression") ||
+    getStaticPropertyName(targetMember) !== "target"
+  ) {
+    return false;
+  }
+  const entryExpression = stripParenExpression(targetMember.object);
+  if (!isNodeOfType(entryExpression, "Identifier")) return false;
+  const entryBinding = scopes.symbolFor(entryExpression)?.bindingIdentifier;
+  if (!entryBinding) return false;
+  const iteratorCallback = findEnclosingFunction(entryExpression);
+  if (
+    !iteratorCallback ||
+    iteratorCallback === observerCallback ||
+    !isFunctionLike(iteratorCallback)
+  ) {
+    return false;
+  }
+  const callbackRoot = findTransparentExpressionRoot(iteratorCallback);
+  const iteratorCall = callbackRoot.parent;
+  if (
+    !isNodeOfType(iteratorCall, "CallExpression") ||
+    !iteratorCall.arguments.some((argument) => argument === callbackRoot)
+  ) {
+    return false;
+  }
+  const iteratorCallee = stripParenExpression(iteratorCall.callee);
+  return (
+    isNodeOfType(iteratorCallee, "MemberExpression") &&
+    getStaticPropertyName(iteratorCallee) === "forEach" &&
+    expressionReferencesBinding(iteratorCallee.object, entriesBindingIdentifier, scopes) &&
+    (iteratorCallback.params ?? []).some(
+      (parameter: EsTreeNode) => scopes.symbolFor(parameter)?.bindingIdentifier === entryBinding,
+    )
+  );
+};
+
+const collectCallbackObserverRelease = (
+  construction: EsTreeNodeOfType<"NewExpression">,
+  scopes: RuleContext["scopes"],
+): CallbackObserverRelease => {
+  const release: CallbackObserverRelease = {
+    didReleaseAll: false,
+    didReleaseObservedEntries: false,
+    releasedTargetKeys: new Set(),
+  };
   const observerCallback = construction.arguments?.[0]
     ? stripParenExpression(construction.arguments[0] as EsTreeNode)
     : null;
@@ -123,33 +197,58 @@ const callbackReleasesViaObserverParameter = (
     (!isNodeOfType(observerCallback, "ArrowFunctionExpression") &&
       !isNodeOfType(observerCallback, "FunctionExpression"))
   ) {
-    return false;
+    return release;
   }
   const callbackFunction = observerCallback;
+  const entriesParameter = callbackFunction.params?.[0];
+  const entriesBindingIdentifier = entriesParameter
+    ? (scopes.symbolFor(entriesParameter as EsTreeNode)?.bindingIdentifier ?? null)
+    : null;
   const observerParameter = callbackFunction.params?.[1];
   if (!observerParameter || !isNodeOfType(observerParameter as EsTreeNode, "Identifier")) {
-    return false;
+    return release;
   }
   const parameterBindingIdentifier = scopes.symbolFor(
     observerParameter as EsTreeNode,
   )?.bindingIdentifier;
-  if (!parameterBindingIdentifier) return false;
-  let didRelease = false;
+  if (!parameterBindingIdentifier) return release;
   walkSynchronousCallbackFlow(callbackFunction, (child: EsTreeNode) => {
-    if (didRelease) return;
-    if (!isNodeOfType(child, "MemberExpression")) return;
-    const receiver = stripParenExpression(child.object as EsTreeNode);
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = stripParenExpression(child.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return;
+    const receiver = stripParenExpression(callee.object as EsTreeNode);
     if (
       !isNodeOfType(receiver, "Identifier") ||
       scopes.symbolFor(receiver)?.bindingIdentifier !== parameterBindingIdentifier
     ) {
       return;
     }
-    if (!OBSERVER_RELEASE_METHOD_NAMES.has(getStaticPropertyName(child) ?? "")) return;
-    if (!isNodeOfType(child.parent, "CallExpression") || child.parent.callee !== child) return;
-    didRelease = true;
+    const releaseMethodName = getStaticPropertyName(callee);
+    if (releaseMethodName === "disconnect") {
+      release.didReleaseAll = true;
+      return;
+    }
+    if (releaseMethodName !== "unobserve") return;
+    const targetArgument = child.arguments?.[0];
+    if (!targetArgument) return;
+    if (
+      isObserverEntryTarget(
+        targetArgument as EsTreeNode,
+        callbackFunction,
+        entriesBindingIdentifier,
+        scopes,
+      )
+    ) {
+      release.didReleaseObservedEntries = true;
+      return;
+    }
+    const targetKey = serializeReferenceKey({
+      node: targetArgument as EsTreeNode,
+      scopes,
+    });
+    if (targetKey) release.releasedTargetKeys.add(targetKey);
   });
-  return didRelease;
+  return release;
 };
 
 const isTrackedObserverReference = (
@@ -248,16 +347,16 @@ export const effectObserverNeedsDisconnect = defineRule({
           return;
         const bindingName = isNodeOfType(declarator.id, "Identifier") ? declarator.id.name : null;
         if (!bindingName) return;
+        const callbackRelease = collectCallbackObserverRelease(child, context.scopes);
         trackedObserversByBinding.set(declarator.id, {
           construction: child,
           bindingIdentifier: declarator.id,
           didObserve: false,
           didObserveUnknownTarget: false,
           didReleaseAll: false,
-          didReleaseViaCallbackParameter: callbackReleasesViaObserverParameter(
-            child,
-            context.scopes,
-          ),
+          didReleaseAllViaCallbackParameter:
+            callbackRelease.didReleaseAll || callbackRelease.didReleaseObservedEntries,
+          callbackReleasedTargetKeys: callbackRelease.releasedTargetKeys,
           didEscape: false,
           observedTargetKeys: new Set(),
         });
@@ -285,6 +384,9 @@ export const effectObserverNeedsDisconnect = defineRule({
       }
 
       for (const tracked of trackedObserversByBinding.values()) {
+        for (const releasedTargetKey of tracked.callbackReleasedTargetKeys) {
+          tracked.observedTargetKeys.delete(releasedTargetKey);
+        }
         const bindingName = isNodeOfType(tracked.bindingIdentifier, "Identifier")
           ? tracked.bindingIdentifier.name
           : null;
@@ -319,7 +421,7 @@ export const effectObserverNeedsDisconnect = defineRule({
         if (
           !tracked.didObserve ||
           tracked.didReleaseAll ||
-          tracked.didReleaseViaCallbackParameter ||
+          tracked.didReleaseAllViaCallbackParameter ||
           didReleaseEveryActiveTarget ||
           tracked.didEscape
         ) {

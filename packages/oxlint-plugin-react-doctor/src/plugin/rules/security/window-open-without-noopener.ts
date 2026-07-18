@@ -29,6 +29,10 @@ import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const NAVIGATING_TARGETS = new Set(["_self", "_top", "_parent"]);
+const GLOBAL_OPEN_RECEIVER_NAMES = ["frames", "globalThis", "parent", "self", "top", "window"];
+const OPAQUE_FEATURE_TEXT = "\u0000";
+const OPENER_PROTECTION_FEATURE_NAMES = new Set(["noopener", "noreferrer"]);
+const ENABLED_FEATURE_VALUES = new Set(["1", "true", "yes"]);
 let currentScopes: ScopeAnalysis | undefined;
 let currentRuleContext: RuleContext | undefined;
 let currentWindowOpenCall: EsTreeNode | undefined;
@@ -92,23 +96,31 @@ const bindingIsUnmodifiedBeforeCurrentOpen = (identifier: EsTreeNode): boolean =
     ),
   );
 
-// Matches `window.open` and `globalThis.window.open` — a non-computed
-// `.open` member off the `window` global. Bare `open(...)` (an
-// `Identifier` callee) and `foo.postMessage`/`webview.open` are not the
-// window global and never match.
+// Matches the browser-global open method through bare/global references
+// and the top, parent, and frames WindowProxy namespaces.
 const isWindowOpenCallee = (callee: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const unwrappedCallee = stripParenExpression(callee);
-  if (
-    isNodeOfType(unwrappedCallee, "Identifier") &&
-    isProvenGlobalNamespaceReference(unwrappedCallee, "open", scopes)
-  ) {
-    return true;
-  }
-  return (
-    isNodeOfType(unwrappedCallee, "MemberExpression") &&
-    getStaticPropertyName(unwrappedCallee) === "open" &&
-    isProvenGlobalNamespaceReference(unwrappedCallee.object, "window", scopes)
-  );
+  const isGlobalOpenReference = (candidate: EsTreeNode, depth: number): boolean => {
+    if (depth > MAX_BINDING_RESOLUTION_DEPTH) return false;
+    const unwrappedCandidate = stripParenExpression(candidate);
+    if (isNodeOfType(unwrappedCandidate, "Identifier")) {
+      if (isProvenGlobalNamespaceReference(unwrappedCandidate, "open", scopes)) return true;
+      const initializer = resolveConstInitializer(unwrappedCandidate);
+      if (initializer && isGlobalOpenReference(initializer, depth + 1)) return true;
+      return GLOBAL_OPEN_RECEIVER_NAMES.some(
+        (receiverName) =>
+          destructuredGlobalNamespacePropertyName(unwrappedCandidate, receiverName, scopes) ===
+          "open",
+      );
+    }
+    return (
+      isNodeOfType(unwrappedCandidate, "MemberExpression") &&
+      getStaticPropertyName(unwrappedCandidate) === "open" &&
+      GLOBAL_OPEN_RECEIVER_NAMES.some((receiverName) =>
+        isProvenGlobalNamespaceReference(unwrappedCandidate.object, receiverName, scopes),
+      )
+    );
+  };
+  return isGlobalOpenReference(callee, 0);
 };
 
 const isStringLiteral = (
@@ -2196,7 +2208,7 @@ const isStaticallyTruthyTrustedDestination = (
 
 // Best-effort static text of the features argument: string literals,
 // template literals (interpolations resolved when they are local const
-// strings, empty otherwise so `noopener,width=${w}` still resolves), and
+// strings, marked opaque otherwise so entry boundaries stay visible), and
 // identifiers bound to a local const initializer (`let`/`var` can be
 // reassigned after the initializer, so they stay opaque). Returns
 // null when the value is opaque (imported constant, call result), in
@@ -2211,7 +2223,7 @@ const resolveStaticStringText = (
     const quasiTexts = node.quasis?.map((quasi) => quasi.value?.raw ?? "") ?? [];
     const expressionTexts =
       node.expressions?.map(
-        (expression) => resolveStaticStringText(expression, depth + 1) ?? "\u0000",
+        (expression) => resolveStaticStringText(expression, depth + 1) ?? OPAQUE_FEATURE_TEXT,
       ) ?? [];
     return quasiTexts
       .map((quasiText, quasiIndex) => quasiText + (expressionTexts[quasiIndex] ?? ""))
@@ -2224,6 +2236,24 @@ const resolveStaticStringText = (
   }
   return null;
 };
+
+const isEntirelyOpaqueFeatureText = (featureText: string | undefined): boolean =>
+  featureText != null &&
+  featureText.length > 0 &&
+  [...featureText].every((featureCharacter) => featureCharacter === OPAQUE_FEATURE_TEXT);
+
+const featureEntryMayProtectOpener = (featureEntry: string): boolean => {
+  const [featureName, featureValue] = featureEntry.toLowerCase().split("=");
+  const valueMayEnableFeature =
+    featureValue === undefined ||
+    ENABLED_FEATURE_VALUES.has(featureValue) ||
+    isEntirelyOpaqueFeatureText(featureValue);
+  if (OPENER_PROTECTION_FEATURE_NAMES.has(featureName)) return valueMayEnableFeature;
+  return isEntirelyOpaqueFeatureText(featureName) && valueMayEnableFeature;
+};
+
+const featuresMayProtectOpener = (featuresText: string): boolean =>
+  featuresText.split(/[\s,]+/).some(featureEntryMayProtectOpener);
 
 // The opened handle is captured/used when the arrow that returns it is
 // stored or returned (its eventual return value may be consumed via
@@ -2469,25 +2499,7 @@ export const windowOpenWithoutNoopener = defineRule({
         if (featuresArgument != null && !isNullishExpression(featuresArgument)) {
           const featuresText = resolveStaticStringText(featuresArgument, 0);
           if (featuresText == null) return;
-          const enabledFeatureNames = featuresText
-            .toLowerCase()
-            .split(/[\s,]+/)
-            .map((featureEntry) => featureEntry.split("="))
-            .filter(
-              ([, featureValue]) =>
-                featureValue === undefined ||
-                featureValue === "yes" ||
-                featureValue === "1" ||
-                featureValue === "true",
-            )
-            .map(([featureName]) => featureName);
-          if (
-            enabledFeatureNames.some(
-              (featureName) => featureName === "noopener" || featureName === "noreferrer",
-            )
-          ) {
-            return;
-          }
+          if (featuresMayProtectOpener(featuresText)) return;
         }
 
         context.report({

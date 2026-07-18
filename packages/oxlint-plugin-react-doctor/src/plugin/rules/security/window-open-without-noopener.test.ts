@@ -345,6 +345,37 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag templates with opaque feature interpolations", () => {
+    for (const features of [
+      `\`\${POPUP_FEATURES}\``,
+      `\`width=500,\${POPUP_FEATURES}\``,
+      `\`\${POPUP_FEATURES},height=400\``,
+      `\`width=500 \${POPUP_FEATURES}\``,
+      `\`noopener=false,\${POPUP_FEATURES}\``,
+      `\`\${dynamicName}=true\``,
+      `\`noopener=\${dynamicValue}\``,
+      `\`noreferrer=\${dynamicValue}\``,
+      `\`\${dynamicPrefix}\${dynamicName}\``,
+      `\`noopener=\${dynamicPrefix}\${dynamicValue}\``,
+    ]) {
+      const result = runRule(
+        windowOpenWithoutNoopener,
+        `import { POPUP_FEATURES } from './popup';
+         window.open(url, '_blank', ${features});`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("still resolves a wholly interpolated local features constant", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const POPUP_FEATURES = 'width=500,height=400';
+       window.open(url, '_blank', \`\${POPUP_FEATURES}\`);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an explicitly nullish features argument like an omitted one", () => {
     for (const features of ["undefined", "null", "void 0"]) {
       const result = runRule(windowOpenWithoutNoopener, `window.open(url, '_blank', ${features});`);
@@ -711,7 +742,7 @@ window.open(downloadPage);`,
       windowOpenWithoutNoopener,
       `const openTab = (path) => {
   const url = fullPath(path, dataId);
-  window.open(url, '_blank', \`titlebar=1,location=1,status=1,width=\${width},height=\${height}\`);
+  window.open(url, '_blank', 'titlebar=1,location=1,status=1,width=500,height=400');
 };`,
     );
     expect(result.diagnostics).toHaveLength(1);
@@ -1594,6 +1625,11 @@ window.open(deltaPage, '_blank');
     for (const code of [
       `const window = { open() {} }; window.open(url);`,
       `const globalThis = { window: { open() {} } }; globalThis.window.open(url);`,
+      `const globalThis = { open() {} }; globalThis.open(url);`,
+      `const self = { open() {} }; self.open(url);`,
+      `const top = { open() {} }; top.open(url);`,
+      `const parent = { open() {} }; parent.open(url);`,
+      `const frames = { open() {} }; frames.open(url);`,
       `function render(window) { window.open(url); }`,
     ]) {
       const result = runRule(windowOpenWithoutNoopener, code);
@@ -1606,6 +1642,15 @@ window.open(deltaPage, '_blank');
     for (const code of [
       `window["open"](url);`,
       "window[`open`](url);",
+      `globalThis.open(url);`,
+      `self.open(url);`,
+      `top.open(url);`,
+      `parent.open(url);`,
+      `frames.open(url);`,
+      `window.top.open(url);`,
+      `window.parent.open(url);`,
+      `window.frames.open(url);`,
+      `globalThis["open"](url);`,
       `(window.open as typeof window.open)(url);`,
       `(window.open(url) as Window | null);`,
     ]) {
@@ -1619,6 +1664,9 @@ window.open(deltaPage, '_blank');
     for (const code of [
       `const openPopup = globalThis.open; openPopup(url);`,
       `const { open: openPopup } = window; openPopup(url);`,
+      `const popupHost = top; popupHost.open(url);`,
+      `const openPopup = parent.open; openPopup(url);`,
+      `const { open: openPopup } = frames; openPopup(url);`,
     ]) {
       const result = runRule(windowOpenWithoutNoopener, code);
       expect(result.diagnostics).toHaveLength(1);
@@ -2015,12 +2063,18 @@ window.open(deltaPage, '_blank');
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not synthesize noopener across opaque feature interpolation", () => {
-    const unsafe = runRule(
-      windowOpenWithoutNoopener,
-      'window.open(url, "_blank", `no${dynamicText}opener`);',
-    );
-    expect(unsafe.diagnostics).toHaveLength(1);
+  it("does not treat partial opaque feature entries as opener protection", () => {
+    for (const features of [
+      `\`no\${dynamicText}opener\``,
+      `\`width=\${dynamicWidth}\``,
+      `\`width=5\${dynamicWidth}\``,
+      `\`\${dynamicPrefix}width=500\``,
+      `\`\${dynamicName}=false\``,
+      `\`noopener=false,width=\${dynamicWidth}\``,
+    ]) {
+      const unsafe = runRule(windowOpenWithoutNoopener, `window.open(url, "_blank", ${features});`);
+      expect(unsafe.diagnostics).toHaveLength(1);
+    }
     const safe = runRule(
       windowOpenWithoutNoopener,
       'window.open(url, "_blank", `noopener,width=${dynamicWidth}`);',

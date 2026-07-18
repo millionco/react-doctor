@@ -3,6 +3,7 @@ dist
 .turbo
 *.log
 .DS_Store
+.env.local
 .cursor
 .claude
 tmp/

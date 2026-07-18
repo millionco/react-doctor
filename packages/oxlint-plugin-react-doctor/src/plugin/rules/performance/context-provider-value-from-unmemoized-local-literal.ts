@@ -218,16 +218,21 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
         if (!isContextProviderJsxName(node.name, contextBindings, context.scopes)) return;
         const renderFunction = findEnclosingFunction(node);
         if (!renderFunction) return;
+        const isSynchronousInlineRenderFunction = isSynchronouslyInvokedInlineRenderFunction(
+          renderFunction,
+          context,
+        );
         if (
-          isNamedInlineCallback(renderFunction) ||
-          isCallbackOnlyFunctionBinding(renderFunction, context)
+          (isNamedInlineCallback(renderFunction) ||
+            isCallbackOnlyFunctionBinding(renderFunction, context)) &&
+          !isSynchronousInlineRenderFunction
         ) {
           return;
         }
         if (
           componentOrHookDisplayNameForFunction(renderFunction) === null &&
           !isDefaultExportedFunction(renderFunction) &&
-          !isSynchronouslyInvokedInlineRenderFunction(renderFunction, context)
+          !isSynchronousInlineRenderFunction
         ) {
           return;
         }

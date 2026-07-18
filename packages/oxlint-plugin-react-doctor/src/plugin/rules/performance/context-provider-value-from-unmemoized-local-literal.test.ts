@@ -381,6 +381,16 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
          });
        }`,
     ],
+    [
+      "a named callback passed to a synchronous renderer",
+      `const renderNow = (render) => render();
+       function App() {
+         return renderNow(function Inner() {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         });
+       }`,
+    ],
   ])("flags %s during render", (_name, body) => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,

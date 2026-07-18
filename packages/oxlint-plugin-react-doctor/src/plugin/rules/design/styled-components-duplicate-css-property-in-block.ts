@@ -147,6 +147,14 @@ const areTestsEquivalent = (left: TernaryTest, right: TernaryTest): boolean => {
       return unwrappedLeft.name === unwrappedRight.name;
     }
     if (isNodeOfType(unwrappedLeft, "Literal") && isNodeOfType(unwrappedRight, "Literal")) {
+      if ("regex" in unwrappedLeft || "regex" in unwrappedRight) {
+        return (
+          "regex" in unwrappedLeft &&
+          "regex" in unwrappedRight &&
+          unwrappedLeft.regex.pattern === unwrappedRight.regex.pattern &&
+          unwrappedLeft.regex.flags === unwrappedRight.regex.flags
+        );
+      }
       return unwrappedLeft.value === unwrappedRight.value;
     }
     if (isNodeOfType(unwrappedLeft, "ThisExpression")) return true;
@@ -383,7 +391,7 @@ const collectTopLevelDeclarations = (
       }
     }
     const expression = template.expressions[quasiIndex];
-    if (expression && braceDepth === 0 && !activeQuote && !activeComment) {
+    if (expression && braceDepth === 0 && !activeComment) {
       if (currentText.trim().length === 0) {
         resetSegment();
       } else {

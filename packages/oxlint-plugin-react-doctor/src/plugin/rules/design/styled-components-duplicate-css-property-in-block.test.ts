@@ -120,6 +120,13 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("tracks conditional interpolations inside quoted CSS values", () => {
+    const result = runStyledRule(
+      'const Button = styled.button`content: "${properties => properties.$primary ? "primary" : "default"}"; content: "${properties => properties.$danger ? "danger" : "default"}";`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not let line comments hide declarations or change CSS depth", () => {
     const result = runStyledRule(
       'const Button = styled.button`// ignored { };\ncolor: ${p => p.$primary ? "blue" : "gray"}; // ignored }\ncolor: ${p => p.$danger ? "red" : "black"};`;',
@@ -181,6 +188,20 @@ describe("styled-components-duplicate-css-property-in-block", () => {
       'const Modal = styled.div`height: ${properties => matches({ active: properties.active, values: [properties.value, ...properties.values] }) ? "100vh" : "auto"}; height: ${state => matches({ active: state.active, values: [state.value, ...state.values] }) ? "100dvh" : "auto"};`;',
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag equivalent regex literal conditions", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${properties => /full/i.test(properties.mode) ? "100vh" : "auto"}; height: ${state => /full/i.test(state.mode) ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("distinguishes regex literal flags in conditions", () => {
+    const result = runStyledRule(
+      'const Modal = styled.div`height: ${properties => /full/i.test(properties.mode) ? "100vh" : "auto"}; height: ${state => /full/g.test(state.mode) ? "100dvh" : "auto"};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("distinguishes different object and array arguments", () => {

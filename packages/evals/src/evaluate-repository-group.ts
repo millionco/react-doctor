@@ -17,6 +17,7 @@ import { toErrorMessage } from "./utils/to-error-message.js";
 
 export interface EvaluateRepositoryGroupInput {
   daytona: Daytona;
+  evaluationId: string;
   snapshotName: string;
   repositoryGroup: CorpusRepositoryGroup;
   onRecord: (record: CorpusEvaluationRecord) => Promise<void>;
@@ -24,6 +25,7 @@ export interface EvaluateRepositoryGroupInput {
 
 export const evaluateRepositoryGroup = async ({
   daytona,
+  evaluationId,
   snapshotName,
   repositoryGroup,
   onRecord,
@@ -42,6 +44,7 @@ export const evaluateRepositoryGroup = async ({
         ephemeral: true,
         autoStopInterval: SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
         labels: {
+          evaluation: evaluationId,
           project: "react-doctor",
           purpose: "eval-repository",
         },

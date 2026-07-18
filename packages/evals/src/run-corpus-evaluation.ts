@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 
-import { Daytona, DaytonaNotFoundError, Image } from "@daytona/sdk";
+import { Daytona, DaytonaNotFoundError, Image, SandboxState } from "@daytona/sdk";
+import type { Sandbox } from "@daytona/sdk";
 import pLimit from "p-limit";
 
 import {
@@ -12,7 +13,9 @@ import {
   PROGRESS_INTERVAL_PROJECTS,
   REACT_DOCTOR_WORK_DIRECTORY,
   SANDBOX_CPU_CORES,
+  SANDBOX_CLEANUP_CONCURRENCY,
   SANDBOX_DISK_GIB,
+  SANDBOX_DELETE_TIMEOUT_SECONDS,
   SANDBOX_IMAGE,
   SANDBOX_MEMORY_GIB,
   SANDBOX_SETUP_TIMEOUT_SECONDS,
@@ -37,7 +40,8 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
   );
 
   const daytona = new Daytona();
-  const snapshotName = `react-doctor-eval-${randomUUID()}`;
+  const evaluationId = randomUUID();
+  const snapshotName = `react-doctor-eval-${evaluationId}`;
   try {
     process.stderr.write(`Building React Doctor snapshot ${snapshotName}\n`);
     await daytona.snapshot.create(
@@ -77,6 +81,7 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
         limit(() =>
           evaluateRepositoryGroup({
             daytona,
+            evaluationId,
             snapshotName,
             repositoryGroup,
             onRecord: recordEvaluation,
@@ -85,6 +90,27 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
       ),
     );
   } finally {
+    const cleanupLimit = pLimit(SANDBOX_CLEANUP_CONCURRENCY);
+    const remainingSandboxes: Sandbox[] = [];
+    for await (const sandbox of daytona.list({ labels: { evaluation: evaluationId } })) {
+      if (sandbox.state !== SandboxState.DESTROYING && sandbox.state !== SandboxState.DESTROYED) {
+        remainingSandboxes.push(sandbox);
+      }
+    }
+    await Promise.all(
+      remainingSandboxes.map((sandbox) =>
+        cleanupLimit(async () => {
+          try {
+            await daytona.delete(sandbox, SANDBOX_DELETE_TIMEOUT_SECONDS);
+          } catch (error) {
+            process.stderr.write(
+              `Failed to clean up Daytona sandbox ${sandbox.id}: ${toErrorMessage(error)}\n`,
+            );
+          }
+        }),
+      ),
+    );
+
     try {
       const snapshot = await daytona.snapshot.get(snapshotName);
       await daytona.snapshot.delete(snapshot);

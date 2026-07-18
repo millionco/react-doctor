@@ -48,7 +48,7 @@ let currentAnalyzedLocalFunction: EsTreeNode | undefined;
 let currentOpaqueLocalFunctionSerializationReference: EsTreeNode | undefined;
 let currentDeferredLocalFunctions: EsTreeNode[] = [];
 let trustedTopLevelDestinationMemo = new WeakMap<EsTreeNode, boolean>();
-let symbolHasNonReadReferenceMemo = new WeakMap<SymbolDescriptor, boolean>();
+let symbolHasPossibleWriteReferenceMemo = new WeakMap<SymbolDescriptor, boolean>();
 let localFunctionCallArgumentsMemo = new WeakMap<
   EsTreeNode,
   Map<number, Array<EsTreeNode | null> | null>
@@ -76,25 +76,60 @@ const writeExecutesBeforeDestinationReference = (
   return Boolean(program && isSymbolWriteBefore(writeNode, program, scopes));
 };
 
+const isPatternAssignmentTarget = (identifier: EsTreeNode): boolean => {
+  let targetChild = identifier;
+  let targetParent = targetChild.parent;
+  let isInsidePattern = false;
+  while (targetParent) {
+    if (isNodeOfType(targetParent, "ArrayPattern") || isNodeOfType(targetParent, "ObjectPattern")) {
+      isInsidePattern = true;
+    } else if (isNodeOfType(targetParent, "AssignmentPattern")) {
+      if (targetParent.left !== targetChild) return false;
+    } else if (isNodeOfType(targetParent, "Property")) {
+      if (targetParent.value !== targetChild) return false;
+    } else if (isNodeOfType(targetParent, "RestElement")) {
+      if (targetParent.argument !== targetChild) return false;
+    } else if (isNodeOfType(targetParent, "AssignmentExpression")) {
+      return isInsidePattern && targetParent.left === targetChild;
+    } else if (
+      isNodeOfType(targetParent, "ForInStatement") ||
+      isNodeOfType(targetParent, "ForOfStatement")
+    ) {
+      return isInsidePattern && targetParent.left === targetChild;
+    } else {
+      return false;
+    }
+    targetChild = targetParent;
+    targetParent = targetParent.parent;
+  }
+  return false;
+};
+
 const bindingIsUnmodifiedBefore = (identifier: EsTreeNode, referenceNode: EsTreeNode): boolean => {
   const scopes = currentScopes;
   const symbol = scopes?.symbolFor(identifier);
-  let symbolHasNonReadReference = symbol ? symbolHasNonReadReferenceMemo.get(symbol) : undefined;
-  if (symbol && symbolHasNonReadReference === undefined) {
-    symbolHasNonReadReference = symbol.references.some((reference) => reference.flag !== "read");
-    symbolHasNonReadReferenceMemo.set(symbol, symbolHasNonReadReference);
+  let symbolHasPossibleWriteReference = symbol
+    ? symbolHasPossibleWriteReferenceMemo.get(symbol)
+    : undefined;
+  if (symbol && symbolHasPossibleWriteReference === undefined) {
+    symbolHasPossibleWriteReference = symbol.references.some(
+      (reference) => reference.flag !== "read" || isPatternAssignmentTarget(reference.identifier),
+    );
+    symbolHasPossibleWriteReferenceMemo.set(symbol, symbolHasPossibleWriteReference);
   }
   return Boolean(
     scopes &&
     symbol &&
-    (!symbolHasNonReadReference ||
+    (!symbolHasPossibleWriteReference ||
       (referenceNode.range != null &&
         !symbol.references.some(
-          (reference) => reference.flag !== "read" && reference.identifier.range == null,
+          (reference) =>
+            (reference.flag !== "read" || isPatternAssignmentTarget(reference.identifier)) &&
+            reference.identifier.range == null,
         ) &&
         !symbol.references.some(
           (reference) =>
-            reference.flag !== "read" &&
+            (reference.flag !== "read" || isPatternAssignmentTarget(reference.identifier)) &&
             (writeExecutesBeforeDestinationReference(reference.identifier, referenceNode, scopes) ||
               (!isAnalyzingForeignExport &&
                 reference.identifier.range[0] < getExecutionReferenceOffset(referenceNode))),
@@ -1770,6 +1805,17 @@ const leftmostConcatOperand = (node: EsTreeNode): EsTreeNode => {
   return cursor;
 };
 
+const flattenConcatOperands = (node: EsTreeNode, operands: EsTreeNode[] = []): EsTreeNode[] => {
+  const unwrappedNode = stripParenExpression(node);
+  if (isNodeOfType(unwrappedNode, "BinaryExpression") && unwrappedNode.operator === "+") {
+    flattenConcatOperands(unwrappedNode.left as EsTreeNode, operands);
+    flattenConcatOperands(unwrappedNode.right as EsTreeNode, operands);
+  } else {
+    operands.push(unwrappedNode);
+  }
+  return operands;
+};
+
 const staticTextPinsConcatDestination = (urlText: string): boolean => {
   const trimmedText = urlText.trimStart();
   if (trimmedText.length === 0) return false;
@@ -1990,6 +2036,28 @@ const isTrustedLocalFunctionReturn = (
     const argument = localFunctionParameterArgument(returned, functionNode, callExpression);
     if (argument) return isTrustedOrNullishDestination(argument, depth + 1);
   }
+  if (isNodeOfType(returned, "BinaryExpression") && returned.operator === "+") {
+    const operands = flattenConcatOperands(returned);
+    const firstOperand = operands[0];
+    if (firstOperand && isNodeOfType(firstOperand, "Identifier")) {
+      const argument = localFunctionParameterArgument(firstOperand, functionNode, callExpression);
+      let followingStaticText = "";
+      let operandIndex = 1;
+      while (operandIndex < operands.length) {
+        const operandStaticText = staticStringLiteralText(operands[operandIndex]);
+        if (operandStaticText == null) break;
+        followingStaticText += operandStaticText;
+        operandIndex += 1;
+      }
+      if (
+        argument &&
+        isSafeInterpolatedDestinationSuffix(followingStaticText, operandIndex < operands.length) &&
+        (!followingStaticText.startsWith("/") || isProvenSafeSlashJoinedBase(argument, depth + 1))
+      ) {
+        return isTrustedDestination(argument, depth + 1);
+      }
+    }
+  }
   if (isNodeOfType(returned, "TemplateLiteral")) {
     const firstQuasiText = returned.quasis?.[0]?.value?.raw ?? "";
     const firstExpression = returned.expressions?.[0];
@@ -2138,7 +2206,7 @@ const isGlobalObjectMutationCall = (
   );
 };
 
-const staticMutationPropertyName = (node: EsTreeNode | undefined): string | null => {
+const staticStringLiteralText = (node: EsTreeNode | undefined): string | null => {
   if (!node) return null;
   const unwrappedNode = stripParenExpression(node);
   if (isStringLiteral(unwrappedNode)) return unwrappedNode.value;
@@ -2204,7 +2272,7 @@ const globalObjectMutationMayWriteProperty = (
     resolvesReflectMethod("defineProperty") ||
     resolvesReflectMethod("set")
   ) {
-    const mutationPropertyName = staticMutationPropertyName(
+    const mutationPropertyName = staticStringLiteralText(
       callExpression.arguments?.[1] as EsTreeNode | undefined,
     );
     return mutationPropertyName === null || mutationPropertyName === propertyName;
@@ -2446,6 +2514,18 @@ const isSafeInterpolatedDestinationSuffix = (
 
 const INCOMPLETE_BROWSING_SCHEME_BASE_PATTERN = /^(?:https?|ftp|wss?):\/*$/iu;
 
+const stripUrlLeadingAndTrailingC0ControlOrSpace = (urlText: string): string => {
+  let startIndex = 0;
+  while (startIndex < urlText.length && urlText.charAt(startIndex) <= " ") {
+    startIndex += 1;
+  }
+  let endIndex = urlText.length;
+  while (endIndex > startIndex && urlText.charAt(endIndex - 1) <= " ") {
+    endIndex -= 1;
+  }
+  return urlText.slice(startIndex, endIndex);
+};
+
 const staticPrimitiveTruthiness = (node: EsTreeNode): boolean | null => {
   const unwrappedNode = stripParenExpression(node);
   if (isNullishExpression(unwrappedNode)) return false;
@@ -2466,8 +2546,11 @@ const isProvenSafeSlashJoinedBase = (destination: EsTreeNode, depth: number): bo
     if (typeof unwrappedDestination.value !== "string") {
       return staticPrimitiveTruthiness(unwrappedDestination) !== null;
     }
-    const normalizedValue = unwrappedDestination.value.trim().replaceAll("\\", "/");
+    const normalizedValue = stripUrlLeadingAndTrailingC0ControlOrSpace(
+      unwrappedDestination.value.replaceAll(/[\t\n\r]/gu, ""),
+    ).replaceAll("\\", "/");
     return (
+      normalizedValue.length > 0 &&
       !/^\/+$/u.test(normalizedValue) &&
       !INCOMPLETE_BROWSING_SCHEME_BASE_PATTERN.test(normalizedValue)
     );
@@ -3125,7 +3208,7 @@ export const windowOpenWithoutNoopener = defineRule({
     currentOpaqueLocalFunctionSerializationReference = undefined;
     currentDeferredLocalFunctions = [];
     trustedTopLevelDestinationMemo = new WeakMap();
-    symbolHasNonReadReferenceMemo = new WeakMap();
+    symbolHasPossibleWriteReferenceMemo = new WeakMap();
     localFunctionCallArgumentsMemo = new WeakMap();
     routerCallsByFunctionMemo = new WeakMap();
     globalNamespaceMutationNodesMemo = new WeakMap();

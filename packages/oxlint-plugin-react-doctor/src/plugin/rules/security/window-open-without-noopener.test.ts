@@ -2350,6 +2350,13 @@ window.open(deltaPage, '_blank');
       'const getPrefix = () => condition ? "/api/v1/" : "/"; window.open(`${getPrefix()}/users`);',
       'const prefix = "https://"; window.open(`${prefix}/users`);',
       'const prefix = "  WSS:\\\\  "; window.open(`${prefix}/users`);',
+      'const prefix = ""; window.open(`${prefix}/${userControlledPath}`);',
+      'const prefix = "   "; window.open(`${prefix}/${userControlledPath}`);',
+      'const prefix = "h\\nttps:"; window.open(`${prefix}/${userControlledPath}`);',
+      'const prefix = "ht\\ttps:"; window.open(`${prefix}/${userControlledPath}`);',
+      'const prefix = "http:\\n\\\\"; window.open(`${prefix}/${userControlledPath}`);',
+      'const prefix = "\\u0000"; window.open(`${prefix}/${userControlledPath}`);',
+      'const prefix = "\\u001f"; window.open(`${prefix}/${userControlledPath}`);',
       "const prefix = /\\//; window.open(`${prefix}/evil.com`);",
       "const prefix = /\\\\/; window.open(`${prefix}/evil.com`);",
       'const prefix = ["/"]; window.open(`${prefix}/evil.com`);',
@@ -2380,6 +2387,8 @@ window.open(deltaPage, '_blank');
       "const prefix = false; window.open(`${prefix}/users`);",
       "const prefix = 0; window.open(`${prefix}/users`);",
       "const prefix = null; window.open(`${prefix}/users`);",
+      'const prefix = "h\\vttps:"; window.open(`${prefix}/${userControlledPath}`);',
+      'const prefix = "h\\fttps:"; window.open(`${prefix}/${userControlledPath}`);',
       'const prefix = true ? "/api/v1/" : "/"; window.open(`${prefix}/users`);',
       'const root = "/api/v1/"; const a1 = root; const a2 = a1; const a3 = a2; const a4 = a3; const a5 = a4; const a6 = a5; const a7 = a6; const a8 = a7; const a9 = a8; window.open(`${a9}/users`);',
     ]) {
@@ -2602,16 +2611,141 @@ window.open(deltaPage, '_blank');
     }
   });
 
+  it("accepts parameter-led local helper concatenations with pinned destinations", () => {
+    for (const code of [
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("/safe", userControlledId));`,
+      `const buildPath = (path, dataId) => path + "" + "/" + dataId;
+       window.open(buildPath("/safe", userControlledId));`,
+      `const buildPath = (path, dataId) => path + \`/item/\` + dataId;
+       window.open(buildPath("/safe", userControlledId));`,
+      `const buildQuery = (path, query) => path + "?q=" + query;
+       window.open(buildQuery("/safe", userControlledQuery));`,
+      `const buildHash = (path, hash) => path + "#" + hash;
+       const safePath = "/safe";
+       window.open(buildHash(safePath, userControlledHash));`,
+      `const buildPath = (path, hostname) => path + "/" + hostname;
+       window.open(buildPath("h\\vttps:", "/evil.example"));`,
+      `const buildPath = (path, hostname) => path + "/" + hostname;
+       window.open(buildPath("h\\fttps:", "/evil.example"));`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(0);
+    }
+  });
+
+  it("rejects local helper concatenations without a pinned destination boundary", () => {
+    for (const code of [
+      `const buildPath = (path, dataId) => path + dataId;
+       window.open(buildPath("/safe", userControlledId));`,
+      `const buildPath = (path, dataId) => path + dynamicSeparator + dataId;
+       window.open(buildPath("/safe", userControlledId));`,
+      `const buildPath = (path, hostname) => path + "/" + hostname;
+       window.open(buildPath("/", "evil.example.com"));`,
+      `const buildPath = (path, hostname) => path + "/" + hostname;
+       window.open(buildPath("https://", "evil.example.com"));`,
+      `const buildPath = (path, dataId) => path + "//" + dataId;
+       window.open(buildPath("/safe", userControlledId));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("", userControlledId));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("   ", userControlledId));`,
+      `const buildPath = (path, dataId) => path + ("/" + dataId);
+       window.open(buildPath("", userControlledId));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("h\\nttps:", "/evil.example"));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("h\\rttps:", "/evil.example"));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("ht\\ttps:", "/evil.example"));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("ht\\ntp:", "/evil.example"));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("f\\ntp:", "/evil.example"));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("http:\\n\\\\", "evil.example"));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("\\u0000", "/evil.example"));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("\\u0001", "/evil.example"));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("\\b", "/evil.example"));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath("\\u001f", "/evil.example"));`,
+      `const buildPath = (path, dataId) => path + "/" + dataId;
+       window.open(buildPath(userControlledUrl, dataId));`,
+      `const buildPath = (path, dataId) => {
+         path = userControlledUrl;
+         return path + "/" + dataId;
+       };
+       window.open(buildPath("/safe", dataId));`,
+      `const buildPath = (path, dataId) => {
+         [path] = [userControlledUrl];
+         return path + "/" + dataId;
+       };
+       window.open(buildPath("/safe", dataId));`,
+      `const buildPath = (path, dataId) => {
+         ({ path } = { path: userControlledUrl });
+         return path + "/" + dataId;
+       };
+       window.open(buildPath("/safe", dataId));`,
+      `const buildPath = (path, dataId) => {
+         [[path]] = [[userControlledUrl]];
+         return path + "/" + dataId;
+       };
+       window.open(buildPath("/safe", dataId));`,
+      `const buildPath = (path, dataId) => {
+         [path = userControlledUrl] = [];
+         return path + "/" + dataId;
+       };
+       window.open(buildPath("/safe", dataId));`,
+      `const buildPath = (path, dataId) => {
+         [...path] = [userControlledUrl];
+         return path + "/" + dataId;
+       };
+       window.open(buildPath("/safe", dataId));`,
+      `const buildPath = (path, dataId) => {
+         ({ value: { path } } = { value: { path: userControlledUrl } });
+         return path + "/" + dataId;
+       };
+       window.open(buildPath("/safe", dataId));`,
+      `const buildPath = (path, dataId) => {
+         ({ value: path = userControlledUrl } = {});
+         return path + "/" + dataId;
+       };
+       window.open(buildPath("/safe", dataId));`,
+      `const buildPath = (path, dataId) => {
+         if (condition) return path + "/" + dataId;
+         return userControlledUrl;
+       };
+       window.open(buildPath("/safe", dataId));`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(1);
+    }
+  });
+
   it("rejects local helper parameters reassigned before return", () => {
-    const result = runRule(
-      windowOpenWithoutNoopener,
+    for (const code of [
       `const buildPath = (path) => {
          path = userControlledUrl;
          return path;
        };
        window.open(buildPath("/safe"));`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
+      `const buildPath = (path, dataId) => {
+         [path] = [userControlledUrl];
+         return \`${"${path}"}/${"${dataId}"}\`;
+       };
+       window.open(buildPath("/safe", dataId));`,
+      `const buildPath = (path, dataId) => {
+         ({ path } = { path: userControlledUrl });
+         return \`${"${path}"}/${"${dataId}"}\`;
+       };
+       window.open(buildPath("/safe", dataId));`,
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, code);
+      expect(result.diagnostics, code).toHaveLength(1);
+    }
   });
 
   it("rejects URL prototype serializer mutations", () => {

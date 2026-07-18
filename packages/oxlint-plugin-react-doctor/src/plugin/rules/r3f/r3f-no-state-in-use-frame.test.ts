@@ -67,6 +67,30 @@ describe("r3f-no-state-in-use-frame", () => {
     expect(shadowed.diagnostics).toHaveLength(0);
   });
 
+  it("allows a guarded boolean latch transition with related state updates", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [started, setStarted] = useState(false); const [failed, setFailed] = useState(false); useFrame(() => { if (started && didFail()) { setStarted(false); setFailed(true); } }); return failed; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps non-converging boolean guards reportable", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [active, setActive] = useState(true); const [count, setCount] = useState(0); useFrame(() => { if (active) { setActive(true); setCount((value) => value + 1); } else { setActive(false); } }); return count; };`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("keeps split boolean toggles reportable", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [active, setActive] = useState(true); useFrame(() => { if (active) setActive(false); if (!active) setActive(true); }); return active; };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("still flags a truthiness guard that can update every frame", () => {
     const result = runRule(
       r3fNoStateInUseFrame,

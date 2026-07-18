@@ -3,7 +3,9 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -128,6 +130,96 @@ const hasInterpolationReceiverProvenance = (expression: EsTreeNode): boolean => 
   return false;
 };
 
+const isReactRefAvailabilityCondition = (
+  expression: EsTreeNode,
+  didConditionPass: boolean,
+  context: RuleContext,
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (resolveReactRefSymbol(candidate, context.scopes)) return didConditionPass;
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
+    return isReactRefAvailabilityCondition(candidate.argument, !didConditionPass, context);
+  }
+  if (
+    !isNodeOfType(candidate, "BinaryExpression") ||
+    !["==", "===", "!=", "!=="].includes(candidate.operator)
+  ) {
+    return false;
+  }
+  const refExpression = isNullishExpression(stripParenExpression(candidate.left))
+    ? candidate.right
+    : isNullishExpression(stripParenExpression(candidate.right))
+      ? candidate.left
+      : null;
+  if (
+    !refExpression ||
+    !resolveReactRefSymbol(stripParenExpression(refExpression), context.scopes)
+  ) {
+    return false;
+  }
+  const isInequality = candidate.operator === "!=" || candidate.operator === "!==";
+  return didConditionPass === isInequality;
+};
+
+const isConditionallyExecutedOnlyByReactRefAvailability = (
+  node: EsTreeNode,
+  callback: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  let didFindRefAvailabilityCondition = false;
+  let currentChild = node;
+  let currentAncestor = node.parent ?? null;
+  while (currentAncestor && currentAncestor !== callback) {
+    if (isFunctionLike(currentAncestor)) return false;
+    if (isNodeOfType(currentAncestor, "IfStatement") && currentAncestor.test !== currentChild) {
+      const didConditionPass = currentAncestor.consequent === currentChild;
+      if (
+        (!didConditionPass && currentAncestor.alternate !== currentChild) ||
+        !isReactRefAvailabilityCondition(currentAncestor.test, didConditionPass, context)
+      ) {
+        return false;
+      }
+      didFindRefAvailabilityCondition = true;
+    }
+    if (
+      isNodeOfType(currentAncestor, "ConditionalExpression") &&
+      (currentAncestor.consequent === currentChild || currentAncestor.alternate === currentChild)
+    ) {
+      const didConditionPass = currentAncestor.consequent === currentChild;
+      if (!isReactRefAvailabilityCondition(currentAncestor.test, didConditionPass, context)) {
+        return false;
+      }
+      didFindRefAvailabilityCondition = true;
+    }
+    if (
+      isNodeOfType(currentAncestor, "LogicalExpression") &&
+      currentAncestor.right === currentChild
+    ) {
+      if (
+        currentAncestor.operator === "??" ||
+        !isReactRefAvailabilityCondition(
+          currentAncestor.left,
+          currentAncestor.operator === "&&",
+          context,
+        )
+      ) {
+        return false;
+      }
+      didFindRefAvailabilityCondition = true;
+    }
+    if (
+      isNodeOfType(currentAncestor, "AssignmentPattern") &&
+      currentAncestor.right === currentChild
+    ) {
+      return false;
+    }
+    if (isNodeOfType(currentAncestor, "SwitchCase")) return false;
+    currentChild = currentAncestor;
+    currentAncestor = currentAncestor.parent ?? null;
+  }
+  return didFindRefAvailabilityCondition;
+};
+
 const getFixedInterpolationFactor = (
   node: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -159,10 +251,13 @@ export const r3fRequireFrameDelta = defineRule({
       const callback = resolveR3fCallback(node, "useFrame", context.scopes);
       if (!isFunctionLike(callback)) return;
       walkFunctionExecution(callback, context.scopes, (candidate, isConditionallyExecuted) => {
+        const isBehindReactRefAvailabilityGuard =
+          isConditionallyExecuted &&
+          isConditionallyExecutedOnlyByReactRefAvailability(candidate, callback, context);
         if (
           isNodeOfType(candidate, "UpdateExpression") &&
           isTransformMember(candidate.argument) &&
-          !isConditionallyExecuted
+          (!isConditionallyExecuted || isBehindReactRefAvailabilityGuard)
         ) {
           context.report({
             node: candidate,
@@ -176,7 +271,7 @@ export const r3fRequireFrameDelta = defineRule({
             (candidate.operator !== "+=" && candidate.operator !== "-=") ||
             !isTransformMember(candidate.left) ||
             expressionReferencesDelta(candidate.right, callback, context) ||
-            isConditionallyExecuted
+            (isConditionallyExecuted && !isBehindReactRefAvailabilityGuard)
           ) {
             return;
           }
@@ -192,7 +287,7 @@ export const r3fRequireFrameDelta = defineRule({
         if (
           !factor ||
           expressionReferencesDelta(factor, callback, context) ||
-          isConditionallyExecuted
+          (isConditionallyExecuted && !isBehindReactRefAvailabilityGuard)
         ) {
           return;
         }

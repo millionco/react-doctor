@@ -5,12 +5,173 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
 import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const STATE_HOOKS = new Set(["useState", "useReducer"]);
+const USE_STATE_HOOK = new Set(["useState"]);
 const VALUE_CHANGE_OPERATORS = new Set(["!==", "!=", "===", "=="]);
+
+interface StateSetterBinding {
+  stateSymbolId: number | null;
+}
+
+const resolveStateSetterBinding = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): StateSetterBinding | null => {
+  const visitedSymbolIds = new Set<number>();
+  let symbol = scopes.symbolFor(identifier);
+  while (symbol && !visitedSymbolIds.has(symbol.id)) {
+    visitedSymbolIds.add(symbol.id);
+    const declaration = symbol.declarationNode;
+    if (
+      isNodeOfType(declaration, "VariableDeclarator") &&
+      declaration.init &&
+      isNodeOfType(declaration.id, "ArrayPattern") &&
+      declaration.id.elements[1] === symbol.bindingIdentifier &&
+      isR3fReactApiCall(declaration.init, STATE_HOOKS, scopes, {
+        resolveNamedAliases: true,
+      })
+    ) {
+      const stateIdentifier = declaration.id.elements[0];
+      const stateSymbolId =
+        stateIdentifier &&
+        isNodeOfType(stateIdentifier, "Identifier") &&
+        isR3fReactApiCall(declaration.init, USE_STATE_HOOK, scopes, {
+          resolveNamedAliases: true,
+        })
+          ? (scopes.symbolFor(stateIdentifier)?.id ?? null)
+          : null;
+      return { stateSymbolId };
+    }
+    if (
+      symbol.kind !== "const" ||
+      !symbol.initializer ||
+      !isNodeOfType(symbol.initializer, "Identifier") ||
+      !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+      symbol.declarationNode.id !== symbol.bindingIdentifier
+    ) {
+      return null;
+    }
+    symbol = scopes.symbolFor(symbol.initializer);
+  }
+  return null;
+};
+
+const branchGuaranteesBooleanState = (
+  test: EsTreeNode,
+  didTestPass: boolean,
+  stateSymbolId: number,
+  expectedValue: boolean,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const candidate = stripParenExpression(test);
+  if (isNodeOfType(candidate, "Identifier")) {
+    return scopes.symbolFor(candidate)?.id === stateSymbolId && didTestPass === expectedValue;
+  }
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
+    return branchGuaranteesBooleanState(
+      candidate.argument,
+      !didTestPass,
+      stateSymbolId,
+      expectedValue,
+      scopes,
+    );
+  }
+  if (!isNodeOfType(candidate, "LogicalExpression")) return false;
+  const leftGuarantees = branchGuaranteesBooleanState(
+    candidate.left,
+    didTestPass,
+    stateSymbolId,
+    expectedValue,
+    scopes,
+  );
+  const rightGuarantees = branchGuaranteesBooleanState(
+    candidate.right,
+    didTestPass,
+    stateSymbolId,
+    expectedValue,
+    scopes,
+  );
+  const requiresEveryOperand = (candidate.operator === "&&") !== didTestPass;
+  return requiresEveryOperand
+    ? leftGuarantees && rightGuarantees
+    : leftGuarantees || rightGuarantees;
+};
+
+const callbackCallsStateSetterMoreThanOnce = (
+  callback: EsTreeNode,
+  stateSymbolId: number,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let setterCallCount = 0;
+  walkAst(callback, (candidate) => {
+    if (setterCallCount > 1) return false;
+    if (candidate !== callback && isFunctionLike(candidate)) return false;
+    if (
+      !isNodeOfType(candidate, "CallExpression") ||
+      !isNodeOfType(candidate.callee, "Identifier")
+    ) {
+      return;
+    }
+    if (resolveStateSetterBinding(candidate.callee, scopes)?.stateSymbolId === stateSymbolId) {
+      setterCallCount += 1;
+    }
+  });
+  return setterCallCount > 1;
+};
+
+const branchHasBooleanLatchTransition = (
+  branch: EsTreeNode,
+  callback: EsTreeNode,
+  test: EsTreeNode,
+  didTestPass: boolean,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let didFindLatch = false;
+  walkAst(branch, (candidate) => {
+    if (didFindLatch) return false;
+    if (candidate !== branch && isFunctionLike(candidate)) return false;
+    if (
+      !isNodeOfType(candidate, "CallExpression") ||
+      !isNodeOfType(candidate.callee, "Identifier")
+    ) {
+      return;
+    }
+    const stateSymbolId = resolveStateSetterBinding(candidate.callee, scopes)?.stateSymbolId;
+    const nextState = candidate.arguments[0];
+    if (
+      stateSymbolId === null ||
+      stateSymbolId === undefined ||
+      !nextState ||
+      isNodeOfType(nextState, "SpreadElement")
+    ) {
+      return;
+    }
+    const nextStateCandidate = stripParenExpression(nextState);
+    if (
+      !isNodeOfType(nextStateCandidate, "Literal") ||
+      typeof nextStateCandidate.value !== "boolean" ||
+      !branchGuaranteesBooleanState(
+        test,
+        didTestPass,
+        stateSymbolId,
+        !nextStateCandidate.value,
+        scopes,
+      ) ||
+      callbackCallsStateSetterMoreThanOnce(callback, stateSymbolId, scopes)
+    ) {
+      return;
+    }
+    didFindLatch = true;
+    return false;
+  });
+  return didFindLatch;
+};
 
 const isPrimitiveComparisonBoundary = (node: EsTreeNode): boolean => {
   const candidate = stripParenExpression(node);
@@ -93,7 +254,14 @@ const isGuardedStateTransition = (
             : null;
       if (
         didTestPass !== null &&
-        branchGuaranteesValueChange(currentAncestor.test, didTestPass, scopes)
+        (branchGuaranteesValueChange(currentAncestor.test, didTestPass, scopes) ||
+          branchHasBooleanLatchTransition(
+            currentChild,
+            callback,
+            currentAncestor.test,
+            didTestPass,
+            scopes,
+          ))
       ) {
         return true;
       }
@@ -107,7 +275,14 @@ const isGuardedStateTransition = (
             : null;
       if (
         didTestPass !== null &&
-        branchGuaranteesValueChange(currentAncestor.test, didTestPass, scopes)
+        (branchGuaranteesValueChange(currentAncestor.test, didTestPass, scopes) ||
+          branchHasBooleanLatchTransition(
+            currentChild,
+            callback,
+            currentAncestor.test,
+            didTestPass,
+            scopes,
+          ))
       ) {
         return true;
       }
@@ -133,36 +308,6 @@ export const r3fNoStateInUseFrame = defineRule({
   recommendation:
     "Mutate Three.js refs or an external transient store inside useFrame; reserve React state for guarded, infrequent transitions",
   create: (context: RuleContext) => {
-    const isStateSetterIdentifier = (identifier: EsTreeNode): boolean => {
-      const visitedSymbolIds = new Set<number>();
-      let symbol = context.scopes.symbolFor(identifier);
-      while (symbol && !visitedSymbolIds.has(symbol.id)) {
-        visitedSymbolIds.add(symbol.id);
-        const declaration = symbol.declarationNode;
-        if (
-          isNodeOfType(declaration, "VariableDeclarator") &&
-          declaration.init &&
-          isNodeOfType(declaration.id, "ArrayPattern") &&
-          declaration.id.elements[1] === symbol.bindingIdentifier &&
-          isR3fReactApiCall(declaration.init, STATE_HOOKS, context.scopes, {
-            resolveNamedAliases: true,
-          })
-        ) {
-          return true;
-        }
-        if (
-          symbol.kind !== "const" ||
-          !symbol.initializer ||
-          !isNodeOfType(symbol.initializer, "Identifier") ||
-          !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
-          symbol.declarationNode.id !== symbol.bindingIdentifier
-        ) {
-          return false;
-        }
-        symbol = context.scopes.symbolFor(symbol.initializer);
-      }
-      return false;
-    };
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const callback = resolveR3fCallback(node, "useFrame", context.scopes);
@@ -175,7 +320,7 @@ export const r3fNoStateInUseFrame = defineRule({
             return;
           }
           if (
-            !isStateSetterIdentifier(candidate.callee) ||
+            !resolveStateSetterBinding(candidate.callee, context.scopes) ||
             isGuardedStateTransition(candidate, callback, context.scopes)
           ) {
             return;

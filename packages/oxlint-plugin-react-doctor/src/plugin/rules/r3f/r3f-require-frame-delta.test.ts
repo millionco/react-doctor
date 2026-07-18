@@ -93,6 +93,35 @@ describe("r3f-require-frame-delta", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    `if (meshRef.current) meshRef.current.rotation.y += 0.03;`,
+    `if (meshRef.current !== null) meshRef.current.rotation.y += 0.03;`,
+    `if (!meshRef.current) {} else meshRef.current.rotation.y += 0.03;`,
+    `meshRef.current && meshRef.current.rotation.y++;`,
+    `!meshRef.current || meshRef.current.position.x++;`,
+  ])("flags fixed transforms behind React ref availability guards", (guardedUpdate) => {
+    const result = runRule(
+      r3fRequireFrameDelta,
+      `import { useFrame } from "@react-three/fiber";
+       import { useRef } from "react";
+       const Scene = () => {
+         const meshRef = useRef(null);
+         useFrame(() => { ${guardedUpdate} });
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps non-React current-property guards quiet", () => {
+    const result = runRule(
+      r3fRequireFrameDelta,
+      `import { useFrame } from "@react-three/fiber";
+       const meshRef = { current: mesh };
+       useFrame(() => { if (meshRef.current) meshRef.current.rotation.y += 0.03; });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("allows transform increments in a conditionally called local helper", () => {
     const result = runRule(
       r3fRequireFrameDelta,

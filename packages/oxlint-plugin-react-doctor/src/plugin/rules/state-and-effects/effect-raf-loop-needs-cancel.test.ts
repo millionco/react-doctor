@@ -190,6 +190,202 @@ describe("effect-raf-loop-needs-cancel", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    {
+      name: "false cleanup blocks a consequent",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (active) requestAnimationFrame(frame);",
+    },
+    {
+      name: "false cleanup selects a safe alternate",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (active) requestAnimationFrame(frame); else idle();",
+    },
+    {
+      name: "false cleanup blocks an and expression",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "active && requestAnimationFrame(frame);",
+    },
+    {
+      name: "false cleanup triggers an early return",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (!active) return; requestAnimationFrame(frame);",
+    },
+    {
+      name: "false cleanup triggers an alternate early return",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (active) idle(); else return; requestAnimationFrame(frame);",
+    },
+    {
+      name: "false cleanup satisfies a strict equality guard",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (active === true) requestAnimationFrame(frame);",
+    },
+    {
+      name: "false cleanup satisfies an inequality guard",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (active !== false) requestAnimationFrame(frame);",
+    },
+    {
+      name: "true cleanup blocks a negated consequent",
+      initialValue: false,
+      cleanupValue: true,
+      schedule: "if (!stopped) requestAnimationFrame(frame);",
+    },
+    {
+      name: "true cleanup blocks an or expression",
+      initialValue: false,
+      cleanupValue: true,
+      schedule: "stopped || requestAnimationFrame(frame);",
+    },
+    {
+      name: "true cleanup triggers an early return",
+      initialValue: false,
+      cleanupValue: true,
+      schedule: "if (stopped) return; requestAnimationFrame(frame);",
+    },
+    {
+      name: "a boolean cleanup blocks a nullish fallback",
+      initialValue: null,
+      cleanupValue: false,
+      schedule: "stopped ?? requestAnimationFrame(frame);",
+    },
+  ])("accepts $name", ({ initialValue, cleanupValue, schedule }) => {
+    const guardName = schedule.includes("stopped") ? "stopped" : "active";
+    const result = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let ${guardName} = ${String(initialValue)};
+        const frame = () => {
+          ${schedule}
+        };
+        requestAnimationFrame(frame);
+        return () => { ${guardName} = ${String(cleanupValue)}; };
+      }, []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "negated consequent after false cleanup",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (!active) requestAnimationFrame(frame);",
+    },
+    {
+      name: "alternate after false cleanup",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (active) idle(); else requestAnimationFrame(frame);",
+    },
+    {
+      name: "or fallback after false cleanup",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "active || requestAnimationFrame(frame);",
+    },
+    {
+      name: "inverted early return after false cleanup",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (active) return; requestAnimationFrame(frame);",
+    },
+    {
+      name: "inverted alternate early return after false cleanup",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (!active) idle(); else return; requestAnimationFrame(frame);",
+    },
+    {
+      name: "false equality after false cleanup",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (active === false) requestAnimationFrame(frame);",
+    },
+    {
+      name: "true inequality after false cleanup",
+      initialValue: true,
+      cleanupValue: false,
+      schedule: "if (active !== true) requestAnimationFrame(frame);",
+    },
+    {
+      name: "positive consequent after true cleanup",
+      initialValue: false,
+      cleanupValue: true,
+      schedule: "if (stopped) requestAnimationFrame(frame);",
+    },
+    {
+      name: "and expression after true cleanup",
+      initialValue: false,
+      cleanupValue: true,
+      schedule: "stopped && requestAnimationFrame(frame);",
+    },
+    {
+      name: "negated early return after true cleanup",
+      initialValue: false,
+      cleanupValue: true,
+      schedule: "if (!stopped) return; requestAnimationFrame(frame);",
+    },
+  ])("reports $name", ({ initialValue, cleanupValue, schedule }) => {
+    const guardName = schedule.includes("stopped") ? "stopped" : "active";
+    const result = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let ${guardName} = ${String(initialValue)};
+        const frame = () => {
+          ${schedule}
+        };
+        requestAnimationFrame(frame);
+        return () => { ${guardName} = ${String(cleanupValue)}; };
+      }, []);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires the cleanup to unconditionally establish the blocking guard value", () => {
+    const conditionalCleanup = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let active = true;
+        const frame = () => {
+          if (!active) return;
+          requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+        return () => {
+          if (shouldStop()) active = false;
+        };
+      }, []);`,
+    );
+    const finalStraightLineValue = runRule(
+      effectRafLoopNeedsCancel,
+      `useEffect(() => {
+        let active = true;
+        const frame = () => {
+          if (!active) return;
+          requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+        return () => {
+          active = true;
+          active = false;
+        };
+      }, []);`,
+    );
+    expect(conditionalCleanup.diagnostics).toHaveLength(1);
+    expect(finalStraightLineValue.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a token-ref-guarded tween loop whose cleanup bumps the ref the step checks", () => {
     const result = runRule(
       effectRafLoopNeedsCancel,

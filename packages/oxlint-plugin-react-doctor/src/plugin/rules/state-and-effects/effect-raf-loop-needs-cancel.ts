@@ -26,6 +26,11 @@ interface SelfReschedulingRafLoop {
   scheduledFunction: EsTreeNode;
 }
 
+interface CleanupGuardMutations {
+  booleanValues: Map<string, boolean>;
+  changedFromSnapshotKeys: Set<string>;
+}
+
 const isRequestAnimationFrameCall = (
   node: EsTreeNode,
 ): node is EsTreeNodeOfType<"CallExpression"> =>
@@ -461,75 +466,161 @@ const collectMonotonicMutationKeys = (root: EsTreeNode, isIncreasing: boolean): 
   return monotonicKeys;
 };
 
-// Names the cleanup neutralizes: direct writes, the roots of anything it
-// CALLS (`controller.abort()`, `stop()`, `stopRef.current()`), the writes
-// inside same-effect functions those calls resolve to, and the writes of
-// functions assigned to `<root>.current` (custom stop-through-a-ref hooks).
-const collectCleanupWrittenKeys = (
-  cleanupFunction: EsTreeNode,
-  effectCallback: EsTreeNode,
-): Set<string> => {
-  const writtenKeys = new Set<string>();
-  collectWrittenKeys(cleanupFunction, writtenKeys);
-  walkSynchronousCallbackFlow(cleanupFunction, (child: EsTreeNode) => {
-    if (!isNodeOfType(child, "CallExpression")) return;
-    const callee = child.callee;
-    if (isNodeOfType(callee, "Identifier")) {
-      const calleeKey = serializeHandleKey(callee);
-      if (calleeKey) writtenKeys.add(calleeKey);
-      // `return () => stop()` — merge the writes of the same-effect helper.
-      walkAst(effectCallback, (candidate: EsTreeNode) => {
-        if (
-          isNodeOfType(candidate, "VariableDeclarator") &&
-          isNodeOfType(candidate.id, "Identifier") &&
-          serializeHandleKey(candidate.id) === calleeKey &&
-          candidate.init &&
-          isFunctionLike(candidate.init as EsTreeNode)
-        ) {
-          collectWrittenKeys(candidate.init as EsTreeNode, writtenKeys);
-        }
-      });
-      return;
-    }
-    if (isNodeOfType(callee, "MemberExpression")) {
-      const calleeKey = serializeHandleKey(callee);
-      if (!calleeKey) return;
-      if (getStaticPropertyName(callee) === "abort") {
-        const receiverKey = serializeHandleKey(callee.object as EsTreeNode);
-        if (receiverKey) writtenKeys.add(`${receiverKey}.signal.aborted`);
-      }
-      // `stopRef.current()` — merge the writes of the function assigned to
-      // `stopRef.current` inside the effect.
-      walkAst(effectCallback, (candidate: EsTreeNode) => {
-        if (
-          isNodeOfType(candidate, "AssignmentExpression") &&
-          isNodeOfType(candidate.left, "MemberExpression") &&
-          serializeHandleKey(candidate.left as EsTreeNode) === calleeKey &&
-          candidate.right &&
-          isFunctionLike(candidate.right as EsTreeNode)
-        ) {
-          collectWrittenKeys(candidate.right as EsTreeNode, writtenKeys);
-        }
-      });
-    }
-  });
-  return writtenKeys;
+const recordCleanupGuardWrite = (write: EsTreeNode, mutations: CleanupGuardMutations): void => {
+  const writeTarget = isNodeOfType(write, "AssignmentExpression")
+    ? write.left
+    : isNodeOfType(write, "UpdateExpression")
+      ? write.argument
+      : null;
+  if (!isNodeOfType(writeTarget, "Identifier") && !isNodeOfType(writeTarget, "MemberExpression")) {
+    return;
+  }
+  const referenceKey = serializeHandleKey(writeTarget as EsTreeNode);
+  if (!referenceKey) return;
+  if (
+    isNodeOfType(write, "UpdateExpression") ||
+    (isNodeOfType(write, "AssignmentExpression") && write.operator !== "=")
+  ) {
+    mutations.changedFromSnapshotKeys.add(referenceKey);
+    mutations.booleanValues.delete(referenceKey);
+    return;
+  }
+  if (!isNodeOfType(write, "AssignmentExpression")) return;
+  const value = stripParenExpression(write.right);
+  if (!isNodeOfType(value, "Literal") || typeof value.value !== "boolean") {
+    mutations.booleanValues.delete(referenceKey);
+    mutations.changedFromSnapshotKeys.delete(referenceKey);
+    return;
+  }
+  mutations.changedFromSnapshotKeys.delete(referenceKey);
+  mutations.booleanValues.set(referenceKey, value.value);
 };
 
-const testReferencesAnyGuardKey = (test: EsTreeNode, guardKeys: ReadonlySet<string>): boolean => {
-  let didFindGuardKey = false;
-  walkAst(test, (child: EsTreeNode) => {
-    if (didFindGuardKey) return false;
-    const referenceKey =
-      isNodeOfType(child, "MemberExpression") || isNodeOfType(child, "Identifier")
-        ? serializeHandleKey(child)
-        : null;
-    if (referenceKey && guardKeys.has(referenceKey)) {
-      didFindGuardKey = true;
-      return false;
+const isConditionalCleanupFlowBoundary = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "IfStatement") ||
+  isNodeOfType(node, "ConditionalExpression") ||
+  isNodeOfType(node, "LogicalExpression") ||
+  isNodeOfType(node, "SwitchStatement") ||
+  isNodeOfType(node, "TryStatement") ||
+  isNodeOfType(node, "ForStatement") ||
+  isNodeOfType(node, "ForInStatement") ||
+  isNodeOfType(node, "ForOfStatement") ||
+  isNodeOfType(node, "WhileStatement") ||
+  isNodeOfType(node, "DoWhileStatement");
+
+const isUnconditionallyReachedInCleanup = (
+  node: EsTreeNode,
+  cleanupFunction: EsTreeNode,
+): boolean => {
+  let cursor = node.parent;
+  while (cursor && cursor !== cleanupFunction) {
+    if (isConditionalCleanupFlowBoundary(cursor)) return false;
+    cursor = cursor.parent;
+  }
+  return cursor === cleanupFunction || node === cleanupFunction;
+};
+
+const collectCleanupGuardMutations = (
+  cleanupFunction: EsTreeNode,
+  effectCallback: EsTreeNode,
+): CleanupGuardMutations => {
+  const mutations: CleanupGuardMutations = {
+    booleanValues: new Map(),
+    changedFromSnapshotKeys: new Set(),
+  };
+  const visitedFunctions = new Set<EsTreeNode>();
+  const collectFunctionMutations = (functionNode: EsTreeNode): void => {
+    if (visitedFunctions.has(functionNode)) return;
+    visitedFunctions.add(functionNode);
+    walkSynchronousCallbackFlow(functionNode, (child: EsTreeNode) => {
+      if (!isUnconditionallyReachedInCleanup(child, functionNode)) return;
+      recordCleanupGuardWrite(child, mutations);
+      if (!isNodeOfType(child, "CallExpression")) return;
+      const callee = child.callee;
+      if (isNodeOfType(callee, "Identifier")) {
+        const calleeKey = serializeHandleKey(callee);
+        walkAst(effectCallback, (candidate: EsTreeNode) => {
+          if (
+            isNodeOfType(candidate, "VariableDeclarator") &&
+            isNodeOfType(candidate.id, "Identifier") &&
+            serializeHandleKey(candidate.id) === calleeKey &&
+            candidate.init &&
+            isFunctionLike(candidate.init as EsTreeNode)
+          ) {
+            collectFunctionMutations(candidate.init as EsTreeNode);
+          }
+        });
+        return;
+      }
+      if (isNodeOfType(callee, "MemberExpression")) {
+        const calleeKey = serializeHandleKey(callee);
+        if (!calleeKey) return;
+        if (getStaticPropertyName(callee) === "abort") {
+          const receiverKey = serializeHandleKey(callee.object as EsTreeNode);
+          if (receiverKey) {
+            mutations.booleanValues.set(`${receiverKey}.signal.aborted`, true);
+          }
+        }
+        walkAst(effectCallback, (candidate: EsTreeNode) => {
+          if (
+            isNodeOfType(candidate, "AssignmentExpression") &&
+            isNodeOfType(candidate.left, "MemberExpression") &&
+            serializeHandleKey(candidate.left as EsTreeNode) === calleeKey &&
+            candidate.right &&
+            isFunctionLike(candidate.right as EsTreeNode)
+          ) {
+            collectFunctionMutations(candidate.right as EsTreeNode);
+          }
+        });
+      }
+    });
+  };
+  collectFunctionMutations(cleanupFunction);
+  return mutations;
+};
+
+const evaluateCleanupGuardTruth = (
+  expression: EsTreeNode,
+  mutations: CleanupGuardMutations,
+): boolean | null => {
+  const node = stripParenExpression(expression);
+  if (isNodeOfType(node, "Literal") && typeof node.value === "boolean") return node.value;
+  if (isNodeOfType(node, "Identifier") || isNodeOfType(node, "MemberExpression")) {
+    const referenceKey = serializeHandleKey(node);
+    return referenceKey && mutations.booleanValues.has(referenceKey)
+      ? (mutations.booleanValues.get(referenceKey) ?? null)
+      : null;
+  }
+  if (isNodeOfType(node, "UnaryExpression") && node.operator === "!") {
+    const argumentValue = evaluateCleanupGuardTruth(node.argument, mutations);
+    return argumentValue === null ? null : !argumentValue;
+  }
+  if (isNodeOfType(node, "LogicalExpression")) {
+    const leftValue = evaluateCleanupGuardTruth(node.left, mutations);
+    if (node.operator === "??") return leftValue;
+    const rightValue = evaluateCleanupGuardTruth(node.right, mutations);
+    if (node.operator === "&&") {
+      if (leftValue === false || rightValue === false) return false;
+      return leftValue === true ? rightValue : null;
     }
-  });
-  return didFindGuardKey;
+    if (leftValue === true || rightValue === true) return true;
+    return leftValue === false ? rightValue : null;
+  }
+  if (!isNodeOfType(node, "BinaryExpression")) return null;
+  const isEquality = node.operator === "==" || node.operator === "===";
+  const isInequality = node.operator === "!=" || node.operator === "!==";
+  if (!isEquality && !isInequality) return null;
+  const leftValue = evaluateCleanupGuardTruth(node.left, mutations);
+  const rightValue = evaluateCleanupGuardTruth(node.right, mutations);
+  if (leftValue !== null && rightValue !== null) {
+    return isEquality ? leftValue === rightValue : leftValue !== rightValue;
+  }
+  const leftKey = serializeHandleKey(node.left);
+  const rightKey = serializeHandleKey(node.right);
+  if (leftKey && leftKey === rightKey && mutations.changedFromSnapshotKeys.has(leftKey)) {
+    return isInequality;
+  }
+  return null;
 };
 
 const guardBodyAlwaysExits = (statement: EsTreeNode): boolean => {
@@ -537,15 +628,40 @@ const guardBodyAlwaysExits = (statement: EsTreeNode): boolean => {
     return true;
   }
   return (
-    isNodeOfType(statement, "BlockStatement") &&
-    Boolean(statement.body?.some((child) => guardBodyAlwaysExits(child as EsTreeNode)))
+    (isNodeOfType(statement, "BlockStatement") &&
+      Boolean(statement.body?.some((child) => guardBodyAlwaysExits(child as EsTreeNode)))) ||
+    (isNodeOfType(statement, "IfStatement") &&
+      Boolean(statement.alternate) &&
+      guardBodyAlwaysExits(statement.consequent as EsTreeNode) &&
+      guardBodyAlwaysExits(statement.alternate as EsTreeNode))
   );
+};
+
+const cleanupBlocksBranch = (
+  test: EsTreeNode,
+  branchValue: boolean,
+  mutations: CleanupGuardMutations,
+): boolean => {
+  const cleanupValue = evaluateCleanupGuardTruth(test, mutations);
+  return cleanupValue !== null && cleanupValue !== branchValue;
+};
+
+const cleanupBlocksLogicalRight = (
+  left: EsTreeNode,
+  operator: string,
+  mutations: CleanupGuardMutations,
+): boolean => {
+  const cleanupValue = evaluateCleanupGuardTruth(left, mutations);
+  if (cleanupValue === null) return false;
+  if (operator === "&&") return !cleanupValue;
+  if (operator === "||") return cleanupValue;
+  return operator === "??";
 };
 
 const hasDominatingGuard = (
   call: EsTreeNode,
   scheduledFunction: EsTreeNode,
-  guardKeys: ReadonlySet<string>,
+  mutations: CleanupGuardMutations,
 ): boolean => {
   let cursor: EsTreeNode | null | undefined = call;
   while (cursor && cursor !== scheduledFunction) {
@@ -554,10 +670,10 @@ const hasDominatingGuard = (
     if (
       ((isNodeOfType(parent, "IfStatement") || isNodeOfType(parent, "ConditionalExpression")) &&
         (parent.consequent === cursor || parent.alternate === cursor) &&
-        testReferencesAnyGuardKey(parent.test as EsTreeNode, guardKeys)) ||
+        cleanupBlocksBranch(parent.test as EsTreeNode, parent.consequent === cursor, mutations)) ||
       (isNodeOfType(parent, "LogicalExpression") &&
         parent.right === cursor &&
-        testReferencesAnyGuardKey(parent.left as EsTreeNode, guardKeys))
+        cleanupBlocksLogicalRight(parent.left as EsTreeNode, parent.operator, mutations))
     ) {
       return true;
     }
@@ -568,8 +684,11 @@ const hasDominatingGuard = (
           const previousNode: EsTreeNode = previousStatement;
           if (
             isNodeOfType(previousNode, "IfStatement") &&
-            guardBodyAlwaysExits(previousNode.consequent as EsTreeNode) &&
-            testReferencesAnyGuardKey(previousNode.test as EsTreeNode, guardKeys)
+            ((guardBodyAlwaysExits(previousNode.consequent as EsTreeNode) &&
+              cleanupBlocksBranch(previousNode.test as EsTreeNode, false, mutations)) ||
+              (previousNode.alternate &&
+                guardBodyAlwaysExits(previousNode.alternate as EsTreeNode) &&
+                cleanupBlocksBranch(previousNode.test as EsTreeNode, true, mutations)))
           ) {
             return true;
           }
@@ -583,14 +702,14 @@ const hasDominatingGuard = (
 
 const doesCleanupGuardEveryReschedule = (
   rafLoop: SelfReschedulingRafLoop,
-  guardKeys: ReadonlySet<string>,
+  mutations: CleanupGuardMutations,
   scopes: ScopeAnalysis,
 ): boolean => {
   const recursiveSchedulingCalls = collectLoopSchedulingCalls(rafLoop, scopes).slice(1);
   return (
     recursiveSchedulingCalls.length > 0 &&
     recursiveSchedulingCalls.every((call) =>
-      hasDominatingGuard(call, rafLoop.scheduledFunction, guardKeys),
+      hasDominatingGuard(call, rafLoop.scheduledFunction, mutations),
     )
   );
 };
@@ -826,8 +945,8 @@ export const effectRafLoopNeedsCancel = defineRule({
           continue;
         }
         const hasCleanupGuard = cleanupFunctions.some((cleanupFunction) => {
-          const cleanupWrittenKeys = collectCleanupWrittenKeys(cleanupFunction, callback);
-          return doesCleanupGuardEveryReschedule(rafLoop, cleanupWrittenKeys, context.scopes);
+          const cleanupMutations = collectCleanupGuardMutations(cleanupFunction, callback);
+          return doesCleanupGuardEveryReschedule(rafLoop, cleanupMutations, context.scopes);
         });
         if (hasCleanupGuard) continue;
         context.report({

@@ -158,6 +158,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-locale-format-in-render",
       "no-match-media-in-state-initializer",
       "no-mutating-reducer-state",
+      "no-unguarded-browser-global-at-module-scope",
       "no-unguarded-browser-global-in-render-or-hook-init",
       "only-export-components",
       "prefer-dynamic-import",
@@ -167,6 +168,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "rn-no-raw-text",
       "rn-prefer-expo-image",
       "rn-style-prefer-boxshadow",
+      "window-open-without-noopener",
     ]);
   });
 

@@ -98,6 +98,9 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   if (project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 15) {
     capabilities.add("nextjs:15");
   }
+  if (project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 16) {
+    capabilities.add("nextjs:16");
+  }
   addMajorLadder(
     capabilities,
     "react",

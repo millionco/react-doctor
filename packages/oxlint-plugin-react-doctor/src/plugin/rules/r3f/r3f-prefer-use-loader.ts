@@ -15,6 +15,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
+import { isR3fCanvas } from "./utils/is-r3f-canvas.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
 import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
@@ -78,6 +79,9 @@ const ownerRunsInsideR3f = (effectCall: EsTreeNode, context: RuleContext): boole
   walkAst(ownerFunction, (candidate) => {
     if (isInsideR3f) return false;
     if (candidate !== ownerFunction && isFunctionLike(candidate)) return false;
+    if (isNodeOfType(candidate, "JSXElement") && isR3fCanvas(candidate.openingElement, context)) {
+      return false;
+    }
     if (
       isNodeOfType(candidate, "CallExpression") &&
       R3F_CONTEXT_HOOK_NAMES.some((hookName) => isR3fApiCall(candidate, hookName, context.scopes))

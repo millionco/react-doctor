@@ -116,7 +116,11 @@ describe("r3f-prefer-use-loader", () => {
         useEffect(() => {
           new TextureLoader().load(url, setTexture);
         }, [url]);
-        return <Canvas />;
+        return (
+          <Canvas>
+            <mesh />
+          </Canvas>
+        );
       };
       const WebComponentPreview = ({ url }) => {
         useEffect(() => {

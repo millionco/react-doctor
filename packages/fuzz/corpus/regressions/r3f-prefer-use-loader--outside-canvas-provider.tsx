@@ -6,5 +6,9 @@ export const Preview = ({ url }) => {
   useEffect(() => {
     new TextureLoader().load(url, setTexture);
   }, [url]);
-  return <Canvas />;
+  return (
+    <Canvas>
+      <mesh />
+    </Canvas>
+  );
 };

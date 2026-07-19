@@ -12,10 +12,10 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
+import { isR3fCanvas } from "./utils/is-r3f-canvas.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 import { isR3fCallbackStateProperty } from "./utils/is-r3f-callback-state-property.js";
 import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
-import { R3F_PUBLIC_MODULES } from "./utils/r3f-public-modules.js";
 import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
@@ -206,18 +206,6 @@ const isR3fSetDprIdentifier = (
   return isNodeOfType(initializer, "Identifier")
     ? isR3fSetDprIdentifier(initializer, context, visitedSymbolIds)
     : false;
-};
-
-const isR3fCanvas = (
-  node: EsTreeNodeOfType<"JSXOpeningElement">,
-  context: RuleContext,
-): boolean => {
-  const provenance = getApiReferenceProvenance(node.name, context.scopes);
-  return Boolean(
-    provenance &&
-    provenance.apiName === "Canvas" &&
-    R3F_PUBLIC_MODULES.has(provenance.moduleSource),
-  );
 };
 
 export const r3fCapDevicePixelRatio = defineRule({

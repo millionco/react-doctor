@@ -196,6 +196,23 @@ describe("three-require-renderer-cleanup", () => {
     expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(1);
   });
 
+  it("recognizes renderer ownership only on the WebGPU Canvas entry point", () => {
+    const code = `
+      import { Canvas as WebGpuCanvas } from "@react-three/fiber/webgpu";
+      import { useMemo } from "react";
+      import { WebGPURenderer } from "three/webgpu";
+      function WebGpuDirect({ canvas }) {
+        const renderer = useMemo(() => new WebGPURenderer({ canvas }), [canvas]);
+        return <WebGpuCanvas renderer={renderer} />;
+      }
+      function WebGpuFactory({ canvas }) {
+        const renderer = useMemo(() => new WebGPURenderer({ canvas }), [canvas]);
+        return <WebGpuCanvas renderer={() => renderer} />;
+      }
+    `;
+    expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(0);
+  });
+
   it("requires every Canvas renderer factory branch to transfer the owned renderer", () => {
     const code = `
       import { Canvas } from "@react-three/fiber";

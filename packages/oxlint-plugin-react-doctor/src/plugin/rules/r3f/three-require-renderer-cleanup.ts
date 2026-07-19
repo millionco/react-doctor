@@ -21,6 +21,7 @@ import {
 import { getApiReferenceModuleSource } from "./utils/get-api-reference-module-source.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { R3F_PUBLIC_MODULES } from "./utils/r3f-public-modules.js";
+import { R3F_WEBGPU_MODULES } from "./utils/r3f-webgpu-modules.js";
 import { THREE_RENDER_METHOD_NAMES } from "./utils/three-render-method-names.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
@@ -173,7 +174,6 @@ const isRendererSuppliedToR3fCanvas = (
     const openingElement = candidate.parent;
     if (
       !isNodeOfType(candidate.name, "JSXIdentifier") ||
-      candidate.name.name !== "gl" ||
       !isNodeOfType(openingElement, "JSXOpeningElement") ||
       !candidate.value ||
       !isNodeOfType(candidate.value, "JSXExpressionContainer") ||
@@ -182,7 +182,14 @@ const isRendererSuppliedToR3fCanvas = (
       return;
     }
     const moduleSource = getApiReferenceModuleSource(openingElement.name, "Canvas", context.scopes);
-    if (!moduleSource || !R3F_PUBLIC_MODULES.has(moduleSource)) return;
+    if (
+      !moduleSource ||
+      (candidate.name.name !== "gl" &&
+        !(candidate.name.name === "renderer" && R3F_WEBGPU_MODULES.has(moduleSource))) ||
+      !R3F_PUBLIC_MODULES.has(moduleSource)
+    ) {
+      return;
+    }
     const suppliedExpression = candidate.value.expression;
     if (matchesOwnedRenderer(suppliedExpression)) {
       isSupplied = true;

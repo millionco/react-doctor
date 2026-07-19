@@ -6,7 +6,7 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getClassBindingSymbol } from "../../utils/get-class-binding-symbol.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
-import { isDescendantOf } from "../../utils/is-descendant-of.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
@@ -291,7 +291,7 @@ const observesOnlyInstanceRootedState = (
     }
     const receiverSymbol = scopes.symbolFor(receiver);
     if (
-      (receiverSymbol && isDescendantOf(receiverSymbol.declarationNode, callback)) ||
+      (receiverSymbol && isAstDescendant(receiverSymbol.declarationNode, callback)) ||
       (scopes.isGlobalReference(receiver) &&
         NON_OBSERVABLE_GLOBAL_RECEIVER_NAMES.has(receiver.name))
     ) {

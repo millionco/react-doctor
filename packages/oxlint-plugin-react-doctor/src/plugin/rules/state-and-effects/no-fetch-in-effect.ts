@@ -7,7 +7,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
-import { isDescendantOf } from "../../utils/is-descendant-of.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
@@ -425,7 +425,7 @@ const isPromiseContinuationForRequest = (
   ) {
     return false;
   }
-  return isDescendantOf(request, callNode.callee.object);
+  return isAstDescendant(request, callNode.callee.object);
 };
 
 const isAwaitedInFunction = (request: EsTreeNode, functionNode: EsTreeNode): boolean => {

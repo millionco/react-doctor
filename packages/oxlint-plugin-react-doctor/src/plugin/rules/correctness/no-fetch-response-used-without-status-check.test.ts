@@ -836,9 +836,16 @@ describe("audit regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat a successful-response exit as guarding the failure fallthrough", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); if (response.ok) return; return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it.each([
     `if (!response.ok) return response.json(); return null;`,
-    `if (response.ok) return null; return response.json();`,
     `if (response.status) return response.json(); return null;`,
   ])("allows consuming a response on either checked status outcome: %s", (body) => {
     const result = runRule(
@@ -853,10 +860,10 @@ describe("audit regressions", () => {
     [`if (flag && response.ok) return response.json(); return null;`, 0],
     [`if (response.ok || flag) return response.json(); return null;`, 0],
     [`if (flag || response.ok) return response.json(); return null;`, 1],
-    [`if (response.ok && flag) return null; return response.json();`, 0],
+    [`if (response.ok && flag) return null; return response.json();`, 1],
     [`if (flag && response.ok) return null; return response.json();`, 1],
-    [`if (response.ok || flag) return null; return response.json();`, 0],
-    [`if (flag || response.ok) return null; return response.json();`, 0],
+    [`if (response.ok || flag) return null; return response.json();`, 1],
+    [`if (flag || response.ok) return null; return response.json();`, 1],
   ])("tracks short-circuit status evaluation: %s", (body, diagnosticCount) => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
@@ -926,12 +933,12 @@ describe("audit regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("allows multiple consumptions when each one is status-guarded", () => {
+  it("reports when the failure fallthrough consumes after a successful consumption", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `async function load() { const response = await fetch("/api"); if (response.ok) return response.json(); return response.text(); }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it.each(["ok", "status"])("does not trust a reassigned destructured %s binding", (key) => {

@@ -5,3 +5,9 @@ export const load = async () => {
   if (response.ok) console.log("ok");
   return response.json();
 };
+
+export const loadFailureBody = async () => {
+  const response = await fetch("/api");
+  if (response.ok) return;
+  return response.json();
+};

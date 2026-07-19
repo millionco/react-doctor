@@ -249,7 +249,10 @@ const isBodyConsumeCall = (node: EsTreeNode, responseName: string): boolean => {
   );
 };
 
-const makeExpressionGuaranteesStatusCheck = (statusReferences: EsTreeNode[]) => {
+const makeExpressionGuaranteesStatusCheck = (
+  referencesToCheck: EsTreeNode[],
+  mustGuaranteeTruthyReference = false,
+) => {
   const resultsByPolarity = new WeakMap<EsTreeNode, [boolean | undefined, boolean | undefined]>();
   const expressionGuaranteesStatusCheck = (
     expression: EsTreeNode,
@@ -260,12 +263,12 @@ const makeExpressionGuaranteesStatusCheck = (statusReferences: EsTreeNode[]) => 
     const cachedResults = resultsByPolarity.get(inner);
     const cachedResult = cachedResults?.[resultIndex];
     if (cachedResult !== undefined) return cachedResult;
-    const references = statusReferences
+    const references = referencesToCheck
       .map(stripGroupingParens)
       .filter((reference) => isAstDescendant(reference, inner));
     let result = false;
     if (references.some((reference) => reference === inner)) {
-      result = true;
+      result = mustGuaranteeTruthyReference ? branchRunsWhenTruthy : true;
     } else if (references.length === 0) {
       result = false;
     } else if (isNodeOfType(inner, "UnaryExpression") && inner.operator === "!") {
@@ -292,6 +295,8 @@ const makeExpressionGuaranteesStatusCheck = (statusReferences: EsTreeNode[]) => 
         testAlwaysChecksStatus ||
         (expressionGuaranteesStatusCheck(inner.consequent, branchRunsWhenTruthy) &&
           expressionGuaranteesStatusCheck(inner.alternate, branchRunsWhenTruthy));
+    } else if (mustGuaranteeTruthyReference) {
+      result = false;
     } else if (
       isNodeOfType(inner, "CallExpression") &&
       inner.optional === true &&
@@ -334,11 +339,30 @@ const makeExpressionGuaranteesStatusCheck = (statusReferences: EsTreeNode[]) => 
 };
 
 const statusCheckGuardsNode = (statusReferences: EsTreeNode[], target: EsTreeNode): boolean => {
+  const successfulStatusReferences = statusReferences.filter((reference) => {
+    const inner = stripGroupingParens(reference);
+    return (
+      isNodeOfType(inner, "MemberExpression") &&
+      !inner.computed &&
+      isNodeOfType(inner.property, "Identifier") &&
+      inner.property.name === "ok"
+    );
+  });
   const expressionGuaranteesStatusCheck = makeExpressionGuaranteesStatusCheck(statusReferences);
+  const expressionGuaranteesSuccessfulStatus = makeExpressionGuaranteesStatusCheck(
+    successfulStatusReferences,
+    true,
+  );
   const conditionGuaranteesStatusCheck = (
     test: EsTreeNode,
     branchRunsWhenTruthy: boolean,
   ): boolean => expressionGuaranteesStatusCheck(test, branchRunsWhenTruthy);
+  const continuingBranchHasValidStatus = (
+    test: EsTreeNode,
+    branchRunsWhenTruthy: boolean,
+  ): boolean =>
+    !successfulStatusReferences.some((reference) => isAstDescendant(reference, test)) ||
+    expressionGuaranteesSuccessfulStatus(test, branchRunsWhenTruthy);
   let child = target;
   let ancestor = target.parent ?? null;
   while (ancestor && !isFunctionLike(ancestor)) {
@@ -387,13 +411,15 @@ const statusCheckGuardsNode = (statusReferences: EsTreeNode[], target: EsTreeNod
           if (!isNodeOfType(statement, "IfStatement")) continue;
           if (
             isEarlyExitStatement(statement.consequent) &&
-            conditionGuaranteesStatusCheck(statement.test, false)
+            conditionGuaranteesStatusCheck(statement.test, false) &&
+            continuingBranchHasValidStatus(statement.test, false)
           ) {
             return true;
           }
           if (
             isEarlyExitStatement(statement.alternate) &&
-            conditionGuaranteesStatusCheck(statement.test, true)
+            conditionGuaranteesStatusCheck(statement.test, true) &&
+            continuingBranchHasValidStatus(statement.test, true)
           ) {
             return true;
           }

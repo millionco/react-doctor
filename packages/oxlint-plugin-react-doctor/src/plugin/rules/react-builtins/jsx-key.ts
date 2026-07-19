@@ -1,4 +1,5 @@
 import { SPREAD_KEY_RESOLUTION_DEPTH } from "../../constants/thresholds.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -8,18 +9,22 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxKeyAttribute } from "../../utils/has-jsx-key-attribute.js";
+import { isComponentFunction } from "../../utils/is-component-function.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNonChildrenJsxAttributeValue } from "../../utils/is-non-children-jsx-attribute-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { Rule } from "../../utils/rule.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const ITERATOR_METHOD_NAMES = new Set(["map", "flatMap", "from"]);
+const RENDERING_CALL_NAMES = new Set(["createPortal", "hydrate", "hydrateRoot", "render"]);
 const MISSING_KEY_ARRAY = "Your users can see the wrong data when this array reorders.";
 const MISSING_KEY_ITERATOR = "Your users can see the wrong data when this list reorders.";
-const KEY_AFTER_SPREAD =
-  "Place this `key` before the `{...spread}` so the JSX transform can always extract it.";
+const KEY_BEFORE_SPREAD =
+  "Place this `key` after the `{...spread}` so the spread cannot override it.";
 const DUPLICATE_KEY = (keyValue: string): string =>
   `Your users can see the wrong data because two elements share the key "${keyValue}".`;
 
@@ -56,6 +61,61 @@ const findArrayVariableDeclarator = (
     return ancestor;
   }
   return null;
+};
+
+const isArrayNestedInObjectProperty = (arrayExpression: EsTreeNode): boolean => {
+  let current = findTransparentExpressionRoot(arrayExpression);
+  while (current.parent) {
+    const parent = current.parent;
+    if (
+      (isNodeOfType(parent, "ConditionalExpression") &&
+        (parent.consequent === current || parent.alternate === current)) ||
+      (isNodeOfType(parent, "LogicalExpression") &&
+        (parent.left === current || parent.right === current))
+    ) {
+      current = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    return isNodeOfType(parent, "Property") && parent.value === current;
+  }
+  return false;
+};
+
+const isArrayPassedToNonRenderingCall = (
+  arrayExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const transparentArray = findTransparentExpressionRoot(arrayExpression);
+  const callExpression = transparentArray.parent;
+  if (
+    !callExpression ||
+    !isNodeOfType(callExpression, "CallExpression") ||
+    !callExpression.arguments.some((argument) => argument === transparentArray)
+  ) {
+    return false;
+  }
+  const argumentIndex = callExpression.arguments.findIndex(
+    (argument) => argument === transparentArray,
+  );
+  if (
+    isReactApiCall(callExpression, "createElement", scopes, {
+      allowGlobalReactNamespace: true,
+      allowUnboundBareCalls: true,
+      resolveNamedAliases: true,
+    })
+  ) {
+    return argumentIndex < 2;
+  }
+  const callee = stripParenExpression(callExpression.callee);
+  if (isNodeOfType(callee, "Identifier")) return !RENDERING_CALL_NAMES.has(callee.name);
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier")
+  ) {
+    return !RENDERING_CALL_NAMES.has(callee.property.name);
+  }
+  return true;
 };
 
 // `.map(x => x)` returns the raw elements, so their keys still matter.
@@ -226,7 +286,10 @@ const findNamedCallbackIteratorCall = (functionNode: EsTreeNode): EsTreeNode | n
   return iteratorCall;
 };
 
-const findEnclosingIteratorContext = (jsxNode: EsTreeNode): IteratorContext | null => {
+const findEnclosingIteratorContext = (
+  jsxNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): IteratorContext | null => {
   let current: EsTreeNode | null | undefined = jsxNode;
   let isOutsideContainingFunction = false;
   let didSeeReturnStatement = false;
@@ -256,6 +319,8 @@ const findEnclosingIteratorContext = (jsxNode: EsTreeNode): IteratorContext | nu
       isOutsideContainingFunction = true;
     } else if (isNodeOfType(parent, "ArrayExpression")) {
       if (isOutsideContainingFunction) return null;
+      if (isArrayNestedInObjectProperty(parent)) return null;
+      if (isArrayPassedToNonRenderingCall(parent, scopes)) return null;
       // Config arrays — `description: [<>...</>]`, `messages: [<Foo />]`,
       // `tooltip: [...]`, Map entry tuples `[[key, <X />], ...]` — aren't
       // iterated for rendering; they're data assigned to a property.
@@ -406,7 +471,7 @@ const isWithinChildrenToArray = (jsxNode: EsTreeNode): boolean => {
 const isKeyPropertyName = (propertyKey: EsTreeNode): boolean => {
   if (isNodeOfType(propertyKey, "Identifier")) return propertyKey.name === "key";
   if (isNodeOfType(propertyKey, "Literal")) return String(propertyKey.value) === "key";
-  return true;
+  return false;
 };
 
 // `this.props` inside a class component can never carry `key` — React
@@ -417,6 +482,19 @@ const isThisPropsMember = (expression: EsTreeNode): boolean =>
   isNodeOfType(expression.object, "ThisExpression") &&
   isNodeOfType(expression.property, "Identifier") &&
   expression.property.name === "props";
+
+const isDirectComponentPropsParameter = (
+  bindingIdentifier: EsTreeNode,
+  functionNode: EsTreeNode,
+): boolean => {
+  if (!isFunctionLike(functionNode) || !isComponentFunction(functionNode)) return false;
+  const firstParameter = functionNode.params?.[0];
+  if (!firstParameter) return false;
+  const parameterBinding = isNodeOfType(firstParameter, "AssignmentPattern")
+    ? firstParameter.left
+    : firstParameter;
+  return parameterBinding === bindingIdentifier;
+};
 
 // `({ prop, ...rest }) => …` — a rest binding in a function parameter's
 // top-level ObjectPattern receives the component's props, and React strips
@@ -444,7 +522,7 @@ const isFunctionParameterPropsRest = (bindingIdentifier: EsTreeNode): boolean =>
   ) {
     return false;
   }
-  return functionNode.params.some((param) => param === parameterNode);
+  return isComponentFunction(functionNode) && functionNode.params[0] === parameterNode;
 };
 
 // `const { key, ...rest } = anything` — `key` is destructured away, so
@@ -461,14 +539,18 @@ const isRestBindingWithKeyExtracted = (bindingIdentifier: EsTreeNode): boolean =
   return false;
 };
 
-const isBindingObjectMutated = (scopeOwner: EsTreeNode, bindingName: string): boolean => {
-  let didFindMutation = false;
+const isBindingAssignedKey = (scopeOwner: EsTreeNode, bindingName: string): boolean => {
+  let didFindKeyAssignment = false;
   walkAst(scopeOwner, (node) => {
-    if (didFindMutation) return false;
+    if (didFindKeyAssignment) return false;
     if (isNodeOfType(node, "AssignmentExpression") && isNodeOfType(node.left, "MemberExpression")) {
       const assignedObject = stripParenExpression(node.left.object);
-      if (isNodeOfType(assignedObject, "Identifier") && assignedObject.name === bindingName) {
-        didFindMutation = true;
+      if (
+        isNodeOfType(assignedObject, "Identifier") &&
+        assignedObject.name === bindingName &&
+        isKeyPropertyName(node.left.property)
+      ) {
+        didFindKeyAssignment = true;
         return false;
       }
     }
@@ -487,92 +569,84 @@ const isBindingObjectMutated = (scopeOwner: EsTreeNode, bindingName: string): bo
           isNodeOfType(firstArgument, "Identifier") &&
           firstArgument.name === bindingName
         ) {
-          didFindMutation = true;
-          return false;
+          for (const sourceArgument of node.arguments.slice(1)) {
+            const source = stripParenExpression(sourceArgument);
+            if (!isNodeOfType(source, "ObjectExpression")) continue;
+            if (
+              source.properties.some(
+                (property) => isNodeOfType(property, "Property") && isKeyPropertyName(property.key),
+              )
+            ) {
+              didFindKeyAssignment = true;
+              return false;
+            }
+          }
         }
       }
     }
   });
-  return didFindMutation;
+  return didFindKeyAssignment;
 };
 
-// A spread can only clobber an explicit `key` when it could carry a `key` of
-// its own. Provably-keyless shapes stay silent:
-//   - object literals with only statically-known non-`key` members
-//   - conditional / logical expressions whose reachable results are keyless
-//   - `const` identifiers whose initializer resolves to a keyless literal
-//   - rest bindings that destructured `key` away, and `this.props`
-//   - props rest parameters (`({ a, ...rest }) => …`) — React strips `key`
-// Everything else (a call, an unresolved identifier, a computed member) is
-// treated as capable of supplying one.
-const spreadExpressionCanCarryKey = (expression: EsTreeNode, depth: number): boolean => {
+const spreadExpressionHasKey = (expression: EsTreeNode, depth: number): boolean => {
   const inner = stripParenExpression(expression);
   if (isNodeOfType(inner, "ObjectExpression")) {
     for (const property of inner.properties) {
       if (isNodeOfType(property, "SpreadElement")) {
-        if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) return true;
-        if (spreadExpressionCanCarryKey(property.argument, depth + 1)) return true;
+        if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) continue;
+        if (spreadExpressionHasKey(property.argument, depth + 1)) return true;
         continue;
       }
-      if (!isNodeOfType(property, "Property")) return true;
-      if (property.computed) return true;
+      if (!isNodeOfType(property, "Property")) continue;
       if (isKeyPropertyName(property.key)) return true;
     }
     return false;
   }
   if (isNodeOfType(inner, "ConditionalExpression")) {
-    if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) return true;
+    if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) return false;
     return (
-      spreadExpressionCanCarryKey(inner.consequent, depth + 1) ||
-      spreadExpressionCanCarryKey(inner.alternate, depth + 1)
+      spreadExpressionHasKey(inner.consequent, depth + 1) ||
+      spreadExpressionHasKey(inner.alternate, depth + 1)
     );
   }
   if (isNodeOfType(inner, "LogicalExpression")) {
-    if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) return true;
-    // `cond && {…}` — a falsy left side spreads as a no-op, so only the
-    // right side can carry a key. `||` / `??` can surface either side.
-    if (inner.operator === "&&") return spreadExpressionCanCarryKey(inner.right, depth + 1);
+    if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) return false;
+    if (inner.operator === "&&") return spreadExpressionHasKey(inner.right, depth + 1);
     return (
-      spreadExpressionCanCarryKey(inner.left, depth + 1) ||
-      spreadExpressionCanCarryKey(inner.right, depth + 1)
+      spreadExpressionHasKey(inner.left, depth + 1) ||
+      spreadExpressionHasKey(inner.right, depth + 1)
     );
   }
   if (isNodeOfType(inner, "Literal")) return false;
   if (isThisPropsMember(inner)) return false;
   if (isNodeOfType(inner, "Identifier")) {
     if (inner.name === "undefined") return false;
-    if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) return true;
+    if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) return false;
     const binding = findVariableInitializer(inner, inner.name);
-    if (!binding) return true;
+    if (!binding) return false;
     if (isRestBindingWithKeyExtracted(binding.bindingIdentifier)) return false;
     if (isFunctionParameterPropsRest(binding.bindingIdentifier)) return false;
-    if (!isConstDeclaredBinding(binding) || !binding.initializer) return true;
-    if (isBindingObjectMutated(binding.scopeOwner, inner.name)) return true;
-    return spreadExpressionCanCarryKey(binding.initializer, depth + 1);
+    if (isDirectComponentPropsParameter(binding.bindingIdentifier, binding.scopeOwner))
+      return false;
+    if (!isConstDeclaredBinding(binding) || !binding.initializer) return false;
+    if (isBindingAssignedKey(binding.scopeOwner, inner.name)) return true;
+    return spreadExpressionHasKey(binding.initializer, depth + 1);
   }
-  return true;
+  return false;
 };
 
 const spreadCanOverwriteKey = (spreadAttribute: EsTreeNodeOfType<"JSXSpreadAttribute">): boolean =>
-  spreadExpressionCanCarryKey(spreadAttribute.argument, 0);
+  spreadExpressionHasKey(spreadAttribute.argument, 0);
 
 const checkKeyBeforeSpread = (
   context: Parameters<Rule["create"]>[0],
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
 ): void => {
-  // The documented hazard is `key` placed AFTER a `{...spread}` (oxc's
-  // `checkKeyMustBeforeSpread`): the automatic JSX runtime can only extract
-  // the key at compile time when it precedes every spread, so
-  // key-after-spread deopts to `createElement` and which key wins becomes
-  // transform-dependent. Key-BEFORE-spread is the documented FIX shape
-  // (`<App key="x" {...p} />`) and must never fire — the key is extracted
-  // before the spread applies. We compare the key against the FIRST
-  // key-capable spread so `<App {...a} key="x" />` reports while spreads
-  // that provably carry no `key` (`{...{}}`, `{...this.props}`, keyless
-  // literals) create no ambiguity and stay silent.
+  // A key-capable spread placed after the explicit key can override it in
+  // both the classic and automatic JSX runtimes. A later explicit key wins.
   let keyIndex: number | null = null;
   let keyAttribute: EsTreeNode | null = null;
-  let firstKeyCarryingSpreadIndex: number | null = null;
+  let lastKeyCarryingSpreadIndex: number | null = null;
   for (
     let attributeIndex = 0;
     attributeIndex < openingElement.attributes.length;
@@ -584,21 +658,17 @@ const checkKeyBeforeSpread = (
         keyIndex = attributeIndex;
         keyAttribute = attribute;
       }
-    } else if (
-      isNodeOfType(attribute, "JSXSpreadAttribute") &&
-      firstKeyCarryingSpreadIndex === null &&
-      spreadCanOverwriteKey(attribute)
-    ) {
-      firstKeyCarryingSpreadIndex = attributeIndex;
+    } else if (isNodeOfType(attribute, "JSXSpreadAttribute") && spreadCanOverwriteKey(attribute)) {
+      lastKeyCarryingSpreadIndex = attributeIndex;
     }
   }
   if (
     keyIndex !== null &&
-    firstKeyCarryingSpreadIndex !== null &&
-    firstKeyCarryingSpreadIndex < keyIndex &&
+    lastKeyCarryingSpreadIndex !== null &&
+    lastKeyCarryingSpreadIndex > keyIndex &&
     keyAttribute
   ) {
-    context.report({ node: keyAttribute, message: KEY_AFTER_SPREAD });
+    context.report({ node: keyAttribute, message: KEY_BEFORE_SPREAD });
   }
 };
 
@@ -638,7 +708,7 @@ const getKeyAttributeValueString = (
 // Port of `oxc_linter::rules::react::jsx_key`. Reports JSX elements inside
 // array literals or `.map` / `.flatMap` / `Array.from` callbacks that lack a
 // `key` prop. Honors two settings:
-//   - checkKeyMustBeforeSpread (default true): reports `<X {...p} key=…>`
+//   - checkKeyMustBeforeSpread (default true): reports `<X key=… {...p}>`
 //   - warnOnDuplicates (default false): duplicate `key` values among siblings
 // Skips elements wrapped by `Children.toArray(...)` since React's runtime
 // assigns synthetic keys for those.
@@ -671,7 +741,7 @@ export const jsxKey = defineRule({
           }
         }
         // Missing key check: only on top-level JSX in an array/iterator.
-        const enclosingContext = findEnclosingIteratorContext(node);
+        const enclosingContext = findEnclosingIteratorContext(node, context.scopes);
         if (!enclosingContext) return;
         if (isWithinChildrenToArray(node)) return;
         if (hasJsxKeyAttribute(openingElement)) return;

@@ -3,8 +3,14 @@ import { runScanRule } from "../../../test-utils/run-scan-rule.js";
 import { repositorySecretFile } from "./repository-secret-file.js";
 
 describe("security-scan/repository-secret-file — regressions", () => {
-  it("stays silent on .env.template and .env.sample files", () => {
-    for (const relativePath of [".env.template", ".env.sample", "projects/app/.env.template"]) {
+  it("stays silent on env example files with environment suffixes", () => {
+    for (const relativePath of [
+      ".env.template",
+      ".env.sample",
+      ".env.production.template",
+      ".env.local.example",
+      "projects/app/.env.staging.template",
+    ]) {
       const findings = runScanRule(repositorySecretFile, {
         relativePath,
         content: `MONGODB_URI="mongodb://myusername:mypassword@localhost:27017/app"\n`,
@@ -35,5 +41,22 @@ describe("security-scan/repository-secret-file — regressions", () => {
       content: `DATABASE_URL=postgres://app_prod:N7v!q2mXfA9z@db.internal.example.com:5432/app\n`,
     });
     expect(findings).toHaveLength(1);
+  });
+
+  it("still flags environment-specific secret files", () => {
+    const findings = runScanRule(repositorySecretFile, {
+      relativePath: ".env.production",
+      content: `DATABASE_URL=postgres://app_prod:N7v!q2mXfA9z@db.internal.example.com:5432/app\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("handles pathological multi-dot env filenames without ambiguous suffix parsing", () => {
+    const findings = runScanRule(repositorySecretFile, {
+      relativePath:
+        ".env.segment.segment.segment.segment.segment.segment.segment.segment.segment.segment.template",
+      content: `DATABASE_URL=postgres://app_prod:N7v!q2mXfA9z@db.internal.example.com:5432/app\n`,
+    });
+    expect(findings).toEqual([]);
   });
 });

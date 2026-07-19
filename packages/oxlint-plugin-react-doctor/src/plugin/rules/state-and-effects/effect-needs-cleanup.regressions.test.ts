@@ -3208,7 +3208,7 @@ export const Debounced = ({ value }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("rejects split cleanup when an early return skips the rerun release", () => {
+  it("accepts one-shot timer cleanup owned by a stable unmount effect after an early return", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useEffect, useRef } from "react";
@@ -3224,10 +3224,10 @@ export const Debounced = ({ enabled, value }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("rejects split cleanup when an outer condition skips the rerun release", () => {
+  it("accepts one-shot timer cleanup owned by a stable unmount effect inside a condition", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useEffect, useRef } from "react";
@@ -3239,6 +3239,60 @@ export const Debounced = ({ enabled, value }) => {
       timeoutRef.current = setTimeout(() => commit(value), 300);
     }
   }, [enabled, value]);
+  useEffect(() => () => clearTimeout(timeoutRef.current), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects repeating timer cleanup when an early return skips the rerun release", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Poller = ({ enabled, value }) => {
+  const intervalRef = useRef(null);
+  useEffect(() => {
+    if (!enabled) return;
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => poll(value), 300);
+  }, [enabled, value]);
+  useEffect(() => () => clearInterval(intervalRef.current), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects one-shot timer cleanup when rerenders can overwrite a live handle", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const DeferredCommit = ({ value }) => {
+  const timeoutRef = useRef(null);
+  useEffect(() => {
+    timeoutRef.current = setTimeout(() => commit(value), 300);
+  }, [value]);
+  useEffect(() => () => clearTimeout(timeoutRef.current), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects one-shot timer cleanup when a separate guard can skip the rerun release", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const DeferredCommit = ({ shouldRelease, value }) => {
+  const timeoutRef = useRef(null);
+  useEffect(() => {
+    if (shouldRelease) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => commit(value), 300);
+  }, [shouldRelease, value]);
   useEffect(() => () => clearTimeout(timeoutRef.current), []);
   return null;
 };`,
@@ -4478,6 +4532,912 @@ export const MediaQuery = ({ breakpoint }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("accepts matching listener setup and cleanup through nested ref collections", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [];
+          enabledEvents.push({ event: "focus", listener: handleFocus, capture: true });
+
+          enabledEvents.forEach(({ event, listener, capture }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(event, listener, capture);
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event, listener, capture }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(event, listener, capture);
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts matching nonliteral capture values in inline option bags", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function OutsideAction({ capture, onOutsideAction }) {
+        useEffect(() => {
+          document.addEventListener("focusin", onOutsideAction, { capture, passive: true });
+          return () => {
+            document.removeEventListener("focusin", onOutsideAction, { capture, passive: false });
+          };
+        }, [capture, onOutsideAction]);
+
+        return null;
+      }
+    `,
+      { filename: "OutsideAction.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("rejects different nonliteral capture values in inline option bags", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function OutsideAction({ capture, cleanupCapture, onOutsideAction }) {
+        useEffect(() => {
+          document.addEventListener("focusin", onOutsideAction, { capture });
+          return () => {
+            document.removeEventListener("focusin", onOutsideAction, {
+              capture: cleanupCapture,
+            });
+          };
+        }, [capture, cleanupCapture, onOutsideAction]);
+
+        return null;
+      }
+    `,
+      { filename: "OutsideAction.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not collide opaque listener options with an inline capture value", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function OutsideAction({ listenerOptions, onOutsideAction }) {
+        useEffect(() => {
+          document.addEventListener("focusin", onOutsideAction, listenerOptions);
+          return () => {
+            document.removeEventListener("focusin", onOutsideAction, {
+              capture: listenerOptions,
+            });
+          };
+        }, [listenerOptions, onOutsideAction]);
+
+        return null;
+      }
+    `,
+      { filename: "OutsideAction.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "conditional cleanup",
+      beforeCleanup: "",
+      cleanup: `
+        if (shouldCleanup) {
+          document.removeEventListener(event, handler, { capture });
+        }
+      `,
+    },
+    {
+      name: "post-registration collection mutation",
+      beforeCleanup: "subscriptions.pop();",
+      cleanup: "document.removeEventListener(event, handler, { capture });",
+    },
+  ])("rejects projected option-bag capture with $name", ({ beforeCleanup, cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function OutsideActions({ shouldCleanup, subscriptions }) {
+        useEffect(() => {
+          subscriptions.forEach(({ event, handler, capture }) => {
+            document.addEventListener(event, handler, { capture });
+          });
+
+          ${beforeCleanup}
+
+          return () => {
+            subscriptions.forEach(({ event, handler, capture }) => {
+              ${cleanup}
+            });
+          };
+        }, [shouldCleanup, subscriptions]);
+
+        return null;
+      }
+    `,
+      { filename: "OutsideActions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts direct exhaustive emitter cleanup through projected listener tuples", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Subscriptions({ emitter, subscriptions }) {
+        useEffect(() => {
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          return () => {
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.off(event, handler);
+            });
+          };
+        }, [emitter, subscriptions]);
+
+        return null;
+      }
+    `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    {
+      name: "conditional cleanup",
+      beforeCleanup: "",
+      cleanup: "if (shouldCleanup) emitter.off(event, handler);",
+    },
+    {
+      name: "post-registration collection mutation",
+      beforeCleanup: "subscriptions.pop();",
+      cleanup: "emitter.off(event, handler);",
+    },
+  ])("rejects projected emitter $name", ({ beforeCleanup, cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Subscriptions({ emitter, shouldCleanup, subscriptions }) {
+        useEffect(() => {
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          ${beforeCleanup}
+
+          return () => {
+            subscriptions.forEach(({ event, handler }) => {
+              ${cleanup}
+            });
+          };
+        }, [emitter, shouldCleanup, subscriptions]);
+
+        return null;
+      }
+    `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects projected emitter cleanup wrapped in an unrelated collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Subscriptions({ emitter, subscriptions, unrelatedItems }) {
+        useEffect(() => {
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          return () => {
+            unrelatedItems.forEach(() => {
+              subscriptions.forEach(({ event, handler }) => {
+                emitter.off(event, handler);
+              });
+            });
+          };
+        }, [emitter, subscriptions, unrelatedItems]);
+
+        return null;
+      }
+    `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["subscriptions.pop();", "subscriptions.clear();"])(
+    "rejects projected emitter cleanup after cleanup-body mutation with %s",
+    (mutation) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+        function Subscriptions({ emitter, subscriptions }) {
+          useEffect(() => {
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.on(event, handler);
+            });
+
+            return () => {
+              ${mutation}
+              subscriptions.forEach(({ event, handler }) => {
+                emitter.off(event, handler);
+              });
+            };
+          }, [emitter, subscriptions]);
+
+          return null;
+        }
+      `,
+        { filename: "Subscriptions.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("rejects cleanup-body mutation when the cleanup is declared before registration", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Subscriptions({ emitter, subscriptions }) {
+        useEffect(() => {
+          function releaseSubscriptions() {
+            subscriptions.pop();
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.off(event, handler);
+            });
+          }
+
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          return releaseSubscriptions;
+        }, [emitter, subscriptions]);
+
+        return null;
+      }
+    `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts exhaustive projected cleanup declared before registration", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Subscriptions({ emitter, subscriptions }) {
+        useEffect(() => {
+          function releaseSubscriptions() {
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.off(event, handler);
+            });
+          }
+
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          return releaseSubscriptions;
+        }, [emitter, subscriptions]);
+
+        return null;
+      }
+    `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts exhaustive projected cleanup returned through a stable alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Subscriptions({ emitter, subscriptions }) {
+        useEffect(() => {
+          const releaseSubscriptions = () => {
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.off(event, handler);
+            });
+          };
+          const cleanup = releaseSubscriptions;
+
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          return cleanup;
+        }, [emitter, subscriptions]);
+
+        return null;
+      }
+    `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "subscriptions = [];",
+    "subscriptions.length = 0;",
+    "subscriptions[0] = subscriptions[1];",
+    "delete subscriptions[0];",
+  ])("rejects projected emitter cleanup after structural mutation with %s", (mutation) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+        function Subscriptions({ emitter, subscriptions }) {
+          useEffect(() => {
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.on(event, handler);
+            });
+
+            return () => {
+              ${mutation}
+              subscriptions.forEach(({ event, handler }) => {
+                emitter.off(event, handler);
+              });
+            };
+          }, [emitter, subscriptions]);
+
+          return null;
+        }
+      `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "subscriptions.push({ event: 'extra', handler: extraHandler });",
+    "subscriptions.unshift({ event: 'extra', handler: extraHandler });",
+    "subscriptions.sort();",
+    "subscriptions.reverse();",
+    "subscriptions.add({ event: 'extra', handler: extraHandler });",
+  ])(
+    "accepts exhaustive projected cleanup after additive or order-only mutation with %s",
+    (mutation) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+      function Subscriptions({ emitter, extraHandler, subscriptions }) {
+        useEffect(() => {
+          subscriptions.forEach(({ event, handler }) => {
+            emitter.on(event, handler);
+          });
+
+          return () => {
+            ${mutation}
+            subscriptions.forEach(({ event, handler }) => {
+              emitter.off(event, handler);
+            });
+          };
+        }, [emitter, extraHandler, subscriptions]);
+
+        return null;
+      }
+    `,
+        { filename: "Subscriptions.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each(["emitter.off();", "emitter.dispose();"])(
+    "accepts projected registrations followed by whole-receiver cleanup with %s",
+    (cleanup) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+          function Subscriptions({ emitter, subscriptions }) {
+            useEffect(() => {
+              subscriptions.forEach(({ event, handler }) => {
+                emitter.on(event, handler);
+              });
+
+              return () => {
+                ${cleanup}
+              };
+            }, [emitter, subscriptions]);
+
+            return null;
+          }
+        `,
+        { filename: "Subscriptions.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("accepts projected handlers followed by handlerless event cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+        function Subscriptions({ emitter, handlers }) {
+          useEffect(() => {
+            handlers.forEach((handler) => {
+              emitter.on("update", handler);
+            });
+
+            return () => {
+              emitter.off("update");
+            };
+          }, [emitter, handlers]);
+
+          return null;
+        }
+      `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    'emitter.off("other");',
+    'emitter.off("update", handlers[0]);',
+    "emitter.off(getEvent());",
+    "emitter.off(null);",
+    'if (shouldCleanup) emitter.off("update");',
+  ])("rejects projected handlers followed by incomplete event cleanup with %s", (cleanup) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+          function Subscriptions({ emitter, handlers }) {
+            useEffect(() => {
+              handlers.forEach((handler) => {
+                emitter.on("update", handler);
+              });
+
+              return () => {
+                ${cleanup}
+              };
+            }, [emitter, handlers]);
+
+            return null;
+          }
+        `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not mistake a unary addListener release for handlerless cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+        function Subscriptions({ source, handlers }) {
+          useEffect(() => {
+            handlers.forEach((handler) => {
+              source.addListener(handler);
+            });
+
+            return () => {
+              source.off(handlers[0]);
+            };
+          }, [handlers, source]);
+
+          return null;
+        }
+      `,
+      { filename: "Subscriptions.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["otherEmitter.off();", "otherEmitter.dispose();", 'emitter.off("focus");'])(
+    "rejects projected registrations followed by incomplete whole-receiver cleanup with %s",
+    (cleanup) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+          function Subscriptions({ emitter, otherEmitter, subscriptions }) {
+            useEffect(() => {
+              subscriptions.forEach(({ event, handler }) => {
+                emitter.on(event, handler);
+              });
+
+              return () => {
+                ${cleanup}
+              };
+            }, [emitter, otherEmitter, subscriptions]);
+
+            return null;
+          }
+        `,
+        { filename: "Subscriptions.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    {
+      name: "a different receiver collection",
+      cleanup:
+        "cleanupRefs.forEach((elementRef) => elementRef.current?.removeEventListener(event, listener, capture));",
+      extra: "const cleanupRefs = new Set(otherAnchorRefs);",
+    },
+    {
+      name: "a different event projection",
+      cleanup:
+        "elementRefs.forEach((elementRef) => elementRef.current?.removeEventListener(cleanupEvent, listener, capture));",
+      extra: "",
+    },
+    {
+      name: "a different capture value",
+      cleanup:
+        "elementRefs.forEach((elementRef) => elementRef.current?.removeEventListener(event, listener, false));",
+      extra: "",
+    },
+    {
+      name: "a different handler projection",
+      cleanup:
+        "elementRefs.forEach((elementRef) => elementRef.current?.removeEventListener(event, cleanupListener, capture));",
+      extra: "",
+    },
+    {
+      name: "swapped event and handler projections",
+      cleanup:
+        "elementRefs.forEach((elementRef) => elementRef.current?.removeEventListener(listener, event, capture));",
+      extra: "",
+    },
+    {
+      name: "a conditional release",
+      cleanup:
+        "elementRefs.forEach((elementRef) => { if (shouldCleanup) elementRef.current?.removeEventListener(event, listener, capture); });",
+      extra: "",
+    },
+  ])("rejects $name in nested listener collections", ({ cleanup, extra }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs, otherAnchorRefs, shouldCleanup }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          ${extra}
+          const enabledEvents = [
+            {
+              event: "focus",
+              cleanupEvent: "blur",
+              listener: handleFocus,
+              cleanupListener: () => {},
+              capture: true,
+            },
+          ];
+
+          enabledEvents.forEach(({ event, listener, capture }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(event, listener, capture);
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event, cleanupEvent, listener, cleanupListener, capture }) => {
+              ${cleanup}
+            });
+          };
+        }, [anchorRefs, otherAnchorRefs, shouldCleanup]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "a second callback parameter",
+      setupParameters: "event, listener",
+      setupEvent: "event.event",
+      setupListener: "listener.listener",
+      cleanupParameters: "event, listener",
+      cleanupEvent: "event.event",
+      cleanupListener: "listener.listener",
+    },
+    {
+      name: "array destructuring",
+      setupParameters: "[event, listener]",
+      setupEvent: "event",
+      setupListener: "listener",
+      cleanupParameters: "[event, listener]",
+      cleanupEvent: "event",
+      cleanupListener: "listener",
+    },
+  ])("does not infer cleanup identity through $name", (fixture) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+          enabledEvents.forEach((${fixture.setupParameters}) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(${fixture.setupEvent}, ${fixture.setupListener});
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach((${fixture.cleanupParameters}) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(${fixture.cleanupEvent}, ${fixture.cleanupListener});
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts replay cleanup through matching defaulted object properties", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+          enabledEvents.forEach(({ event = "focus", listener = handleFocus, capture = false }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(event, listener, capture);
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event = "focus", listener = handleFocus, capture = false }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(event, listener, capture);
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("rejects replay cleanup through different defaulted object properties", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+          enabledEvents.forEach(({ event, listener, capture = false }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(event, listener, capture);
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event, listener, capture = true }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(event, listener, capture);
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts replay cleanup through matching computed capture expressions", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+          enabledEvents.forEach(({ event, listener }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(
+                event,
+                listener,
+                event === "focus" || event === "blur",
+              );
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event, listener }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(
+                  event,
+                  listener,
+                  event === "focus" || event === "blur",
+                );
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("rejects replay cleanup through different computed capture expressions", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+          enabledEvents.forEach(({ event, listener }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(
+                event,
+                listener,
+                event === "focus" || event === "blur",
+              );
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event, listener }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(event, listener, event === "focus");
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["enabledEvents.pop();", "elementRefs.clear();"])(
+    "rejects replay cleanup after the registered collection mutates with %s",
+    (mutation) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+        function Tooltip({ anchorRefs }) {
+          const handleFocus = () => {};
+
+          useEffect(() => {
+            const elementRefs = new Set(anchorRefs);
+            const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+            enabledEvents.forEach(({ event, listener }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.addEventListener(event, listener);
+              });
+            });
+
+            ${mutation}
+
+            return () => {
+              enabledEvents.forEach(({ event, listener }) => {
+                elementRefs.forEach((elementRef) => {
+                  elementRef.current?.removeEventListener(event, listener);
+                });
+              });
+            };
+          }, [anchorRefs]);
+
+          return null;
+        }
+      `,
+        { filename: "Tooltip.tsx" },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
 
   it("rejects a legacy media listener cleanup with a changed handler", () => {
     const result = runRule(

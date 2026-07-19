@@ -17,6 +17,7 @@ import { collectRenderReachableNames } from "./utils/collect-render-reachable-na
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
 import { collectFunctionLikeLocalNames } from "./utils/collect-function-like-local-names.js";
 import { isSetterCalledDuringRender } from "./utils/is-setter-called-during-render.js";
+import { createExternalLocationInvalidationChecker } from "./utils/create-external-location-invalidation-checker.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -287,6 +288,16 @@ export const rerenderStateOnlyInHandlers = defineRule({
       )) {
         renderReachableNames.add(reachableName);
       }
+      const componentFunction = context.cfg.enclosingFunction(componentBody);
+      const doesSetterInvalidateExternalLocation = isFunctionLike(componentFunction)
+        ? createExternalLocationInvalidationChecker({
+            componentBody,
+            componentFunction,
+            context,
+            directRenderNames,
+            renderReachableExpressions,
+          })
+        : () => false;
       const calledSetterNames = new Set<string>();
       walkAst(componentBody, (child: EsTreeNode) => {
         if (
@@ -300,6 +311,15 @@ export const rerenderStateOnlyInHandlers = defineRule({
 
       for (const binding of bindings) {
         if (renderReachableNames.has(binding.valueName)) continue;
+        const setterBindingIdentifier = isNodeOfType(binding.declarator.id, "ArrayPattern")
+          ? binding.declarator.id.elements?.[1]
+          : null;
+        if (
+          setterBindingIdentifier &&
+          doesSetterInvalidateExternalLocation(setterBindingIdentifier)
+        ) {
+          continue;
+        }
         // Underscore-only or underscore-prefixed value names signal
         // the user is intentionally using useState to FORCE a re-
         // render and doesn't care about the value (`const [_, force]

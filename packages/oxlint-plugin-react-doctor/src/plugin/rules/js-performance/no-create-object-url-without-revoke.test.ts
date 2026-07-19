@@ -337,7 +337,7 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("supports a destructured global URL alias", () => {
+  it("supports a direct destructured global URL alias", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const { URL: BrowserURL } = globalThis;
@@ -345,7 +345,7 @@ describe("no-create-object-url-without-revoke", () => {
        function make(blob) { return BrowserURL.createObjectURL(blob); }
        function makeDefaulted(blob) { return DefaultBrowserURL.createObjectURL(blob); }`,
     );
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not treat a nested destructured URL as the global namespace", () => {

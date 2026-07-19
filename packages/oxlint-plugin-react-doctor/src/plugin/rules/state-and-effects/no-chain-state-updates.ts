@@ -1,11 +1,10 @@
 import { BUILTIN_GLOBAL_NAMESPACE_NAMES } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
-import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -64,32 +63,15 @@ const isBuiltinNamespaceCallee = (callee: EsTreeNode | null | undefined): boolea
   return false;
 };
 
-const getReactUseCallbackSource = (
-  reference: Reference,
-  context: RuleContext,
-): EsTreeNodeOfType<"CallExpression"> | null => {
-  const identifier = reference.identifier as unknown as EsTreeNode;
-  const symbol = resolveConstIdentifierAlias(identifier, context.scopes);
-  if (!symbol || symbol.kind !== "const" || !symbol.initializer) return null;
-  const initializer = stripParenExpression(symbol.initializer);
-  if (
-    isNodeOfType(initializer, "CallExpression") &&
-    isReactApiCall(initializer, "useCallback", context.scopes, {
-      allowGlobalReactNamespace: true,
-      resolveNamedAliases: true,
-    })
-  ) {
-    return initializer;
-  }
-  return null;
-};
-
 const getDependencyStateRefs = (
   analysis: ProgramAnalysis,
   context: RuleContext,
   dependencyReference: Reference,
 ): Reference[] => {
-  const useCallbackCall = getReactUseCallbackSource(dependencyReference, context);
+  const useCallbackCall = getReactUseCallbackCall(
+    dependencyReference.identifier as unknown as EsTreeNode,
+    context.scopes,
+  );
   if (!useCallbackCall) {
     return getUpstreamRefs(analysis, dependencyReference).filter((reference) =>
       isState(analysis, reference),

@@ -7,9 +7,18 @@ import { isReactApiCall } from "./is-react-api-call.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
+interface ResolveReactRefSymbolOptions {
+  includeCreateRef?: boolean;
+  allowUnboundBareCalls?: boolean;
+  resolveNamedAliases?: boolean;
+}
+
+const REACT_REF_API_NAMES: ReadonlySet<string> = new Set(["createRef", "useRef"]);
+
 export const resolveReactRefSymbol = (
   memberExpression: EsTreeNode,
   scopes: ScopeAnalysis,
+  options: ResolveReactRefSymbolOptions = {},
 ): SymbolDescriptor | null => {
   const receiver = isNodeOfType(memberExpression, "MemberExpression")
     ? stripParenExpression(memberExpression.object)
@@ -25,9 +34,16 @@ export const resolveReactRefSymbol = (
   if (!symbol?.initializer) return null;
   const initializer = stripParenExpression(symbol.initializer);
   if (!isNodeOfType(initializer, "CallExpression")) return null;
-  return isReactApiCall(initializer, "useRef", scopes, {
-    allowGlobalReactNamespace: true,
-  })
+  return isReactApiCall(
+    initializer,
+    options.includeCreateRef ? REACT_REF_API_NAMES : "useRef",
+    scopes,
+    {
+      allowGlobalReactNamespace: true,
+      allowUnboundBareCalls: options.allowUnboundBareCalls,
+      resolveNamedAliases: options.resolveNamedAliases,
+    },
+  )
     ? symbol
     : null;
 };

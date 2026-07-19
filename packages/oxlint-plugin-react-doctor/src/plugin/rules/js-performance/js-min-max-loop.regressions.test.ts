@@ -150,6 +150,46 @@ describe("js-performance/js-min-max-loop — regressions", () => {
   });
 
   it.each([
+    `const { Math } = globalThis; Math.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `const { Math: MathAlias } = globalThis; MathAlias.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `const { ["Math"]: MathAlias } = globalThis; MathAlias.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `const { Math: MathAlias } = globalThis; const immutableAlias = MathAlias; immutableAlias.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+  ])("recognizes direct immutable destructured global Math aliases", (code) => {
+    expectPass(code);
+  });
+
+  it.each([
+    `const { builtins: { Math: MathAlias } } = globalThis; MathAlias.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `const userlandMath = { min: () => 99 }; const { Math: MathAlias = userlandMath } = globalThis; MathAlias.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `const propertyName = "Math"; const { [propertyName]: MathAlias } = globalThis; MathAlias.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `const { ...globalCopy } = globalThis; globalCopy.Math.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `let MathAlias; ({ Math: MathAlias } = globalThis); MathAlias.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `const mutate = ({ Math: MathAlias }) => { MathAlias.min = () => 99; }; mutate(globalThis); const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `let globalRoot = globalThis; const { Math: MathAlias } = globalRoot; MathAlias.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+  ])("keeps indirect destructured global Math lookalikes conservative", (code) => {
+    expectFail(code);
+  });
+
+  it("recognizes a wrapped immutable direct global-object alias chain", () => {
+    expectPass(
+      `const globalRoot = globalThis; const globalAlias = globalRoot; (globalAlias as typeof globalThis).Math.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    );
+  });
+
+  it.each([
+    `const { globalThis: globalRoot } = globalThis; globalRoot.Math.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    `const { ["window"]: globalRoot } = globalThis; const globalAlias = globalRoot; globalAlias.Math.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+  ])("recognizes direct immutable destructured global-self aliases", (code) => {
+    expectPass(code);
+  });
+
+  it("rejects an arbitrary direct property destructured from the global object", () => {
+    expectFail(
+      `const { schedulerContainer: globalRoot } = globalThis; globalRoot.Math.min = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
+    );
+  });
+
+  it.each([
     `Math.max = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,
     `Math.min = () => 99; const largest = [3, 1, 2].sort((a, b) => b - a)[0];`,
     `Math.round = () => 99; const smallest = [3, 1, 2].sort((a, b) => a - b)[0];`,

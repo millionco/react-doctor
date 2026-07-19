@@ -15,19 +15,123 @@ const expectPass = (code: string): void => {
 };
 
 describe("react-builtins/jsx-key — regressions", () => {
-  // docs-validation 2026-07: the documented hazard (and oxc's
-  // `checkKeyMustBeforeSpread`) is `key` placed AFTER a `{...spread}` —
-  // key-BEFORE-spread is the documented fix shape and must never fire.
-  // The previous implementation had the direction inverted and flagged
-  // every canonical `<X key={...} {...props} />` in the corpus (12/12 FP).
-  it("does not flag a key placed before the spread", () => expectPass(`[<App key="x" {...b} />];`));
+  it("flags a key before a spread that provably carries one", () =>
+    expectFail(`const props = { key: "spread" }; [<App key="x" {...props} />];`));
 
-  it("flags a key placed after a spread", () => expectFail(`[<App {...b} key="x" />];`));
+  it("does not flag a key placed after the spread", () => expectPass(`[<App {...b} key="x" />];`));
 
-  // Sandwiched: the key still comes after `{...a}`, so it reports.
-  it("flags key between two spreads", () => expectFail(`[<App {...a} key="x" {...b} />];`));
+  it("stays silent on the reported props-spread shape", () =>
+    expectPass(`<App {...props} key="blah" />;`));
 
-  it("flags a key after two leading spreads", () => expectFail(`[<App {...a} {...b} key="x" />];`));
+  it("does not flag a key before direct component props", () => {
+    expectPass(`const Row = (props) => <Item key="row" {...props} />;`);
+  });
+
+  it("does not flag a key before defaulted component props", () => {
+    expectPass(`const Row = (props = {}) => <Item key="row" {...props} />;`);
+  });
+
+  it("does not flag a key before props in a named component", () => {
+    expectPass(`function Row(props) { return <Item key="row" {...props} />; }`);
+  });
+
+  it("does not flag a key before props in a wrapped component", () => {
+    expectPass(
+      `const Row = memo(forwardRef((props, ref) => <Item key="row" ref={ref} {...props} />));`,
+    );
+  });
+
+  it("does not guess that an ordinary helper parameter carries a key", () => {
+    expectPass(`const renderRow = (props) => <Item key="row" {...props} />;`);
+  });
+
+  it("does not guess that an iterator parameter carries a key", () => {
+    expectPass(
+      `const items = [{ id: 1 }]; items.map((props, index) => <Item key={index} {...props} />);`,
+    );
+  });
+
+  it("does not flag JSX arrays passed to non-rendering APIs", () => {
+    expectPass(`editor.createShapesFromJsx([<Shape id="one" />, <Shape id="two" />]);`);
+  });
+
+  it("flags keyless JSX arrays passed to rendering APIs", () => {
+    expectFail(`root.render([<Item value="one" />, <Item value="two" />]);`);
+  });
+
+  it("flags keyless JSX arrays passed as React.createElement children", () => {
+    expectFail(`
+      import React from "react";
+      React.createElement(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("flags keyless JSX arrays passed as imported createElement children", () => {
+    expectFail(`
+      import { createElement } from "react";
+      createElement(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("flags keyless JSX arrays passed as aliased createElement children", () => {
+    expectFail(`
+      import { createElement as h } from "react";
+      h(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("flags keyless JSX arrays passed through a React namespace alias", () => {
+    expectFail(`
+      import * as ReactRuntime from "react";
+      ReactRuntime.createElement(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("flags keyless JSX arrays passed as unbound createElement children", () => {
+    expectFail(`createElement(List, null, [<Item value="one" />, <Item value="two" />]);`);
+  });
+
+  it("does not treat unrelated createElement calls as rendering APIs", () => {
+    expectPass(`factory.createElement(List, null, [<Item value="one" />, <Item value="two" />]);`);
+  });
+
+  it("does not treat non-React createElement imports as rendering APIs", () => {
+    expectPass(`
+      import { createElement } from "widget-factory";
+      createElement(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("does not treat shadowed createElement bindings as rendering APIs", () => {
+    expectPass(`
+      const createElement = factory.createElement;
+      createElement(List, null, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("does not analyze JSX arrays used as createElement props", () => {
+    expectPass(`
+      import { createElement } from "react";
+      createElement(List, [<Item value="one" />, <Item value="two" />]);
+    `);
+  });
+
+  it("does not analyze JSX arrays used as the createElement element type", () => {
+    expectPass(`
+      import React from "react";
+      React.createElement([<Item value="one" />, <Item value="two" />], null);
+    `);
+  });
+
+  it("does not guess that a destructured component field carries a key", () => {
+    expectPass(`const Row = ({ options }) => <Item key="row" {...options} />;`);
+  });
+
+  it("flags key between spreads when a later spread provably carries one", () =>
+    expectFail(`<App {...a} key="x" {...{ key: "spread" }} />;`));
+
+  it("does not flag a key after two leading spreads", () =>
+    expectPass(`[<App {...a} {...b} key="x" />];`));
 
   // A spread that provably carries no `key` creates no extraction
   // ambiguity, so the order does not matter.
@@ -37,8 +141,8 @@ describe("react-builtins/jsx-key — regressions", () => {
   it("does not flag a key after a keyless-object-literal spread", () =>
     expectPass(`<App {...{ className: c }} key="x" />;`));
 
-  it("flags a key after an object-literal spread that carries a key", () =>
-    expectFail(`<App {...{ key: y }} key="x" />;`));
+  it("flags a key before an object-literal spread that carries a key", () =>
+    expectFail(`<App key="x" {...{ key: y }} />;`));
 
   it("does not flag shorthand fragments returned from iterators", () => {
     expectPass(`items.map((item) => <>{item.name}</>);`);
@@ -167,6 +271,19 @@ describe("react-builtins/jsx-key — regressions", () => {
     expectPass(`<Tabs items={[<Tab />, <Tab />]} />;`);
   });
 
+  it("does not flag JSX arrays nested in an object-property conditional", () => {
+    expectPass(`
+      const chip = {
+        Icons: isLast ? [<PageIcon />] : [<Wrapper><PageIcon /></Wrapper>],
+      };
+      consume(chip);
+    `);
+  });
+
+  it("still flags a conditional JSX array rendered as children", () => {
+    expectFail(`const App = ({ ready }) => <>{ready ? [<PageIcon />] : []}</>;`);
+  });
+
   it("does not flag a mapped collection passed to a non-children prop", () => {
     expectPass(`<Menu items={data.map((d) => <MenuItem label={d.label} />)} />;`);
   });
@@ -215,12 +332,8 @@ describe("react-builtins/jsx-key — regressions", () => {
     expectFail(`<Menu>{data.length && data.map((d) => <MenuItem v={d} />)}</Menu>;`);
   });
 
-  // tim-soft/react-spring-lightbox ImagePager: per the documented
-  // contract, `key` written after the `{...bind()}` gesture spread is the
-  // hazard shape (the transform cannot extract it reliably); the fix is
-  // to move `key` above the spread, which must stay silent.
-  it("flags the tim-soft base shape: key placed after the gesture spread", () => {
-    expectFail(`
+  it("does not flag the tim-soft base shape: key placed after the gesture spread", () => {
+    expectPass(`
       pagerSprings.map(({ display, x }, i) => (
         <AnimatedImagePager
           $inline={inline}
@@ -233,7 +346,7 @@ describe("react-builtins/jsx-key — regressions", () => {
     `);
   });
 
-  it("does not flag the corrected tim-soft shape: key placed before the gesture spread", () => {
+  it("does not guess that a gesture prop getter returns a key", () => {
     expectPass(`
       pagerSprings.map(({ display, x }, i) => (
         <AnimatedImagePager
@@ -241,6 +354,20 @@ describe("react-builtins/jsx-key — regressions", () => {
           $inline={inline}
           {...bind()}
           className="lightbox-image-pager"
+          role="presentation"
+        />
+      ));
+    `);
+  });
+
+  it("does not flag a stable key placed after the gesture spread", () => {
+    expectPass(`
+      pagerSprings.map(({ display, x }, i) => (
+        <AnimatedImagePager
+          $inline={inline}
+          {...bind()}
+          className="lightbox-image-pager"
+          key={images[i].src}
           role="presentation"
         />
       ));
@@ -264,26 +391,34 @@ describe("react-builtins/jsx-key — regressions", () => {
     `);
   });
 
-  it("flags a key after a spread of a local const object literal that carries a key", () => {
+  it("flags a key before a spread of a local const object literal that carries a key", () => {
     expectFail(`
       const withKey = { key: "boom", text: "token" };
-      items.map((item) => <Token {...withKey} key={item.id} />);
+      items.map((item) => <Token key={item.id} {...withKey} />);
     `);
   });
 
-  it("flags a key after a spread of a const object literal mutated via Object.assign", () => {
-    expectFail(`
+  it("does not guess what an opaque Object.assign source contains", () => {
+    expectPass(`
       const common = { text: "token" };
       Object.assign(common, extra);
-      items.map((item) => <Token {...common} key={item.id} />);
+      items.map((item) => <Token key={item.id} {...common} />);
     `);
   });
 
-  it("flags a key after a spread of a const object literal mutated via member assignment", () => {
+  it("flags a key before a const given a key by Object.assign", () => {
+    expectFail(`
+      const common = { text: "token" };
+      Object.assign(common, { key: "boom" });
+      items.map((item) => <Token key={item.id} {...common} />);
+    `);
+  });
+
+  it("flags a key before a spread of a const object literal mutated via member assignment", () => {
     expectFail(`
       const common = { text: "token" };
       common.key = "boom";
-      items.map((item) => <Token {...common} key={item.id} />);
+      items.map((item) => <Token key={item.id} {...common} />);
     `);
   });
 
@@ -297,10 +432,18 @@ describe("react-builtins/jsx-key — regressions", () => {
     `);
   });
 
-  it("flags a key after a conditional spread with an unprovable call branch", () => {
+  it("does not guess that an unprovable conditional branch carries a key", () => {
+    expectPass(`
+      items.map((item, i) => (
+        <li key={i} {...(item.disabled ? {} : getAnalyticsAttributes(item))} />
+      ));
+    `);
+  });
+
+  it("flags a key before a conditional spread with a keyed branch", () => {
     expectFail(`
       items.map((item, i) => (
-        <li {...(item.disabled ? {} : getAnalyticsAttributes(item))} key={i} />
+        <li key={i} {...(item.disabled ? {} : { key: item.id })} />
       ));
     `);
   });
@@ -330,18 +473,17 @@ describe("react-builtins/jsx-key — regressions", () => {
     `);
   });
 
-  it("flags a key after a rest spread whose pattern did not extract the key", () => {
-    expectFail(`
+  it("does not guess that an opaque rest spread carries a key", () => {
+    expectPass(`
       const Row = (rowInput) => {
         const { label, ...rest } = rowInput;
-        return items.map((item) => <li {...rest} key={item.id} />);
+        return items.map((item) => <li key={item.id} {...rest} />);
       };
     `);
   });
 
-  // #1078 exact repro shapes: a stable `key` written BEFORE a typed props
-  // rest spread. Key-before-spread is the documented fix shape and must
-  // never fire, whatever the spread is.
+  // A component props rest binding cannot carry `key` because React strips it
+  // before invoking the component.
   it("does not flag the issue-1078 typed FC shape: key before a props rest spread", () => {
     expectPass(`
       const Checkboxes: FC<CheckboxesProps> = ({className, ...rest}) => (
@@ -369,9 +511,7 @@ describe("react-builtins/jsx-key — regressions", () => {
     `);
   });
 
-  // Folded in from PR #1079 (issue #1078), adapted to the key-after-spread
-  // direction: a rest binding in a component's props parameter can never
-  // carry `key` — React strips it before props reach the component.
+  // A props rest binding stays safe in either order.
   it("does not flag a key after a props rest-parameter spread (arrow)", () => {
     expectPass(`
       const Checkboxes = ({options, ...rest}) => (
@@ -399,10 +539,7 @@ describe("react-builtins/jsx-key — regressions", () => {
     `);
   });
 
-  // docs-validation 2026-07 FP corpus shapes — every one wrote the key
-  // before the spread (react-datepicker WeekNumber, react-pdf OutlineItem,
-  // hyperdx DashboardsListPage, frimousse emoji-picker): must stay silent.
-  it("does not flag key before defaultProps + this.props spreads (react-datepicker)", () => {
+  it("does not guess that an unresolved defaultProps spread carries a key", () => {
     expectPass(`
       class Week extends Component {
         render() {
@@ -421,7 +558,7 @@ describe("react-builtins/jsx-key — regressions", () => {
     `);
   });
 
-  it("does not flag key before an unresolved identifier spread in a map", () => {
+  it("does not guess that an unresolved identifier spread carries a key", () => {
     expectPass(`items.map((item) => <Row key={item.id} {...rowProps} />);`);
   });
 

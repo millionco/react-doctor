@@ -139,6 +139,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
       "client-passive-event-listeners",
       "exhaustive-deps",
+      "nextjs-async-dynamic-api-not-awaited",
       "nextjs-missing-metadata",
       "nextjs-no-img-element",
       "nextjs-no-use-search-params-without-suspense",

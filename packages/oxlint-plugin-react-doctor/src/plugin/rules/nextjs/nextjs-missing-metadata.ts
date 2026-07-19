@@ -9,6 +9,49 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { hasAncestorMetadataLayout } from "../../utils/find-ancestor-metadata-layout.js";
+import { findExportedValue } from "../../utils/find-exported-value.js";
+import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+
+const unwrapAwaitedExpression = (node: EsTreeNode): EsTreeNode => {
+  let expression = stripParenExpression(node);
+  while (isNodeOfType(expression, "AwaitExpression")) {
+    expression = stripParenExpression(expression.argument);
+  }
+  return expression;
+};
+
+const isNextNavigationRedirectCall = (node: EsTreeNode, context: RuleContext): boolean => {
+  const expression = unwrapAwaitedExpression(node);
+  if (!isNodeOfType(expression, "CallExpression")) return false;
+  const callee = stripParenExpression(expression.callee);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  if (context.scopes.symbolFor(callee)?.kind !== "import") return false;
+  const importedName = getImportedNameFromModule(expression, callee.name, "next/navigation");
+  return importedName === "redirect" || importedName === "permanentRedirect";
+};
+
+const isRedirectOnlyDefaultExport = (
+  programNode: EsTreeNodeOfType<"Program">,
+  context: RuleContext,
+): boolean => {
+  const defaultExport = findExportedValue(programNode, "default");
+  if (!defaultExport || !isFunctionLike(defaultExport)) return false;
+  if (!isNodeOfType(defaultExport.body, "BlockStatement")) {
+    return isNextNavigationRedirectCall(defaultExport.body, context);
+  }
+  if (defaultExport.body.body.length !== 1) return false;
+  const onlyStatement = defaultExport.body.body[0];
+  if (isNodeOfType(onlyStatement, "ExpressionStatement")) {
+    return isNextNavigationRedirectCall(onlyStatement.expression, context);
+  }
+  if (isNodeOfType(onlyStatement, "ReturnStatement") && onlyStatement.argument) {
+    return isNextNavigationRedirectCall(onlyStatement.argument, context);
+  }
+  return false;
+};
 
 export const nextjsMissingMetadata = defineRule({
   id: "nextjs-missing-metadata",
@@ -58,6 +101,7 @@ export const nextjsMissingMetadata = defineRule({
       });
 
       if (hasMetadataExport) return;
+      if (isRedirectOnlyDefaultExport(programNode, context)) return;
       // A page inherits metadata merged down the segment chain, so skip the
       // directory walk only once the cheap in-file check comes up empty.
       if (hasAncestorMetadataLayout(context.filename ?? "")) return;

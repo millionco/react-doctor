@@ -115,7 +115,6 @@ import { jsxNoNewArrayAsProp } from "./rules/react-builtins/jsx-no-new-array-as-
 import { jsxNoNewFunctionAsProp } from "./rules/react-builtins/jsx-no-new-function-as-prop.js";
 import { jsxNoNewObjectAsProp } from "./rules/react-builtins/jsx-no-new-object-as-prop.js";
 import { jsxNoScriptUrl } from "./rules/react-builtins/jsx-no-script-url.js";
-import { jsxNoTargetBlank } from "./rules/react-builtins/jsx-no-target-blank.js";
 import { jsxNoUndef } from "./rules/react-builtins/jsx-no-undef.js";
 import { jsxNoUselessFragment } from "./rules/react-builtins/jsx-no-useless-fragment.js";
 import { jsxNumericAndLeakedRender } from "./rules/correctness/jsx-numeric-and-leaked-render.js";
@@ -1759,18 +1758,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       requires: [...new Set<Capability>(["react", ...(jsxNoScriptUrl.requires ?? [])])],
-    },
-  },
-  {
-    key: "react-doctor/jsx-no-target-blank",
-    id: "jsx-no-target-blank",
-    source: "react-doctor",
-    originallyExternal: true,
-    rule: {
-      ...jsxNoTargetBlank,
-      framework: "global",
-      category: "Security",
-      requires: [...new Set<Capability>(["react", ...(jsxNoTargetBlank.requires ?? [])])],
     },
   },
   {

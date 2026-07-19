@@ -681,6 +681,86 @@ describe("buildCapabilities", () => {
     expect(capabilities.has("nextjs:15")).toBe(false);
   });
 
+  it("emits React Router capability thresholds through the detected version", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      reactRouterVersion: "^7.9.0",
+    });
+    expect(capabilities.has("react-router")).toBe(true);
+    expect(capabilities.has("react-router:6.4")).toBe(true);
+    expect(capabilities.has("react-router:6.19")).toBe(true);
+    expect(capabilities.has("react-router:7.9")).toBe(true);
+    expect(capabilities.has("react-router:7.10")).toBe(false);
+    expect(capabilities.has("react-router:8")).toBe(false);
+  });
+
+  it("does not enable v7 React Router rules for a v6 project", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      reactRouterVersion: "^6.30.1",
+    });
+    expect(capabilities.has("react-router:6.9")).toBe(true);
+    expect(capabilities.has("react-router:7")).toBe(false);
+    expect(
+      shouldEnableRule(
+        ["react-router:7", "react-router-framework"],
+        undefined,
+        capabilities,
+        new Set(),
+      ),
+    ).toBe(false);
+  });
+
+  it("enables stable middleware rules only at v7.9 in Framework mode", () => {
+    const dataModeCapabilities = buildCapabilities({
+      ...baseProject,
+      reactRouterVersion: "^7.9.0",
+    });
+    const frameworkModeCapabilities = buildCapabilities({
+      ...baseProject,
+      reactRouterVersion: "^7.9.0",
+      hasReactRouterFramework: true,
+    });
+    expect(
+      shouldEnableRule(
+        ["react-router:7.9", "react-router-framework"],
+        undefined,
+        dataModeCapabilities,
+        new Set(),
+      ),
+    ).toBe(false);
+    expect(
+      shouldEnableRule(
+        ["react-router:7.9", "react-router-framework"],
+        undefined,
+        frameworkModeCapabilities,
+        new Set(),
+      ),
+    ).toBe(true);
+  });
+
+  it("emits the Framework mode capability independently of the framework bucket", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+      reactRouterVersion: "^8.1.0",
+      hasReactRouterFramework: true,
+    });
+    expect(capabilities.has("react-router-framework")).toBe(true);
+    expect(capabilities.has("react-router:7.10")).toBe(true);
+    expect(capabilities.has("react-router:7.15")).toBe(true);
+    expect(capabilities.has("react-router:8")).toBe(true);
+  });
+
+  it("emits only the bare React Router capability for an unparseable version", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      reactRouterVersion: "workspace:*",
+    });
+    expect(capabilities.has("react-router")).toBe(true);
+    expect(capabilities.has("react-router:6.4")).toBe(false);
+  });
+
   it("omits `nextjs:15` when the Next.js version is unparseable", () => {
     const capabilities = buildCapabilities({
       ...baseProject,

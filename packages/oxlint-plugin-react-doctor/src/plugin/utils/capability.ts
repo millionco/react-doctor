@@ -62,6 +62,18 @@ export type Capability =
   | "styled-components:6"
   | "three"
   | "r3f"
+  | "react-router"
+  | "react-router-framework"
+  | "react-router:6.4"
+  | "react-router:6.7"
+  | "react-router:6.9"
+  | "react-router:6.19"
+  | "react-router:7"
+  | "react-router:7.8"
+  | "react-router:7.9"
+  | "react-router:7.10"
+  | "react-router:7.15"
+  | "react-router:8"
   | "pre-es2023"
   // Major-version ladders (`react:17`…) plus minor-versioned gates like
   // `react:19.2` — both parse as numeric template members. Bounds live in

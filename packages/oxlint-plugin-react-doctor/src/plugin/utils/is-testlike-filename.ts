@@ -4,6 +4,7 @@
 const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/test/",
   "/tests/",
+  "/testing/",
   "/__tests__/",
   "/__test__/",
   "/__fixtures__/",

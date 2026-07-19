@@ -8,6 +8,7 @@ import {
 } from "./constants/nextjs.js";
 import { CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH } from "./constants/thresholds.js";
 import { INK_RULE_IDS } from "./constants/ink.js";
+import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectImportedJsxComponentDependencies } from "./utils/collect-imported-jsx-component-dependencies.js";
 import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
@@ -387,7 +388,8 @@ const collectRnNoRawTextDependencies: CrossFileDependencyCollector = ({
 // no-locale-format-in-render / no-match-media-in-state-initializer
 // (`classifyReactNativeFileTarget`), and
 // rn-prefer-expo-image (`isExpoManagedFileActive` + the `wrapReactNativeRule`
-// gate) all read only the nearest manifest: the same ancestor package.json
+// gate) and the React Router version/mode gate all read only the nearest
+// manifest: the same ancestor package.json
 // existence walk plus that one manifest's content. `classifyPackagePlatform`
 // records exactly that probe set, and the rules gate the read on in-file
 // conditions the collector deliberately skips (probing more is always safe).
@@ -450,6 +452,10 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["rn-no-raw-text", collectRnNoRawTextDependencies],
     ["rn-prefer-expo-image", collectNearestManifestDependencies],
     ["rn-style-prefer-boxshadow", collectLegacyArchDependencies],
+    ...REACT_ROUTER_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
+      ruleId,
+      collectNearestManifestDependencies,
+    ]),
   ]);
 
 /**

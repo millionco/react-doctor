@@ -1,0 +1,307 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../test-utils/run-rule.js";
+import type { Rule } from "../utils/rule.js";
+import { reactRouterCspNonceConsistency } from "./security/react-router-csp-nonce-consistency.js";
+import { reactRouterGuardAbortedHandleError } from "./correctness/react-router-guard-aborted-handle-error.js";
+import { reactRouterInternalRouteAnchor } from "./correctness/react-router-internal-route-anchor.js";
+import { reactRouterLoaderFetchForwardsSignal } from "./performance/react-router-loader-fetch-forwards-signal.js";
+import { reactRouterLoaderParallelFetch } from "./performance/react-router-loader-parallel-fetch.js";
+import { reactRouterPreferRouteLazy } from "./performance/react-router-prefer-route-lazy.js";
+import { reactRouterNoCatchMiddlewareNext } from "./correctness/react-router-no-catch-middleware-next.js";
+import { reactRouterNoClientModuleInServerRender } from "./correctness/react-router-no-client-module-in-server-render.js";
+import { reactRouterNoDuplicateRouteId } from "./correctness/react-router-no-duplicate-route-id.js";
+import { reactRouterNoInvalidAbsoluteChildPath } from "./correctness/react-router-no-invalid-absolute-child-path.js";
+import { reactRouterNoInvalidLazyRouteProperties } from "./correctness/react-router-no-invalid-lazy-route-properties.js";
+import { reactRouterNoLoaderRequestBody } from "./correctness/react-router-no-loader-request-body.js";
+import { reactRouterNoMultipleMiddlewareNext } from "./correctness/react-router-no-multiple-middleware-next.js";
+import { reactRouterNoMultipleSetSearchParamsInTick } from "./correctness/react-router-no-multiple-set-search-params-in-tick.js";
+import { reactRouterNoNavigateInRender } from "./correctness/react-router-no-navigate-in-render.js";
+import { reactRouterNoRedirectInTryCatch } from "./correctness/react-router-no-redirect-in-try-catch.js";
+import { reactRouterNoRouteModuleEnvironmentSuffix } from "./correctness/react-router-no-route-module-environment-suffix.js";
+import { reactRouterNoRouterInRender } from "./correctness/react-router-no-router-in-render.js";
+import { reactRouterNoStaticCookieExpires } from "./correctness/react-router-no-static-cookie-expires.js";
+import { reactRouterNoUnsynchronizedSearchParamsMutation } from "./correctness/react-router-no-unsynchronized-search-params-mutation.js";
+import { reactRouterNoUseLoaderDataInErrorUi } from "./correctness/react-router-no-use-loader-data-in-error-ui.js";
+import { reactRouterRequireRootErrorBoundary } from "./correctness/react-router-require-root-error-boundary.js";
+import { reactRouterResourceLinkRequiresReload } from "./correctness/react-router-resource-link-requires-reload.js";
+import { reactRouterReturnNavigationPromiseInTransition } from "./correctness/react-router-return-navigation-promise-in-transition.js";
+import { reactRouterSessionMutationRequiresCommit } from "./correctness/react-router-session-mutation-requires-commit.js";
+import { reactRouterValidRouteObject } from "./correctness/react-router-valid-route-object.js";
+
+interface SafeRuleCase {
+  name: string;
+  rule: Rule;
+  source: string;
+  filename?: string;
+  settings?: Readonly<Record<string, unknown>>;
+}
+
+const safeRuleCases: SafeRuleCase[] = [
+  {
+    name: "ignores a shadowed router factory",
+    rule: reactRouterNoRouterInRender,
+    source:
+      'import { createBrowserRouter } from "react-router"; function App() { const createBrowserRouter = () => null; createBrowserRouter(); return null; }',
+  },
+  {
+    name: "allows navigate in an event handler",
+    rule: reactRouterNoNavigateInRender,
+    source:
+      'import { useNavigate } from "react-router"; function App() { const navigate = useNavigate(); return <button onClick={() => navigate("/next")} />; }',
+  },
+  {
+    name: "allows lazy to return mutable route properties",
+    rule: reactRouterNoInvalidLazyRouteProperties,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", lazy: async () => ({ Component, loader }) }]);',
+  },
+  {
+    name: "allows request bodies in actions",
+    rule: reactRouterNoLoaderRequestBody,
+    source: "export async function action({ request }) { return request.formData(); }",
+  },
+  {
+    name: "ignores unrelated object methods named loader",
+    rule: reactRouterNoLoaderRequestBody,
+    source:
+      "const parser = { async loader({ request }) { return request.formData(); } }; export default parser;",
+  },
+  {
+    name: "allows pure error formatting without an abort guard",
+    rule: reactRouterGuardAbortedHandleError,
+    source: "export function handleError(error, { request }) { return formatError(error); }",
+    filename: "/project/app/entry.server.tsx",
+  },
+  {
+    name: "ignores handleError exports outside the server entry",
+    rule: reactRouterGuardAbortedHandleError,
+    source: "export function handleError(error, { request }) { console.error(error); }",
+    filename: "/project/app/routes/dashboard.tsx",
+  },
+  {
+    name: "allows loader fetches that forward request.signal",
+    rule: reactRouterLoaderFetchForwardsSignal,
+    source:
+      'export async function loader({ request }) { return fetch("/api/profile", { signal: request.signal }); }',
+  },
+  {
+    name: "allows an aliased loader request signal",
+    rule: reactRouterLoaderFetchForwardsSignal,
+    source:
+      'export async function loader({ request: routeRequest }) { return fetch("/api/profile", { signal: routeRequest.signal }); }',
+  },
+  {
+    name: "allows dependent loader awaits",
+    rule: reactRouterLoaderParallelFetch,
+    source:
+      "export async function loader() { const user = await getUser(); const teams = await getTeams(user.id); return { user, teams }; }",
+  },
+  {
+    name: "allows redirect outside a catch",
+    rule: reactRouterNoRedirectInTryCatch,
+    source:
+      'import { redirect } from "react-router"; export async function loader() { const user = await getUser(); if (!user) return redirect("/login"); return user; }',
+  },
+  {
+    name: "allows returned redirects inside try-catch",
+    rule: reactRouterNoRedirectInTryCatch,
+    source:
+      'import { redirect } from "react-router"; export async function loader() { try { return redirect("/login"); } catch (error) { return null; } }',
+  },
+  {
+    name: "allows a deferred router factory",
+    rule: reactRouterNoRouterInRender,
+    source:
+      'import { createMemoryRouter } from "react-router"; export const makeTestRouter = () => createMemoryRouter([]);',
+  },
+  {
+    name: "allows mutually exclusive middleware continuations",
+    rule: reactRouterNoMultipleMiddlewareNext,
+    source:
+      "export const middleware = [async ({ admin }, next) => { if (admin) return next(); return next(); }];",
+  },
+  {
+    name: "allows mutually exclusive search param updates",
+    rule: reactRouterNoMultipleSetSearchParamsInTick,
+    source:
+      'import { useSearchParams } from "react-router"; export function Filters({ compact }) { const [, setParams] = useSearchParams(); if (compact) setParams({ view: "compact" }); else setParams({ view: "full" }); return null; }',
+  },
+  {
+    name: "allows search param updates separated by await",
+    rule: reactRouterNoMultipleSetSearchParamsInTick,
+    source:
+      'import { useSearchParams } from "react-router"; export function Filters() { const [, setParams] = useSearchParams(); const update = async () => { setParams({ phase: "start" }); await save(); setParams({ phase: "done" }); }; return <button onClick={update} />; }',
+  },
+  {
+    name: "allows a middleware catch with another throwing operation",
+    rule: reactRouterNoCatchMiddlewareNext,
+    source:
+      "export const middleware = [async (_context, next) => { try { validate(); return await next(); } catch (error) { report(error); } }];",
+  },
+  {
+    name: "allows unique route IDs",
+    rule: reactRouterNoDuplicateRouteId,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ id: "root", path: "/" }, { id: "settings", path: "/settings" }]);',
+  },
+  {
+    name: "allows absolute children under their complete parent path",
+    rule: reactRouterNoInvalidAbsoluteChildPath,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/app", children: [{ path: "/app/settings", element: <Settings /> }] }]);',
+  },
+  {
+    name: "allows nested absolute parents without duplicating their path",
+    rule: reactRouterNoInvalidAbsoluteChildPath,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/app", children: [{ path: "/app/settings", children: [{ path: "/app/settings/profile", element: <Profile /> }] }] }]);',
+  },
+  {
+    name: "allows a root boundary supplied by lazy",
+    rule: reactRouterRequireRootErrorBoundary,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", lazy: () => import("./root") }]);',
+  },
+  {
+    name: "allows minimal routers in testing directories",
+    rule: reactRouterRequireRootErrorBoundary,
+    source:
+      'import { createMemoryRouter } from "react-router"; export const makeRouter = () => createMemoryRouter([{ path: "/", element: <Page /> }]);',
+    filename: "/project/src/testing/test-utils.tsx",
+  },
+  {
+    name: "allows valid non-index route objects",
+    rule: reactRouterValidRouteObject,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", Component: Root, children: [{ index: true, Component: Home }] }]);',
+  },
+  {
+    name: "allows committed action session mutations",
+    rule: reactRouterSessionMutationRequiresCommit,
+    source:
+      'import { createCookieSessionStorage } from "react-router"; const { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return redirect("/", { headers: { "Set-Cookie": await commitSession(session) } }); }',
+  },
+  {
+    name: "allows the same CSP nonce on router and stream",
+    rule: reactRouterCspNonceConsistency,
+    source:
+      'import { ServerRouter } from "react-router"; import { renderToPipeableStream } from "react-dom/server"; export const render = (request, context, nonce) => renderToPipeableStream(<ServerRouter context={context} url={request.url} nonce={nonce} />, { nonce });',
+  },
+  {
+    name: "allows the same member-expression CSP nonce",
+    rule: reactRouterCspNonceConsistency,
+    source:
+      'import { ServerRouter } from "react-router"; import { renderToPipeableStream } from "react-dom/server"; export const render = (request, context) => renderToPipeableStream(<ServerRouter context={context} url={request.url} nonce={context.nonce} />, { nonce: context.nonce });',
+  },
+  {
+    name: "allows modules whose ordinary name starts with client",
+    rule: reactRouterNoClientModuleInServerRender,
+    source:
+      'import { ClientCard } from "./client-card"; export default function Route() { return <ClientCard />; }',
+  },
+  {
+    name: "allows client modules in the client entry",
+    rule: reactRouterNoClientModuleInServerRender,
+    source:
+      'import { ClientCard } from "./card.client"; export const hydrate = () => <ClientCard />;',
+    filename: "/project/app/entry.client.tsx",
+  },
+  {
+    name: "allows client modules inside another client-only module",
+    rule: reactRouterNoClientModuleInServerRender,
+    source:
+      'import { ClientCard } from "./card.client"; export const ClientShell = () => <ClientCard />;',
+    filename: "/project/app/components/shell.client.tsx",
+  },
+  {
+    name: "allows synchronized search params mutation",
+    rule: reactRouterNoUnsynchronizedSearchParamsMutation,
+    source:
+      'import { useSearchParams } from "react-router"; export function Filters() { const [params, setParams] = useSearchParams(); return <button onClick={() => { params.set("tab", "all"); setParams(params); }} />; }',
+  },
+  {
+    name: "allows a known UI anchor with a non-self target",
+    rule: reactRouterInternalRouteAnchor,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/report", element: <Report /> }]); export const Download = () => <a href="/report" target="report-frame">Report</a>;',
+  },
+  {
+    name: "allows a resource link with a dynamic target",
+    rule: reactRouterResourceLinkRequiresReload,
+    source:
+      'import { Link } from "react-router"; export const Download = ({ target }) => <Link to="/report.pdf" target={target}>Report</Link>;',
+  },
+  {
+    name: "allows an ordinary imported route component",
+    rule: reactRouterPreferRouteLazy,
+    source:
+      'import { createBrowserRouter } from "react-router"; import Page from "./page"; createBrowserRouter([{ path: "/", Component: Page }]);',
+  },
+  {
+    name: "allows ordinary route module filenames",
+    rule: reactRouterNoRouteModuleEnvironmentSuffix,
+    source: "export default function Route() { return null; }",
+    filename: "/project/app/routes/dashboard.tsx",
+  },
+  {
+    name: "ignores a shadowed Date constructor in cookie options",
+    rule: reactRouterNoStaticCookieExpires,
+    source:
+      'import { createCookie } from "react-router"; const Date = class {}; export const cookie = createCookie("prefs", { expires: new Date(dynamicValue) });',
+  },
+  {
+    name: "allows helper modules with environment suffixes",
+    rule: reactRouterNoRouteModuleEnvironmentSuffix,
+    source: "export const formatDate = (value) => String(value);",
+    filename: "/project/app/routes/utils.server.ts",
+  },
+  {
+    name: "allows default-exported helpers whose basename starts with routes",
+    rule: reactRouterNoRouteModuleEnvironmentSuffix,
+    source: "export default function buildRoutes() { return []; }",
+    filename: "/project/app/routes-helper.server.ts",
+  },
+  {
+    name: "allows a transition callback that returns navigation",
+    rule: reactRouterReturnNavigationPromiseInTransition,
+    source:
+      'import { startTransition } from "react"; import { RouterProvider, useNavigate } from "react-router"; export const App = ({ router }) => <RouterProvider router={router} useTransitions />; export const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => navigate("/next"))} />; };',
+  },
+];
+
+describe("React Router rule regressions", () => {
+  for (const safeCase of safeRuleCases) {
+    it(safeCase.name, () => {
+      const result = runRule(safeCase.rule, safeCase.source, {
+        ...(safeCase.filename === undefined ? {} : { filename: safeCase.filename }),
+        ...(safeCase.settings === undefined ? {} : { settings: safeCase.settings }),
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+  }
+
+  it("reports useLoaderData in a Framework root Layout", () => {
+    const result = runRule(
+      reactRouterNoUseLoaderDataInErrorUi,
+      'import { useLoaderData } from "react-router"; export function Layout() { const data = useLoaderData(); return <html>{data}</html>; }',
+      {
+        filename: "/project/app/root.tsx",
+        settings: {
+          "react-doctor": { capabilities: ["react-router-framework"] },
+        },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a setter in another handler hide a search-param mutation", () => {
+    const result = runRule(
+      reactRouterNoUnsynchronizedSearchParamsMutation,
+      'import { useSearchParams } from "react-router"; export function Filters() { const [params, setParams] = useSearchParams(); const mutate = () => params.set("tab", "all"); const synchronize = () => setParams(params); return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

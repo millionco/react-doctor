@@ -27,6 +27,7 @@ import {
   getLowestDependencyMajor,
   parseDependencyMajorMinor,
   parseReactMajor,
+  parseReactMajorMinor,
   parseThreeRelease,
 } from "./version.js";
 import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
@@ -56,6 +57,11 @@ const REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES = [
   "@react-three/drei",
 ] as const;
 const THREE_DEPENDENCY_NAMES = [...REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES, "three"] as const;
+const REACT_ROUTER_DEPENDENCY_NAMES: readonly string[] = [
+  "@react-router/dev",
+  "react-router-dom",
+  "react-router",
+];
 
 // A dependency's declared spec plus the directory whose manifest supplied
 // it — the scan root, or the workspace package that declares the package.
@@ -68,6 +74,10 @@ interface DependencyFact {
 }
 
 interface ReactThreeFiberDependencyFact extends DependencyFact {
+  packageName: string | null;
+}
+
+interface ReactRouterDependencyFact extends DependencyFact {
   packageName: string | null;
 }
 
@@ -85,6 +95,7 @@ export interface WorkspaceFacts {
   // package, in any of the four dependency sections.
   expo: DependencyFact;
   next: DependencyFact;
+  reactRouter: ReactRouterDependencyFact;
   shopifyFlashList: DependencyFact;
   valtioVersion: string | null;
   mobx: DependencyFact;
@@ -111,6 +122,7 @@ export interface WorkspaceFacts {
   threeVersion: string | null;
   hasReactThreeFiber: boolean;
   reactThreeFiber: ReactThreeFiberDependencyFact;
+  hasReactRouterFramework: boolean;
   reanimatedVersion: string | null;
 }
 
@@ -268,6 +280,19 @@ const collectBindingVersion = (
   facts.hasMobxReactLite = true;
 };
 
+const shouldReplaceReactRouterVersion = (
+  currentVersion: string | null,
+  nextVersion: string,
+): boolean => {
+  if (currentVersion === null) return true;
+  const current = parseReactMajorMinor(currentVersion);
+  const next = parseReactMajorMinor(nextVersion);
+  if (current === null) return next !== null;
+  if (next === null) return false;
+  if (next.major !== current.major) return next.major < current.major;
+  return next.minor < current.minor;
+};
+
 const evaluateManifestFacts = (
   facts: WorkspaceFacts,
   packageJson: PackageJson,
@@ -283,6 +308,14 @@ const evaluateManifestFacts = (
     const spec = getDependencySpec(packageJson, "next");
     if (spec !== null) facts.next = { version: spec, sourceDirectory: directory };
   }
+  for (const packageName of REACT_ROUTER_DEPENDENCY_NAMES) {
+    const spec = getDependencySpec(packageJson, packageName);
+    if (spec === null || !shouldReplaceReactRouterVersion(facts.reactRouter.version, spec))
+      continue;
+    facts.reactRouter = { version: spec, sourceDirectory: directory, packageName };
+  }
+  facts.hasReactRouterFramework =
+    facts.hasReactRouterFramework || getDependencySpec(packageJson, "@react-router/dev") !== null;
   if (facts.shopifyFlashList.version === null) {
     const spec = getDependencySpec(packageJson, SHOPIFY_FLASH_LIST_PACKAGE_NAME);
     if (spec !== null) facts.shopifyFlashList = { version: spec, sourceDirectory: directory };
@@ -462,6 +495,7 @@ export const collectWorkspaceFacts = (
     framework: "unknown",
     expo: { version: null, sourceDirectory: null },
     next: { version: null, sourceDirectory: null },
+    reactRouter: { version: null, sourceDirectory: null, packageName: null },
     shopifyFlashList: { version: null, sourceDirectory: null },
     valtioVersion: null,
     mobx: { version: null, sourceDirectory: null },
@@ -485,6 +519,7 @@ export const collectWorkspaceFacts = (
     threeVersion: null,
     hasReactThreeFiber: false,
     reactThreeFiber: { packageName: null, version: null, sourceDirectory: null },
+    hasReactRouterFramework: false,
     reanimatedVersion: null,
   };
 

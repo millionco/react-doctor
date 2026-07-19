@@ -20,6 +20,67 @@ describe("discoverProject", () => {
     expect(projectInfo.reactVersion).toBe("^19.0.0");
   });
 
+  it("detects React Router version from react-router-dom", () => {
+    const projectDirectory = path.join(tempDirectory, "react-router-dom-version");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-router-dom-version",
+        dependencies: { react: "^19.0.0", "react-router-dom": "^6.30.1" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactRouterVersion).toBe("^6.30.1");
+    expect(projectInfo.hasReactRouterFramework).toBe(false);
+  });
+
+  it("detects React Router Framework mode from @react-router/dev", () => {
+    const projectDirectory = path.join(tempDirectory, "react-router-framework-version");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-router-framework-version",
+        dependencies: { react: "^19.0.0", "react-router": "^7.9.0" },
+        devDependencies: { "@react-router/dev": "^7.9.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactRouterVersion).toBe("^7.9.0");
+    expect(projectInfo.hasReactRouterFramework).toBe(true);
+  });
+
+  it("uses the lowest React Router version across mixed-version workspaces", () => {
+    const projectDirectory = path.join(tempDirectory, "mixed-react-router-workspaces");
+    const legacyDirectory = path.join(projectDirectory, "packages", "legacy");
+    const modernDirectory = path.join(projectDirectory, "packages", "modern");
+    fs.mkdirSync(legacyDirectory, { recursive: true });
+    fs.mkdirSync(modernDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "mixed-react-router-workspaces",
+        private: true,
+        workspaces: ["packages/*"],
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(legacyDirectory, "package.json"),
+      JSON.stringify({ name: "legacy", dependencies: { "react-router-dom": "^6.30.1" } }),
+    );
+    fs.writeFileSync(
+      path.join(modernDirectory, "package.json"),
+      JSON.stringify({ name: "modern", dependencies: { "react-router": "^8.1.0" } }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactRouterVersion).toBe("^6.30.1");
+  });
+
   it("detects React from a UTF-8 BOM-prefixed package.json", () => {
     const projectDirectory = path.join(tempDirectory, "bom-prefixed-package-json");
     fs.mkdirSync(projectDirectory, { recursive: true });

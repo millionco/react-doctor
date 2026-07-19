@@ -133,6 +133,8 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     hasReactNativeWorkspace: false,
     nextjsVersion: null,
     nextjsMajorVersion: null,
+    reactRouterVersion: null,
+    hasReactRouterFramework: false,
     expoVersion: null,
     shopifyFlashListVersion: null,
     shopifyFlashListMajorVersion: null,
@@ -310,6 +312,15 @@ export const discoverProject = (directory: string): ProjectInfo => {
     packageName: "mobx",
     version: workspaceFacts.mobx.version,
   });
+  const reactRouterVersion =
+    workspaceFacts.reactRouter.packageName === null
+      ? null
+      : resolveCatalogBackedDependencyVersion({
+          rootDirectory: directory,
+          rootPackageJson: packageJson,
+          packageName: workspaceFacts.reactRouter.packageName,
+           version: workspaceFacts.reactRouter.version,
+         });
   const preactVersion = getPreactVersion(packageJson);
   const remotionVersion = workspaceFacts.remotionVersion;
   const tanstackQueryVersion =
@@ -378,6 +389,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasReactNativeWorkspace,
     nextjsVersion,
     nextjsMajorVersion: nextjsVersion === null ? null : getLowestDependencyMajor(nextjsVersion),
+    reactRouterVersion,
+    hasReactRouterFramework: workspaceFacts.hasReactRouterFramework,
     expoVersion,
     shopifyFlashListVersion,
     shopifyFlashListMajorVersion:

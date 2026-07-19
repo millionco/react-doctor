@@ -75,6 +75,35 @@ export const EARLIEST_GATED_THREE_RELEASE = 145;
 
 export const LATEST_KNOWN_THREE_RELEASE = 250;
 
+export interface ReactRouterCapabilityThreshold {
+  capability:
+    | "react-router:6.4"
+    | "react-router:6.7"
+    | "react-router:6.9"
+    | "react-router:6.19"
+    | "react-router:7"
+    | "react-router:7.8"
+    | "react-router:7.9"
+    | "react-router:7.10"
+    | "react-router:7.15"
+    | "react-router:8";
+  major: number;
+  minor: number;
+}
+
+export const REACT_ROUTER_CAPABILITY_THRESHOLDS: ReadonlyArray<ReactRouterCapabilityThreshold> = [
+  { capability: "react-router:6.4", major: 6, minor: 4 },
+  { capability: "react-router:6.7", major: 6, minor: 7 },
+  { capability: "react-router:6.9", major: 6, minor: 9 },
+  { capability: "react-router:6.19", major: 6, minor: 19 },
+  { capability: "react-router:7", major: 7, minor: 0 },
+  { capability: "react-router:7.8", major: 7, minor: 8 },
+  { capability: "react-router:7.9", major: 7, minor: 9 },
+  { capability: "react-router:7.10", major: 7, minor: 10 },
+  { capability: "react-router:7.15", major: 7, minor: 15 },
+  { capability: "react-router:8", major: 8, minor: 0 },
+];
+
 // Max chars of an unparseable oxlint stdout we keep for the error
 // message. oxlint prints a multi-line, framed error to stdout when it
 // can't load the config (e.g. a JS plugin failed to import) — the first

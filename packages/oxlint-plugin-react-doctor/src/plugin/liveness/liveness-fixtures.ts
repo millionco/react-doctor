@@ -2217,6 +2217,124 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-presentation-role-conflict": {
     code: 'const Control = () => <div role="presentation" tabIndex={0} />;',
+  "react-router-csp-nonce-consistency": {
+    code: 'import { ServerRouter } from "react-router";\nimport { renderToPipeableStream } from "react-dom/server";\nexport const render = (request, context) => renderToPipeableStream(<ServerRouter context={context} url={request.url} nonce={context.nonce} />, {});',
+  },
+  "react-router-descendant-routes-require-splat": {
+    code: 'import { createBrowserRouter, useRoutes } from "react-router";\ncreateBrowserRouter([{ path: "account", Component: () => useRoutes([]) }]);',
+  },
+  "react-router-guard-aborted-handle-error": {
+    code: "export function handleError(error, { request }) { console.error(error); }",
+    filePath: "/project/app/entry.server.tsx",
+  },
+  "react-router-internal-route-anchor": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/about", element: <About /> }]);\nexport const Nav = () => <a href="/about">About</a>;',
+  },
+  "react-router-loader-fetch-forwards-signal": {
+    code: 'export async function loader({ request }) { return fetch("/api/profile"); }',
+  },
+  "react-router-loader-parallel-fetch": {
+    code: 'export async function loader() { const user = await fetch("/api/user"); const teams = await fetch("/api/teams"); return { user, teams }; }',
+  },
+  "react-router-nested-route-requires-outlet": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ Component: () => <main />, children: [{ path: "child", element: <Child /> }] }]);',
+  },
+  "react-router-no-catch-middleware-next": {
+    code: "export const middleware = [async (_context, next) => { try { return await next(); } catch (error) { report(error); } }];",
+  },
+  "react-router-no-client-module-in-server-render": {
+    code: 'import ClientCard from "./card.client";\nexport default function Route() { return <ClientCard />; }',
+  },
+  "react-router-no-duplicate-route-id": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ id: "root", path: "/" }, { id: "root", path: "/other" }]);',
+  },
+  "react-router-no-empty-leaf-route": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/" }]);',
+  },
+  "react-router-no-invalid-absolute-child-path": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/app", children: [{ path: "/settings", element: <Settings /> }] }]);',
+  },
+  "react-router-no-invalid-lazy-route-properties": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/", lazy: async () => ({ path: "/changed", Component }) }]);',
+  },
+  "react-router-no-invalid-splat-path": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "files*", element: <Files /> }]);',
+  },
+  "react-router-no-loader-request-body": {
+    code: "export async function loader({ request }) { return request.formData(); }",
+  },
+  "react-router-no-middleware-response-body-consumption": {
+    code: "export const middleware = [async (_context, next) => { const response = await next(); await response.json(); return response; }];",
+  },
+  "react-router-no-multiple-blockers": {
+    code: 'import { useBlocker } from "react-router";\nexport const Form = () => { useBlocker(true); useBlocker(false); return <form />; };',
+    settings: { "react-doctor": { capabilities: ["react-router:6.19"] } },
+  },
+  "react-router-no-multiple-middleware-next": {
+    code: "export const middleware = [async (_context, next) => { await next(); return next(); }];",
+  },
+  "react-router-no-multiple-set-search-params-in-tick": {
+    code: 'import { useSearchParams } from "react-router";\nexport const Filters = () => { const [, setSearchParams] = useSearchParams(); const apply = () => { setSearchParams({ q: "one" }); setSearchParams({ page: "2" }); }; return <button onClick={apply} />; };',
+  },
+  "react-router-no-navigate-in-render": {
+    code: 'import { useNavigate } from "react-router";\nexport const Gate = ({ denied }) => { const navigate = useNavigate(); if (denied) navigate("/login"); return null; };',
+  },
+  "react-router-no-nested-router": {
+    code: 'import { BrowserRouter, MemoryRouter } from "react-router";\nexport const App = () => <BrowserRouter><MemoryRouter><Page /></MemoryRouter></BrowserRouter>;',
+  },
+  "react-router-no-redirect-in-try-catch": {
+    code: 'import { redirect } from "react-router";\nexport async function loader() { try { throw redirect("/login"); } catch (error) { return null; } }',
+  },
+  "react-router-no-route-module-environment-suffix": {
+    code: "export default function Route() { return null; }",
+    filePath: "/project/app/routes/dashboard.server.tsx",
+  },
+  "react-router-no-router-in-render": {
+    code: 'import { createBrowserRouter } from "react-router";\nexport const App = () => { const router = createBrowserRouter([]); return <RouterProvider router={router} />; };',
+  },
+  "react-router-no-session-mutation-in-loader": {
+    code: 'import { createCookieSessionStorage } from "react-router";\nconst { getSession } = createCookieSessionStorage({ cookie: { name: "session" } });\nexport async function loader({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("notice", "hello"); return null; }',
+  },
+  "react-router-no-static-cookie-expires": {
+    code: 'import { createCookie } from "react-router";\nexport const cookie = createCookie("session", { expires: new Date(Date.now() + 1000) });',
+  },
+  "react-router-no-unsynchronized-search-params-mutation": {
+    code: 'import { useSearchParams } from "react-router";\nexport const Filters = () => { const [searchParams] = useSearchParams(); searchParams.set("q", "react"); return null; };',
+  },
+  "react-router-no-use-loader-data-in-error-ui": {
+    code: 'import { useLoaderData } from "react-router";\nexport function ErrorBoundary() { const data = useLoaderData(); return <pre>{data.message}</pre>; }',
+  },
+  "react-router-prefer-route-lazy": {
+    code: 'import { lazy } from "react";\nimport { createBrowserRouter } from "react-router";\nconst Page = lazy(() => import("./page"));\ncreateBrowserRouter([{ path: "/", Component: Page }]);',
+  },
+  "react-router-require-root-error-boundary": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/", element: <App /> }]);',
+  },
+  "react-router-resource-link-requires-reload": {
+    code: 'import { Link } from "react-router";\nexport const Download = () => <Link to="/guide.pdf">Guide</Link>;',
+  },
+  "react-router-return-navigation-promise-in-transition": {
+    code: 'import { startTransition } from "react";\nimport { RouterProvider, useNavigate } from "react-router";\nexport const App = ({ router }) => <RouterProvider router={router} useTransitions />;\nexport const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => { navigate("/next"); })} />; };',
+    settings: { "react-doctor": { capabilities: ["react-router:7.15"] } },
+  },
+  "react-router-server-middleware-return-response": {
+    code: "export const middleware = [async (_context, next) => { await next(); }];",
+  },
+  "react-router-session-mutation-requires-commit": {
+    code: 'import { createCookieSessionStorage } from "react-router";\nconst { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } });\nexport async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return null; }',
+  },
+  "react-router-v8-no-meta-data-field": {
+    code: 'import { useMatches } from "react-router";\nexport function Breadcrumbs() { const [{ data }] = useMatches(); return data.title; }',
+  },
+  "react-router-v8-no-react-router-dom-import": {
+    code: 'import { Link } from "react-router-dom";\nexport const Home = () => <Link to="/" />;',
+  },
+  "react-router-v8-no-removed-future-flags": {
+    code: "export default { future: { v8_middleware: true } };",
+    filePath: "react-router.config.ts",
+  },
+  "react-router-valid-route-object": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ index: true, path: "home", element: <Home /> }]);',
   },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',

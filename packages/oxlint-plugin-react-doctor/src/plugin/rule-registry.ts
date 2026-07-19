@@ -558,6 +558,44 @@ import { rawSqlInjectionRisk } from "./rules/security-scan/raw-sql-injection-ris
 import { reactCompilerNoManualMemoization } from "./rules/architecture/react-compiler-no-manual-memoization.js";
 import { reactInJsxScope } from "./rules/react-builtins/react-in-jsx-scope.js";
 import { reactMarkdownUnsanitizedRawHtml } from "./rules/security/react-markdown-unsanitized-raw-html.js";
+import { reactRouterCspNonceConsistency } from "./rules/security/react-router-csp-nonce-consistency.js";
+import { reactRouterDescendantRoutesRequireSplat } from "./rules/correctness/react-router-descendant-routes-require-splat.js";
+import { reactRouterGuardAbortedHandleError } from "./rules/correctness/react-router-guard-aborted-handle-error.js";
+import { reactRouterInternalRouteAnchor } from "./rules/correctness/react-router-internal-route-anchor.js";
+import { reactRouterLoaderFetchForwardsSignal } from "./rules/performance/react-router-loader-fetch-forwards-signal.js";
+import { reactRouterLoaderParallelFetch } from "./rules/performance/react-router-loader-parallel-fetch.js";
+import { reactRouterNestedRouteRequiresOutlet } from "./rules/correctness/react-router-nested-route-requires-outlet.js";
+import { reactRouterNoCatchMiddlewareNext } from "./rules/correctness/react-router-no-catch-middleware-next.js";
+import { reactRouterNoClientModuleInServerRender } from "./rules/correctness/react-router-no-client-module-in-server-render.js";
+import { reactRouterNoDuplicateRouteId } from "./rules/correctness/react-router-no-duplicate-route-id.js";
+import { reactRouterNoEmptyLeafRoute } from "./rules/correctness/react-router-no-empty-leaf-route.js";
+import { reactRouterNoInvalidAbsoluteChildPath } from "./rules/correctness/react-router-no-invalid-absolute-child-path.js";
+import { reactRouterNoInvalidLazyRouteProperties } from "./rules/correctness/react-router-no-invalid-lazy-route-properties.js";
+import { reactRouterNoInvalidSplatPath } from "./rules/correctness/react-router-no-invalid-splat-path.js";
+import { reactRouterNoLoaderRequestBody } from "./rules/correctness/react-router-no-loader-request-body.js";
+import { reactRouterNoMiddlewareResponseBodyConsumption } from "./rules/correctness/react-router-no-middleware-response-body-consumption.js";
+import { reactRouterNoMultipleBlockers } from "./rules/correctness/react-router-no-multiple-blockers.js";
+import { reactRouterNoMultipleMiddlewareNext } from "./rules/correctness/react-router-no-multiple-middleware-next.js";
+import { reactRouterNoMultipleSetSearchParamsInTick } from "./rules/correctness/react-router-no-multiple-set-search-params-in-tick.js";
+import { reactRouterNoNavigateInRender } from "./rules/correctness/react-router-no-navigate-in-render.js";
+import { reactRouterNoNestedRouter } from "./rules/correctness/react-router-no-nested-router.js";
+import { reactRouterNoRedirectInTryCatch } from "./rules/correctness/react-router-no-redirect-in-try-catch.js";
+import { reactRouterNoRouteModuleEnvironmentSuffix } from "./rules/correctness/react-router-no-route-module-environment-suffix.js";
+import { reactRouterNoRouterInRender } from "./rules/correctness/react-router-no-router-in-render.js";
+import { reactRouterNoSessionMutationInLoader } from "./rules/correctness/react-router-no-session-mutation-in-loader.js";
+import { reactRouterNoStaticCookieExpires } from "./rules/correctness/react-router-no-static-cookie-expires.js";
+import { reactRouterNoUnsynchronizedSearchParamsMutation } from "./rules/correctness/react-router-no-unsynchronized-search-params-mutation.js";
+import { reactRouterNoUseLoaderDataInErrorUi } from "./rules/correctness/react-router-no-use-loader-data-in-error-ui.js";
+import { reactRouterPreferRouteLazy } from "./rules/performance/react-router-prefer-route-lazy.js";
+import { reactRouterRequireRootErrorBoundary } from "./rules/correctness/react-router-require-root-error-boundary.js";
+import { reactRouterResourceLinkRequiresReload } from "./rules/correctness/react-router-resource-link-requires-reload.js";
+import { reactRouterReturnNavigationPromiseInTransition } from "./rules/correctness/react-router-return-navigation-promise-in-transition.js";
+import { reactRouterServerMiddlewareReturnResponse } from "./rules/correctness/react-router-server-middleware-return-response.js";
+import { reactRouterSessionMutationRequiresCommit } from "./rules/correctness/react-router-session-mutation-requires-commit.js";
+import { reactRouterV8NoMetaDataField } from "./rules/architecture/react-router-v8-no-meta-data-field.js";
+import { reactRouterV8NoReactRouterDomImport } from "./rules/architecture/react-router-v8-no-react-router-dom-import.js";
+import { reactRouterV8NoRemovedFutureFlags } from "./rules/architecture/react-router-v8-no-removed-future-flags.js";
+import { reactRouterValidRouteObject } from "./rules/correctness/react-router-valid-route-object.js";
 import { reduxUseselectorInlineDerivation } from "./rules/state-and-effects/redux-useselector-inline-derivation.js";
 import { reduxUseselectorReturnsNewCollection } from "./rules/state-and-effects/redux-useselector-returns-new-collection.js";
 import { remotionCalculateMetadataFetchSignal } from "./rules/correctness/remotion-calculate-metadata-fetch-signal.js";
@@ -7417,6 +7455,431 @@ export const reactDoctorRules = [
       ...reactMarkdownUnsanitizedRawHtml,
       framework: "global",
       category: "Security",
+    },
+  },
+  {
+    key: "react-doctor/react-router-csp-nonce-consistency",
+    id: "react-router-csp-nonce-consistency",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterCspNonceConsistency,
+      framework: "global",
+      category: "Security",
+    },
+  },
+  {
+    key: "react-doctor/react-router-descendant-routes-require-splat",
+    id: "react-router-descendant-routes-require-splat",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterDescendantRoutesRequireSplat,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-guard-aborted-handle-error",
+    id: "react-router-guard-aborted-handle-error",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterGuardAbortedHandleError,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-internal-route-anchor",
+    id: "react-router-internal-route-anchor",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterInternalRouteAnchor,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-loader-fetch-forwards-signal",
+    id: "react-router-loader-fetch-forwards-signal",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterLoaderFetchForwardsSignal,
+      framework: "global",
+      category: "Performance",
+      requires: [
+        ...new Set<Capability>(["react", ...(reactRouterLoaderFetchForwardsSignal.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/react-router-loader-parallel-fetch",
+    id: "react-router-loader-parallel-fetch",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterLoaderParallelFetch,
+      framework: "global",
+      category: "Performance",
+      requires: [
+        ...new Set<Capability>(["react", ...(reactRouterLoaderParallelFetch.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/react-router-nested-route-requires-outlet",
+    id: "react-router-nested-route-requires-outlet",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNestedRouteRequiresOutlet,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-catch-middleware-next",
+    id: "react-router-no-catch-middleware-next",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoCatchMiddlewareNext,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-client-module-in-server-render",
+    id: "react-router-no-client-module-in-server-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoClientModuleInServerRender,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-duplicate-route-id",
+    id: "react-router-no-duplicate-route-id",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoDuplicateRouteId,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-empty-leaf-route",
+    id: "react-router-no-empty-leaf-route",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoEmptyLeafRoute,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-invalid-absolute-child-path",
+    id: "react-router-no-invalid-absolute-child-path",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoInvalidAbsoluteChildPath,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-invalid-lazy-route-properties",
+    id: "react-router-no-invalid-lazy-route-properties",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoInvalidLazyRouteProperties,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-invalid-splat-path",
+    id: "react-router-no-invalid-splat-path",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoInvalidSplatPath,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-loader-request-body",
+    id: "react-router-no-loader-request-body",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoLoaderRequestBody,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-middleware-response-body-consumption",
+    id: "react-router-no-middleware-response-body-consumption",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoMiddlewareResponseBodyConsumption,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-multiple-blockers",
+    id: "react-router-no-multiple-blockers",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoMultipleBlockers,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-multiple-middleware-next",
+    id: "react-router-no-multiple-middleware-next",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoMultipleMiddlewareNext,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-multiple-set-search-params-in-tick",
+    id: "react-router-no-multiple-set-search-params-in-tick",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoMultipleSetSearchParamsInTick,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-navigate-in-render",
+    id: "react-router-no-navigate-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoNavigateInRender,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-nested-router",
+    id: "react-router-no-nested-router",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoNestedRouter,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-redirect-in-try-catch",
+    id: "react-router-no-redirect-in-try-catch",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoRedirectInTryCatch,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-route-module-environment-suffix",
+    id: "react-router-no-route-module-environment-suffix",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoRouteModuleEnvironmentSuffix,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-router-in-render",
+    id: "react-router-no-router-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoRouterInRender,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-session-mutation-in-loader",
+    id: "react-router-no-session-mutation-in-loader",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoSessionMutationInLoader,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-static-cookie-expires",
+    id: "react-router-no-static-cookie-expires",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoStaticCookieExpires,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-unsynchronized-search-params-mutation",
+    id: "react-router-no-unsynchronized-search-params-mutation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoUnsynchronizedSearchParamsMutation,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-no-use-loader-data-in-error-ui",
+    id: "react-router-no-use-loader-data-in-error-ui",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterNoUseLoaderDataInErrorUi,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-prefer-route-lazy",
+    id: "react-router-prefer-route-lazy",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterPreferRouteLazy,
+      framework: "global",
+      category: "Performance",
+      requires: [...new Set<Capability>(["react", ...(reactRouterPreferRouteLazy.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/react-router-require-root-error-boundary",
+    id: "react-router-require-root-error-boundary",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterRequireRootErrorBoundary,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-resource-link-requires-reload",
+    id: "react-router-resource-link-requires-reload",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterResourceLinkRequiresReload,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-return-navigation-promise-in-transition",
+    id: "react-router-return-navigation-promise-in-transition",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterReturnNavigationPromiseInTransition,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-server-middleware-return-response",
+    id: "react-router-server-middleware-return-response",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterServerMiddlewareReturnResponse,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-session-mutation-requires-commit",
+    id: "react-router-session-mutation-requires-commit",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterSessionMutationRequiresCommit,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/react-router-v8-no-meta-data-field",
+    id: "react-router-v8-no-meta-data-field",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterV8NoMetaDataField,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/react-router-v8-no-react-router-dom-import",
+    id: "react-router-v8-no-react-router-dom-import",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterV8NoReactRouterDomImport,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/react-router-v8-no-removed-future-flags",
+    id: "react-router-v8-no-removed-future-flags",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterV8NoRemovedFutureFlags,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/react-router-valid-route-object",
+    id: "react-router-valid-route-object",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactRouterValidRouteObject,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

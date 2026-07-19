@@ -24,6 +24,7 @@ import {
   MOBX_REACT_LITE_OBSERVER_MEMO_GUARD_MINOR,
   MOBX_REACT_OBSERVER_MEMO_GUARD_MAJOR,
   MOBX_REACT_OBSERVER_MEMO_GUARD_MINOR,
+  REACT_ROUTER_CAPABILITY_THRESHOLDS,
 } from "../constants.js";
 import {
   getLowestDependencyMajor,
@@ -120,6 +121,21 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   }
   if (project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 16) {
     capabilities.add("nextjs:16");
+  }
+  const reactRouterVersion = project.reactRouterVersion ?? null;
+  if (reactRouterVersion !== null) {
+    capabilities.add("react-router");
+    if (project.hasReactRouterFramework === true) {
+      capabilities.add("react-router-framework");
+    }
+    const detectedVersion = parseReactMajorMinor(reactRouterVersion);
+    if (detectedVersion !== null) {
+      for (const threshold of REACT_ROUTER_CAPABILITY_THRESHOLDS) {
+        if (isMajorMinorAtLeast(detectedVersion, threshold)) {
+          capabilities.add(threshold.capability);
+        }
+      }
+    }
   }
   addVersionCapabilityLadder(
     capabilities,

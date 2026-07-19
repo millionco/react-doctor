@@ -236,14 +236,16 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
     // (a `scan` field instead of `create`) also register through plain
     // `defineRule`.
     const exportMatch = source.match(
-      /export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:defineRule|defineRetiredRule)\b[^(]*\(\s*\{/,
+      /export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:wrapReactRouterRule\s*\(\s*)?(?:defineRule|defineRetiredRule)\b[^(]*\(\s*\{/,
     );
     if (!exportMatch) {
       // Fail loudly if a file clearly declares a rule export but the scanner
       // can't parse it — a silent `continue` would ship a registry missing
       // the rule with no error.
       if (
-        /export\s+const\s+[A-Za-z_$][\w$]*\s*=\s*(?:defineRule|defineRetiredRule)\b/.test(source)
+        /export\s+const\s+[A-Za-z_$][\w$]*\s*=\s*(?:wrapReactRouterRule\s*\(\s*)?(?:defineRule|defineRetiredRule)\b/.test(
+          source,
+        )
       ) {
         console.error(
           `Rule export present but unparseable by the registry scanner: ${path.relative(PACKAGE_ROOT, filePath)}`,

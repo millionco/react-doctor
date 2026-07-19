@@ -6,6 +6,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isGlobalBrowserFunctionCall } from "../../utils/is-global-browser-function-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -37,26 +38,6 @@ const isThreeModuleSource = (moduleSource: string): boolean =>
 const isNullArgument = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
   const argument = call.arguments[0];
   return Boolean(isNodeOfType(argument, "Literal") && argument.value === null);
-};
-
-const isGlobalBrowserFunctionCall = (
-  call: EsTreeNodeOfType<"CallExpression">,
-  functionName: string,
-  scopes: ScopeAnalysis,
-): boolean => {
-  const callee = stripParenExpression(call.callee);
-  if (isNodeOfType(callee, "Identifier")) {
-    return callee.name === functionName && scopes.isGlobalReference(callee);
-  }
-  if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== functionName) {
-    return false;
-  }
-  const receiver = stripParenExpression(callee.object);
-  return (
-    isNodeOfType(receiver, "Identifier") &&
-    (receiver.name === "globalThis" || receiver.name === "window") &&
-    scopes.isGlobalReference(receiver)
-  );
 };
 
 const getAnimationFrameHandleSymbol = (

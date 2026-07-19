@@ -1785,6 +1785,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-no-null-loader-input": {
     code: 'import { useLoader } from "@react-three/fiber"; const Scene = () => { useLoader(TextureLoader, null); return null; };',
   },
+  "r3f-no-recursive-raf-with-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; const Scene = () => { useFrame(update); const animate = () => requestAnimationFrame(animate); requestAnimationFrame(animate); return null; };',
+  },
   "r3f-prefer-use-loader": {
     code: 'import "@react-three/fiber"; import { useEffect } from "react"; import { TextureLoader } from "three"; const Scene = ({ url }) => { useEffect(() => { new TextureLoader().load(url, setTexture); }, [url]); return <mesh />; };',
   },

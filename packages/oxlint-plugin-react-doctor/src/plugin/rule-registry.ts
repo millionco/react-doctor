@@ -529,6 +529,7 @@ import { r3fNoMutateLoaderCache } from "./rules/r3f/r3f-no-mutate-loader-cache.j
 import { r3fNoNewInUseFrame } from "./rules/r3f/r3f-no-new-in-use-frame.js";
 import { r3fNoNullLoaderInput } from "./rules/r3f/r3f-no-null-loader-input.js";
 import { r3fNoObjectPointerCapture } from "./rules/r3f/r3f-no-object-pointer-capture.js";
+import { r3fNoRecursiveRafWithUseFrame } from "./rules/r3f/r3f-no-recursive-raf-with-use-frame.js";
 import { r3fNoStateInUseFrame } from "./rules/r3f/r3f-no-state-in-use-frame.js";
 import { r3fNoSyncReadbackInUseFrame } from "./rules/r3f/r3f-no-sync-readback-in-use-frame.js";
 import { r3fNoUnstableArgs } from "./rules/r3f/r3f-no-unstable-args.js";
@@ -6970,6 +6971,21 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fNoObjectPointerCapture.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fNoObjectPointerCapture.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-recursive-raf-with-use-frame",
+    id: "r3f-no-recursive-raf-with-use-frame",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoRecursiveRafWithUseFrame,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoRecursiveRafWithUseFrame.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoRecursiveRafWithUseFrame.requires ?? [])]),
       ],
     },
   },

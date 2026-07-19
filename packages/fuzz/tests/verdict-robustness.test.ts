@@ -157,6 +157,7 @@ const AUDITED_RULE_IDS = [
   "r3f-no-new-in-use-frame",
   "r3f-no-object-pointer-capture",
   "r3f-no-null-loader-input",
+  "r3f-no-recursive-raf-with-use-frame",
   "r3f-prefer-use-loader",
   "r3f-no-state-in-use-frame",
   "r3f-no-sync-readback-in-use-frame",

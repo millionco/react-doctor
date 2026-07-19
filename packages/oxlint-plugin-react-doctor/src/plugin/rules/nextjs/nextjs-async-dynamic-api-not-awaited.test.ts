@@ -1363,13 +1363,29 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     );
   });
 
-  it("does not report reflective access to a Promise settlement member", () => {
+  it.each([
+    'Reflect.get(pending, "then")',
+    'Reflect.getOwnPropertyDescriptor(pending, "catch")',
+    'Reflect.has(pending, "finally")',
+    'Object.getOwnPropertyDescriptor(pending, "then")',
+  ])("does not report reflective Promise settlement access through %s", (expression) => {
     expectDiagnosticCount(
       `import { cookies } from "next/headers";
-       export const read = () => { const pending = cookies(); return Reflect.get(pending, "then"); };`,
+       export const read = () => { const pending = cookies(); return ${expression}; };`,
       0,
     );
   });
+
+  it.each(["!pending", "typeof pending"])(
+    "does not report non-consuming unary access through %s",
+    (expression) => {
+      expectDiagnosticCount(
+        `import { cookies } from "next/headers";
+         export const read = () => { const pending = cookies(); return ${expression}; };`,
+        0,
+      );
+    },
+  );
 
   it.each([
     `import { cookies } from "next/headers";

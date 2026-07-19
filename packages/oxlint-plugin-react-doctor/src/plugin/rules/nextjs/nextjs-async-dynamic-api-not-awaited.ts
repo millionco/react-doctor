@@ -80,6 +80,7 @@ const COERCIVE_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   "parseFloat",
   "parseInt",
 ]);
+const NON_CONSUMING_UNARY_OPERATORS: ReadonlySet<string> = new Set(["!", "typeof", "void"]);
 const SITEMAP_FILE_PATTERN = new RegExp(`^sitemap\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`);
 const ARRAY_CARDINALITY_MUTATION_METHOD_NAMES: ReadonlySet<string> = new Set([
   "copyWithin",
@@ -1345,17 +1346,19 @@ const isGlobalEnumerationCallForArgument = (
     return false;
   }
   const methodName = getStaticPropertyName(callee);
+  const reflectedPropertyName = callExpression.arguments[1]
+    ? getStaticStringValue(context, callExpression.arguments[1])
+    : null;
+  const accessesPromiseSettleProperty = Boolean(
+    reflectedPropertyName && PROMISE_SETTLE_METHODS.has(reflectedPropertyName),
+  );
   if (receiver.name === "Array") {
     return methodName === "from" && callExpression.arguments[0] === argumentExpression;
   }
   if (receiver.name === "Reflect") {
-    const reflectedPropertyName = callExpression.arguments[1]
-      ? getStaticStringValue(context, callExpression.arguments[1])
-      : null;
     if (
-      methodName === "get" &&
-      reflectedPropertyName &&
-      PROMISE_SETTLE_METHODS.has(reflectedPropertyName)
+      accessesPromiseSettleProperty &&
+      (methodName === "get" || methodName === "getOwnPropertyDescriptor" || methodName === "has")
     ) {
       return false;
     }
@@ -1366,6 +1369,13 @@ const isGlobalEnumerationCallForArgument = (
         methodName === "ownKeys") &&
       callExpression.arguments[0] === argumentExpression
     );
+  }
+  if (
+    receiver.name === "Object" &&
+    methodName === "getOwnPropertyDescriptor" &&
+    accessesPromiseSettleProperty
+  ) {
+    return false;
   }
   return (
     receiver.name === "Object" &&
@@ -1465,7 +1475,7 @@ const expressionIsSynchronouslyConsumed = (
     if (
       isNodeOfType(parent, "UnaryExpression") &&
       parent.argument === current &&
-      parent.operator !== "void"
+      !NON_CONSUMING_UNARY_OPERATORS.has(parent.operator)
     ) {
       return true;
     }

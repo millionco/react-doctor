@@ -32,7 +32,6 @@ interface SnapshotTarget {
   readonly declarationEnd: number;
   readonly ownerFunction: EsTreeNode;
   readonly path: ProxyPath;
-  readonly proxyAliasSymbolIds: ReadonlySet<number>;
   readonly snapshotBindingScopes: ReadonlyArray<ScopeDescriptor>;
 }
 
@@ -110,6 +109,29 @@ const collectPatternBindingIdentifiers = (pattern: EsTreeNode): EsTreeNode[] => 
     });
   }
   return [];
+};
+
+const collectAssignmentWriteTargets = (target: EsTreeNode): EsTreeNode[] => {
+  const candidate = stripParenExpression(target);
+  if (isNodeOfType(candidate, "AssignmentPattern")) {
+    return collectAssignmentWriteTargets(candidate.left);
+  }
+  if (isNodeOfType(candidate, "RestElement")) {
+    return collectAssignmentWriteTargets(candidate.argument);
+  }
+  if (isNodeOfType(candidate, "ArrayPattern")) {
+    return candidate.elements.flatMap((element) =>
+      element ? collectAssignmentWriteTargets(element) : [],
+    );
+  }
+  if (isNodeOfType(candidate, "ObjectPattern")) {
+    return candidate.properties.flatMap((property) =>
+      isNodeOfType(property, "Property")
+        ? collectAssignmentWriteTargets(property.value)
+        : collectAssignmentWriteTargets(property.argument),
+    );
+  }
+  return [candidate];
 };
 
 const findPatternPathToBinding = (
@@ -326,8 +348,7 @@ const getSnapshotTarget = (
   if (!isValtioUseSnapshotCall(callExpression, context.scopes)) return null;
   const proxyArgument = callExpression.arguments[0];
   if (!proxyArgument || isNodeOfType(proxyArgument, "SpreadElement")) return null;
-  const proxyAliasCaptures = new Map<number, ProxyAliasCapture>();
-  const path = resolveProxyPath(proxyArgument, context.scopes, new Set(), null, proxyAliasCaptures);
+  const path = resolveProxyPath(proxyArgument, context.scopes);
   if (!path || path.properties.some((propertyName) => propertyName === null)) return null;
   const callExpressionRoot = findTransparentExpressionRoot(callExpression);
   const declarator = callExpressionRoot.parent;
@@ -352,7 +373,6 @@ const getSnapshotTarget = (
     declarationEnd,
     ownerFunction,
     path,
-    proxyAliasSymbolIds: new Set(proxyAliasCaptures.keys()),
     snapshotBindingScopes,
   };
 };
@@ -361,7 +381,6 @@ const wasTargetReplacedBeforeRead = (
   target: SnapshotTarget,
   readPosition: number,
   writeTargets: ReadonlyArray<EsTreeNode>,
-  allowedAliasSymbolIds: ReadonlySet<number>,
   readAliasCaptures: ReadonlyMap<number, ProxyAliasCapture>,
   context: RuleContext,
 ): boolean =>
@@ -377,12 +396,7 @@ const wasTargetReplacedBeforeRead = (
     ) {
       return false;
     }
-    const writePath = resolveProxyPath(
-      writeTarget,
-      context.scopes,
-      new Set(),
-      allowedAliasSymbolIds,
-    );
+    const writePath = resolveProxyPath(writeTarget, context.scopes, new Set(), null);
     if (!writePath || !isPathPrefix(writePath, target.path)) return false;
     return ![...readAliasCaptures.values()].some(
       (aliasCapture) =>
@@ -410,16 +424,13 @@ export const valtioNoProxyReadInRender = defineRule({
         if (context.scopes.referenceFor(node)) identifierCandidates.push(node);
       },
       AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
-        writeTargets.push(node.left);
+        writeTargets.push(...collectAssignmentWriteTargets(node.left));
       },
       UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {
         writeTargets.push(node.argument);
       },
       "Program:exit"() {
         const reportedExpressions = new Set<EsTreeNode>();
-        const allowedAliasSymbolIds = new Set(
-          snapshotTargets.flatMap((target) => [...target.proxyAliasSymbolIds]),
-        );
         for (const identifier of identifierCandidates) {
           const readExpression = findOutermostMemberRead(identifier);
           if (
@@ -451,14 +462,16 @@ export const valtioNoProxyReadInRender = defineRule({
               ) &&
               isPathPrefix(target.path, readPath) &&
               (readAliasCaptures.size === 0 ||
-                [...readAliasCaptures.values()].some((aliasCapture) =>
-                  isPathPrefix(aliasCapture.path, target.path),
+                [...readAliasCaptures.values()].some(
+                  (aliasCapture) =>
+                    isPathPrefix(aliasCapture.path, target.path) ||
+                    (isPathPrefix(target.path, aliasCapture.path) &&
+                      readPath.properties.length > aliasCapture.path.properties.length),
                 )) &&
               !wasTargetReplacedBeforeRead(
                 target,
                 readPosition,
                 writeTargets,
-                allowedAliasSymbolIds,
                 readAliasCaptures,
                 context,
               ),

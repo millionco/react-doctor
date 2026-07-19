@@ -52,6 +52,21 @@ describe("valtio-no-proxy-read-in-render", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("reports reads through nested aliases after snapping their parent", () => {
+    const result = runValtioRule(`
+      import { useSnapshot } from "valtio";
+
+      function Profile({ state }) {
+        const profileAlias = state.profile;
+        const { settings } = state;
+        const snapshot = useSnapshot(state);
+        return profileAlias.name + settings.theme + snapshot.profile.name;
+      }
+    `);
+
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("reports namespace imports and namespace aliases", () => {
     const result = runValtioRule(`
       import * as Valtio from "valtio";
@@ -358,6 +373,29 @@ describe("valtio-no-proxy-read-in-render", () => {
       }
     `);
 
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("recognizes nested proxy replacement through alternate aliases", () => {
+    const result = runValtioRule(`
+      import { useSnapshot } from "valtio";
+
+      function DirectReplacement({ state, nextProfile }) {
+        const stateAlias = state;
+        const snapshot = useSnapshot(state.profile);
+        stateAlias.profile = nextProfile;
+        return <span>{state.profile.name + snapshot.name}</span>;
+      }
+
+      function DestructuredReplacement({ state, source }) {
+        const stateAlias = state;
+        const snapshot = useSnapshot(state.profile);
+        ({ profile: stateAlias.profile } = source);
+        return <span>{state.profile.name + snapshot.name}</span>;
+      }
+    `);
+
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
 

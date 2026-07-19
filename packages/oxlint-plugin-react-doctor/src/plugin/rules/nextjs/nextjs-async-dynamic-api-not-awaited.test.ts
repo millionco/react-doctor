@@ -1905,6 +1905,21 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const clear = () => { pending = {}; throw new Error(); }; try { clear(); } catch {} props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0].map(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); new Promise(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props, shouldThrow) { let pending = cookies(); const clear = () => { if (shouldThrow) throw new Error(); pending = {}; }; clear(); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const clear = () => { try { throw new Error(); } catch {} pending = {}; }; clear(); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const clear = () => { try { throw new Error(); } finally { pending = {}; } }; try { clear(); } catch {} props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props, condition) { let pending = cookies(); const clear = () => { if (condition) pending = {}; else pending = {}; }; clear(); props.params = pending; return props.params.slug; }`,
+    `export default function Page(props, condition) { const clear = () => { if (condition) props.params = {}; else props.params = {}; }; clear(); return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const clear = async () => { while (false) await 0; pending = {}; }; clear(); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const clear = async () => { for (; false; ) await 0; pending = {}; }; clear(); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; [...[]].map(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; [0].reduce(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; [0].sort(() => { pending = cookies(); return 0; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const update = () => { pending = cookies(); pending = {}; throw new Error(); }; try { update(); } catch {} props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const update = () => { pending = cookies(); pending = {}; }; if (false) { try { update(); } catch {} } update(); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props, shouldThrow) { let pending = {}; const update = () => { pending = cookies(); if (shouldThrow) throw new Error(); pending = {}; }; try { update(); } catch { return null; } props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props, shouldThrow) { let pending = {}; const update = () => { pending = cookies(); if (shouldThrow) throw new Error(); pending = {}; }; try { update(); } catch { throw new Error(); } props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props, shouldThrow) { let pending = {}; const update = () => { pending = cookies(); if (shouldThrow) throw new Error(); pending = {}; }; try { update(); } catch { pending = {}; } props.params = pending; return props.params.slug; }`,
   ])("ignores unreachable taint and honors invoked clearing %#", (code) => {
     expectDiagnosticCount(code, 0, "app/[slug]/page.tsx");
   });
@@ -1920,6 +1935,10 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `import { cookies } from "next/headers"; export default function Page(props, shouldThrow) { let pending = {}; const update = () => { pending = cookies(); if (shouldThrow) throw new Error(); pending = {}; }; try { update(); } catch {} props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; [0].map(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; new Promise(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [...[]].map(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0].reduce(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0].sort(() => { pending = {}; return 0; }); props.params = pending; return props.params.slug; }`,
+    `export default function Page(props) { const read = () => { try { props.params = getSafeOrThrow(); } catch {} return props.params.slug; }; return read(); }`,
   ])("retains reachable aliases and invoked taint %#", (code) => {
     expectDiagnosticCount(code, 1, "app/[slug]/page.tsx");
   });

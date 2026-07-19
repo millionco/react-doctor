@@ -625,11 +625,7 @@ const collectOfficialPropertyClearingNodes = (
             node.operator !== "??=" &&
             memberExpressionMatchesOfficialProperty(context, node.left, source.symbol, propertyName)
       ) {
-        clearingNodes.push(
-          ...getExecutionSitesInOwner(context, node, owner, {
-            requiresGuaranteedExecution: true,
-          }),
-        );
+        clearingNodes.push(node);
       }
       return;
     }
@@ -637,14 +633,10 @@ const collectOfficialPropertyClearingNodes = (
       isNodeOfType(node, "UpdateExpression") &&
       memberExpressionMatchesOfficialProperty(context, node.argument, source.symbol, propertyName)
     ) {
-      clearingNodes.push(
-        ...getExecutionSitesInOwner(context, node, owner, {
-          requiresGuaranteedExecution: true,
-        }),
-      );
+      clearingNodes.push(node);
     }
   });
-  return clearingNodes;
+  return projectGuaranteedClearingNodes(context, clearingNodes, owner);
 };
 
 const officialPropertyIsClearedBeforeReferenceInOwner = (
@@ -665,6 +657,7 @@ const officialPropertyIsClearedBeforeReferenceInOwner = (
     if (node !== referenceOwner && isFunctionLike(node)) return false;
     if (
       isNodeOfType(node, "AssignmentExpression") &&
+      !findCaughtTryStatement(node) &&
       (node.operator === "="
         ? assignmentUnwrapsOfficialProperty(context, node, source.symbol, propertyName)
         : node.operator !== "||=" &&
@@ -675,8 +668,9 @@ const officialPropertyIsClearedBeforeReferenceInOwner = (
             source.symbol,
             propertyName,
           )) &&
-      isNodeReachableWithinFunction(node, context) &&
-      nodeDominatesNode(node, reference, context)
+      getExecutionSitesInOwner(context, node, referenceOwner, {
+        requiresGuaranteedExecution: true,
+      }).some((executionSite) => nodeDominatesNode(executionSite, reference, context))
     ) {
       isCleared = true;
     }
@@ -934,6 +928,19 @@ const expressionIsStaticallySkipped = (
         return true;
       }
     } else if (
+      isNodeOfType(parent, "WhileStatement") &&
+      parent.body === current &&
+      getStaticLogicalValue(context, parent.test)?.isTruthy === false
+    ) {
+      return true;
+    } else if (
+      isNodeOfType(parent, "ForStatement") &&
+      (parent.body === current || parent.update === current) &&
+      parent.test &&
+      getStaticLogicalValue(context, parent.test)?.isTruthy === false
+    ) {
+      return true;
+    } else if (
       isNodeOfType(parent, "AssignmentExpression") &&
       parent.right === current &&
       (parent.operator === "&&=" || parent.operator === "||=" || parent.operator === "??=")
@@ -1136,17 +1143,32 @@ const expressionMayRetainOfficialPendingValue = (
         const source = findSource(sourceExpression);
         if (!source) continue;
         const sourceOwner = context.cfg.enclosingFunction(sourceExpression);
-        const hasCaughtInvocation = Boolean(
+        const sourceMayEscapeWithPending = Boolean(
           sourceOwner &&
           isFunctionLike(sourceOwner) &&
-          getDirectInvocationSites(context, sourceOwner).some((invocationSite) =>
-            Boolean(findCaughtTryStatement(invocationSite)),
-          ),
+          sourceOwnerMayEscapeWithPending(context, symbol, sourceExpression),
         );
+        const liveCaughtInvocations =
+          sourceOwner && isFunctionLike(sourceOwner)
+            ? getDirectInvocationSites(context, sourceOwner).filter(
+                (invocationSite) =>
+                  isNodeReachableWithinFunction(invocationSite, context) &&
+                  !expressionIsStaticallySkipped(context, invocationSite) &&
+                  caughtInvocationMayContinue(invocationSite),
+              )
+            : [];
+        const hasCaughtInvocation =
+          sourceMayEscapeWithPending &&
+          liveCaughtInvocations.some(
+            (invocationSite) =>
+              !caughtHandlerDefinitelyClearsSymbol(context, symbol, invocationSite),
+          );
+        const sourceFlow = createPendingSymbolFlow(context, symbol, sourceExpression);
         if (
           sourceOwner !== candidateOwner &&
           !hasCaughtInvocation &&
-          createPendingSymbolFlow(context, symbol, sourceExpression).isClearedAtExit
+          (sourceFlow.isClearedAtExit ||
+            (liveCaughtInvocations.length > 0 && !sourceMayEscapeWithPending))
         ) {
           continue;
         }
@@ -1986,14 +2008,39 @@ const getDirectInvocationSites = (
   functionNode: EsTreeNode,
   options: DirectInvocationSiteOptions = { includeCallbackExecutionSites: true },
 ): EsTreeNode[] => {
+  const getKnownPresentArrayElements = (arrayExpression: EsTreeNode): EsTreeNode[] | null => {
+    if (!isNodeOfType(arrayExpression, "ArrayExpression")) return null;
+    const presentElements: EsTreeNode[] = [];
+    for (const element of arrayExpression.elements) {
+      if (!element) continue;
+      if (!isNodeOfType(element, "SpreadElement")) {
+        presentElements.push(element);
+        continue;
+      }
+      const spreadElements = getKnownPresentArrayElements(stripParenExpression(element.argument));
+      if (!spreadElements) return null;
+      presentElements.push(...spreadElements);
+    }
+    return presentElements;
+  };
   const callbackExecutionMatches = (invocationSite: EsTreeNode): boolean => {
     if (isNodeOfType(invocationSite, "NewExpression")) return true;
     if (!isNodeOfType(invocationSite, "CallExpression")) return false;
     const callee = stripParenExpression(invocationSite.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return false;
     const receiver = stripParenExpression(callee.object);
-    if (isNodeOfType(receiver, "ArrayExpression")) {
-      return receiver.elements.some((element) => Boolean(element));
+    const presentElements = getKnownPresentArrayElements(receiver);
+    if (presentElements) {
+      const methodName = getResolvedStaticPropertyName(context, callee);
+      if (methodName === "reduce" || methodName === "reduceRight") {
+        return invocationSite.arguments.slice(1).length > 0
+          ? presentElements.length > 0
+          : presentElements.slice(1).length > 0;
+      }
+      if (methodName === "sort" || methodName === "toSorted") {
+        return presentElements.slice(1).length > 0;
+      }
+      return presentElements.length > 0;
     }
     return !options.requireGuaranteedCallbackExecution;
   };
@@ -2153,7 +2200,75 @@ const getAsyncExecutionPhase = (context: RuleContext, node: EsTreeNode): AsyncEx
   };
 };
 
-const hasReachableThrowBeforeNode = (context: RuleContext, node: EsTreeNode): boolean => {
+const caughtInvocationMayContinue = (invocationSite: EsTreeNode): boolean => {
+  const caughtTryStatement = findCaughtTryStatement(invocationSite);
+  return Boolean(
+    caughtTryStatement &&
+    isNodeOfType(caughtTryStatement, "TryStatement") &&
+    caughtTryStatement.handler &&
+    !statementAlwaysExits(caughtTryStatement.handler.body),
+  );
+};
+
+const caughtHandlerDefinitelyClearsSymbol = (
+  context: RuleContext,
+  symbol: SymbolDescriptor,
+  invocationSite: EsTreeNode,
+): boolean => {
+  const caughtTryStatement = findCaughtTryStatement(invocationSite);
+  if (
+    !caughtTryStatement ||
+    !isNodeOfType(caughtTryStatement, "TryStatement") ||
+    !caughtTryStatement.handler
+  ) {
+    return false;
+  }
+  const handlerBody = caughtTryStatement.handler.body;
+  return symbol.references.some((reference) => {
+    if (reference.flag === "read") return false;
+    const assignment = getProvenanceClearingAssignment(context, symbol, reference.identifier);
+    if (
+      !assignment ||
+      !isDescendantOf(assignment, handlerBody) ||
+      !isNodeReachableWithinFunction(assignment, context)
+    ) {
+      return false;
+    }
+    let current = findTransparentExpressionRoot(assignment);
+    while (current.parent && current.parent !== handlerBody) {
+      const parent = current.parent;
+      if (
+        isNodeOfType(parent, "IfStatement") ||
+        isNodeOfType(parent, "ConditionalExpression") ||
+        isNodeOfType(parent, "SwitchStatement") ||
+        isNodeOfType(parent, "WhileStatement") ||
+        isNodeOfType(parent, "DoWhileStatement") ||
+        isNodeOfType(parent, "ForStatement") ||
+        isNodeOfType(parent, "ForInStatement") ||
+        isNodeOfType(parent, "ForOfStatement")
+      ) {
+        return false;
+      }
+      current = parent;
+    }
+    return current.parent === handlerBody;
+  });
+};
+
+const throwEscapesBeforeNode = (throwNode: EsTreeNode, node: EsTreeNode): boolean => {
+  let current = throwNode;
+  while (current.parent && !isFunctionLike(current.parent)) {
+    const parent = current.parent;
+    if (isNodeOfType(parent, "TryStatement")) {
+      if (parent.finalizer && isDescendantOf(node, parent.finalizer)) return false;
+      if (parent.block === current && parent.handler) return false;
+    }
+    current = parent;
+  }
+  return true;
+};
+
+const hasEscapingThrowBeforeNode = (context: RuleContext, node: EsTreeNode): boolean => {
   const owner = context.cfg.enclosingFunction(node);
   if (!owner) return false;
   const nodeStart = getNodeStartIndex(node);
@@ -2164,12 +2279,39 @@ const hasReachableThrowBeforeNode = (context: RuleContext, node: EsTreeNode): bo
       isNodeOfType(candidate, "ThrowStatement") &&
       getNodeStartIndex(candidate) < nodeStart &&
       isNodeReachableWithinFunction(candidate, context) &&
-      !expressionIsStaticallySkipped(context, candidate)
+      !expressionIsStaticallySkipped(context, candidate) &&
+      throwEscapesBeforeNode(candidate, node)
     ) {
       hasPriorThrow = true;
     }
   });
   return hasPriorThrow;
+};
+
+const sourceOwnerMayEscapeWithPending = (
+  context: RuleContext,
+  symbol: SymbolDescriptor,
+  sourceExpression: EsTreeNode,
+): boolean => {
+  const owner = context.cfg.enclosingFunction(sourceExpression);
+  if (!owner) return false;
+  const sourceStart = getNodeStartIndex(sourceExpression);
+  const flow = createPendingSymbolFlow(context, symbol, sourceExpression);
+  let mayEscapeWithPending = false;
+  walkAst(owner, (candidate) => {
+    if (candidate !== owner && isFunctionLike(candidate)) return false;
+    if (
+      isNodeOfType(candidate, "ThrowStatement") &&
+      getNodeStartIndex(candidate) > sourceStart &&
+      isNodeReachableWithinFunction(candidate, context) &&
+      !expressionIsStaticallySkipped(context, candidate) &&
+      throwEscapesBeforeNode(candidate, owner) &&
+      !flow.isClearedBefore(candidate)
+    ) {
+      mayEscapeWithPending = true;
+    }
+  });
+  return mayEscapeWithPending;
 };
 
 const getExecutionSitesInOwner = (
@@ -2186,18 +2328,20 @@ const getExecutionSitesInOwner = (
     !isFunctionLike(nodeOwner) ||
     visitedFunctionNodes.has(nodeOwner) ||
     !isNodeReachableWithinFunction(node, context) ||
-    (options.requiresGuaranteedExecution &&
-      (!context.cfg.isUnconditionalFromEntry(node) || hasReachableThrowBeforeNode(context, node)))
+    (options.requiresGuaranteedExecution && !context.cfg.isUnconditionalFromEntry(node))
   ) {
     return [];
   }
   const nextVisitedFunctionNodes = new Set(visitedFunctionNodes);
   nextVisitedFunctionNodes.add(nodeOwner);
   const executionPhase = getAsyncExecutionPhase(context, node);
+  const hasPriorEscapingThrow =
+    options.requiresGuaranteedExecution && hasEscapingThrowBeforeNode(context, node);
   return getDirectInvocationSites(context, nodeOwner, {
     includeCallbackExecutionSites: true,
     requireGuaranteedCallbackExecution: options.requiresGuaranteedExecution,
   }).flatMap((invocationSite) => {
+    if (hasPriorEscapingThrow && caughtInvocationMayContinue(invocationSite)) return [];
     if (
       !invocationWaitsForCompletion(invocationSite) &&
       (options.requiresGuaranteedExecution
@@ -2216,19 +2360,90 @@ const getExecutionSitesInOwner = (
   });
 };
 
+const findConditionalClearingBranch = (
+  node: EsTreeNode,
+): { conditionalRoot: EsTreeNode; isConsequent: boolean } | null => {
+  let current = findTransparentExpressionRoot(node);
+  while (current.parent && !isFunctionLike(current.parent)) {
+    const parent = current.parent;
+    if (isNodeOfType(parent, "IfStatement")) {
+      if (parent.consequent === current) {
+        return { conditionalRoot: parent, isConsequent: true };
+      }
+      if (parent.alternate === current) {
+        return { conditionalRoot: parent, isConsequent: false };
+      }
+      return null;
+    }
+    if (isNodeOfType(parent, "ConditionalExpression")) {
+      if (parent.consequent === current) {
+        return { conditionalRoot: parent, isConsequent: true };
+      }
+      if (parent.alternate === current) {
+        return { conditionalRoot: parent, isConsequent: false };
+      }
+      return null;
+    }
+    if (!isNodeOfType(parent, "ExpressionStatement") && !isNodeOfType(parent, "BlockStatement")) {
+      return null;
+    }
+    current = parent;
+  }
+  return null;
+};
+
+const projectGuaranteedClearingNodes = (
+  context: RuleContext,
+  clearingNodes: ReadonlyArray<EsTreeNode>,
+  targetOwner: EsTreeNode | null,
+): EsTreeNode[] => {
+  const reachableClearingNodes = clearingNodes.filter(
+    (clearingNode) =>
+      isNodeReachableWithinFunction(clearingNode, context) &&
+      !expressionIsStaticallySkipped(context, clearingNode),
+  );
+  const conditionalBranches = new Map<
+    EsTreeNode,
+    { hasAlternate: boolean; hasConsequent: boolean }
+  >();
+  for (const clearingNode of reachableClearingNodes) {
+    const branch = findConditionalClearingBranch(clearingNode);
+    if (!branch) continue;
+    const branches = conditionalBranches.get(branch.conditionalRoot) ?? {
+      hasAlternate: false,
+      hasConsequent: false,
+    };
+    if (branch.isConsequent) branches.hasConsequent = true;
+    else branches.hasAlternate = true;
+    conditionalBranches.set(branch.conditionalRoot, branches);
+  }
+  const combinedClearingNodes = [
+    ...reachableClearingNodes,
+    ...Array.from(conditionalBranches)
+      .filter(([, branches]) => branches.hasConsequent && branches.hasAlternate)
+      .map(([conditionalRoot]) => conditionalRoot),
+  ];
+  return combinedClearingNodes.flatMap((clearingNode) =>
+    getExecutionSitesInOwner(context, clearingNode, targetOwner, {
+      requiresGuaranteedExecution: true,
+    }),
+  );
+};
+
 const getProjectedProvenanceClearingSites = ({
   afterStart,
   context,
   symbol,
   targetOwner,
-}: ProjectedClearingSitesInput): EsTreeNode[] =>
-  symbol.references.flatMap((reference) => {
+}: ProjectedClearingSitesInput): EsTreeNode[] => {
+  const clearingAssignments = symbol.references.flatMap((reference) => {
     const assignment = getProvenanceClearingAssignment(context, symbol, reference.identifier);
-    if (!assignment) return [];
-    return getExecutionSitesInOwner(context, assignment, targetOwner, {
-      requiresGuaranteedExecution: true,
-    }).filter((clearingExecutionSite) => getNodeStartIndex(clearingExecutionSite) > afterStart);
+    return assignment ? [assignment] : [];
   });
+  return projectGuaranteedClearingNodes(context, clearingAssignments, targetOwner).filter(
+    (clearingExecutionSite) => getNodeStartIndex(clearingExecutionSite) > afterStart,
+  );
+};
 
 const getRetainedSourceExecutionSites = (
   context: RuleContext,

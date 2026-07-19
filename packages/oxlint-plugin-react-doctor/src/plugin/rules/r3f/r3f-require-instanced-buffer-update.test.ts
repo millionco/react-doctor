@@ -232,6 +232,42 @@ describe("r3f-require-instanced-buffer-update", () => {
     expect(runRule(r3fRequireInstancedBufferUpdate, code).diagnostics).toHaveLength(0);
   });
 
+  it("does not let logging or a known local no-op suppress an upload", () => {
+    const code = `
+      import "@react-three/fiber";
+      import { useRef } from "react";
+      const Scene = () => {
+        const meshRef = useRef(null);
+        const ignore = () => {};
+        const update = () => {
+          meshRef.current.setMatrixAt(0, matrix);
+          console.log(meshRef.current);
+          ignore(meshRef);
+        };
+        return <instancedMesh ref={meshRef} />;
+      };
+    `;
+    expect(runRule(r3fRequireInstancedBufferUpdate, code).diagnostics).toHaveLength(1);
+  });
+
+  it("lets opaque helpers cover only the transferred buffer", () => {
+    const code = `
+      import "@react-three/fiber";
+      import { useRef } from "react";
+      import { uploadBuffer } from "./upload-buffer";
+      const Scene = () => {
+        const meshRef = useRef(null);
+        const update = () => {
+          meshRef.current.setMatrixAt(0, matrix);
+          meshRef.current.setColorAt(0, color);
+          uploadBuffer(meshRef.current.instanceMatrix);
+        };
+        return <instancedMesh ref={meshRef} />;
+      };
+    `;
+    expect(runRule(r3fRequireInstancedBufferUpdate, code).diagnostics).toHaveLength(1);
+  });
+
   it("reports when only one branch transfers the mesh to an opaque helper", () => {
     const code = `
       import "@react-three/fiber";
@@ -283,6 +319,40 @@ describe("r3f-require-instanced-buffer-update", () => {
       };
     `;
     expect(runRule(r3fRequireInstancedBufferUpdate, code).diagnostics).toHaveLength(1);
+  });
+
+  it("rejects reassigned ref parameters as stable owners", () => {
+    const code = `
+      import "@react-three/fiber";
+      const Scene = ({ meshRef }) => {
+        const originalRef = meshRef;
+        meshRef = getOtherRef();
+        meshRef.current.setMatrixAt(0, matrix);
+        return <instancedMesh ref={originalRef} />;
+      };
+    `;
+    expect(runRule(r3fRequireInstancedBufferUpdate, code).diagnostics).toHaveLength(0);
+  });
+
+  it("does not let a sibling callback completion hide a callback-local upload", () => {
+    const code = `
+      import "@react-three/fiber";
+      import { useRef } from "react";
+      const Scene = ({ placements, colors }) => {
+        const meshRef = useRef(null);
+        const update = () => {
+          placements.forEach((placement, index) => {
+            meshRef.current.setMatrixAt(index, placement.matrix);
+            meshRef.current.instanceMatrix.needsUpdate = true;
+          });
+          colors.forEach(() => {
+            meshRef.current.instanceMatrix.needsUpdate = true;
+          });
+        };
+        return <instancedMesh ref={meshRef} />;
+      };
+    `;
+    expect(runRule(r3fRequireInstancedBufferUpdate, code).diagnostics).toHaveLength(0);
   });
 
   it("declares the R3F v4 capability gate", () => {

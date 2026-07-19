@@ -5,11 +5,13 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSynchronousIteratorCallback } from "../../utils/is-synchronous-iterator-callback.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -37,7 +39,11 @@ const resolveStableRefSymbol = (
     return null;
   }
   const symbol = resolveConstIdentifierAlias(identifier, context.scopes);
-  return symbol && (symbol.kind === "const" || symbol.kind === "parameter") ? symbol : null;
+  return symbol &&
+    (symbol.kind === "const" || symbol.kind === "parameter") &&
+    symbol.references.every((reference) => reference.flag === "read")
+    ? symbol
+    : null;
 };
 
 const resolveCurrentRefSymbol = (
@@ -146,67 +152,52 @@ const getOpaqueRefTransfer = (
     const methodName = getStaticPropertyName(callee);
     if (methodName === "setMatrixAt" || methodName === "setColorAt") return [];
   }
-  const refSymbolIds = new Set<number>();
+  if (resolveExactLocalFunction(callee, context.scopes)) return [];
+  const rootIdentifier = getRootIdentifier(callee);
+  if (!rootIdentifier || context.scopes.isGlobalReference(rootIdentifier)) return [];
+  const calleeSymbol = resolveConstIdentifierAlias(rootIdentifier, context.scopes);
+  if (
+    !calleeSymbol ||
+    (calleeSymbol.kind !== "import" &&
+      (calleeSymbol.kind !== "parameter" ||
+        calleeSymbol.references.some((reference) => reference.flag !== "read")))
+  ) {
+    return [];
+  }
+  const completions: InstancedBufferCompletion[] = [];
   for (const argument of node.arguments) {
     if (isNodeOfType(argument, "SpreadElement")) continue;
     const candidate = stripParenExpression(argument);
+    if (isNodeOfType(candidate, "MemberExpression")) {
+      const bufferPropertyName = getStaticPropertyName(candidate);
+      if (bufferPropertyName === "instanceMatrix" || bufferPropertyName === "instanceColor") {
+        const refSymbol = resolveCurrentRefSymbol(candidate.object, context);
+        if (refSymbol) completions.push({ bufferPropertyName, node, refSymbolId: refSymbol.id });
+        continue;
+      }
+    }
     const refSymbol = isNodeOfType(candidate, "Identifier")
       ? resolveStableRefSymbol(candidate, context)
       : resolveCurrentRefSymbol(candidate, context);
-    if (refSymbol) refSymbolIds.add(refSymbol.id);
+    if (!refSymbol) continue;
+    completions.push({ bufferPropertyName: "instanceMatrix", node, refSymbolId: refSymbol.id });
+    completions.push({ bufferPropertyName: "instanceColor", node, refSymbolId: refSymbol.id });
   }
-  return [...refSymbolIds].flatMap((refSymbolId) => [
-    { bufferPropertyName: "instanceMatrix", node, refSymbolId },
-    { bufferPropertyName: "instanceColor", node, refSymbolId },
-  ]);
+  return completions;
 };
 
-const completionsCoverEveryPathAfterMutation = (
-  mutation: InstancedBufferMutation,
+const completionsCoverEveryPathWithinOwner = (
+  pathAnchor: EsTreeNode,
+  owner: EsTreeNode,
   completions: ReadonlyArray<InstancedBufferCompletion>,
   context: RuleContext,
 ): boolean => {
-  let pathAnchor: EsTreeNode = mutation.node;
-  let owner = context.cfg.enclosingFunction(pathAnchor);
-  while (
-    owner &&
-    isFunctionLike(owner) &&
-    !owner.async &&
-    !owner.generator &&
-    isSynchronousIteratorCallback(owner)
-  ) {
-    const matchingCompletions = completions.filter(
-      (completion) =>
-        completion.refSymbolId === mutation.refSymbolId &&
-        completion.bufferPropertyName === mutation.bufferPropertyName,
-    );
-    if (
-      matchingCompletions.length > 0 &&
-      matchingCompletions.every(
-        (completion) => context.cfg.enclosingFunction(completion.node) === owner,
-      )
-    ) {
-      break;
-    }
-    const iteratorCall = owner.parent;
-    if (!isNodeOfType(iteratorCall, "CallExpression")) break;
-    pathAnchor = iteratorCall;
-    owner = context.cfg.enclosingFunction(pathAnchor);
-  }
-  if (!owner) return true;
   const functionCfg = context.cfg.cfgFor(owner);
   const mutationBlock = functionCfg?.blockOf(pathAnchor);
-  const mutationStart = getRangeStart(mutation.node);
+  const mutationStart = getRangeStart(pathAnchor);
   if (!functionCfg || !mutationBlock || mutationStart === null) return true;
   const matchingBlocks = new Set(
     completions.flatMap((completion) => {
-      if (
-        completion.refSymbolId !== mutation.refSymbolId ||
-        completion.bufferPropertyName !== mutation.bufferPropertyName ||
-        context.cfg.enclosingFunction(completion.node) !== owner
-      ) {
-        return [];
-      }
       const completionBlock = functionCfg.blockOf(completion.node);
       const completionStart = getRangeStart(completion.node);
       if (!completionBlock || completionStart === null) return [];
@@ -229,6 +220,39 @@ const completionsCoverEveryPathAfterMutation = (
     }
   }
   return matchingBlocks.size > 0;
+};
+
+const completionsCoverEveryPathAfterMutation = (
+  mutation: InstancedBufferMutation,
+  completions: ReadonlyArray<InstancedBufferCompletion>,
+  context: RuleContext,
+): boolean => {
+  let pathAnchor: EsTreeNode = mutation.node;
+  let owner = context.cfg.enclosingFunction(pathAnchor);
+  while (owner) {
+    const matchingCompletions = completions.filter(
+      (completion) =>
+        completion.refSymbolId === mutation.refSymbolId &&
+        completion.bufferPropertyName === mutation.bufferPropertyName &&
+        context.cfg.enclosingFunction(completion.node) === owner,
+    );
+    if (completionsCoverEveryPathWithinOwner(pathAnchor, owner, matchingCompletions, context)) {
+      return true;
+    }
+    if (
+      !isFunctionLike(owner) ||
+      owner.async ||
+      owner.generator ||
+      !isSynchronousIteratorCallback(owner)
+    ) {
+      return false;
+    }
+    const iteratorCall = owner.parent;
+    if (!isNodeOfType(iteratorCall, "CallExpression")) return false;
+    pathAnchor = iteratorCall;
+    owner = context.cfg.enclosingFunction(pathAnchor);
+  }
+  return true;
 };
 
 export const r3fRequireInstancedBufferUpdate = defineRule({

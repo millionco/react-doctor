@@ -40,6 +40,19 @@ describe("r3f-require-projection-matrix-update", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("does not claim mixed useThree selector results are always managed cameras", () => {
+    const result = runRule(
+      r3fRequireProjectionMatrixUpdate,
+      `import { useThree } from "@react-three/fiber";
+       const Scene = ({ chooseExternal, externalCamera }) => {
+         const camera = useThree((state) => chooseExternal ? externalCamera : state.camera);
+         camera.fov = 45;
+         return null;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("reports orthographic projection writes through useFrame state", () => {
     const result = runRule(
       r3fRequireProjectionMatrixUpdate,
@@ -93,6 +106,23 @@ describe("r3f-require-projection-matrix-update", () => {
            camera.aspect = 2;
            camera.zoom += 0.5;
            camera.updateProjectionMatrix();
+         };
+         return null;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a direct local wrapper that refreshes the same camera", () => {
+    const result = runRule(
+      r3fRequireProjectionMatrixUpdate,
+      `import { useThree } from "@react-three/fiber";
+       const Scene = () => {
+         const camera = useThree((state) => state.camera);
+         const refresh = () => camera.updateProjectionMatrix();
+         const resize = () => {
+           camera.fov = 45;
+           refresh();
          };
          return null;
        };`,
@@ -292,6 +322,47 @@ describe("r3f-require-projection-matrix-update", () => {
        });`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires opaque camera helpers to run on every path", () => {
+    const result = runRule(
+      r3fRequireProjectionMatrixUpdate,
+      `import { useFrame } from "@react-three/fiber";
+       import { refreshCamera } from "./refresh-camera";
+       useFrame(({ camera }) => {
+         camera.fov = 35;
+         if (debug) refreshCamera(camera);
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat known non-refreshing calls as opaque camera refreshes", () => {
+    const result = runRule(
+      r3fRequireProjectionMatrixUpdate,
+      `import { useFrame } from "@react-three/fiber";
+       useFrame(({ camera }) => {
+         camera.fov = 35;
+         console.log(camera);
+         camera.aspect = 2;
+         camera.lookAt(target);
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("covers film properties and static computed receiver paths", () => {
+    const result = runRule(
+      r3fRequireProjectionMatrixUpdate,
+      `import { useThree } from "@react-three/fiber";
+       const Scene = () => {
+         const state = useThree();
+         state["camera"].filmOffset = 1;
+         state["camera"].filmGauge = 70;
+         return null;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("does not accept an update for a different proven camera", () => {

@@ -47,10 +47,13 @@ export const resolveExpressionKey = (
     }
     return `symbol:${symbol.id}`;
   }
-  if (isNodeOfType(unwrappedExpression, "MemberExpression") && !unwrappedExpression.computed) {
-    if (!isNodeOfType(unwrappedExpression.property, "Identifier")) return null;
+  if (isNodeOfType(unwrappedExpression, "MemberExpression")) {
+    const propertyName = getStaticPropertyKeyName(unwrappedExpression, {
+      allowComputedString: true,
+    });
+    if (!propertyName) return null;
     const objectKey = resolveExpressionKey(unwrappedExpression.object, context, visitedSymbolIds);
-    return objectKey ? `${objectKey}.${unwrappedExpression.property.name}` : null;
+    return objectKey ? `${objectKey}.${propertyName}` : null;
   }
   if (isNodeOfType(unwrappedExpression, "ThisExpression")) return "this";
   if (

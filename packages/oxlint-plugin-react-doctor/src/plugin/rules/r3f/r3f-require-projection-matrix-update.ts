@@ -12,6 +12,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -40,6 +41,8 @@ const PROJECTION_PROPERTY_NAMES: ReadonlySet<string> = new Set([
   "aspect",
   "bottom",
   "far",
+  "filmGauge",
+  "filmOffset",
   "fov",
   "left",
   "near",
@@ -70,6 +73,7 @@ const useThreeSelectsCamera = (
       (returnedExpression) =>
         isR3fCallbackStateProperty(returnedExpression, selector, "camera", context.scopes),
       context.cfg,
+      "every",
     ),
   );
 };
@@ -214,40 +218,42 @@ const getUpdateProjectionMatrixReceiver = (
     : null;
 };
 
-const canNodeReachLaterNodeWithinFunction = (
-  sourceNode: EsTreeNode,
-  targetNode: EsTreeNode,
-  owner: EsTreeNode,
+const getDirectLocalUpdateReceiver = (
+  node: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
-): boolean | null => {
-  const functionCfg = context.cfg.cfgFor(owner);
-  const sourceBlock = functionCfg?.blockOf(sourceNode);
-  const targetBlock = functionCfg?.blockOf(targetNode);
-  const sourceStart = getRangeStart(sourceNode);
-  const targetStart = getRangeStart(targetNode);
-  if (
-    !functionCfg ||
-    !sourceBlock ||
-    !targetBlock ||
-    sourceStart === null ||
-    targetStart === null
-  ) {
-    return null;
-  }
-  if (sourceBlock === targetBlock) return sourceStart < targetStart;
-  const visitedBlocks = new Set([sourceBlock]);
-  const pendingBlocks = [sourceBlock];
-  while (pendingBlocks.length > 0) {
-    const currentBlock = pendingBlocks.pop();
-    if (!currentBlock) break;
-    for (const edge of currentBlock.successors) {
-      if (edge.to === targetBlock) return true;
-      if (visitedBlocks.has(edge.to)) continue;
-      visitedBlocks.add(edge.to);
-      pendingBlocks.push(edge.to);
-    }
-  }
-  return false;
+): EsTreeNode | null => {
+  const localFunction = resolveExactLocalFunction(node.callee, context.scopes);
+  if (!localFunction || !isFunctionLike(localFunction)) return null;
+  const body = localFunction.body;
+  if (isNodeOfType(body, "CallExpression")) return getUpdateProjectionMatrixReceiver(body);
+  if (!isNodeOfType(body, "BlockStatement") || body.body.length !== 1) return null;
+  const statement = body.body[0];
+  const expression = isNodeOfType(statement, "ExpressionStatement")
+    ? statement.expression
+    : isNodeOfType(statement, "ReturnStatement")
+      ? statement.argument
+      : null;
+  const unwrappedExpression = expression ? stripParenExpression(expression) : null;
+  return unwrappedExpression && isNodeOfType(unwrappedExpression, "CallExpression")
+    ? getUpdateProjectionMatrixReceiver(unwrappedExpression)
+    : null;
+};
+
+const isDefensibleOpaqueHelperCall = (
+  node: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(node.callee);
+  if (resolveExactLocalFunction(callee, context.scopes)) return false;
+  const rootIdentifier = getRootIdentifier(callee);
+  if (!rootIdentifier || context.scopes.isGlobalReference(rootIdentifier)) return false;
+  const symbol = resolveConstIdentifierAlias(rootIdentifier, context.scopes);
+  return Boolean(
+    symbol &&
+    (symbol.kind === "import" ||
+      (symbol.kind === "parameter" &&
+        symbol.references.every((reference) => reference.flag === "read"))),
+  );
 };
 
 const collectExpressionRestrictions = (
@@ -338,26 +344,6 @@ const doUpdatesCoverEveryPathAfterMutation = (
   return matchingBlocks.size > 0;
 };
 
-const hasLaterOpaqueReceiverCall = (
-  mutation: ProjectionMutation,
-  opaqueCalls: ReadonlyArray<ReceiverCall>,
-  context: RuleContext,
-): boolean => {
-  const owner = context.cfg.enclosingFunction(mutation.node);
-  if (!owner) return true;
-  return opaqueCalls.some((opaqueCall) => {
-    if (
-      opaqueCall.receiverKey !== mutation.receiverKey ||
-      context.cfg.enclosingFunction(opaqueCall.node) !== owner
-    ) {
-      return false;
-    }
-    return (
-      canNodeReachLaterNodeWithinFunction(mutation.node, opaqueCall.node, owner, context) !== false
-    );
-  });
-};
-
 export const r3fRequireProjectionMatrixUpdate = defineRule({
   id: "r3f-require-projection-matrix-update",
   title: "Missing camera projection-matrix update",
@@ -411,11 +397,15 @@ export const r3fRequireProjectionMatrixUpdate = defineRule({
           updateCalls.push({ node, receiverKey: updateReceiverKey });
           return;
         }
-        const callee = stripParenExpression(node.callee);
-        if (isNodeOfType(callee, "MemberExpression")) {
-          const receiverKey = resolveExpressionKey(callee.object, context);
-          if (receiverKey) opaqueCalls.push({ node, receiverKey });
+        const localUpdateReceiver = getDirectLocalUpdateReceiver(node, context);
+        const localUpdateReceiverKey = localUpdateReceiver
+          ? resolveExpressionKey(localUpdateReceiver, context)
+          : null;
+        if (localUpdateReceiverKey) {
+          updateCalls.push({ node, receiverKey: localUpdateReceiverKey });
+          return;
         }
+        if (!isDefensibleOpaqueHelperCall(node, context)) return;
         for (const argument of node.arguments) {
           if (isNodeOfType(argument, "SpreadElement")) continue;
           const argumentKey = resolveExpressionKey(argument, context);
@@ -442,8 +432,11 @@ export const r3fRequireProjectionMatrixUpdate = defineRule({
               managedCameraRefSymbolIds,
               context,
             ) ||
-            hasLaterOpaqueReceiverCall(mutation, opaqueCalls, context) ||
-            doUpdatesCoverEveryPathAfterMutation(mutation, updateCalls, context) !== false
+            doUpdatesCoverEveryPathAfterMutation(
+              mutation,
+              [...updateCalls, ...opaqueCalls],
+              context,
+            ) !== false
           ) {
             continue;
           }

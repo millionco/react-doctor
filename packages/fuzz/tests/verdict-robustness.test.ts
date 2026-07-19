@@ -58,6 +58,7 @@ const AUDITED_RULE_IDS = [
   "valtio-no-snapshot-in-callback",
   "zustand-no-fresh-selector-result",
   "zustand-no-whole-store-destructure",
+  "zustand-no-get-during-initialization",
 ] as const;
 
 // Rule × variant pairs where losing the diagnostic is the rule's DOCUMENTED

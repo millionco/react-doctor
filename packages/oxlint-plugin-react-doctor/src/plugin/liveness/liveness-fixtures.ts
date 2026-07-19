@@ -1421,6 +1421,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "zustand-no-fresh-selector-result": {
     code: 'import { create } from "zustand";\nconst useStore = create(() => ({ count: 0 }));\nconst summary = useStore((state) => ({ count: state.count }));',
   },
+  "zustand-no-get-during-initialization": {
+    code: 'import { create } from "zustand";\nconst useStore = create((_set, get) => ({ count: get().count }));',
+  },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',
   },

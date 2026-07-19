@@ -291,6 +291,40 @@ describe("createOxlintConfig settings", () => {
     }
   });
 
+  it("gates Zustand initialization diagnostics to supported major versions", () => {
+    for (const zustandMajorVersion of [1, 2, 3, 4, 5]) {
+      const config = createOxlintConfig({
+        pluginPath: "/tmp/plugin.js",
+        project: buildProject({
+          framework: "vite",
+          hasReactNativeWorkspace: false,
+          zustandVersion: `^${zustandMajorVersion}.0.0`,
+          zustandMajorVersion,
+        }),
+      });
+      expect(config.rules["react-doctor/zustand-no-get-during-initialization"]).toBe("error");
+    }
+
+    for (const project of [
+      buildProject({ framework: "vite", hasReactNativeWorkspace: false }),
+      buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        zustandVersion: "workspace:*",
+        zustandMajorVersion: null,
+      }),
+      buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        zustandVersion: "^6.0.0",
+        zustandMajorVersion: 6,
+      }),
+    ]) {
+      const config = createOxlintConfig({ pluginPath: "/tmp/plugin.js", project });
+      expect(config.rules).not.toHaveProperty("react-doctor/zustand-no-get-during-initialization");
+    }
+  });
+
   it("drops the react-hooks-js plugin + compiler rules under disableReactHooksJsPlugin (the load-failure fallback)", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

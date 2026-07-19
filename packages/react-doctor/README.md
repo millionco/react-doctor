@@ -55,7 +55,39 @@ You can configure which rules to run and how to run them in `doctor.config.ts`.
 
 [Learn more →](https://react.doctor/docs/configuration/config-files)
 
-### 5. Consume JSON
+### 5. Suppress specific diagnostics
+
+You can suppress individual diagnostics using inline comments:
+
+```tsx
+// Suppress one rule on the next line
+// react-doctor-disable-next-line react-doctor/no-ref-current-in-render
+valueRef.current = value
+
+// Suppress one rule on the same line
+valueRef.current = value // react-doctor-disable-line react-doctor/no-ref-current-in-render
+
+// Suppress multiple rules
+// react-doctor-disable-next-line react-doctor/no-ref-current-in-render, react-doctor/no-derived-state-effect
+valueRef.current = value
+
+// Suppress all rules on the next line
+// react-doctor-disable-next-line
+valueRef.current = value
+```
+
+Block comments (`/* */`) and JSX comment syntax (`{/* */}`) also work. You can add an explanation after `--`:
+
+```tsx
+// react-doctor-disable-next-line react-doctor/no-ref-current-in-render -- intentional for performance
+valueRef.current = value
+```
+
+`eslint-disable` and `oxlint-disable` comments are also respected.
+
+To disable inline suppressions (audit mode), use `--no-respect-inline-disables` or set `"respectInlineDisables": false` in your config.
+
+### 6. Consume JSON
 
 Use `--json` for stdout or `--json-out <path>` for a file. The default
 `schemaVersion: 3` report includes deterministic diagnostic IDs and exact

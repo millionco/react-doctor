@@ -24,7 +24,7 @@ Create `tmp/parity-pr-<number>-<head-short-sha>` and preserve it after the run. 
 
 ## Run both revisions
 
-Run from `packages/evals`. The default corpus contains 2,000 selected repositories, and the default concurrency is 500.
+Run from `packages/evals`. The default corpus contains 2,000 selected repositories, and the initial concurrency is 500. The evaluator cleans up resources and retries failed projects at concurrency 50, then 10.
 
 ```sh
 nr eval \
@@ -48,9 +48,9 @@ jq -e -s 'length > 0 and all(.[]; .repository.ref != "HEAD")' \
   <absolute-run-directory>/baseline.ndjson >/dev/null
 ```
 
-If the check fails, inspect the baseline for invalid JSON or unpinned records, then rerun it at a sustainable concurrency. Candidate runs reject unpinned evaluation NDJSON.
+If the baseline command exits non-zero or the check fails, inspect its failed records and stop. Candidate runs reject unpinned evaluation NDJSON.
 
-Require both runs to report 100% completion. Otherwise, report the failed projects and stop the comparison.
+Require both commands to exit zero and report 100% completion. Otherwise, report the failed projects and stop the comparison.
 
 ## Compare results
 

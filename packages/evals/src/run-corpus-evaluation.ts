@@ -1,21 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 
-import { Daytona, DaytonaNotFoundError, Image, SandboxState } from "@daytona/sdk";
-import type { Sandbox } from "@daytona/sdk";
-import pLimit from "p-limit";
+import { Daytona, DaytonaNotFoundError, Image } from "@daytona/sdk";
 
+import { cleanupEvaluationSandboxes } from "./cleanup-evaluation-sandboxes.js";
 import {
   BUILD_REACT_DOCTOR_COMMANDS,
+  EVALUATION_RETRY_CONCURRENCIES,
   MILLISECONDS_PER_SECOND,
   PERCENT_MULTIPLIER,
   PREPARE_REACT_DOCTOR_COMMANDS,
   PROGRESS_INTERVAL_PROJECTS,
   REACT_DOCTOR_WORK_DIRECTORY,
   SANDBOX_CPU_CORES,
-  SANDBOX_CLEANUP_CONCURRENCY,
   SANDBOX_DISK_GIB,
-  SANDBOX_DELETE_TIMEOUT_SECONDS,
   SANDBOX_IMAGE,
   SANDBOX_MEMORY_GIB,
   SANDBOX_SETUP_TIMEOUT_SECONDS,
@@ -26,6 +24,7 @@ import { evaluateRepositoryGroup } from "./evaluate-repository-group.js";
 import { groupCorpusRepositories } from "./group-corpus-repositories.js";
 import { loadCorpusRepositories } from "./load-corpus-repositories.js";
 import type { EvaluationOptions } from "./parse-evaluation-arguments.js";
+import { runEvaluationAttempts } from "./run-evaluation-attempts.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 
 export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<void> => {
@@ -75,42 +74,34 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
       }
     };
 
-    const limit = pLimit(options.concurrency);
-    await Promise.all(
-      repositoryGroups.map((repositoryGroup) =>
-        limit(() =>
-          evaluateRepositoryGroup({
-            daytona,
-            evaluationId,
-            snapshotName,
-            repositoryGroup,
-            onRecord: recordEvaluation,
-          }),
-        ),
+    const attemptConcurrencies = [
+      options.concurrency,
+      ...EVALUATION_RETRY_CONCURRENCIES.map((concurrency) =>
+        Math.min(options.concurrency, concurrency),
       ),
-    );
+    ];
+    await runEvaluationAttempts({
+      repositoryGroups,
+      attemptConcurrencies,
+      evaluateRepositoryGroup: (repositoryGroup) =>
+        evaluateRepositoryGroup({
+          daytona,
+          evaluationId,
+          snapshotName,
+          repositoryGroup,
+          onRecord: recordEvaluation,
+        }),
+      beforeRetry: () => cleanupEvaluationSandboxes({ daytona, evaluationId }),
+      onRetry: (retry) => {
+        process.stderr.write(
+          `Retrying ${retry.failedProjectCount} projects at concurrency ${retry.concurrency} (attempt ${retry.attemptNumber}/${retry.totalAttempts})\n`,
+        );
+      },
+      onFinalFailure: recordEvaluation,
+    });
   } finally {
     try {
-      const cleanupLimit = pLimit(SANDBOX_CLEANUP_CONCURRENCY);
-      const remainingSandboxes: Sandbox[] = [];
-      for await (const sandbox of daytona.list({ labels: { evaluation: evaluationId } })) {
-        if (sandbox.state !== SandboxState.DESTROYING && sandbox.state !== SandboxState.DESTROYED) {
-          remainingSandboxes.push(sandbox);
-        }
-      }
-      await Promise.all(
-        remainingSandboxes.map((sandbox) =>
-          cleanupLimit(async () => {
-            try {
-              await daytona.delete(sandbox, SANDBOX_DELETE_TIMEOUT_SECONDS);
-            } catch (error) {
-              process.stderr.write(
-                `Failed to clean up Daytona sandbox ${sandbox.id}: ${toErrorMessage(error)}\n`,
-              );
-            }
-          }),
-        ),
-      );
+      await cleanupEvaluationSandboxes({ daytona, evaluationId });
     } finally {
       try {
         const snapshot = await daytona.snapshot.get(snapshotName);

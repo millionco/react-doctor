@@ -33,7 +33,7 @@ export const evaluateRepositoryGroup = async ({
   snapshotName,
   repositoryGroup,
   onRecord,
-}: EvaluateRepositoryGroupInput): Promise<void> => {
+}: EvaluateRepositoryGroupInput): Promise<ReadonlyArray<CorpusEvaluationRecord>> => {
   let repositories = repositoryGroup.rootDirectories.map((rootDirectory) => ({
     org: repositoryGroup.org,
     name: repositoryGroup.name,
@@ -80,16 +80,14 @@ export const evaluateRepositoryGroup = async ({
       ).output.trim();
       repositories = repositories.map((repository) => ({ ...repository, ref: resolvedRef }));
     } catch (error) {
-      for (const repository of repositories) {
-        await onRecord({
-          schemaVersion: EVALUATION_SCHEMA_VERSION,
-          repository,
-          error: toErrorMessage(error),
-        });
-      }
-      return;
+      return repositories.map((repository) => ({
+        schemaVersion: EVALUATION_SCHEMA_VERSION,
+        repository,
+        error: toErrorMessage(error),
+      }));
     }
 
+    const failedRecords: CorpusEvaluationRecord[] = [];
     for (const repository of repositories) {
       let record: CorpusEvaluationRecord;
       try {
@@ -112,14 +110,16 @@ export const evaluateRepositoryGroup = async ({
           report,
         };
       } catch (error) {
-        record = {
+        failedRecords.push({
           schemaVersion: EVALUATION_SCHEMA_VERSION,
           repository,
           error: toErrorMessage(error),
-        };
+        });
+        continue;
       }
       await onRecord(record);
     }
+    return failedRecords;
   } finally {
     let sandboxToDelete = sandbox;
     if (!sandboxToDelete) {

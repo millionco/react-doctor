@@ -23,7 +23,7 @@ nr eval \
 
 Text entries use each repository's default branch. Output records replace `HEAD` with the resolved commit hash, so a baseline NDJSON file can pin the candidate run.
 
-Candidate runs reject baseline records that still contain `HEAD`. Rerun the baseline at a sustainable concurrency until every record is pinned.
+Candidate runs reject baseline records that still contain `HEAD`. After the initial pass, the evaluator cleans up resources and retries failed projects at concurrency 50, then 10. Remaining failures make the command exit non-zero.
 
 Progress and completion metrics use stderr. Results use stdout. The evaluator deletes every repository sandbox and the build snapshot after the run.
 

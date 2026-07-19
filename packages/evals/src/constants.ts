@@ -7,6 +7,7 @@ export const REPOSITORY_SOURCE_EXTENSIONS: ReadonlyArray<string> = [".json", ".n
 export const PINNED_REPOSITORY_REF_PATTERN = /^[0-9a-f]{40}$/i;
 export const DEFAULT_CORPUS_REPOSITORY_COUNT = 2_000;
 export const DEFAULT_CORPUS_CONCURRENCY = 500;
+export const EVALUATION_RETRY_CONCURRENCIES: ReadonlyArray<number> = [50, 10];
 
 export const SANDBOX_IMAGE = "node:22-bookworm";
 export const SANDBOX_CPU_CORES = 2;

@@ -2041,6 +2041,31 @@ describe("discoverProject — Valtio", () => {
     expect(projectInfo.valtioMajorVersion).toBe(1);
   });
 
+  it("resolves a Valtio catalog declaration from the pnpm workspace", () => {
+    const rootDirectory = path.join(tempDirectory, "valtio-workspace-catalog");
+    const appDirectory = path.join(rootDirectory, "apps", "web");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "pnpm-workspace.yaml"),
+      "packages:\n  - apps/*\n\ncatalog:\n  valtio: ^1.13.2\n",
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "root", private: true }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { react: "^19.0.0", valtio: "catalog:" },
+      }),
+    );
+
+    const projectInfo = discoverProject(appDirectory);
+    expect(projectInfo.valtioVersion).toBe("^1.13.2");
+    expect(projectInfo.valtioMajorVersion).toBe(1);
+  });
+
   it("keeps the Valtio fact null when no analyzed package declares it", () => {
     const projectDirectory = path.join(tempDirectory, "without-valtio");
     fs.mkdirSync(projectDirectory, { recursive: true });

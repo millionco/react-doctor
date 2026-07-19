@@ -548,6 +548,30 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags explicitly voided promises through value-preserving wrappers", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       void (mutation.mutateAsync(first) ?? fallback);
+       void (mutation.mutateAsync(second) || fallback);
+       void (enabled ? mutation.mutateAsync(third) : fallback);
+       void (enabled ? fallback : mutation.mutateAsync(fourth));
+       void (prepare(), mutation.mutateAsync(fifth));`,
+    );
+    expect(result.diagnostics).toHaveLength(5);
+  });
+
+  it("accepts awaited and rejection-handled promises through value-preserving wrappers", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const handleError = (error) => report(error);
+       await (mutation.mutateAsync(first) ?? fallback);
+       await (enabled ? mutation.mutateAsync(second) : fallback);
+       void (mutation.mutateAsync(third) || fallback).catch(handleError);
+       void (prepare(), mutation.mutateAsync(fourth)).catch(handleError);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags discarded rejection-forwarding Promise wrappers", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);

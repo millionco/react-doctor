@@ -337,12 +337,14 @@ const isFloatingPromiseUse = (
     }
     if (isNodeOfType(parent, "ConditionalExpression")) {
       if (parent.test === current) return true;
+      shouldTreatVoidAsDiscarded = true;
       current = parent;
       parent = current.parent ?? null;
       continue;
     }
     if (isNodeOfType(parent, "LogicalExpression")) {
       if (parent.left === current && parent.operator === "&&") return true;
+      shouldTreatVoidAsDiscarded = true;
       current = parent;
       parent = current.parent ?? null;
       continue;
@@ -351,6 +353,7 @@ const isFloatingPromiseUse = (
     if (isNodeOfType(parent, "SequenceExpression")) {
       const finalExpression = parent.expressions.at(-1);
       if (finalExpression !== current) return true;
+      shouldTreatVoidAsDiscarded = true;
       current = parent;
       parent = current.parent ?? null;
       continue;

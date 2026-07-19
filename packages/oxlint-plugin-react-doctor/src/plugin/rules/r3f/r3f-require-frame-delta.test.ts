@@ -27,6 +27,46 @@ describe("r3f-require-frame-delta", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows a fixed rotation correction immediately after lookAt resets the same object", () => {
+    const result = runRule(
+      r3fRequireFrameDelta,
+      `import { useFrame } from "@react-three/fiber";
+       import { useRef } from "react";
+       const Globe = () => {
+         const globeRef = useRef(null);
+         useFrame(() => {
+           if (!globeRef.current) return;
+           globeRef.current.lookAt(center);
+           globeRef.current.rotation.z += Math.PI / 2;
+         });
+         return <group ref={globeRef} />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    `first.current.lookAt(center); second.current.rotation.z += Math.PI / 2;`,
+    `mesh.current.rotation.z += Math.PI / 2; mesh.current.lookAt(center);`,
+    `mesh.current.lookAt(center); mesh.current.position.x += 0.1;`,
+    `if (shouldTrack) mesh.current.lookAt(center); mesh.current.rotation.z += Math.PI / 2;`,
+    `mesh.current.lookAt(center); updateTarget(); mesh.current.rotation.z += Math.PI / 2;`,
+  ])("keeps genuine fixed per-frame changes after non-proving lookAt shapes", (frameBody) => {
+    const result = runRule(
+      r3fRequireFrameDelta,
+      `import { useFrame } from "@react-three/fiber";
+       import { useRef } from "react";
+       const Scene = () => {
+         const mesh = useRef(null);
+         const first = useRef(null);
+         const second = useRef(null);
+         useFrame(() => { ${frameBody} });
+         return <><mesh ref={mesh} /><mesh ref={first} /><mesh ref={second} /></>;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags fixed Three and transform interpolation factors", () => {
     const result = runRule(
       r3fRequireFrameDelta,

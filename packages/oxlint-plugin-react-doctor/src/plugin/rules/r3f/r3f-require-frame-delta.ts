@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
@@ -309,6 +310,85 @@ const getFixedInterpolationFactor = (
   return staticFactor !== null && staticFactor > 0 && staticFactor < 1 ? factor : null;
 };
 
+const getRotationOwner = (expression: EsTreeNode): EsTreeNode | null => {
+  const axisMember = stripParenExpression(expression);
+  if (
+    !isNodeOfType(axisMember, "MemberExpression") ||
+    !["x", "y", "z"].includes(getStaticPropertyName(axisMember) ?? "")
+  ) {
+    return null;
+  }
+  const rotationMember = stripParenExpression(axisMember.object);
+  if (
+    !isNodeOfType(rotationMember, "MemberExpression") ||
+    getStaticPropertyName(rotationMember) !== "rotation"
+  ) {
+    return null;
+  }
+  return stripParenExpression(rotationMember.object);
+};
+
+const areSameResolvedReceivers = (
+  left: EsTreeNode,
+  right: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const leftReceiver = stripParenExpression(left);
+  const rightReceiver = stripParenExpression(right);
+  if (isNodeOfType(leftReceiver, "ThisExpression")) {
+    return isNodeOfType(rightReceiver, "ThisExpression");
+  }
+  if (isNodeOfType(leftReceiver, "Identifier")) {
+    if (!isNodeOfType(rightReceiver, "Identifier")) return false;
+    const leftSymbol = context.scopes.symbolFor(leftReceiver);
+    const rightSymbol = context.scopes.symbolFor(rightReceiver);
+    return Boolean(leftSymbol && rightSymbol && leftSymbol.id === rightSymbol.id);
+  }
+  if (
+    !isNodeOfType(leftReceiver, "MemberExpression") ||
+    !isNodeOfType(rightReceiver, "MemberExpression")
+  ) {
+    return false;
+  }
+  const leftPropertyName = getStaticPropertyName(leftReceiver);
+  return (
+    leftPropertyName !== null &&
+    leftPropertyName === getStaticPropertyName(rightReceiver) &&
+    areSameResolvedReceivers(leftReceiver.object, rightReceiver.object, context)
+  );
+};
+
+const isRotationCorrectionAfterLookAt = (
+  node: EsTreeNodeOfType<"AssignmentExpression">,
+  context: RuleContext,
+): boolean => {
+  const rotationOwner = getRotationOwner(node.left);
+  if (!rotationOwner) return false;
+  const assignmentRoot = findTransparentExpressionRoot(node);
+  const assignmentStatement = assignmentRoot.parent;
+  if (
+    !isNodeOfType(assignmentStatement, "ExpressionStatement") ||
+    assignmentStatement.expression !== assignmentRoot ||
+    !isNodeOfType(assignmentStatement.parent, "BlockStatement")
+  ) {
+    return false;
+  }
+  const statementIndex = assignmentStatement.parent.body.findIndex(
+    (statement) => statement.range[0] === assignmentStatement.range[0],
+  );
+  const previousStatement = assignmentStatement.parent.body[statementIndex - 1];
+  if (!isNodeOfType(previousStatement, "ExpressionStatement")) return false;
+  const previousExpression = stripParenExpression(previousStatement.expression);
+  if (
+    !isNodeOfType(previousExpression, "CallExpression") ||
+    !isNodeOfType(previousExpression.callee, "MemberExpression") ||
+    getStaticPropertyName(previousExpression.callee) !== "lookAt"
+  ) {
+    return false;
+  }
+  return areSameResolvedReceivers(rotationOwner, previousExpression.callee.object, context);
+};
+
 export const r3fRequireFrameDelta = defineRule({
   id: "r3f-require-frame-delta",
   title: "Frame-rate-dependent animation",
@@ -346,6 +426,7 @@ export const r3fRequireFrameDelta = defineRule({
               (candidate.operator !== "+=" && candidate.operator !== "-=") ||
               !isTransformMember(candidate.left, callback, managedRefSymbolIds, context) ||
               expressionReferencesDelta(candidate.right, callback, context) ||
+              isRotationCorrectionAfterLookAt(candidate, context) ||
               (isConditionallyExecuted && !isBehindReactRefAvailabilityGuard)
             ) {
               return;

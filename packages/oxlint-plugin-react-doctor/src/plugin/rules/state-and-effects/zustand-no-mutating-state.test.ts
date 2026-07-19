@@ -366,9 +366,27 @@ describe("zustand-no-mutating-state", () => {
               set({ items: [...items] });
             }
           },
+          safeBeforeBranch: (enabled) => {
+            const items = get().items;
+            items.push("next");
+            if (enabled) {
+              set({ items: [...items] });
+            } else {
+              set({ items: items.slice() });
+            }
+          },
+          missingBeforeBranchNotifier: (enabled) => {
+            const items = get().items;
+            items.push("next");
+            if (enabled) {
+              set({ items: [...items] });
+            } else {
+              console.log(items.length);
+            }
+          },
         }));
       `,
-      2,
+      3,
     );
   });
 

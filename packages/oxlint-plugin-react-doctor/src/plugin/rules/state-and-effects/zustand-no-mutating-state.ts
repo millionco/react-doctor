@@ -76,6 +76,11 @@ interface NotifierCallWithStatementIndex {
   statementIndex: number;
 }
 
+interface ConditionalNotifierGroupWithStatementIndex {
+  branchCalls: EsTreeNodeOfType<"CallExpression">[][];
+  statementIndex: number;
+}
+
 const findIdentifierParameter = (
   parameter: EsTreeNode | undefined,
 ): EsTreeNodeOfType<"Identifier"> | null => {
@@ -583,6 +588,23 @@ const notifierTargetReplacementDisposition = (
   return false;
 };
 
+const conditionalNotifierTargetReplacementDisposition = (
+  branchCalls: readonly (readonly EsTreeNodeOfType<"CallExpression">[])[],
+  mutation: MutableStateReferenceMutation,
+  context: RuleContext,
+): boolean | null => {
+  const branchDispositions = branchCalls.map((calls) => {
+    const dispositions = calls.map((callExpression) =>
+      notifierTargetReplacementDisposition(callExpression, mutation, context),
+    );
+    if (dispositions.some((disposition) => disposition === true)) return true;
+    if (dispositions.some((disposition) => disposition === null)) return null;
+    return false;
+  });
+  if (branchDispositions.some((disposition) => disposition === false)) return false;
+  return branchDispositions.every((disposition) => disposition === true) ? true : null;
+};
+
 const analyzeSnapshotContainer = (
   statements: readonly EsTreeNode[],
   getSymbolIds: ReadonlySet<number>,
@@ -600,23 +622,23 @@ const analyzeSnapshotContainer = (
   };
   const mutations: MutationWithStatementIndex[] = [];
   const notifierCalls: NotifierCallWithStatementIndex[] = [];
+  const conditionalNotifierGroups: ConditionalNotifierGroupWithStatementIndex[] = [];
   for (let statementIndex = 0; statementIndex < statements.length; statementIndex += 1) {
     const statement = statements[statementIndex];
     if (isNodeOfType(statement, "IfStatement")) {
+      const branchCalls: EsTreeNodeOfType<"CallExpression">[][] = [];
       for (const branchRoot of [statement.consequent, statement.alternate]) {
         if (!branchRoot) continue;
         for (const mutation of collectMutableStateReferenceMutations(branchRoot, state)) {
           mutations.push({ branchRoot, mutation, statementIndex });
         }
-        for (const callExpression of collectNotifierCalls(
-          branchRoot,
-          setSymbolIds,
-          storeSymbolIds,
-          context,
-        )) {
+        const calls = collectNotifierCalls(branchRoot, setSymbolIds, storeSymbolIds, context);
+        branchCalls.push(calls);
+        for (const callExpression of calls) {
           notifierCalls.push({ branchRoot, callExpression, statementIndex });
         }
       }
+      if (statement.alternate) conditionalNotifierGroups.push({ branchCalls, statementIndex });
     } else {
       for (const mutation of collectMutableStateReferenceMutations(statement, state)) {
         mutations.push({ branchRoot: null, mutation, statementIndex });
@@ -667,6 +689,11 @@ const analyzeSnapshotContainer = (
       ...returnedUpdateExpressions.map((expression) =>
         updateTargetReplacementDisposition(expression, mutation, context),
       ),
+      ...conditionalNotifierGroups
+        .filter((group) => group.statementIndex > statementIndex)
+        .map((group) =>
+          conditionalNotifierTargetReplacementDisposition(group.branchCalls, mutation, context),
+        ),
     ];
     if (replacementDispositions.some((disposition) => disposition !== false)) {
       continue;

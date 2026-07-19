@@ -42,14 +42,14 @@ const REACT_THREE_FIBER_DEPENDENCY_NAMES = ["@react-three/fiber", "react-three-f
 const REACT_THREE_FIBER_SECTIONS = [
   "dependencies",
   "peerDependencies",
-  "devDependencies",
   "optionalDependencies",
+  "devDependencies",
 ] as const;
 const THREE_DEPENDENCY_SECTIONS = [
   "dependencies",
   "peerDependencies",
-  "devDependencies",
   "optionalDependencies",
+  "devDependencies",
 ] as const;
 const REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES = [
   ...REACT_THREE_FIBER_DEPENDENCY_NAMES,

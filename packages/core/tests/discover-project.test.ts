@@ -1941,6 +1941,55 @@ describe("discoverProject — React Three Fiber", () => {
     expect(projectInfo.reactThreeFiberMajorVersion).toBe(9);
   });
 
+  it("uses an optional Fiber runtime version instead of a newer dev version", () => {
+    const projectDirectory = path.join(tempDirectory, "r3f-optional-runtime");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "r3f-optional-runtime",
+        dependencies: { react: "^19.0.0" },
+        optionalDependencies: { "@react-three/fiber": "^9.0.0" },
+        devDependencies: { "@react-three/fiber": "^10.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactThreeFiberVersion).toBe("^9.0.0");
+    expect(projectInfo.reactThreeFiberMajorVersion).toBe(9);
+  });
+
+  it("resolves a workspace Fiber peer catalog before a dev catalog", () => {
+    const projectDirectory = path.join(tempDirectory, "r3f-workspace-catalog-peer-floor");
+    const sceneDirectory = path.join(projectDirectory, "packages", "scene");
+    fs.mkdirSync(sceneDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "pnpm-workspace.yaml"),
+      'packages:\n  - "packages/*"\ncatalogs:\n  stable:\n    "@react-three/fiber": ^9.0.0\n  next:\n    "@react-three/fiber": ^10.0.0\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "r3f-workspace-catalog-peer-floor",
+        private: true,
+        dependencies: { react: "^19.0.0" },
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(sceneDirectory, "package.json"),
+      JSON.stringify({
+        name: "scene",
+        peerDependencies: { "@react-three/fiber": "catalog:stable" },
+        devDependencies: { "@react-three/fiber": "catalog:next" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactThreeFiberVersion).toBe("^9.0.0");
+    expect(projectInfo.reactThreeFiberMajorVersion).toBe(9);
+  });
+
   it("detects the R3F ecosystem from workspace manifests", () => {
     const projectDirectory = path.join(tempDirectory, "r3f-workspace");
     const sceneDirectory = path.join(projectDirectory, "packages", "scene");
@@ -2018,6 +2067,24 @@ describe("discoverProject — React Three Fiber", () => {
         dependencies: { react: "^19.0.0" },
         peerDependencies: { three: "catalog:legacy" },
         devDependencies: { three: "catalog:modern" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.threeVersion).toBe("^0.145.0");
+    expect(projectInfo.threeRelease).toBe(145);
+  });
+
+  it("uses an optional Three.js runtime version instead of a newer dev version", () => {
+    const projectDirectory = path.join(tempDirectory, "three-optional-runtime");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "three-optional-runtime",
+        dependencies: { react: "^19.0.0" },
+        optionalDependencies: { three: "^0.145.0" },
+        devDependencies: { three: "^0.180.0" },
       }),
     );
 

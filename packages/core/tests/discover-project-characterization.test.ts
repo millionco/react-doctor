@@ -237,6 +237,32 @@ describe("discoverProject characterization — workspace fixture matrix", () => 
     expect(projectInfo.remotionMajorVersion).toBe(3);
   });
 
+  it("suppresses the Remotion major when any workspace version is unresolved", () => {
+    const fixtureDirectory = writeFixture("unresolved-remotion-workspace", [
+      {
+        filePath: "package.json",
+        contents: packageJson({
+          name: "remotion-root",
+          private: true,
+          workspaces: ["apps/*"],
+          dependencies: { remotion: "^4.0.0" },
+        }),
+      },
+      {
+        filePath: "apps/video/package.json",
+        contents: packageJson({
+          name: "video",
+          dependencies: { remotion: "workspace:*" },
+        }),
+      },
+    ]);
+
+    const projectInfo = discoverProject(fixtureDirectory);
+    expect(projectInfo.hasRemotion).toBe(true);
+    expect(projectInfo.remotionVersion).toBe(null);
+    expect(projectInfo.remotionMajorVersion).toBe(null);
+  });
+
   it("nx workspace: react + framework detected from an app project", () => {
     const fixtureDirectory = writeFixture("nx-workspace", [
       { filePath: "package.json", contents: packageJson({ name: "nx-root", private: true }) },

@@ -346,4 +346,22 @@ describe("Ink rules", () => {
     `;
     expect(runRule(inkNoLiveHooksInRenderToString, code).diagnostics).toHaveLength(1);
   });
+
+  it("does not associate a lone render call with unmounted components", () => {
+    const ctrlCCode = `
+      import {render,useInput} from "ink";
+      const Root=()=> null;
+      const Unmounted=()=> {useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null};
+      render(<Root/>);
+    `;
+    const suspenseCode = `
+      import {render,Text} from "ink";
+      import {Suspense} from "react";
+      const Root=()=> <Text>root</Text>;
+      const Unmounted=()=> <Suspense fallback={null}><Text>unused</Text></Suspense>;
+      render(<Root/>);
+    `;
+    expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(0);
+    expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(0);
+  });
 });

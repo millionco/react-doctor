@@ -40,7 +40,6 @@ export const inkNoLiveHooksInRenderToString = defineRule({
           descendantNode,
           renderCalls,
           context,
-          { allowSingleRenderFallback: false },
         );
         if (relatedRenderCalls.length === 0) return;
         context.report({

@@ -13,10 +13,6 @@ interface InkRenderCall {
   renderedComponentName: string | null;
 }
 
-interface ResolveInkRenderCallsOptions {
-  allowSingleRenderFallback?: boolean;
-}
-
 const getRenderedComponentName = (
   renderCall: EsTreeNodeOfType<"CallExpression">,
 ): string | null => {
@@ -122,7 +118,6 @@ export const resolveInkRenderCallsForNode = (
   node: EsTreeNode,
   renderCalls: ReadonlyArray<InkRenderCall>,
   context: RuleContext,
-  options: ResolveInkRenderCallsOptions = {},
 ): ReadonlyArray<InkRenderCall> => {
   const directRenderCalls = renderCalls.filter((renderCall) => {
     const renderedNode = renderCall.node.arguments[0];
@@ -147,5 +142,5 @@ export const resolveInkRenderCallsForNode = (
     if (componentRenderCalls.length > 0) return componentRenderCalls;
   }
 
-  return options.allowSingleRenderFallback !== false && renderCalls.length === 1 ? renderCalls : [];
+  return [];
 };

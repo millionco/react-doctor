@@ -140,6 +140,7 @@ export const EFFECT_SNIPPET_POOL = [
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),
 // toggles, loading triples, prop mirrors, reducers, ref-sync.
 export const STATE_SNIPPET_POOL = [
+  `const fuzzValtioState = fuzzValtioProxy({ count: 0 }); const fuzzValtioSnapshot = useFuzzValtioSnapshot(fuzzValtioState); const handleFuzzValtioRead = () => console.log(fuzzValtioSnapshot.count); const fuzzValtioButton = <button onClick={handleFuzzValtioRead}>Read</button>;`,
   `const FuzzArrayConsumer = memo(() => null); const FuzzArrayHost = () => <FuzzArrayConsumer payload={[value]} />;`,
   `const FuzzEffectEventHost = ({ delay, onSearch }) => { useEffect(() => { const timeoutId = setTimeout(() => onSearch("done"), delay); return () => clearTimeout(timeoutId); }, [delay, onSearch]); return null; }; function FuzzTransitionHost() { const [isLoading, setIsLoading] = useState(false); const toggleLoading = () => setIsLoading(true); return <button onClick={toggleLoading}>{isLoading ? "Loading" : "Go"}</button>; } function FuzzMemoEarlyReturnHost({ loading }) { const content = useMemo(() => <Heavy />, []); if (loading) return null; return <div>{content}</div>; }`,
   `const shallowEqual = (previousProps, nextProps) => previousProps.id === nextProps.id; const FuzzCustomComparedItem = React.memo(({ foo }) => <div>{foo.label}</div>, shallowEqual); const fuzzCustomComparedItemNode = <FuzzCustomComparedItem id="item" foo={{ label: String(value) }} />;`,
@@ -682,6 +683,8 @@ export const IMPORT_LINE_POOL = [
   `import { reaction, autorun } from "mobx";`,
   `import styled from "styled-components";`,
   `import { atom, useAtom } from "jotai";`,
+  `import { proxy as fuzzValtioProxy, useSnapshot as useFuzzValtioSnapshot } from "valtio";`,
+  `import { proxy as fuzzValtioScenarioProxy, useSnapshot as useFuzzValtioScenarioSnapshot } from "valtio"; const FuzzValtioCallbackScenario = () => { const fuzzValtioScenarioState = fuzzValtioScenarioProxy({ count: 0 }); const fuzzValtioScenarioSnapshot = useFuzzValtioScenarioSnapshot(fuzzValtioScenarioState); return <button onClick={() => console.log(fuzzValtioScenarioSnapshot.count)}>Read</button>; };`,
   `import { useDispatch, useSelector } from "react-redux";`,
   `import { useNavigate, useSearchParams, useParams } from "react-router-dom";`,
   `import { useForm } from "react-hook-form";`,

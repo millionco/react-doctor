@@ -1372,6 +1372,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "valtio-no-proxy-read-in-render": {
     code: 'import { useSnapshot } from "valtio";\nexport const Count = ({ state }) => { const snapshot = useSnapshot(state); return <span>{state.count}</span>; };',
   },
+  "valtio-no-snapshot-in-callback": {
+    code: 'import { useSnapshot } from "valtio"; function Counter() { const snap = useSnapshot(state); return <button onClick={() => console.log(snap.count)}>read</button>; }',
+  },
   "void-dom-elements-no-children": {
     code: "const a = <img>hi</img>;",
   },

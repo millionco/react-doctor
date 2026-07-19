@@ -1,5 +1,6 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import { findDeclaratorForBinding } from "./find-declarator-for-binding.js";
+import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { findVariableInitializer } from "./find-variable-initializer.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isHookCall } from "./is-hook-call.js";
@@ -67,29 +68,33 @@ const isConstAliasOfGlobalArrayFrom = (node: EsTreeNode, scopes: ScopeAnalysis):
 // useMemo factory (`{useMemo(() => Date.now(), [])}`), and a synchronous
 // iteration callback (`{rows.map((row) => …)}`), or a global Promise
 // constructor executor (`new Promise((resolve) => resolve())`).
-export const executesDuringRender = (functionNode: EsTreeNode, scopes?: ScopeAnalysis): boolean => {
-  const parent = functionNode.parent;
+export const executesDuringRender = (
+  callbackExpression: EsTreeNode,
+  scopes?: ScopeAnalysis,
+): boolean => {
+  const callbackRoot = findTransparentExpressionRoot(callbackExpression);
+  const parent = callbackRoot.parent;
   if (isNodeOfType(parent, "NewExpression")) {
     const callee = stripParenExpression(parent.callee);
     return Boolean(
       scopes &&
-      parent.arguments?.[0] === functionNode &&
+      parent.arguments?.[0] === callbackRoot &&
       isNodeOfType(callee, "Identifier") &&
       callee.name === "Promise" &&
       scopes.isGlobalReference(callee),
     );
   }
   if (!isNodeOfType(parent, "CallExpression")) return false;
-  if (parent.callee === functionNode) return true;
+  if (parent.callee === callbackRoot) return true;
   const isRenderPhaseHook = scopes
     ? isReactApiCall(parent, REACT_RENDER_PHASE_HOOK_NAMES, scopes, {
         allowGlobalReactNamespace: true,
       })
     : isHookCall(parent, REACT_RENDER_PHASE_HOOK_NAMES);
-  if (isRenderPhaseHook && parent.arguments?.[0] === functionNode) return true;
+  if (isRenderPhaseHook && parent.arguments?.[0] === callbackRoot) return true;
   if (
     scopes &&
-    parent.arguments?.[1] === functionNode &&
+    parent.arguments?.[1] === callbackRoot &&
     (isGlobalArrayFromMember(parent.callee, scopes) ||
       isConstAliasOfGlobalArrayFrom(parent.callee, scopes))
   ) {
@@ -100,6 +105,6 @@ export const executesDuringRender = (functionNode: EsTreeNode, scopes?: ScopeAna
     !parent.callee.computed &&
     isNodeOfType(parent.callee.property, "Identifier") &&
     SYNCHRONOUS_ITERATION_METHOD_NAMES.has(parent.callee.property.name) &&
-    parent.arguments?.[0] === functionNode
+    parent.arguments?.[0] === callbackRoot
   );
 };

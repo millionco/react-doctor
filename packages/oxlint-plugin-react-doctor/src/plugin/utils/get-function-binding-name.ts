@@ -1,5 +1,6 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 // The Identifier a function is bound to: its own id (`function foo() {}`),
@@ -15,13 +16,14 @@ export const getFunctionBindingIdentifier = (
   ) {
     return functionNode.id;
   }
-  const parent = functionNode.parent;
+  const functionRoot = findTransparentExpressionRoot(functionNode);
+  const parent = functionRoot.parent;
   if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
     return parent.id;
   }
   if (
     isNodeOfType(parent, "AssignmentExpression") &&
-    parent.right === functionNode &&
+    parent.right === functionRoot &&
     isNodeOfType(parent.left, "Identifier")
   ) {
     return parent.left;

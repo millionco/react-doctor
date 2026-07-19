@@ -55,6 +55,7 @@ const AUDITED_RULE_IDS = [
   "role-supports-aria-props",
   "rules-of-hooks",
   "valtio-no-proxy-read-in-render",
+  "valtio-no-snapshot-in-callback",
 ] as const;
 
 // Rule × variant pairs where losing the diagnostic is the rule's DOCUMENTED

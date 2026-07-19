@@ -21,6 +21,10 @@ export interface ProjectInfo {
   hasMobxReactLite?: boolean;
   hasMobxStateTree?: boolean;
   hasMobxReactObserver?: boolean;
+  /** Declared Zustand version spec. Optional so existing `ProjectInfo` consumers remain source-compatible. */
+  zustandVersion?: string | null;
+  /** Parsed major from `zustandVersion`, or `null` when absent/unparseable. */
+  zustandMajorVersion?: number | null;
   framework: Framework;
   hasTypeScript: boolean;
   hasReactCompiler: boolean;

@@ -47,6 +47,7 @@ export type Capability =
   | "mobx-react-binding"
   | "mobx-state-tree"
   | "mobx-react-observer"
+  | "zustand"
   | "typescript"
   | "react-compiler"
   | "tanstack-query"
@@ -59,7 +60,8 @@ export type Capability =
   | `preact:${number}`
   | `remotion:${number}`
   | `valtio:${number}`
-  | `mobx:${number}`;
+  | `mobx:${number}`
+  | `zustand:${number}`;
 
 // The shape rules use to query the project's capability set — implemented
 // by core (over the memoized set) and by `hasCapability` (over the

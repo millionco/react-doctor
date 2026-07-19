@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { DependencyInfo, Framework, PackageJson } from "../types/index.js";
-import { LATEST_SUPPORTED_MOBX_MAJOR } from "../constants.js";
+import { LATEST_SUPPORTED_MOBX_MAJOR, LATEST_SUPPORTED_ZUSTAND_MAJOR } from "../constants.js";
 import {
   EMPTY_DEPENDENCY_INFO,
   extractDependencyInfo,
@@ -57,6 +57,9 @@ export interface WorkspaceFacts {
   hasMobxReactLite: boolean;
   hasMobxStateTree: boolean;
   hasMobxReactObserver: boolean;
+  // Conservative representative across every declaring manifest: an
+  // unparseable or future major wins; otherwise the lowest major wins.
+  zustand: DependencyFact;
   // Any-of predicates over the scan root + every workspace manifest.
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
@@ -126,7 +129,11 @@ const shouldReplaceReactVersion = (currentVersion: string | null, nextVersion: s
   return nextMajor < currentMajor;
 };
 
-const shouldReplaceMobxFact = (currentFact: DependencyFact, nextFact: DependencyFact): boolean => {
+const shouldReplaceSupportedDependencyFact = (
+  currentFact: DependencyFact,
+  nextFact: DependencyFact,
+  latestSupportedMajor: number,
+): boolean => {
   if (currentFact.version === null) return true;
   if (nextFact.version === null) return false;
 
@@ -134,11 +141,10 @@ const shouldReplaceMobxFact = (currentFact: DependencyFact, nextFact: Dependency
   const nextMajor = getLowestDependencyMajor(nextFact.version);
   if (currentMajor === null) return false;
   if (nextMajor === null) return true;
-  if (currentMajor > LATEST_SUPPORTED_MOBX_MAJOR) return false;
-  if (nextMajor > LATEST_SUPPORTED_MOBX_MAJOR) return true;
+  if (currentMajor > latestSupportedMajor) return false;
+  if (nextMajor > latestSupportedMajor) return true;
   return nextMajor < currentMajor;
 };
-
 const evaluateManifestFacts = (
   facts: WorkspaceFacts,
   packageJson: PackageJson,
@@ -169,7 +175,9 @@ const evaluateManifestFacts = (
       }),
       sourceDirectory: directory,
     };
-    if (shouldReplaceMobxFact(facts.mobx, nextMobxFact)) {
+    if (
+      shouldReplaceSupportedDependencyFact(facts.mobx, nextMobxFact, LATEST_SUPPORTED_MOBX_MAJOR)
+    ) {
       facts.mobx = nextMobxFact;
     }
   }
@@ -182,6 +190,27 @@ const evaluateManifestFacts = (
   facts.hasMobxReactObserver =
     facts.hasMobxReactObserver ||
     getDependencySpec(packageJson, MOBX_REACT_OBSERVER_PACKAGE_NAME) !== null;
+  const zustandSpec = getDependencySpec(packageJson, "zustand");
+  if (zustandSpec !== null) {
+    const nextZustandFact = {
+      version: resolveCatalogBackedDependencyVersion({
+        rootDirectory: directory,
+        rootPackageJson: packageJson,
+        packageName: "zustand",
+        version: zustandSpec,
+      }),
+      sourceDirectory: directory,
+    };
+    if (
+      shouldReplaceSupportedDependencyFact(
+        facts.zustand,
+        nextZustandFact,
+        LATEST_SUPPORTED_ZUSTAND_MAJOR,
+      )
+    ) {
+      facts.zustand = nextZustandFact;
+    }
+  }
   if (facts.reanimatedVersion === null) {
     const spec = getDependencySpec(packageJson, REANIMATED_DEPENDENCY_NAME);
     if (spec !== null) facts.reanimatedVersion = spec;
@@ -255,6 +284,7 @@ export const collectWorkspaceFacts = (
     hasMobxReactLite: false,
     hasMobxStateTree: false,
     hasMobxReactObserver: false,
+    zustand: { version: null, sourceDirectory: null },
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
     hasSsrDependency: false,

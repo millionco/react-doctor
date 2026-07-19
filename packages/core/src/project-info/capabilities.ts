@@ -6,11 +6,13 @@ import {
   EARLIEST_GATED_REACT_MAJOR,
   EARLIEST_GATED_REMOTION_MAJOR,
   EARLIEST_GATED_VALTIO_MAJOR,
+  EARLIEST_GATED_ZUSTAND_MAJOR,
   LATEST_KNOWN_PREACT_MAJOR,
   LATEST_KNOWN_REACT_MAJOR,
   LATEST_KNOWN_REMOTION_MAJOR,
   LATEST_KNOWN_VALTIO_MAJOR,
   LATEST_SUPPORTED_MOBX_MAJOR,
+  LATEST_SUPPORTED_ZUSTAND_MAJOR,
 } from "../constants.js";
 import { isMajorMinorAtLeast, parseReactMajorMinor, parseTailwindMajorMinor } from "./version.js";
 
@@ -36,7 +38,7 @@ const SSR_FRAMEWORKS: ReadonlySet<Framework> = new Set([
 
 const addMajorLadder = (
   capabilities: Set<Capability>,
-  name: "react" | "remotion" | "preact" | "valtio" | "mobx",
+  name: "react" | "remotion" | "preact" | "valtio" | "mobx" | "zustand",
   major: number | null,
   earliest: number,
   latest: number,
@@ -154,6 +156,23 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
       project.mobxMajorVersion,
       EARLIEST_GATED_MOBX_MAJOR,
       LATEST_SUPPORTED_MOBX_MAJOR,
+    );
+  }
+  if (project.zustandVersion !== undefined && project.zustandVersion !== null) {
+    capabilities.add("zustand");
+  }
+  if (
+    project.zustandMajorVersion !== undefined &&
+    project.zustandMajorVersion !== null &&
+    project.zustandMajorVersion >= EARLIEST_GATED_ZUSTAND_MAJOR &&
+    project.zustandMajorVersion <= LATEST_SUPPORTED_ZUSTAND_MAJOR
+  ) {
+    addMajorLadder(
+      capabilities,
+      "zustand",
+      project.zustandMajorVersion,
+      EARLIEST_GATED_ZUSTAND_MAJOR,
+      LATEST_SUPPORTED_ZUSTAND_MAJOR,
     );
   }
   if (project.isPreES2023Target) capabilities.add("pre-es2023");

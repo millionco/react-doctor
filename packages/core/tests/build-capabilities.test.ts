@@ -20,6 +20,8 @@ const baseProject: ProjectInfo = {
   hasMobxReactLite: false,
   hasMobxStateTree: false,
   hasMobxReactObserver: false,
+  zustandVersion: null,
+  zustandMajorVersion: null,
   framework: "vite",
   hasTypeScript: true,
   hasReactCompiler: false,
@@ -383,6 +385,37 @@ describe("buildCapabilities", () => {
     expect(
       buildCapabilities({ ...baseProject, hasMobxReactObserver: true }).has("mobx-react-binding"),
     ).toBe(false);
+  });
+
+  it("emits the supported Zustand major ladder for versions 1 through 5", () => {
+    for (const zustandMajorVersion of [1, 2, 3, 4, 5]) {
+      const capabilities = buildCapabilities({
+        ...baseProject,
+        zustandVersion: `^${zustandMajorVersion}.0.0`,
+        zustandMajorVersion,
+      });
+      expect(capabilities.has("zustand")).toBe(true);
+      expect(capabilities.has("zustand:1")).toBe(true);
+      expect(capabilities.has(`zustand:${zustandMajorVersion}`)).toBe(true);
+    }
+
+    const futureVersion = buildCapabilities({
+      ...baseProject,
+      zustandVersion: "^6.0.0",
+      zustandMajorVersion: 6,
+    });
+    expect(futureVersion.has("zustand")).toBe(true);
+    expect(futureVersion.has("zustand:1")).toBe(false);
+  });
+
+  it("keeps unparseable Zustand declarations present but version-inapplicable", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      zustandVersion: "workspace:*",
+      zustandMajorVersion: null,
+    });
+    expect(capabilities.has("zustand")).toBe(true);
+    expect(capabilities.has("zustand:1")).toBe(false);
   });
 
   it("emits `nextjs:15` capability for Next.js 15+ projects", () => {

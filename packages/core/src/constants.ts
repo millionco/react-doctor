@@ -56,6 +56,9 @@ export const EARLIEST_GATED_REMOTION_MAJOR = 4;
 export const EARLIEST_GATED_MOBX_MAJOR = 4;
 
 export const LATEST_SUPPORTED_MOBX_MAJOR = 6;
+export const EARLIEST_GATED_ZUSTAND_MAJOR = 1;
+
+export const LATEST_SUPPORTED_ZUSTAND_MAJOR = 5;
 
 // Max chars of an unparseable oxlint stdout we keep for the error
 // message. oxlint prints a multi-line, framed error to stdout when it

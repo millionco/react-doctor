@@ -1880,6 +1880,141 @@ describe("discoverProject — MobX", () => {
   });
 });
 
+describe("discoverProject — Zustand", () => {
+  it("detects a direct Zustand dependency and parses its major", () => {
+    const projectDirectory = path.join(tempDirectory, "zustand-from-deps");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "zustand-app",
+        dependencies: { react: "^19.0.0", zustand: "^5.0.8" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.zustandVersion).toBe("^5.0.8");
+    expect(projectInfo.zustandMajorVersion).toBe(5);
+  });
+
+  it("detects Zustand from a workspace package", () => {
+    const rootDirectory = path.join(tempDirectory, "zustand-monorepo");
+    const appDirectory = path.join(rootDirectory, "apps", "web");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "zustand-monorepo",
+        workspaces: ["apps/*"],
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { zustand: "^4.5.7" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.zustandVersion).toBe("^4.5.7");
+    expect(projectInfo.zustandMajorVersion).toBe(4);
+  });
+
+  it("uses the oldest supported Zustand major across a mixed-version workspace", () => {
+    const rootDirectory = path.join(tempDirectory, "mixed-zustand-monorepo");
+    const appDirectory = path.join(rootDirectory, "apps", "legacy");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "mixed-zustand-monorepo",
+        workspaces: ["apps/*"],
+        dependencies: { react: "^19.0.0", zustand: "^5.0.8" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "legacy",
+        dependencies: { zustand: "^4.5.7" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.zustandVersion).toBe("^4.5.7");
+    expect(projectInfo.zustandMajorVersion).toBe(4);
+  });
+
+  it("fails closed when any workspace has an unparseable Zustand declaration", () => {
+    const rootDirectory = path.join(tempDirectory, "unknown-zustand-monorepo");
+    const appDirectory = path.join(rootDirectory, "apps", "unknown");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "unknown-zustand-monorepo",
+        workspaces: ["apps/*"],
+        dependencies: { react: "^19.0.0", zustand: "^5.0.8" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "unknown",
+        dependencies: { zustand: "workspace:*" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.zustandVersion).toBe("workspace:*");
+    expect(projectInfo.zustandMajorVersion).toBeNull();
+  });
+
+  it("fails closed when any workspace declares a future Zustand major", () => {
+    const rootDirectory = path.join(tempDirectory, "future-zustand-monorepo");
+    const appDirectory = path.join(rootDirectory, "apps", "future");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "future-zustand-monorepo",
+        workspaces: ["apps/*"],
+        dependencies: { react: "^19.0.0", zustand: "^5.0.8" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "future",
+        dependencies: { zustand: "^6.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.zustandVersion).toBe("^6.0.0");
+    expect(projectInfo.zustandMajorVersion).toBe(6);
+  });
+
+  it("resolves a Zustand version from a package catalog", () => {
+    const projectDirectory = path.join(tempDirectory, "catalog-zustand");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "catalog-zustand",
+        catalog: { zustand: "^5.0.8" },
+        dependencies: { react: "^19.0.0", zustand: "catalog:" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.zustandVersion).toBe("^5.0.8");
+    expect(projectInfo.zustandMajorVersion).toBe(5);
+  });
+});
+
 describe("formatFrameworkName", () => {
   it("formats known frameworks", () => {
     expect(formatFrameworkName("nextjs")).toBe("Next.js");

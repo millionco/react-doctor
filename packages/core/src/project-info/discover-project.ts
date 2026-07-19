@@ -101,6 +101,8 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     hasMobxReactLite: false,
     hasMobxStateTree: false,
     hasMobxReactObserver: false,
+    zustandVersion: null,
+    zustandMajorVersion: null,
     framework: "unknown",
     hasTypeScript: hasOwnTsConfig,
     hasReactCompiler: false,
@@ -261,6 +263,13 @@ export const discoverProject = (directory: string): ProjectInfo => {
       })
     : null;
 
+  const zustandVersion = resolveCatalogBackedDependencyVersion({
+    rootDirectory: directory,
+    rootPackageJson: packageJson,
+    packageName: "zustand",
+    version: workspaceFacts.zustand.version,
+  });
+
   // Reanimated implies React Native, so the fact only applies once the
   // project already classifies as RN.
   const hasReanimated = hasReactNativeWorkspace && workspaceFacts.hasReanimatedAwarePackage;
@@ -305,6 +314,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasMobxReactLite: workspaceFacts.hasMobxReactLite,
     hasMobxStateTree: workspaceFacts.hasMobxStateTree,
     hasMobxReactObserver: workspaceFacts.hasMobxReactObserver,
+    zustandVersion,
+    zustandMajorVersion: zustandVersion === null ? null : getLowestDependencyMajor(zustandVersion),
     framework,
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),

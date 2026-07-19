@@ -172,6 +172,48 @@ describe("three-require-renderer-cleanup", () => {
     expect(runRule(threeRequireRendererCleanup, missingAsyncCancel).diagnostics).toHaveLength(1);
   });
 
+  it("retains ownership when an effect stores the renderer in an otherwise-unused local ref", () => {
+    const missingCancel = `
+      import { useEffect, useRef } from "react";
+      import { WebGLRenderer } from "three";
+      function Scene({ canvas }) {
+        const rendererRef = useRef(null);
+        useEffect(() => {
+          const renderer = new WebGLRenderer({ canvas });
+          rendererRef.current = renderer;
+          const animate = () => {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+          };
+          animate();
+          return () => renderer.dispose();
+        }, [canvas]);
+        return null;
+      }
+    `;
+    const escapingRef = `
+      import { useEffect, useRef } from "react";
+      import { WebGLRenderer } from "three";
+      function Scene({ canvas, publish }) {
+        const rendererRef = useRef(null);
+        useEffect(() => {
+          const renderer = new WebGLRenderer({ canvas });
+          rendererRef.current = renderer;
+          publish(rendererRef);
+          const animate = () => {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+          };
+          animate();
+          return () => renderer.dispose();
+        }, [canvas, publish]);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRendererCleanup, missingCancel).diagnostics).toHaveLength(1);
+    expect(runRule(threeRequireRendererCleanup, escapingRef).diagnostics).toHaveLength(0);
+  });
+
   it("accepts animation frame handles stored in the same stable React ref", () => {
     const code = `
       import { useEffect, useRef } from "react";

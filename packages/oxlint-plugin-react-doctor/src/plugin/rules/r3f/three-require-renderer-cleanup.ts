@@ -48,6 +48,31 @@ const isNullArgument = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
   return Boolean(isNodeOfType(argument, "Literal") && argument.value === null);
 };
 
+const isRetainedByUnusedLocalReactRef = (reference: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const referenceRoot = findTransparentExpressionRoot(reference);
+  const assignment = referenceRoot.parent;
+  if (
+    !isNodeOfType(assignment, "AssignmentExpression") ||
+    assignment.operator !== "=" ||
+    assignment.right !== referenceRoot
+  ) {
+    return false;
+  }
+  const assignmentTarget = stripParenExpression(assignment.left);
+  const refSymbol = resolveReactRefSymbol(assignmentTarget, scopes);
+  const referenceFunction = findEnclosingFunction(reference);
+  const refOwnerFunction = refSymbol ? findEnclosingFunction(refSymbol.declarationNode) : null;
+  return Boolean(
+    refSymbol &&
+    isNodeOfType(assignmentTarget, "MemberExpression") &&
+    refSymbol.references.every(
+      (refReference) => refReference.identifier === assignmentTarget.object,
+    ) &&
+    referenceFunction &&
+    findEnclosingFunction(referenceFunction) === refOwnerFunction,
+  );
+};
+
 const getAnimationFrameHandle = (
   call: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
@@ -261,7 +286,10 @@ export const threeRequireRendererCleanup = defineRule({
       ) {
         return;
       }
-      const analysis = analyzeOwnedLifecycleResource(node, context);
+      const analysis = analyzeOwnedLifecycleResource(node, context, {
+        isBorrowedReference: (reference) =>
+          isRetainedByUnusedLocalReactRef(reference, context.scopes),
+      });
       if (
         !analysis ||
         analysis.hasUnknownOwnershipTransfer ||

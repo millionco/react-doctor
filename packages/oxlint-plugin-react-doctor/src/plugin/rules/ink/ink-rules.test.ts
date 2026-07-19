@@ -264,4 +264,24 @@ describe("Ink rules", () => {
     expect(runRule(inkValidAriaSemantics, validCode).diagnostics).toHaveLength(0);
     expect(runRule(inkValidAriaSemantics, invalidCode).diagnostics).toHaveLength(1);
   });
+
+  it("associates renderer options with the component each call mounts", () => {
+    const suspenseCode = `
+      import {render,Text} from "ink";
+      import {Suspense} from "react";
+      const Safe=()=> <Suspense fallback={null}><Text>safe</Text></Suspense>;
+      const Unsafe=()=> <Suspense fallback={null}><Text>unsafe</Text></Suspense>;
+      render(<Safe/>,{concurrent:true});
+      render(<Unsafe/>);
+    `;
+    const ctrlCCode = `
+      import {render,useInput} from "ink";
+      const Safe=()=> { useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null; };
+      const Unsafe=()=> { useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null; };
+      render(<Safe/>,{exitOnCtrlC:false});
+      render(<Unsafe/>);
+    `;
+    expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(1);
+    expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(1);
+  });
 });

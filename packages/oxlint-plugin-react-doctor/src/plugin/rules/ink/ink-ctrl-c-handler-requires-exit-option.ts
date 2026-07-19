@@ -2,38 +2,16 @@ import { MINIMUM_INK_VERSIONS } from "../../constants/ink.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveInkApiName } from "../../utils/resolve-ink-api-name.js";
+import {
+  collectInkRenderCalls,
+  hasInkRenderBooleanOption,
+  resolveInkRenderCallsForNode,
+} from "../../utils/resolve-ink-render-calls.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
-
-const hasExitOnCtrlCDisabled = (program: EsTreeNode, context: RuleContext): boolean => {
-  let isDisabled = false;
-  walkAst(program, (descendantNode) => {
-    if (
-      !isNodeOfType(descendantNode, "CallExpression") ||
-      resolveInkApiName(descendantNode.callee, context.scopes) !== "render"
-    ) {
-      return;
-    }
-    for (const argumentNode of descendantNode.arguments) {
-      if (!isNodeOfType(argumentNode, "ObjectExpression")) continue;
-      for (const propertyNode of argumentNode.properties) {
-        if (
-          isNodeOfType(propertyNode, "Property") &&
-          getStaticPropertyKeyName(propertyNode, { allowComputedString: true }) === "exitOnCtrlC" &&
-          isNodeOfType(propertyNode.value, "Literal") &&
-          propertyNode.value.value === false
-        ) {
-          isDisabled = true;
-        }
-      }
-    }
-  });
-  return isDisabled;
-};
 
 const handlesCtrlC = (handler: EsTreeNode): boolean => {
   let hasCtrlRead = false;
@@ -59,7 +37,7 @@ export const inkCtrlCHandlerRequiresExitOption = defineRule({
     "Pass `{exitOnCtrlC: false}` to `render()` before handling Ctrl-C with `useInput`.",
   create: (context) => ({
     Program(node: EsTreeNodeOfType<"Program">) {
-      if (hasExitOnCtrlCDisabled(node, context)) return;
+      const renderCalls = collectInkRenderCalls(node, context);
       walkAst(node, (descendantNode) => {
         if (
           !isNodeOfType(descendantNode, "CallExpression") ||
@@ -69,6 +47,15 @@ export const inkCtrlCHandlerRequiresExitOption = defineRule({
         }
         const handler = descendantNode.arguments[0];
         if (!handler || !handlesCtrlC(handler)) return;
+        const relatedRenderCalls = resolveInkRenderCallsForNode(descendantNode, renderCalls);
+        if (
+          relatedRenderCalls.length === 0 ||
+          relatedRenderCalls.every((renderCall) =>
+            hasInkRenderBooleanOption(renderCall.node, "exitOnCtrlC", false),
+          )
+        ) {
+          return;
+        }
         context.report({
           node: descendantNode,
           message:

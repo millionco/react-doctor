@@ -1,37 +1,15 @@
 import { MINIMUM_INK_VERSIONS } from "../../constants/ink.js";
-import type { RuleContext } from "../../utils/rule-context.js";
 import { containsInkJsxElement } from "../../utils/contains-ink-jsx-element.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
-import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { resolveInkApiName } from "../../utils/resolve-ink-api-name.js";
+import {
+  collectInkRenderCalls,
+  hasInkRenderBooleanOption,
+  resolveInkRenderCallsForNode,
+} from "../../utils/resolve-ink-render-calls.js";
 import { walkAst } from "../../utils/walk-ast.js";
-
-const hasConcurrentRender = (program: EsTreeNode, context: RuleContext): boolean => {
-  let hasConcurrent = false;
-  walkAst(program, (descendantNode) => {
-    if (
-      !isNodeOfType(descendantNode, "CallExpression") ||
-      resolveInkApiName(descendantNode.callee, context.scopes) !== "render"
-    ) {
-      return;
-    }
-    for (const argumentNode of descendantNode.arguments) {
-      if (!isNodeOfType(argumentNode, "ObjectExpression")) continue;
-      hasConcurrent ||= argumentNode.properties.some(
-        (propertyNode) =>
-          isNodeOfType(propertyNode, "Property") &&
-          getStaticPropertyKeyName(propertyNode, { allowComputedString: true }) === "concurrent" &&
-          isNodeOfType(propertyNode.value, "Literal") &&
-          propertyNode.value.value === true,
-      );
-    }
-  });
-  return hasConcurrent;
-};
 
 export const inkSuspenseRequiresConcurrent = defineRule({
   id: "ink-suspense-requires-concurrent",
@@ -41,7 +19,7 @@ export const inkSuspenseRequiresConcurrent = defineRule({
   recommendation: "Enable `{concurrent: true}` on Ink `render()` when the tree uses Suspense.",
   create: (context) => ({
     Program(node: EsTreeNodeOfType<"Program">) {
-      if (hasConcurrentRender(node, context)) return;
+      const renderCalls = collectInkRenderCalls(node, context);
       walkAst(node, (descendantNode) => {
         if (
           !isNodeOfType(descendantNode, "JSXOpeningElement") ||
@@ -51,6 +29,15 @@ export const inkSuspenseRequiresConcurrent = defineRule({
             "Suspense" ||
           !descendantNode.parent ||
           !containsInkJsxElement(descendantNode.parent, context.scopes)
+        ) {
+          return;
+        }
+        const relatedRenderCalls = resolveInkRenderCallsForNode(descendantNode, renderCalls);
+        if (
+          relatedRenderCalls.length === 0 ||
+          relatedRenderCalls.every((renderCall) =>
+            hasInkRenderBooleanOption(renderCall.node, "concurrent", true),
+          )
         ) {
           return;
         }

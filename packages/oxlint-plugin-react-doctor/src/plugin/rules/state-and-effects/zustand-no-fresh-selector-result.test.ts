@@ -81,6 +81,18 @@ describe("zustand-no-fresh-selector-result", () => {
     );
   });
 
+  it("does not report a truthy fresh left operand that cannot be returned by logical AND", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useBearStore = create(() => ({ bears: [], fallback: null }));
+        const stable = useBearStore((state) => ({ bears: state.bears } && state.bears));
+        const fresh = useBearStore((state) => state.fallback && ({ bears: state.bears }));
+      `,
+      1,
+    );
+  });
+
   it("follows immutable local selector results and same-file selector references", () => {
     expectDiagnosticCount(
       `
@@ -215,6 +227,21 @@ describe("zustand-no-fresh-selector-result", () => {
         }
       `,
       0,
+    );
+  });
+
+  it("treats void equality arguments as missing", () => {
+    expectDiagnosticCount(
+      `
+        import { useStoreWithEqualityFn } from "zustand/traditional";
+        import { bearStore } from "./bear-store";
+        const value = useStoreWithEqualityFn(
+          bearStore,
+          (state) => ({ count: state.count }),
+          void getEquality(),
+        );
+      `,
+      1,
     );
   });
 
@@ -388,6 +415,20 @@ describe("zustand-no-fresh-selector-result", () => {
         }
       `,
       1,
+    );
+  });
+
+  it("recognizes supported React runtime useCallback forms", () => {
+    expectDiagnosticCount(
+      `
+        import { useCallback as preactUseCallback } from "preact/hooks";
+        import { create } from "zustand";
+        const useBearStore = create(() => ({ bears: [] }));
+        const callbackAlias = preactUseCallback;
+        const first = useBearStore(callbackAlias((state) => ({ bears: state.bears }), []));
+        const second = useBearStore(React.useCallback((state) => [state.bears], []));
+      `,
+      2,
     );
   });
 });

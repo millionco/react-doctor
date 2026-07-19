@@ -630,6 +630,37 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("models nested notifier branches without flattening their paths", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          unsafe: (isOuterEnabled, isInnerEnabled) => {
+            const items = get().items;
+            items.push("next");
+            if (isOuterEnabled) {
+              if (isInnerEnabled) set({ items: [...items] });
+            } else {
+              set({ items: items.slice() });
+            }
+          },
+          safe: (isOuterEnabled, isInnerEnabled) => {
+            if (isOuterEnabled) {
+              const items = get().items;
+              items.push("next");
+              if (isInnerEnabled) {
+                set({ items: [...items] });
+              } else {
+                set({ items: items.slice() });
+              }
+            }
+          },
+        }));
+      `,
+      1,
+    );
+  });
+
   it("tracks snapshot aliases introduced inside branches", () => {
     expectDiagnosticCount(
       `

@@ -3,6 +3,14 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { anchorHasContent } from "./anchor-has-content.js";
 
 describe("a11y/anchor-has-content regressions", () => {
+  it("accepts translated content wrapped in a fragment", () => {
+    const result = runRule(
+      anchorHasContent,
+      `const Link = ({ translate }) => <a href="/account"><>{translate("account")}</></a>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("exempts href-less React Datepicker navigation placeholders", () => {
     const result = runRule(
       anchorHasContent,

@@ -1,9 +1,11 @@
 import {
+  DISPLAY_TEXT_MIN_FONT_SIZE_PX,
   LONG_BODY_TEXT_MIN_CHARACTERS,
   ROOT_FONT_SIZE_PX,
   TIGHT_LINE_HEIGHT_RATIO,
 } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
 import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -13,6 +15,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
+import { getStaticTailwindFontSize } from "./utils/get-static-tailwind-font-size.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
@@ -54,6 +57,18 @@ export const noTightBodyLeading = defineRule({
       if (staticText.length < LONG_BODY_TEXT_MIN_CHARACTERS) return;
 
       const classNameValue = getStringFromClassNameAttr(openingElement);
+      const styleAttribute = findJsxAttribute(openingElement.attributes, "style");
+      const styleExpression = styleAttribute ? getInlineStyleExpression(styleAttribute) : null;
+      const fontSizeProperty = styleExpression
+        ? getEffectiveStyleProperty(styleExpression.properties, "fontSize")
+        : null;
+      const inlineFontSizePx = fontSizeProperty ? getPixelValue(fontSizeProperty) : null;
+      const tailwindFontSizePx = getStaticTailwindFontSize(classNameValue);
+      const effectiveFontSizePx = inlineFontSizePx ?? tailwindFontSizePx;
+      if (effectiveFontSizePx !== null && effectiveFontSizePx >= DISPLAY_TEXT_MIN_FONT_SIZE_PX) {
+        return;
+      }
+
       if (
         classNameValue &&
         getUnvariantClassNameTokens(classNameValue).some((token) =>
@@ -68,23 +83,19 @@ export const noTightBodyLeading = defineRule({
         return;
       }
 
-      for (const attribute of openingElement.attributes ?? []) {
-        if (!isNodeOfType(attribute, "JSXAttribute")) continue;
-        const styleExpression = getInlineStyleExpression(attribute);
-        if (!styleExpression) continue;
-        const fontSizeProperty = getEffectiveStyleProperty(styleExpression.properties, "fontSize");
+      if (styleExpression) {
         const lineHeightProperty = getEffectiveStyleProperty(
           styleExpression.properties,
           "lineHeight",
         );
-        if (!lineHeightProperty) continue;
+        if (!lineHeightProperty) return;
         let lineHeightRatio = getUnitlessLineHeight(lineHeightProperty);
         if (lineHeightRatio === null && fontSizeProperty) {
           const fontSizePx = getPixelValue(fontSizeProperty);
           const lineHeightPx = getPixelValue(lineHeightProperty);
           if (fontSizePx && lineHeightPx) lineHeightRatio = lineHeightPx / fontSizePx;
         }
-        if (lineHeightRatio === null || lineHeightRatio >= TIGHT_LINE_HEIGHT_RATIO) continue;
+        if (lineHeightRatio === null || lineHeightRatio >= TIGHT_LINE_HEIGHT_RATIO) return;
         context.report({
           node: lineHeightProperty,
           message: `This ${lineHeightRatio.toFixed(2)} line-height ratio crowds a long passage. Use at least ${TIGHT_LINE_HEIGHT_RATIO.toFixed(1)} for body copy.`,

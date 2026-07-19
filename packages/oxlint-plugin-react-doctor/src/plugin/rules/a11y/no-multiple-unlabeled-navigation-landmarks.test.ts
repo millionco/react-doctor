@@ -34,4 +34,12 @@ describe("no-multiple-unlabeled-navigation-landmarks", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("accepts mutually exclusive responsive navigation landmarks", () => {
+    const result = runRule(
+      noMultipleUnlabeledNavigationLandmarks,
+      `const Page = () => <main><nav className="block md:hidden">Mobile</nav><nav className="hidden md:grid">Desktop</nav></main>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

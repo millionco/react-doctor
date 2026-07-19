@@ -29,7 +29,8 @@ export const preferMotionTransformProperty = defineRule({
   id: "prefer-motion-transform-property",
   title: "Motion individual transforms miss compositor acceleration",
   severity: "warn",
-  tags: ["opt-in"],
+  tags: ["design", "opt-in"],
+  defaultEnabled: false,
   category: "Performance",
   recommendation:
     "For animation that must remain smooth while JavaScript is busy, animate one `transform` string instead of Motion's individual transform keys.",

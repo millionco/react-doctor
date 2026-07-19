@@ -111,6 +111,7 @@ export const noCrampedContainerPadding = defineRule({
   title: "Bounded text container has cramped padding",
   severity: "warn",
   tags: ["design", "test-noise"],
+  defaultEnabled: false,
   category: "Accessibility",
   recommendation: "Give text at least 8px of space inside a visible border or colored surface.",
   create: (context: RuleContext) => ({

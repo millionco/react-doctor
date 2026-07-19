@@ -33,4 +33,11 @@ describe("no-broken-image-source", () => {
     const result = runRule(noBrokenImageSource, `const Example = () => <Image alt="Preview" />;`);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag deliberate image mocks in test files", () => {
+    const result = runRule(noBrokenImageSource, `const Image = () => <img src="" alt="" />;`, {
+      filename: "src/image.spec.tsx",
+    });
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

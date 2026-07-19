@@ -1153,6 +1153,29 @@ describe("discoverProject", () => {
     expect(projectInfo.hasReactCompiler).toBe(true);
     expect(projectInfo.hasReactCompilerLintPlugin).toBe(true);
   });
+
+  it("detects the Vite 6 React Compiler preset", () => {
+    const projectDirectory = path.join(tempDirectory, "vite-react-compiler-preset");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "vite-react-compiler-preset",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: {
+          "@rolldown/plugin-babel": "^0.2.0",
+          "@vitejs/plugin-react": "^6.0.0",
+        },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "vite.config.ts"),
+      "import react, { reactCompilerPreset } from '@vitejs/plugin-react';\nimport babel from '@rolldown/plugin-babel';\nexport default { plugins: [react(), babel({ presets: [reactCompilerPreset()] })] };\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(true);
+  });
 });
 
 describe("listWorkspacePackages", () => {

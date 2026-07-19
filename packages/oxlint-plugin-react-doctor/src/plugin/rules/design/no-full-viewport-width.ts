@@ -17,6 +17,7 @@ export const noFullViewportWidth = defineRule({
   id: "no-full-viewport-width",
   title: "Full viewport width causes overflow",
   tags: ["design", "test-noise"],
+  defaultEnabled: false,
   severity: "warn",
   recommendation:
     "Prefer `w-full` (`width: 100%`) over `w-screen` / `100vw`. `100vw` ignores the scrollbar gutter and overflows horizontally.",

@@ -11,6 +11,7 @@ export const noArbitraryPxFontSize = defineRule({
   id: "no-arbitrary-px-font-size",
   title: "Pixel arbitrary font size",
   tags: ["design", "test-noise"],
+  defaultEnabled: false,
   severity: "warn",
   category: "Accessibility",
   recommendation:

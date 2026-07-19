@@ -43,12 +43,22 @@ export const noPlaceholderOnlyField = defineRule({
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const elementName = getOpeningElementName(node);
+        const htmlForAttribute =
+          hasJsxPropIgnoreCase(node.attributes, "htmlFor") ??
+          hasJsxPropIgnoreCase(node.attributes, "for");
+        const htmlForValue = htmlForAttribute
+          ? getStringLiteralAttributeValue(htmlForAttribute)?.trim()
+          : null;
+        const isCustomElement =
+          isNodeOfType(node.name, "JSXMemberExpression") ||
+          (elementName !== null && elementName[0] !== elementName[0]?.toLowerCase());
+
+        if (isCustomElement) {
+          if (htmlForValue) labelledControlIds.add(htmlForValue);
+          return;
+        }
+
         if (elementName === "label") {
-          const htmlForAttribute =
-            hasJsxPropIgnoreCase(node.attributes, "htmlFor") ??
-            hasJsxPropIgnoreCase(node.attributes, "for");
-          if (!htmlForAttribute) return;
-          const htmlForValue = getStringLiteralAttributeValue(htmlForAttribute)?.trim();
           if (htmlForValue) labelledControlIds.add(htmlForValue);
           return;
         }

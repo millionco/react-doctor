@@ -11,6 +11,7 @@ const INVALID_IMAGE_SOURCES = new Set(["", "#"]);
 export const noBrokenImageSource = defineRule({
   id: "no-broken-image-source",
   title: "Image has no usable source",
+  tags: ["test-noise"],
   severity: "warn",
   category: "Correctness",
   recommendation:

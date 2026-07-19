@@ -1,10 +1,9 @@
-import { ROOT_FONT_SIZE_PX, TAILWIND_TEXT_SIZE_PX } from "../../constants/design.js";
+import { ROOT_FONT_SIZE_PX } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
-import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
@@ -12,6 +11,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
+import { getStaticTailwindFontSize } from "./utils/get-static-tailwind-font-size.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
@@ -40,25 +40,6 @@ const parseFontSize = (property: EsTreeNode): number | null => {
   if (!match) return null;
   const value = Number.parseFloat(match[1]);
   return match[2] === "rem" ? value * ROOT_FONT_SIZE_PX : value;
-};
-
-const parseTailwindFontSize = (token: string): number | null => {
-  const standardSize = TAILWIND_TEXT_SIZE_PX.get(token);
-  if (standardSize !== undefined) return standardSize;
-  const arbitrarySize = token.match(/^text-\[([\d.]+)(px|rem)\]$/);
-  if (!arbitrarySize) return null;
-  const value = Number.parseFloat(arbitrarySize[1]);
-  return arbitrarySize[2] === "rem" ? value * ROOT_FONT_SIZE_PX : value;
-};
-
-const getStaticTailwindFontSize = (className: string | null): number | null => {
-  if (!className) return null;
-  let fontSize: number | null = null;
-  for (const token of getUnvariantClassNameTokens(className)) {
-    const currentSize = parseTailwindFontSize(token);
-    if (currentSize !== null) fontSize = currentSize;
-  }
-  return fontSize;
 };
 
 export const noSmallFormControlText = defineRule({

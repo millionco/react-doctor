@@ -33,6 +33,14 @@ describe("no-uninformative-aria-label", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts Link as the action name of an editor control", () => {
+    const result = runRule(
+      noUninformativeAriaLabel,
+      `const Toolbar = () => <Button aria-label="Link" variant="icon"><LinkIcon /></Button>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag a multi-word label containing a type word", () => {
     const code = `const A = () => <button aria-label="Download icon set" />;`;
     const result = runRule(noUninformativeAriaLabel, code);

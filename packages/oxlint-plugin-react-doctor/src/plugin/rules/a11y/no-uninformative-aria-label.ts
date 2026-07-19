@@ -12,7 +12,6 @@ const UNINFORMATIVE_LABELS = new Set([
   "button",
   "image",
   "img",
-  "link",
   "graphic",
   "svg",
   "picture",

@@ -288,11 +288,17 @@ const NEXT_CONFIG_FILENAMES = [
 
 const BABEL_CONFIG_FILENAMES = [
   ".babelrc",
+  ".babelrc.js",
   ".babelrc.json",
+  ".babelrc.cjs",
+  ".babelrc.mjs",
+  ".babelrc.cts",
   "babel.config.js",
   "babel.config.json",
   "babel.config.cjs",
   "babel.config.mjs",
+  "babel.config.ts",
+  "babel.config.cts",
 ];
 
 const VITE_CONFIG_FILENAMES = [
@@ -309,7 +315,7 @@ const VITE_CONFIG_FILENAMES = [
 const EXPO_APP_CONFIG_FILENAMES = ["app.json", "app.config.js", "app.config.ts"];
 
 const REACT_COMPILER_PACKAGE_REFERENCE_PATTERN =
-  /babel-plugin-react-compiler|react-compiler-runtime|["']react-compiler["']/;
+  /babel-plugin-react-compiler|react-compiler-runtime|reactCompilerPreset\s*\(|["']react-compiler["']/;
 const REACT_COMPILER_ENABLED_FLAG_PATTERN = /["']?reactCompiler["']?\s*:\s*(?:true\b|\{)/;
 
 // `output: "export"` (static HTML export) in next.config.*. The leading

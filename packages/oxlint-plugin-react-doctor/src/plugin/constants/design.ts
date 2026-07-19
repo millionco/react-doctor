@@ -43,6 +43,8 @@ export const CRUSHED_TRACKING_THRESHOLD_EM = -0.08;
 
 export const TIGHT_LINE_HEIGHT_RATIO = 1.3;
 
+export const DISPLAY_TEXT_MIN_FONT_SIZE_PX = 24;
+
 export const LONG_BODY_TEXT_MIN_CHARACTERS = 48;
 
 export const READABLE_LINE_LENGTH_MAX_CH = 80;

@@ -80,4 +80,12 @@ describe("no-tight-body-leading", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not treat display-size paragraph text as body copy", () => {
+    const result = runRule(
+      noTightBodyLeading,
+      `const Example = () => <><p className="text-3xl leading-tight">${LONG_TEXT}</p><p style={{ fontSize: 32, lineHeight: 1.1 }}>${LONG_TEXT}</p></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

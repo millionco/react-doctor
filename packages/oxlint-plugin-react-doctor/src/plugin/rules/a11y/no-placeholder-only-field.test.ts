@@ -19,6 +19,14 @@ describe("no-placeholder-only-field", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts an opaque label component associated by htmlFor", () => {
+    const result = runRule(
+      noPlaceholderOnlyField,
+      `const Example = () => <><ElementHeader headline="Username" htmlFor="username" /><input id="username" placeholder="Enter username" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("accepts an input nested in a label", () => {
     const result = runRule(
       noPlaceholderOnlyField,

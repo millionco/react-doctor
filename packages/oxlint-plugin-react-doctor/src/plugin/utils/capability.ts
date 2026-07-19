@@ -72,6 +72,7 @@ export type Capability =
   | `valtio:${number}`
   | `mobx:${number}`
   | `zustand:${number}`
+  | `three:${number}`
   | `r3f:${number}`;
 
 // The shape rules use to query the project's capability set — implemented

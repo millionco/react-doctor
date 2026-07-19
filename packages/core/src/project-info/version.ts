@@ -352,6 +352,17 @@ const parseLowerBoundVersion = (versionSpec: string): semver.SemVer | null =>
     ? semver.minVersion(versionSpec)
     : semver.coerce(versionSpec);
 
+export const parseThreeRelease = (threeVersion: string | null | undefined): number | null => {
+  if (typeof threeVersion !== "string") return null;
+  const normalizedVersion = normalizeDependencyVersion(threeVersion);
+  if (normalizedVersion === null) return null;
+
+  const lowerBound = parseLowerBoundVersion(normalizedVersion);
+  if (lowerBound === null) return null;
+  if (lowerBound.major > 0) return Number.MAX_SAFE_INTEGER;
+  return lowerBound.minor > 0 ? lowerBound.minor : null;
+};
+
 export const parseDependencyMajorMinor = (
   dependencyVersion: string | null | undefined,
 ): MajorMinor | null => {

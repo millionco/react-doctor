@@ -35,6 +35,7 @@ import {
   getDependencyMajorWithinSupportedRange,
   getLowestDependencyMajor,
   parseReactMajor,
+  parseThreeRelease,
   resolveEffectiveReactMajor,
 } from "./version.js";
 
@@ -121,6 +122,8 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     tanstackQueryVersion: null,
     styledComponentsVersion: null,
     hasThree: false,
+    threeVersion: null,
+    threeRelease: null,
     hasReactThreeFiber: false,
     reactThreeFiberVersion: null,
     reactThreeFiberMajorVersion: null,
@@ -319,6 +322,12 @@ export const discoverProject = (directory: string): ProjectInfo => {
         version: workspaceFacts.reactThreeFiber.version,
       })
     : null;
+  const threeVersion = resolveCatalogBackedDependencyVersion({
+    rootDirectory: directory,
+    rootPackageJson: packageJson,
+    packageName: "three",
+    version: workspaceFacts.threeVersion,
+  });
   const isPreES2023Target = hasTypeScript && detectPreES2023Target(directory);
 
   const projectInfo: ProjectInfo = {
@@ -357,6 +366,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
     remotionMajorVersion:
       remotionVersion === null ? null : getLowestDependencyMajor(remotionVersion),
     hasThree: workspaceFacts.hasThree,
+    threeVersion,
+    threeRelease: parseThreeRelease(threeVersion),
     hasReactThreeFiber: workspaceFacts.hasReactThreeFiber,
     reactThreeFiberVersion,
     reactThreeFiberMajorVersion:

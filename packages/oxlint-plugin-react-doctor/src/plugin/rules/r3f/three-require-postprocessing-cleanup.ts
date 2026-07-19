@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { hasCapability } from "../../utils/get-react-doctor-setting.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import {
@@ -14,10 +15,28 @@ import {
   type OwnedLifecycleResourceAnalysis,
 } from "./utils/analyze-owned-lifecycle-resource.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
+import {
+  THREE_PASS_DISPOSAL_BASE_RELEASE,
+  THREE_POSTPROCESSING_BARREL_RELEASE,
+  THREE_POSTPROCESSING_COMPOSER_DISPOSAL_RELEASE,
+  THREE_POSTPROCESSING_PASS_DISPOSAL_RELEASES,
+} from "./constants.js";
 
 const POSTPROCESSING_BORROWING_METHOD_NAMES = new Set<string>();
 const THREE_COMPOSER_BORROWING_METHOD_NAMES = new Set(["addPass", "insertPass"]);
+const THREE_POSTPROCESSING_MODULE_PREFIXES = [
+  "three/addons/postprocessing/",
+  "three/examples/jsm/postprocessing/",
+];
+const THREE_POSTPROCESSING_BARREL_MODULES = new Set([
+  "three/addons",
+  "three/addons/Addons",
+  "three/addons/Addons.js",
+  "three/examples/jsm/Addons",
+  "three/examples/jsm/Addons.js",
+]);
 const THREE_RESOURCE_OWNING_PASS_CONSTRUCTORS = new Set([
+  "AdaptiveToneMappingPass",
   "AfterimagePass",
   "BloomPass",
   "BokehPass",
@@ -44,16 +63,54 @@ const THREE_RESOURCE_OWNING_PASS_CONSTRUCTORS = new Set([
   "TexturePass",
   "UnrealBloomPass",
 ]);
+const THREE_PASSES_WITH_BASE_RELEASE_DISPOSAL = new Set([
+  "AdaptiveToneMappingPass",
+  "OutlinePass",
+  "SSAARenderPass",
+  "SSAOPass",
+  "SSRPass",
+  "UnrealBloomPass",
+]);
 
-const isModernThreeComposer = (apiName: string, moduleSource: string): boolean =>
-  apiName === "EffectComposer" && moduleSource === "three/addons/postprocessing/EffectComposer.js";
+const isThreePostprocessingModule = (apiName: string, moduleSource: string): boolean =>
+  THREE_POSTPROCESSING_BARREL_MODULES.has(moduleSource) ||
+  THREE_POSTPROCESSING_MODULE_PREFIXES.some(
+    (modulePrefix) =>
+      moduleSource === `${modulePrefix}${apiName}` ||
+      moduleSource === `${modulePrefix}${apiName}.js`,
+  );
+
+const getThreePostprocessingDisposalRelease = (apiName: string, moduleSource: string): number => {
+  const resourceRelease =
+    THREE_POSTPROCESSING_PASS_DISPOSAL_RELEASES.get(apiName) ??
+    (apiName !== "EffectComposer" && THREE_PASSES_WITH_BASE_RELEASE_DISPOSAL.has(apiName)
+      ? THREE_PASS_DISPOSAL_BASE_RELEASE
+      : THREE_POSTPROCESSING_COMPOSER_DISPOSAL_RELEASE);
+  const moduleRelease = THREE_POSTPROCESSING_BARREL_MODULES.has(moduleSource)
+    ? THREE_POSTPROCESSING_BARREL_RELEASE
+    : resourceRelease;
+  return Math.max(resourceRelease, moduleRelease);
+};
+
+const canDisposeThreePostprocessingResource = (
+  apiName: string,
+  moduleSource: string,
+  context: RuleContext,
+): boolean =>
+  hasCapability(
+    context.settings,
+    `three:${getThreePostprocessingDisposalRelease(apiName, moduleSource)}`,
+  );
+
+const isThreeComposer = (apiName: string, moduleSource: string): boolean =>
+  apiName === "EffectComposer" && isThreePostprocessingModule(apiName, moduleSource);
 
 const isPmndrsComposer = (apiName: string, moduleSource: string): boolean =>
   apiName === "EffectComposer" && moduleSource === "postprocessing";
 
-const isModernThreeResourceOwningPass = (apiName: string, moduleSource: string): boolean =>
+const isThreeResourceOwningPass = (apiName: string, moduleSource: string): boolean =>
   THREE_RESOURCE_OWNING_PASS_CONSTRUCTORS.has(apiName) &&
-  moduleSource === `three/addons/postprocessing/${apiName}.js`;
+  isThreePostprocessingModule(apiName, moduleSource);
 
 const isBorrowedByOwnedThreeComposer = (
   call: EsTreeNodeOfType<"CallExpression">,
@@ -106,13 +163,25 @@ export const threeRequirePostprocessingCleanup = defineRule({
         const provenance = getApiReferenceProvenance(candidate.callee, context.scopes);
         if (!provenance) return;
         if (
-          isModernThreeComposer(provenance.apiName, provenance.moduleSource) ||
+          (isThreeComposer(provenance.apiName, provenance.moduleSource) &&
+            canDisposeThreePostprocessingResource(
+              provenance.apiName,
+              provenance.moduleSource,
+              context,
+            )) ||
           isPmndrsComposer(provenance.apiName, provenance.moduleSource)
         ) {
           composerAllocations.push(candidate);
           return;
         }
-        if (isModernThreeResourceOwningPass(provenance.apiName, provenance.moduleSource)) {
+        if (
+          isThreeResourceOwningPass(provenance.apiName, provenance.moduleSource) &&
+          canDisposeThreePostprocessingResource(
+            provenance.apiName,
+            provenance.moduleSource,
+            context,
+          )
+        ) {
           passAllocations.push(candidate);
         }
       });
@@ -133,7 +202,7 @@ export const threeRequirePostprocessingCleanup = defineRule({
           if (!isNodeOfType(allocation, "NewExpression")) return false;
           const provenance = getApiReferenceProvenance(allocation.callee, context.scopes);
           return Boolean(
-            provenance && isModernThreeComposer(provenance.apiName, provenance.moduleSource),
+            provenance && isThreeComposer(provenance.apiName, provenance.moduleSource),
           );
         },
       );

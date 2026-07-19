@@ -15,6 +15,7 @@ export {
   getDependencyMajorWithinSupportedRange,
   peerRangeMinMajor,
   parseTailwindMajorMinor,
+  parseThreeRelease,
   resolveEffectiveReactMajor,
 } from "./version.js";
 export { findMonorepoRoot, isMonorepoRoot } from "./monorepo-root.js";

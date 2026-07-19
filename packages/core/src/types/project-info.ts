@@ -40,6 +40,10 @@ export interface ProjectInfo {
   styledComponentsVersion?: string | null;
   /** Whether the project or one of its workspaces declares Three.js, Fiber, or Drei. */
   hasThree?: boolean;
+  /** Lowest declared Three.js version across the project and its workspaces. */
+  threeVersion?: string | null;
+  /** Three.js release number parsed from threeVersion (`0.146.x` becomes 146). */
+  threeRelease?: number | null;
   /** Whether the project or one of its workspaces declares React Three Fiber or Drei. */
   hasReactThreeFiber?: boolean;
   /** Declared version of @react-three/fiber or its legacy package name, when directly present. */

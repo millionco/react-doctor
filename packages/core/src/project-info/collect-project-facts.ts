@@ -27,6 +27,7 @@ import {
   getLowestDependencyMajor,
   parseDependencyMajorMinor,
   parseReactMajor,
+  parseThreeRelease,
 } from "./version.js";
 import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
 import { getStyledComponentsVersion } from "./get-styled-components-version.js";
@@ -42,6 +43,12 @@ const REACT_THREE_FIBER_SECTIONS = [
   "dependencies",
   "devDependencies",
   "peerDependencies",
+  "optionalDependencies",
+] as const;
+const THREE_DEPENDENCY_SECTIONS = [
+  "dependencies",
+  "peerDependencies",
+  "devDependencies",
   "optionalDependencies",
 ] as const;
 const REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES = [
@@ -101,6 +108,7 @@ export interface WorkspaceFacts {
   hasUnknownRemotionVersion: boolean;
   remotionVersion: string | null;
   hasThree: boolean;
+  threeVersion: string | null;
   hasReactThreeFiber: boolean;
   reactThreeFiber: ReactThreeFiberDependencyFact;
   reanimatedVersion: string | null;
@@ -363,6 +371,29 @@ const evaluateManifestFacts = (
       facts.reactThreeFiber = { packageName, version, sourceDirectory: directory };
     }
   }
+  const threeDependencyDeclaration = getDependencyDeclaration({
+    packageName: "three",
+    packageJson,
+    sections: THREE_DEPENDENCY_SECTIONS,
+  });
+  const threeVersion = resolveCatalogBackedDependencyVersion({
+    rootDirectory,
+    rootPackageJson,
+    sourceDirectory: directory,
+    sourcePackageJson: packageJson,
+    packageName: "three",
+    version: threeDependencyDeclaration.version,
+  });
+  if (threeVersion !== null) {
+    const currentRelease = parseThreeRelease(facts.threeVersion);
+    const nextRelease = parseThreeRelease(threeVersion);
+    if (
+      facts.threeVersion === null ||
+      (nextRelease !== null && (currentRelease === null || nextRelease < currentRelease))
+    ) {
+      facts.threeVersion = threeVersion;
+    }
+  }
   facts.hasReactNativeAwarePackage =
     facts.hasReactNativeAwarePackage || isPackageJsonReactNativeAware(packageJson);
   facts.hasReanimatedAwarePackage =
@@ -451,6 +482,7 @@ export const collectWorkspaceFacts = (
     hasUnknownRemotionVersion: false,
     remotionVersion: null,
     hasThree: false,
+    threeVersion: null,
     hasReactThreeFiber: false,
     reactThreeFiber: { packageName: null, version: null, sourceDirectory: null },
     reanimatedVersion: null,

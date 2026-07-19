@@ -71,6 +71,10 @@ export const LATEST_KNOWN_R3F_MAJOR = 10;
 
 export const EARLIEST_GATED_R3F_MAJOR = 3;
 
+export const EARLIEST_GATED_THREE_RELEASE = 145;
+
+export const LATEST_KNOWN_THREE_RELEASE = 250;
+
 // Max chars of an unparseable oxlint stdout we keep for the error
 // message. oxlint prints a multi-line, framed error to stdout when it
 // can't load the config (e.g. a JS plugin failed to import) — the first

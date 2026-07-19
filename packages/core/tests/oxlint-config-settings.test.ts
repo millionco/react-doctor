@@ -22,6 +22,9 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   styledComponentsVersion: null,
   valtioVersion: null,
   valtioMajorVersion: null,
+  hasThree: false,
+  threeVersion: null,
+  threeRelease: null,
   hasReactThreeFiber: false,
   reactThreeFiberVersion: null,
   reactThreeFiberMajorVersion: null,
@@ -122,12 +125,44 @@ describe("createOxlintConfig settings", () => {
         framework: "vite",
         hasReactNativeWorkspace: false,
         hasThree: true,
+        threeVersion: "^0.180.0",
+        threeRelease: 180,
       }),
     });
 
     expect(plainThree.rules).toHaveProperty("react-doctor/three-require-renderer-cleanup");
     expect(plainThree.rules).toHaveProperty("react-doctor/three-require-render-target-cleanup");
+    expect(plainThree.rules).toHaveProperty("react-doctor/three-require-postprocessing-cleanup");
     expect(plainThree.rules).not.toHaveProperty("react-doctor/r3f-cap-device-pixel-ratio");
+  });
+
+  it("forwards Three.js release capabilities for runtime postprocessing gates", () => {
+    const release145 = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        hasThree: true,
+        threeVersion: "^0.145.0",
+        threeRelease: 145,
+      }),
+    });
+    const release146 = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        hasThree: true,
+        threeVersion: "^0.146.0",
+        threeRelease: 146,
+      }),
+    });
+
+    expect(release145.rules).toHaveProperty("react-doctor/three-require-postprocessing-cleanup");
+    expect(release146.rules).toHaveProperty("react-doctor/three-require-postprocessing-cleanup");
+    expect(release145.settings["react-doctor"].capabilities).toContain("three:145");
+    expect(release145.settings["react-doctor"].capabilities).not.toContain("three:146");
+    expect(release146.settings["react-doctor"].capabilities).toContain("three:146");
   });
 
   it("registers R3F rules only for compatible declared library versions", () => {

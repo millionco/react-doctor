@@ -1940,8 +1940,124 @@ describe("discoverProject — React Three Fiber", () => {
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.hasThree).toBe(true);
     expect(projectInfo.hasReactThreeFiber).toBe(false);
+    expect(projectInfo.threeVersion).toBe("^0.180.0");
+    expect(projectInfo.threeRelease).toBe(180);
     expect(projectInfo.reactThreeFiberVersion).toBeNull();
     expect(projectInfo.reactThreeFiberMajorVersion).toBeNull();
+  });
+
+  it("uses a supported Three.js peer floor instead of a newer dev version", () => {
+    const projectDirectory = path.join(tempDirectory, "three-peer-floor");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "three-peer-floor",
+        dependencies: { react: "^19.0.0" },
+        peerDependencies: { three: "^0.145.0" },
+        devDependencies: { three: "^0.180.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.threeVersion).toBe("^0.145.0");
+    expect(projectInfo.threeRelease).toBe(145);
+  });
+
+  it("resolves a catalog-backed Three.js peer floor before a dev version", () => {
+    const projectDirectory = path.join(tempDirectory, "three-catalog-peer-floor");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "pnpm-workspace.yaml"),
+      "catalogs:\n  legacy:\n    three: ^0.145.0\n  modern:\n    three: ^0.180.0\n",
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "three-catalog-peer-floor",
+        dependencies: { react: "^19.0.0" },
+        peerDependencies: { three: "catalog:legacy" },
+        devDependencies: { three: "catalog:modern" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.threeVersion).toBe("^0.145.0");
+    expect(projectInfo.threeRelease).toBe(145);
+  });
+
+  it("skips malformed Three.js dependency values without hiding a valid peer", () => {
+    const projectDirectory = path.join(tempDirectory, "three-malformed-version");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "three-malformed-version",
+        dependencies: { react: "^19.0.0", three: 146 },
+        peerDependencies: { three: "^0.145.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasThree).toBe(true);
+    expect(projectInfo.threeVersion).toBe("^0.145.0");
+    expect(projectInfo.threeRelease).toBe(145);
+  });
+
+  it("uses the lowest Three.js release across mixed-version workspaces", () => {
+    const projectDirectory = path.join(tempDirectory, "mixed-three-workspace");
+    const modernDirectory = path.join(projectDirectory, "packages", "modern");
+    const legacyDirectory = path.join(projectDirectory, "packages", "legacy");
+    fs.mkdirSync(modernDirectory, { recursive: true });
+    fs.mkdirSync(legacyDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "mixed-three-workspace",
+        private: true,
+        dependencies: { react: "^19.0.0" },
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(modernDirectory, "package.json"),
+      JSON.stringify({ name: "modern", dependencies: { three: "^0.180.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(legacyDirectory, "package.json"),
+      JSON.stringify({ name: "legacy", dependencies: { three: "^0.145.0" } }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.threeVersion).toBe("^0.145.0");
+    expect(projectInfo.threeRelease).toBe(145);
+  });
+
+  it("resolves catalog-backed Three.js versions", () => {
+    const projectDirectory = path.join(tempDirectory, "catalog-three-workspace");
+    const sceneDirectory = path.join(projectDirectory, "packages", "scene");
+    fs.mkdirSync(sceneDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "pnpm-workspace.yaml"),
+      "packages:\n  - packages/*\n\ncatalogs:\n  graphics:\n    three: ^0.146.0\n",
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "catalog-three-workspace",
+        private: true,
+        dependencies: { react: "^19.0.0" },
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(sceneDirectory, "package.json"),
+      JSON.stringify({ name: "scene", dependencies: { three: "catalog:graphics" } }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.threeVersion).toBe("^0.146.0");
+    expect(projectInfo.threeRelease).toBe(146);
   });
 
   it("detects the legacy CommonJS-era package name and version", () => {

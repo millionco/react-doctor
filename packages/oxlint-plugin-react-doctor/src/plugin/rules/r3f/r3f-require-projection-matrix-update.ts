@@ -235,7 +235,7 @@ const isGuardedRefreshForChangedProjectionValue = (
   ) {
     return false;
   }
-  const mutationIndex = block.body.indexOf(mutationStatement);
+  const mutationIndex = block.body.findIndex((statement) => statement === mutationStatement);
   if (mutationIndex < 1) return false;
   const snapshotStatement = block.body[mutationIndex - 1];
   const refreshStatement = block.body[mutationIndex + 1];

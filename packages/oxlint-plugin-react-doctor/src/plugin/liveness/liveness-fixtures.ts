@@ -1871,6 +1871,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "three-require-postprocessing-cleanup": {
     code: 'import { useMemo } from "react"; import "three"; import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js"; const Scene = ({ renderer }) => { const composer = useMemo(() => new EffectComposer(renderer), [renderer]); composer.render(); return null; };',
+    settings: { "react-doctor": { capabilities: ["three", "three:145", "three:146"] } },
   },
   "tanstack-start-no-anchor-element": {
     code: 'const C = () => <a href="/dashboard">Go</a>;',

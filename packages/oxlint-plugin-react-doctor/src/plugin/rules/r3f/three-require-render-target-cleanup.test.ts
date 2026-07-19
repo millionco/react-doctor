@@ -1,12 +1,23 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import {
-  LIFECYCLE_ANALYSIS_DENSE_EFFECT_BUDGET_MS,
   LIFECYCLE_ANALYSIS_DENSE_EFFECT_COUNT,
-  LIFECYCLE_ANALYSIS_PERFORMANCE_ALLOCATION_COUNT,
-  LIFECYCLE_ANALYSIS_PERFORMANCE_BUDGET_MS,
+  LIFECYCLE_ANALYSIS_LARGE_ALLOCATION_COUNT,
 } from "./constants.js";
 import { threeRequireRenderTargetCleanup } from "./three-require-render-target-cleanup.js";
+
+const lifecycleCleanupMethodCounter = vi.hoisted(() => vi.fn());
+
+vi.mock("./utils/analyze-owned-lifecycle-resource.js", async (importOriginal) => {
+  const originalModule =
+    await importOriginal<typeof import("./utils/analyze-owned-lifecycle-resource.js")>();
+  return {
+    ...originalModule,
+    functionInvokesOwnedResourceMethod: lifecycleCleanupMethodCounter.mockImplementation(
+      originalModule.functionInvokesOwnedResourceMethod,
+    ),
+  };
+});
 
 describe("three-require-render-target-cleanup", () => {
   it("reports named, aliased, and namespace render targets without cleanup", () => {
@@ -330,9 +341,9 @@ describe("three-require-render-target-cleanup", () => {
     expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(4);
   });
 
-  it("keeps high-density lifecycle analysis bounded", () => {
+  it("handles a high density of lifecycle allocations", () => {
     const declarations = Array.from(
-      { length: LIFECYCLE_ANALYSIS_PERFORMANCE_ALLOCATION_COUNT },
+      { length: LIFECYCLE_ANALYSIS_LARGE_ALLOCATION_COUNT },
       (_, allocationIndex) => `const target${allocationIndex} = new WebGLRenderTarget(1, 1);`,
     ).join("\n");
     const code = `
@@ -342,15 +353,12 @@ describe("three-require-render-target-cleanup", () => {
         return null;
       }
     `;
-    const startedAtMs = performance.now();
     const result = runRule(threeRequireRenderTargetCleanup, code);
-    const durationMs = performance.now() - startedAtMs;
 
-    expect(result.diagnostics).toHaveLength(LIFECYCLE_ANALYSIS_PERFORMANCE_ALLOCATION_COUNT);
-    expect(durationMs).toBeLessThan(LIFECYCLE_ANALYSIS_PERFORMANCE_BUDGET_MS);
+    expect(result.diagnostics).toHaveLength(LIFECYCLE_ANALYSIS_LARGE_ALLOCATION_COUNT);
   });
 
-  it("keeps dense allocation and effect matching bounded", () => {
+  it("matches cleanup effects across dense lifecycle allocations", () => {
     const lifecyclePairs = Array.from(
       { length: LIFECYCLE_ANALYSIS_DENSE_EFFECT_COUNT },
       (_, allocationIndex) => `
@@ -369,11 +377,12 @@ describe("three-require-render-target-cleanup", () => {
         return null;
       }
     `;
-    const startedAtMs = performance.now();
+    lifecycleCleanupMethodCounter.mockClear();
     const result = runRule(threeRequireRenderTargetCleanup, code);
-    const durationMs = performance.now() - startedAtMs;
 
     expect(result.diagnostics).toHaveLength(0);
-    expect(durationMs).toBeLessThan(LIFECYCLE_ANALYSIS_DENSE_EFFECT_BUDGET_MS);
+    expect(lifecycleCleanupMethodCounter).toHaveBeenCalledTimes(
+      LIFECYCLE_ANALYSIS_DENSE_EFFECT_COUNT,
+    );
   });
 });

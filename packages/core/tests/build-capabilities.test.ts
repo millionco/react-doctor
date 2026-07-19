@@ -18,6 +18,8 @@ const baseProject: ProjectInfo = {
   hasTypeScript: true,
   hasReactCompiler: false,
   hasTanStackQuery: false,
+  valtioVersion: null,
+  valtioMajorVersion: null,
   hasSsrDependency: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
@@ -47,6 +49,8 @@ describe("buildCapabilities", () => {
       nextjsMajorVersion: 15,
       hasReactCompiler: true,
       hasTanStackQuery: true,
+      valtioVersion: "^2.1.4",
+      valtioMajorVersion: 2,
       hasTypeScript: true,
     });
     expect([...capabilities].sort()).toEqual([
@@ -64,9 +68,43 @@ describe("buildCapabilities", () => {
       "tailwind:3.4",
       "tanstack-query",
       "typescript",
+      "valtio",
+      "valtio:1",
+      "valtio:2",
       "zod",
       "zod:4",
     ]);
+  });
+
+  it.each([
+    { valtioVersion: "^1.0.0", valtioMajorVersion: 1, hasV2: false },
+    { valtioVersion: "^2.1.4", valtioMajorVersion: 2, hasV2: true },
+  ])(
+    "emits the Valtio major ladder for $valtioVersion",
+    ({ valtioVersion, valtioMajorVersion, hasV2 }) => {
+      const capabilities = buildCapabilities({
+        ...baseProject,
+        valtioVersion,
+        valtioMajorVersion,
+      });
+      expect(capabilities.has("valtio")).toBe(true);
+      expect(capabilities.has("valtio:1")).toBe(true);
+      expect(capabilities.has("valtio:2")).toBe(hasV2);
+    },
+  );
+
+  it("keeps an unparseable Valtio declaration present but omits version capabilities", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      valtioVersion: "workspace:*",
+      valtioMajorVersion: null,
+    });
+    expect(capabilities.has("valtio")).toBe(true);
+    expect(capabilities.has("valtio:1")).toBe(false);
+  });
+
+  it("omits the `valtio` capability when project facts say the library is absent", () => {
+    expect(buildCapabilities(baseProject).has("valtio")).toBe(false);
   });
 
   it("emits the `preact` capability when `preactVersion` is set on a Preact-on-Vite project", () => {

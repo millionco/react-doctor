@@ -43,12 +43,14 @@ export type Capability =
   | "typescript"
   | "react-compiler"
   | "tanstack-query"
+  | "valtio"
   | "pre-es2023"
   // Major-version ladders (`react:17`…) plus minor-versioned gates like
   // `react:19.2` — both parse as numeric template members. Bounds live in
   // core's constants (`EARLIEST_GATED_*` / `LATEST_KNOWN_*`).
   | `react:${number}`
-  | `preact:${number}`;
+  | `preact:${number}`
+  | `valtio:${number}`;
 
 // The shape rules use to query the project's capability set — implemented
 // by core (over the memoized set) and by `hasCapability` (over the

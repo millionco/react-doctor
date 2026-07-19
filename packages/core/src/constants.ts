@@ -45,6 +45,11 @@ export const LATEST_KNOWN_PREACT_MAJOR = 20;
 // for. Preact X (10) is the modern baseline.
 export const EARLIEST_GATED_PREACT_MAJOR = 10;
 
+// Valtio shipped the useSnapshot render contract in v1. The upper bound
+// follows the same untrusted-version clamp as React and Preact.
+export const EARLIEST_GATED_VALTIO_MAJOR = 1;
+export const LATEST_KNOWN_VALTIO_MAJOR = 10;
+
 // Max chars of an unparseable oxlint stdout we keep for the error
 // message. oxlint prints a multi-line, framed error to stdout when it
 // can't load the config (e.g. a JS plugin failed to import) — the first

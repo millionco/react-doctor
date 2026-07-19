@@ -13,6 +13,7 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -20,6 +21,11 @@ import type { RuleContext } from "../../utils/rule-context.js";
 interface ProxyPath {
   readonly rootKey: string;
   readonly properties: ReadonlyArray<string | null>;
+}
+
+interface ProxyAliasCapture {
+  readonly declarationEnd: number;
+  readonly path: ProxyPath;
 }
 
 interface SnapshotTarget {
@@ -138,7 +144,7 @@ const resolveProxyPath = (
   scopes: ScopeAnalysis,
   visitedSymbolIds = new Set<number>(),
   allowedAliasSymbolIds: ReadonlySet<number> | null = null,
-  collectedAliasSymbolIds: Set<number> | null = null,
+  collectedAliasCaptures: Map<number, ProxyAliasCapture> | null = null,
 ): ProxyPath | null => {
   const candidate = stripParenExpression(expression);
   if (isNodeOfType(candidate, "MemberExpression")) {
@@ -147,7 +153,7 @@ const resolveProxyPath = (
       scopes,
       visitedSymbolIds,
       allowedAliasSymbolIds,
-      collectedAliasSymbolIds,
+      collectedAliasCaptures,
     );
     if (!receiverPath) return null;
     return {
@@ -180,7 +186,6 @@ const resolveProxyPath = (
       (canResolveDirectAlias || patternPath) &&
       (allowedAliasSymbolIds === null || allowedAliasSymbolIds.has(symbol.id))
     ) {
-      collectedAliasSymbolIds?.add(symbol.id);
       const nextVisitedSymbolIds = new Set(visitedSymbolIds);
       nextVisitedSymbolIds.add(symbol.id);
       const initializerPath = resolveProxyPath(
@@ -188,13 +193,18 @@ const resolveProxyPath = (
         scopes,
         nextVisitedSymbolIds,
         allowedAliasSymbolIds,
-        collectedAliasSymbolIds,
+        collectedAliasCaptures,
       );
       if (initializerPath) {
-        return {
+        const aliasPath = {
           ...initializerPath,
           properties: [...initializerPath.properties, ...(patternPath ?? [])],
         };
+        const declarationEnd = symbol.declarationNode.range?.[1];
+        if (typeof declarationEnd === "number") {
+          collectedAliasCaptures?.set(symbol.id, { declarationEnd, path: aliasPath });
+        }
+        return aliasPath;
       }
     }
   }
@@ -240,20 +250,6 @@ const findOutermostMemberRead = (identifier: EsTreeNode): EsTreeNode => {
   }
 };
 
-const isDirectWriteTarget = (expression: EsTreeNode): boolean => {
-  const expressionRoot = findTransparentExpressionRoot(expression);
-  const parent = expressionRoot.parent;
-  return Boolean(
-    (isNodeOfType(parent, "AssignmentExpression") && parent.left === expressionRoot) ||
-    (isNodeOfType(parent, "UpdateExpression") && parent.argument === expressionRoot) ||
-    (isNodeOfType(parent, "UnaryExpression") &&
-      parent.operator === "delete" &&
-      parent.argument === expressionRoot) ||
-    ((isNodeOfType(parent, "ForInStatement") || isNodeOfType(parent, "ForOfStatement")) &&
-      parent.left === expressionRoot),
-  );
-};
-
 const isSnapshotArgument = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const expressionRoot = findTransparentExpressionRoot(expression);
   const parent = expressionRoot.parent;
@@ -297,14 +293,8 @@ const getSnapshotTarget = (
   if (!isValtioUseSnapshotCall(callExpression, context.scopes)) return null;
   const proxyArgument = callExpression.arguments[0];
   if (!proxyArgument || isNodeOfType(proxyArgument, "SpreadElement")) return null;
-  const proxyAliasSymbolIds = new Set<number>();
-  const path = resolveProxyPath(
-    proxyArgument,
-    context.scopes,
-    new Set(),
-    null,
-    proxyAliasSymbolIds,
-  );
+  const proxyAliasCaptures = new Map<number, ProxyAliasCapture>();
+  const path = resolveProxyPath(proxyArgument, context.scopes, new Set(), null, proxyAliasCaptures);
   if (!path || path.properties.some((propertyName) => propertyName === null)) return null;
   const callExpressionRoot = findTransparentExpressionRoot(callExpression);
   const declarator = callExpressionRoot.parent;
@@ -323,13 +313,13 @@ const getSnapshotTarget = (
       return bindingSymbol ? [bindingSymbol.scope] : [];
     },
   );
-  const declarationEnd = declarator.parent.range?.[1];
+  const declarationEnd = declarator.range?.[1];
   if (snapshotBindingScopes.length === 0 || typeof declarationEnd !== "number") return null;
   return {
     declarationEnd,
     ownerFunction,
     path,
-    proxyAliasSymbolIds,
+    proxyAliasSymbolIds: new Set(proxyAliasCaptures.keys()),
     snapshotBindingScopes,
   };
 };
@@ -339,6 +329,7 @@ const wasTargetReplacedBeforeRead = (
   readPosition: number,
   writeTargets: ReadonlyArray<EsTreeNode>,
   allowedAliasSymbolIds: ReadonlySet<number>,
+  readAliasCaptures: ReadonlyMap<number, ProxyAliasCapture>,
   context: RuleContext,
 ): boolean =>
   writeTargets.some((writeTarget) => {
@@ -359,7 +350,11 @@ const wasTargetReplacedBeforeRead = (
       new Set(),
       allowedAliasSymbolIds,
     );
-    return Boolean(writePath && isPathPrefix(writePath, target.path));
+    if (!writePath || !isPathPrefix(writePath, target.path)) return false;
+    return ![...readAliasCaptures.values()].some(
+      (aliasCapture) =>
+        aliasCapture.declarationEnd < writePosition && isPathPrefix(writePath, aliasCapture.path),
+    );
   });
 
 export const valtioNoProxyReadInRender = defineRule({
@@ -368,6 +363,7 @@ export const valtioNoProxyReadInRender = defineRule({
   severity: "warn",
   recommendation:
     "Read reactive render values from useSnapshot. Reserve the mutable proxy for event handlers, effects, and other callbacks that need the latest value.",
+  requires: ["valtio:1"],
   create: (context: RuleContext) => {
     const snapshotTargets: SnapshotTarget[] = [];
     const identifierCandidates: EsTreeNode[] = [];
@@ -395,16 +391,18 @@ export const valtioNoProxyReadInRender = defineRule({
           const readExpression = findOutermostMemberRead(identifier);
           if (
             reportedExpressions.has(readExpression) ||
-            isDirectWriteTarget(readExpression) ||
+            isWithinAssignmentTarget(readExpression) ||
             isSnapshotArgument(readExpression, context.scopes)
           ) {
             continue;
           }
+          const readAliasCaptures = new Map<number, ProxyAliasCapture>();
           const readPath = resolveProxyPath(
             readExpression,
             context.scopes,
             new Set(),
             allowedAliasSymbolIds,
+            readAliasCaptures,
           );
           const readPosition = readExpression.range?.[0];
           const ownerFunction = findRenderPhaseComponentOrHook(readExpression, context.scopes);
@@ -423,6 +421,7 @@ export const valtioNoProxyReadInRender = defineRule({
                 readPosition,
                 writeTargets,
                 allowedAliasSymbolIds,
+                readAliasCaptures,
                 context,
               ),
           );

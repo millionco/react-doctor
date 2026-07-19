@@ -15,6 +15,8 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   hasReactCompiler: false,
   hasReactCompilerLintPlugin: false,
   hasTanStackQuery: false,
+  valtioVersion: null,
+  valtioMajorVersion: null,
   nextjsVersion: null,
   nextjsMajorVersion: null,
   hasReactNativeWorkspace: true,
@@ -32,6 +34,39 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
 const viteWebProject = buildProject({ framework: "vite", hasReactNativeWorkspace: false });
 
 describe("createOxlintConfig settings", () => {
+  it("enables the Valtio rule only when the project declares Valtio", () => {
+    const withoutValtio = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+    });
+    const withValtio = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        valtioVersion: "^2.1.4",
+        valtioMajorVersion: 2,
+      }),
+    });
+
+    expect(withoutValtio.rules).not.toHaveProperty("react-doctor/valtio-no-proxy-read-in-render");
+    expect(withValtio.rules["react-doctor/valtio-no-proxy-read-in-render"]).toBe("warn");
+  });
+
+  it("keeps the Valtio rule disabled when its declared version is unparseable", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        valtioVersion: "workspace:*",
+        valtioMajorVersion: null,
+      }),
+    });
+
+    expect(config.rules).not.toHaveProperty("react-doctor/valtio-no-proxy-read-in-render");
+  });
+
   it("forwards the detected @shopify/flash-list major version", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

@@ -100,6 +100,8 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     hasReactCompiler: false,
     hasReactCompilerLintPlugin: false,
     hasTanStackQuery: false,
+    valtioVersion: null,
+    valtioMajorVersion: null,
     hasSsrDependency: false,
     preactVersion: null,
     preactMajorVersion: null,
@@ -280,6 +282,11 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasReactCompiler: detectReactCompiler(directory, packageJson),
     hasReactCompilerLintPlugin: detectReactCompilerLintPlugin(directory, packageJson),
     hasTanStackQuery: hasTanStackQuery(packageJson),
+    valtioVersion: workspaceFacts.valtioVersion,
+    valtioMajorVersion:
+      workspaceFacts.valtioVersion === null
+        ? null
+        : getLowestDependencyMajor(workspaceFacts.valtioVersion),
     hasSsrDependency: workspaceFacts.hasSsrDependency,
     preactVersion,
     preactMajorVersion: parseReactMajor(preactVersion),

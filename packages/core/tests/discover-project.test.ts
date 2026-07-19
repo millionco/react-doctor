@@ -2003,6 +2003,58 @@ describe("discoverProject — Next.js version", () => {
   });
 });
 
+describe("discoverProject — Valtio", () => {
+  it("records the declared Valtio version for a single-package project", () => {
+    const projectDirectory = path.join(tempDirectory, "valtio-single-package");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "valtio-app",
+        dependencies: { react: "^19.0.0", valtio: "^2.1.4" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.valtioVersion).toBe("^2.1.4");
+    expect(projectInfo.valtioMajorVersion).toBe(2);
+  });
+
+  it("records Valtio declared by a workspace when scanning the monorepo root", () => {
+    const rootDirectory = path.join(tempDirectory, "valtio-monorepo");
+    const appDirectory = path.join(rootDirectory, "apps", "web");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "root", private: true, workspaces: ["apps/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { react: "^19.0.0", valtio: "^1.13.2" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.valtioVersion).toBe("^1.13.2");
+    expect(projectInfo.valtioMajorVersion).toBe(1);
+  });
+
+  it("keeps the Valtio fact null when no analyzed package declares it", () => {
+    const projectDirectory = path.join(tempDirectory, "without-valtio");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "plain-react-app", dependencies: { react: "^19.0.0" } }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.valtioVersion).toBeNull();
+    expect(projectInfo.valtioMajorVersion).toBeNull();
+  });
+});
+
 describe("discoverProject — Next.js static export", () => {
   it('detects `output: "export"` from the scan root\'s own next.config', () => {
     const projectDirectory = path.join(tempDirectory, "static-export-root");

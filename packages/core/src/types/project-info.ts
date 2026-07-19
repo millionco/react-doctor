@@ -19,6 +19,15 @@ export interface ProjectInfo {
   hasReactCompilerLintPlugin?: boolean;
   hasTanStackQuery: boolean;
   /**
+   * The declared `valtio` version spec, or `null` when no package in the
+   * analyzed project declares Valtio. `useSnapshot` has kept the same
+   * render-read contract across Valtio 1 and 2, so presence alone drives the
+   * `valtio` capability and its parsed major-version ladder.
+   */
+  valtioVersion: string | null;
+  /** Parsed major from `valtioVersion`, or `null` when absent/unparseable. */
+  valtioMajorVersion: number | null;
+  /**
    * `true` when the project or a workspace declares a Vite-based SSR runtime
    * such as React Router's Node adapter, Vike, or vite-plugin-ssr.
    */

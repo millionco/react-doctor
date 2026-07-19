@@ -146,6 +146,23 @@ describe("valtio-no-proxy-read-in-render", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("keeps proxy writes nested in assignment patterns for mutation-specific rules", () => {
+    const result = runValtioRule(`
+      import { useSnapshot } from "valtio";
+
+      function Counter({ state, source, values }) {
+        const snapshot = useSnapshot(state);
+        ({ count: state.count } = source);
+        [state.label] = values;
+        for ({ count: state.count } of values) {}
+        return snapshot.count;
+      }
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("reports snapshot reads and stays quiet on the corresponding proxy", () => {
     const result = runValtioRule(`
       import { useSnapshot } from "valtio";
@@ -171,6 +188,19 @@ describe("valtio-no-proxy-read-in-render", () => {
     `);
 
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports a proxy read in a later declarator of the snapshot declaration", () => {
+    const result = runValtioRule(`
+      import { useSnapshot } from "valtio";
+
+      function Counter({ state }) {
+        const snapshot = useSnapshot(state), count = state.count;
+        return <span>{count + snapshot.count}</span>;
+      }
+    `);
+
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet when useSnapshot's result is discarded", () => {
@@ -249,6 +279,36 @@ describe("valtio-no-proxy-read-in-render", () => {
         const snapshot = useSnapshot(state.profile);
         state.profile = nextProfile;
         return <span>{state.profile.name}</span>;
+      }
+    `);
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports through an alias that captured the snapped proxy before replacement", () => {
+    const result = runValtioRule(`
+      import { useSnapshot } from "valtio";
+
+      function Profile({ state, nextProfile }) {
+        const profile = state.profile;
+        const snapshot = useSnapshot(profile);
+        state.profile = nextProfile;
+        return <span>{profile.name + snapshot.name}</span>;
+      }
+    `);
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat an alias of the proxy root as capturing a replaced nested proxy", () => {
+    const result = runValtioRule(`
+      import { useSnapshot } from "valtio";
+
+      function Profile({ state, nextProfile }) {
+        const stateAlias = state;
+        const snapshot = useSnapshot(stateAlias.profile);
+        stateAlias.profile = nextProfile;
+        return <span>{stateAlias.profile.name}</span>;
       }
     `);
 

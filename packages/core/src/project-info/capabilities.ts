@@ -3,8 +3,10 @@ import type { Framework, ProjectInfo } from "../types/index.js";
 import {
   EARLIEST_GATED_PREACT_MAJOR,
   EARLIEST_GATED_REACT_MAJOR,
+  EARLIEST_GATED_VALTIO_MAJOR,
   LATEST_KNOWN_PREACT_MAJOR,
   LATEST_KNOWN_REACT_MAJOR,
+  LATEST_KNOWN_VALTIO_MAJOR,
 } from "../constants.js";
 import { isMajorMinorAtLeast, parseReactMajorMinor, parseTailwindMajorMinor } from "./version.js";
 
@@ -30,7 +32,7 @@ const SSR_FRAMEWORKS: ReadonlySet<Framework> = new Set([
 
 const addMajorLadder = (
   capabilities: Set<Capability>,
-  name: "react" | "preact",
+  name: "react" | "preact" | "valtio",
   major: number | null,
   earliest: number,
   latest: number,
@@ -123,6 +125,14 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   if (project.isPreES2023Target) capabilities.add("pre-es2023");
   if (project.hasReactCompiler) capabilities.add("react-compiler");
   if (project.hasTanStackQuery) capabilities.add("tanstack-query");
+  if (project.valtioVersion !== null) capabilities.add("valtio");
+  addMajorLadder(
+    capabilities,
+    "valtio",
+    project.valtioMajorVersion,
+    EARLIEST_GATED_VALTIO_MAJOR,
+    LATEST_KNOWN_VALTIO_MAJOR,
+  );
   if (project.hasTypeScript) capabilities.add("typescript");
   // Keyed off `preactVersion`, not `framework === "preact"`, so Preact-on-Vite
   // still gets the `preact` bucket.

@@ -45,6 +45,7 @@ export interface WorkspaceFacts {
   expo: DependencyFact;
   next: DependencyFact;
   shopifyFlashList: DependencyFact;
+  valtioVersion: string | null;
   // Any-of predicates over the scan root + every workspace manifest.
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
@@ -132,6 +133,10 @@ const evaluateManifestFacts = (
     const spec = getDependencySpec(packageJson, REANIMATED_DEPENDENCY_NAME);
     if (spec !== null) facts.reanimatedVersion = spec;
   }
+  if (facts.valtioVersion === null) {
+    const spec = getDependencySpec(packageJson, "valtio");
+    if (spec !== null) facts.valtioVersion = spec;
+  }
   facts.hasReactNativeAwarePackage =
     facts.hasReactNativeAwarePackage || isPackageJsonReactNativeAware(packageJson);
   facts.hasReanimatedAwarePackage =
@@ -166,6 +171,7 @@ export const collectWorkspaceFacts = (
     expo: { version: null, sourceDirectory: null },
     next: { version: null, sourceDirectory: null },
     shopifyFlashList: { version: null, sourceDirectory: null },
+    valtioVersion: null,
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
     hasSsrDependency: false,

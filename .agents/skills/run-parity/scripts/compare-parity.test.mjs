@@ -37,10 +37,7 @@ test("compares diagnostics using stable report identities", () => {
       schemaVersion: 1,
       repository,
       report: {
-        diagnostics: [
-          diagnostic,
-          { ...diagnostic, id: undefined, rule: "legacy-example" },
-        ],
+        diagnostics: [diagnostic, { ...diagnostic, id: undefined, rule: "legacy-example" }],
       },
     };
     const candidateRecord = {

@@ -71,7 +71,7 @@ export const remotionNoCssUrlAssets = defineRule({
   id: "remotion-no-css-url-assets",
   title: "CSS URL asset can flicker in Remotion",
   tags: ["react-jsx-only"],
-  requires: ["remotion"],
+  requires: ["remotion:4"],
   severity: "error",
   recommendation:
     "Render the asset with `Img` inside an `AbsoluteFill`, or preload the same source with a hidden `Img` when a CSS mask is required.",

@@ -229,6 +229,22 @@ describe("remotion-deterministic-randomness", () => {
       0,
     );
   });
+
+  it("flags an anonymous imported composition", () => {
+    const sceneSource = `export default () => <div>{Math.random()}</div>;`;
+    const rootDirectory = createRemotionProjectFixture({
+      "scene.tsx": sceneSource,
+      "root.tsx": `import {Composition} from 'remotion'; import Scene from './scene'; export const Root = () => <Composition component={Scene}/>;`,
+    });
+    try {
+      expectDiagnosticCount(remotionDeterministicRandomness, sceneSource, 1, {
+        filename: path.join(rootDirectory, "scene.tsx"),
+        settings: { "react-doctor": { rootDirectory } },
+      });
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("remotion-no-native-media-elements", () => {
@@ -605,6 +621,38 @@ describe("remotion-calculate-metadata-fetch-signal", () => {
       `,
       1,
     );
+  });
+
+  it("flags an imported calculateMetadata function in its source file", () => {
+    const metadataSource = `export const loadMetadata = async () => ({props: await fetch('/data')});`;
+    const rootDirectory = createRemotionProjectFixture({
+      "load-metadata.ts": metadataSource,
+      "root.tsx": `import {Composition} from 'remotion'; import {loadMetadata} from './load-metadata'; export const Root = () => <Composition calculateMetadata={loadMetadata}/>;`,
+    });
+    try {
+      expectDiagnosticCount(remotionCalculateMetadataFetchSignal, metadataSource, 1, {
+        filename: path.join(rootDirectory, "load-metadata.ts"),
+        settings: { "react-doctor": { rootDirectory } },
+      });
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores an imported function not used as calculateMetadata", () => {
+    const metadataSource = `export const loadMetadata = async () => ({props: await fetch('/data')});`;
+    const rootDirectory = createRemotionProjectFixture({
+      "load-metadata.ts": metadataSource,
+      "root.tsx": `import {loadMetadata} from './load-metadata'; export const Root = () => <button onClick={loadMetadata}/>;`,
+    });
+    try {
+      expectDiagnosticCount(remotionCalculateMetadataFetchSignal, metadataSource, 0, {
+        filename: path.join(rootDirectory, "load-metadata.ts"),
+        settings: { "react-doctor": { rootDirectory } },
+      });
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
   });
 
   it("accepts destructured and parameter-member abort signals", () => {

@@ -6,7 +6,7 @@ import { resolveRemotionApi } from "../../utils/resolve-remotion-api.js";
 export const remotionNoModuleScopeDelayRender = defineRule({
   id: "remotion-no-module-scope-delay-render",
   title: "Module-scoped delayRender blocks every composition",
-  requires: ["remotion"],
+  requires: ["remotion:4"],
   severity: "error",
   recommendation:
     "Call `useDelayRender()` inside the component that owns the asynchronous work instead of blocking from module scope.",

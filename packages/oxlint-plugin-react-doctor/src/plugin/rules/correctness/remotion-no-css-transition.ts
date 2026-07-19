@@ -7,7 +7,7 @@ export const remotionNoCssTransition = defineRule({
   id: "remotion-no-css-transition",
   title: "CSS transition is not frame-driven",
   tags: ["react-jsx-only"],
-  requires: ["remotion"],
+  requires: ["remotion:4"],
   severity: "error",
   recommendation:
     "Drive the property from `useCurrentFrame()` with `interpolate()` so every rendered frame is deterministic.",

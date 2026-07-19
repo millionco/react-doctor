@@ -160,6 +160,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-unguarded-browser-global-in-render-or-hook-init",
       "only-export-components",
       "prefer-dynamic-import",
+      "remotion-calculate-metadata-fetch-signal",
       "remotion-deterministic-randomness",
       "remotion-no-css-animation",
       "remotion-no-css-transition",

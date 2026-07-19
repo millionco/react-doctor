@@ -1,8 +1,10 @@
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { createRemotionMetadataOwnershipAnalyzer } from "../../utils/create-remotion-composition-ownership-analyzer.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -145,12 +147,13 @@ export const remotionCalculateMetadataFetchSignal = defineRule({
   id: "remotion-calculate-metadata-fetch-signal",
   title: "calculateMetadata fetch ignores abortSignal",
   tags: ["react-jsx-only"],
-  requires: ["remotion"],
+  requires: ["remotion:4"],
   severity: "error",
   recommendation:
     "Destructure `abortSignal` from the calculateMetadata argument and pass it to direct fetch calls as `{signal: abortSignal}`.",
   create: (context) => {
     const analyzedFunctions = new WeakSet<object>();
+    const isOwnedByCalculateMetadata = createRemotionMetadataOwnershipAnalyzer(context);
     const analyzeFunction = (functionNode: EsTreeNode | null): void => {
       if (!functionNode || analyzedFunctions.has(functionNode)) return;
       analyzedFunctions.add(functionNode);
@@ -158,6 +161,19 @@ export const remotionCalculateMetadataFetchSignal = defineRule({
     };
 
     return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (
+          !isNodeOfType(node.callee, "Identifier") ||
+          node.callee.name !== "fetch" ||
+          !context.scopes.isGlobalReference(node.callee)
+        ) {
+          return;
+        }
+        const functionNode = findEnclosingFunction(node);
+        if (functionNode && isOwnedByCalculateMetadata(functionNode)) {
+          analyzeFunction(functionNode);
+        }
+      },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const apiBinding = resolveRemotionApi(node.name, context.scopes);
         if (apiBinding?.apiName !== "Composition" || apiBinding.moduleSource !== "remotion") return;

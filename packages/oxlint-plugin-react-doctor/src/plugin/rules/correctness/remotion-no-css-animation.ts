@@ -7,7 +7,7 @@ export const remotionNoCssAnimation = defineRule({
   id: "remotion-no-css-animation",
   title: "CSS animation is not frame-driven",
   tags: ["react-jsx-only"],
-  requires: ["remotion"],
+  requires: ["remotion:4"],
   severity: "error",
   recommendation:
     "Drive the property from `useCurrentFrame()` with `interpolate()` so every rendered frame is deterministic.",

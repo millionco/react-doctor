@@ -2,6 +2,7 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { createRemotionRenderEvidenceChecker } from "../../utils/create-remotion-render-evidence-checker.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { functionHasReactComponentEvidence } from "../../utils/function-has-react-component-evidence.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -29,7 +30,7 @@ export const remotionDeterministicRandomness = defineRule({
   id: "remotion-deterministic-randomness",
   title: "Randomness changes between rendered frames",
   tags: ["react-jsx-only"],
-  requires: ["remotion"],
+  requires: ["remotion:4"],
   severity: "error",
   recommendation:
     "Use Remotion's seeded `random(seed)` helper so the same frame produces the same value in every render tab.",
@@ -45,13 +46,14 @@ export const remotionDeterministicRandomness = defineRule({
         ) {
           return;
         }
-        const componentOrHook = findRenderPhaseComponentOrHook(node, context.scopes);
+        const componentOrHook =
+          findRenderPhaseComponentOrHook(node, context.scopes) ?? findEnclosingFunction(node);
         if (!componentOrHook || !renderEvidence.functionHasEvidence(componentOrHook)) return;
         const displayName = componentOrHookDisplayNameForFunction(componentOrHook);
         if (
-          !displayName ||
-          (!isReactHookName(displayName) &&
-            !functionHasReactComponentEvidence(componentOrHook, context.scopes, context.cfg))
+          displayName &&
+          !isReactHookName(displayName) &&
+          !functionHasReactComponentEvidence(componentOrHook, context.scopes, context.cfg)
         ) {
           return;
         }

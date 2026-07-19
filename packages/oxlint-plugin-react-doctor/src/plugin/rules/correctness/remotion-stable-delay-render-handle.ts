@@ -23,7 +23,7 @@ export const remotionStableDelayRenderHandle = defineRule({
   id: "remotion-stable-delay-render-handle",
   title: "delayRender handle is recreated during render",
   tags: ["react-jsx-only"],
-  requires: ["remotion"],
+  requires: ["remotion:4"],
   severity: "error",
   recommendation:
     "Prefer `useDelayRender()`, or initialize `delayRender()` once with `useState(() => delayRender())`.",

@@ -15,7 +15,7 @@ export const remotionNoNativeMediaElements = defineRule({
   id: "remotion-no-native-media-elements",
   title: "Native media element bypasses Remotion loading",
   tags: ["react-jsx-only"],
-  requires: ["remotion"],
+  requires: ["remotion:4"],
   severity: "error",
   recommendation:
     "Use Remotion's media components so rendering waits for assets and seeks media to the requested frame.",

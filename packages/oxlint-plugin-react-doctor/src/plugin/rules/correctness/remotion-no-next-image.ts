@@ -9,7 +9,7 @@ export const remotionNoNextImage = defineRule({
   id: "remotion-no-next-image",
   title: "Next.js Image can flicker in Remotion",
   tags: ["react-jsx-only"],
-  requires: ["remotion"],
+  requires: ["remotion:4"],
   severity: "error",
   recommendation: "Use `Img` from `remotion`, which delays rendering until the image is loaded.",
   create: (context) => {

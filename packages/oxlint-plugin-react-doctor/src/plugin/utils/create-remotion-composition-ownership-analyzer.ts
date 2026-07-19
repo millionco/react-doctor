@@ -19,14 +19,14 @@ import type { RuleContext } from "./rule-context.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
-interface RegisteredCompositionFunctionCache {
+interface CompositionAttributeFunctionCache {
   readonly failedFilenames: Set<string>;
-  registeredFunctionKeys?: ReadonlySet<string>;
+  functionKeys?: ReadonlySet<string>;
 }
 
-const registeredCompositionFunctionCacheBySettings = new WeakMap<
+const compositionAttributeFunctionCacheBySettings = new WeakMap<
   object,
-  RegisteredCompositionFunctionCache
+  Map<string, CompositionAttributeFunctionCache>
 >();
 
 const getFunctionExportKeys = (
@@ -77,9 +77,10 @@ const resolveImportedCompositionFunction = (
   );
 };
 
-const collectRegisteredCompositionFunctionKeys = (
+const collectCompositionAttributeFunctionKeys = (
   context: RuleContext,
   currentProgram: EsTreeNodeOfType<"Program">,
+  attributeName: string,
 ): ReadonlySet<string> | null => {
   const filename = context.filename ? normalizeFilename(context.filename) : "";
   const rootDirectorySetting = getReactDoctorStringSetting(context.settings, "rootDirectory");
@@ -102,22 +103,22 @@ const collectRegisteredCompositionFunctionKeys = (
   );
   if (!projectIndex) return null;
 
-  const registeredFunctionKeys = new Set<string>();
+  const functionKeys = new Set<string>();
   for (const module of projectIndex.modulesByFilePath.values()) {
     walkAst(module.programNode, (candidate) => {
       if (!isNodeOfType(candidate, "JSXOpeningElement")) return;
       const apiBinding = resolveRemotionApi(candidate.name, module.scopes);
       if (apiBinding?.apiName !== "Composition" || apiBinding.moduleSource !== "remotion") return;
-      const componentAttribute = findJsxAttribute(candidate.attributes, "component");
+      const functionAttribute = findJsxAttribute(candidate.attributes, attributeName);
       if (
-        !componentAttribute?.value ||
-        !isNodeOfType(componentAttribute.value, "JSXExpressionContainer") ||
-        !componentAttribute.value.expression
+        !functionAttribute?.value ||
+        !isNodeOfType(functionAttribute.value, "JSXExpressionContainer") ||
+        !functionAttribute.value.expression
       ) {
         return;
       }
       const resolvedFunction = resolveImportedCompositionFunction(
-        componentAttribute.value.expression,
+        functionAttribute.value.expression,
         module,
       );
       if (!resolvedFunction || !isNodeOfType(resolvedFunction.programNode, "Program")) return;
@@ -126,15 +127,16 @@ const collectRegisteredCompositionFunctionKeys = (
         resolvedFunction.programNode,
         resolvedFunction.functionNode,
       )) {
-        registeredFunctionKeys.add(functionKey);
+        functionKeys.add(functionKey);
       }
     });
   }
-  return registeredFunctionKeys;
+  return functionKeys;
 };
 
-export const createRemotionCompositionOwnershipAnalyzer = (
+const createRemotionCompositionAttributeOwnershipAnalyzer = (
   context: RuleContext,
+  attributeName: string,
 ): ((functionNode: EsTreeNode) => boolean) => {
   const settings = context.settings;
   return (functionNode) => {
@@ -153,26 +155,42 @@ export const createRemotionCompositionOwnershipAnalyzer = (
       functionNode,
     );
     if (currentFunctionKeys.length === 0) return false;
-    let cache = registeredCompositionFunctionCacheBySettings.get(settings);
+    let cacheByAttributeName = compositionAttributeFunctionCacheBySettings.get(settings);
+    if (!cacheByAttributeName) {
+      cacheByAttributeName = new Map();
+      compositionAttributeFunctionCacheBySettings.set(settings, cacheByAttributeName);
+    }
+    let cache = cacheByAttributeName.get(attributeName);
     if (!cache) {
       cache = { failedFilenames: new Set() };
-      registeredCompositionFunctionCacheBySettings.set(settings, cache);
+      cacheByAttributeName.set(attributeName, cache);
     }
-    let registeredFunctionKeys = cache.registeredFunctionKeys;
-    if (!registeredFunctionKeys) {
+    let functionKeys = cache.functionKeys;
+    if (!functionKeys) {
       const filename = normalizeFilename(context.filename);
       if (cache.failedFilenames.has(filename)) return false;
-      const collectedFunctionKeys = collectRegisteredCompositionFunctionKeys(
+      const collectedFunctionKeys = collectCompositionAttributeFunctionKeys(
         context,
         currentProgram,
+        attributeName,
       );
       if (!collectedFunctionKeys) {
         cache.failedFilenames.add(filename);
         return false;
       }
-      registeredFunctionKeys = collectedFunctionKeys;
-      cache.registeredFunctionKeys = collectedFunctionKeys;
+      functionKeys = collectedFunctionKeys;
+      cache.functionKeys = collectedFunctionKeys;
     }
-    return currentFunctionKeys.some((functionKey) => registeredFunctionKeys.has(functionKey));
+    return currentFunctionKeys.some((functionKey) => functionKeys.has(functionKey));
   };
 };
+
+export const createRemotionCompositionOwnershipAnalyzer = (
+  context: RuleContext,
+): ((functionNode: EsTreeNode) => boolean) =>
+  createRemotionCompositionAttributeOwnershipAnalyzer(context, "component");
+
+export const createRemotionMetadataOwnershipAnalyzer = (
+  context: RuleContext,
+): ((functionNode: EsTreeNode) => boolean) =>
+  createRemotionCompositionAttributeOwnershipAnalyzer(context, "calculateMetadata");

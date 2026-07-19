@@ -49,6 +49,9 @@ export const EARLIEST_GATED_PREACT_MAJOR = 10;
 // follows the same untrusted-version clamp as React and Preact.
 export const EARLIEST_GATED_VALTIO_MAJOR = 1;
 export const LATEST_KNOWN_VALTIO_MAJOR = 10;
+export const LATEST_KNOWN_REMOTION_MAJOR = 30;
+
+export const EARLIEST_GATED_REMOTION_MAJOR = 4;
 
 // Max chars of an unparseable oxlint stdout we keep for the error
 // message. oxlint prints a multi-line, framed error to stdout when it

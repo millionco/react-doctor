@@ -80,6 +80,8 @@ describe("discoverProject characterization — workspace fixture matrix", () => 
       valtioVersion: null,
       valtioMajorVersion: null,
       hasRemotion: false,
+      remotionVersion: null,
+      remotionMajorVersion: null,
       hasSsrDependency: false,
       preactVersion: null,
       preactMajorVersion: null,
@@ -141,6 +143,8 @@ describe("discoverProject characterization — workspace fixture matrix", () => 
       valtioVersion: null,
       valtioMajorVersion: null,
       hasRemotion: false,
+      remotionVersion: null,
+      remotionMajorVersion: null,
       hasSsrDependency: false,
       preactVersion: null,
       preactMajorVersion: null,
@@ -205,7 +209,32 @@ describe("discoverProject characterization — workspace fixture matrix", () => 
 
     const projectInfo = discoverProject(fixtureDirectory);
     expect(projectInfo.hasRemotion).toBe(true);
+    expect(projectInfo.remotionVersion).toBe("4.0.420");
+    expect(projectInfo.remotionMajorVersion).toBe(4);
     expect(projectInfo.framework).toBe("vite");
+  });
+
+  it("uses the oldest Remotion major across a mixed-version workspace", () => {
+    const fixtureDirectory = writeFixture("mixed-remotion-workspace", [
+      {
+        filePath: "package.json",
+        contents: packageJson({
+          name: "remotion-root",
+          private: true,
+          workspaces: ["apps/*"],
+          dependencies: { remotion: "^4.0.0" },
+        }),
+      },
+      {
+        filePath: "apps/legacy/package.json",
+        contents: packageJson({ name: "legacy-video", dependencies: { remotion: "^3.3.0" } }),
+      },
+    ]);
+
+    const projectInfo = discoverProject(fixtureDirectory);
+    expect(projectInfo.hasRemotion).toBe(true);
+    expect(projectInfo.remotionVersion).toBe("^3.3.0");
+    expect(projectInfo.remotionMajorVersion).toBe(3);
   });
 
   it("nx workspace: react + framework detected from an app project", () => {

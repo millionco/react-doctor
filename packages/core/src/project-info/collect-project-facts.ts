@@ -535,7 +535,7 @@ export const collectWorkspaceFacts = (
   for (const pattern of getWorkspacePatterns(rootDirectory, rootPackageJson)) {
     // Sorted so every fact resolves to the same workspace on repeated
     // analysis of the same tree — raw readdir order isn't stable.
-    const directories = [...resolveWorkspaceDirectories(rootDirectory, pattern)].sort();
+    const directories = resolveWorkspaceDirectories(rootDirectory, pattern).toSorted();
     for (const workspaceDirectory of directories) {
       if (visitedDirectories.has(workspaceDirectory)) continue;
       visitedDirectories.add(workspaceDirectory);

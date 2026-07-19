@@ -314,6 +314,20 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  `import { headers } from "next/headers";
+export const readFuzzRequestId = () => headers().get("x-request-id");`,
+  `import { cookies as readFuzzCookies } from "next/headers";
+export const readFuzzFallbackCookie = () => {
+  const cookieStore = { get: (name) => name } || readFuzzCookies();
+  return cookieStore.get("session");
+};`,
+  `import { cookies as readFuzzCallbackCookies } from "next/headers";
+export const readFuzzCallbackCookie = async () => {
+  let pendingCookies = readFuzzCallbackCookies();
+  const sessions = [0].map(() => pendingCookies.get("session"));
+  pendingCookies = await pendingCookies;
+  return sessions[0];
+};`,
   `export default async function Page() {
   const response = await fetch("https://api.example.com/feed");
   return Response.json(await response.json());

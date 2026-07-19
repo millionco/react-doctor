@@ -1,8 +1,8 @@
+import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
-import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 
 interface SerializeReferenceKeyInput {
   node: EsTreeNode;

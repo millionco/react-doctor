@@ -1741,6 +1741,145 @@ describe("discoverProject — Zod", () => {
   });
 });
 
+describe("discoverProject — MobX", () => {
+  it("detects a direct MobX dependency and parses its major", () => {
+    const projectDirectory = path.join(tempDirectory, "mobx-from-deps");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobx-app",
+        dependencies: { react: "^19.0.0", mobx: "^6.16.1" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.mobxVersion).toBe("^6.16.1");
+    expect(projectInfo.mobxMajorVersion).toBe(6);
+  });
+
+  it("detects MobX core and bindings across workspace packages", () => {
+    const rootDirectory = path.join(tempDirectory, "mobx-monorepo");
+    const coreDirectory = path.join(rootDirectory, "packages", "core");
+    const reactDirectory = path.join(rootDirectory, "packages", "react");
+    fs.mkdirSync(coreDirectory, { recursive: true });
+    fs.mkdirSync(reactDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobx-monorepo",
+        workspaces: ["packages/*"],
+        dependencies: { react: "^19.0.0", "mobx-react-observer": "^2.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(coreDirectory, "package.json"),
+      JSON.stringify({
+        name: "core",
+        dependencies: { mobx: "^6.16.1", "mobx-state-tree": "^7.0.2" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(reactDirectory, "package.json"),
+      JSON.stringify({
+        name: "react",
+        dependencies: { "mobx-react": "^9.2.1", "mobx-react-lite": "^4.1.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.mobxVersion).toBe("^6.16.1");
+    expect(projectInfo.mobxMajorVersion).toBe(6);
+    expect(projectInfo.hasMobxReact).toBe(true);
+    expect(projectInfo.hasMobxReactLite).toBe(true);
+    expect(projectInfo.hasMobxStateTree).toBe(true);
+    expect(projectInfo.hasMobxReactObserver).toBe(true);
+  });
+
+  it("uses the oldest supported MobX major across a mixed-version workspace", () => {
+    const rootDirectory = path.join(tempDirectory, "mixed-mobx-monorepo");
+    const legacyDirectory = path.join(rootDirectory, "apps", "legacy");
+    fs.mkdirSync(legacyDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "mixed-mobx-monorepo",
+        workspaces: ["apps/*"],
+        dependencies: { react: "^19.0.0", mobx: "^6.16.1" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(legacyDirectory, "package.json"),
+      JSON.stringify({ name: "legacy", dependencies: { mobx: "^5.15.7" } }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.mobxVersion).toBe("^5.15.7");
+    expect(projectInfo.mobxMajorVersion).toBe(5);
+  });
+
+  it("fails closed when any workspace has an unparseable MobX declaration", () => {
+    const rootDirectory = path.join(tempDirectory, "unknown-mobx-monorepo");
+    const unknownDirectory = path.join(rootDirectory, "apps", "unknown");
+    fs.mkdirSync(unknownDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "unknown-mobx-monorepo",
+        workspaces: ["apps/*"],
+        dependencies: { react: "^19.0.0", mobx: "^6.16.1" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(unknownDirectory, "package.json"),
+      JSON.stringify({ name: "unknown", dependencies: { mobx: "workspace:*" } }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.mobxVersion).toBe("workspace:*");
+    expect(projectInfo.mobxMajorVersion).toBeNull();
+  });
+
+  it("fails closed when any workspace declares a future MobX major", () => {
+    const rootDirectory = path.join(tempDirectory, "future-mobx-monorepo");
+    const futureDirectory = path.join(rootDirectory, "apps", "future");
+    fs.mkdirSync(futureDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "future-mobx-monorepo",
+        workspaces: ["apps/*"],
+        dependencies: { react: "^19.0.0", mobx: "^6.16.1" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(futureDirectory, "package.json"),
+      JSON.stringify({ name: "future", dependencies: { mobx: "^7.0.0" } }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.mobxVersion).toBe("^7.0.0");
+    expect(projectInfo.mobxMajorVersion).toBe(7);
+  });
+
+  it("resolves a MobX version from a package catalog", () => {
+    const projectDirectory = path.join(tempDirectory, "catalog-mobx");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "catalog-mobx",
+        catalog: { mobx: "^6.16.1" },
+        dependencies: { react: "^19.0.0", mobx: "catalog:" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.mobxVersion).toBe("^6.16.1");
+    expect(projectInfo.mobxMajorVersion).toBe(6);
+  });
+});
+
 describe("formatFrameworkName", () => {
   it("formats known frameworks", () => {
     expect(formatFrameworkName("nextjs")).toBe("Next.js");

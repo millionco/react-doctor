@@ -14,6 +14,12 @@ const baseProject: ProjectInfo = {
   tailwindVersion: null,
   zodVersion: null,
   zodMajorVersion: null,
+  mobxVersion: null,
+  mobxMajorVersion: null,
+  hasMobxReact: false,
+  hasMobxReactLite: false,
+  hasMobxStateTree: false,
+  hasMobxReactObserver: false,
   framework: "vite",
   hasTypeScript: true,
   hasReactCompiler: false,
@@ -275,6 +281,53 @@ describe("buildCapabilities", () => {
     });
     expect(capabilities.has("zod")).toBe(true);
     expect(capabilities.has("zod:4")).toBe(false);
+  });
+
+  it("emits the supported MobX major ladder for versions 4 through 6", () => {
+    for (const mobxMajorVersion of [4, 5, 6]) {
+      const capabilities = buildCapabilities({
+        ...baseProject,
+        mobxVersion: `^${mobxMajorVersion}.0.0`,
+        mobxMajorVersion,
+      });
+      expect(capabilities.has("mobx")).toBe(true);
+      expect(capabilities.has("mobx:4")).toBe(true);
+      expect(capabilities.has(`mobx:${mobxMajorVersion}`)).toBe(true);
+    }
+
+    const futureVersion = buildCapabilities({
+      ...baseProject,
+      mobxVersion: "^7.0.0",
+      mobxMajorVersion: 7,
+    });
+    expect(futureVersion.has("mobx")).toBe(true);
+    expect(futureVersion.has("mobx:4")).toBe(false);
+  });
+
+  it("keeps unparseable MobX declarations present but version-inapplicable", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      mobxVersion: "workspace:*",
+      mobxMajorVersion: null,
+    });
+    expect(capabilities.has("mobx")).toBe(true);
+    expect(capabilities.has("mobx:4")).toBe(false);
+  });
+
+  it("emits binding capabilities without inventing a MobX core version", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      hasMobxReact: true,
+      hasMobxReactLite: true,
+      hasMobxStateTree: true,
+      hasMobxReactObserver: true,
+    });
+    expect(capabilities.has("mobx")).toBe(true);
+    expect(capabilities.has("mobx-react")).toBe(true);
+    expect(capabilities.has("mobx-react-lite")).toBe(true);
+    expect(capabilities.has("mobx-state-tree")).toBe(true);
+    expect(capabilities.has("mobx-react-observer")).toBe(true);
+    expect(capabilities.has("mobx:4")).toBe(false);
   });
 
   it("emits `nextjs:15` capability for Next.js 15+ projects", () => {

@@ -13,6 +13,14 @@ export interface ProjectInfo {
   zodVersion: string | null;
   /** Parsed major from `zodVersion`, or `null` when absent/unparseable. Mirrors `reactMajorVersion`. */
   zodMajorVersion: number | null;
+  /** Declared MobX core version spec. Optional so existing `ProjectInfo` consumers remain source-compatible. */
+  mobxVersion?: string | null;
+  /** Parsed major from `mobxVersion`, or `null` when absent/unparseable. */
+  mobxMajorVersion?: number | null;
+  hasMobxReact?: boolean;
+  hasMobxReactLite?: boolean;
+  hasMobxStateTree?: boolean;
+  hasMobxReactObserver?: boolean;
   framework: Framework;
   hasTypeScript: boolean;
   hasReactCompiler: boolean;

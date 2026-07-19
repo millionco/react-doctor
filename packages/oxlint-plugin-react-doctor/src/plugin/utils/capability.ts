@@ -40,6 +40,11 @@ export type Capability =
   | "tailwind:3.4"
   | "zod"
   | "zod:4"
+  | "mobx"
+  | "mobx-react"
+  | "mobx-react-lite"
+  | "mobx-state-tree"
+  | "mobx-react-observer"
   | "typescript"
   | "react-compiler"
   | "tanstack-query"
@@ -47,10 +52,11 @@ export type Capability =
   | "pre-es2023"
   // Major-version ladders (`react:17`…) plus minor-versioned gates like
   // `react:19.2` — both parse as numeric template members. Bounds live in
-  // core's constants (`EARLIEST_GATED_*` / `LATEST_KNOWN_*`).
+  // core's constants (`EARLIEST_GATED_*` / `LATEST_*`).
   | `react:${number}`
   | `preact:${number}`
-  | `valtio:${number}`;
+  | `valtio:${number}`
+  | `mobx:${number}`;
 
 // The shape rules use to query the project's capability set — implemented
 // by core (over the memoized set) and by `hasCapability` (over the

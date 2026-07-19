@@ -95,6 +95,12 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     tailwindVersion: null,
     zodVersion: null,
     zodMajorVersion: null,
+    mobxVersion: null,
+    mobxMajorVersion: null,
+    hasMobxReact: false,
+    hasMobxReactLite: false,
+    hasMobxStateTree: false,
+    hasMobxReactObserver: false,
     framework: "unknown",
     hasTypeScript: hasOwnTsConfig,
     hasReactCompiler: false,
@@ -272,6 +278,12 @@ export const discoverProject = (directory: string): ProjectInfo => {
     packageName: "valtio",
     version: workspaceFacts.valtioVersion,
   });
+  const mobxVersion = resolveCatalogBackedDependencyVersion({
+    rootDirectory: directory,
+    rootPackageJson: packageJson,
+    packageName: "mobx",
+    version: workspaceFacts.mobx.version,
+  });
   const preactVersion = getPreactVersion(packageJson);
   const isPreES2023Target = hasTypeScript && detectPreES2023Target(directory);
 
@@ -283,6 +295,12 @@ export const discoverProject = (directory: string): ProjectInfo => {
     tailwindVersion,
     zodVersion,
     zodMajorVersion: zodVersion === null ? null : getLowestDependencyMajor(zodVersion),
+    mobxVersion,
+    mobxMajorVersion: mobxVersion === null ? null : getLowestDependencyMajor(mobxVersion),
+    hasMobxReact: workspaceFacts.hasMobxReact,
+    hasMobxReactLite: workspaceFacts.hasMobxReactLite,
+    hasMobxStateTree: workspaceFacts.hasMobxStateTree,
+    hasMobxReactObserver: workspaceFacts.hasMobxReactObserver,
     framework,
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),

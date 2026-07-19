@@ -1,11 +1,13 @@
 import * as path from "node:path";
 import type { DependencyInfo, Framework, PackageJson } from "../types/index.js";
+import { LATEST_SUPPORTED_MOBX_MAJOR } from "../constants.js";
 import {
   EMPTY_DEPENDENCY_INFO,
   extractDependencyInfo,
   getDependencyDeclaration,
   getDependencySpec,
   REACT_SECTIONS,
+  resolveCatalogBackedDependencyVersion,
   resolveCatalogVersion,
   TAILWIND_ZOD_SECTIONS,
 } from "./dependencies.js";
@@ -16,9 +18,13 @@ import { frameworkMergeRank } from "./detectors.js";
 import { isPackageJsonReactNativeAware, isPackageJsonReanimatedAware } from "./rn-metadata.js";
 import { isPackageJsonSsrAware } from "./ssr-metadata.js";
 import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./workspaces.js";
-import { parseReactMajor } from "./version.js";
+import { getLowestDependencyMajor, parseReactMajor } from "./version.js";
 
 const REANIMATED_DEPENDENCY_NAME = "react-native-reanimated";
+const MOBX_REACT_PACKAGE_NAME = "mobx-react";
+const MOBX_REACT_LITE_PACKAGE_NAME = "mobx-react-lite";
+const MOBX_STATE_TREE_PACKAGE_NAME = "mobx-state-tree";
+const MOBX_REACT_OBSERVER_PACKAGE_NAME = "mobx-react-observer";
 
 // A dependency's declared spec plus the directory whose manifest supplied
 // it — the scan root, or the workspace package that declares the package.
@@ -46,6 +52,11 @@ export interface WorkspaceFacts {
   next: DependencyFact;
   shopifyFlashList: DependencyFact;
   valtioVersion: string | null;
+  mobx: DependencyFact;
+  hasMobxReact: boolean;
+  hasMobxReactLite: boolean;
+  hasMobxStateTree: boolean;
+  hasMobxReactObserver: boolean;
   // Any-of predicates over the scan root + every workspace manifest.
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
@@ -112,6 +123,19 @@ const shouldReplaceReactVersion = (currentVersion: string | null, nextVersion: s
   return nextMajor < currentMajor;
 };
 
+const shouldReplaceMobxFact = (currentFact: DependencyFact, nextFact: DependencyFact): boolean => {
+  if (currentFact.version === null) return true;
+  if (nextFact.version === null) return false;
+
+  const currentMajor = getLowestDependencyMajor(currentFact.version);
+  const nextMajor = getLowestDependencyMajor(nextFact.version);
+  if (currentMajor === null) return false;
+  if (nextMajor === null) return true;
+  if (currentMajor > LATEST_SUPPORTED_MOBX_MAJOR) return false;
+  if (nextMajor > LATEST_SUPPORTED_MOBX_MAJOR) return true;
+  return nextMajor < currentMajor;
+};
+
 const evaluateManifestFacts = (
   facts: WorkspaceFacts,
   packageJson: PackageJson,
@@ -129,6 +153,30 @@ const evaluateManifestFacts = (
     const spec = getDependencySpec(packageJson, SHOPIFY_FLASH_LIST_PACKAGE_NAME);
     if (spec !== null) facts.shopifyFlashList = { version: spec, sourceDirectory: directory };
   }
+  const mobxSpec = getDependencySpec(packageJson, "mobx");
+  if (mobxSpec !== null) {
+    const nextMobxFact = {
+      version: resolveCatalogBackedDependencyVersion({
+        rootDirectory: directory,
+        rootPackageJson: packageJson,
+        packageName: "mobx",
+        version: mobxSpec,
+      }),
+      sourceDirectory: directory,
+    };
+    if (shouldReplaceMobxFact(facts.mobx, nextMobxFact)) {
+      facts.mobx = nextMobxFact;
+    }
+  }
+  facts.hasMobxReact =
+    facts.hasMobxReact || getDependencySpec(packageJson, MOBX_REACT_PACKAGE_NAME) !== null;
+  facts.hasMobxReactLite =
+    facts.hasMobxReactLite || getDependencySpec(packageJson, MOBX_REACT_LITE_PACKAGE_NAME) !== null;
+  facts.hasMobxStateTree =
+    facts.hasMobxStateTree || getDependencySpec(packageJson, MOBX_STATE_TREE_PACKAGE_NAME) !== null;
+  facts.hasMobxReactObserver =
+    facts.hasMobxReactObserver ||
+    getDependencySpec(packageJson, MOBX_REACT_OBSERVER_PACKAGE_NAME) !== null;
   if (facts.reanimatedVersion === null) {
     const spec = getDependencySpec(packageJson, REANIMATED_DEPENDENCY_NAME);
     if (spec !== null) facts.reanimatedVersion = spec;
@@ -172,6 +220,11 @@ export const collectWorkspaceFacts = (
     next: { version: null, sourceDirectory: null },
     shopifyFlashList: { version: null, sourceDirectory: null },
     valtioVersion: null,
+    mobx: { version: null, sourceDirectory: null },
+    hasMobxReact: false,
+    hasMobxReactLite: false,
+    hasMobxStateTree: false,
+    hasMobxReactObserver: false,
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
     hasSsrDependency: false,

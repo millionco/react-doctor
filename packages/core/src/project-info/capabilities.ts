@@ -1,12 +1,14 @@
 import type { Capability } from "oxlint-plugin-react-doctor";
 import type { Framework, ProjectInfo } from "../types/index.js";
 import {
+  EARLIEST_GATED_MOBX_MAJOR,
   EARLIEST_GATED_PREACT_MAJOR,
   EARLIEST_GATED_REACT_MAJOR,
   EARLIEST_GATED_VALTIO_MAJOR,
   LATEST_KNOWN_PREACT_MAJOR,
   LATEST_KNOWN_REACT_MAJOR,
   LATEST_KNOWN_VALTIO_MAJOR,
+  LATEST_SUPPORTED_MOBX_MAJOR,
 } from "../constants.js";
 import { isMajorMinorAtLeast, parseReactMajorMinor, parseTailwindMajorMinor } from "./version.js";
 
@@ -32,7 +34,7 @@ const SSR_FRAMEWORKS: ReadonlySet<Framework> = new Set([
 
 const addMajorLadder = (
   capabilities: Set<Capability>,
-  name: "react" | "preact" | "valtio",
+  name: "react" | "preact" | "valtio" | "mobx",
   major: number | null,
   earliest: number,
   latest: number,
@@ -122,6 +124,33 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   }
   if (project.zodVersion !== null) capabilities.add("zod");
   if (project.zodMajorVersion !== null && project.zodMajorVersion >= 4) capabilities.add("zod:4");
+  if (
+    (project.mobxVersion !== undefined && project.mobxVersion !== null) ||
+    project.hasMobxReact === true ||
+    project.hasMobxReactLite === true ||
+    project.hasMobxStateTree === true ||
+    project.hasMobxReactObserver === true
+  ) {
+    capabilities.add("mobx");
+  }
+  if (project.hasMobxReact === true) capabilities.add("mobx-react");
+  if (project.hasMobxReactLite === true) capabilities.add("mobx-react-lite");
+  if (project.hasMobxStateTree === true) capabilities.add("mobx-state-tree");
+  if (project.hasMobxReactObserver === true) capabilities.add("mobx-react-observer");
+  if (
+    project.mobxMajorVersion !== undefined &&
+    project.mobxMajorVersion !== null &&
+    project.mobxMajorVersion >= EARLIEST_GATED_MOBX_MAJOR &&
+    project.mobxMajorVersion <= LATEST_SUPPORTED_MOBX_MAJOR
+  ) {
+    addMajorLadder(
+      capabilities,
+      "mobx",
+      project.mobxMajorVersion,
+      EARLIEST_GATED_MOBX_MAJOR,
+      LATEST_SUPPORTED_MOBX_MAJOR,
+    );
+  }
   if (project.isPreES2023Target) capabilities.add("pre-es2023");
   if (project.hasReactCompiler) capabilities.add("react-compiler");
   if (project.hasTanStackQuery) capabilities.add("tanstack-query");

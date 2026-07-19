@@ -372,6 +372,34 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("does not match notifiers from mutually exclusive nested branches", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          unsafe: (isOuterEnabled, shouldMutate) => {
+            if (isOuterEnabled) {
+              const items = get().items;
+              if (shouldMutate) {
+                items.push("next");
+              } else {
+                set({ items: [...items] });
+              }
+            }
+          },
+          safe: (isOuterEnabled, shouldMutate) => {
+            if (isOuterEnabled && shouldMutate) {
+              const items = get().items;
+              items.push("next");
+              set({ items: [...items] });
+            }
+          },
+        }));
+      `,
+      1,
+    );
+  });
+
   it("abstains from unproven snapshot replacements", () => {
     expectDiagnosticCount(
       `

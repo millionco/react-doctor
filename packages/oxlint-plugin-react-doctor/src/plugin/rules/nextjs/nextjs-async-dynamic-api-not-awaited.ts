@@ -81,6 +81,17 @@ const COERCIVE_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   "parseInt",
 ]);
 const SITEMAP_FILE_PATTERN = new RegExp(`^sitemap\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`);
+const ARRAY_CARDINALITY_MUTATION_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "copyWithin",
+  "fill",
+  "pop",
+  "push",
+  "reverse",
+  "shift",
+  "sort",
+  "splice",
+  "unshift",
+]);
 
 const MESSAGE =
   "This Next.js request API returns a Promise. Synchronous property access warns in Next.js 15 and is removed in Next.js 16; await it or unwrap it with React `use()`.";
@@ -2017,23 +2028,62 @@ const getDirectInvocationSites = (
         context.scopes.isGlobalReference(node))
     );
   };
+  const symbolHasCardinalityMutationBefore = (
+    symbol: SymbolDescriptor,
+    referenceNode: EsTreeNode,
+  ): boolean => {
+    const referenceStart = getNodeStartIndex(referenceNode);
+    return symbol.references.some((reference) => {
+      if (getNodeStartIndex(reference.identifier) >= referenceStart) return false;
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const memberExpression = referenceRoot.parent;
+      if (
+        !memberExpression ||
+        !isNodeOfType(memberExpression, "MemberExpression") ||
+        memberExpression.object !== referenceRoot
+      ) {
+        return false;
+      }
+      const parent = memberExpression.parent;
+      if (parent && isNodeOfType(parent, "CallExpression") && parent.callee === memberExpression) {
+        const methodName = getResolvedStaticPropertyName(context, memberExpression);
+        return Boolean(methodName && ARRAY_CARDINALITY_MUTATION_METHOD_NAMES.has(methodName));
+      }
+      return Boolean(
+        parent &&
+        ((isNodeOfType(parent, "AssignmentExpression") && parent.left === memberExpression) ||
+          (isNodeOfType(parent, "UpdateExpression") && parent.argument === memberExpression) ||
+          (isNodeOfType(parent, "UnaryExpression") &&
+            parent.operator === "delete" &&
+            parent.argument === memberExpression)),
+      );
+    });
+  };
   const getKnownArrayCardinality = (
     expression: EsTreeNode,
+    referenceNode: EsTreeNode,
     visitedSymbolIds: ReadonlySet<number> = new Set(),
   ): KnownArrayCardinality | null => {
     const node = stripParenExpression(expression);
     if (isNodeOfType(node, "Identifier")) {
       const symbol = resolveConstIdentifierAlias(node, context.scopes);
-      if (!symbol?.initializer || visitedSymbolIds.has(symbol.id)) return null;
+      if (
+        !symbol?.initializer ||
+        visitedSymbolIds.has(symbol.id) ||
+        symbolHasCardinalityMutationBefore(symbol, referenceNode)
+      ) {
+        return null;
+      }
       const nextVisitedSymbolIds = new Set(visitedSymbolIds);
       nextVisitedSymbolIds.add(symbol.id);
-      return getKnownArrayCardinality(symbol.initializer, nextVisitedSymbolIds);
+      return getKnownArrayCardinality(symbol.initializer, referenceNode, nextVisitedSymbolIds);
     }
     if (isNodeOfType(node, "Literal") && typeof node.value === "string") {
+      const codePointCount = Array.from(node.value).length;
       return {
-        comparableElementCount: node.value.length,
-        length: node.value.length,
-        presentElementCount: node.value.length,
+        comparableElementCount: codePointCount,
+        length: codePointCount,
+        presentElementCount: codePointCount,
       };
     }
     if (isNodeOfType(node, "ArrayExpression")) {
@@ -2048,7 +2098,11 @@ const getDirectInvocationSites = (
           continue;
         }
         if (isNodeOfType(element, "SpreadElement")) {
-          const spreadCardinality = getKnownArrayCardinality(element.argument, visitedSymbolIds);
+          const spreadCardinality = getKnownArrayCardinality(
+            element.argument,
+            referenceNode,
+            visitedSymbolIds,
+          );
           if (!spreadCardinality) return null;
           cardinality.length += spreadCardinality.length;
           cardinality.presentElementCount += spreadCardinality.length;
@@ -2108,7 +2162,11 @@ const getDirectInvocationSites = (
     if (methodName === "from") {
       const sourceArgument = node.arguments?.[0];
       if (!sourceArgument || isNodeOfType(sourceArgument, "SpreadElement")) return null;
-      const sourceCardinality = getKnownArrayCardinality(sourceArgument, visitedSymbolIds);
+      const sourceCardinality = getKnownArrayCardinality(
+        sourceArgument,
+        referenceNode,
+        visitedSymbolIds,
+      );
       return sourceCardinality
         ? {
             comparableElementCount: sourceCardinality.comparableElementCount,
@@ -2145,14 +2203,14 @@ const getDirectInvocationSites = (
       const sourceArgument = invocationSite.arguments[0];
       const sourceCardinality =
         sourceArgument && !isNodeOfType(sourceArgument, "SpreadElement")
-          ? getKnownArrayCardinality(sourceArgument)
+          ? getKnownArrayCardinality(sourceArgument, invocationSite)
           : null;
       return sourceCardinality
         ? sourceCardinality.length > 0
         : !options.requireGuaranteedCallbackExecution;
     }
     const receiver = stripParenExpression(callee.object);
-    const cardinality = getKnownArrayCardinality(receiver);
+    const cardinality = getKnownArrayCardinality(receiver, invocationSite);
     if (cardinality) {
       if (methodName === "reduce" || methodName === "reduceRight") {
         return invocationSite.arguments.slice(1).length > 0
@@ -2410,6 +2468,28 @@ const hasEscapingThrowBeforeNode = (context: RuleContext, node: EsTreeNode): boo
   return hasPriorThrow;
 };
 
+const hasEscapingCallBeforeNode = (context: RuleContext, node: EsTreeNode): boolean => {
+  const owner = context.cfg.enclosingFunction(node);
+  if (!owner) return false;
+  const nodeStart = getNodeStartIndex(node);
+  let hasPriorCall = false;
+  walkAst(owner, (candidate) => {
+    if (candidate !== owner && isFunctionLike(candidate)) return false;
+    if (
+      (isNodeOfType(candidate, "CallExpression") || isNodeOfType(candidate, "NewExpression")) &&
+      getNodeStartIndex(candidate) < nodeStart &&
+      isNodeReachableWithinFunction(candidate, context) &&
+      !expressionIsStaticallySkipped(context, candidate) &&
+      !findCaughtTryStatement(candidate) &&
+      !isNextHeadersDynamicCall(context, candidate) &&
+      throwEscapesBeforeNode(candidate, node)
+    ) {
+      hasPriorCall = true;
+    }
+  });
+  return hasPriorCall;
+};
+
 const sourceOwnerMayEscapeWithPending = (
   context: RuleContext,
   symbol: SymbolDescriptor,
@@ -2427,6 +2507,18 @@ const sourceOwnerMayEscapeWithPending = (
       getNodeStartIndex(candidate) > sourceStart &&
       isNodeReachableWithinFunction(candidate, context) &&
       !expressionIsStaticallySkipped(context, candidate) &&
+      throwEscapesBeforeNode(candidate, owner) &&
+      !flow.isClearedBefore(candidate)
+    ) {
+      mayEscapeWithPending = true;
+    }
+    if (
+      (isNodeOfType(candidate, "CallExpression") || isNodeOfType(candidate, "NewExpression")) &&
+      getNodeStartIndex(candidate) > sourceStart &&
+      isNodeReachableWithinFunction(candidate, context) &&
+      !expressionIsStaticallySkipped(context, candidate) &&
+      !findCaughtTryStatement(candidate) &&
+      !isNextHeadersDynamicCall(context, candidate) &&
       throwEscapesBeforeNode(candidate, owner) &&
       !flow.isClearedBefore(candidate)
     ) {
@@ -2457,13 +2549,14 @@ const getExecutionSitesInOwner = (
   const nextVisitedFunctionNodes = new Set(visitedFunctionNodes);
   nextVisitedFunctionNodes.add(nodeOwner);
   const executionPhase = getAsyncExecutionPhase(context, node);
-  const hasPriorEscapingThrow =
-    options.requiresGuaranteedExecution && hasEscapingThrowBeforeNode(context, node);
+  const hasPriorEscapingInterruption =
+    options.requiresGuaranteedExecution &&
+    (hasEscapingThrowBeforeNode(context, node) || hasEscapingCallBeforeNode(context, node));
   return getDirectInvocationSites(context, nodeOwner, {
     includeCallbackExecutionSites: true,
     requireGuaranteedCallbackExecution: options.requiresGuaranteedExecution,
   }).flatMap((invocationSite) => {
-    if (hasPriorEscapingThrow && caughtInvocationMayContinue(invocationSite)) return [];
+    if (hasPriorEscapingInterruption && caughtInvocationMayContinue(invocationSite)) return [];
     if (
       !invocationWaitsForCompletion(invocationSite) &&
       (options.requiresGuaranteedExecution
@@ -2524,27 +2617,39 @@ const projectGuaranteedClearingNodes = (
       isNodeReachableWithinFunction(clearingNode, context) &&
       !expressionIsStaticallySkipped(context, clearingNode),
   );
-  const conditionalBranches = new Map<
-    EsTreeNode,
-    { hasAlternate: boolean; hasConsequent: boolean }
-  >();
-  for (const clearingNode of reachableClearingNodes) {
-    const branch = findConditionalClearingBranch(clearingNode);
-    if (!branch) continue;
-    const branches = conditionalBranches.get(branch.conditionalRoot) ?? {
-      hasAlternate: false,
-      hasConsequent: false,
-    };
-    if (branch.isConsequent) branches.hasConsequent = true;
-    else branches.hasAlternate = true;
-    conditionalBranches.set(branch.conditionalRoot, branches);
+  const combinedClearingNodes = [...reachableClearingNodes];
+  const combinedClearingNodeSet = new Set(combinedClearingNodes);
+  let didCombineBranch = true;
+  while (didCombineBranch) {
+    didCombineBranch = false;
+    const conditionalBranches = new Map<
+      EsTreeNode,
+      { hasAlternate: boolean; hasConsequent: boolean }
+    >();
+    for (const clearingNode of combinedClearingNodes) {
+      const branch = findConditionalClearingBranch(clearingNode);
+      if (!branch) continue;
+      const branches = conditionalBranches.get(branch.conditionalRoot) ?? {
+        hasAlternate: false,
+        hasConsequent: false,
+      };
+      if (branch.isConsequent) branches.hasConsequent = true;
+      else branches.hasAlternate = true;
+      conditionalBranches.set(branch.conditionalRoot, branches);
+    }
+    for (const [conditionalRoot, branches] of conditionalBranches) {
+      if (
+        !branches.hasConsequent ||
+        !branches.hasAlternate ||
+        combinedClearingNodeSet.has(conditionalRoot)
+      ) {
+        continue;
+      }
+      combinedClearingNodeSet.add(conditionalRoot);
+      combinedClearingNodes.push(conditionalRoot);
+      didCombineBranch = true;
+    }
   }
-  const combinedClearingNodes = [
-    ...reachableClearingNodes,
-    ...Array.from(conditionalBranches)
-      .filter(([, branches]) => branches.hasConsequent && branches.hasAlternate)
-      .map(([conditionalRoot]) => conditionalRoot),
-  ];
   return combinedClearingNodes.flatMap((clearingNode) =>
     getExecutionSitesInOwner(context, clearingNode, targetOwner, {
       requiresGuaranteedExecution: true,

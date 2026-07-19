@@ -54,3 +54,25 @@ export const readAfterNamedHookTaint = () => {
   });
   return cookieStore.get("session");
 };
+
+export const readAfterMutatedArrayTaint = () => {
+  let cookieStore = { get: (name: string) => name };
+  const values: number[] = [];
+  values.push(0);
+  values.map(() => {
+    cookieStore = cookies();
+  });
+  return cookieStore.get("session");
+};
+
+export const readAfterCaughtUnknownCall = () => {
+  let cookieStore = cookies();
+  const clear = () => {
+    mayThrow();
+    cookieStore = { get: (name: string) => name };
+  };
+  try {
+    clear();
+  } catch {}
+  return cookieStore.get("session");
+};

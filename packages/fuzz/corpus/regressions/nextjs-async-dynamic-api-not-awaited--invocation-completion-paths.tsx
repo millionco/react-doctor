@@ -84,3 +84,24 @@ export const readAfterEquivalentDenseClears = () => {
   });
   return cookieStore.get("session");
 };
+
+export const readAfterNestedBranchClear = (first: boolean, second: boolean) => {
+  let cookieStore = cookies();
+  const clear = () => {
+    if (first) {
+      if (second) cookieStore = { get: (name: string) => name };
+      else cookieStore = { get: (name: string) => name };
+    } else cookieStore = { get: (name: string) => name };
+  };
+  clear();
+  return cookieStore.get("session");
+};
+
+export const readAfterSingleCodePointCallbacks = () => {
+  let cookieStore = { get: (name: string) => name };
+  [..."💩"].reduce(() => {
+    cookieStore = cookies();
+    return "";
+  });
+  return cookieStore.get("session");
+};

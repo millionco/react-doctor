@@ -1740,6 +1740,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-no-async-use-frame": {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame(async () => load());',
   },
+  "r3f-no-allocation-in-pointer-move": {
+    code: 'import "@react-three/fiber"; import { Vector3 } from "three"; const Scene = () => <mesh onPointerMove={() => new Vector3()} />;',
+  },
   "r3f-no-clone-in-use-frame": {
     code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = () => { const mesh = useRef(null); useFrame(() => mesh.current.position.clone()); };',
   },
@@ -1748,6 +1751,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "r3f-no-duplicate-primitive-object": {
     code: 'import "@react-three/fiber"; const Scene = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;',
+  },
+  "r3f-no-deep-use-three-selector": {
+    code: 'import { useThree } from "@react-three/fiber"; const zoom = useThree((state) => state.camera.zoom);',
   },
   "r3f-no-fresh-use-three-selector": {
     code: 'import { useThree } from "@react-three/fiber"; const pair = useThree((state) => [state.camera, state.scene]);',
@@ -1776,6 +1782,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-no-mutate-loader-cache": {
     code: 'import { useGLTF } from "@react-three/drei"; const Scene = () => { const { nodes } = useGLTF(url); nodes.Mesh.geometry.center(); return null; };',
   },
+  "r3f-no-manual-canvas-resize": {
+    code: 'import { useThree } from "@react-three/fiber"; const Scene = () => { const gl = useThree((state) => state.gl); window.addEventListener("resize", () => gl.setSize(1, 1)); return null; };',
+  },
+  "r3f-no-mutating-pointer-event-data": {
+    code: 'import "@react-three/fiber"; const Scene = () => <mesh onPointerMove={(event) => event.point.normalize()} />;',
+  },
   "r3f-no-new-in-use-frame": {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame(() => new Vector3());',
   },
@@ -1793,6 +1805,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "r3f-no-state-in-use-frame": {
     code: 'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [count, setCount] = useState(0); useFrame(() => setCount(count + 1)); };',
+  },
+  "r3f-no-state-in-pointer-move": {
+    code: 'import { useState } from "react"; import "@react-three/fiber"; const Scene = () => { const [point, setPoint] = useState(null); return <mesh onPointerMove={(event) => setPoint(event.point)} />; };',
   },
   "r3f-no-sync-readback-in-use-frame": {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame(({ gl }) => gl.readRenderTargetPixels(target, 0, 0, 1, 1, pixels));',
@@ -1826,6 +1841,15 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "r3f-webgpu-canvas-prop-compatibility": {
     code: 'import { Canvas } from "@react-three/fiber/webgpu"; const Scene = () => <Canvas gl={{ antialias: true }} />;',
+  },
+  "r3f-webgpu-no-legacy-effect-composer": {
+    code: 'import { Canvas } from "@react-three/fiber/webgpu"; import { EffectComposer } from "@react-three/postprocessing"; const Scene = () => <Canvas><EffectComposer /></Canvas>;',
+  },
+  "r3f-webgpu-no-legacy-material-api": {
+    code: 'import { Canvas } from "@react-three/fiber/webgpu"; const Scene = () => <Canvas><shaderMaterial /></Canvas>;',
+  },
+  "three-require-controls-cleanup": {
+    code: 'import { useMemo } from "react"; import { OrbitControls } from "three/addons/controls/OrbitControls.js"; import "@react-three/fiber"; const Scene = ({ camera, element }) => { const controls = useMemo(() => new OrbitControls(camera, element), [camera, element]); return <primitive object={controls} />; };',
   },
   "r3f-webgpu-no-gl-state": {
     code: 'import { useThree } from "@react-three/fiber/webgpu"; const renderer = useThree((state) => state.gl);',

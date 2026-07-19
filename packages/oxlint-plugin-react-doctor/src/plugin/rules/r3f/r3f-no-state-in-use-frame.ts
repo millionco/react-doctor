@@ -20,7 +20,7 @@ interface StateSetterBinding {
   stateSymbolId: number | null;
 }
 
-const resolveStateSetterBinding = (
+export const resolveStateSetterBinding = (
   identifier: EsTreeNode,
   scopes: ScopeAnalysis,
 ): StateSetterBinding | null => {
@@ -277,7 +277,7 @@ const branchGuaranteesValueChange = (
   return branchGuaranteesValueChange(symbol.initializer, didTestPass, scopes, visitedSymbolIds);
 };
 
-const isGuardedStateTransition = (
+export const isGuardedStateTransition = (
   setterCall: EsTreeNode,
   callback: EsTreeNode,
   scopes: ScopeAnalysis,

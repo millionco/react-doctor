@@ -513,8 +513,10 @@ import { queryStableQueryClient } from "./rules/tanstack-query/query-stable-quer
 import { r3fCapDevicePixelRatio } from "./rules/r3f/r3f-cap-device-pixel-ratio.js";
 import { r3fLimitShadowedPointLights } from "./rules/r3f/r3f-limit-shadowed-point-lights.js";
 import { r3fNoAdvancingClockInUseFrame } from "./rules/r3f/r3f-no-advancing-clock-in-use-frame.js";
+import { r3fNoAllocationInPointerMove } from "./rules/r3f/r3f-no-allocation-in-pointer-move.js";
 import { r3fNoAsyncUseFrame } from "./rules/r3f/r3f-no-async-use-frame.js";
 import { r3fNoCloneInUseFrame } from "./rules/r3f/r3f-no-clone-in-use-frame.js";
+import { r3fNoDeepUseThreeSelector } from "./rules/r3f/r3f-no-deep-use-three-selector.js";
 import { r3fNoDisposeLoaderCache } from "./rules/r3f/r3f-no-dispose-loader-cache.js";
 import { r3fNoDuplicatePrimitiveObject } from "./rules/r3f/r3f-no-duplicate-primitive-object.js";
 import { r3fNoExtendInRender } from "./rules/r3f/r3f-no-extend-in-render.js";
@@ -525,11 +527,14 @@ import { r3fNoImperativeAttachOfManagedRef } from "./rules/r3f/r3f-no-imperative
 import { r3fNoInlinePrimitiveObject } from "./rules/r3f/r3f-no-inline-primitive-object.js";
 import { r3fNoInlineResourceProp } from "./rules/r3f/r3f-no-inline-resource-prop.js";
 import { r3fNoInternalImports } from "./rules/r3f/r3f-no-internal-imports.js";
+import { r3fNoManualCanvasResize } from "./rules/r3f/r3f-no-manual-canvas-resize.js";
 import { r3fNoMutateLoaderCache } from "./rules/r3f/r3f-no-mutate-loader-cache.js";
+import { r3fNoMutatingPointerEventData } from "./rules/r3f/r3f-no-mutating-pointer-event-data.js";
 import { r3fNoNewInUseFrame } from "./rules/r3f/r3f-no-new-in-use-frame.js";
 import { r3fNoNullLoaderInput } from "./rules/r3f/r3f-no-null-loader-input.js";
 import { r3fNoObjectPointerCapture } from "./rules/r3f/r3f-no-object-pointer-capture.js";
 import { r3fNoRecursiveRafWithUseFrame } from "./rules/r3f/r3f-no-recursive-raf-with-use-frame.js";
+import { r3fNoStateInPointerMove } from "./rules/r3f/r3f-no-state-in-pointer-move.js";
 import { r3fNoStateInUseFrame } from "./rules/r3f/r3f-no-state-in-use-frame.js";
 import { r3fNoSyncReadbackInUseFrame } from "./rules/r3f/r3f-no-sync-readback-in-use-frame.js";
 import { r3fNoUnstableArgs } from "./rules/r3f/r3f-no-unstable-args.js";
@@ -545,6 +550,8 @@ import { r3fRequireRootUnmount } from "./rules/r3f/r3f-require-root-unmount.js";
 import { r3fWebgpuCanvasPropCompatibility } from "./rules/r3f/r3f-webgpu-canvas-prop-compatibility.js";
 import { r3fWebgpuNoGlState } from "./rules/r3f/r3f-webgpu-no-gl-state.js";
 import { r3fWebgpuNoJsUniformBranch } from "./rules/r3f/r3f-webgpu-no-js-uniform-branch.js";
+import { r3fWebgpuNoLegacyEffectComposer } from "./rules/r3f/r3f-webgpu-no-legacy-effect-composer.js";
+import { r3fWebgpuNoLegacyMaterialApi } from "./rules/r3f/r3f-webgpu-no-legacy-material-api.js";
 import { r3fWebgpuNoUnregisteredPipelinePass } from "./rules/r3f/r3f-webgpu-no-unregistered-pipeline-pass.js";
 import { radioInputMissingName } from "./rules/correctness/radio-input-missing-name.js";
 import { rawSqlInjectionRisk } from "./rules/security-scan/raw-sql-injection-risk.js";
@@ -659,6 +666,7 @@ import { tanstackStartRoutePropertyOrder } from "./rules/tanstack-start/tanstack
 import { tanstackStartServerFnMethodOrder } from "./rules/tanstack-start/tanstack-start-server-fn-method-order.js";
 import { tanstackStartServerFnValidateInput } from "./rules/tanstack-start/tanstack-start-server-fn-validate-input.js";
 import { tenantStaticProxyRisk } from "./rules/security-scan/tenant-static-proxy-risk.js";
+import { threeRequireControlsCleanup } from "./rules/r3f/three-require-controls-cleanup.js";
 import { threeRequireRenderTargetCleanup } from "./rules/r3f/three-require-render-target-cleanup.js";
 import { threeRequireRendererCleanup } from "./rules/r3f/three-require-renderer-cleanup.js";
 import { unsafeJsonInHtml } from "./rules/security-scan/unsafe-json-in-html.js";
@@ -6737,6 +6745,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-no-allocation-in-pointer-move",
+    id: "r3f-no-allocation-in-pointer-move",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoAllocationInPointerMove,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoAllocationInPointerMove.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoAllocationInPointerMove.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/r3f-no-async-use-frame",
     id: "r3f-no-async-use-frame",
     source: "react-doctor",
@@ -6761,6 +6784,21 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fNoCloneInUseFrame.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fNoCloneInUseFrame.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-deep-use-three-selector",
+    id: "r3f-no-deep-use-three-selector",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoDeepUseThreeSelector,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoDeepUseThreeSelector.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoDeepUseThreeSelector.requires ?? [])]),
       ],
     },
   },
@@ -6917,6 +6955,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-no-manual-canvas-resize",
+    id: "r3f-no-manual-canvas-resize",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoManualCanvasResize,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoManualCanvasResize.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoManualCanvasResize.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/r3f-no-mutate-loader-cache",
     id: "r3f-no-mutate-loader-cache",
     source: "react-doctor",
@@ -6928,6 +6981,21 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fNoMutateLoaderCache.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fNoMutateLoaderCache.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-mutating-pointer-event-data",
+    id: "r3f-no-mutating-pointer-event-data",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoMutatingPointerEventData,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoMutatingPointerEventData.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoMutatingPointerEventData.requires ?? [])]),
       ],
     },
   },
@@ -6986,6 +7054,21 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fNoRecursiveRafWithUseFrame.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fNoRecursiveRafWithUseFrame.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-state-in-pointer-move",
+    id: "r3f-no-state-in-pointer-move",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoStateInPointerMove,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoStateInPointerMove.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoStateInPointerMove.requires ?? [])]),
       ],
     },
   },
@@ -7221,6 +7304,40 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fWebgpuNoJsUniformBranch.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fWebgpuNoJsUniformBranch.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-webgpu-no-legacy-effect-composer",
+    id: "r3f-webgpu-no-legacy-effect-composer",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fWebgpuNoLegacyEffectComposer,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fWebgpuNoLegacyEffectComposer.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fWebgpuNoLegacyEffectComposer.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-webgpu-no-legacy-material-api",
+    id: "r3f-webgpu-no-legacy-material-api",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fWebgpuNoLegacyMaterialApi,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fWebgpuNoLegacyMaterialApi.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fWebgpuNoLegacyMaterialApi.requires ?? [])]),
       ],
     },
   },
@@ -8590,6 +8707,21 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       tags: [...new Set(["security-scan", ...(tenantStaticProxyRisk.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-require-controls-cleanup",
+    id: "three-require-controls-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireControlsCleanup,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(threeRequireControlsCleanup.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(threeRequireControlsCleanup.requires ?? [])]),
+      ],
     },
   },
   {

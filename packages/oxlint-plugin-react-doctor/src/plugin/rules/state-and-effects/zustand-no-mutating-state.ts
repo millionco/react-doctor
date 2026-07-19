@@ -925,7 +925,14 @@ const analyzeSnapshotContainer = (
   }
   for (const { branchRoot, mutation, statementIndex } of mutations) {
     const followingNotifiers = notifierCalls.filter((notifier) => {
-      if (!notifier.branchRoot) return notifier.statementIndex >= statementIndex;
+      if (!notifier.branchRoot) {
+        if (notifier.statementIndex !== statementIndex) {
+          return notifier.statementIndex > statementIndex;
+        }
+        const mutationStart = getRangeStart(mutation.node);
+        const notifierStart = getRangeStart(notifier.callExpression);
+        return mutationStart !== null && notifierStart !== null && notifierStart >= mutationStart;
+      }
       if (notifier.statementIndex !== statementIndex || notifier.branchRoot !== branchRoot) {
         return false;
       }

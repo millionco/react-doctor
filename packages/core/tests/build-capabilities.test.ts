@@ -329,6 +329,24 @@ describe("buildCapabilities", () => {
     expect(capabilities.has("nextjs:15")).toBe(false);
   });
 
+  it("emits `nextjs:16` capability only for Next.js 16+ projects", () => {
+    const nextjs15Capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      nextjsVersion: "^15.3.0",
+      nextjsMajorVersion: 15,
+    });
+    const nextjs16Capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      nextjsVersion: "^16.0.0",
+      nextjsMajorVersion: 16,
+    });
+    expect(nextjs15Capabilities.has("nextjs:16")).toBe(false);
+    expect(nextjs16Capabilities.has("nextjs:15")).toBe(true);
+    expect(nextjs16Capabilities.has("nextjs:16")).toBe(true);
+  });
+
   it("emits `server-actions` for server-capable frameworks only", () => {
     for (const framework of ["nextjs", "tanstack-start", "remix"] as const) {
       expect(buildCapabilities({ ...baseProject, framework }).has("server-actions")).toBe(true);

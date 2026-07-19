@@ -13,6 +13,7 @@ export const getStaticPropertyKeyName = (
   if (
     !isNodeOfType(node, "Property") &&
     !isNodeOfType(node, "MethodDefinition") &&
+    !isNodeOfType(node, "PropertyDefinition") &&
     !isNodeOfType(node, "MemberExpression")
   ) {
     return null;
@@ -25,6 +26,13 @@ export const getStaticPropertyKeyName = (
       typeof key.value === "string"
     ) {
       return key.value;
+    }
+    if (
+      options.allowComputedString &&
+      options.stringifyNonStringLiterals &&
+      isNodeOfType(key, "Literal")
+    ) {
+      return String(key.value);
     }
     if (
       options.allowComputedString &&

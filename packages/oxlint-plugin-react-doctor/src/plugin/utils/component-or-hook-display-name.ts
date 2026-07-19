@@ -1,5 +1,6 @@
 import { COMPONENT_HOC_WRAPPER_NAMES } from "../constants/react.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactComponentOrHookName } from "./is-react-component-or-hook-name.js";
 
@@ -11,27 +12,28 @@ const hocWrapperCalleeName = (callee: EsTreeNode): string | null => {
   return null;
 };
 
-// Resolves the display name for an anonymous function (arrow or
-// unnamed function expression) from the binding it is assigned to,
-// unwrapping any chain of component HOC wrappers along the way:
+export const findComponentHocExpressionRoot = (functionNode: EsTreeNode): EsTreeNode => {
+  let current = findTransparentExpressionRoot(functionNode);
+  for (;;) {
+    const parent = current.parent;
+    if (!parent || !isNodeOfType(parent, "CallExpression") || parent.arguments?.[0] !== current) {
+      return current;
+    }
+    const calleeName = hocWrapperCalleeName(parent.callee);
+    if (!calleeName || !COMPONENT_HOC_WRAPPER_NAMES.has(calleeName)) return current;
+    current = findTransparentExpressionRoot(parent);
+  }
+};
+
+// Resolves a function's display name from its binding after unwrapping
+// component HOCs:
 //
 //   const App = () => {}
 //   const App = memo(() => {})
 //   const Input = forwardRef((props, ref) => {})
 //   const App = memo(forwardRef(() => {}))
 const displayNameFromFunctionBinding = (functionNode: EsTreeNode): string | null => {
-  let current: EsTreeNode = functionNode;
-  for (;;) {
-    const parent = current.parent;
-    if (parent && isNodeOfType(parent, "CallExpression") && parent.arguments?.[0] === current) {
-      const calleeName = hocWrapperCalleeName(parent.callee);
-      if (calleeName && COMPONENT_HOC_WRAPPER_NAMES.has(calleeName)) {
-        current = parent;
-        continue;
-      }
-    }
-    break;
-  }
+  const current = findComponentHocExpressionRoot(functionNode);
   const binding = current.parent;
   if (
     binding &&

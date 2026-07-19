@@ -129,6 +129,35 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not assume a bare imported context-shaped name is a React 19 provider", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `import { ThemeContext } from "./theme-context";
+       function App() {
+         return <ThemeContext value={{ theme: "dark" }} />;
+       }`,
+      { filename: "fixture.jsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a redeclared var as a proven context binding", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `import { createContext } from "react";
+       var ThemeContext = createContext(null);
+       var ThemeContext = FakeContext;
+       function App() {
+         return <ThemeContext value={{ theme: "dark" }} />;
+       }`,
+      { filename: "fixture.jsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag the React 19 shorthand outside a render function", () => {
     const result = runRule(
       jsxNoConstructedContextValues,
@@ -204,6 +233,36 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
         return <Ctx value={{ a: 1 }} />;
       }
     `,
+      { filename: "fixture.jsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag when a catch parameter shadows the context binding name", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `import { createContext } from "react";
+       const Ctx = createContext(null);
+       function App() {
+         try {
+           throw FakeContext;
+         } catch (Ctx) {
+           return <Ctx value={{ a: 1 }} />;
+         }
+       }`,
+      { filename: "fixture.jsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat a local React-shaped object as React", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `const React = { createContext: () => FakeContext };
+       const Ctx = React.createContext(null);
+       function App() { return <Ctx value={{ a: 1 }} />; }`,
       { filename: "fixture.jsx" },
     );
 

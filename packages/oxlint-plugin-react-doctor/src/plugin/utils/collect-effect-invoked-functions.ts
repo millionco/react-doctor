@@ -1,3 +1,4 @@
+import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -39,11 +40,18 @@ export const getPromiseChainCallForCallback = (candidate: EsTreeNode): EsTreeNod
 const collectInvokedFunctions = (
   effectCallback: EsTreeNode,
   includePromiseCallbacks: boolean,
+  scopes?: ScopeAnalysis,
 ): Set<EsTreeNode> => {
   const invokedFunctions = new Set<EsTreeNode>([effectCallback]);
   const localFunctionBindings = new Map<string, EsTreeNode>();
   const calledBindingNames = new Set<string>();
+  const reassignedBindingNames = new Set<string>();
   const pendingFunctions: EsTreeNode[] = [effectCallback];
+  const getBindingKey = (identifier: EsTreeNode): string | null => {
+    if (!isNodeOfType(identifier, "Identifier")) return null;
+    const symbol = scopes?.symbolFor(identifier);
+    return symbol ? `symbol:${String(symbol.id)}` : `name:${identifier.name}`;
+  };
 
   const enqueue = (candidate: EsTreeNode | null | undefined): void => {
     const strippedCandidate = candidate ? stripParenExpression(candidate) : candidate;
@@ -59,7 +67,8 @@ const collectInvokedFunctions = (
     walkAst(currentFunction, (child) => {
       if (child !== currentFunction && isFunctionLike(child)) {
         if (isNodeOfType(child, "FunctionDeclaration") && isNodeOfType(child.id, "Identifier")) {
-          localFunctionBindings.set(child.id.name, child);
+          const bindingKey = getBindingKey(child.id);
+          if (bindingKey) localFunctionBindings.set(bindingKey, child);
         }
         return false;
       }
@@ -67,7 +76,17 @@ const collectInvokedFunctions = (
       if (isNodeOfType(child, "VariableDeclarator") && isNodeOfType(child.id, "Identifier")) {
         const initializer = child.init ? stripParenExpression(child.init) : null;
         if (isFunctionLike(initializer)) {
-          localFunctionBindings.set(child.id.name, initializer);
+          const bindingKey = getBindingKey(child.id);
+          if (bindingKey) localFunctionBindings.set(bindingKey, initializer);
+        }
+        return;
+      }
+
+      if (isNodeOfType(child, "AssignmentExpression")) {
+        const assignedTarget = stripParenExpression(child.left);
+        if (isNodeOfType(assignedTarget, "Identifier")) {
+          const bindingKey = getBindingKey(assignedTarget);
+          if (bindingKey) reassignedBindingNames.add(bindingKey);
         }
         return;
       }
@@ -82,7 +101,8 @@ const collectInvokedFunctions = (
       }
 
       if (isNodeOfType(callee, "Identifier")) {
-        calledBindingNames.add(callee.name);
+        const bindingKey = getBindingKey(callee);
+        if (bindingKey) calledBindingNames.add(bindingKey);
         return;
       }
 
@@ -94,6 +114,7 @@ const collectInvokedFunctions = (
     });
 
     for (const calledName of calledBindingNames) {
+      if (reassignedBindingNames.has(calledName)) continue;
       enqueue(localFunctionBindings.get(calledName));
     }
   }
@@ -101,9 +122,12 @@ const collectInvokedFunctions = (
   return invokedFunctions;
 };
 
-export const collectEffectInvokedFunctions = (effectCallback: EsTreeNode): Set<EsTreeNode> =>
-  collectInvokedFunctions(effectCallback, true);
+export const collectEffectInvokedFunctions = (
+  effectCallback: EsTreeNode,
+  scopes?: ScopeAnalysis,
+): Set<EsTreeNode> => collectInvokedFunctions(effectCallback, true, scopes);
 
 export const collectSynchronouslyEffectInvokedFunctions = (
   effectCallback: EsTreeNode,
-): Set<EsTreeNode> => collectInvokedFunctions(effectCallback, false);
+  scopes?: ScopeAnalysis,
+): Set<EsTreeNode> => collectInvokedFunctions(effectCallback, false, scopes);

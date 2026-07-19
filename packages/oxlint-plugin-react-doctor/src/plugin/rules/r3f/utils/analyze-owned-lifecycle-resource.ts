@@ -4,7 +4,10 @@ import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { findRenderPhaseComponentOrHook } from "../../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
-import { functionReturnsMatchingExpression } from "../../../utils/function-returns-matching-expression.js";
+import {
+  functionReturnsMatchingExpression,
+  functionReturnsMatchingExpressionOnEveryPathAfterNode,
+} from "../../../utils/function-returns-matching-expression.js";
 import { getEffectCallback } from "../../../utils/get-effect-callback.js";
 import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
@@ -729,8 +732,8 @@ const hasOwnedResourceIdentityWrite = (
   accessPath: OwnedLifecycleResourcePath,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const getContainingWrite = (reference: EsTreeNode): EsTreeNode | null => {
-    let current = reference;
+  const getContainingIdentityWrite = (resourceAccess: EsTreeNode): EsTreeNode | null => {
+    let current = findTransparentExpressionRoot(resourceAccess);
     while (current.parent && !isFunctionLike(current.parent)) {
       const parent = current.parent;
       if (isNodeOfType(parent, "AssignmentExpression")) {
@@ -743,8 +746,7 @@ const hasOwnedResourceIdentityWrite = (
         !isNodeOfType(parent, "ArrayPattern") &&
         !isNodeOfType(parent, "ObjectPattern") &&
         !isNodeOfType(parent, "Property") &&
-        !isNodeOfType(parent, "RestElement") &&
-        !isNodeOfType(parent, "MemberExpression")
+        !isNodeOfType(parent, "RestElement")
       ) {
         return null;
       }
@@ -755,16 +757,6 @@ const hasOwnedResourceIdentityWrite = (
   const allSymbols = new Set([...symbols, ...resourceSymbols]);
   for (const symbol of allSymbols) {
     for (const reference of symbol.references) {
-      const containingWrite = getContainingWrite(reference.identifier);
-      if (
-        containingWrite &&
-        (!isNodeOfType(containingWrite, "AssignmentExpression") ||
-          findTransparentExpressionRoot(containingWrite.right) !==
-            findTransparentExpressionRoot(allocation))
-      ) {
-        return true;
-      }
-      if (reference.flag !== "read") return true;
       const resourceAccess = getOwnedResourceAccessFromReference(
         reference.identifier,
         symbols,
@@ -773,16 +765,15 @@ const hasOwnedResourceIdentityWrite = (
         scopes,
       );
       if (!resourceAccess) continue;
-      const accessRoot = findTransparentExpressionRoot(resourceAccess);
-      const parent = accessRoot.parent;
+      const containingWrite = getContainingIdentityWrite(resourceAccess);
       if (
-        isNodeOfType(parent, "AssignmentExpression") &&
-        parent.left === accessRoot &&
-        findTransparentExpressionRoot(parent.right) !== findTransparentExpressionRoot(allocation)
+        containingWrite &&
+        (!isNodeOfType(containingWrite, "AssignmentExpression") ||
+          findTransparentExpressionRoot(containingWrite.right) !==
+            findTransparentExpressionRoot(allocation))
       ) {
         return true;
       }
-      if (isNodeOfType(parent, "UpdateExpression") && parent.argument === accessRoot) return true;
     }
   }
   return false;
@@ -1172,13 +1163,23 @@ export const analyzeOwnedLifecycleCleanup = (
   };
   let isUnknown = false;
   for (const source of collectLifecycleCleanupSources(analysis, context)) {
-    const doesReturnMatchingCleanup = functionReturnsMatchingExpression(
-      source.callback,
-      context.scopes,
-      returnedExpressionContainsMatchingCleanup,
-      context.cfg,
-      "every",
-    );
+    const doesReturnMatchingCleanup =
+      analysis.creationKind === "effect" &&
+      findEnclosingFunction(analysis.allocation) === source.callback
+        ? functionReturnsMatchingExpressionOnEveryPathAfterNode(
+            source.callback,
+            analysis.allocation,
+            context.scopes,
+            returnedExpressionContainsMatchingCleanup,
+            context.cfg,
+          )
+        : functionReturnsMatchingExpression(
+            source.callback,
+            context.scopes,
+            returnedExpressionContainsMatchingCleanup,
+            context.cfg,
+            "every",
+          );
     if (!doesReturnMatchingCleanup) continue;
     if (source.dependencyStatus === "valid") return { isProven: true, isUnknown: false };
     if (source.dependencyStatus === "unknown") isUnknown = true;

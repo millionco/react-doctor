@@ -55,6 +55,41 @@ describe("r3f-require-owned-texture-cleanup", () => {
     expect(runRule(r3fRequireOwnedTextureCleanup, code).diagnostics).toHaveLength(0);
   });
 
+  it("allows texture property mutation after valid cleanup registration", () => {
+    const code = `
+      import { CanvasTexture, DataTexture } from "three";
+      import { useEffect, useMemo, useState } from "react";
+      const Scene = ({ canvas, data }) => {
+        let texture = useMemo(() => new CanvasTexture(canvas), [canvas]);
+        const [resources] = useState(() => ({ texture: new DataTexture(data) }));
+        useEffect(() => () => texture.dispose(), [texture]);
+        useEffect(() => () => resources.texture.dispose(), [resources]);
+        texture.needsUpdate = true;
+        texture.image.data = data;
+        resources.texture.needsUpdate = true;
+        return <><primitive object={texture} /><primitive object={resources.texture} /></>;
+      };
+    `;
+    expect(runRule(r3fRequireOwnedTextureCleanup, code).diagnostics).toHaveLength(0);
+  });
+
+  it("still rejects direct and structured texture identity replacement", () => {
+    const code = `
+      import { CanvasTexture, DataTexture } from "three";
+      import { useEffect, useMemo, useState } from "react";
+      const Scene = ({ canvas, data, replacement }) => {
+        let texture = useMemo(() => new CanvasTexture(canvas), [canvas]);
+        const [resources] = useState(() => ({ texture: new DataTexture(data) }));
+        useEffect(() => () => texture.dispose(), [texture]);
+        useEffect(() => () => resources.texture.dispose(), [resources]);
+        texture = replacement;
+        resources.texture = replacement;
+        return <><primitive object={texture} /><primitive object={resources.texture} /></>;
+      };
+    `;
+    expect(runRule(r3fRequireOwnedTextureCleanup, code).diagnostics).toHaveLength(2);
+  });
+
   it("requires changing texture owners to be tracked by cleanup dependencies", () => {
     const code = `
       import { CanvasTexture } from "three";

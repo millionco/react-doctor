@@ -196,6 +196,59 @@ describe("three-require-renderer-cleanup", () => {
     expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(0);
   });
 
+  it("allows renderer and animation frame cleanup after pre-allocation returns", () => {
+    const code = `
+      import { useEffect, useRef } from "react";
+      import * as THREE from "three";
+      function CameraPreviewPanel({ isVisible, mainScene }) {
+        const canvasRef = useRef(null);
+        useEffect(() => {
+          if (!canvasRef.current || !isVisible) return;
+          if (!mainScene) return;
+          const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current });
+          let frameId;
+          const animate = () => {
+            frameId = requestAnimationFrame(animate);
+            renderer.render(mainScene, camera);
+          };
+          animate();
+          return () => {
+            cancelAnimationFrame(frameId);
+            renderer.dispose();
+          };
+        }, [isVisible, mainScene]);
+        return <canvas ref={canvasRef} />;
+      }
+    `;
+    expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(0);
+  });
+
+  it("reports renderer and animation frame cleanup gaps after allocation", () => {
+    const code = `
+      import { useEffect } from "react";
+      import { WebGLRenderer } from "three";
+      function CameraPreviewPanel({ canvas, isVisible, skipCleanup }) {
+        useEffect(() => {
+          if (!canvas || !isVisible) return;
+          const renderer = new WebGLRenderer({ canvas });
+          let frameId;
+          const animate = () => {
+            frameId = requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+          };
+          animate();
+          if (skipCleanup) return;
+          return () => {
+            cancelAnimationFrame(frameId);
+            renderer.dispose();
+          };
+        }, [canvas, isVisible, skipCleanup]);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(1);
+  });
+
   it("rejects mismatched, overwritten, and non-React ref animation frame handles", () => {
     const code = `
       import { useEffect, useRef } from "react";

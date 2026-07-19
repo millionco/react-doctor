@@ -193,6 +193,52 @@ describe("r3f-require-global-effect-cleanup", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows cleanup on every path that reaches registration after an early return", () => {
+    const code = `
+      import { useEffect } from "react";
+      import { addEffect, addAfterEffect } from "@react-three/fiber";
+      function PerfHeadless({ callback, gl }) {
+        useEffect(() => {
+          let disposeEffect = null;
+          let disposeAfterEffect = null;
+          if (!gl.info) return;
+          disposeEffect = addEffect(callback);
+          disposeAfterEffect = addAfterEffect(callback);
+          return () => {
+            disposeEffect();
+            disposeAfterEffect();
+          };
+        }, [callback, gl]);
+        return null;
+      }
+    `;
+    const result = runRule(r3fRequireGlobalEffectCleanup, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports cleanup gaps on paths after registration", () => {
+    const code = `
+      import { useEffect } from "react";
+      import { addEffect, addTail } from "@react-three/fiber";
+      function Scene({ callback, enabled, skipCleanup }) {
+        useEffect(() => {
+          if (!enabled) return;
+          const disposeEffect = addEffect(callback);
+          if (skipCleanup) return;
+          return () => disposeEffect();
+        }, [callback, enabled, skipCleanup]);
+        useEffect(() => {
+          const disposeTail = addTail(callback);
+          if (skipCleanup) return () => disposeTail();
+          return;
+        }, [callback, skipCleanup]);
+        return null;
+      }
+    `;
+    const result = runRule(r3fRequireGlobalEffectCleanup, code);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("reports registration during render and in useFrame", () => {
     const code = `
       import { addEffect, addTail, useFrame } from "@react-three/fiber/webgpu";

@@ -194,15 +194,20 @@ const functionHasBareReturn = (functionNode: EsTreeNode): boolean => {
   return didFindBareReturn;
 };
 
-export const functionReturnsMatchingExpression = (
-  functionNode: EsTreeNode,
+interface FunctionReturnMatcher {
+  readonly expressionMatches: (expression: EsTreeNode) => boolean;
+  readonly functionMatches: (candidateFunction: EsTreeNode) => boolean;
+}
+
+const createFunctionReturnMatcher = (
   scopes: ScopeAnalysis,
   matchesExpression: (expression: EsTreeNode) => boolean,
   controlFlow?: ControlFlowAnalysis,
   matchMode: "some" | "every" = "some",
-): boolean => {
+): FunctionReturnMatcher => {
   const visitedExpressions = new Set<EsTreeNode>();
   const visitedFunctions = new Set<EsTreeNode>();
+  let expressionMatches: (expression: EsTreeNode) => boolean;
 
   const functionMatches = (candidateFunction: EsTreeNode): boolean => {
     if (visitedFunctions.has(candidateFunction)) return false;
@@ -224,7 +229,7 @@ export const functionReturnsMatchingExpression = (
     );
   };
 
-  const expressionMatches = (expression: EsTreeNode): boolean => {
+  expressionMatches = (expression: EsTreeNode): boolean => {
     const unwrappedExpression = stripParenExpression(expression);
     if (visitedExpressions.has(unwrappedExpression)) return false;
     visitedExpressions.add(unwrappedExpression);
@@ -279,5 +284,52 @@ export const functionReturnsMatchingExpression = (
     return matchMode === "every" ? didBranchMatch.every(Boolean) : didBranchMatch.some(Boolean);
   };
 
-  return functionMatches(functionNode);
+  return { expressionMatches, functionMatches };
+};
+
+export const functionReturnsMatchingExpression = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  matchesExpression: (expression: EsTreeNode) => boolean,
+  controlFlow?: ControlFlowAnalysis,
+  matchMode: "some" | "every" = "some",
+): boolean =>
+  createFunctionReturnMatcher(scopes, matchesExpression, controlFlow, matchMode).functionMatches(
+    functionNode,
+  );
+
+export const functionReturnsMatchingExpressionOnEveryPathAfterNode = (
+  functionNode: EsTreeNode,
+  pathStartNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  matchesExpression: (expression: EsTreeNode) => boolean,
+  controlFlow: ControlFlowAnalysis,
+): boolean => {
+  const functionControlFlow = controlFlow.cfgFor(functionNode);
+  const startBlock = functionControlFlow?.blockOf(pathStartNode);
+  if (!functionControlFlow || !startBlock) return false;
+  const matchingReturnBlocks = new Set(
+    collectFunctionReturnStatements(functionNode).flatMap((returnStatement) => {
+      if (!returnStatement.argument) return [];
+      const matcher = createFunctionReturnMatcher(scopes, matchesExpression, controlFlow, "every");
+      if (!matcher.expressionMatches(returnStatement.argument)) return [];
+      const returnBlock = functionControlFlow.blockOf(returnStatement.argument);
+      return returnBlock ? [returnBlock] : [];
+    }),
+  );
+  if (matchingReturnBlocks.size === 0) return false;
+  const visitedBlocks = new Set([startBlock]);
+  const pendingBlocks = [startBlock];
+  while (pendingBlocks.length > 0) {
+    const currentBlock = pendingBlocks.pop();
+    if (!currentBlock) break;
+    if (matchingReturnBlocks.has(currentBlock)) continue;
+    for (const edge of currentBlock.successors) {
+      if (edge.to === functionControlFlow.exit) return false;
+      if (visitedBlocks.has(edge.to)) continue;
+      visitedBlocks.add(edge.to);
+      pendingBlocks.push(edge.to);
+    }
+  }
+  return true;
 };

@@ -5,7 +5,10 @@ import { attachParentReferences } from "../../test-utils/attach-parent-reference
 import { attachSourceLocations } from "../../test-utils/attach-source-locations.js";
 import { parseFixture } from "../../test-utils/parse-fixture.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
+import {
+  functionReturnsMatchingExpression,
+  functionReturnsMatchingExpressionOnEveryPathAfterNode,
+} from "./function-returns-matching-expression.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 
@@ -28,6 +31,37 @@ const mainFunctionReturnsJsx = (code: string, matchMode: "some" | "every" = "som
       isNodeOfType(expression, "JSXElement") || isNodeOfType(expression, "JSXFragment"),
     analyzeControlFlow(parsed.program),
     matchMode,
+  );
+};
+
+const mainFunctionReturnsJsxAfterMarker = (code: string): boolean => {
+  const parsed = parseFixture(code);
+  expect(parsed.errors).toEqual([]);
+  attachParentReferences(parsed.program);
+  attachSourceLocations(parsed.program, code);
+  let mainFunction: EsTreeNode | null = null;
+  let markerCall: EsTreeNode | null = null;
+  walkAst(parsed.program, (node) => {
+    if (isNodeOfType(node, "FunctionDeclaration") && node.id?.name === "Main" && !mainFunction) {
+      mainFunction = node;
+    }
+    if (
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "Identifier") &&
+      node.callee.name === "mark" &&
+      !markerCall
+    ) {
+      markerCall = node;
+    }
+  });
+  if (!mainFunction || !markerCall) throw new Error("Expected a Main function and mark call");
+  return functionReturnsMatchingExpressionOnEveryPathAfterNode(
+    mainFunction,
+    markerCall,
+    analyzeScopes(parsed.program),
+    (expression) =>
+      isNodeOfType(expression, "JSXElement") || isNodeOfType(expression, "JSXFragment"),
+    analyzeControlFlow(parsed.program),
   );
 };
 
@@ -157,5 +191,23 @@ describe("functionReturnsMatchingExpression", () => {
         "every",
       ),
     ).toBe(false);
+  });
+
+  it("requires matching returns only on paths reachable after a marker", () => {
+    expect(
+      mainFunctionReturnsJsxAfterMarker(
+        `function Main(ready) { if (!ready) return null; mark(); return <main />; }`,
+      ),
+    ).toBe(true);
+    expect(
+      mainFunctionReturnsJsxAfterMarker(
+        `function Main(ready, skip) { if (!ready) return null; mark(); if (skip) return null; return <main />; }`,
+      ),
+    ).toBe(false);
+    expect(
+      mainFunctionReturnsJsxAfterMarker(
+        `function Main(ready, alternate) { if (!ready) return null; mark(); return alternate ? <main /> : <aside />; }`,
+      ),
+    ).toBe(true);
   });
 });

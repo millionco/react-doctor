@@ -5,7 +5,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
-import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
+import {
+  functionReturnsMatchingExpression,
+  functionReturnsMatchingExpressionOnEveryPathAfterNode,
+} from "../../utils/function-returns-matching-expression.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -152,27 +155,39 @@ const effectReturnsRegistration = (
 
 const effectReturnsCapturedCleanup = (
   effectCallback: EsTreeNode,
+  registration: EsTreeNode,
   disposerSymbol: SymbolDescriptor,
   context: RuleContext,
-): boolean =>
-  functionReturnsMatchingExpression(
+): boolean => {
+  const matchesCapturedCleanup = (expression: EsTreeNode): boolean => {
+    if (
+      isNodeOfType(expression, "Identifier") &&
+      context.scopes.symbolFor(expression)?.id === disposerSymbol.id
+    ) {
+      return true;
+    }
+    const cleanupCallback = resolveExactLocalFunction(expression, context.scopes);
+    return Boolean(
+      cleanupCallback && functionInvokesSymbol(cleanupCallback, disposerSymbol, context.scopes),
+    );
+  };
+  if (findEnclosingFunction(registration) !== effectCallback) {
+    return functionReturnsMatchingExpression(
+      effectCallback,
+      context.scopes,
+      matchesCapturedCleanup,
+      context.cfg,
+      "every",
+    );
+  }
+  return functionReturnsMatchingExpressionOnEveryPathAfterNode(
     effectCallback,
+    registration,
     context.scopes,
-    (expression) => {
-      if (
-        isNodeOfType(expression, "Identifier") &&
-        context.scopes.symbolFor(expression)?.id === disposerSymbol.id
-      ) {
-        return true;
-      }
-      const cleanupCallback = resolveExactLocalFunction(expression, context.scopes);
-      return Boolean(
-        cleanupCallback && functionInvokesSymbol(cleanupCallback, disposerSymbol, context.scopes),
-      );
-    },
+    matchesCapturedCleanup,
     context.cfg,
-    "every",
   );
+};
 
 export const r3fRequireGlobalEffectCleanup = defineRule({
   id: "r3f-require-global-effect-cleanup",
@@ -207,7 +222,7 @@ export const r3fRequireGlobalEffectCleanup = defineRule({
             const disposerSymbol = getCapturedDisposerSymbol(registration, context.scopes);
             if (
               disposerSymbol &&
-              effectReturnsCapturedCleanup(effectCallback, disposerSymbol, context)
+              effectReturnsCapturedCleanup(effectCallback, registration, disposerSymbol, context)
             ) {
               continue;
             }

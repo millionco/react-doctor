@@ -12,10 +12,10 @@ Rules that depend on MobX 6 semantics must fail closed for an unknown future maj
 
 ## Recommendation
 
-This foundation adds MobX version and binding capabilities. Build one shared import,
-observable-provenance, and class-analysis layer on top of it, then implement the six P0 rules. A
-recently reverted disposer prototype contains useful detector work, but no dedicated MobX rule is
-present on the research baseline.
+This foundation adds MobX version and binding capabilities, shared exact-import analysis, and the
+first three P0 rules. Build observable-provenance and class-analysis layers on top of it before
+implementing the remaining P0 rules. A recently reverted disposer prototype supplied useful prior
+art, but no dedicated MobX rule was present on the research baseline.
 
 | Priority | Rule                                             | Failure                                                            | Recommendation                    |
 | -------- | ------------------------------------------------ | ------------------------------------------------------------------ | --------------------------------- |
@@ -182,7 +182,8 @@ snapshot; future MobX rule PRs should target this foundation branch.
 ### `mobx-reaction-disposer-discarded`
 
 Report an exact MobX `reaction` or `autorun` whose returned disposer is discarded in owner-scoped
-code.
+code when the observation callback is proven to depend on state outside that owner or calls an
+instance method whose dependencies cannot be bounded statically.
 
 Both APIs create tracked computations that keep observing until disposed. Discarding the disposer
 inside a component lifecycle, class instance, request, or other bounded owner lets the reaction
@@ -193,7 +194,7 @@ Strong positive:
 ```ts
 class ViewModel {
   constructor() {
-    autorun(() => syncTitle(this.title));
+    autorun(() => syncTitle(projectStore.title));
   }
 }
 ```
@@ -218,14 +219,19 @@ Detector contract:
   statically present non-null AbortSignal option.
 - Exempt bare module-scope execution, module-invoked bootstrap wiring, and constructors of same-file
   module singletons because their intended lifetime is the process.
+- Exempt callbacks whose visible observation reads are entirely rooted at `this`; MobX can garbage
+  collect those reactions when the instance owns the observed state. Keep indirect instance method
+  calls in scope because their dependencies are not statically bounded.
+- Treat imported mutation-shaped calls such as `Storage.set(this.value)` as sinks rather than
+  external observable reads, while imported property reads and accessor calls remain external.
 - Exclude `when`, whose effect form auto-disposes after it fires, and exclude `observe` and
   `intercept`, whose names collide with unrelated APIs and need their own provenance contract.
 - Treat unknown options conservatively when they may contain a signal.
 
-Test seeds include aliased and namespace imports, a shadowed `reaction`, a disposer stored then
-invoked on teardown, an assigned but never invoked field, AbortSignal through a stable options
-object, module IIFEs, request handlers, singleton constructors, and coercion or comparison of the
-returned disposer.
+Test seeds include aliased, destructured-namespace, and namespace imports; a shadowed `reaction`; a
+disposer stored then invoked on teardown; concise React effect cleanup; callback self-disposal;
+AbortSignal through a stable options object; owned-only and external observations; module IIFEs;
+request handlers; singleton constructors; and coercion or comparison of the returned disposer.
 
 Evidence:
 
@@ -233,9 +239,10 @@ Evidence:
 - [Official AbortSignal option](https://mobx.js.org/reactions.html#options-)
 - [Reverted React Doctor precision prototype](https://github.com/millionco/react-doctor/blob/3018538b7c245461057ca6ce01177b2e0bc28d75/packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/mobx-reaction-disposer-discarded.ts)
 
-Open question: when restoring the prototype, add direct regression fixtures before changing any of
-its lifecycle exemptions; the implementation had already accumulated more precision than a generic
-“unused return value” rule.
+Targeted open-source evaluation found and fixed two false-positive classes: concise React effect
+callbacks that return the disposer, and callbacks whose reads are provably owned by the same
+instance. After those fixes, six MobX-heavy repositories produced one inspected true positive and
+no false positives for this rule.
 
 ### `mobx-no-make-auto-observable-in-inheritance`
 

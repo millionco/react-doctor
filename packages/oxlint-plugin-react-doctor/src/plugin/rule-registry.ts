@@ -120,6 +120,9 @@ import { localRpcNativeBridgeRisk } from "./rules/security-scan/local-rpc-native
 import { mcpToolCapabilityRisk } from "./rules/security-scan/mcp-tool-capability-risk.js";
 import { mdxSsrExecutionRisk } from "./rules/security-scan/mdx-ssr-execution-risk.js";
 import { mediaHasCaption } from "./rules/a11y/media-has-caption.js";
+import { mobxNoMakeAutoObservableInInheritance } from "./rules/mobx/mobx-no-make-auto-observable-in-inheritance.js";
+import { mobxNoObserverWrappedMemo } from "./rules/mobx/mobx-no-observer-wrapped-memo.js";
+import { mobxReactionDisposerDiscarded } from "./rules/mobx/mobx-reaction-disposer-discarded.js";
 import { mouseEventsHaveKeyEvents } from "./rules/a11y/mouse-events-have-key-events.js";
 import { nextjsAsyncClientComponent } from "./rules/nextjs/nextjs-async-client-component.js";
 import { nextjsErrorBoundaryMissingUseClient } from "./rules/nextjs/nextjs-error-boundary-missing-use-client.js";
@@ -1742,6 +1745,39 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(mediaHasCaption.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/mobx-no-make-auto-observable-in-inheritance",
+    id: "mobx-no-make-auto-observable-in-inheritance",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...mobxNoMakeAutoObservableInInheritance,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/mobx-no-observer-wrapped-memo",
+    id: "mobx-no-observer-wrapped-memo",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...mobxNoObserverWrappedMemo,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/mobx-reaction-disposer-discarded",
+    id: "mobx-reaction-disposer-discarded",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...mobxReactionDisposerDiscarded,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

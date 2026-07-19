@@ -155,6 +155,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   design: "Architecture",
   "js-performance": "Performance",
   jotai: "State & Effects",
+  mobx: "State & Effects",
   nextjs: "Next.js",
   performance: "Performance",
   preact: "Preact",

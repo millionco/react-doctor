@@ -420,6 +420,15 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "media-has-caption": {
     code: 'const V = () => <video src="movie.mp4" />;',
   },
+  "mobx-no-make-auto-observable-in-inheritance": {
+    code: 'import { makeAutoObservable } from "mobx";\nclass ChildStore extends BaseStore { constructor() { super(); makeAutoObservable(this); } }',
+  },
+  "mobx-no-observer-wrapped-memo": {
+    code: 'import { memo } from "react";\nimport { observer } from "mobx-react-lite";\nexport const Profile = observer(memo(ProfileView));',
+  },
+  "mobx-reaction-disposer-discarded": {
+    code: 'import { reaction } from "mobx";\nclass Store { start() { reaction(() => externalStore.value, refresh); } }',
+  },
   "mouse-events-have-key-events": {
     code: "<div onMouseOver={() => {}} />",
   },

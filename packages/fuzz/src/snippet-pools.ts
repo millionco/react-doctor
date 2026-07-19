@@ -681,6 +681,7 @@ export const IMPORT_LINE_POOL = [
   `import * as ReactQuery from "@tanstack/react-query";`,
   `import { observer } from "mobx-react-lite";`,
   `import { reaction, autorun } from "mobx";`,
+  `import { autorun as fuzzMobxAutorun, makeAutoObservable as fuzzMakeAutoObservable } from "mobx"; import { observer as fuzzMobxObserver } from "mobx-react-lite"; import { memo as fuzzReactMemo } from "react"; declare const fuzzMobxExternalStore: { value: number }; class FuzzMobxBaseStore { constructor() { fuzzMakeAutoObservable(this); } start() { fuzzMobxAutorun(() => fuzzMobxExternalStore.value); } } class FuzzMobxChildStore extends FuzzMobxBaseStore {} const FuzzMobxView = () => null; const FuzzMemoizedMobxView = fuzzMobxObserver(fuzzReactMemo(FuzzMobxView));`,
   `import styled from "styled-components";`,
   `import { atom, useAtom } from "jotai";`,
   `import { proxy as fuzzValtioProxy, useSnapshot as useFuzzValtioSnapshot } from "valtio";`,

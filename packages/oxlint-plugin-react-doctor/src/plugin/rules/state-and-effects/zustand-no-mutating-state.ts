@@ -600,12 +600,11 @@ const isNodeWithin = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
   return false;
 };
 
-const rebindPathCompatibility = (
-  assignment: EsTreeNodeOfType<"AssignmentExpression">,
+const branchPathCompatibility = (
+  candidate: EsTreeNode,
   mutation: MutableStateReferenceMutation,
 ): boolean | null => {
-  if (!isNodeOfType(assignment.parent, "ExpressionStatement")) return null;
-  let current: EsTreeNode = assignment.parent;
+  let current: EsTreeNode = candidate;
   const mutationFunction = findEnclosingFunction(mutation.node);
   while (current.parent && current.parent !== mutationFunction) {
     const parent: EsTreeNode = current.parent;
@@ -623,6 +622,14 @@ const rebindPathCompatibility = (
     current = parent;
   }
   return true;
+};
+
+const rebindPathCompatibility = (
+  assignment: EsTreeNodeOfType<"AssignmentExpression">,
+  mutation: MutableStateReferenceMutation,
+): boolean | null => {
+  if (!isNodeOfType(assignment.parent, "ExpressionStatement")) return null;
+  return branchPathCompatibility(assignment.parent, mutation);
 };
 
 const targetRebindReplacementDisposition = (
@@ -903,6 +910,7 @@ const analyzeSnapshotContainer = (
       if (notifier.statementIndex !== statementIndex || notifier.branchRoot !== branchRoot) {
         return false;
       }
+      if (branchPathCompatibility(notifier.callExpression, mutation) !== true) return false;
       const mutationStart = getRangeStart(mutation.node);
       const notifierStart = getRangeStart(notifier.callExpression);
       return mutationStart !== null && notifierStart !== null && notifierStart >= mutationStart;

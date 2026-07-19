@@ -82,7 +82,7 @@ describe("discoverProject", () => {
     expect(projectInfo.tailwindVersion).toBe("^3.4.1");
   });
 
-  it("detects an i18n library from any dependency group", () => {
+  it("detects an i18n library from runtime dependencies", () => {
     const projectDirectory = path.join(tempDirectory, "i18n-app");
     fs.mkdirSync(projectDirectory, { recursive: true });
     fs.writeFileSync(
@@ -90,6 +90,21 @@ describe("discoverProject", () => {
       JSON.stringify({
         name: "i18n-app",
         dependencies: { react: "^19.0.0", "react-i18next": "^15.0.0" },
+      }),
+    );
+
+    expect(discoverProject(projectDirectory).hasI18nLibrary).toBe(true);
+  });
+
+  it("detects an i18n library from optional dependencies", () => {
+    const projectDirectory = path.join(tempDirectory, "optional-i18n-app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "optional-i18n-app",
+        dependencies: { react: "^19.0.0" },
+        optionalDependencies: { "react-i18next": "^15.0.0" },
       }),
     );
 

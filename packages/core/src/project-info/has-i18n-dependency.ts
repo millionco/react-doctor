@@ -23,6 +23,7 @@ export const hasI18nDependency = (packageJson: PackageJson): boolean => {
     ...packageJson.peerDependencies,
     ...packageJson.dependencies,
     ...packageJson.devDependencies,
+    ...packageJson.optionalDependencies,
   };
   return I18N_PACKAGES.some((packageName) => allDependencies[packageName] !== undefined);
 };

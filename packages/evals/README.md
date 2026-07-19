@@ -1,6 +1,6 @@
 # React Doctor evals
 
-Run a pushed React Doctor revision against 498 selected repositories with Daytona. The evaluator builds one snapshot, creates one sandbox per repository, and writes newline-delimited JSON (NDJSON) results.
+Run a pushed React Doctor revision against 495 selected repositories with Daytona. The evaluator builds one snapshot, creates one sandbox per repository, and writes newline-delimited JSON (NDJSON) results.
 
 Set `DAYTONA_API_KEY`, then run:
 
@@ -9,7 +9,7 @@ cd packages/evals
 nr eval --react-doctor-ref <pushed_commit> > results.ndjson
 ```
 
-The default [repository corpus](./repositories.json) contains 498 high-ranked repositories and 910 project roots. React Bench ranks repositories by recommended React pull requests, candidate count, issue-linked pull requests, and merged pull requests scanned. Matching React Doctor Evals entries retain their pinned revisions and monorepo roots. Deterministically timing-out roots are excluded.
+The default [repository corpus](./repositories.json) contains 495 high-ranked repositories and 907 project roots. React Bench ranks repositories by recommended React pull requests, candidate count, issue-linked pull requests, and merged pull requests scanned. Matching React Doctor Evals entries retain their pinned revisions and monorepo roots. Deterministically slow roots are excluded.
 
 The evaluator accepts corpus JSON, `owner/name` text files, prior result NDJSON, URLs, and directories. Repeat `--repositories` to combine sources:
 

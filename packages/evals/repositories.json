@@ -1122,12 +1122,6 @@
     "rootDir": "."
   },
   {
-    "org": "erda-project",
-    "name": "erda-ui",
-    "ref": "HEAD",
-    "rootDir": "."
-  },
-  {
     "org": "grommet",
     "name": "grommet",
     "ref": "HEAD",
@@ -2636,12 +2630,6 @@
   {
     "org": "BoostIO",
     "name": "BoostNote-App",
-    "ref": "HEAD",
-    "rootDir": "."
-  },
-  {
-    "org": "elastic",
-    "name": "eui",
     "ref": "HEAD",
     "rootDir": "."
   },
@@ -4196,12 +4184,6 @@
   {
     "org": "ekzhang",
     "name": "composing.studio",
-    "ref": "HEAD",
-    "rootDir": "."
-  },
-  {
-    "org": "canonical",
-    "name": "maas-ui",
     "ref": "HEAD",
     "rootDir": "."
   },

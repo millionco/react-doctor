@@ -24,7 +24,7 @@ Create `tmp/parity-pr-<number>-<head-short-sha>` and preserve it after the run. 
 
 ## Run both revisions
 
-Run from `packages/evals`. The default corpus contains 498 high-ranked repositories, and the initial concurrency is 500. Sandbox creation is capped at 10 to avoid overloading Daytona. The evaluator cleans up resources and retries failed projects at concurrency 50, then 10.
+Run from `packages/evals`. The default corpus contains 495 high-ranked repositories, and the initial concurrency is 500. Sandbox creation is capped at 10 to avoid overloading Daytona. The evaluator cleans up resources and retries failed projects at concurrency 50, then 10.
 
 ```sh
 nr eval \

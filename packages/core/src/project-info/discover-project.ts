@@ -272,7 +272,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
         })
       : null;
   const preactVersion = getPreactVersion(packageJson);
-  const tanstackQueryVersion = getTanStackQueryVersion(packageJson);
+  const tanstackQueryVersion =
+    getTanStackQueryVersion(packageJson) ?? workspaceFacts.tanstackQueryVersion;
   const isPreES2023Target = hasTypeScript && detectPreES2023Target(directory);
 
   const projectInfo: ProjectInfo = {

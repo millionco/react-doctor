@@ -148,4 +148,18 @@ describe("getStaticPropertyKeyName", () => {
       }),
     ).toBe("1");
   });
+
+  it("reads static class property definition keys", () => {
+    const parsed = parseFixture(`class Example { plain = 1; ["computed"] = 2; }`);
+    expect(parsed.errors).toEqual([]);
+    const properties: EsTreeNode[] = [];
+    walkAst(parsed.program, (node: EsTreeNode) => {
+      if (isNodeOfType(node, "PropertyDefinition")) properties.push(node);
+    });
+    expect(getStaticPropertyKeyName(properties[0]!)).toBe("plain");
+    expect(getStaticPropertyKeyName(properties[1]!)).toBe(null);
+    expect(getStaticPropertyKeyName(properties[1]!, { allowComputedString: true })).toBe(
+      "computed",
+    );
+  });
 });

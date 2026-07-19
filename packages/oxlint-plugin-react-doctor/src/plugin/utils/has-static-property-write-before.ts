@@ -1,6 +1,7 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
+import { getExecutionReferenceOffset } from "./get-execution-reference-offset.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
@@ -290,7 +291,7 @@ export const getFunctionSynchronousInvocationPathsBefore = (
       return [];
     }
     if (callBoundary === referenceBoundary) {
-      return call.range[0] < referenceNode.range[0] ? [[call.range[0]]] : [];
+      return call.range[0] < getExecutionReferenceOffset(referenceNode) ? [[call.range[0]]] : [];
     }
     if (!isFunctionLike(callBoundary)) return [];
     return getFunctionSynchronousInvocationPathsBefore(
@@ -377,7 +378,7 @@ const symbolHasStaticPropertyWriteBefore = (
       return false;
     }
     if (writeBoundary === referenceBoundary) {
-      return writeTarget.range[0] < referenceNode.range[0];
+      return writeTarget.range[0] < getExecutionReferenceOffset(referenceNode);
     }
     return (
       isFunctionLike(writeBoundary) &&
@@ -421,7 +422,7 @@ const canExecuteBefore = (
   const referenceBoundary = findExecutionBoundary(referenceNode);
   if (!candidateBoundary || !referenceBoundary) return true;
   if (candidateBoundary === referenceBoundary) {
-    return candidateNode.range[0] < referenceNode.range[0];
+    return candidateNode.range[0] < getExecutionReferenceOffset(referenceNode);
   }
   if (!isFunctionLike(candidateBoundary)) return true;
   return isFunctionSynchronouslyInvokedBefore(candidateBoundary, referenceNode, scopes);

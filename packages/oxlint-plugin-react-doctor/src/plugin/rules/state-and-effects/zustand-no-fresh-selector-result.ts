@@ -17,7 +17,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 interface FreshSelectorResult {
-  readonly kind: "array" | "instance" | "object";
+  readonly kind: "array" | "function" | "instance" | "object";
   readonly node: EsTreeNode;
 }
 
@@ -83,10 +83,12 @@ const toZustandApiName = (importedName: string): ZustandApiBinding["apiName"] | 
   }
 };
 
-const isNullishEqualityArgument = (argument: EsTreeNode): boolean => {
+const isNullishEqualityArgument = (argument: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const candidate = stripParenExpression(argument);
   return (
-    (isNodeOfType(candidate, "Identifier") && candidate.name === "undefined") ||
+    (isNodeOfType(candidate, "Identifier") &&
+      candidate.name === "undefined" &&
+      scopes.isGlobalReference(candidate)) ||
     (isNodeOfType(candidate, "Literal") && candidate.value === null)
   );
 };
@@ -94,11 +96,12 @@ const isNullishEqualityArgument = (argument: EsTreeNode): boolean => {
 const hasExplicitEqualityArgument = (
   argumentsList: ReadonlyArray<EsTreeNode>,
   equalityArgumentIndex: number,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const equalityArgument = argumentsList[equalityArgumentIndex];
   if (!equalityArgument) return false;
   if (isNodeOfType(equalityArgument, "SpreadElement")) return true;
-  return !isNullishEqualityArgument(equalityArgument);
+  return !isNullishEqualityArgument(equalityArgument, scopes);
 };
 
 const getNamedImportApi = (
@@ -204,7 +207,7 @@ const resolveZustandStoreCreation = (
   if (directFactory?.apiName === "create") return { hasDefaultEquality: false };
   if (directFactory?.apiName === "createWithEqualityFn") {
     return {
-      hasDefaultEquality: hasExplicitEqualityArgument(candidate.arguments, 1),
+      hasDefaultEquality: hasExplicitEqualityArgument(candidate.arguments, 1, scopes),
     };
   }
 
@@ -214,7 +217,7 @@ const resolveZustandStoreCreation = (
   if (curriedFactory?.apiName === "create") return { hasDefaultEquality: false };
   if (curriedFactory?.apiName === "createWithEqualityFn") {
     return {
-      hasDefaultEquality: hasExplicitEqualityArgument(candidate.arguments, 1),
+      hasDefaultEquality: hasExplicitEqualityArgument(candidate.arguments, 1, scopes),
     };
   }
   return null;
@@ -251,14 +254,17 @@ const getZustandSelectorCall = (
   if (apiBinding?.apiName === "useStore" || apiBinding?.apiName === "useStoreWithEqualityFn") {
     const selector = callExpression.arguments[1];
     if (!selector || isNodeOfType(selector, "SpreadElement")) return null;
-    if (hasExplicitEqualityArgument(callExpression.arguments, 2)) return null;
+    if (hasExplicitEqualityArgument(callExpression.arguments, 2, scopes)) return null;
     return { selector };
   }
 
   const boundStore = resolveZustandBoundStore(callExpression.callee, scopes);
   const selector = callExpression.arguments[0];
   if (!boundStore || !selector || isNodeOfType(selector, "SpreadElement")) return null;
-  if (boundStore.hasDefaultEquality || hasExplicitEqualityArgument(callExpression.arguments, 1)) {
+  if (
+    boundStore.hasDefaultEquality ||
+    hasExplicitEqualityArgument(callExpression.arguments, 1, scopes)
+  ) {
     return null;
   }
   return { selector };
@@ -309,7 +315,13 @@ const resolveSelectorFunction = (
 
   if (!isNodeOfType(candidate, "Identifier")) return null;
   const symbol = scopes.symbolFor(candidate);
-  if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
+  if (
+    !symbol ||
+    visitedSymbolIds.has(symbol.id) ||
+    symbol.references.some((reference) => reference.flag !== "read")
+  ) {
+    return null;
+  }
   if (symbol.kind === "function" && isFunctionLike(symbol.declarationNode)) {
     return symbol.declarationNode;
   }
@@ -358,6 +370,7 @@ const resolveFreshSelectorResult = (
   const freshRenderValue = resolveFreshRenderValue(expression, scopes);
   if (
     freshRenderValue?.kind === "array" ||
+    freshRenderValue?.kind === "function" ||
     freshRenderValue?.kind === "instance" ||
     freshRenderValue?.kind === "object"
   ) {

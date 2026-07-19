@@ -13,15 +13,16 @@ describe("zustand-no-fresh-selector-result", () => {
     expect(zustandNoFreshSelectorResult.requires).toEqual(["zustand", "zustand:5"]);
   });
 
-  it("flags object and array literals returned by a create-bound store", () => {
+  it("flags object, array, and function literals returned by a create-bound store", () => {
     expectDiagnosticCount(
       `
         import { create } from "zustand";
         const useBearStore = create((set) => ({ bears: [], count: 0 }));
         const summary = useBearStore((state) => ({ count: state.count }));
         const pair = useBearStore((state) => [state.count, state.bears]);
+        const fallback = useBearStore((state) => state.action ?? (() => {}));
       `,
-      2,
+      3,
     );
   });
 
@@ -95,7 +96,7 @@ describe("zustand-no-fresh-selector-result", () => {
     );
   });
 
-  it("does not follow mutable or parameter-default selector aliases", () => {
+  it("does not follow mutable function, variable, or parameter-default selector aliases", () => {
     expectDiagnosticCount(
       `
         import { create } from "zustand";
@@ -103,6 +104,9 @@ describe("zustand-no-fresh-selector-result", () => {
         let mutableSelector = (state) => ({ bears: state.bears });
         mutableSelector = (state) => state.bears;
         const first = useBearStore(mutableSelector);
+        function reassignedSelector(state) { return { bears: state.bears }; }
+        reassignedSelector = (state) => state.bears;
+        const second = useBearStore(reassignedSelector);
         const readWithDefault = (selector = (state) => ({ bears: state.bears })) =>
           useBearStore(selector);
       `,
@@ -177,6 +181,24 @@ describe("zustand-no-fresh-selector-result", () => {
         import { useShallow } from "zustand/shallow";
         const useBearStore = create(() => ({ count: 0, bears: [] }));
         const value = useBearStore(useShallow((state) => [state.count, state.bears]));
+      `,
+      0,
+    );
+  });
+
+  it("respects an equality function held by a shadowing undefined binding", () => {
+    expectDiagnosticCount(
+      `
+        import { useStoreWithEqualityFn } from "zustand/traditional";
+        import { shallow } from "zustand/shallow";
+        import { bearStore } from "./bear-store";
+        function readStore(undefined = shallow) {
+          return useStoreWithEqualityFn(
+            bearStore,
+            (state) => ({ count: state.count }),
+            undefined,
+          );
+        }
       `,
       0,
     );

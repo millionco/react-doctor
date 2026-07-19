@@ -1809,6 +1809,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-require-owned-texture-cleanup": {
     code: 'import { useMemo } from "react"; import { CanvasTexture } from "three"; const Scene = ({ canvas }) => { const texture = useMemo(() => new CanvasTexture(canvas), [canvas]); return <meshStandardMaterial map={texture} />; };',
   },
+  "r3f-require-projection-matrix-update": {
+    code: 'import { useFrame } from "@react-three/fiber"; useFrame(({ camera }) => { camera.aspect = 2; });',
+  },
   "r3f-require-render-with-positive-priority": {
     code: 'import { useFrame } from "@react-three/fiber"; const Scene = () => { useFrame(() => update(), 1); return null; };',
   },

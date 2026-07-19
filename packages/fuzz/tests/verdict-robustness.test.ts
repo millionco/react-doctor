@@ -165,6 +165,7 @@ const AUDITED_RULE_IDS = [
   "r3f-require-frame-delta",
   "r3f-require-global-effect-cleanup",
   "r3f-require-owned-texture-cleanup",
+  "r3f-require-projection-matrix-update",
   "r3f-require-render-with-positive-priority",
   "r3f-require-root-unmount",
   "r3f-webgpu-canvas-prop-compatibility",

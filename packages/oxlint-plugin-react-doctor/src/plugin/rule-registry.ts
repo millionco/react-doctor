@@ -537,6 +537,7 @@ import { r3fPreferUseLoader } from "./rules/r3f/r3f-prefer-use-loader.js";
 import { r3fRequireFrameDelta } from "./rules/r3f/r3f-require-frame-delta.js";
 import { r3fRequireGlobalEffectCleanup } from "./rules/r3f/r3f-require-global-effect-cleanup.js";
 import { r3fRequireOwnedTextureCleanup } from "./rules/r3f/r3f-require-owned-texture-cleanup.js";
+import { r3fRequireProjectionMatrixUpdate } from "./rules/r3f/r3f-require-projection-matrix-update.js";
 import { r3fRequireRenderWithPositivePriority } from "./rules/r3f/r3f-require-render-with-positive-priority.js";
 import { r3fRequireRootUnmount } from "./rules/r3f/r3f-require-root-unmount.js";
 import { r3fWebgpuCanvasPropCompatibility } from "./rules/r3f/r3f-webgpu-canvas-prop-compatibility.js";
@@ -7084,6 +7085,25 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fRequireOwnedTextureCleanup.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fRequireOwnedTextureCleanup.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-projection-matrix-update",
+    id: "r3f-require-projection-matrix-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireProjectionMatrixUpdate,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireProjectionMatrixUpdate.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fRequireProjectionMatrixUpdate.requires ?? []),
+        ]),
       ],
     },
   },

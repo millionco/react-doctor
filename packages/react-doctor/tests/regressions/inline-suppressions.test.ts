@@ -18,7 +18,8 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import type { Diagnostic } from "@react-doctor/core";
 import { createNodeReadFileLinesSync, mergeAndFilterDiagnostics } from "@react-doctor/core";
-import { buildDiagnostic, writeFile } from "./_helpers.js";
+import { inspect } from "../../src/inspect.js";
+import { buildDiagnostic, setupReactProject, writeFile } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-inline-suppression-"));
 
@@ -49,6 +50,19 @@ const runFilter = (
 
 const baseDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic =>
   buildDiagnostic({ rule: "no-derived-state-effect", ...overrides });
+
+const buildRefMutationSource = (
+  suppressionDirective = "",
+): string => `import { useRef } from "react";
+
+export function Repro({ value }: { value: string }) {
+  const valueRef = useRef(value);
+
+${suppressionDirective}  valueRef.current = value;
+
+  return <div>{value}</div>;
+}
+`;
 
 describe("issue #72: inline suppressions — variants", () => {
   it("disable-line suppresses a diagnostic on the SAME line", () => {
@@ -126,6 +140,53 @@ describe("issue #72: inline suppressions — variants", () => {
       baseDiagnostic({ rule: "no-fetch-in-effect", line: 1 }),
     ]);
     expect(filtered).toHaveLength(0);
+  });
+});
+
+describe("issue #1406: inline suppressions — end-to-end rule diagnostics", () => {
+  it("suppresses no-ref-current-in-render on the next line", async () => {
+    const unsuppressedProjectDirectory = setupReactProject(
+      tempRoot,
+      "no-ref-current-in-render-control",
+      {
+        files: {
+          "src/repro.tsx": buildRefMutationSource(),
+        },
+      },
+    );
+    const suppressedProjectDirectory = setupReactProject(tempRoot, "no-ref-current-in-render", {
+      files: {
+        "src/repro.tsx": buildRefMutationSource(
+          "  // react-doctor-disable-next-line react-doctor/no-ref-current-in-render -- minimal reproduction\n",
+        ),
+      },
+    });
+
+    const unsuppressedResult = await inspect(unsuppressedProjectDirectory, {
+      deadCode: false,
+      isCi: true,
+      noScore: true,
+      silent: true,
+      warnings: false,
+    });
+    const suppressedResult = await inspect(suppressedProjectDirectory, {
+      deadCode: false,
+      isCi: true,
+      noScore: true,
+      silent: true,
+      warnings: false,
+    });
+
+    expect(
+      unsuppressedResult.diagnostics.filter(
+        (diagnostic) => diagnostic.rule === "no-ref-current-in-render",
+      ),
+    ).toHaveLength(1);
+    expect(
+      suppressedResult.diagnostics.filter(
+        (diagnostic) => diagnostic.rule === "no-ref-current-in-render",
+      ),
+    ).toEqual([]);
   });
 });
 

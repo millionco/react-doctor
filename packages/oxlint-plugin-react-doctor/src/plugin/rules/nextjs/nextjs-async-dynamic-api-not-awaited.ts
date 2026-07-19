@@ -739,6 +739,62 @@ const logicalRightCanBecomeResult = (
   return leftValue.isNullish;
 };
 
+const expressionIsGuaranteedNullish = (context: RuleContext, expression: EsTreeNode): boolean => {
+  const staticValue = getStaticLogicalValue(context, expression);
+  if (staticValue) return staticValue.isNullish;
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    const testValue = getStaticLogicalValue(context, expression.test);
+    return Boolean(
+      testValue &&
+      expressionIsGuaranteedNullish(
+        context,
+        testValue.isTruthy ? expression.consequent : expression.alternate,
+      ),
+    );
+  }
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    const leftValue = getStaticLogicalValue(context, expression.left);
+    if (!leftValue) return false;
+    return logicalRightCanBecomeResult(expression.operator, leftValue)
+      ? expressionIsGuaranteedNullish(context, expression.right)
+      : leftValue.isNullish;
+  }
+  if (isNodeOfType(expression, "SequenceExpression")) {
+    const finalExpression = expression.expressions.at(-1);
+    return Boolean(finalExpression && expressionIsGuaranteedNullish(context, finalExpression));
+  }
+  if (isNodeOfType(expression, "AssignmentExpression")) {
+    return expressionIsGuaranteedNullish(context, expression.right);
+  }
+  if (isNodeOfType(expression, "ChainExpression")) {
+    return optionalChainStaticallyShortCircuits(context, expression.expression);
+  }
+  return (
+    (isNodeOfType(expression, "MemberExpression") || isNodeOfType(expression, "CallExpression")) &&
+    optionalChainStaticallyShortCircuits(context, expression)
+  );
+};
+
+const optionalChainStaticallyShortCircuits = (
+  context: RuleContext,
+  expression: EsTreeNode,
+): boolean => {
+  let current = expression;
+  while (true) {
+    if (isNodeOfType(current, "MemberExpression")) {
+      if (current.optional && expressionIsGuaranteedNullish(context, current.object)) return true;
+      current = current.object;
+      continue;
+    }
+    if (isNodeOfType(current, "CallExpression")) {
+      if (current.optional && expressionIsGuaranteedNullish(context, current.callee)) return true;
+      current = current.callee;
+      continue;
+    }
+    return false;
+  }
+};
+
 const expressionIsStaticallySkipped = (context: RuleContext, expression: EsTreeNode): boolean => {
   let current = expression;
   while (current.parent) {
@@ -758,12 +814,17 @@ const expressionIsStaticallySkipped = (context: RuleContext, expression: EsTreeN
       }
     } else if (
       isNodeOfType(parent, "MemberExpression") &&
-      parent.optional &&
       parent.computed &&
-      parent.property === current
+      parent.property === current &&
+      optionalChainStaticallyShortCircuits(context, parent)
     ) {
-      const receiverValue = getStaticLogicalValue(context, parent.object);
-      if (receiverValue?.isNullish) return true;
+      return true;
+    } else if (
+      isNodeOfType(parent, "CallExpression") &&
+      parent.arguments.some((argument) => argument === current) &&
+      optionalChainStaticallyShortCircuits(context, parent)
+    ) {
+      return true;
     }
     current = parent;
   }

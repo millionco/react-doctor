@@ -78,6 +78,19 @@ describe("zustand-no-whole-store-destructure", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports traditional vanilla store hooks without a selector", () => {
+    const result = run(`
+      import { createStore } from "zustand/vanilla";
+      import { useStoreWithEqualityFn as useTraditionalStore } from "zustand/traditional";
+      const bearStore = createStore(() => ({ bears: 0 }));
+      export function BearCounter() {
+        const { bears } = useTraditionalStore(bearStore);
+        return <span>{bears}</span>;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports inside a custom hook", () => {
     const result = run(`
       import { create } from "zustand";
@@ -105,6 +118,19 @@ describe("zustand-no-whole-store-destructure", () => {
       const bearStore = createStore(() => ({ bears: 0 }));
       export const BearCounter = () => {
         const bears = useStore(bearStore, (state) => state.bears);
+        return <span>{bears}</span>;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows traditional vanilla store hooks with selectors", () => {
+    const result = run(`
+      import { createStore } from "zustand/vanilla";
+      import { useStoreWithEqualityFn } from "zustand/traditional";
+      const bearStore = createStore(() => ({ bears: 0 }));
+      export const BearCounter = () => {
+        const bears = useStoreWithEqualityFn(bearStore, (state) => state.bears);
         return <span>{bears}</span>;
       };
     `);

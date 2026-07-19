@@ -41,8 +41,8 @@ const MOBX_REACT_OBSERVER_PACKAGE_NAME = "mobx-react-observer";
 const REACT_THREE_FIBER_DEPENDENCY_NAMES = ["@react-three/fiber", "react-three-fiber"] as const;
 const REACT_THREE_FIBER_SECTIONS = [
   "dependencies",
-  "devDependencies",
   "peerDependencies",
+  "devDependencies",
   "optionalDependencies",
 ] as const;
 const THREE_DEPENDENCY_SECTIONS = [

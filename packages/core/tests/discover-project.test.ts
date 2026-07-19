@@ -1901,6 +1901,46 @@ describe("discoverProject — React Three Fiber", () => {
     expect(projectInfo.reactThreeFiberMajorVersion).toBe(9);
   });
 
+  it("uses a supported Fiber peer floor instead of a newer dev version", () => {
+    const projectDirectory = path.join(tempDirectory, "r3f-peer-floor");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "r3f-peer-floor",
+        dependencies: { react: "^19.0.0" },
+        peerDependencies: { "@react-three/fiber": "^9.0.0" },
+        devDependencies: { "@react-three/fiber": "^10.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactThreeFiberVersion).toBe("^9.0.0");
+    expect(projectInfo.reactThreeFiberMajorVersion).toBe(9);
+  });
+
+  it("resolves a catalog-backed Fiber peer floor before a dev version", () => {
+    const projectDirectory = path.join(tempDirectory, "r3f-catalog-peer-floor");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "pnpm-workspace.yaml"),
+      'catalogs:\n  stable:\n    "@react-three/fiber": ^9.0.0\n  next:\n    "@react-three/fiber": ^10.0.0\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "r3f-catalog-peer-floor",
+        dependencies: { react: "^19.0.0" },
+        peerDependencies: { "@react-three/fiber": "catalog:stable" },
+        devDependencies: { "@react-three/fiber": "catalog:next" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactThreeFiberVersion).toBe("^9.0.0");
+    expect(projectInfo.reactThreeFiberMajorVersion).toBe(9);
+  });
+
   it("detects the R3F ecosystem from workspace manifests", () => {
     const projectDirectory = path.join(tempDirectory, "r3f-workspace");
     const sceneDirectory = path.join(projectDirectory, "packages", "scene");

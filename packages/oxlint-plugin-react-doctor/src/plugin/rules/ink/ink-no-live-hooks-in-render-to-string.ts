@@ -15,17 +15,6 @@ import { walkAst } from "../../utils/walk-ast.js";
 const INERT_INPUT_HOOK_NAMES = new Set(["useInput", "usePaste"]);
 
 const isExportedComponent = (componentNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  let ancestorNode: EsTreeNode | null | undefined = componentNode;
-  while (ancestorNode && !isNodeOfType(ancestorNode, "Program")) {
-    if (
-      isNodeOfType(ancestorNode, "ExportDefaultDeclaration") ||
-      isNodeOfType(ancestorNode, "ExportNamedDeclaration")
-    ) {
-      return true;
-    }
-    ancestorNode = ancestorNode.parent;
-  }
-
   let bindingIdentifier: EsTreeNode | null = null;
   if (isNodeOfType(componentNode, "FunctionDeclaration") && componentNode.id) {
     bindingIdentifier = componentNode.id;
@@ -37,6 +26,13 @@ const isExportedComponent = (componentNode: EsTreeNode, scopes: ScopeAnalysis): 
     bindingIdentifier = componentNode.parent.id;
   }
   const symbol = bindingIdentifier ? scopes.symbolFor(bindingIdentifier) : null;
+  const declarationParent = symbol?.declarationNode.parent;
+  const isDirectExport =
+    isNodeOfType(declarationParent, "ExportDefaultDeclaration") ||
+    isNodeOfType(declarationParent, "ExportNamedDeclaration") ||
+    (isNodeOfType(declarationParent, "VariableDeclaration") &&
+      isNodeOfType(declarationParent.parent, "ExportNamedDeclaration"));
+  if (isDirectExport) return true;
   return Boolean(
     symbol?.references.some((reference) => {
       const parentNode = reference.identifier.parent;

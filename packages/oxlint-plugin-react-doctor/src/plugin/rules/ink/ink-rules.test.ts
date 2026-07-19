@@ -402,6 +402,17 @@ describe("Ink rules", () => {
     );
   });
 
+  it("does not treat nested snapshot-only components as exported", () => {
+    const code = `
+      import {renderToString,useInput} from "ink";
+      export const makeSnapshot=()=> {
+        const Inner=()=> { useInput(()=>{}); return null; };
+        return renderToString(<Inner/>);
+      };
+    `;
+    expect(runRule(inkNoLiveHooksInRenderToString, code).diagnostics).toHaveLength(1);
+  });
+
   it("requires active Ink input ownership before suggesting terminal suspension", () => {
     const code = `
       import {Text} from "ink";
@@ -520,5 +531,15 @@ describe("Ink rules", () => {
     `;
     expect(runRule(inkSuspenseRequiresConcurrent, componentBranchCode).diagnostics).toHaveLength(0);
     expect(runRule(inkSuspenseRequiresConcurrent, renderBranchCode).diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes Suspense boundaries owned by an Ink ancestor", () => {
+    const code = `
+      import {render,Box} from "ink";
+      import {Suspense,lazy} from "react";
+      const Lazy=lazy(()=>import("./screen"));
+      render(<Box><Suspense fallback={null}><Lazy/></Suspense></Box>);
+    `;
+    expect(runRule(inkSuspenseRequiresConcurrent, code).diagnostics).toHaveLength(1);
   });
 });

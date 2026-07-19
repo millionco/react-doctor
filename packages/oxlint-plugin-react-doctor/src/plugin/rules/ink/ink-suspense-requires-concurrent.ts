@@ -2,6 +2,7 @@ import { MINIMUM_INK_VERSIONS } from "../../constants/ink.js";
 import { containsInkJsxElement } from "../../utils/contains-ink-jsx-element.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findNearestInkJsxElement } from "../../utils/find-nearest-ink-jsx-element.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import {
@@ -28,7 +29,8 @@ export const inkSuspenseRequiresConcurrent = defineRule({
           getImportedNameFromModule(descendantNode, descendantNode.name.name, "react") !==
             "Suspense" ||
           !descendantNode.parent ||
-          !containsInkJsxElement(descendantNode.parent, context.scopes)
+          (!containsInkJsxElement(descendantNode.parent, context.scopes) &&
+            findNearestInkJsxElement(descendantNode.parent, context.scopes) === null)
         ) {
           return;
         }

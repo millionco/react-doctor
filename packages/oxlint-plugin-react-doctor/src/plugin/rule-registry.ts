@@ -424,6 +424,7 @@ import { zodV4NoDeprecatedErrorApis } from "./rules/zod/zod-v4-no-deprecated-err
 import { zodV4NoDeprecatedErrorCustomization } from "./rules/zod/zod-v4-no-deprecated-error-customization.js";
 import { zodV4NoDeprecatedSchemaApis } from "./rules/zod/zod-v4-no-deprecated-schema-apis.js";
 import { zodV4PreferTopLevelStringFormats } from "./rules/zod/zod-v4-prefer-top-level-string-formats.js";
+import { zustandNoMutatingState } from "./rules/state-and-effects/zustand-no-mutating-state.js";
 
 export const reactDoctorRules = [
   {
@@ -5340,6 +5341,18 @@ export const reactDoctorRules = [
       ...zodV4PreferTopLevelStringFormats,
       framework: "global",
       category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/zustand-no-mutating-state",
+    id: "zustand-no-mutating-state",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...zustandNoMutatingState,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(zustandNoMutatingState.requires ?? [])])],
     },
   },
 ] as const;

@@ -961,17 +961,51 @@ const expressionMayRetainOfficialPendingValue = (
           return nestedCandidate;
         }
       }
-      if (
-        !symbol?.initializer ||
-        visitedSymbolIds.has(symbol.id) ||
-        createPendingSymbolFlow(context, symbol, symbol.initializer).isClearedBefore(
-          nestedCandidate,
-        )
-      ) {
-        return null;
-      }
+      if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
       visitedSymbolIds.add(symbol.id);
-      return findSource(symbol.initializer);
+      const candidateSources: EsTreeNode[] = symbol.initializer ? [symbol.initializer] : [];
+      for (const reference of symbol.references) {
+        if (reference.flag === "read") continue;
+        const assignment = findPatternAssignmentForIdentifier(reference.identifier);
+        if (
+          !assignment ||
+          (assignment.operator !== "=" &&
+            assignment.operator !== "&&=" &&
+            assignment.operator !== "||=" &&
+            assignment.operator !== "??=")
+        ) {
+          continue;
+        }
+        const assignedValue = findPatternAssignedValue(
+          context,
+          assignment.left,
+          assignment.right,
+          symbol,
+        );
+        if (assignedValue?.expression) candidateSources.push(assignedValue.expression);
+      }
+      const candidateOwner = context.cfg.enclosingFunction(nestedCandidate);
+      const candidateStart = getNodeStartIndex(nestedCandidate);
+      for (const sourceExpression of candidateSources) {
+        if (
+          context.cfg.enclosingFunction(sourceExpression) !== candidateOwner ||
+          getNodeStartIndex(sourceExpression) >= candidateStart
+        ) {
+          continue;
+        }
+        const source = findSource(sourceExpression);
+        if (
+          source &&
+          !createPendingSymbolFlow(context, symbol, sourceExpression).isClearedBefore(
+            nestedCandidate,
+          )
+        ) {
+          visitedSymbolIds.delete(symbol.id);
+          return source;
+        }
+      }
+      visitedSymbolIds.delete(symbol.id);
+      return null;
     });
   return Boolean(findSource(expression));
 };

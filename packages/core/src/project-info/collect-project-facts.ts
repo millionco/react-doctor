@@ -1,6 +1,10 @@
 import * as path from "node:path";
 import type { DependencyInfo, Framework, PackageJson } from "../types/index.js";
-import { LATEST_SUPPORTED_MOBX_MAJOR, LATEST_SUPPORTED_ZUSTAND_MAJOR } from "../constants.js";
+import {
+  EARLIEST_GATED_STYLED_COMPONENTS_MAJOR,
+  LATEST_SUPPORTED_MOBX_MAJOR,
+  LATEST_SUPPORTED_ZUSTAND_MAJOR,
+} from "../constants.js";
 import {
   EMPTY_DEPENDENCY_INFO,
   extractDependencyInfo,
@@ -161,8 +165,10 @@ const shouldReplaceStyledComponentsVersion = (
   const currentMajor = getLowestDependencyMajor(currentVersion);
   const nextMajor = getLowestDependencyMajor(nextVersion);
 
-  if (currentMajor === null) return false;
-  if (nextMajor === null) return true;
+  if (currentMajor === null) {
+    return nextMajor !== null && nextMajor < EARLIEST_GATED_STYLED_COMPONENTS_MAJOR;
+  }
+  if (nextMajor === null) return currentMajor >= EARLIEST_GATED_STYLED_COMPONENTS_MAJOR;
   return nextMajor < currentMajor;
 };
 
@@ -241,7 +247,12 @@ const evaluateManifestFacts = (
     if (spec !== null) facts.valtioVersion = spec;
   }
   facts.tanstackQueryVersion ??= getTanStackQueryVersion(packageJson);
-  const styledComponentsVersion = getStyledComponentsVersion(packageJson);
+  const styledComponentsVersion = resolveCatalogBackedDependencyVersion({
+    rootDirectory: directory,
+    rootPackageJson: packageJson,
+    packageName: "styled-components",
+    version: getStyledComponentsVersion(packageJson),
+  });
   if (
     styledComponentsVersion &&
     shouldReplaceStyledComponentsVersion(facts.styledComponentsVersion, styledComponentsVersion)

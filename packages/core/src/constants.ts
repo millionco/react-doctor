@@ -48,6 +48,7 @@ export const EARLIEST_GATED_PREACT_MAJOR = 10;
 // Valtio shipped the useSnapshot render contract in v1. The upper bound
 // follows the same untrusted-version clamp as React and Preact.
 export const EARLIEST_GATED_VALTIO_MAJOR = 1;
+export const EARLIEST_GATED_STYLED_COMPONENTS_MAJOR = 6;
 export const LATEST_KNOWN_VALTIO_MAJOR = 10;
 export const LATEST_KNOWN_REMOTION_MAJOR = 30;
 

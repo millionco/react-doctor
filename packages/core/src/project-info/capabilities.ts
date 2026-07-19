@@ -5,6 +5,7 @@ import {
   EARLIEST_GATED_PREACT_MAJOR,
   EARLIEST_GATED_REACT_MAJOR,
   EARLIEST_GATED_REMOTION_MAJOR,
+  EARLIEST_GATED_STYLED_COMPONENTS_MAJOR,
   EARLIEST_GATED_VALTIO_MAJOR,
   EARLIEST_GATED_ZUSTAND_MAJOR,
   LATEST_KNOWN_PREACT_MAJOR,
@@ -192,7 +193,10 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   if (project.styledComponentsVersion) {
     capabilities.add("styled-components");
     const styledComponentsMajor = getLowestDependencyMajor(project.styledComponentsVersion);
-    if (styledComponentsMajor !== null && styledComponentsMajor >= 6) {
+    if (
+      styledComponentsMajor !== null &&
+      styledComponentsMajor >= EARLIEST_GATED_STYLED_COMPONENTS_MAJOR
+    ) {
       capabilities.add("styled-components:6");
     }
   }

@@ -235,6 +235,141 @@ describe("discoverProject", () => {
     expect(discoverProject(monorepoRoot).styledComponentsVersion).toBe("workspace:*");
   });
 
+  it("uses a parseable styled-components v5 spec after an unparseable workspace spec", () => {
+    const monorepoRoot = path.join(tempDirectory, "unknown-before-legacy-styled-workspace-root");
+    const unknownDirectory = path.join(monorepoRoot, "apps", "a-unknown");
+    const legacyDirectory = path.join(monorepoRoot, "apps", "b-legacy");
+    fs.mkdirSync(unknownDirectory, { recursive: true });
+    fs.mkdirSync(legacyDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({ name: "root", private: true, workspaces: ["apps/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(unknownDirectory, "package.json"),
+      JSON.stringify({
+        name: "unknown",
+        dependencies: { react: "^19.0.0", "styled-components": "workspace:*" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(legacyDirectory, "package.json"),
+      JSON.stringify({
+        name: "legacy",
+        dependencies: { react: "^18.3.1", "styled-components": "^5.3.11" },
+      }),
+    );
+
+    expect(discoverProject(monorepoRoot).styledComponentsVersion).toBe("^5.3.11");
+  });
+
+  it("keeps a parseable styled-components v5 spec before an unparseable workspace spec", () => {
+    const monorepoRoot = path.join(tempDirectory, "legacy-before-unknown-styled-workspace-root");
+    const legacyDirectory = path.join(monorepoRoot, "apps", "a-legacy");
+    const unknownDirectory = path.join(monorepoRoot, "apps", "b-unknown");
+    fs.mkdirSync(legacyDirectory, { recursive: true });
+    fs.mkdirSync(unknownDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({ name: "root", private: true, workspaces: ["apps/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(legacyDirectory, "package.json"),
+      JSON.stringify({
+        name: "legacy",
+        dependencies: { react: "^18.3.1", "styled-components": "^5.3.11" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(unknownDirectory, "package.json"),
+      JSON.stringify({
+        name: "unknown",
+        dependencies: { react: "^19.0.0", "styled-components": "workspace:*" },
+      }),
+    );
+
+    expect(discoverProject(monorepoRoot).styledComponentsVersion).toBe("^5.3.11");
+  });
+
+  it("keeps an unparseable styled-components spec before a v6 spec", () => {
+    const monorepoRoot = path.join(tempDirectory, "unknown-before-modern-styled-workspace-root");
+    const unknownDirectory = path.join(monorepoRoot, "apps", "a-unknown");
+    const modernDirectory = path.join(monorepoRoot, "apps", "b-modern");
+    fs.mkdirSync(unknownDirectory, { recursive: true });
+    fs.mkdirSync(modernDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({ name: "root", private: true, workspaces: ["apps/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(unknownDirectory, "package.json"),
+      JSON.stringify({
+        name: "unknown",
+        dependencies: { react: "^19.0.0", "styled-components": "workspace:*" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(modernDirectory, "package.json"),
+      JSON.stringify({
+        name: "modern",
+        dependencies: { react: "^19.0.0", "styled-components": "^6.1.0" },
+      }),
+    );
+
+    expect(discoverProject(monorepoRoot).styledComponentsVersion).toBe("workspace:*");
+  });
+
+  it("resolves styled-components catalog specs before merging workspace versions", () => {
+    const monorepoRoot = path.join(tempDirectory, "styled-components-pnpm-catalog");
+    const appDirectory = path.join(monorepoRoot, "apps", "web");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - apps/*\n\ncatalog:\n  styled-components: ^6.1.0\n",
+    );
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({ name: "root", private: true }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { react: "^19.0.0", "styled-components": "catalog:" },
+      }),
+    );
+
+    expect(discoverProject(monorepoRoot).styledComponentsVersion).toBe("^6.1.0");
+    expect(discoverProject(appDirectory).styledComponentsVersion).toBe("^6.1.0");
+  });
+
+  it("keeps a root styled-components v5 spec over a workspace v6 catalog spec", () => {
+    const monorepoRoot = path.join(tempDirectory, "styled-components-root-v5-catalog-v6");
+    const appDirectory = path.join(monorepoRoot, "apps", "web");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - apps/*\n\ncatalog:\n  styled-components: ^6.1.0\n",
+    );
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({
+        name: "root",
+        private: true,
+        dependencies: { "styled-components": "^5.3.11" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { react: "^19.0.0", "styled-components": "catalog:" },
+      }),
+    );
+
+    expect(discoverProject(monorepoRoot).styledComponentsVersion).toBe("^5.3.11");
+  });
+
   it("does not classify framework-agnostic query-core as React Query", () => {
     const projectDirectory = path.join(tempDirectory, "tanstack-query-core-only");
     fs.mkdirSync(projectDirectory, { recursive: true });

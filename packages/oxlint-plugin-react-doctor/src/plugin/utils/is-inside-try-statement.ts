@@ -12,6 +12,7 @@ interface IsInsideTryStatementOptions {
   // can scope the search to a single function/effect body. Defaults to no
   // boundary (walk to the program root).
   boundary?: EsTreeNode | null;
+  requireHandler?: boolean;
 }
 
 // Single source of truth for "is this node inside a try/catch". The three
@@ -24,10 +25,15 @@ export const isInsideTryStatement = (
 ): boolean => {
   const region = options?.region ?? "any";
   const boundary = options?.boundary ?? null;
+  const requireHandler = options?.requireHandler ?? false;
   let child: EsTreeNode = node;
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor && ancestor !== boundary) {
-    if (isNodeOfType(ancestor, "TryStatement") && (region === "any" || ancestor.block === child)) {
+    if (
+      isNodeOfType(ancestor, "TryStatement") &&
+      (region === "any" || ancestor.block === child) &&
+      (!requireHandler || ancestor.handler !== null)
+    ) {
       return true;
     }
     child = ancestor;

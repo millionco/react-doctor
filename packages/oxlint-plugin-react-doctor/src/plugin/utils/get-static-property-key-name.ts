@@ -13,6 +13,7 @@ export const getStaticPropertyKeyName = (
   if (
     !isNodeOfType(node, "Property") &&
     !isNodeOfType(node, "MethodDefinition") &&
+    !isNodeOfType(node, "PropertyDefinition") &&
     !isNodeOfType(node, "MemberExpression")
   ) {
     return null;

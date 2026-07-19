@@ -1,6 +1,7 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
+import { getExecutionReferenceOffset } from "./get-execution-reference-offset.js";
 import {
   getFunctionSynchronousInvocationPathsBefore,
   isNodeOnUnconditionalPath,
@@ -21,7 +22,7 @@ export const getSymbolWriteExecutionPathsBefore = (
   const referenceFunction = findEnclosingFunction(referenceNode);
   if (writeFunction === referenceFunction) {
     if (
-      writeIdentifier.range[0] >= referenceNode.range[0] ||
+      writeIdentifier.range[0] >= getExecutionReferenceOffset(referenceNode) ||
       (options.requireSynchronousWrite &&
         (!writeFunction ||
           !isNodeOnUnconditionalPath(writeIdentifier, writeFunction) ||

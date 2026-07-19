@@ -427,6 +427,7 @@ export const zustandNoFreshSelectorResult = defineRule({
   title: "Zustand selector returns a fresh value",
   severity: "error",
   category: "Performance",
+  requires: ["zustand", "zustand:5"],
   recommendation:
     "Select a stable store field, split the selector, or wrap a collection selector with `useShallow`.",
   create: (context: RuleContext) => ({

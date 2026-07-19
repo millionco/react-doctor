@@ -9,6 +9,10 @@ const expectDiagnosticCount = (code: string, count: number): void => {
 };
 
 describe("zustand-no-fresh-selector-result", () => {
+  it("requires a declared Zustand v5 dependency", () => {
+    expect(zustandNoFreshSelectorResult.requires).toEqual(["zustand", "zustand:5"]);
+  });
+
   it("flags object and array literals returned by a create-bound store", () => {
     expectDiagnosticCount(
       `

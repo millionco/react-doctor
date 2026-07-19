@@ -945,7 +945,29 @@ const expressionMayRetainOfficialPendingValue = (
       if (!isNodeOfType(nestedCandidate, "Identifier")) return null;
       if (findOfficialAsyncRequestPropReference(context, nestedCandidate)) return nestedCandidate;
       const symbol = context.scopes.symbolFor(nestedCandidate);
-      if (symbol?.kind !== "const" || !symbol.initializer || visitedSymbolIds.has(symbol.id)) {
+      if (symbol && isNodeOfType(symbol.declarationNode, "VariableDeclarator")) {
+        const declaration = symbol.declarationNode;
+        const propertyName = findParameterPropertyName(declaration.id, symbol.bindingIdentifier);
+        const propsSource = declaration.init
+          ? findOfficialPropsObjectSource(context, declaration.init)
+          : null;
+        if (
+          propertyName &&
+          propsSource?.contract.propertyNames.has(propertyName) &&
+          !createPendingSymbolFlow(context, symbol, symbol.bindingIdentifier).isClearedBefore(
+            nestedCandidate,
+          )
+        ) {
+          return nestedCandidate;
+        }
+      }
+      if (
+        !symbol?.initializer ||
+        visitedSymbolIds.has(symbol.id) ||
+        createPendingSymbolFlow(context, symbol, symbol.initializer).isClearedBefore(
+          nestedCandidate,
+        )
+      ) {
         return null;
       }
       visitedSymbolIds.add(symbol.id);
@@ -2080,7 +2102,15 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
         isNodeOfType(node.parent, "TaggedTemplateExpression") &&
         node.parent.quasi === node
       ) {
-        const tag = stripParenExpression(node.parent.tag);
+        const directTag = stripParenExpression(node.parent.tag);
+        const aliasSymbol = isNodeOfType(directTag, "Identifier")
+          ? resolveConstIdentifierAlias(directTag, context.scopes)
+          : null;
+        const tag = stripParenExpression(
+          aliasSymbol?.kind === "const" && aliasSymbol.initializer
+            ? aliasSymbol.initializer
+            : directTag,
+        );
         if (!isNodeOfType(tag, "MemberExpression")) return;
         const receiver = stripParenExpression(tag.object);
         if (

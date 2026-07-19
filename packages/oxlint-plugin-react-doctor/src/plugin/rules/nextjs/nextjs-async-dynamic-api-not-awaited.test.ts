@@ -1665,6 +1665,10 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
       filename: "app/blog/[slug]/opengraph-image.tsx",
     },
     {
+      code: "const raw = String.raw; export default function Image({ id }) { return raw`/${id}`; }",
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
       code: `export default function Image({ id }) { id++; return null; }`,
       filename: "app/blog/[slug]/opengraph-image.tsx",
     },
@@ -1721,6 +1725,7 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `export default function Image({ id }) { return true ? null : values[id]; }`,
     `export default function Image({ id }) { const parseInt = consume; return parseInt(id); }`,
     "export default function Image({ id }) { const String = consume; return String.raw`/${id}`; }",
+    "let raw = String.raw; export default function Image({ id }) { return raw`/${id}`; }",
     `export default function Image({ id }) { return id.then((imageId) => imageId * 50000); }`,
   ])("does not report safe or propagating Next.js 16 id usage", (code) => {
     const result = runRule(nextjsAsyncDynamicApiNotAwaited, code, {
@@ -1778,6 +1783,21 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
       capabilities: ["nextjs:15"],
     },
     {
+      code: `import { cookies } from "next/headers"; export default async function Page(props) { let pending = cookies(); pending = await pending; props.params = pending; return props.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+      capabilities: ["nextjs:15"],
+    },
+    {
+      code: `export default async function Page(props) { let pending = props.params; pending = await pending; props.params = pending; return props.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+      capabilities: ["nextjs:15"],
+    },
+    {
+      code: `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); pending = { slug: "safe" }; props.params = pending; return props.params.slug; }`,
+      filename: "app/[slug]/page.tsx",
+      capabilities: ["nextjs:15"],
+    },
+    {
       code: `import { use } from "react"; export default function Page(props) { props.params = use(props.params); return props.params.slug; }`,
       filename: "app/[slug]/page.tsx",
       capabilities: ["nextjs:15"],
@@ -1808,6 +1828,11 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `export default function Page(props) { props.params = (observe(), props.params); return props.params.slug; }`,
     `export default function Page(props) { const pending = props.params; props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { const pending = cookies(); props.params = pending; return props.params.slug; }`,
+    `export default function Page(props) { let pending = props.params; props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props, condition) { let pending = cookies(); if (condition) pending = { slug: "fallback" }; props.params = pending; return props.params.slug; }`,
+    `export default function Page(props) { const { params: pending } = props; props.params = pending; return props.params.slug; }`,
+    `export default function Page(props) { const alias = props; const { params: pending } = alias; props.params = pending; return props.params.slug; }`,
     `export default function Page(props) { props.params = props.searchParams; return props.params.slug; }`,
     `export default async function Page(props) { try { props.params = await props.params; } catch {} return props.params.slug; }`,
     `export default async function Page(props, shouldFallback) { try { props.params = await props.params; } catch { if (shouldFallback) props.params = { slug: "fallback" }; } return props.params.slug; }`,

@@ -121,19 +121,28 @@ const rootCallForExpression = (
   return isNodeOfType(current, "CallExpression") ? current : null;
 };
 
+const storeSymbolIdForMethodCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  methodName: "getState" | "setState",
+  context: RuleContext,
+): number | null => {
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return null;
+  if (getStaticPropertyName(callee) !== methodName) return null;
+  const receiver = stripParenExpression(callee.object);
+  if (!isNodeOfType(receiver, "Identifier")) return null;
+  const symbol = resolveConstIdentifierAlias(receiver, context.scopes);
+  return symbol?.id ?? null;
+};
+
 const isStoreMethodCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   methodName: "getState" | "setState",
   storeSymbolIds: ReadonlySet<number>,
   context: RuleContext,
 ): boolean => {
-  const callee = stripParenExpression(callExpression.callee);
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  if (getStaticPropertyName(callee) !== methodName) return false;
-  const receiver = stripParenExpression(callee.object);
-  if (!isNodeOfType(receiver, "Identifier")) return false;
-  const symbol = resolveConstIdentifierAlias(receiver, context.scopes);
-  return Boolean(symbol && storeSymbolIds.has(symbol.id));
+  const storeSymbolId = storeSymbolIdForMethodCall(callExpression, methodName, context);
+  return storeSymbolId !== null && storeSymbolIds.has(storeSymbolId);
 };
 
 const isSnapshotExpression = (
@@ -745,7 +754,18 @@ export const zustandNoMutatingState = defineRule({
       ZustandCreatorBinding
     >();
     const functionContainers = new Set<EsTreeNode>();
-    const setUpdaterFunctionSymbolIds = new Map<EsTreeNode, number>();
+    const updaterFunctionNotifierSymbolIds = new Map<EsTreeNode, Set<number>>();
+    const recordUpdaterFunctionNotifier = (
+      updaterFunction: EsTreeNode,
+      notifierSymbolId: number,
+    ): void => {
+      const notifierSymbolIds = updaterFunctionNotifierSymbolIds.get(updaterFunction);
+      if (notifierSymbolIds) {
+        notifierSymbolIds.add(notifierSymbolId);
+      } else {
+        updaterFunctionNotifierSymbolIds.set(updaterFunction, new Set([notifierSymbolId]));
+      }
+    };
     const reportedNodes = new WeakSet<EsTreeNode>();
     let programNode: EsTreeNodeOfType<"Program"> | null = null;
     return {
@@ -785,17 +805,30 @@ export const zustandNoMutatingState = defineRule({
       },
       "Program:exit"() {
         for (const binding of creatorBindings.values()) {
-          if (!binding.hasNonImmerUsage || !binding.setSymbol) continue;
-          const setSymbolId = binding.setSymbol.id;
-          const creatorSetSymbolIds = new Set([setSymbolId]);
-          walkAst(binding.creatorFunction.body, (node: EsTreeNode) => {
+          if (binding.hasNonImmerUsage && binding.setSymbol) {
+            const setSymbolId = binding.setSymbol.id;
+            const creatorSetSymbolIds = new Set([setSymbolId]);
+            walkAst(binding.creatorFunction.body, (node: EsTreeNode) => {
+              if (!isNodeOfType(node, "CallExpression")) return;
+              if (!isCallToSymbol(node, creatorSetSymbolIds, context)) return;
+              const updaterArgument = node.arguments[0];
+              if (!updaterArgument || isNodeOfType(updaterArgument, "SpreadElement")) return;
+              const updaterFunction = resolveExactLocalFunction(updaterArgument, context.scopes);
+              if (!updaterFunction) return;
+              recordUpdaterFunctionNotifier(updaterFunction, setSymbolId);
+              analyzeSetUpdater(updaterFunction, context, reportedNodes);
+            });
+          }
+          if (!programNode || binding.storeSymbolIds.size === 0) continue;
+          walkAst(programNode, (node: EsTreeNode) => {
             if (!isNodeOfType(node, "CallExpression")) return;
-            if (!isCallToSymbol(node, creatorSetSymbolIds, context)) return;
+            const storeSymbolId = storeSymbolIdForMethodCall(node, "setState", context);
+            if (storeSymbolId === null || !binding.storeSymbolIds.has(storeSymbolId)) return;
             const updaterArgument = node.arguments[0];
             if (!updaterArgument || isNodeOfType(updaterArgument, "SpreadElement")) return;
             const updaterFunction = resolveExactLocalFunction(updaterArgument, context.scopes);
             if (!updaterFunction) return;
-            setUpdaterFunctionSymbolIds.set(updaterFunction, setSymbolId);
+            recordUpdaterFunctionNotifier(updaterFunction, storeSymbolId);
             analyzeSetUpdater(updaterFunction, context, reportedNodes);
           });
         }
@@ -817,7 +850,15 @@ export const zustandNoMutatingState = defineRule({
           for (const functionContainer of functionContainers) {
             if (!isFunctionLike(functionContainer)) continue;
             if (!isNodeOfType(functionContainer.body, "BlockStatement")) continue;
-            const updaterSetSymbolId = setUpdaterFunctionSymbolIds.get(functionContainer);
+            const updaterNotifierSymbolIds =
+              updaterFunctionNotifierSymbolIds.get(functionContainer);
+            const isUpdaterNotifierForProvenance = Boolean(
+              updaterNotifierSymbolIds &&
+              Array.from(updaterNotifierSymbolIds).some(
+                (notifierSymbolId) =>
+                  setSymbolIds.has(notifierSymbolId) || storeSymbolIds.has(notifierSymbolId),
+              ),
+            );
             analyzeSnapshotContainer(
               functionContainer.body.body,
               getSymbolIds,
@@ -825,7 +866,7 @@ export const zustandNoMutatingState = defineRule({
               storeSymbolIds,
               context,
               reportedNodes,
-              updaterSetSymbolId !== undefined && setSymbolIds.has(updaterSetSymbolId)
+              isUpdaterNotifierForProvenance
                 ? returnedExpressionsForFunction(functionContainer)
                 : [],
             );

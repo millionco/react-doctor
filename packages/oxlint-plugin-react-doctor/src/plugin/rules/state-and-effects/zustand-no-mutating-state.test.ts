@@ -325,6 +325,42 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("analyzes setState updater snapshots and returned notifications", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        import { createStore } from "zustand/vanilla";
+        const useStore = create(() => ({ items: [] }));
+        const vanillaStore = createStore(() => ({ items: [] }));
+        useStore.setState((state) => {
+          state.items.push("next");
+          return { items: state.items };
+        });
+        vanillaStore.setState((state) => {
+          state.items.push("next");
+          return { items: state.items };
+        });
+        useStore.setState((state) => {
+          state.items.push("safe");
+          return { items: [...state.items] };
+        });
+        useStore.setState(() => {
+          const items = useStore.getState().items;
+          items.push("safe");
+          return { items: [...items] };
+        });
+        const sharedUpdater = () => {
+          const items = useStore.getState().items;
+          items.push("safe");
+          return { items: items.slice() };
+        };
+        useStore.setState(sharedUpdater);
+        vanillaStore.setState(sharedUpdater);
+      `,
+      2,
+    );
+  });
+
   it("does not use another store as the snapshot notifier", () => {
     expectDiagnosticCount(
       `

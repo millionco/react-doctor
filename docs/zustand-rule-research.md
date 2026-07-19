@@ -152,6 +152,8 @@ Detector contract:
 
 - Resolve `set` callback parameters, `get()` snapshots, and `store.getState()` snapshots only from
   proven same-file Zustand stores.
+- Analyze updater state parameters passed to both creator `set(...)` and bound or vanilla
+  `store.setState(...)` calls.
 - Track direct assignment, update expressions, mutating array methods, and `Map` or `Set` mutators.
 - Report when the mutated snapshot or a mutated child reference is returned through `set`, passed
   back to `setState`, or mutated without a notifying update.

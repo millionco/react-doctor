@@ -6,8 +6,14 @@ import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-a
 import { getTailwindVisibilityAtBreakpoints } from "../../utils/get-tailwind-visibility-at-breakpoints.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { getStaticJsxTreeRoot } from "../../utils/get-static-jsx-tree-root.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+
+interface LandmarkPlacement {
+  opaqueBoundary: EsTreeNodeOfType<"JSXElement"> | null;
+  visibility: ReadonlyArray<boolean>;
+}
 
 const getLandmarkName = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
@@ -20,23 +26,57 @@ const getLandmarkName = (
   return hasJsxSpreadAttribute(node.attributes) ? undefined : null;
 };
 
-const getLandmarkVisibility = (
-  landmark: EsTreeNodeOfType<"JSXOpeningElement">,
+const getElementVisibility = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
 ): ReadonlyArray<boolean> | null => {
-  const classNameAttribute = findJsxAttribute(landmark.attributes, "className");
+  const classNameAttribute = findJsxAttribute(openingElement.attributes, "className");
   if (!classNameAttribute) return getTailwindVisibilityAtBreakpoints("");
   const className = getStringLiteralAttributeValue(classNameAttribute);
   return className === null ? null : getTailwindVisibilityAtBreakpoints(className);
+};
+
+const getLandmarkPlacement = (
+  landmark: EsTreeNodeOfType<"JSXOpeningElement">,
+): LandmarkPlacement | null => {
+  const landmarkVisibility = getElementVisibility(landmark);
+  if (!landmarkVisibility) return null;
+  const combinedVisibility = [...landmarkVisibility];
+  let ancestorNode = landmark.parent?.parent;
+  while (ancestorNode) {
+    if (isNodeOfType(ancestorNode, "JSXElement")) {
+      const openingElement = ancestorNode.openingElement;
+      const elementType = resolveJsxElementType(openingElement);
+      const firstCharacter = elementType[0];
+      if (!firstCharacter || firstCharacter !== firstCharacter.toLowerCase()) {
+        return { opaqueBoundary: ancestorNode, visibility: combinedVisibility };
+      }
+      const ancestorVisibility = getElementVisibility(openingElement);
+      if (!ancestorVisibility) return null;
+      for (
+        let breakpointIndex = 0;
+        breakpointIndex < combinedVisibility.length;
+        breakpointIndex += 1
+      ) {
+        combinedVisibility[breakpointIndex] =
+          combinedVisibility[breakpointIndex] && ancestorVisibility[breakpointIndex];
+      }
+    }
+    ancestorNode = ancestorNode.parent ?? null;
+  }
+  return { opaqueBoundary: null, visibility: combinedVisibility };
 };
 
 const canLandmarksCoexist = (
   firstLandmark: EsTreeNodeOfType<"JSXOpeningElement">,
   secondLandmark: EsTreeNodeOfType<"JSXOpeningElement">,
 ): boolean => {
-  const firstVisibility = getLandmarkVisibility(firstLandmark);
-  const secondVisibility = getLandmarkVisibility(secondLandmark);
-  if (!firstVisibility || !secondVisibility) return true;
-  return firstVisibility.some((isFirstVisible, index) => isFirstVisible && secondVisibility[index]);
+  const firstPlacement = getLandmarkPlacement(firstLandmark);
+  const secondPlacement = getLandmarkPlacement(secondLandmark);
+  if (!firstPlacement || !secondPlacement) return false;
+  if (firstPlacement.opaqueBoundary !== secondPlacement.opaqueBoundary) return false;
+  return firstPlacement.visibility.some(
+    (isFirstVisible, index) => isFirstVisible && secondPlacement.visibility[index],
+  );
 };
 
 export const noMultipleUnlabeledNavigationLandmarks = defineRule({

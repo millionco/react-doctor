@@ -38,7 +38,31 @@ describe("no-multiple-unlabeled-navigation-landmarks", () => {
   it("accepts mutually exclusive responsive navigation landmarks", () => {
     const result = runRule(
       noMultipleUnlabeledNavigationLandmarks,
-      `const Page = () => <main><nav className="block md:hidden">Mobile</nav><nav className="hidden md:grid">Desktop</nav></main>;`,
+      `const Page = () => <main><section className="block md:hidden"><nav>Mobile</nav></section><aside className="hidden md:grid"><nav>Desktop</nav></aside></main>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("skips landmarks separated by opaque component boundaries", () => {
+    const result = runRule(
+      noMultipleUnlabeledNavigationLandmarks,
+      `const Page = () => <main><aside className="hidden sm:flex"><nav>Desktop</nav></aside><DrawerContent><nav>Mobile</nav></DrawerContent></main>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports coexisting landmarks within the same opaque component boundary", () => {
+    const result = runRule(
+      noMultipleUnlabeledNavigationLandmarks,
+      `const Page = () => <DrawerContent><nav>Primary</nav><nav>Secondary</nav></DrawerContent>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("skips landmarks with dynamic ancestor visibility", () => {
+    const result = runRule(
+      noMultipleUnlabeledNavigationLandmarks,
+      `const Page = ({ className }) => <main><aside className={className}><nav>Primary</nav></aside><nav>Secondary</nav></main>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

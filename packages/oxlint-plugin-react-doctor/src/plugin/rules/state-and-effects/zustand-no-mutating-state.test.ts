@@ -212,6 +212,24 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("allows intentionally non-reactive stores with an unused set parameter", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((_set, get) => ({
+          cache: new Map(),
+          read: (key) => get().cache.get(key),
+          write: (key, value) => {
+            const cache = get().cache;
+            cache.set(key, value);
+            if (cache.size > 30) cache.delete(cache.keys().next().value);
+          },
+        }));
+      `,
+      0,
+    );
+  });
+
   it("reports immutable aliases of get and set", () => {
     expectDiagnosticCount(
       `

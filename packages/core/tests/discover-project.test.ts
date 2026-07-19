@@ -1176,6 +1176,46 @@ describe("discoverProject", () => {
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.hasReactCompiler).toBe(true);
   });
+
+  it("detects the Rsbuild React Compiler transform", () => {
+    const projectDirectory = path.join(tempDirectory, "rsbuild-react-compiler");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "rsbuild-react-compiler",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "@rsbuild/plugin-react": "^2.1.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "rsbuild.config.ts"),
+      "import { pluginReact } from '@rsbuild/plugin-react';\nexport default { plugins: [pluginReact({ reactCompiler: true })] };\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(true);
+  });
+
+  it("detects the Rspack React Compiler transform", () => {
+    const projectDirectory = path.join(tempDirectory, "rspack-react-compiler");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "rspack-react-compiler",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "@rspack/core": "^2.1.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "rspack.config.mjs"),
+      "export default { module: { rules: [{ use: { loader: 'builtin:swc-loader', options: { jsc: { transform: { reactCompiler: true } } } } }] } };\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(true);
+  });
 });
 
 describe("listWorkspacePackages", () => {

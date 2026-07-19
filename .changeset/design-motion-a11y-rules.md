@@ -185,6 +185,6 @@ Tailwind-specific design detectors now require a detected Tailwind dependency, a
 
 Also adds a `tailwind:4` project capability to `@react-doctor/core` for version-gated Tailwind rules.
 
-React Compiler detection now recognizes the Vite 6 `reactCompilerPreset()` integration and the supported JavaScript, TypeScript, CommonJS, and ESM Babel configuration filenames. This keeps compiler-redundant diagnostics disabled when those official integrations are active without changing the JSON report shape.
+React Compiler detection now recognizes the Vite 6 `reactCompilerPreset()` integration, the supported JavaScript, TypeScript, CommonJS, and ESM Babel configuration filenames, and the official Rsbuild and Rspack `reactCompiler` configuration. This keeps compiler-redundant diagnostics disabled when those integrations are active without changing the JSON report shape.
 
 Large-corpus validation keeps the highest-noise visual heuristics (`no-arbitrary-px-font-size`, `no-cramped-container-padding`, `no-full-viewport-width`, and `prefer-motion-transform-property`) in the focused design scan instead of the general scan. It also avoids diagnostics for responsive navigation variants, translated fragment content, custom label components, display-sized paragraphs, test image mocks, imperatively sourced image refs, non-production placeholder fields, and link-named editor actions.

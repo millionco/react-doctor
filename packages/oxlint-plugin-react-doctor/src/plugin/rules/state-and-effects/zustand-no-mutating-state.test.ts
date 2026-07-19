@@ -400,6 +400,21 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("does not match an earlier notifier in the mutation statement", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          update: () => {
+            const items = get().items;
+            set({ items: [...items] }), items.push("next");
+          },
+        }));
+      `,
+      1,
+    );
+  });
+
   it("fails closed when unsupported control flow is nested in a branch", () => {
     expectDiagnosticCount(
       `

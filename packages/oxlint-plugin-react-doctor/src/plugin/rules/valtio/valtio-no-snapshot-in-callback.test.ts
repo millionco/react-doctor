@@ -36,6 +36,21 @@ describe("valtio-no-snapshot-in-callback", () => {
     ).toBe(1);
   });
 
+  it("reports handlers wired through const alias chains", () => {
+    expect(
+      getDiagnosticCount(`
+        import { useSnapshot } from "valtio";
+        function Counter() {
+          const snap = useSnapshot(state);
+          const handleClick = () => console.log(snap.count);
+          const firstAlias = handleClick;
+          const secondAlias = firstAlias;
+          return <button onClick={secondAlias}>read</button>;
+        }
+      `),
+    ).toBe(1);
+  });
+
   it("reports namespace imports and transparent TypeScript wrappers", () => {
     expect(
       getDiagnosticCount(`
@@ -112,6 +127,27 @@ describe("valtio-no-snapshot-in-callback", () => {
         };
       `),
     ).toBe(1);
+  });
+
+  it("reports direct and aliased React effect cleanup callbacks", () => {
+    expect(
+      getDiagnosticCount(`
+        import { useEffect, useLayoutEffect } from "react";
+        import { useSnapshot } from "valtio";
+        function Counter() {
+          const snap = useSnapshot(state);
+          useEffect(() => () => console.log(snap.count), []);
+          useLayoutEffect(() => {
+            const cleanup = () => console.log(snap.label);
+            return cleanup;
+          }, []);
+          const effectBody = () => () => console.log(snap.enabled);
+          const aliasedEffectBody = effectBody;
+          useEffect(aliasedEffectBody, []);
+          return null;
+        }
+      `),
+    ).toBe(3);
   });
 
   it("reports global timers, schedulers, observers, and promise continuations", () => {

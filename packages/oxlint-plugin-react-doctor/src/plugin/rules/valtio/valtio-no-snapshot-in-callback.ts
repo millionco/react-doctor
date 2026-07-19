@@ -170,8 +170,86 @@ const isDeferredCallbackArgument = (expression: EsTreeNode, context: RuleContext
   );
 };
 
+const isReactEffectCallbackValue = (expression: EsTreeNode, context: RuleContext): boolean => {
+  const expressionRoot = findTransparentExpressionRoot(expression);
+  const parent = expressionRoot.parent;
+  return Boolean(
+    isNodeOfType(parent, "CallExpression") &&
+    parent.arguments?.[0] === expressionRoot &&
+    isReactApiCall(parent, DEFERRED_REACT_HOOK_NAMES, context.scopes, {
+      allowGlobalReactNamespace: true,
+      resolveNamedAliases: true,
+    }),
+  );
+};
+
+const isSymbolUsedAsReactEffectCallback = (
+  symbol: SymbolDescriptor,
+  context: RuleContext,
+  visitedSymbolIds: Set<number>,
+): boolean => {
+  if (visitedSymbolIds.has(symbol.id)) return false;
+  visitedSymbolIds.add(symbol.id);
+  return symbol.references.some((reference) => {
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    if (isReactEffectCallbackValue(referenceRoot, context)) return true;
+    const aliasSymbol = getConstAliasSymbol(referenceRoot, context);
+    return Boolean(
+      aliasSymbol && isSymbolUsedAsReactEffectCallback(aliasSymbol, context, visitedSymbolIds),
+    );
+  });
+};
+
+const isFunctionUsedAsReactEffectCallback = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (isReactEffectCallbackValue(functionNode, context)) return true;
+  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  const symbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
+  return Boolean(symbol && isSymbolUsedAsReactEffectCallback(symbol, context, new Set()));
+};
+
+const isReactEffectCleanupValue = (expression: EsTreeNode, context: RuleContext): boolean => {
+  const expressionRoot = findTransparentExpressionRoot(expression);
+  const returnStatement = expressionRoot.parent;
+  if (
+    isNodeOfType(returnStatement, "ArrowFunctionExpression") &&
+    returnStatement.body === expressionRoot
+  ) {
+    return isFunctionUsedAsReactEffectCallback(returnStatement, context);
+  }
+  if (
+    !isNodeOfType(returnStatement, "ReturnStatement") ||
+    returnStatement.argument !== expressionRoot
+  ) {
+    return false;
+  }
+  const effectCallback = findEnclosingFunction(returnStatement);
+  return Boolean(effectCallback && isFunctionUsedAsReactEffectCallback(effectCallback, context));
+};
+
 const isDeferredCallbackValue = (expression: EsTreeNode, context: RuleContext): boolean =>
-  isJsxEventHandlerValue(expression) || isDeferredCallbackArgument(expression, context);
+  isJsxEventHandlerValue(expression) ||
+  isDeferredCallbackArgument(expression, context) ||
+  isReactEffectCleanupValue(expression, context);
+
+const getConstAliasSymbol = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): SymbolDescriptor | null => {
+  const expressionRoot = findTransparentExpressionRoot(expression);
+  const declarator = expressionRoot.parent;
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== expressionRoot ||
+    !isNodeOfType(declarator.id, "Identifier")
+  ) {
+    return null;
+  }
+  const aliasSymbol = context.scopes.symbolFor(declarator.id);
+  return aliasSymbol?.kind === "const" ? aliasSymbol : null;
+};
 
 const isCallTarget = (expression: EsTreeNode): EsTreeNodeOfType<"CallExpression"> | null => {
   const parent = expression.parent;
@@ -205,31 +283,29 @@ const isNodeExecutedFromDeferredCallback = (
   );
 };
 
-const isFunctionExecutedAsDeferredCallback = (
-  functionNode: EsTreeNode,
+const isSymbolExecutedAsDeferredCallback = (
+  symbol: SymbolDescriptor,
   snapshotOwner: EsTreeNode,
   context: RuleContext,
   visitedFunctionSymbolIds: Set<number>,
 ): boolean => {
-  const functionRoot = findTransparentExpressionRoot(functionNode);
-  if (isDeferredCallbackValue(functionRoot, context)) return true;
-  const synchronousInvocation = getSynchronousCallbackInvocation(functionRoot, context);
-  if (synchronousInvocation) {
-    return isNodeExecutedFromDeferredCallback(
-      synchronousInvocation,
-      snapshotOwner,
-      context,
-      visitedFunctionSymbolIds,
-    );
-  }
-  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
-  if (!bindingIdentifier) return false;
-  const symbol = context.scopes.symbolFor(bindingIdentifier);
-  if (!symbol || visitedFunctionSymbolIds.has(symbol.id)) return false;
+  if (visitedFunctionSymbolIds.has(symbol.id)) return false;
   visitedFunctionSymbolIds.add(symbol.id);
   return symbol.references.some((reference) => {
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
     if (isDeferredCallbackValue(referenceRoot, context)) return true;
+    const aliasSymbol = getConstAliasSymbol(referenceRoot, context);
+    if (
+      aliasSymbol &&
+      isSymbolExecutedAsDeferredCallback(
+        aliasSymbol,
+        snapshotOwner,
+        context,
+        visitedFunctionSymbolIds,
+      )
+    ) {
+      return true;
+    }
     const callTarget = isCallTarget(referenceRoot);
     if (callTarget) {
       return isNodeExecutedFromDeferredCallback(
@@ -250,6 +326,32 @@ const isFunctionExecutedAsDeferredCallback = (
       ),
     );
   });
+};
+
+const isFunctionExecutedAsDeferredCallback = (
+  functionNode: EsTreeNode,
+  snapshotOwner: EsTreeNode,
+  context: RuleContext,
+  visitedFunctionSymbolIds: Set<number>,
+): boolean => {
+  const functionRoot = findTransparentExpressionRoot(functionNode);
+  if (isDeferredCallbackValue(functionRoot, context)) return true;
+  const synchronousInvocation = getSynchronousCallbackInvocation(functionRoot, context);
+  if (synchronousInvocation) {
+    return isNodeExecutedFromDeferredCallback(
+      synchronousInvocation,
+      snapshotOwner,
+      context,
+      visitedFunctionSymbolIds,
+    );
+  }
+  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  if (!bindingIdentifier) return false;
+  const symbol = context.scopes.symbolFor(bindingIdentifier);
+  return Boolean(
+    symbol &&
+    isSymbolExecutedAsDeferredCallback(symbol, snapshotOwner, context, visitedFunctionSymbolIds),
+  );
 };
 
 const isDirectSnapshotAliasInitializer = (identifier: EsTreeNode): boolean => {

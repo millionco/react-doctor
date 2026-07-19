@@ -90,6 +90,7 @@ interface PendingSymbolCandidate {
 }
 
 interface PendingSymbolFlow {
+  isClearedAtExit: boolean;
   isClearedBefore: (referenceIdentifier: EsTreeNode) => boolean;
 }
 
@@ -795,6 +796,46 @@ const optionalChainStaticallyShortCircuits = (
   }
 };
 
+const getStaticSymbolValueBefore = (
+  context: RuleContext,
+  identifier: EsTreeNode,
+  referenceNode: EsTreeNode,
+): StaticLogicalValue | null => {
+  const symbol = context.scopes.symbolFor(identifier);
+  if (!symbol) return null;
+  let valueExpression = symbol.initializer;
+  let valueStart = valueExpression ? getNodeStartIndex(valueExpression) : -1;
+  for (const reference of symbol.references) {
+    if (reference.flag === "read") continue;
+    const assignment = findPatternAssignmentForIdentifier(reference.identifier);
+    if (
+      !assignment ||
+      assignment.operator !== "=" ||
+      context.cfg.enclosingFunction(assignment) !== context.cfg.enclosingFunction(referenceNode) ||
+      !nodeDominatesNode(assignment, referenceNode, context)
+    ) {
+      continue;
+    }
+    const assignmentStart = getNodeStartIndex(assignment);
+    if (assignmentStart <= valueStart || assignmentStart >= getNodeStartIndex(referenceNode)) {
+      continue;
+    }
+    const assignedValue = findPatternAssignedValue(
+      context,
+      assignment.left,
+      assignment.right,
+      symbol,
+    );
+    if (!assignedValue) continue;
+    valueExpression = assignedValue.expression;
+    valueStart = assignmentStart;
+  }
+  if (valueExpression) return getStaticLogicalValue(context, valueExpression);
+  return isNodeOfType(symbol.declarationNode, "VariableDeclarator")
+    ? { isNullish: true, isTruthy: false }
+    : null;
+};
+
 const expressionIsStaticallySkipped = (context: RuleContext, expression: EsTreeNode): boolean => {
   let current = expression;
   while (current.parent) {
@@ -809,6 +850,32 @@ const expressionIsStaticallySkipped = (context: RuleContext, expression: EsTreeN
         testValue &&
         ((parent.consequent === current && !testValue.isTruthy) ||
           (parent.alternate === current && testValue.isTruthy))
+      ) {
+        return true;
+      }
+    } else if (isNodeOfType(parent, "IfStatement") && parent.test !== current) {
+      const testValue = getStaticLogicalValue(context, parent.test);
+      if (
+        testValue &&
+        ((parent.consequent === current && !testValue.isTruthy) ||
+          (parent.alternate === current && testValue.isTruthy))
+      ) {
+        return true;
+      }
+    } else if (
+      isNodeOfType(parent, "AssignmentExpression") &&
+      parent.right === current &&
+      (parent.operator === "&&=" || parent.operator === "||=" || parent.operator === "??=")
+    ) {
+      const target = stripParenExpression(parent.left);
+      const leftValue = isNodeOfType(target, "Identifier")
+        ? getStaticSymbolValueBefore(context, target, parent)
+        : null;
+      if (
+        leftValue &&
+        ((parent.operator === "&&=" && !leftValue.isTruthy) ||
+          (parent.operator === "||=" && leftValue.isTruthy) ||
+          (parent.operator === "??=" && !leftValue.isNullish))
       ) {
         return true;
       }
@@ -928,7 +995,7 @@ const expressionMayRetainOfficialPendingValue = (
   context: RuleContext,
   expression: EsTreeNode,
 ): boolean => {
-  const visitedSymbolIds = new Set<number>();
+  const activeSymbolReferences = new Set<string>();
   const findSource = (candidate: EsTreeNode): EsTreeNode | null =>
     findRetainedExpressionSource(context, candidate, (nestedCandidate) => {
       if (isNextHeadersDynamicCall(context, nestedCandidate)) return nestedCandidate;
@@ -961,8 +1028,11 @@ const expressionMayRetainOfficialPendingValue = (
           return nestedCandidate;
         }
       }
-      if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
-      visitedSymbolIds.add(symbol.id);
+      if (!symbol) return null;
+      const candidateStart = getNodeStartIndex(nestedCandidate);
+      const activeReferenceKey = `${symbol.id}:${candidateStart}`;
+      if (activeSymbolReferences.has(activeReferenceKey)) return null;
+      activeSymbolReferences.add(activeReferenceKey);
       const candidateSources: EsTreeNode[] = symbol.initializer ? [symbol.initializer] : [];
       for (const reference of symbol.references) {
         if (reference.flag === "read") continue;
@@ -985,26 +1055,55 @@ const expressionMayRetainOfficialPendingValue = (
         if (assignedValue?.expression) candidateSources.push(assignedValue.expression);
       }
       const candidateOwner = context.cfg.enclosingFunction(nestedCandidate);
-      const candidateStart = getNodeStartIndex(nestedCandidate);
       for (const sourceExpression of candidateSources) {
+        if (expressionIsStaticallySkipped(context, sourceExpression)) continue;
+        const source = findSource(sourceExpression);
+        if (!source) continue;
         if (
-          context.cfg.enclosingFunction(sourceExpression) !== candidateOwner ||
-          getNodeStartIndex(sourceExpression) >= candidateStart
+          context.cfg.enclosingFunction(sourceExpression) !== candidateOwner &&
+          createPendingSymbolFlow(context, symbol, sourceExpression).isClearedAtExit
         ) {
           continue;
         }
-        const source = findSource(sourceExpression);
-        if (
-          source &&
-          !createPendingSymbolFlow(context, symbol, sourceExpression).isClearedBefore(
-            nestedCandidate,
-          )
-        ) {
-          visitedSymbolIds.delete(symbol.id);
-          return source;
+        const sourceExecutionSites = getExecutionSitesInOwner(
+          context,
+          sourceExpression,
+          candidateOwner,
+        );
+        for (const sourceExecutionSite of sourceExecutionSites) {
+          const sourceExecutionStart = getNodeStartIndex(sourceExecutionSite);
+          if (
+            sourceExecutionStart >= candidateStart ||
+            expressionIsStaticallySkipped(context, sourceExecutionSite)
+          ) {
+            continue;
+          }
+          const clearingExecutionSites = symbol.references.flatMap((reference) => {
+            const assignment = getProvenanceClearingAssignment(
+              context,
+              symbol,
+              reference.identifier,
+            );
+            if (!assignment) return [];
+            return getExecutionSitesInOwner(context, assignment, candidateOwner).filter(
+              (clearingExecutionSite) =>
+                getNodeStartIndex(clearingExecutionSite) > sourceExecutionStart,
+            );
+          });
+          if (
+            !createPendingSymbolFlow(
+              context,
+              symbol,
+              sourceExecutionSite,
+              clearingExecutionSites,
+            ).isClearedBefore(nestedCandidate)
+          ) {
+            activeSymbolReferences.delete(activeReferenceKey);
+            return source;
+          }
         }
       }
-      visitedSymbolIds.delete(symbol.id);
+      activeSymbolReferences.delete(activeReferenceKey);
       return null;
     });
   return Boolean(findSource(expression));
@@ -1412,9 +1511,15 @@ const getProvenanceClearingAssignment = (
   writeIdentifier: EsTreeNode,
 ): EsTreeNodeOfType<"AssignmentExpression"> | null => {
   const assignment = findPatternAssignmentForIdentifier(writeIdentifier);
-  if (!assignment || assignment.operator !== "=") {
+  if (
+    !assignment ||
+    assignment.operator === "||=" ||
+    assignment.operator === "??=" ||
+    expressionIsStaticallySkipped(context, assignment)
+  ) {
     return null;
   }
+  if (assignment.operator !== "=" && assignment.operator !== "&&=") return assignment;
   const assignedValue = findPatternAssignedValue(
     context,
     assignment.left,
@@ -1544,7 +1649,7 @@ const createPendingSymbolFlow = (
 ): PendingSymbolFlow => {
   const owner = context.cfg.enclosingFunction(sourceExpression);
   const sourceStart = getNodeStartIndex(sourceExpression);
-  if (sourceStart < 0) return { isClearedBefore: () => false };
+  if (sourceStart < 0) return { isClearedAtExit: false, isClearedBefore: () => false };
 
   const clearingAssignmentSet = new Set<EsTreeNode>(additionalClearingNodes);
   for (const reference of symbol.references) {
@@ -1575,7 +1680,9 @@ const createPendingSymbolFlow = (
   for (const [conditionalExpression, branches] of conditionalClearingBranches) {
     if (branches.hasConsequent && branches.hasAlternate) clearingNodes.add(conditionalExpression);
   }
-  if (clearingNodes.size === 0) return { isClearedBefore: () => false };
+  if (clearingNodes.size === 0) {
+    return { isClearedAtExit: false, isClearedBefore: () => false };
+  }
 
   if (!owner) {
     const unconditionalAssignmentStarts: number[] = [];
@@ -1585,6 +1692,7 @@ const createPendingSymbolFlow = (
       }
     }
     return {
+      isClearedAtExit: false,
       isClearedBefore: (referenceIdentifier) => {
         const referenceStart = getNodeStartIndex(referenceIdentifier);
         return unconditionalAssignmentStarts.some((start) => start < referenceStart);
@@ -1599,7 +1707,9 @@ const createPendingSymbolFlow = (
     );
   const sourceBlock =
     functionCfg?.blockOf(sourceExpression) ?? (isParameterSource ? functionCfg?.entry : null);
-  if (!functionCfg || !sourceBlock) return { isClearedBefore: () => false };
+  if (!functionCfg || !sourceBlock) {
+    return { isClearedAtExit: false, isClearedBefore: () => false };
+  }
 
   const clearingStartsByBlock = new Map<BasicBlock, number[]>();
   const exceptionalCatchEdgeKeys = new Set<string>();
@@ -1685,6 +1795,7 @@ const createPendingSymbolFlow = (
   }
 
   return {
+    isClearedAtExit: Boolean(incomingClearedByBlock.get(functionCfg.exit)),
     isClearedBefore: (referenceIdentifier) => {
       if (context.cfg.enclosingFunction(referenceIdentifier) !== owner) return false;
       const referenceStart = getNodeStartIndex(referenceIdentifier);
@@ -1700,10 +1811,16 @@ const createPendingSymbolFlow = (
       ) {
         return true;
       }
+      const enclosingClearingStart = Array.from(clearingNodes)
+        .filter((clearingNode) => isDescendantOf(referenceIdentifier, clearingNode))
+        .map(getNodeStartIndex)
+        .at(-1);
       const startsInReferenceBlock = clearingStartsByBlock.get(referenceBlock) ?? [];
       const hasClearingWriteBeforeReference = startsInReferenceBlock.some(
         (start) =>
-          start < referenceStart && (referenceBlock !== sourceBlock || start > sourceStart),
+          start !== enclosingClearingStart &&
+          start < referenceStart &&
+          (referenceBlock !== sourceBlock || start > sourceStart),
       );
       if (hasClearingWriteBeforeReference) return true;
       if (referenceBlock === sourceBlock) return false;
@@ -1802,6 +1919,22 @@ const getDirectInvocationSites = (context: RuleContext, functionNode: EsTreeNode
     }
   }
   return invocationSites;
+};
+
+const getExecutionSitesInOwner = (
+  context: RuleContext,
+  node: EsTreeNode,
+  targetOwner: EsTreeNode | null,
+  visitedFunctionNodes: ReadonlySet<EsTreeNode> = new Set(),
+): EsTreeNode[] => {
+  const nodeOwner = context.cfg.enclosingFunction(node);
+  if (nodeOwner === targetOwner) return [node];
+  if (!nodeOwner || !isFunctionLike(nodeOwner) || visitedFunctionNodes.has(nodeOwner)) return [];
+  const nextVisitedFunctionNodes = new Set(visitedFunctionNodes);
+  nextVisitedFunctionNodes.add(nodeOwner);
+  return getDirectInvocationSites(context, nodeOwner).flatMap((invocationSite) =>
+    getExecutionSitesInOwner(context, invocationSite, targetOwner, nextVisitedFunctionNodes),
+  );
 };
 
 const symbolHasSynchronousAccess = (
@@ -2080,6 +2213,11 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
       }
       const assignmentTarget = stripParenExpression(node.left);
       if (!isNodeOfType(assignmentTarget, "Identifier")) return;
+      if (node.operator === "&&=" || node.operator === "||=" || node.operator === "??=") {
+        if (expressionMayRetainOfficialPendingValue(context, assignmentTarget)) {
+          context.report({ node: assignmentTarget, message: MESSAGE });
+        }
+      }
       reportAssignedPendingExpression(context, node.right, assignmentTarget);
     },
     UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {

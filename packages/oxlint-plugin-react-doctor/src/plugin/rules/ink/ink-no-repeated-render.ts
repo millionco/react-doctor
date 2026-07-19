@@ -16,6 +16,11 @@ interface InkRenderOutput {
   isDefault: boolean;
 }
 
+interface InkRenderCleanupBindings {
+  instanceSymbolIds: Set<number>;
+  unmountSymbolIds: Set<number>;
+}
+
 const resolveInkRenderOutput = (
   renderCall: EsTreeNodeOfType<"CallExpression">,
 ): InkRenderOutput | null => {
@@ -86,7 +91,11 @@ const doInkRenderCallsShareOutput = (
   return areSameStableOutputBindings(leftOutput.expression, rightOutput.expression, context);
 };
 
-const canReachBlock = (sourceBlock: BasicBlock, targetBlock: BasicBlock): boolean => {
+const canReachBlock = (
+  sourceBlock: BasicBlock,
+  targetBlock: BasicBlock,
+  excludedBlocks: ReadonlySet<BasicBlock> = new Set(),
+): boolean => {
   if (sourceBlock === targetBlock) return true;
   const visitedBlocks = new Set([sourceBlock]);
   const pendingBlocks = [sourceBlock];
@@ -94,6 +103,7 @@ const canReachBlock = (sourceBlock: BasicBlock, targetBlock: BasicBlock): boolea
     const currentBlock = pendingBlocks.pop();
     if (!currentBlock) break;
     for (const edge of currentBlock.successors) {
+      if (excludedBlocks.has(edge.to)) continue;
       if (edge.to === targetBlock) return true;
       if (visitedBlocks.has(edge.to)) continue;
       visitedBlocks.add(edge.to);
@@ -116,26 +126,107 @@ const canExecuteAfter = (
   return canReachBlock(earlierBlock, laterBlock);
 };
 
-const hasUnmountBetween = (
+const addBindingSymbolId = (
+  bindingNode: EsTreeNode | null | undefined,
+  symbolIds: Set<number>,
+  context: RuleContext,
+): void => {
+  const identifier = isNodeOfType(bindingNode, "Identifier")
+    ? bindingNode
+    : isNodeOfType(bindingNode, "AssignmentPattern") && isNodeOfType(bindingNode.left, "Identifier")
+      ? bindingNode.left
+      : null;
+  const symbol = identifier ? context.scopes.symbolFor(identifier) : null;
+  if (symbol) symbolIds.add(symbol.id);
+};
+
+const collectRenderCleanupBindings = (
+  renderCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): InkRenderCleanupBindings => {
+  const bindings: InkRenderCleanupBindings = {
+    instanceSymbolIds: new Set(),
+    unmountSymbolIds: new Set(),
+  };
+  const parentNode = renderCall.parent;
+  const bindingPattern =
+    isNodeOfType(parentNode, "VariableDeclarator") && parentNode.init === renderCall
+      ? parentNode.id
+      : isNodeOfType(parentNode, "AssignmentExpression") && parentNode.right === renderCall
+        ? parentNode.left
+        : null;
+  if (isNodeOfType(bindingPattern, "Identifier")) {
+    addBindingSymbolId(bindingPattern, bindings.instanceSymbolIds, context);
+    return bindings;
+  }
+  if (!isNodeOfType(bindingPattern, "ObjectPattern")) return bindings;
+  for (const propertyNode of bindingPattern.properties) {
+    if (
+      isNodeOfType(propertyNode, "Property") &&
+      getStaticPropertyKeyName(propertyNode, { allowComputedString: true }) === "unmount"
+    ) {
+      addBindingSymbolId(propertyNode.value, bindings.unmountSymbolIds, context);
+    }
+  }
+  return bindings;
+};
+
+const isRenderUnmountCall = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  renderCall: EsTreeNodeOfType<"CallExpression">,
+  bindings: InkRenderCleanupBindings,
+  context: RuleContext,
+): boolean => {
+  const calleeNode = callNode.callee;
+  if (isNodeOfType(calleeNode, "Identifier")) {
+    const symbol = context.scopes.symbolFor(calleeNode);
+    return Boolean(symbol && bindings.unmountSymbolIds.has(symbol.id));
+  }
+  if (
+    !isNodeOfType(calleeNode, "MemberExpression") ||
+    getStaticPropertyName(calleeNode) !== "unmount"
+  ) {
+    return false;
+  }
+  if (calleeNode.object === renderCall) return true;
+  if (!isNodeOfType(calleeNode.object, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(calleeNode.object);
+  return Boolean(symbol && bindings.instanceSymbolIds.has(symbol.id));
+};
+
+const isRenderUnmountedBefore = (
   owner: EsTreeNode,
-  earlierCall: EsTreeNode,
+  earlierCall: EsTreeNodeOfType<"CallExpression">,
   laterCall: EsTreeNode,
   context: RuleContext,
 ): boolean => {
-  let hasUnmount = false;
+  const bindings = collectRenderCleanupBindings(earlierCall, context);
+  const cleanupCalls: EsTreeNodeOfType<"CallExpression">[] = [];
   walkAst(owner, (descendantNode) => {
     if (
       isNodeOfType(descendantNode, "CallExpression") &&
-      descendantNode.range[0] > earlierCall.range[1] &&
+      descendantNode.range[1] > earlierCall.range[1] &&
       descendantNode.range[1] < laterCall.range[0] &&
       context.cfg.enclosingFunction(descendantNode) === owner &&
-      isNodeOfType(descendantNode.callee, "MemberExpression") &&
-      getStaticPropertyName(descendantNode.callee) === "unmount"
+      isRenderUnmountCall(descendantNode, earlierCall, bindings, context)
     ) {
-      hasUnmount = true;
+      cleanupCalls.push(descendantNode);
     }
   });
-  return hasUnmount;
+  if (cleanupCalls.length === 0) return false;
+  const ownerControlFlow = context.cfg.cfgFor(owner);
+  if (!ownerControlFlow) return false;
+  const earlierBlock = ownerControlFlow.blockOf(earlierCall);
+  const laterBlock = ownerControlFlow.blockOf(laterCall);
+  if (!earlierBlock || !laterBlock) return false;
+  const cleanupBlocks = new Set<BasicBlock>();
+  for (const cleanupCall of cleanupCalls) {
+    const cleanupBlock = ownerControlFlow.blockOf(cleanupCall);
+    if (!cleanupBlock) continue;
+    if (cleanupBlock === earlierBlock || cleanupBlock === laterBlock) return true;
+    cleanupBlocks.add(cleanupBlock);
+  }
+  return !canReachBlock(earlierBlock, laterBlock, cleanupBlocks);
 };
 
 export const inkNoRepeatedRender = defineRule({
@@ -158,7 +249,7 @@ export const inkNoRepeatedRender = defineRule({
             (call) =>
               doInkRenderCallsShareOutput(call, node, context) &&
               canExecuteAfter(call, node, owner, context) &&
-              !hasUnmountBetween(owner, call, node, context),
+              !isRenderUnmountedBefore(owner, call, node, context),
           )
         ) {
           return;

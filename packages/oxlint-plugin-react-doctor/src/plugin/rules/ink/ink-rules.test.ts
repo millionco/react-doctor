@@ -254,6 +254,27 @@ describe("Ink rules", () => {
     expect(runRule(inkNoRepeatedRender, code).diagnostics).toHaveLength(0);
   });
 
+  it("allows destructured and immediate renderer cleanup", () => {
+    const destructuredCode = `import {render} from "ink"; const {unmount: stop}=render(null); stop(); render(null);`;
+    const immediateCode = `import {render} from "ink"; render(null).unmount(); render(null);`;
+    expect(runRule(inkNoRepeatedRender, destructuredCode).diagnostics).toHaveLength(0);
+    expect(runRule(inkNoRepeatedRender, immediateCode).diagnostics).toHaveLength(0);
+  });
+
+  it("does not mistake unrelated or conditional unmount calls for renderer cleanup", () => {
+    const unrelatedCode = `import {render} from "ink"; const first=render(null); other.unmount(); render(null);`;
+    const conditionalCode = `import {render} from "ink"; const first=render(null); if (shouldStop) first.unmount(); render(null);`;
+    const shadowedCode = `import {render} from "ink"; const {unmount}=render(null); {const unmount=()=>{}; unmount();} render(null);`;
+    expect(runRule(inkNoRepeatedRender, unrelatedCode).diagnostics).toHaveLength(1);
+    expect(runRule(inkNoRepeatedRender, conditionalCode).diagnostics).toHaveLength(1);
+    expect(runRule(inkNoRepeatedRender, shadowedCode).diagnostics).toHaveLength(1);
+  });
+
+  it("allows renderer cleanup on every branch", () => {
+    const code = `import {render} from "ink"; const first=render(null); if (shouldStop) first.unmount(); else first.unmount(); render(null);`;
+    expect(runRule(inkNoRepeatedRender, code).diagnostics).toHaveLength(0);
+  });
+
   it("allows separate renderers on different output streams", () => {
     const validCode = `import {render} from "ink"; const run=(firstOutput,secondOutput)=> { render(null,{stdout:firstOutput}); render(null,{stdout:secondOutput}); };`;
     const invalidCode = `import {render} from "ink"; const run=(output)=> { render(null,{stdout:output}); render(null,{stdout:output}); };`;

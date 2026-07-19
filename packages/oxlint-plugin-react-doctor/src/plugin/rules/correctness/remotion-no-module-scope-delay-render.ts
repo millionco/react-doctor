@@ -9,7 +9,7 @@ export const remotionNoModuleScopeDelayRender = defineRule({
   requires: ["remotion:4"],
   severity: "error",
   recommendation:
-    "Call `useDelayRender()` inside the component that owns the asynchronous work instead of blocking from module scope.",
+    "Create the handle once inside the component. Use `useDelayRender()` on Remotion 4.0.342 or newer, or lazy `useState(() => delayRender())` on earlier versions.",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const apiBinding = resolveRemotionApi(node.callee, context.scopes);
@@ -23,7 +23,7 @@ export const remotionNoModuleScopeDelayRender = defineRule({
       context.report({
         node,
         message:
-          "A module-scoped `delayRender()` handle blocks all compositions and composition discovery. Create the handle inside the component with `useDelayRender()` instead.",
+          "A module-scoped `delayRender()` handle blocks all compositions and composition discovery. Move it inside the component and create it once with `useDelayRender()` or a lazy `useState` initializer.",
       });
     },
   }),

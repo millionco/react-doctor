@@ -507,6 +507,18 @@ describe("remotion-no-css-url-assets", () => {
 });
 
 describe("remotion-no-module-scope-delay-render", () => {
+  it("provides remediation compatible with Remotion versions before useDelayRender", () => {
+    expect(remotionNoModuleScopeDelayRender.recommendation).toContain("4.0.342");
+    expect(remotionNoModuleScopeDelayRender.recommendation).toContain(
+      "useState(() => delayRender())",
+    );
+    const result = runRule(
+      remotionNoModuleScopeDelayRender,
+      `import {delayRender} from 'remotion'; delayRender();`,
+    );
+    expect(result.diagnostics[0]?.message).toContain("lazy `useState`");
+  });
+
   it("flags direct, aliased, and namespace module-scope calls", () => {
     expectDiagnosticCount(
       remotionNoModuleScopeDelayRender,

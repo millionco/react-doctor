@@ -155,6 +155,9 @@ Detector contract:
 - Track direct assignment, update expressions, mutating array methods, and `Map` or `Set` mutators.
 - Report when the mutated snapshot or a mutated child reference is returned through `set`, passed
   back to `setState`, or mutated without a notifying update.
+- Require the paired `set` parameter to be used before treating `get()` mutations without a
+  notifier as reactive-state bugs. A creator with an unused `set` parameter can deliberately use
+  Zustand as an imperative cache with no subscribers.
 - Treat clone-before-mutate as valid when the clone is statically proven fresh.
 - Treat mutation inside a creator wrapped by the official `immer` middleware as valid.
 - Follow mutations through simple `if`/`else` branches when every branch rejoins before the

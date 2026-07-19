@@ -639,7 +639,9 @@ export const zustandNoMutatingState = defineRule({
         const getSymbolIds = new Set<number>();
         const setSymbolIds = new Set<number>();
         for (const binding of creatorBindings.values()) {
-          if (binding.getSymbol) getSymbolIds.add(binding.getSymbol.id);
+          if (binding.getSymbol && binding.setSymbol && binding.setSymbol.references.length > 0) {
+            getSymbolIds.add(binding.getSymbol.id);
+          }
           if (binding.setSymbol) setSymbolIds.add(binding.setSymbol.id);
           if (!binding.hasNonImmerUsage || !binding.setSymbol) continue;
           const creatorSetSymbolIds = new Set([binding.setSymbol.id]);

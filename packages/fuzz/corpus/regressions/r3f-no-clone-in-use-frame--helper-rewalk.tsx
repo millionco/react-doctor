@@ -11,5 +11,5 @@ export const Scene = ({ enabled }) => {
     if (enabled) clonePosition();
     clonePosition();
   });
-  return null;
+  return <mesh ref={mesh} />;
 };

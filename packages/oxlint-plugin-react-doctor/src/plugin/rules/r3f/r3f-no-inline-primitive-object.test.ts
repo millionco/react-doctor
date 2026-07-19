@@ -11,6 +11,22 @@ describe("r3f-no-inline-primitive-object", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags fluent fresh instances and global Object.create values", () => {
+    const result = runRule(
+      r3fNoInlinePrimitiveObject,
+      `import { Canvas } from "@react-three/fiber"; import { Group } from "three"; const Scene = () => <><primitive object={new Group().add(child)} /><primitive object={Object.create(prototype)} /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("keeps stable fluent values, unknown add receivers, and shadowed Object.create quiet", () => {
+    const result = runRule(
+      r3fNoInlinePrimitiveObject,
+      `import { Canvas } from "@react-three/fiber"; import { Group } from "three"; const stable = new Group().add(child); const Scene = ({ builder, Object }) => <><primitive object={stable} /><primitive object={builder.add(child)} /><primitive object={Object.create(prototype)} /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("requires a runtime R3F import", () => {
     const result = runRule(
       r3fNoInlinePrimitiveObject,

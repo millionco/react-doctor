@@ -3,12 +3,32 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fNoFreshUseThreeSelector } from "./r3f-no-fresh-use-three-selector.js";
 
 describe("r3f-no-fresh-use-three-selector", () => {
+  it("requires the selector overload introduced in R3F v6", () => {
+    expect(r3fNoFreshUseThreeSelector.requires).toEqual(["r3f:6"]);
+  });
+
   it("flags object and array selector results", () => {
     const result = runRule(
       r3fNoFreshUseThreeSelector,
       `import { useThree } from "@react-three/fiber"; const first = useThree((state) => ({ camera: state.camera })); const second = useThree((state) => [state.scene, state.camera]);`,
     );
     expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags selector objects created through the global Object.create API", () => {
+    const result = runRule(
+      r3fNoFreshUseThreeSelector,
+      `import { useThree } from "@react-three/fiber"; useThree((state) => Object.create({ camera: state.camera }));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps shadowed Object.create selector values quiet", () => {
+    const result = runRule(
+      r3fNoFreshUseThreeSelector,
+      `import { useThree } from "@react-three/fiber"; const Scene = ({ Object }) => useThree((state) => Object.create(state.camera));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it.each([

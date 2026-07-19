@@ -262,6 +262,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
       LATEST_KNOWN_REMOTION_MAJOR,
     );
   }
+  if (project.hasThree || project.hasReactThreeFiber) capabilities.add("three");
   if (project.hasReactThreeFiber) {
     capabilities.add("r3f");
     addMajorLadder(

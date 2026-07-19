@@ -34,6 +34,7 @@ export const r3fNoUseFrameDependencyArray = defineRule({
   title: "Dependency array passed to useFrame",
   category: "Correctness",
   severity: "warn",
+  requires: ["r3f:3"],
   recommendation:
     "Remove the dependency array. Pass a numeric render priority on R3F v9, or supported scheduling options on R3F v10",
   create: (context: RuleContext) => ({

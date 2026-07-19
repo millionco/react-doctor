@@ -10,6 +10,11 @@ import { R3F_WEBGPU_MODULES } from "./utils/r3f-webgpu-modules.js";
 import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
+const WEBGPU_PIPELINE_HOOKS: ReadonlySet<string> = new Set([
+  "usePostProcessing",
+  "useRenderPipeline",
+]);
+
 const findDirectPassRegistryWrite = (callback: EsTreeNode, context: RuleContext): EsTreeNode[] => {
   const writes: EsTreeNode[] = [];
   walkFunctionExecution(callback, context.scopes, (candidate) => {
@@ -32,12 +37,17 @@ export const r3fWebgpuNoUnregisteredPipelinePass = defineRule({
   requires: ["r3f:10"],
   severity: "error",
   recommendation:
-    "Return custom passes from the useRenderPipeline callback so R3F registers them in state.passes",
+    "Return custom passes from the WebGPU post-processing callback so R3F registers them in state.passes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isApiCallFromModules(node, "useRenderPipeline", R3F_WEBGPU_MODULES, context.scopes)) {
-        return;
+      let isPipelineHookCall = false;
+      for (const hookName of WEBGPU_PIPELINE_HOOKS) {
+        if (isApiCallFromModules(node, hookName, R3F_WEBGPU_MODULES, context.scopes)) {
+          isPipelineHookCall = true;
+          break;
+        }
       }
+      if (!isPipelineHookCall) return;
       for (const callbackArgument of node.arguments.slice(0, 2)) {
         if (!callbackArgument || isNodeOfType(callbackArgument, "SpreadElement")) continue;
         const callback = resolveLocalReactCallback(callbackArgument, context.scopes);

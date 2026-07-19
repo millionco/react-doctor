@@ -8,6 +8,7 @@ import { functionReturnsMatchingExpression } from "../../utils/function-returns-
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isGlobalBrowserFunctionCall } from "../../utils/is-global-browser-function-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -15,6 +16,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import {
   analyzeOwnedLifecycleCleanup,
   analyzeOwnedLifecycleResource,
+  expressionMatchesOwnedLifecycleResource,
   functionInvokesOwnedResourceMethod,
   ownedResourceHasMethodCall,
   type OwnedLifecycleResourceAnalysis,
@@ -29,7 +31,13 @@ import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 const RENDERER_CONSTRUCTORS = new Set(["WebGLRenderer", "WebGPURenderer"]);
 
 interface AnimationFrameRegistration {
-  handleSymbol: SymbolDescriptor | null;
+  call: EsTreeNodeOfType<"CallExpression">;
+  handle: AnimationFrameHandle | null;
+}
+
+interface AnimationFrameHandle {
+  symbol: SymbolDescriptor | null;
+  refSymbol: SymbolDescriptor | null;
 }
 
 const isThreeModuleSource = (moduleSource: string): boolean =>
@@ -40,10 +48,10 @@ const isNullArgument = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
   return Boolean(isNodeOfType(argument, "Literal") && argument.value === null);
 };
 
-const getAnimationFrameHandleSymbol = (
+const getAnimationFrameHandle = (
   call: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
-): SymbolDescriptor | null => {
+): AnimationFrameHandle | null => {
   const callRoot = findTransparentExpressionRoot(call);
   const parent = callRoot.parent;
   if (
@@ -51,40 +59,89 @@ const getAnimationFrameHandleSymbol = (
     parent.init === callRoot &&
     isNodeOfType(parent.id, "Identifier")
   ) {
-    return scopes.symbolFor(parent.id);
+    const symbol = scopes.symbolFor(parent.id);
+    return symbol ? { symbol, refSymbol: null } : null;
   }
   if (
-    isNodeOfType(parent, "AssignmentExpression") &&
-    parent.operator === "=" &&
-    parent.right === callRoot &&
-    isNodeOfType(parent.left, "Identifier")
+    !isNodeOfType(parent, "AssignmentExpression") ||
+    parent.operator !== "=" ||
+    parent.right !== callRoot
   ) {
-    return scopes.symbolFor(parent.left);
+    return null;
   }
+  const assignmentTarget = stripParenExpression(parent.left);
+  if (isNodeOfType(assignmentTarget, "Identifier")) {
+    const symbol = scopes.symbolFor(assignmentTarget);
+    return symbol ? { symbol, refSymbol: null } : null;
+  }
+  const refSymbol = resolveReactRefSymbol(assignmentTarget, scopes);
+  if (refSymbol) return { symbol: null, refSymbol };
   return null;
+};
+
+const expressionMatchesAnimationFrameHandle = (
+  expression: EsTreeNode,
+  handle: AnimationFrameHandle,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (handle.symbol) {
+    return (
+      isNodeOfType(candidate, "Identifier") && scopes.symbolFor(candidate)?.id === handle.symbol.id
+    );
+  }
+  return Boolean(
+    handle.refSymbol && resolveReactRefSymbol(candidate, scopes)?.id === handle.refSymbol.id,
+  );
+};
+
+const animationFrameHandleIsNotOverwritten = (
+  registration: AnimationFrameRegistration,
+  ownerFunction: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const handle = registration.handle;
+  if (!handle) return false;
+  const registrationRoot = findTransparentExpressionRoot(registration.call);
+  let isOverwritten = false;
+  walkAst(ownerFunction, (candidate) => {
+    if (isOverwritten) return false;
+    if (
+      isNodeOfType(candidate, "AssignmentExpression") &&
+      expressionMatchesAnimationFrameHandle(candidate.left, handle, scopes) &&
+      candidate.right !== registrationRoot
+    ) {
+      isOverwritten = true;
+      return false;
+    }
+    if (
+      isNodeOfType(candidate, "UpdateExpression") &&
+      expressionMatchesAnimationFrameHandle(candidate.argument, handle, scopes)
+    ) {
+      isOverwritten = true;
+      return false;
+    }
+  });
+  return !isOverwritten;
 };
 
 const collectRendererRenderFunctions = (
   analysis: OwnedLifecycleResourceAnalysis,
+  scopes: ScopeAnalysis,
 ): Set<EsTreeNode> => {
   const renderFunctions = new Set<EsTreeNode>();
-  for (const symbol of analysis.symbols) {
-    for (const reference of symbol.references) {
-      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-      const member = referenceRoot.parent;
-      const call = member?.parent;
-      if (
-        isNodeOfType(member, "MemberExpression") &&
-        member.object === referenceRoot &&
-        THREE_RENDER_METHOD_NAMES.has(getStaticPropertyName(member) ?? "") &&
-        isNodeOfType(call, "CallExpression") &&
-        call.callee === member
-      ) {
-        const renderFunction = findEnclosingFunction(call);
-        if (renderFunction) renderFunctions.add(renderFunction);
-      }
+  walkAst(analysis.ownerFunction, (candidate) => {
+    if (
+      !isNodeOfType(candidate, "CallExpression") ||
+      !isNodeOfType(candidate.callee, "MemberExpression") ||
+      !THREE_RENDER_METHOD_NAMES.has(getStaticPropertyName(candidate.callee) ?? "") ||
+      !expressionMatchesOwnedLifecycleResource(candidate.callee.object, analysis, scopes)
+    ) {
+      return;
     }
-  }
+    const renderFunction = findEnclosingFunction(candidate);
+    if (renderFunction) renderFunctions.add(renderFunction);
+  });
   return renderFunctions;
 };
 
@@ -92,7 +149,7 @@ const collectAnimationFrameRegistrations = (
   analysis: OwnedLifecycleResourceAnalysis,
   scopes: ScopeAnalysis,
 ): AnimationFrameRegistration[] => {
-  const renderFunctions = collectRendererRenderFunctions(analysis);
+  const renderFunctions = collectRendererRenderFunctions(analysis, scopes);
   if (renderFunctions.size === 0) return [];
   const registrations: AnimationFrameRegistration[] = [];
   walkAst(analysis.ownerFunction, (candidate) => {
@@ -105,14 +162,14 @@ const collectAnimationFrameRegistrations = (
     ) {
       return;
     }
-    registrations.push({ handleSymbol: getAnimationFrameHandleSymbol(candidate, scopes) });
+    registrations.push({ call: candidate, handle: getAnimationFrameHandle(candidate, scopes) });
   });
   return registrations;
 };
 
 const cleanupCancelsAnimationFrame = (
   cleanupFunction: EsTreeNode,
-  handleSymbol: SymbolDescriptor,
+  handle: AnimationFrameHandle,
   scopes: ScopeAnalysis,
 ): boolean => {
   let didCancelAnimationFrame = false;
@@ -128,8 +185,7 @@ const cleanupCancelsAnimationFrame = (
     if (
       handleArgument &&
       !isNodeOfType(handleArgument, "SpreadElement") &&
-      isNodeOfType(stripParenExpression(handleArgument), "Identifier") &&
-      scopes.symbolFor(stripParenExpression(handleArgument))?.id === handleSymbol.id
+      expressionMatchesAnimationFrameHandle(handleArgument, handle, scopes)
     ) {
       didCancelAnimationFrame = true;
     }
@@ -142,12 +198,7 @@ const isRendererSuppliedToR3fCanvas = (
   context: RuleContext,
 ): boolean => {
   const matchesOwnedRenderer = (expression: EsTreeNode): boolean => {
-    const candidate = stripParenExpression(expression);
-    if (!isNodeOfType(candidate, "Identifier")) return false;
-    const symbol = context.scopes.symbolFor(candidate);
-    return Boolean(
-      symbol && [...analysis.symbols].some((ownedSymbol) => ownedSymbol.id === symbol.id),
-    );
+    return expressionMatchesOwnedLifecycleResource(expression, analysis, context.scopes);
   };
   let isSupplied = false;
   walkAst(analysis.ownerFunction, (candidate) => {
@@ -243,10 +294,19 @@ export const threeRequireRendererCleanup = defineRule({
         context.scopes,
       );
       const animationFrameCleanup = animationFrameRegistrations.every((registration) => {
-        const handleSymbol = registration.handleSymbol;
-        if (!handleSymbol) return false;
+        const handle = registration.handle;
+        if (
+          !handle ||
+          !animationFrameHandleIsNotOverwritten(
+            registration,
+            analysis.ownerFunction,
+            context.scopes,
+          )
+        ) {
+          return false;
+        }
         const cleanup = analyzeOwnedLifecycleCleanup(analysis, context, (cleanupFunction) =>
-          cleanupCancelsAnimationFrame(cleanupFunction, handleSymbol, context.scopes),
+          cleanupCancelsAnimationFrame(cleanupFunction, handle, context.scopes),
         );
         return cleanup.isProven || cleanup.isUnknown;
       });

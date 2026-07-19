@@ -43,6 +43,49 @@ describe("three-require-renderer-cleanup", () => {
     expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(0);
   });
 
+  it("reports eager useRef-owned renderers even with cleanup through current aliases", () => {
+    const code = `
+      import { useEffect, useRef } from "react";
+      import { WebGLRenderer } from "three";
+      function Missing() {
+        const rendererRef = useRef(new WebGLRenderer());
+        rendererRef.current.render(scene, camera);
+        return null;
+      }
+      function Complete() {
+        const rendererRef = useRef(new WebGLRenderer());
+        const renderer = rendererRef.current;
+        renderer.render(scene, camera);
+        useEffect(() => () => renderer.dispose(), []);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(2);
+  });
+
+  it("tracks guarded lazy useRef renderer assignment", () => {
+    const code = `
+      import { useEffect, useRef } from "react";
+      import { WebGLRenderer } from "three";
+      function Missing() {
+        const rendererRef = useRef(null);
+        if (!rendererRef.current) {
+          rendererRef.current = new WebGLRenderer();
+        }
+        rendererRef.current.render(scene, camera);
+        return null;
+      }
+      function Complete() {
+        const rendererRef = useRef(null);
+        if (!rendererRef.current) rendererRef.current = new WebGLRenderer();
+        rendererRef.current.render(scene, camera);
+        useEffect(() => () => rendererRef.current.dispose(), []);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(1);
+  });
+
   it("requires setAnimationLoop to be stopped before cleanup", () => {
     const missingStop = `
       import { useEffect } from "react";
@@ -129,6 +172,105 @@ describe("three-require-renderer-cleanup", () => {
     expect(runRule(threeRequireRendererCleanup, missingAsyncCancel).diagnostics).toHaveLength(1);
   });
 
+  it("accepts animation frame handles stored in the same stable React ref", () => {
+    const code = `
+      import { useEffect, useRef } from "react";
+      import { WebGLRenderer } from "three";
+      function Scene({ canvas }) {
+        const frameRef = useRef(null);
+        useEffect(() => {
+          const renderer = new WebGLRenderer({ canvas });
+          const animate = () => {
+            frameRef.current = window.requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+          };
+          animate();
+          return () => {
+            window.cancelAnimationFrame(frameRef.current);
+            renderer.dispose();
+          };
+        }, [canvas]);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(0);
+  });
+
+  it("rejects mismatched, overwritten, and non-React ref animation frame handles", () => {
+    const code = `
+      import { useEffect, useRef } from "react";
+      import { WebGLRenderer } from "three";
+      function Mismatched({ canvas }) {
+        const frameRef = useRef(null);
+        const otherFrameRef = useRef(null);
+        useEffect(() => {
+          const renderer = new WebGLRenderer({ canvas });
+          const animate = () => {
+            frameRef.current = requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+          };
+          animate();
+          return () => {
+            cancelAnimationFrame(otherFrameRef.current);
+            renderer.dispose();
+          };
+        }, [canvas]);
+        return null;
+      }
+      function Overwritten({ canvas }) {
+        const frameRef = useRef(null);
+        useEffect(() => {
+          const renderer = new WebGLRenderer({ canvas });
+          const animate = () => {
+            frameRef.current = requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+          };
+          animate();
+          frameRef.current = requestAnimationFrame(renderOverlay);
+          return () => {
+            cancelAnimationFrame(frameRef.current);
+            renderer.dispose();
+          };
+        }, [canvas]);
+        return null;
+      }
+      function Replaced({ canvas }) {
+        const frameRef = useRef(null);
+        useEffect(() => {
+          const renderer = new WebGLRenderer({ canvas });
+          const animate = () => {
+            frameRef.current = requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+          };
+          animate();
+          frameRef.current = replacementHandle;
+          return () => {
+            cancelAnimationFrame(frameRef.current);
+            renderer.dispose();
+          };
+        }, [canvas]);
+        return null;
+      }
+      function NonReactRef({ canvas }) {
+        const frameRef = { current: null };
+        useEffect(() => {
+          const renderer = new WebGLRenderer({ canvas });
+          const animate = () => {
+            frameRef.current = requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+          };
+          animate();
+          return () => {
+            cancelAnimationFrame(frameRef.current);
+            renderer.dispose();
+          };
+        }, [canvas]);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(4);
+  });
+
   it("does not associate unrelated animation frames with a renderer", () => {
     const code = `
       import { useEffect } from "react";
@@ -169,7 +311,7 @@ describe("three-require-renderer-cleanup", () => {
   it("leaves renderers supplied to R3F Canvas under R3F ownership", () => {
     const code = `
       import { Canvas } from "@react-three/fiber";
-      import { useMemo } from "react";
+      import { useMemo, useRef } from "react";
       import { WebGLRenderer } from "three";
       function Direct({ canvas }) {
         const renderer = useMemo(() => new WebGLRenderer({ canvas }), [canvas]);
@@ -191,6 +333,10 @@ describe("three-require-renderer-cleanup", () => {
       function ConfigOnly({ canvas }) {
         const renderer = useMemo(() => new WebGLRenderer({ canvas }), [canvas]);
         return <Canvas gl={{ canvas: renderer.domElement }} />;
+      }
+      function RefDirect({ canvas }) {
+        const rendererRef = useRef(new WebGLRenderer({ canvas }));
+        return <Canvas gl={rendererRef.current} />;
       }
     `;
     expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(1);
@@ -245,6 +391,38 @@ describe("three-require-renderer-cleanup", () => {
       function Scene(WebGLRenderer) {
         const renderer = new WebGLRenderer();
         return renderer;
+      }
+    `;
+    expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(0);
+  });
+
+  it("does not claim parameter, imported, shared, or shadowed refs", () => {
+    const code = `
+      import { useRef } from "react";
+      import { sharedRendererRef } from "./renderer";
+      import { WebGLRenderer } from "three";
+      const moduleRef = { current: null };
+      function ParameterRef({ rendererRef }) {
+        if (!rendererRef.current) rendererRef.current = new WebGLRenderer();
+        return null;
+      }
+      function ImportedRef() {
+        if (!sharedRendererRef.current) sharedRendererRef.current = new WebGLRenderer();
+        return null;
+      }
+      function SharedRef() {
+        if (!moduleRef.current) moduleRef.current = new WebGLRenderer();
+        return null;
+      }
+      function ShadowedRef({ useRef }) {
+        const rendererRef = useRef(null);
+        if (!rendererRef.current) rendererRef.current = new WebGLRenderer();
+        return null;
+      }
+      function UnguardedRef() {
+        const rendererRef = useRef(null);
+        rendererRef.current = new WebGLRenderer();
+        return null;
       }
     `;
     expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(0);

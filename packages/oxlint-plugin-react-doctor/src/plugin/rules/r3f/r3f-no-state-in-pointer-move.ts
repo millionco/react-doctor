@@ -16,7 +16,6 @@ export const r3fNoStateInPointerMove = defineRule({
   severity: "warn",
   recommendation:
     "Keep pointer-move previews in Three.js refs or transient state and publish one semantic React update when the interaction commits",
-  requires: ["r3f:3"],
   create: (context: RuleContext) => {
     let importsReactThreeFiber = false;
     return {
@@ -30,7 +29,6 @@ export const r3fNoStateInPointerMove = defineRule({
         walkFunctionExecution(callback, context.scopes, (candidate) => {
           if (
             !isNodeOfType(candidate, "CallExpression") ||
-            !isNodeOfType(candidate.callee, "Identifier") ||
             !resolveStateSetterBinding(candidate.callee, context.scopes) ||
             isGuardedStateTransition(candidate, callback, context.scopes)
           ) {

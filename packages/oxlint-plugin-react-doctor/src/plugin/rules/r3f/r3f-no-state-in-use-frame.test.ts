@@ -244,4 +244,49 @@ describe("r3f-no-state-in-use-frame", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags tuple-index state setters and their aliases", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const stateTuple = useState(0); const aliasedTuple = stateTuple; const updateCount = stateTuple[1]; useFrame(() => { stateTuple[1](1); aliasedTuple[1](2); updateCount(3); }); };`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("does not trust mutable or overwritten state and transition tuples", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState, useTransition } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [, setCount] = useState(0); const stateTuple = useState(0); stateTuple[1] = scheduleLater; let mutableStateTuple = useState(0); const transitionTuple = useTransition(); transitionTuple[1] = scheduleLater; let mutableTransitionTuple = useTransition(); useFrame(() => { stateTuple[1](1); mutableStateTuple[1](2); transitionTuple[1](() => setCount(3)); mutableTransitionTuple[1](() => setCount(4)); }); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("skips definitely empty eager collections without silencing nonempty or unknown ones", () => {
+    const emptyResult = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [, setCount] = useState(0); useFrame(() => { [].map(() => setCount(1)); new Set().forEach(() => setCount(2)); Array.from([], () => setCount(3)); }); };`,
+    );
+    const executableResult = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = ({ items }) => { const [, setCount] = useState(0); useFrame(() => { [1].map(() => setCount(1)); new Set([1]).forEach(() => setCount(2)); new Set(items).forEach(() => setCount(3)); Array.from(items, () => setCount(4)); }); };`,
+    );
+    expect(emptyResult.diagnostics).toHaveLength(0);
+    expect(executableResult.diagnostics).toHaveLength(4);
+  });
+
+  it("flags state updates inside proven immediate React transitions", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { startTransition, useState, useTransition } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [, setCount] = useState(0); const transitionTuple = useTransition(); const aliasedTransitionTuple = transitionTuple; useFrame(() => { startTransition(() => setCount(1)); aliasedTransitionTuple[1](() => setCount(2)); }); };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not trust userland state hooks or transition names", () => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useFrame } from "@react-three/fiber"; const useState = () => [0, updateLater]; const startTransition = scheduleLater; const Scene = () => { const stateTuple = useState(); useFrame(() => { stateTuple[1](1); startTransition(() => stateTuple[1](2)); }); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

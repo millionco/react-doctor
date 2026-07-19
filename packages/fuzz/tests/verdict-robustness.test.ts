@@ -190,6 +190,8 @@ const AUDITED_RULE_IDS = [
   "zustand-no-get-during-initialization",
   "styled-components-non-transient-custom-prop-on-intrinsic-element",
   "window-open-without-noopener",
+  "three-require-animation-mixer-cleanup",
+  "three-require-postprocessing-cleanup",
   "three-require-render-target-cleanup",
   "three-require-renderer-cleanup",
 ] as const;

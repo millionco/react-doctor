@@ -15,7 +15,38 @@ import { isR3fCallbackStateProperty } from "./utils/is-r3f-callback-state-proper
 import { R3F_WEBGPU_MODULES } from "./utils/r3f-webgpu-modules.js";
 import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
 
-const WEBGPU_GRAPH_HOOKS = new Set(["useLocalNodes", "useNodes", "useRenderPipeline"]);
+const WEBGPU_GRAPH_HOOKS = new Set([
+  "useLocalNodes",
+  "useNodes",
+  "usePostProcessing",
+  "useRenderPipeline",
+]);
+const WEBGPU_TWO_CALLBACK_HOOKS: ReadonlySet<string> = new Set([
+  "usePostProcessing",
+  "useRenderPipeline",
+]);
+const TSL_UNIFORM_MODULES: ReadonlySet<string> = new Set(["three/tsl", "three/webgpu"]);
+
+const resolvesToTslUniform = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isApiCallFromModules(candidate, "uniform", TSL_UNIFORM_MODULES, scopes)) return true;
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = scopes.symbolFor(candidate);
+  if (
+    symbol?.kind !== "const" ||
+    !symbol.initializer ||
+    visitedSymbolIds.has(symbol.id) ||
+    symbol.references.some((reference) => reference.flag !== "read")
+  ) {
+    return false;
+  }
+  visitedSymbolIds.add(symbol.id);
+  return resolvesToTslUniform(symbol.initializer, scopes, visitedSymbolIds);
+};
 
 const isUniformValueMember = (
   expression: EsTreeNode,
@@ -30,6 +61,7 @@ const isUniformValueMember = (
     return false;
   }
   let current = stripParenExpression(candidate.object);
+  if (resolvesToTslUniform(current, scopes)) return true;
   while (true) {
     if (isR3fCallbackStateProperty(current, callback, "uniforms", scopes)) return true;
     if (!isNodeOfType(current, "MemberExpression")) return false;
@@ -105,8 +137,9 @@ export const r3fWebgpuNoJsUniformBranch = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const hookName = getWebgpuGraphHookName(node, context);
       if (!hookName) return;
-      const callbackArguments =
-        hookName === "useRenderPipeline" ? node.arguments.slice(0, 2) : [node.arguments[0]];
+      const callbackArguments = WEBGPU_TWO_CALLBACK_HOOKS.has(hookName)
+        ? node.arguments.slice(0, 2)
+        : [node.arguments[0]];
       for (const callbackArgument of callbackArguments) {
         if (!callbackArgument || isNodeOfType(callbackArgument, "SpreadElement")) continue;
         const callback = resolveLocalReactCallback(callbackArgument, context.scopes);

@@ -20,6 +20,15 @@ const CONTROL_CONSTRUCTORS = new Set([
   "TransformControls",
 ]);
 const CONTROL_BORROWING_METHOD_NAMES = new Set<string>();
+const CONTROL_DISCONNECT_EQUIVALENT_CONSTRUCTORS = new Set([
+  "DragControls",
+  "FirstPersonControls",
+  "FlyControls",
+  "MapControls",
+  "OrbitControls",
+  "PointerLockControls",
+  "TrackballControls",
+]);
 
 const isControlsModuleSource = (moduleSource: string): boolean =>
   moduleSource === "three-stdlib" ||
@@ -33,7 +42,6 @@ export const threeRequireControlsCleanup = defineRule({
   severity: "warn",
   recommendation:
     "Dispose component-owned Three.js controls in a React cleanup so their DOM listeners are removed",
-  requires: ["r3f:3"],
   create: (context: RuleContext) => ({
     NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
       const provenance = getApiReferenceProvenance(node.callee, context.scopes);
@@ -44,15 +52,23 @@ export const threeRequireControlsCleanup = defineRule({
       ) {
         return;
       }
-      const ownership = analyzeOwnedLifecycleResource(
-        node,
-        context,
-        CONTROL_BORROWING_METHOD_NAMES,
-        true,
-      );
+      const ownership = analyzeOwnedLifecycleResource(node, context, {
+        borrowedArgumentMethodNames: CONTROL_BORROWING_METHOD_NAMES,
+        retainsOwnershipInJsx: true,
+      });
       if (!ownership || ownership.hasUnknownOwnershipTransfer) return;
+      const cleanupMethodNames = CONTROL_DISCONNECT_EQUIVALENT_CONSTRUCTORS.has(provenance.apiName)
+        ? ["disconnect", "dispose"]
+        : ["dispose"];
       const cleanup = analyzeOwnedLifecycleCleanup(ownership, context, (cleanupFunction) =>
-        functionInvokesOwnedResourceMethod(cleanupFunction, ownership, "dispose", context.scopes),
+        cleanupMethodNames.some((methodName) =>
+          functionInvokesOwnedResourceMethod(
+            cleanupFunction,
+            ownership,
+            methodName,
+            context.scopes,
+          ),
+        ),
       );
       if (cleanup.isProven || cleanup.isUnknown) return;
       context.report({

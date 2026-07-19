@@ -115,6 +115,21 @@ describe("createOxlintConfig settings", () => {
     expect(zustand5.rules[ruleKey]).toBe("warn");
   });
 
+  it("registers Three lifecycle rules without enabling Fiber rules", () => {
+    const plainThree = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        hasThree: true,
+      }),
+    });
+
+    expect(plainThree.rules).toHaveProperty("react-doctor/three-require-renderer-cleanup");
+    expect(plainThree.rules).toHaveProperty("react-doctor/three-require-render-target-cleanup");
+    expect(plainThree.rules).not.toHaveProperty("react-doctor/r3f-cap-device-pixel-ratio");
+  });
+
   it("registers R3F rules only for compatible declared library versions", () => {
     const withoutR3f = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

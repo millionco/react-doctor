@@ -121,4 +121,28 @@ describe("r3f-no-dispose-loader-cache", () => {
     `;
     expect(runRule(r3fNoDisposeLoaderCache, code).diagnostics).toHaveLength(1);
   });
+
+  it("reports cached descendant disposal inside inline traversal callbacks", () => {
+    const code = `
+      import { useGLTF } from "@react-three/drei";
+      const { scene } = useGLTF(url);
+      scene.traverse((child) => {
+        child.geometry.dispose();
+        child.material.dispose();
+      });
+    `;
+    expect(runRule(r3fNoDisposeLoaderCache, code).diagnostics).toHaveLength(2);
+  });
+
+  it("keeps clone-owned traversal values quiet while preserving shared resources", () => {
+    const code = `
+      import { useGLTF } from "@react-three/drei";
+      const clone = useGLTF(url).scene.clone();
+      clone.traverse((child) => {
+        child.position.dispose();
+        child.geometry.dispose();
+      });
+    `;
+    expect(runRule(r3fNoDisposeLoaderCache, code).diagnostics).toHaveLength(1);
+  });
 });

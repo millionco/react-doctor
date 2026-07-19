@@ -4,9 +4,9 @@
 import { useFrame } from "@react-three/fiber";
 
 export const Animation = ({ didStart }: { didStart: boolean }) => {
-  useFrame(() => {
+  useFrame(({ scene }) => {
     const advance = () => {
-      mesh.current.position.x += 0.1;
+      scene.position.x += 0.1;
     };
     if (didStart) advance();
   });

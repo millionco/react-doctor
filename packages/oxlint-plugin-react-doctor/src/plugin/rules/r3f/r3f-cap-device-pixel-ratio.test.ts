@@ -28,6 +28,19 @@ describe("r3f-cap-device-pixel-ratio", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("reports legacy pixelRatio props and destructured or derived raw DPR", () => {
+    const result = runRule(
+      r3fCapDevicePixelRatio,
+      `
+        import { Canvas } from "react-three-fiber";
+        const { devicePixelRatio: rawDpr } = window;
+        const scaledDpr = rawDpr * 0.75;
+        const App = () => <><Canvas pixelRatio={scaledDpr} /><Canvas dpr={+globalThis.devicePixelRatio} /></>;
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("reports direct and lazy-state createRoot configuration", () => {
     const result = runRule(
       r3fCapDevicePixelRatio,
@@ -96,6 +109,12 @@ describe("r3f-cap-device-pixel-ratio", () => {
           <Canvas dpr={[1, Math.min(window.devicePixelRatio, 2)]} />
           <Canvas dpr={2} />
           <Canvas dpr={configuredDpr} />
+          <Canvas dpr={window.devicePixelRatio * 0} />
+          <Canvas dpr={2 / window.devicePixelRatio} />
+          <Canvas dpr={2 - window.devicePixelRatio} />
+          <Canvas dpr={window.devicePixelRatio ** 0} />
+          <Canvas dpr={-window.devicePixelRatio} />
+          <Canvas pixelRatio={Math.min(window.devicePixelRatio, 2)} />
         </>;
         root.configure({ dpr: Math.min(globalThis.devicePixelRatio, 2) });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));

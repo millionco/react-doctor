@@ -112,6 +112,63 @@ describe("r3f-no-mutate-loader-cache", () => {
     expect(runRule(r3fNoMutateLoaderCache, code).diagnostics).toHaveLength(6);
   });
 
+  it("tracks cached descendants through inline traversal callbacks", () => {
+    const code = `
+      import { useGLTF } from "@react-three/drei";
+      const { scene } = useGLTF(url);
+      scene.traverse((child) => {
+        child.castShadow = true;
+        child.material.color.set("hotpink");
+      });
+      scene.traverseVisible((child) => { child.visible = false; });
+    `;
+    expect(runRule(r3fNoMutateLoaderCache, code).diagnostics).toHaveLength(3);
+  });
+
+  it("reports reparenting a cached object through an owned parent", () => {
+    const code = `
+      import { useGLTF } from "@react-three/drei";
+      import { useThree } from "@react-three/fiber";
+      const { scene: model } = useGLTF(url);
+      const root = useThree((state) => state.scene);
+      root.add(model);
+      root.attach(model);
+      root.remove(model);
+    `;
+    expect(runRule(r3fNoMutateLoaderCache, code).diagnostics).toHaveLength(3);
+  });
+
+  it("reports common cached material, object, and texture scalar mutations", () => {
+    const code = `
+      import { useGLTF, useTexture } from "@react-three/drei";
+      const { materials, nodes } = useGLTF(url);
+      const texture = useTexture(textureUrl);
+      materials.Body.color.set("red");
+      materials.Body.emissive.copy(glow);
+      materials.Body.opacity = 0.5;
+      materials.Body.roughness = 0.2;
+      nodes.Mesh.receiveShadow = true;
+      texture.colorSpace = colorSpace;
+      texture.wrapS = wrapping;
+    `;
+    expect(runRule(r3fNoMutateLoaderCache, code).diagnostics).toHaveLength(7);
+  });
+
+  it("keeps owned traversal values, clones, and local reparenting quiet", () => {
+    const code = `
+      import { useGLTF } from "@react-three/drei";
+      const { scene } = useGLTF(url);
+      const clone = scene.clone();
+      clone.traverse((child) => {
+        child.position.set(1, 2, 3);
+        child.material.clone().color.set("red");
+      });
+      localRoot.add(localObject);
+      localRoot.add(scene.clone());
+    `;
+    expect(runRule(r3fNoMutateLoaderCache, code).diagnostics).toHaveLength(0);
+  });
+
   it("keeps generic mutators quiet outside known cached mutable descendants", () => {
     const code = `
       import { useGLTF } from "@react-three/drei";

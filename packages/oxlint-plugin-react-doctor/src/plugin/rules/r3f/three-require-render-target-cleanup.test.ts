@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import {
+  LIFECYCLE_ANALYSIS_DENSE_EFFECT_BUDGET_MS,
+  LIFECYCLE_ANALYSIS_DENSE_EFFECT_COUNT,
+  LIFECYCLE_ANALYSIS_PERFORMANCE_ALLOCATION_COUNT,
+  LIFECYCLE_ANALYSIS_PERFORMANCE_BUDGET_MS,
+} from "./constants.js";
 import { threeRequireRenderTargetCleanup } from "./three-require-render-target-cleanup.js";
 
 describe("three-require-render-target-cleanup", () => {
@@ -94,6 +100,26 @@ describe("three-require-render-target-cleanup", () => {
     expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(0);
   });
 
+  it("tracks direct and guarded-lazy useRef render targets", () => {
+    const code = `
+      import { useEffect, useRef } from "react";
+      import { WebGLRenderTarget } from "three";
+      function DirectMissing() {
+        const targetRef = useRef(new WebGLRenderTarget(1, 1));
+        targetRef.current.setSize(2, 2);
+        return null;
+      }
+      function LazyComplete() {
+        const targetRef = useRef(null);
+        if (!targetRef.current) targetRef.current = new WebGLRenderTarget(1, 1);
+        const target = targetRef.current;
+        useEffect(() => () => target.dispose(), []);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet when ownership or cleanup scheduling escapes local proof", () => {
     const code = `
       import { useEffect, useMemo } from "react";
@@ -144,5 +170,210 @@ describe("three-require-render-target-cleanup", () => {
       }
     `;
     expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(1);
+  });
+
+  it("requires React to own cleanup execution", () => {
+    const code = `
+      import { useMemo } from "react";
+      import { WebGLRenderTarget } from "three";
+      function useTarget() {
+        const target = useMemo(() => new WebGLRenderTarget(1, 1), []);
+        return () => target.dispose();
+      }
+    `;
+    expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(1);
+  });
+
+  it("rejects conditional cleanup execution", () => {
+    const code = `
+      import { useEffect, useMemo } from "react";
+      import { WebGLRenderTarget } from "three";
+      function Scene({ enabled }) {
+        const target = useMemo(() => new WebGLRenderTarget(1, 1), []);
+        useEffect(() => () => {
+          if (enabled) target.dispose();
+        }, [enabled, target]);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(1);
+  });
+
+  it("rejects overwritten direct and ref resource identities", () => {
+    const code = `
+      import { useEffect, useRef } from "react";
+      import { WebGLRenderTarget } from "three";
+      function Direct({ borrowed }) {
+        let target = new WebGLRenderTarget(1, 1);
+        target = borrowed;
+        useEffect(() => () => target.dispose(), [target]);
+        return null;
+      }
+      function Ref({ borrowed }) {
+        const targetRef = useRef(null);
+        if (!targetRef.current) targetRef.current = new WebGLRenderTarget(1, 1);
+        targetRef.current = borrowed;
+        useEffect(() => () => targetRef.current.dispose(), []);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(2);
+  });
+
+  it("reports eager hook allocation while preserving lazy hook ownership", () => {
+    const code = `
+      import { useEffect, useRef, useState } from "react";
+      import { WebGLRenderTarget } from "three";
+      function EagerRef() {
+        const targetRef = useRef(new WebGLRenderTarget(1, 1));
+        useEffect(() => () => targetRef.current.dispose(), []);
+        return null;
+      }
+      function EagerState() {
+        const [target] = useState(new WebGLRenderTarget(1, 1));
+        useEffect(() => () => target.dispose(), [target]);
+        return null;
+      }
+      function LazyRef() {
+        const targetRef = useRef(null);
+        if (!targetRef.current) targetRef.current = new WebGLRenderTarget(1, 1);
+        useEffect(() => () => targetRef.current.dispose(), []);
+        return null;
+      }
+      function LazyState() {
+        const [target] = useState(() => new WebGLRenderTarget(1, 1));
+        useEffect(() => () => target.dispose(), [target]);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(2);
+  });
+
+  it("rejects non-function effect returns and cleanup that may not execute", () => {
+    const code = `
+      import { useEffect, useMemo } from "react";
+      import { WebGLRenderTarget } from "three";
+      function ArrayCleanup() {
+        const target = useMemo(() => new WebGLRenderTarget(1, 1), []);
+        useEffect(() => [() => target.dispose()], [target]);
+      }
+      function ObjectCleanup() {
+        const target = useMemo(() => new WebGLRenderTarget(1, 1), []);
+        useEffect(() => ({ dispose: () => target.dispose() }), [target]);
+      }
+      function LoopCleanup() {
+        const target = useMemo(() => new WebGLRenderTarget(1, 1), []);
+        useEffect(() => () => {
+          for (const value of []) target.dispose();
+        }, [target]);
+      }
+      function EarlyReturnCleanup({ ready }) {
+        const target = useMemo(() => new WebGLRenderTarget(1, 1), []);
+        useEffect(() => () => {
+          if (!ready) return;
+          target.dispose();
+        }, [ready, target]);
+      }
+      function ConditionalEffect({ ready }) {
+        const target = useMemo(() => new WebGLRenderTarget(1, 1), []);
+        if (ready) useEffect(() => () => target.dispose(), [target]);
+      }
+    `;
+    expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(5);
+  });
+
+  it("supports exact null guards and rejects destructuring overwrites", () => {
+    const code = `
+      import { useEffect, useRef } from "react";
+      import { WebGLRenderTarget } from "three";
+      function NullGuardMissing() {
+        const targetRef = useRef(null);
+        if (targetRef.current === null) targetRef.current = new WebGLRenderTarget(1, 1);
+        return null;
+      }
+      function NullGuardComplete() {
+        const targetRef = useRef(null);
+        if (null === targetRef.current) targetRef.current = new WebGLRenderTarget(1, 1);
+        useEffect(() => () => targetRef.current.dispose(), []);
+        return null;
+      }
+      function DestructuredOverwrite({ replacement }) {
+        let target = new WebGLRenderTarget(1, 1);
+        [target] = [replacement];
+        useEffect(() => () => target.dispose(), [target]);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(2);
+  });
+
+  it("reports eager hook allocation outside canonical destructuring", () => {
+    const code = `
+      import { useRef, useState } from "react";
+      import { WebGLRenderTarget } from "three";
+      function Tuple() {
+        const state = useState(new WebGLRenderTarget(1, 1));
+        return state[0].width;
+      }
+      function Indexed() {
+        return useState(new WebGLRenderTarget(1, 1))[0].width;
+      }
+      function Discarded() {
+        useState(new WebGLRenderTarget(1, 1));
+        return null;
+      }
+      function NestedRef() {
+        const resources = useRef({ target: new WebGLRenderTarget(1, 1) });
+        return resources.current.target.width;
+      }
+    `;
+    expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(4);
+  });
+
+  it("keeps high-density lifecycle analysis bounded", () => {
+    const declarations = Array.from(
+      { length: LIFECYCLE_ANALYSIS_PERFORMANCE_ALLOCATION_COUNT },
+      (_, allocationIndex) => `const target${allocationIndex} = new WebGLRenderTarget(1, 1);`,
+    ).join("\n");
+    const code = `
+      import { WebGLRenderTarget } from "three";
+      function Scene() {
+        ${declarations}
+        return null;
+      }
+    `;
+    const startedAtMs = performance.now();
+    const result = runRule(threeRequireRenderTargetCleanup, code);
+    const durationMs = performance.now() - startedAtMs;
+
+    expect(result.diagnostics).toHaveLength(LIFECYCLE_ANALYSIS_PERFORMANCE_ALLOCATION_COUNT);
+    expect(durationMs).toBeLessThan(LIFECYCLE_ANALYSIS_PERFORMANCE_BUDGET_MS);
+  });
+
+  it("keeps dense allocation and effect matching bounded", () => {
+    const lifecyclePairs = Array.from(
+      { length: LIFECYCLE_ANALYSIS_DENSE_EFFECT_COUNT },
+      (_, allocationIndex) => `
+        const target${allocationIndex} = useMemo(
+          () => new WebGLRenderTarget(1, 1),
+          [],
+        );
+        useEffect(() => () => target${allocationIndex}.dispose(), [target${allocationIndex}]);
+      `,
+    ).join("\n");
+    const code = `
+      import { useEffect, useMemo } from "react";
+      import { WebGLRenderTarget } from "three";
+      function Scene() {
+        ${lifecyclePairs}
+        return null;
+      }
+    `;
+    const startedAtMs = performance.now();
+    const result = runRule(threeRequireRenderTargetCleanup, code);
+    const durationMs = performance.now() - startedAtMs;
+
+    expect(result.diagnostics).toHaveLength(0);
+    expect(durationMs).toBeLessThan(LIFECYCLE_ANALYSIS_DENSE_EFFECT_BUDGET_MS);
   });
 });

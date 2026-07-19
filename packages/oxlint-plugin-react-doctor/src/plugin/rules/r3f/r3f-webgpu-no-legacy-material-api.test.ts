@@ -3,8 +3,35 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fWebgpuNoLegacyMaterialApi } from "./r3f-webgpu-no-legacy-material-api.js";
 
 describe("r3f-webgpu-no-legacy-material-api", () => {
-  it("requires the renderer-neutral R3F WebGPU release", () => {
-    expect(r3fWebgpuNoLegacyMaterialApi.requires).toEqual(["r3f:10"]);
+  it("runs for stable-v9 Canvas WebGPU factories", () => {
+    expect(r3fWebgpuNoLegacyMaterialApi.requires).toBeUndefined();
+  });
+
+  it("reports stable Canvas and memoized same-file material indirection", () => {
+    const result = runRule(
+      r3fWebgpuNoLegacyMaterialApi,
+      `import React from "react";
+       import { Canvas } from "@react-three/fiber";
+       import { WebGPURenderer } from "three/webgpu";
+       const LegacyMaterial = React.memo(() => <shaderMaterial />);
+       const scene = <Canvas gl={async (props) => new WebGPURenderer(props)}><LegacyMaterial /></Canvas>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("follows two-hop and three-hop immutable local component ancestry", () => {
+    const result = runRule(
+      r3fWebgpuNoLegacyMaterialApi,
+      `import { Canvas } from "@react-three/fiber/webgpu";
+       const TwoHopMaterial = () => <shaderMaterial />;
+       const TwoHopScene = () => <TwoHopMaterial />;
+       const ThreeHopMaterial = () => <rawShaderMaterial />;
+       const ThreeHopMiddle = () => <ThreeHopMaterial />;
+       const ThreeHopScene = () => <ThreeHopMiddle />;
+       const first = <Canvas><TwoHopScene /></Canvas>;
+       const second = <Canvas><ThreeHopScene /></Canvas>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("reports legacy shader intrinsics and onBeforeCompile below WebGPU Canvas", () => {
@@ -53,6 +80,40 @@ describe("r3f-webgpu-no-legacy-material-api", () => {
          <CustomMaterial onBeforeCompile={patch} />
          <meshStandardMaterial onBeforeCompile={patch} {...props} />
        </Canvas>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not project WebGPU ancestry through imported or WebGL-backed components", () => {
+    const result = runRule(
+      r3fWebgpuNoLegacyMaterialApi,
+      `import { Canvas } from "@react-three/fiber";
+       import { WebGLRenderer } from "three";
+       const LocalMaterial = () => <shaderMaterial />;
+       const scene = <Canvas gl={async () => new WebGLRenderer()}><LocalMaterial /></Canvas>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects cyclic, dynamic, imported, and legacy-boundary ancestry proofs", () => {
+    const result = runRule(
+      r3fWebgpuNoLegacyMaterialApi,
+      `import { Canvas as WebgpuCanvas } from "@react-three/fiber/webgpu";
+       import { Canvas as LegacyCanvas } from "@react-three/fiber/legacy";
+       import { ImportedScene } from "./scene";
+       const CyclicMaterial = () => <><CyclicScene /><shaderMaterial /></>;
+       const CyclicScene = () => <CyclicMaterial />;
+       const DynamicMaterial = () => <rawShaderMaterial />;
+       const SafeMaterial = () => null;
+       const SelectedMaterial = condition ? DynamicMaterial : SafeMaterial;
+       let MutableMaterial = () => <shaderMaterial />;
+       const ImportedMaterial = () => <meshStandardMaterial onBeforeCompile={patch} />;
+       const BoundedMaterial = () => <shaderMaterial />;
+       const LegacyBoundary = () => <LegacyCanvas><BoundedMaterial /></LegacyCanvas>;
+       const dynamic = <WebgpuCanvas><SelectedMaterial /></WebgpuCanvas>;
+       const mutable = <WebgpuCanvas><MutableMaterial /></WebgpuCanvas>;
+       const imported = <WebgpuCanvas><ImportedScene content={ImportedMaterial} /></WebgpuCanvas>;
+       const bounded = <WebgpuCanvas><LegacyBoundary /></WebgpuCanvas>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

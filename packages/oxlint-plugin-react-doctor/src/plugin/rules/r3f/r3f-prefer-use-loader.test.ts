@@ -3,6 +3,10 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fPreferUseLoader } from "./r3f-prefer-use-loader.js";
 
 describe("r3f-prefer-use-loader", () => {
+  it("requires the first Fiber major that exposes useLoader", () => {
+    expect(r3fPreferUseLoader.requires).toEqual(["r3f:3"]);
+  });
+
   it("reports core Three.js loader calls in React effects", () => {
     const code = `
       import { useThree } from "@react-three/fiber";

@@ -16,6 +16,14 @@ describe("r3f-no-fresh-portal-container", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
+  it("reports a freshly constructed container after a fluent add call", () => {
+    const result = runRule(
+      r3fNoFreshPortalContainer,
+      `import { createPortal } from "@react-three/fiber"; import { Scene } from "three"; const World = () => createPortal(<mesh />, new Scene().add(child));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("resolves renamed, namespace, and public-entry-point calls", () => {
     const code = `
       import { createPortal as mountPortal } from "@react-three/fiber/native";

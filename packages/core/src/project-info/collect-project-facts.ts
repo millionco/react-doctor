@@ -38,11 +38,17 @@ const MOBX_REACT_LITE_PACKAGE_NAME = "mobx-react-lite";
 const MOBX_STATE_TREE_PACKAGE_NAME = "mobx-state-tree";
 const MOBX_REACT_OBSERVER_PACKAGE_NAME = "mobx-react-observer";
 const REACT_THREE_FIBER_DEPENDENCY_NAMES = ["@react-three/fiber", "react-three-fiber"] as const;
-const REACT_THREE_DEPENDENCY_NAMES = [
+const REACT_THREE_FIBER_SECTIONS = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+] as const;
+const REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES = [
   ...REACT_THREE_FIBER_DEPENDENCY_NAMES,
   "@react-three/drei",
-  "three",
 ] as const;
+const THREE_DEPENDENCY_NAMES = [...REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES, "three"] as const;
 
 // A dependency's declared spec plus the directory whose manifest supplied
 // it — the scan root, or the workspace package that declares the package.
@@ -94,6 +100,7 @@ export interface WorkspaceFacts {
   hasRemotionDependency: boolean;
   hasUnknownRemotionVersion: boolean;
   remotionVersion: string | null;
+  hasThree: boolean;
   hasReactThreeFiber: boolean;
   reactThreeFiber: ReactThreeFiberDependencyFact;
   reanimatedVersion: string | null;
@@ -144,10 +151,13 @@ const resolveWorkspaceDependencyVersion = ({
   );
 };
 
-// Lowest-major-wins: a monorepo mixing React 18 and 19 workspaces must be
-// linted against the older runtime's constraints. Unparseable specs lose
-// to parseable ones and never displace them.
-const shouldReplaceReactVersion = (currentVersion: string | null, nextVersion: string): boolean => {
+// Lowest-major-wins: mixed-version monorepos must be linted against the
+// older runtime's constraints. Unparseable specs lose to parseable ones
+// and never displace them.
+const shouldReplaceWithLowerMajor = (
+  currentVersion: string | null,
+  nextVersion: string,
+): boolean => {
   if (!currentVersion) return true;
 
   const currentMajor = parseReactMajor(currentVersion);
@@ -334,12 +344,23 @@ const evaluateManifestFacts = (
     facts.styledComponentsVersion = styledComponentsVersion;
   }
   facts.hasI18nLibrary = facts.hasI18nLibrary || hasI18nDependency(packageJson);
-  if (facts.reactThreeFiber.version === null) {
-    for (const packageName of REACT_THREE_FIBER_DEPENDENCY_NAMES) {
-      const version = getDependencySpec(packageJson, packageName);
-      if (version === null) continue;
+  for (const packageName of REACT_THREE_FIBER_DEPENDENCY_NAMES) {
+    const dependencyDeclaration = getDependencyDeclaration({
+      packageName,
+      packageJson,
+      sections: REACT_THREE_FIBER_SECTIONS,
+    });
+    const version = resolveCatalogBackedDependencyVersion({
+      rootDirectory,
+      rootPackageJson,
+      sourceDirectory: directory,
+      sourcePackageJson: packageJson,
+      packageName,
+      version: dependencyDeclaration.version,
+    });
+    if (version === null) continue;
+    if (shouldReplaceWithLowerMajor(facts.reactThreeFiber.version, version)) {
       facts.reactThreeFiber = { packageName, version, sourceDirectory: directory };
-      break;
     }
   }
   facts.hasReactNativeAwarePackage =
@@ -372,9 +393,14 @@ const evaluateManifestFacts = (
       }
     }
   }
+  facts.hasThree =
+    facts.hasThree ||
+    THREE_DEPENDENCY_NAMES.some(
+      (dependencyName) => getDependencySpec(packageJson, dependencyName) !== null,
+    );
   facts.hasReactThreeFiber =
     facts.hasReactThreeFiber ||
-    REACT_THREE_DEPENDENCY_NAMES.some(
+    REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES.some(
       (dependencyName) => getDependencySpec(packageJson, dependencyName) !== null,
     );
 };
@@ -424,6 +450,7 @@ export const collectWorkspaceFacts = (
     hasRemotionDependency: false,
     hasUnknownRemotionVersion: false,
     remotionVersion: null,
+    hasThree: false,
     hasReactThreeFiber: false,
     reactThreeFiber: { packageName: null, version: null, sourceDirectory: null },
     reanimatedVersion: null,
@@ -495,7 +522,7 @@ export const collectWorkspaceFacts = (
         workspacePackageJson,
       });
 
-      if (reactVersion && shouldReplaceReactVersion(facts.reactVersion, reactVersion)) {
+      if (reactVersion && shouldReplaceWithLowerMajor(facts.reactVersion, reactVersion)) {
         facts.reactVersion = reactVersion;
       }
       if (tailwindVersion && !facts.tailwindVersion) {

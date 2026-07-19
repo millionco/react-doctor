@@ -332,7 +332,6 @@ export const r3fRequireProjectionMatrixUpdate = defineRule({
   id: "r3f-require-projection-matrix-update",
   title: "Missing camera projection-matrix update",
   category: "Correctness",
-  requires: ["r3f:3"],
   severity: "error",
   recommendation:
     "Call camera.updateProjectionMatrix() after imperatively changing projection properties so Three.js renders the new frustum",

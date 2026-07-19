@@ -3,8 +3,8 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { threeRequireControlsCleanup } from "./three-require-controls-cleanup.js";
 
 describe("three-require-controls-cleanup", () => {
-  it("requires an R3F version gate", () => {
-    expect(threeRequireControlsCleanup.requires).toEqual(["r3f:3"]);
+  it("does not require R3F for plain React and Three.js projects", () => {
+    expect(threeRequireControlsCleanup.requires).toBeUndefined();
   });
 
   it("reports component-owned controls from supported Three.js modules", () => {
@@ -40,6 +40,59 @@ describe("three-require-controls-cleanup", () => {
       };
     `;
     expect(runRule(threeRequireControlsCleanup, code).diagnostics).toHaveLength(0);
+  });
+
+  it("accepts disconnect when disposal only disconnects listeners", () => {
+    const code = `
+      import { useEffect, useMemo } from "react";
+      import { DragControls } from "three/addons/controls/DragControls.js";
+      import { FirstPersonControls } from "three/addons/controls/FirstPersonControls.js";
+      import { FlyControls } from "three/addons/controls/FlyControls.js";
+      import { MapControls } from "three/addons/controls/MapControls.js";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
+      import { TrackballControls } from "three/addons/controls/TrackballControls.js";
+      const Scene = ({ camera, element, objects }) => {
+        const drag = useMemo(() => new DragControls(objects, camera, element), [camera, element, objects]);
+        const firstPerson = useMemo(() => new FirstPersonControls(camera, element), [camera, element]);
+        const fly = useMemo(() => new FlyControls(camera, element), [camera, element]);
+        const map = useMemo(() => new MapControls(camera, element), [camera, element]);
+        const orbit = useMemo(() => new OrbitControls(camera, element), [camera, element]);
+        const pointerLock = useMemo(() => new PointerLockControls(camera, element), [camera, element]);
+        const trackball = useMemo(() => new TrackballControls(camera, element), [camera, element]);
+        useEffect(() => () => {
+          drag.disconnect();
+          firstPerson.disconnect();
+          fly.disconnect();
+          map.disconnect();
+          orbit.disconnect();
+          pointerLock.disconnect();
+          trackball.disconnect();
+        }, [drag, firstPerson, fly, map, orbit, pointerLock, trackball]);
+        return null;
+      };
+    `;
+    expect(runRule(threeRequireControlsCleanup, code).diagnostics).toHaveLength(0);
+  });
+
+  it("tracks useRef-owned controls and accepts cleanup through current", () => {
+    const code = `
+      import { useEffect, useRef } from "react";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      const Missing = ({ camera, element }) => {
+        const controlsRef = useRef(new OrbitControls(camera, element));
+        return <primitive object={controlsRef.current} />;
+      };
+      const Complete = ({ camera, element }) => {
+        const controlsRef = useRef(null);
+        if (!controlsRef.current) {
+          controlsRef.current = new OrbitControls(camera, element);
+        }
+        useEffect(() => () => controlsRef.current.disconnect(), []);
+        return <primitive object={controlsRef.current} />;
+      };
+    `;
+    expect(runRule(threeRequireControlsCleanup, code).diagnostics).toHaveLength(1);
   });
 
   it("requires cleanup dependencies to follow reactive controls", () => {
@@ -109,5 +162,23 @@ describe("three-require-controls-cleanup", () => {
       };
     `;
     expect(runRule(threeRequireControlsCleanup, code).diagnostics).toHaveLength(0);
+  });
+
+  it("requires full disposal for controls with owned helper resources", () => {
+    const code = `
+      import { useEffect, useMemo } from "react";
+      import { TransformControls } from "three/addons/controls/TransformControls.js";
+      const Missing = ({ camera, element }) => {
+        const controls = useMemo(() => new TransformControls(camera, element), [camera, element]);
+        useEffect(() => () => controls.disconnect(), [controls]);
+        return null;
+      };
+      const Complete = ({ camera, element }) => {
+        const controls = useMemo(() => new TransformControls(camera, element), [camera, element]);
+        useEffect(() => () => controls.dispose(), [controls]);
+        return null;
+      };
+    `;
+    expect(runRule(threeRequireControlsCleanup, code).diagnostics).toHaveLength(1);
   });
 });

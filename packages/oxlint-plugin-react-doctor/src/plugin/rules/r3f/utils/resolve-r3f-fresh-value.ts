@@ -5,6 +5,8 @@ import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { resolveFreshRenderValue } from "../../../utils/resolve-fresh-render-value.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 
+const FRESH_RECEIVER_METHOD_NAMES = new Set(["add"]);
+
 export const resolveR3fFreshValue = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -48,11 +50,24 @@ export const resolveR3fFreshValue = (
   }
   if (
     isNodeOfType(candidate, "CallExpression") &&
-    isNodeOfType(candidate.callee, "MemberExpression") &&
-    getStaticPropertyName(candidate.callee) === "clone" &&
-    (!acceptedKinds || acceptedKinds.has("clone"))
+    isNodeOfType(candidate.callee, "MemberExpression")
   ) {
-    return "clone";
+    const methodName = getStaticPropertyName(candidate.callee);
+    const receiver = stripParenExpression(candidate.callee.object);
+    if (
+      methodName === "create" &&
+      isNodeOfType(receiver, "Identifier") &&
+      receiver.name === "Object" &&
+      scopes.isGlobalReference(receiver) &&
+      candidate.arguments.length > 0 &&
+      (!acceptedKinds || acceptedKinds.has("object"))
+    ) {
+      return "object";
+    }
+    if (methodName === "clone" && (!acceptedKinds || acceptedKinds.has("clone"))) return "clone";
+    if (methodName && FRESH_RECEIVER_METHOD_NAMES.has(methodName)) {
+      return resolveR3fFreshValue(receiver, scopes, acceptedKinds, visitedSymbolIds);
+    }
   }
   return null;
 };

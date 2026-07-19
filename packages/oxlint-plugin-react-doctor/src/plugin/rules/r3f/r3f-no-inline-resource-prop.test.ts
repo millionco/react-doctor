@@ -109,6 +109,20 @@ describe("r3f-no-inline-resource-prop", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("allows conversion calls when a stable geometry is not proven indexed", () => {
+    const code = `
+      import { Canvas } from "@react-three/fiber";
+      import { BufferGeometry } from "three";
+      const geometry = new BufferGeometry();
+      const maybeIndexedGeometry = new BufferGeometry().setIndex(loadIndex());
+      function Scene() {
+        return <><mesh geometry={geometry.toNonIndexed()} /><mesh geometry={maybeIndexedGeometry.toNonIndexed()} /></>;
+      }
+    `;
+    const result = runRule(r3fNoInlineResourceProp, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("ignores resource methods without Three.js resource provenance", () => {
     const code = `
       import { Canvas } from "@react-three/fiber";

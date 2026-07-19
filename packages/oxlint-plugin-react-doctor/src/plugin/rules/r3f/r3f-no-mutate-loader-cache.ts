@@ -14,14 +14,18 @@ const DESTRUCTIVE_METHOD_NAMES = new Set([
   "center",
   "clear",
   "remove",
+  "removeFromParent",
   "rotateX",
   "rotateY",
   "rotateZ",
+  "setValues",
   "translate",
 ]);
-const DESTRUCTIVE_PROPERTY_NAMES = new Set(["geometry", "material"]);
+const DESTRUCTIVE_PROPERTY_NAMES = new Set(["geometry", "material", "parent"]);
 const MUTABLE_DESCENDANT_PROPERTY_NAMES = new Set([
   "center",
+  "color",
+  "emissive",
   "normalScale",
   "offset",
   "position",
@@ -30,6 +34,30 @@ const MUTABLE_DESCENDANT_PROPERTY_NAMES = new Set([
   "rotation",
   "scale",
   "up",
+]);
+const MUTABLE_SCALAR_PROPERTY_NAMES = new Set([
+  "anisotropy",
+  "castShadow",
+  "colorSpace",
+  "depthTest",
+  "depthWrite",
+  "flipY",
+  "frustumCulled",
+  "intensity",
+  "magFilter",
+  "metalness",
+  "minFilter",
+  "needsUpdate",
+  "opacity",
+  "receiveShadow",
+  "renderOrder",
+  "roughness",
+  "side",
+  "transparent",
+  "visible",
+  "wireframe",
+  "wrapS",
+  "wrapT",
 ]);
 const MUTABLE_DESCENDANT_METHOD_NAMES = new Set([
   "copy",
@@ -40,6 +68,7 @@ const MUTABLE_DESCENDANT_METHOD_NAMES = new Set([
   "slerp",
   "slerpQuaternions",
 ]);
+const REPARENTING_METHOD_NAMES = new Set(["add", "attach", "remove"]);
 
 export const r3fNoMutateLoaderCache = defineRule({
   id: "r3f-no-mutate-loader-cache",
@@ -55,22 +84,34 @@ export const r3fNoMutateLoaderCache = defineRule({
         node.callee.object,
         context.scopes,
       );
-      if (
-        !methodName ||
-        (!DESTRUCTIVE_METHOD_NAMES.has(methodName) &&
-          !(
-            MUTABLE_DESCENDANT_METHOD_NAMES.has(methodName) &&
-            receiverPropertyName &&
-            MUTABLE_DESCENDANT_PROPERTY_NAMES.has(receiverPropertyName)
-          )) ||
-        !resolvesToLoaderCacheValue(node.callee.object, context.scopes)
-      ) {
+      if (!methodName) return;
+      const mutatesCachedReceiver =
+        (DESTRUCTIVE_METHOD_NAMES.has(methodName) ||
+          (MUTABLE_DESCENDANT_METHOD_NAMES.has(methodName) &&
+            receiverPropertyName !== null &&
+            MUTABLE_DESCENDANT_PROPERTY_NAMES.has(receiverPropertyName))) &&
+        resolvesToLoaderCacheValue(node.callee.object, context.scopes);
+      if (mutatesCachedReceiver) {
+        context.report({
+          node,
+          message: `This ${methodName}() call mutates an asset shared by the R3F loader cache. Clone the loaded object or resource before mutating it`,
+        });
         return;
       }
-      context.report({
-        node,
-        message: `This ${methodName}() call mutates an asset shared by the R3F loader cache. Clone the loaded object or resource before mutating it`,
-      });
+      if (!REPARENTING_METHOD_NAMES.has(methodName)) return;
+      for (const argument of node.arguments) {
+        if (
+          isNodeOfType(argument, "SpreadElement") ||
+          !resolvesToLoaderCacheValue(argument, context.scopes)
+        ) {
+          continue;
+        }
+        context.report({
+          node: argument,
+          message:
+            "This reparents an object shared by the R3F loader cache. Clone the loaded object before attaching it to an imperative parent",
+        });
+      }
     },
     AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
       if (!isNodeOfType(node.left, "MemberExpression")) return;
@@ -82,6 +123,7 @@ export const r3fNoMutateLoaderCache = defineRule({
       if (
         !propertyName ||
         (!DESTRUCTIVE_PROPERTY_NAMES.has(propertyName) &&
+          !MUTABLE_SCALAR_PROPERTY_NAMES.has(propertyName) &&
           !(receiverPropertyName && MUTABLE_DESCENDANT_PROPERTY_NAMES.has(receiverPropertyName))) ||
         !resolvesToLoaderCacheValue(node.left.object, context.scopes)
       ) {

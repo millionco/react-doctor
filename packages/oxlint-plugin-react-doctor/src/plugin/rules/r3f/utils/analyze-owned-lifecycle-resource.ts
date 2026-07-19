@@ -19,6 +19,7 @@ import { isR3fReactApiCall } from "./is-r3f-react-api-call.js";
 import { walkFunctionExecution } from "./walk-function-execution.js";
 
 const EFFECT_HOOK_NAMES = new Set(["useEffect", "useInsertionEffect", "useLayoutEffect"]);
+const EAGER_HOOK_NAMES = new Set(["useRef", "useState"]);
 const STABLE_FACTORY_HOOK_NAMES = new Set(["useMemo", "useState"]);
 
 export interface OwnedLifecycleResourcePath {
@@ -32,10 +33,24 @@ interface LifecycleCleanupSource {
   dependencyStatus: "valid" | "invalid" | "unknown";
 }
 
+interface LifecycleEffectEntry {
+  callback: EsTreeNode;
+  call: EsTreeNodeOfType<"CallExpression">;
+  hasUnconditionalRegistration: boolean;
+  ownerFunction: EsTreeNode | null;
+}
+
+interface LifecycleProgramIndex {
+  effectByCallback: ReadonlyMap<EsTreeNode, LifecycleEffectEntry>;
+  effectsByReferencedSymbolId: ReadonlyMap<number, ReadonlySet<LifecycleEffectEntry>>;
+}
+
 export interface OwnedLifecycleResourceAnalysis {
   accessPath: OwnedLifecycleResourcePath;
   allocation: EsTreeNode;
   creationKind: "effect" | "reactive" | "render" | "stable";
+  hasEagerHookAllocation: boolean;
+  hasUnstableIdentity: boolean;
   hasUnknownOwnershipTransfer: boolean;
   ownerFunction: EsTreeNode;
   resourceSymbols: ReadonlySet<SymbolDescriptor>;
@@ -47,10 +62,126 @@ export interface OwnedLifecycleCleanupAnalysis {
   isUnknown: boolean;
 }
 
+export interface OwnedLifecycleResourceOptions {
+  borrowedArgumentMethodNames?: ReadonlySet<string>;
+  isBorrowedArgument?: (call: EsTreeNodeOfType<"CallExpression">, argument: EsTreeNode) => boolean;
+  isBorrowedReference?: (reference: EsTreeNode) => boolean;
+  retainsOwnershipInJsx?: boolean;
+}
+
+interface RefWrappedBinding {
+  accessPath: OwnedLifecycleResourcePath;
+  hasEagerHookAllocation: boolean;
+  ownerFunction: EsTreeNode;
+  symbol: SymbolDescriptor;
+}
+
+const lifecycleProgramIndexByContext = new WeakMap<
+  RuleContext,
+  WeakMap<EsTreeNodeOfType<"Program">, LifecycleProgramIndex>
+>();
+const earliestAbruptCompletionByFunction = new WeakMap<EsTreeNode, number | null>();
+
 const getProgram = (node: EsTreeNode): EsTreeNodeOfType<"Program"> | null => {
   let current: EsTreeNode | null = node;
   while (current?.parent) current = current.parent;
   return isNodeOfType(current, "Program") ? current : null;
+};
+
+const isExecutionGuaranteed = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
+  if (isNodeConditionallyExecuted(node, boundary)) return false;
+  let current = node;
+  while (current.parent && current.parent !== boundary) {
+    const parent = current.parent;
+    if (
+      isNodeOfType(parent, "ForStatement") ||
+      isNodeOfType(parent, "ForInStatement") ||
+      isNodeOfType(parent, "ForOfStatement") ||
+      isNodeOfType(parent, "WhileStatement") ||
+      isNodeOfType(parent, "DoWhileStatement") ||
+      isNodeOfType(parent, "TryStatement")
+    ) {
+      return false;
+    }
+    current = parent;
+  }
+  const cachedEarliestAbruptCompletion = earliestAbruptCompletionByFunction.get(boundary);
+  let earliestAbruptCompletion: number | null;
+  if (cachedEarliestAbruptCompletion === undefined) {
+    let discoveredEarliestAbruptCompletion: number | null = null;
+    walkAst(boundary, (candidate) => {
+      if (candidate !== boundary && isFunctionLike(candidate)) return false;
+      if (
+        (isNodeOfType(candidate, "ReturnStatement") || isNodeOfType(candidate, "ThrowStatement")) &&
+        (discoveredEarliestAbruptCompletion === null ||
+          candidate.range[0] < discoveredEarliestAbruptCompletion)
+      ) {
+        discoveredEarliestAbruptCompletion = candidate.range[0];
+      }
+    });
+    earliestAbruptCompletion = discoveredEarliestAbruptCompletion;
+    earliestAbruptCompletionByFunction.set(boundary, earliestAbruptCompletion);
+  } else {
+    earliestAbruptCompletion = cachedEarliestAbruptCompletion;
+  }
+  return earliestAbruptCompletion === null || earliestAbruptCompletion >= node.range[0];
+};
+
+const getLifecycleProgramIndex = (
+  program: EsTreeNodeOfType<"Program">,
+  context: RuleContext,
+): LifecycleProgramIndex => {
+  const indexByProgram =
+    lifecycleProgramIndexByContext.get(context) ??
+    new WeakMap<EsTreeNodeOfType<"Program">, LifecycleProgramIndex>();
+  lifecycleProgramIndexByContext.set(context, indexByProgram);
+  const cachedIndex = indexByProgram.get(program);
+  if (cachedIndex) return cachedIndex;
+  const effectByCallback = new Map<EsTreeNode, LifecycleEffectEntry>();
+  const effectsByReferencedSymbolId = new Map<number, Set<LifecycleEffectEntry>>();
+  walkAst(program, (candidate) => {
+    if (
+      !isNodeOfType(candidate, "CallExpression") ||
+      !isR3fReactApiCall(candidate, EFFECT_HOOK_NAMES, context.scopes)
+    ) {
+      return;
+    }
+    const callback = getEffectCallback(candidate, context.scopes);
+    if (!callback) return;
+    const ownerFunction = findRenderPhaseComponentOrHook(candidate, context.scopes);
+    const entry: LifecycleEffectEntry = {
+      callback,
+      call: candidate,
+      hasUnconditionalRegistration: Boolean(
+        ownerFunction && isExecutionGuaranteed(candidate, ownerFunction),
+      ),
+      ownerFunction,
+    };
+    if (!effectByCallback.has(callback)) effectByCallback.set(callback, entry);
+    const visitedFunctions = new Set<EsTreeNode>();
+    const collectReferencedSymbols = (root: EsTreeNode): void => {
+      if (isFunctionLike(root)) {
+        if (visitedFunctions.has(root)) return;
+        visitedFunctions.add(root);
+      }
+      walkAst(root, (referenceCandidate) => {
+        if (isNodeOfType(referenceCandidate, "Identifier")) {
+          const symbol = context.scopes.symbolFor(referenceCandidate);
+          if (symbol) {
+            const entries = effectsByReferencedSymbolId.get(symbol.id) ?? new Set();
+            entries.add(entry);
+            effectsByReferencedSymbolId.set(symbol.id, entries);
+          }
+          const referencedFunction = resolveExactLocalFunction(referenceCandidate, context.scopes);
+          if (referencedFunction) collectReferencedSymbols(referencedFunction);
+        }
+      });
+    };
+    collectReferencedSymbols(candidate);
+  });
+  const index = { effectByCallback, effectsByReferencedSymbolId };
+  indexByProgram.set(program, index);
+  return index;
 };
 
 const getDirectBindingSymbol = (
@@ -219,23 +350,208 @@ const getWrappedBinding = (
   };
 };
 
-const findEffectCallForCallback = (
-  callback: EsTreeNode,
-  program: EsTreeNodeOfType<"Program">,
+const expressionMatchesRefCurrent = (
+  expression: EsTreeNode,
+  refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
-): EsTreeNodeOfType<"CallExpression"> | null => {
-  let matchingEffect: EsTreeNodeOfType<"CallExpression"> | null = null;
-  walkAst(program, (candidate) => {
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (
+    !isNodeOfType(candidate, "MemberExpression") ||
+    getStaticPropertyName(candidate) !== "current"
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(candidate.object);
+  return isNodeOfType(receiver, "Identifier") && scopes.symbolFor(receiver)?.id === refSymbol.id;
+};
+
+const getUseRefBinding = (
+  useRefCall: EsTreeNode,
+  scopes: ScopeAnalysis,
+): { ownerFunction: EsTreeNode; symbol: SymbolDescriptor } | null => {
+  const callRoot = findTransparentExpressionRoot(useRefCall);
+  const declaration = callRoot.parent;
+  if (
+    !isNodeOfType(useRefCall, "CallExpression") ||
+    !isR3fReactApiCall(useRefCall, "useRef", scopes) ||
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    declaration.init !== callRoot ||
+    !isNodeOfType(declaration.id, "Identifier")
+  ) {
+    return null;
+  }
+  const symbol = scopes.symbolFor(declaration.id);
+  const ownerFunction = findRenderPhaseComponentOrHook(useRefCall, scopes);
+  return symbol && ownerFunction && findEnclosingFunction(declaration.id) === ownerFunction
+    ? { ownerFunction, symbol }
+    : null;
+};
+
+const isGuardedLazyRefAssignment = (
+  assignment: EsTreeNode,
+  refSymbol: SymbolDescriptor,
+  ownerFunction: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const isNullishExpression = (expression: EsTreeNode): boolean => {
+    const candidate = stripParenExpression(expression);
+    if (isNodeOfType(candidate, "Literal") && candidate.value === null) return true;
+    return (
+      isNodeOfType(candidate, "Identifier") &&
+      candidate.name === "undefined" &&
+      !scopes.symbolFor(candidate)
+    );
+  };
+  const testProvesEmptyRef = (expression: EsTreeNode): boolean => {
+    const candidate = stripParenExpression(expression);
     if (
-      !matchingEffect &&
-      isNodeOfType(candidate, "CallExpression") &&
-      isR3fReactApiCall(candidate, EFFECT_HOOK_NAMES, scopes) &&
-      getEffectCallback(candidate, scopes) === callback
+      isNodeOfType(candidate, "UnaryExpression") &&
+      candidate.operator === "!" &&
+      expressionMatchesRefCurrent(candidate.argument, refSymbol, scopes)
     ) {
-      matchingEffect = candidate;
+      return true;
     }
-  });
-  return matchingEffect;
+    if (
+      !isNodeOfType(candidate, "BinaryExpression") ||
+      !["==", "==="].includes(candidate.operator)
+    ) {
+      return false;
+    }
+    return (
+      (expressionMatchesRefCurrent(candidate.left, refSymbol, scopes) &&
+        isNullishExpression(candidate.right)) ||
+      (isNullishExpression(candidate.left) &&
+        expressionMatchesRefCurrent(candidate.right, refSymbol, scopes))
+    );
+  };
+  let current = assignment;
+  while (current.parent && current.parent !== ownerFunction) {
+    const parent = current.parent;
+    if (
+      isNodeOfType(parent, "IfStatement") &&
+      parent.consequent === current &&
+      testProvesEmptyRef(parent.test)
+    ) {
+      return true;
+    }
+    current = parent;
+  }
+  return false;
+};
+
+const getEagerHookOwner = (allocation: EsTreeNode, scopes: ScopeAnalysis): EsTreeNode | null => {
+  let current = allocation;
+  while (current.parent && !isFunctionLike(current.parent)) {
+    const parent = current.parent;
+    if (
+      isNodeOfType(parent, "CallExpression") &&
+      parent.arguments[0] === current &&
+      isR3fReactApiCall(parent, EAGER_HOOK_NAMES, scopes)
+    ) {
+      return findRenderPhaseComponentOrHook(parent, scopes);
+    }
+    current = parent;
+  }
+  return null;
+};
+
+const getRefWrappedBinding = (
+  allocation: EsTreeNode,
+  scopes: ScopeAnalysis,
+): RefWrappedBinding | null => {
+  const allocationRoot = findTransparentExpressionRoot(allocation);
+  const parent = allocationRoot.parent;
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    parent.arguments[0] === allocationRoot &&
+    isR3fReactApiCall(parent, "useRef", scopes)
+  ) {
+    const binding = getUseRefBinding(parent, scopes);
+    return binding
+      ? {
+          accessPath: { kind: "object", index: null, propertyName: "current" },
+          hasEagerHookAllocation: true,
+          ...binding,
+        }
+      : null;
+  }
+  if (
+    !isNodeOfType(parent, "AssignmentExpression") ||
+    parent.operator !== "=" ||
+    parent.right !== allocationRoot ||
+    !isNodeOfType(parent.left, "MemberExpression") ||
+    getStaticPropertyName(parent.left) !== "current"
+  ) {
+    return null;
+  }
+  const refReceiver = stripParenExpression(parent.left.object);
+  if (!isNodeOfType(refReceiver, "Identifier")) return null;
+  const refSymbol = scopes.symbolFor(refReceiver);
+  const refInitializer = refSymbol?.initializer
+    ? stripParenExpression(refSymbol.initializer)
+    : null;
+  if (
+    !refSymbol ||
+    refSymbol.kind !== "const" ||
+    !refInitializer ||
+    !isNodeOfType(refInitializer, "CallExpression") ||
+    !isR3fReactApiCall(refInitializer, "useRef", scopes)
+  ) {
+    return null;
+  }
+  const binding = getUseRefBinding(refInitializer, scopes);
+  if (
+    !binding ||
+    binding.symbol.id !== refSymbol.id ||
+    findEnclosingFunction(parent) !== binding.ownerFunction ||
+    !isGuardedLazyRefAssignment(parent, refSymbol, binding.ownerFunction, scopes)
+  ) {
+    return null;
+  }
+  return {
+    accessPath: { kind: "object", index: null, propertyName: "current" },
+    hasEagerHookAllocation: false,
+    ownerFunction: binding.ownerFunction,
+    symbol: refSymbol,
+  };
+};
+
+const getEagerStateWrappedBinding = (
+  allocation: EsTreeNode,
+  scopes: ScopeAnalysis,
+): RefWrappedBinding | null => {
+  const allocationRoot = findTransparentExpressionRoot(allocation);
+  const stateCall = allocationRoot.parent;
+  if (
+    !isNodeOfType(stateCall, "CallExpression") ||
+    stateCall.arguments[0] !== allocationRoot ||
+    !isR3fReactApiCall(stateCall, "useState", scopes)
+  ) {
+    return null;
+  }
+  const callRoot = findTransparentExpressionRoot(stateCall);
+  const declaration = callRoot.parent;
+  if (
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    declaration.init !== callRoot ||
+    !isNodeOfType(declaration.id, "ArrayPattern") ||
+    !declaration.id.elements[0] ||
+    !isNodeOfType(declaration.id.elements[0], "Identifier")
+  ) {
+    return null;
+  }
+  const bindingIdentifier = declaration.id.elements[0];
+  const symbol = scopes.symbolFor(bindingIdentifier);
+  const ownerFunction = findRenderPhaseComponentOrHook(stateCall, scopes);
+  return symbol && ownerFunction && findEnclosingFunction(bindingIdentifier) === ownerFunction
+    ? {
+        accessPath: { kind: "direct", index: null, propertyName: null },
+        hasEagerHookAllocation: true,
+        ownerFunction,
+        symbol,
+      }
+    : null;
 };
 
 const collectAliasSymbols = (
@@ -327,7 +643,7 @@ const expressionMatchesOwnedResource = (
   const candidate = stripParenExpression(expression);
   if (isNodeOfType(candidate, "Identifier")) {
     const symbol = scopes.symbolFor(candidate);
-    if (symbol && [...resourceSymbols].some((resourceSymbol) => resourceSymbol.id === symbol.id)) {
+    if (symbol && resourceSymbols.has(symbol)) {
       return true;
     }
   }
@@ -338,7 +654,7 @@ const expressionMatchesOwnedResource = (
   const receiver = stripParenExpression(candidate.object);
   if (!isNodeOfType(receiver, "Identifier")) return false;
   const symbol = scopes.symbolFor(receiver);
-  if (!symbol || ![...symbols].some((ownedSymbol) => ownedSymbol.id === symbol.id)) return false;
+  if (!symbol || !symbols.has(symbol)) return false;
   if (accessPath.kind === "object") {
     return getStaticPropertyName(candidate) === accessPath.propertyName;
   }
@@ -368,10 +684,21 @@ const expressionMatchesOwnedResourceOwner = (
   const candidate = stripParenExpression(expression);
   if (!isNodeOfType(candidate, "Identifier")) return false;
   const symbol = scopes.symbolFor(candidate);
-  return Boolean(
-    symbol && [...analysis.symbols].some((ownedSymbol) => ownedSymbol.id === symbol.id),
-  );
+  return Boolean(symbol && analysis.symbols.has(symbol));
 };
+
+export const expressionMatchesOwnedLifecycleResource = (
+  expression: EsTreeNode,
+  analysis: OwnedLifecycleResourceAnalysis,
+  scopes: ScopeAnalysis,
+): boolean =>
+  expressionMatchesOwnedResource(
+    expression,
+    analysis.symbols,
+    analysis.resourceSymbols,
+    analysis.accessPath,
+    scopes,
+  );
 
 const getOwnedResourceAccessFromReference = (
   reference: EsTreeNode,
@@ -393,6 +720,72 @@ const getOwnedResourceAccessFromReference = (
     expressionMatchesOwnedResource(member, symbols, resourceSymbols, accessPath, scopes)
     ? member
     : null;
+};
+
+const hasOwnedResourceIdentityWrite = (
+  allocation: EsTreeNode,
+  symbols: ReadonlySet<SymbolDescriptor>,
+  resourceSymbols: ReadonlySet<SymbolDescriptor>,
+  accessPath: OwnedLifecycleResourcePath,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const getContainingWrite = (reference: EsTreeNode): EsTreeNode | null => {
+    let current = reference;
+    while (current.parent && !isFunctionLike(current.parent)) {
+      const parent = current.parent;
+      if (isNodeOfType(parent, "AssignmentExpression")) {
+        return parent.left === current ? parent : null;
+      }
+      if (isNodeOfType(parent, "UpdateExpression")) {
+        return parent.argument === current ? parent : null;
+      }
+      if (
+        !isNodeOfType(parent, "ArrayPattern") &&
+        !isNodeOfType(parent, "ObjectPattern") &&
+        !isNodeOfType(parent, "Property") &&
+        !isNodeOfType(parent, "RestElement") &&
+        !isNodeOfType(parent, "MemberExpression")
+      ) {
+        return null;
+      }
+      current = parent;
+    }
+    return null;
+  };
+  const allSymbols = new Set([...symbols, ...resourceSymbols]);
+  for (const symbol of allSymbols) {
+    for (const reference of symbol.references) {
+      const containingWrite = getContainingWrite(reference.identifier);
+      if (
+        containingWrite &&
+        (!isNodeOfType(containingWrite, "AssignmentExpression") ||
+          findTransparentExpressionRoot(containingWrite.right) !==
+            findTransparentExpressionRoot(allocation))
+      ) {
+        return true;
+      }
+      if (reference.flag !== "read") return true;
+      const resourceAccess = getOwnedResourceAccessFromReference(
+        reference.identifier,
+        symbols,
+        resourceSymbols,
+        accessPath,
+        scopes,
+      );
+      if (!resourceAccess) continue;
+      const accessRoot = findTransparentExpressionRoot(resourceAccess);
+      const parent = accessRoot.parent;
+      if (
+        isNodeOfType(parent, "AssignmentExpression") &&
+        parent.left === accessRoot &&
+        findTransparentExpressionRoot(parent.right) !== findTransparentExpressionRoot(allocation)
+      ) {
+        return true;
+      }
+      if (isNodeOfType(parent, "UpdateExpression") && parent.argument === accessRoot) return true;
+    }
+  }
+  return false;
 };
 
 const findContainingCallArgument = (
@@ -508,6 +901,8 @@ const hasUnknownOwnershipTransfer = (
   scopes: ScopeAnalysis,
   borrowedArgumentMethodNames: ReadonlySet<string>,
   retainsOwnershipInJsx: boolean,
+  isBorrowedArgument: (call: EsTreeNodeOfType<"CallExpression">, argument: EsTreeNode) => boolean,
+  isBorrowedReference: (reference: EsTreeNode) => boolean,
 ): boolean => {
   const allSymbols = new Set([...symbols, ...resourceSymbols]);
   for (const symbol of allSymbols) {
@@ -544,6 +939,7 @@ const hasUnknownOwnershipTransfer = (
         continue;
       }
       if (isEffectDependencyReference(referenceNode, scopes)) continue;
+      if (isBorrowedReference(referenceNode)) continue;
       if (retainsOwnershipInJsx && crossesCustomJsxOwnershipBoundary(referenceNode)) return true;
       const isResourceMemberAccess =
         isNodeOfType(parent, "MemberExpression") && parent.object === referenceRoot;
@@ -563,7 +959,12 @@ const hasUnknownOwnershipTransfer = (
         const methodName = isNodeOfType(callee, "MemberExpression")
           ? getStaticPropertyName(callee)
           : null;
-        if (!methodName || !borrowedArgumentMethodNames.has(methodName)) return true;
+        if (
+          (!methodName || !borrowedArgumentMethodNames.has(methodName)) &&
+          !isBorrowedArgument(callArgument.call, callArgument.argument)
+        ) {
+          return true;
+        }
         continue;
       }
       if (isResourceMemberAccess) {
@@ -599,21 +1000,48 @@ const hasUnknownOwnershipTransfer = (
 export const analyzeOwnedLifecycleResource = (
   allocation: EsTreeNode,
   context: RuleContext,
-  borrowedArgumentMethodNames: ReadonlySet<string> = new Set(),
-  retainsOwnershipInJsx = false,
+  options: OwnedLifecycleResourceOptions = {},
 ): OwnedLifecycleResourceAnalysis | null => {
+  const {
+    borrowedArgumentMethodNames = new Set(),
+    isBorrowedArgument = () => false,
+    isBorrowedReference = () => false,
+    retainsOwnershipInJsx = false,
+  } = options;
   const program = getProgram(allocation);
   if (!program) return null;
+  const refWrappedBinding = getRefWrappedBinding(allocation, context.scopes);
+  const eagerStateWrappedBinding = getEagerStateWrappedBinding(allocation, context.scopes);
   const wrappedBinding = getWrappedBinding(allocation, context.scopes);
+  const eagerHookOwner = getEagerHookOwner(allocation, context.scopes);
   let accessPath: OwnedLifecycleResourcePath;
   let creationKind: OwnedLifecycleResourceAnalysis["creationKind"];
   let ownerFunction: EsTreeNode | null;
   let sourceSymbol: SymbolDescriptor | null;
-  if (wrappedBinding) {
+  let hasEagerHookAllocation = false;
+  if (refWrappedBinding) {
+    accessPath = refWrappedBinding.accessPath;
+    creationKind = "stable";
+    ownerFunction = refWrappedBinding.ownerFunction;
+    sourceSymbol = refWrappedBinding.symbol;
+    hasEagerHookAllocation = refWrappedBinding.hasEagerHookAllocation;
+  } else if (eagerStateWrappedBinding) {
+    accessPath = eagerStateWrappedBinding.accessPath;
+    creationKind = "stable";
+    ownerFunction = eagerStateWrappedBinding.ownerFunction;
+    sourceSymbol = eagerStateWrappedBinding.symbol;
+    hasEagerHookAllocation = true;
+  } else if (wrappedBinding) {
     accessPath = wrappedBinding.accessPath;
     creationKind = wrappedBinding.creationKind;
     ownerFunction = wrappedBinding.ownerFunction;
     sourceSymbol = wrappedBinding.symbol;
+  } else if (eagerHookOwner) {
+    accessPath = { kind: "direct", index: null, propertyName: null };
+    creationKind = "stable";
+    ownerFunction = eagerHookOwner;
+    sourceSymbol = getDirectBindingSymbol(allocation, context.scopes);
+    hasEagerHookAllocation = true;
   } else {
     accessPath = { kind: "direct", index: null, propertyName: null };
     sourceSymbol = getDirectBindingSymbol(allocation, context.scopes);
@@ -622,9 +1050,11 @@ export const analyzeOwnedLifecycleResource = (
     if (!allocationFunction || isNodeConditionallyExecuted(allocation, allocationFunction)) {
       return null;
     }
-    const effectCall = findEffectCallForCallback(allocationFunction, program, context.scopes);
-    if (effectCall) {
-      ownerFunction = findRenderPhaseComponentOrHook(effectCall, context.scopes);
+    const effectEntry = getLifecycleProgramIndex(program, context).effectByCallback.get(
+      allocationFunction,
+    );
+    if (effectEntry) {
+      ownerFunction = effectEntry.ownerFunction;
       creationKind = "effect";
     } else {
       ownerFunction = findRenderPhaseComponentOrHook(allocation, context.scopes);
@@ -637,22 +1067,38 @@ export const analyzeOwnedLifecycleResource = (
       }
     }
   }
-  if (!ownerFunction || sourceSymbol.scope.kind === "module") return null;
-  const symbols = collectAliasSymbols(sourceSymbol, context.scopes);
+  if (!ownerFunction || sourceSymbol?.scope.kind === "module") return null;
+  const symbols = sourceSymbol
+    ? collectAliasSymbols(sourceSymbol, context.scopes)
+    : new Set<SymbolDescriptor>();
   const resourceSymbols = collectStructuredResourceSymbols(symbols, accessPath, context.scopes);
+  const hasUnstableIdentity = hasOwnedResourceIdentityWrite(
+    allocation,
+    symbols,
+    resourceSymbols,
+    accessPath,
+    context.scopes,
+  );
   return {
     accessPath,
     allocation,
     creationKind,
-    hasUnknownOwnershipTransfer: hasUnknownOwnershipTransfer(
-      symbols,
-      resourceSymbols,
-      accessPath,
-      ownerFunction,
-      context.scopes,
-      borrowedArgumentMethodNames,
-      retainsOwnershipInJsx,
-    ),
+    hasEagerHookAllocation,
+    hasUnstableIdentity,
+    hasUnknownOwnershipTransfer:
+      !hasEagerHookAllocation &&
+      !hasUnstableIdentity &&
+      hasUnknownOwnershipTransfer(
+        symbols,
+        resourceSymbols,
+        accessPath,
+        ownerFunction,
+        context.scopes,
+        borrowedArgumentMethodNames,
+        retainsOwnershipInJsx,
+        isBorrowedArgument,
+        isBorrowedReference,
+      ),
     ownerFunction,
     resourceSymbols,
     symbols,
@@ -687,28 +1133,28 @@ const collectLifecycleCleanupSources = (
   const program = getProgram(analysis.allocation);
   if (!program) return [];
   const sources: LifecycleCleanupSource[] = [];
-  walkAst(program, (candidate) => {
-    if (
-      !isNodeOfType(candidate, "CallExpression") ||
-      !isR3fReactApiCall(candidate, EFFECT_HOOK_NAMES, context.scopes)
-    ) {
-      return;
+  const index = getLifecycleProgramIndex(program, context);
+  const candidateEffects = new Set<LifecycleEffectEntry>();
+  if (analysis.creationKind === "effect") {
+    const allocationFunction = findEnclosingFunction(analysis.allocation);
+    const effect = allocationFunction ? index.effectByCallback.get(allocationFunction) : undefined;
+    if (effect) candidateEffects.add(effect);
+  } else {
+    for (const symbol of [...analysis.symbols, ...analysis.resourceSymbols]) {
+      for (const effect of index.effectsByReferencedSymbolId.get(symbol.id) ?? []) {
+        candidateEffects.add(effect);
+      }
     }
-    const callback = getEffectCallback(candidate, context.scopes);
-    if (!callback) return;
-    if (analysis.creationKind === "effect") {
-      if (findEnclosingFunction(analysis.allocation) !== callback) return;
-    } else if (
-      findRenderPhaseComponentOrHook(candidate, context.scopes) !== analysis.ownerFunction
-    ) {
-      return;
+  }
+  for (const entry of candidateEffects) {
+    if (!entry.hasUnconditionalRegistration || entry.ownerFunction !== analysis.ownerFunction) {
+      continue;
     }
     sources.push({
-      callback,
-      dependencyStatus: getDependencyStatus(candidate, analysis, context.scopes),
+      callback: entry.callback,
+      dependencyStatus: getDependencyStatus(entry.call, analysis, context.scopes),
     });
-  });
-  sources.push({ callback: analysis.ownerFunction, dependencyStatus: "valid" });
+  }
   return sources;
 };
 
@@ -717,26 +1163,12 @@ export const analyzeOwnedLifecycleCleanup = (
   context: RuleContext,
   matchesCleanupFunction: (cleanupFunction: EsTreeNode) => boolean,
 ): OwnedLifecycleCleanupAnalysis => {
+  if (analysis.hasEagerHookAllocation || analysis.hasUnstableIdentity) {
+    return { isProven: false, isUnknown: false };
+  }
   const returnedExpressionContainsMatchingCleanup = (returnedExpression: EsTreeNode): boolean => {
     const cleanupFunction = resolveExactLocalFunction(returnedExpression, context.scopes);
-    if (cleanupFunction) return matchesCleanupFunction(cleanupFunction);
-    const candidate = stripParenExpression(returnedExpression);
-    if (isNodeOfType(candidate, "ArrayExpression")) {
-      return candidate.elements.some(
-        (element) =>
-          element &&
-          !isNodeOfType(element, "SpreadElement") &&
-          returnedExpressionContainsMatchingCleanup(element),
-      );
-    }
-    if (isNodeOfType(candidate, "ObjectExpression")) {
-      return candidate.properties.some(
-        (property) =>
-          isNodeOfType(property, "Property") &&
-          returnedExpressionContainsMatchingCleanup(property.value),
-      );
-    }
-    return false;
+    return Boolean(cleanupFunction && matchesCleanupFunction(cleanupFunction));
   };
   let isUnknown = false;
   for (const source of collectLifecycleCleanupSources(analysis, context)) {
@@ -762,9 +1194,13 @@ export const functionInvokesOwnedResourceMethod = (
   matchesCall: (call: EsTreeNodeOfType<"CallExpression">) => boolean = () => true,
 ): boolean => {
   let didInvokeMethod = false;
-  walkFunctionExecution(functionNode, scopes, (candidate) => {
+  walkFunctionExecution(functionNode, scopes, (candidate, isConditionallyExecuted) => {
+    const enclosingFunction = findEnclosingFunction(candidate);
     if (
       didInvokeMethod ||
+      isConditionallyExecuted ||
+      !enclosingFunction ||
+      !isExecutionGuaranteed(candidate, enclosingFunction) ||
       !isNodeOfType(candidate, "CallExpression") ||
       !isNodeOfType(candidate.callee, "MemberExpression") ||
       getStaticPropertyName(candidate.callee) !== methodName ||

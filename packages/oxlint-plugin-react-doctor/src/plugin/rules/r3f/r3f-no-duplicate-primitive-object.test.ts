@@ -13,6 +13,100 @@ describe("r3f-no-duplicate-primitive-object", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags the second mount of the same static member path", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `${R3F_RUNTIME_IMPORT} const Scene = ({ model }) => <><primitive object={model.scene} /><primitive object={model["scene"]} /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a single primitive site repeated by a statically multi-item map", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `${R3F_RUNTIME_IMPORT} const Scene = ({ scene }) => <>{["left", "right"].map((side) => <primitive key={side} object={scene} />)}</>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags exact immutable local callbacks used by a repeated map", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `
+        ${R3F_RUNTIME_IMPORT}
+        const Scene = ({ scene }) => {
+          const renderPrimitive = (side) => <primitive key={side} object={scene} />;
+          return ["left", "right"].map(renderPrimitive);
+        };
+        const Declared = ({ scene }) => {
+          function renderPrimitive(side) {
+            return <primitive key={side} object={scene} />;
+          }
+          return ["left", "right"].map(renderPrimitive);
+        };
+        const sharedScene = loadSharedScene();
+        const renderSharedPrimitive = (side) => <primitive key={side} object={sharedScene} />;
+        const ModuleCallback = () => ["left", "right"].map(renderSharedPrimitive);
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("keeps conditional map mounts quiet", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `
+        ${R3F_RUNTIME_IMPORT}
+        const Logical = ({ scene }) => <>{[{ enabled: true }, { enabled: false }].map((item) => item.enabled && <primitive object={scene} />)}</>;
+        const Ternary = ({ scene }) => <>{[{ enabled: true }, { enabled: false }].map((item) => item.enabled ? <primitive object={scene} /> : null)}</>;
+        const EarlyReturn = ({ scene }) => <>{[{ enabled: true }, { enabled: false }].map((item) => {
+          if (!item.enabled) return null;
+          return <primitive object={scene} />;
+        })}</>;
+        const Named = ({ scene }) => {
+          const renderPrimitive = (item) => item.enabled && <primitive object={scene} />;
+          return [{ enabled: true }, { enabled: false }].map(renderPrimitive);
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps mutable callbacks and named per-item object callbacks quiet", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `
+        ${R3F_RUNTIME_IMPORT}
+        const Mutable = ({ scene }) => {
+          let renderPrimitive = () => <primitive object={scene} />;
+          renderPrimitive = () => null;
+          return ["left", "right"].map(renderPrimitive);
+        };
+        const PerItem = ({ items }) => {
+          const renderPrimitive = (item) => <primitive object={item.scene} />;
+          return [items[0], items[1]].map(renderPrimitive);
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps unknown and singleton map cardinality quiet", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `${R3F_RUNTIME_IMPORT} const Unknown = ({ scene, items }) => <>{items.map((item) => <primitive key={item.id} object={scene} />)}</>; const Singleton = ({ scene }) => <>{["only"].map((key) => <primitive key={key} object={scene} />)}</>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps per-item and callback-local map objects quiet", () => {
+    const result = runRule(
+      r3fNoDuplicatePrimitiveObject,
+      `${R3F_RUNTIME_IMPORT} const Scene = ({ items }) => <>{[items[0], items[1]].map((item) => { const scene = item.scene; return <primitive object={scene} />; })}</>; const Direct = ({ items }) => <>{[items[0], items[1]].map((item) => <primitive object={item.scene} />)}</>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("requires a runtime R3F import", () => {
     const result = runRule(
       r3fNoDuplicatePrimitiveObject,

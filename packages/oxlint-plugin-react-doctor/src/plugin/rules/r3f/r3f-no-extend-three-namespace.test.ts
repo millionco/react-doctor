@@ -3,10 +3,6 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fNoExtendThreeNamespace } from "./r3f-no-extend-three-namespace.js";
 
 describe("r3f-no-extend-three-namespace", () => {
-  it("requires an R3F version that exports extend", () => {
-    expect(r3fNoExtendThreeNamespace.requires).toEqual(["r3f:3"]);
-  });
-
   it("reports Three.js and WebGPU namespace registration", () => {
     const result = runRule(
       r3fNoExtendThreeNamespace,
@@ -16,6 +12,21 @@ describe("r3f-no-extend-three-namespace", () => {
         import * as WebGPU from "three/webgpu";
         extend(THREE);
         extend(WebGPU);
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("reports whole namespaces spread into direct and immutable aliased catalogues", () => {
+    const result = runRule(
+      r3fNoExtendThreeNamespace,
+      `
+        import { extend } from "@react-three/fiber";
+        import * as THREE from "three";
+        import * as WebGPU from "three/webgpu";
+        extend({ ...THREE });
+        const catalogue = { Mesh: CustomMesh, ...WebGPU };
+        extend(catalogue);
       `,
     );
     expect(result.diagnostics).toHaveLength(2);
@@ -43,8 +54,10 @@ describe("r3f-no-extend-three-namespace", () => {
         import { extend } from "@react-three/fiber";
         import { Mesh, OrbitControls } from "three";
         import * as THREE from "three";
+        const granular = { Mesh, OrbitControls };
         extend({ Mesh, OrbitControls });
         extend({ Mesh: THREE.Mesh });
+        extend({ ...granular });
       `,
     );
     expect(result.diagnostics).toHaveLength(0);

@@ -32,6 +32,7 @@ const baseProject: ProjectInfo = {
   valtioVersion: null,
   valtioMajorVersion: null,
   hasRemotion: false,
+  hasThree: false,
   hasReactThreeFiber: false,
   reactThreeFiberVersion: null,
   reactThreeFiberMajorVersion: null,
@@ -91,6 +92,16 @@ describe("buildCapabilities", () => {
   it("emits the R3F capability only when React Three Fiber is present", () => {
     expect(buildCapabilities(baseProject).has("r3f")).toBe(false);
     expect(buildCapabilities({ ...baseProject, hasReactThreeFiber: true }).has("r3f")).toBe(true);
+  });
+
+  it("emits Three.js independently from the Fiber capability", () => {
+    const plainThree = buildCapabilities({ ...baseProject, hasThree: true });
+    expect(plainThree.has("three")).toBe(true);
+    expect(plainThree.has("r3f")).toBe(false);
+
+    const fiber = buildCapabilities({ ...baseProject, hasReactThreeFiber: true });
+    expect(fiber.has("three")).toBe(true);
+    expect(fiber.has("r3f")).toBe(true);
   });
 
   it("emits the R3F major ladder only for detected Fiber versions", () => {

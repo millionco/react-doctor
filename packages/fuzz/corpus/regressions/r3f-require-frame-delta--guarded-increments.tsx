@@ -4,9 +4,9 @@
 import { useFrame } from "@react-three/fiber";
 
 export const GuardedTransform = () => {
-  useFrame(() => {
-    if (didStart) mesh.current.position.x += 0.1;
-    if (didFinish) mesh.current.rotation.y++;
+  useFrame(({ scene }) => {
+    if (didStart) scene.position.x += 0.1;
+    if (didFinish) scene.rotation.y++;
   });
   return null;
 };

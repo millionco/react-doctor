@@ -199,6 +199,70 @@ const hasThreeResourceProvenance = (
   );
 };
 
+const isProvenNonNullIndex = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (
+    isNodeOfType(candidate, "ArrayExpression") ||
+    isNodeOfType(candidate, "NewExpression") ||
+    (isNodeOfType(candidate, "Literal") && candidate.value !== null)
+  ) {
+    return true;
+  }
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = scopes.symbolFor(candidate);
+  if (
+    symbol?.kind !== "const" ||
+    !symbol.initializer ||
+    visitedSymbolIds.has(symbol.id) ||
+    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+    symbol.declarationNode.id !== symbol.bindingIdentifier
+  ) {
+    return false;
+  }
+  visitedSymbolIds.add(symbol.id);
+  return isProvenNonNullIndex(symbol.initializer, scopes, visitedSymbolIds);
+};
+
+const hasProvenIndexedThreeGeometry = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = scopes.symbolFor(candidate);
+    if (
+      symbol?.kind !== "const" ||
+      !symbol.initializer ||
+      visitedSymbolIds.has(symbol.id) ||
+      !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+      symbol.declarationNode.id !== symbol.bindingIdentifier
+    ) {
+      return false;
+    }
+    visitedSymbolIds.add(symbol.id);
+    return hasProvenIndexedThreeGeometry(symbol.initializer, scopes, visitedSymbolIds);
+  }
+  if (
+    !isNodeOfType(candidate, "CallExpression") ||
+    !isNodeOfType(candidate.callee, "MemberExpression") ||
+    getStaticPropertyName(candidate.callee) !== "setIndex"
+  ) {
+    return false;
+  }
+  const index = candidate.arguments[0];
+  return Boolean(
+    index &&
+    !isNodeOfType(index, "SpreadElement") &&
+    isProvenNonNullIndex(index, scopes) &&
+    hasThreeResourceProvenance(candidate.callee.object, "Geometry", scopes),
+  );
+};
+
 const hasFreshThreeResource = (
   expression: EsTreeNode,
   constructorSuffix: string,
@@ -259,15 +323,23 @@ const hasFreshThreeResource = (
     isNodeOfType(candidate.callee, "MemberExpression")
   ) {
     const methodName = getStaticPropertyName(candidate.callee);
-    if (
-      methodName === "clone" ||
-      (constructorSuffix === "Geometry" && methodName === "toNonIndexed")
-    ) {
+    if (methodName === "clone") {
       return hasThreeResourceProvenance(
         candidate.callee.object,
         constructorSuffix,
         scopes,
         visitedSymbolIds,
+      );
+    }
+    if (constructorSuffix === "Geometry" && methodName === "toNonIndexed") {
+      return (
+        hasFreshThreeResource(
+          candidate.callee.object,
+          constructorSuffix,
+          scopes,
+          new Set(visitedSymbolIds),
+        ) ||
+        hasProvenIndexedThreeGeometry(candidate.callee.object, scopes, new Set(visitedSymbolIds))
       );
     }
     if (!methodName || !getResourceMethods(constructorSuffix).has(methodName)) return false;

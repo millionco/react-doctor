@@ -38,6 +38,8 @@ export interface ProjectInfo {
   hasI18nLibrary?: boolean;
   tanstackQueryVersion?: string | null;
   styledComponentsVersion?: string | null;
+  /** Whether the project or one of its workspaces declares Three.js, Fiber, or Drei. */
+  hasThree?: boolean;
   /** Whether the project or one of its workspaces declares React Three Fiber or Drei. */
   hasReactThreeFiber?: boolean;
   /** Declared version of @react-three/fiber or its legacy package name, when directly present. */

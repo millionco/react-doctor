@@ -1895,6 +1895,7 @@ describe("discoverProject — React Three Fiber", () => {
     );
 
     const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasThree).toBe(true);
     expect(projectInfo.hasReactThreeFiber).toBe(true);
     expect(projectInfo.reactThreeFiberVersion).toBe("^9.0.0");
     expect(projectInfo.reactThreeFiberMajorVersion).toBe(9);
@@ -1919,6 +1920,7 @@ describe("discoverProject — React Three Fiber", () => {
     );
 
     const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasThree).toBe(true);
     expect(projectInfo.hasReactThreeFiber).toBe(true);
     expect(projectInfo.reactThreeFiberVersion).toBeNull();
     expect(projectInfo.reactThreeFiberMajorVersion).toBeNull();
@@ -1936,7 +1938,8 @@ describe("discoverProject — React Three Fiber", () => {
     );
 
     const projectInfo = discoverProject(projectDirectory);
-    expect(projectInfo.hasReactThreeFiber).toBe(true);
+    expect(projectInfo.hasThree).toBe(true);
+    expect(projectInfo.hasReactThreeFiber).toBe(false);
     expect(projectInfo.reactThreeFiberVersion).toBeNull();
     expect(projectInfo.reactThreeFiberMajorVersion).toBeNull();
   });
@@ -1953,8 +1956,95 @@ describe("discoverProject — React Three Fiber", () => {
     );
 
     const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasThree).toBe(true);
     expect(projectInfo.hasReactThreeFiber).toBe(true);
     expect(projectInfo.reactThreeFiberVersion).toBe("^5.3.22");
+    expect(projectInfo.reactThreeFiberMajorVersion).toBe(5);
+  });
+
+  it("uses the lowest Fiber major across mixed-version workspaces", () => {
+    const projectDirectory = path.join(tempDirectory, "mixed-r3f-workspace");
+    const modernDirectory = path.join(projectDirectory, "packages", "a-modern");
+    const legacyDirectory = path.join(projectDirectory, "packages", "z-legacy");
+    fs.mkdirSync(modernDirectory, { recursive: true });
+    fs.mkdirSync(legacyDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "mixed-r3f-workspace",
+        private: true,
+        dependencies: { react: "^19.0.0" },
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(modernDirectory, "package.json"),
+      JSON.stringify({ name: "modern", dependencies: { "@react-three/fiber": "^10.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(legacyDirectory, "package.json"),
+      JSON.stringify({ name: "legacy", dependencies: { "react-three-fiber": "^5.3.0" } }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactThreeFiberVersion).toBe("^5.3.0");
+    expect(projectInfo.reactThreeFiberMajorVersion).toBe(5);
+  });
+
+  it("resolves a root Fiber catalog before comparing workspace majors", () => {
+    const projectDirectory = path.join(tempDirectory, "root-catalog-r3f-workspace");
+    const modernDirectory = path.join(projectDirectory, "packages", "modern");
+    fs.mkdirSync(modernDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "pnpm-workspace.yaml"),
+      'packages:\n  - packages/*\n\ncatalogs:\n  legacy:\n    "@react-three/fiber": ^5.3.0\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "root-catalog-r3f-workspace",
+        private: true,
+        dependencies: { react: "^19.0.0", "@react-three/fiber": "catalog:legacy" },
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(modernDirectory, "package.json"),
+      JSON.stringify({ name: "modern", dependencies: { "@react-three/fiber": "^10.0.0" } }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactThreeFiberVersion).toBe("^5.3.0");
+    expect(projectInfo.reactThreeFiberMajorVersion).toBe(5);
+  });
+
+  it("resolves workspace Fiber catalogs before comparing them with the root major", () => {
+    const projectDirectory = path.join(tempDirectory, "workspace-catalog-r3f-workspace");
+    const legacyDirectory = path.join(projectDirectory, "packages", "legacy");
+    fs.mkdirSync(legacyDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "pnpm-workspace.yaml"),
+      'packages:\n  - packages/*\n\ncatalogs:\n  legacy:\n    "@react-three/fiber": ^5.3.0\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "workspace-catalog-r3f-workspace",
+        private: true,
+        dependencies: { react: "^19.0.0", "@react-three/fiber": "^9.0.0" },
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(legacyDirectory, "package.json"),
+      JSON.stringify({
+        name: "legacy",
+        dependencies: { "@react-three/fiber": "catalog:legacy" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactThreeFiberVersion).toBe("^5.3.0");
     expect(projectInfo.reactThreeFiberMajorVersion).toBe(5);
   });
 });

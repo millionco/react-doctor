@@ -120,6 +120,7 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     hasI18nLibrary: false,
     tanstackQueryVersion: null,
     styledComponentsVersion: null,
+    hasThree: false,
     hasReactThreeFiber: false,
     reactThreeFiberVersion: null,
     reactThreeFiberMajorVersion: null,
@@ -355,6 +356,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     remotionVersion,
     remotionMajorVersion:
       remotionVersion === null ? null : getLowestDependencyMajor(remotionVersion),
+    hasThree: workspaceFacts.hasThree,
     hasReactThreeFiber: workspaceFacts.hasReactThreeFiber,
     reactThreeFiberVersion,
     reactThreeFiberMajorVersion:

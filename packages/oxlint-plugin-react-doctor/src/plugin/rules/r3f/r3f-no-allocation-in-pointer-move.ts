@@ -12,8 +12,11 @@ import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const ALLOCATABLE_EVENT_PROPERTIES: ReadonlySet<string> = new Set([
   "eventObject",
+  "normal",
   "object",
   "point",
+  "ray",
+  "uv",
 ]);
 
 const hasR3fEventObjectProvenance = (
@@ -37,7 +40,6 @@ export const r3fNoAllocationInPointerMove = defineRule({
   severity: "warn",
   recommendation:
     "Reuse component-owned vectors and Three.js objects while handling pointer movement",
-  requires: ["r3f:3"],
   create: (context: RuleContext) => {
     let importsReactThreeFiber = false;
     return {

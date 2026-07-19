@@ -155,7 +155,7 @@ export const r3fRealWorldFixtures: R3fRealWorldFixture[] = [
       const Billboard = () => {
         const inner = useRef();
         useFrame(() => { const previousRotation = inner.current.rotation.clone(); consume(previousRotation); });
-        return null;
+        return <group ref={inner} />;
       };`,
   },
   {
@@ -169,7 +169,7 @@ export const r3fRealWorldFixtures: R3fRealWorldFixture[] = [
       const Geo = () => {
         const group = useRef();
         useFrame(() => { group.current.rotation.z += 0.005; });
-        return null;
+        return <group ref={group} />;
       };`,
   },
   {

@@ -122,10 +122,15 @@ describe("rule registry", () => {
     }
   });
 
-  it("requires the R3F capability for every R3F rule", () => {
+  it("separates Fiber rules from Three-only rules", () => {
     for (const [ruleId, rule] of Object.entries(ruleRegistry)) {
       if (!(rule.tags ?? []).includes("r3f")) continue;
-      expect(rule.requires, `${ruleId} should require R3F`).toContain("r3f");
+      if (ruleId.startsWith("three-")) {
+        expect(rule.requires, `${ruleId} should require Three.js`).toContain("three");
+        expect(rule.requires, `${ruleId} should not require Fiber`).not.toContain("r3f");
+      } else {
+        expect(rule.requires, `${ruleId} should require Fiber`).toContain("r3f");
+      }
     }
   });
 
@@ -139,7 +144,10 @@ describe("rule registry", () => {
     for (const ruleId of webgpuRuleIds) {
       expect(ruleRegistry[ruleId]?.requires, `${ruleId} should require R3F 10`).toContain("r3f:10");
     }
+    expect(ruleRegistry["r3f-no-use-frame-dependency-array"]?.requires).toContain("r3f:3");
     expect(ruleRegistry["r3f-prefer-use-loader"]?.requires).toContain("r3f:3");
+    expect(ruleRegistry["r3f-no-deep-use-three-selector"]?.requires).toContain("r3f:6");
+    expect(ruleRegistry["r3f-no-fresh-use-three-selector"]?.requires).toContain("r3f:6");
     expect(ruleRegistry["r3f-no-advancing-clock-in-use-frame"]?.disabledWhen).toContain("r3f:10");
   });
 

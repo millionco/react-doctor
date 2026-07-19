@@ -3,8 +3,8 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fRequireProjectionMatrixUpdate } from "./r3f-require-projection-matrix-update.js";
 
 describe("r3f-require-projection-matrix-update", () => {
-  it("requires a declared R3F version with the v3 camera-state contract", () => {
-    expect(r3fRequireProjectionMatrixUpdate.requires).toEqual(["r3f:3"]);
+  it("supports every detected Fiber version", () => {
+    expect(r3fRequireProjectionMatrixUpdate.requires).toBeUndefined();
   });
 
   it("reports perspective projection writes on cameras selected with useThree", () => {

@@ -355,7 +355,7 @@ describe("r3f-require-instanced-buffer-update", () => {
     expect(runRule(r3fRequireInstancedBufferUpdate, code).diagnostics).toHaveLength(0);
   });
 
-  it("declares the R3F v4 capability gate", () => {
-    expect(r3fRequireInstancedBufferUpdate.requires).toEqual(["r3f:4"]);
+  it("supports Fiber versions backed by Three.js InstancedMesh", () => {
+    expect(r3fRequireInstancedBufferUpdate.requires).toBeUndefined();
   });
 });

@@ -54,7 +54,7 @@ describe("r3f-require-root-unmount", () => {
     expect(runRule(r3fRequireRootUnmount, code).diagnostics).toHaveLength(0);
   });
 
-  it("accepts an exact disposer returned by a custom hook", () => {
+  it("requires React to invoke a disposer returned by a custom hook", () => {
     const code = `
       import { createRoot } from "@react-three/fiber";
       function useRootDisposer(canvas) {
@@ -64,10 +64,10 @@ describe("r3f-require-root-unmount", () => {
         return remove;
       }
     `;
-    expect(runRule(r3fRequireRootUnmount, code).diagnostics).toHaveLength(0);
+    expect(runRule(r3fRequireRootUnmount, code).diagnostics).toHaveLength(1);
   });
 
-  it("accepts exact disposers transferred through object and array hook results", () => {
+  it("requires React to invoke disposers transferred through hook results", () => {
     const code = `
       import { createRoot } from "@react-three/fiber";
       function useObjectRoot(canvas) {
@@ -83,7 +83,7 @@ describe("r3f-require-root-unmount", () => {
         return [disposeRoot];
       }
     `;
-    expect(runRule(r3fRequireRootUnmount, code).diagnostics).toHaveLength(0);
+    expect(runRule(r3fRequireRootUnmount, code).diagnostics).toHaveLength(2);
   });
 
   it("does not confuse nested callbacks with returned cleanup", () => {

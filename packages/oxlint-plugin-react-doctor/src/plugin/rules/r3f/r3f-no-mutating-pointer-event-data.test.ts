@@ -3,10 +3,6 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fNoMutatingPointerEventData } from "./r3f-no-mutating-pointer-event-data.js";
 
 describe("r3f-no-mutating-pointer-event-data", () => {
-  it("requires an R3F pointer-event release", () => {
-    expect(r3fNoMutatingPointerEventData.requires).toEqual(["r3f:3"]);
-  });
-
   it("reports direct, aliased, destructured, and argument mutations", () => {
     const result = runRule(
       r3fNoMutatingPointerEventData,
@@ -19,6 +15,19 @@ describe("r3f-no-mutating-pointer-event-data", () => {
     expect(result.diagnostics).toHaveLength(4);
   });
 
+  it("reports mutations of shared ray, uv, and normal event data", () => {
+    const result = runRule(
+      r3fNoMutatingPointerEventData,
+      `import { Canvas } from "@react-three/fiber";
+       const scene = <mesh onPointerMove={(event) => {
+         event.ray.origin.set(1, 2, 3);
+         event.uv.x = 0;
+         event.normal.normalize();
+       }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
   it("allows reads and mutations of owned copies", () => {
     const result = runRule(
       r3fNoMutatingPointerEventData,
@@ -28,6 +37,8 @@ describe("r3f-no-mutating-pointer-event-data", () => {
          const localPoint = event.point.clone();
          object.worldToLocal(localPoint);
          scratch.copy(event.point);
+         scratch.copy(event.normal);
+         ownedRay.copy(event.ray);
          consume(distance, localPoint, event.point.x);
        }} />;`,
     );

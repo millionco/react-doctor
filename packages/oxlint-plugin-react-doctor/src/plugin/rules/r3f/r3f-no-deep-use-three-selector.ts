@@ -117,7 +117,7 @@ export const r3fNoDeepUseThreeSelector = defineRule({
   severity: "warn",
   recommendation:
     "Select the stable R3F store object, then read its mutable Three.js fields where they are consumed",
-  requires: ["r3f:3"],
+  requires: ["r3f:6"],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isR3fApiCall(node, "useThree", context.scopes)) return;

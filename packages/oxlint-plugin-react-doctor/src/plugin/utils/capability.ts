@@ -60,6 +60,7 @@ export type Capability =
   | "i18n"
   | "styled-components"
   | "styled-components:6"
+  | "three"
   | "r3f"
   | "pre-es2023"
   // Major-version ladders (`react:17`…) plus minor-versioned gates like

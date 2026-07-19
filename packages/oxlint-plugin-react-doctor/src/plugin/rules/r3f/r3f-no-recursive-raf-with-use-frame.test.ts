@@ -76,6 +76,76 @@ describe("r3f-no-recursive-raf-with-use-frame", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports setAnimationLoop on the useThree renderer even when cleanup clears it", () => {
+    const result = runRule(
+      r3fNoRecursiveRafWithUseFrame,
+      `
+        import { useCallback, useEffect } from "react";
+        import { useFrame, useThree } from "@react-three/fiber";
+        const Scene = () => {
+          useFrame(() => updateScene());
+          const gl = useThree((state) => state.gl);
+          const renderOverlay = useCallback(() => gl.render(overlayScene, camera), [gl]);
+          useEffect(() => {
+            gl.setAnimationLoop(renderOverlay);
+            return () => gl.setAnimationLoop(null);
+          }, [gl, renderOverlay]);
+          return null;
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports imported setAnimationLoop callbacks", () => {
+    const result = runRule(
+      r3fNoRecursiveRafWithUseFrame,
+      `
+        import { useEffect } from "react";
+        import { useFrame, useThree } from "@react-three/fiber";
+        import renderOverlay from "./render-overlay";
+        import { animate as renderImportedScene } from "./animation";
+        import * as importedLoops from "./loops";
+        const aliasedImportedLoop = renderImportedScene;
+        const Scene = () => {
+          useFrame(() => updateScene());
+          const gl = useThree((state) => state.gl);
+          useEffect(() => {
+            gl.setAnimationLoop(renderImportedScene);
+            gl.setAnimationLoop(renderOverlay);
+            gl.setAnimationLoop(importedLoops.renderScene);
+            gl.setAnimationLoop(aliasedImportedLoop);
+            return () => gl.setAnimationLoop(null);
+          }, [gl]);
+          return null;
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(4);
+  });
+
+  it("reports destructured and renderer-named useThree scheduling", () => {
+    const result = runRule(
+      r3fNoRecursiveRafWithUseFrame,
+      `
+        import { useFrame, useThree } from "@react-three/fiber/webgpu";
+        const First = () => {
+          useFrame(() => updateScene());
+          const { gl } = useThree();
+          gl.setAnimationLoop(() => gl.render(scene, camera));
+          return null;
+        };
+        const Second = () => {
+          useFrame(() => updateScene());
+          const renderer = useThree((state) => state.renderer);
+          renderer.setAnimationLoop(() => renderer.renderAsync(scene, camera));
+          return null;
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("reports when a component reaches useFrame through a same-file custom hook", () => {
     const result = runRule(
       r3fNoRecursiveRafWithUseFrame,
@@ -225,7 +295,54 @@ describe("r3f-no-recursive-raf-with-use-frame", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("requires the R3F v3 capability", () => {
-    expect(r3fNoRecursiveRafWithUseFrame.requires).toEqual(["r3f:3"]);
+  it("allows cleared, locally owned, unrelated, and non-R3F renderer loops", () => {
+    const result = runRule(
+      r3fNoRecursiveRafWithUseFrame,
+      `
+        import { useFrame, useThree } from "@react-three/fiber";
+        import { WebGLRenderer } from "three";
+        const Scene = ({ unrelated }) => {
+          useFrame(() => updateScene());
+          const gl = useThree((state) => state.gl);
+          const localRenderer = new WebGLRenderer();
+          gl.setAnimationLoop(null);
+          localRenderer.setAnimationLoop(() => localRenderer.render(scene, camera));
+          unrelated.setAnimationLoop(() => updateOverlay());
+          return null;
+        };
+        const Independent = () => {
+          const gl = useThree((state) => state.gl);
+          gl.setAnimationLoop(() => gl.render(scene, camera));
+          return null;
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows nullish and unresolved setAnimationLoop callback values", () => {
+    const result = runRule(
+      r3fNoRecursiveRafWithUseFrame,
+      `
+        import { useFrame, useThree } from "@react-three/fiber";
+        const Scene = ({ callback }) => {
+          useFrame(() => updateScene());
+          const gl = useThree((state) => state.gl);
+          let mutableCallback = callback;
+          const unknownCallback = getAnimationLoop();
+          gl.setAnimationLoop(null);
+          gl.setAnimationLoop(undefined);
+          gl.setAnimationLoop(callback);
+          gl.setAnimationLoop(mutableCallback);
+          gl.setAnimationLoop(unknownCallback);
+          return null;
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("supports every detected Fiber version", () => {
+    expect(r3fNoRecursiveRafWithUseFrame.requires).toBeUndefined();
   });
 });

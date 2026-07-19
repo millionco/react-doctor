@@ -40,11 +40,9 @@ export const threeRequireRenderTargetCleanup = defineRule({
       ) {
         return;
       }
-      const analysis = analyzeOwnedLifecycleResource(
-        node,
-        context,
-        RENDER_TARGET_BORROWING_METHODS,
-      );
+      const analysis = analyzeOwnedLifecycleResource(node, context, {
+        borrowedArgumentMethodNames: RENDER_TARGET_BORROWING_METHODS,
+      });
       if (!analysis || analysis.hasUnknownOwnershipTransfer) return;
       const cleanup = analyzeOwnedLifecycleCleanup(analysis, context, (cleanupFunction) =>
         functionInvokesOwnedResourceMethod(cleanupFunction, analysis, "dispose", context.scopes),

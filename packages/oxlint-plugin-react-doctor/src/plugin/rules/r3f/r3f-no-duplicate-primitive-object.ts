@@ -1,4 +1,4 @@
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -7,10 +7,15 @@ import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-co
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
+import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { MINIMUM_PROVABLY_REPEATED_ITEM_COUNT } from "./constants.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 
 interface MountGuard {
@@ -18,10 +23,12 @@ interface MountGuard {
   isNegated: boolean;
 }
 
-const findAncestor = (node: EsTreeNode, type: string): EsTreeNode | null => {
+const findEnclosingReturnStatement = (
+  node: EsTreeNode,
+): EsTreeNodeOfType<"ReturnStatement"> | null => {
   let current = node.parent;
   while (current) {
-    if (current.type === type) return current;
+    if (isNodeOfType(current, "ReturnStatement")) return current;
     current = current.parent;
   }
   return null;
@@ -111,8 +118,8 @@ const canMountTogether = (
   second: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const firstReturn = findAncestor(first, "ReturnStatement");
-  const secondReturn = findAncestor(second, "ReturnStatement");
+  const firstReturn = findEnclosingReturnStatement(first);
+  const secondReturn = findEnclosingReturnStatement(second);
   const firstReturnFunction = firstReturn ? findEnclosingFunction(firstReturn) : null;
   const secondReturnFunction = secondReturn ? findEnclosingFunction(secondReturn) : null;
   if (
@@ -191,6 +198,102 @@ const findMountSites = (
   return renderedReferences.length > 0 ? renderedReferences : [node];
 };
 
+const getDirectMapCallsForFunction = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): Set<EsTreeNodeOfType<"CallExpression">> => {
+  const mapCalls = new Set<EsTreeNodeOfType<"CallExpression">>();
+  const functionRoot = findTransparentExpressionRoot(functionNode);
+  const directCall = functionRoot.parent;
+  if (isNodeOfType(directCall, "CallExpression") && directCall.arguments[0] === functionRoot) {
+    mapCalls.add(directCall);
+  }
+  const declaration = functionRoot.parent;
+  let bindingIdentifier: EsTreeNodeOfType<"Identifier"> | null = null;
+  if (isNodeOfType(functionNode, "FunctionDeclaration")) {
+    bindingIdentifier = functionNode.id;
+  } else if (
+    isNodeOfType(declaration, "VariableDeclarator") &&
+    declaration.init === functionRoot &&
+    isNodeOfType(declaration.id, "Identifier")
+  ) {
+    bindingIdentifier = declaration.id;
+  }
+  let functionSymbol: SymbolDescriptor | null | undefined;
+  if (bindingIdentifier && isNodeOfType(functionNode, "FunctionDeclaration")) {
+    functionSymbol = context.scopes
+      .scopeFor(functionNode)
+      .symbolsByName.get(bindingIdentifier.name);
+  } else if (bindingIdentifier) {
+    functionSymbol = context.scopes.symbolFor(bindingIdentifier);
+  }
+  if (!functionSymbol) return mapCalls;
+  for (const reference of functionSymbol.references) {
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const call = referenceRoot.parent;
+    if (
+      isNodeOfType(call, "CallExpression") &&
+      call.arguments[0] === referenceRoot &&
+      resolveExactLocalFunction(referenceRoot, context.scopes) === functionNode
+    ) {
+      mapCalls.add(call);
+    }
+  }
+  return mapCalls;
+};
+
+const isProvablyRepeatedMapCall = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
+  if (
+    !isNodeOfType(call.callee, "MemberExpression") ||
+    call.callee.computed ||
+    !isNodeOfType(call.callee.property, "Identifier") ||
+    call.callee.property.name !== "map"
+  ) {
+    return false;
+  }
+  const collection = stripParenExpression(call.callee.object);
+  return (
+    isNodeOfType(collection, "ArrayExpression") &&
+    collection.elements.length >= MINIMUM_PROVABLY_REPEATED_ITEM_COUNT &&
+    collection.elements.every((element) => element && !isNodeOfType(element, "SpreadElement"))
+  );
+};
+
+const isInsideProvablyRepeatedMap = (
+  node: EsTreeNode,
+  objectExpression: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const renderOwner = findRenderPhaseComponentOrHook(node, context.scopes);
+  let currentFunction = findEnclosingFunction(node);
+  while (currentFunction && currentFunction !== renderOwner) {
+    const rootIdentifier = getRootIdentifier(objectExpression);
+    const rootSymbol = rootIdentifier ? context.scopes.symbolFor(rootIdentifier) : null;
+    const mountsOnEveryIteration =
+      !isNodeConditionallyExecuted(node, currentFunction) &&
+      functionReturnsMatchingExpression(
+        currentFunction,
+        context.scopes,
+        (returnedExpression) => isAstDescendant(node, returnedExpression),
+        context.cfg,
+        "every",
+      );
+    if (
+      mountsOnEveryIteration &&
+      (!rootSymbol || !isAstDescendant(rootSymbol.bindingIdentifier, currentFunction)) &&
+      [...getDirectMapCallsForFunction(currentFunction, context)].some(
+        (mapCall) =>
+          Boolean(findRenderPhaseComponentOrHook(mapCall, context.scopes)) &&
+          isProvablyRepeatedMapCall(mapCall),
+      )
+    ) {
+      return true;
+    }
+    currentFunction = findEnclosingFunction(currentFunction);
+  }
+  return false;
+};
+
 export const r3fNoDuplicatePrimitiveObject = defineRule({
   id: "r3f-no-duplicate-primitive-object",
   title: "Primitive object mounted twice",
@@ -200,7 +303,7 @@ export const r3fNoDuplicatePrimitiveObject = defineRule({
   recommendation:
     "Mount a Three.js object through one <primitive>, or clone it deliberately when two independent instances are required",
   create: (context: RuleContext) => {
-    const seenByFunction = new WeakMap<EsTreeNode, Map<number, EsTreeNode[]>>();
+    const mountsByOwnerFunction = new WeakMap<EsTreeNode, Map<string, EsTreeNode[]>>();
     let importsReactThreeFiber = false;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
@@ -223,15 +326,30 @@ export const r3fNoDuplicatePrimitiveObject = defineRule({
           return;
         }
         const objectExpression = stripParenExpression(objectAttribute.value.expression);
-        if (!isNodeOfType(objectExpression, "Identifier")) return;
-        const objectSymbol = context.scopes.symbolFor(objectExpression);
+        if (
+          !isNodeOfType(objectExpression, "Identifier") &&
+          !isNodeOfType(objectExpression, "MemberExpression")
+        ) {
+          return;
+        }
+        const objectKey = resolveExpressionKey(objectExpression, context);
+        if (!objectKey) return;
+        if (isInsideProvablyRepeatedMap(node, objectExpression, context)) {
+          context.report({
+            node: objectExpression,
+            message:
+              "The same Three.js object is mounted repeatedly by this map. Clone it into an independent instance for each mount",
+          });
+          return;
+        }
         const owningFunction = findMountingRenderOwner(node, context.scopes);
-        if (!objectSymbol || !owningFunction) return;
+        if (!owningFunction) return;
         const mountSites = findMountSites(node, owningFunction, context);
-        const seenSymbols = seenByFunction.get(owningFunction) ?? new Map<number, EsTreeNode[]>();
-        seenByFunction.set(owningFunction, seenSymbols);
-        const previousMounts = seenSymbols.get(objectSymbol.id) ?? [];
-        seenSymbols.set(objectSymbol.id, [...previousMounts, ...mountSites]);
+        const mountsByObjectKey =
+          mountsByOwnerFunction.get(owningFunction) ?? new Map<string, EsTreeNode[]>();
+        mountsByOwnerFunction.set(owningFunction, mountsByObjectKey);
+        const previousMounts = mountsByObjectKey.get(objectKey) ?? [];
+        mountsByObjectKey.set(objectKey, [...previousMounts, ...mountSites]);
         if (
           !previousMounts.some((previousMount) =>
             mountSites.some((mountSite) =>

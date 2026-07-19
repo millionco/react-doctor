@@ -6,7 +6,7 @@ describe("r3f-require-frame-delta", () => {
   it("flags fixed transform increments", () => {
     const result = runRule(
       r3fRequireFrameDelta,
-      `import { useFrame } from "@react-three/fiber"; useFrame(() => { mesh.current.rotation.y += 0.01; mesh.current.position.x++; });`,
+      `import { useFrame } from "@react-three/fiber"; useFrame(({ scene }) => { scene.rotation.y += 0.01; scene.position.x++; });`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });
@@ -14,7 +14,7 @@ describe("r3f-require-frame-delta", () => {
   it("flags parenthesized transform increments", () => {
     const result = runRule(
       r3fRequireFrameDelta,
-      `import { useFrame } from "@react-three/fiber"; useFrame(() => { (mesh.current.rotation).y += 0.01; ++(mesh.current.position.x); });`,
+      `import { useFrame } from "@react-three/fiber"; useFrame(({ scene }) => { (scene.rotation).y += 0.01; ++(scene.position.x); });`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });
@@ -33,7 +33,7 @@ describe("r3f-require-frame-delta", () => {
       `import { MathUtils } from "three";
        import { useFrame } from "@react-three/fiber";
        const alpha = 1 / 10;
-       useFrame(() => {
+       useFrame(({ camera }) => {
          camera.position.lerp(target, 0.05);
          value.current = MathUtils.lerp(value.current, targetValue, alpha);
        });`,
@@ -46,10 +46,28 @@ describe("r3f-require-frame-delta", () => {
       r3fRequireFrameDelta,
       `import * as THREE from "three";
        import { useFrame } from "@react-three/fiber";
-       useFrame(() => {
+       useFrame(({ camera }) => {
          value.current = THREE.MathUtils["lerp"](value.current, targetValue, 0.2);
-         mesh.current.quaternion.slerp(target, 0.1);
+         camera.quaternion.slerp(target, 0.1);
        });`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags direct interpolation on exact JSX-managed refs and useThree selectors", () => {
+    const result = runRule(
+      r3fRequireFrameDelta,
+      `import { useFrame, useThree } from "@react-three/fiber";
+       import { useRef } from "react";
+       const Scene = () => {
+         const color = useRef(null);
+         const camera = useThree((state) => state.camera);
+         useFrame(() => {
+           color.current.lerp(targetColor, 0.1);
+           camera.position.lerp(targetPosition, 0.1);
+         });
+         return <color ref={color} />;
+       };`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });
@@ -107,6 +125,7 @@ describe("r3f-require-frame-delta", () => {
        const Scene = () => {
          const meshRef = useRef(null);
          useFrame(() => { ${guardedUpdate} });
+         return <mesh ref={meshRef} />;
        };`,
     );
     expect(result.diagnostics).toHaveLength(1);
@@ -156,9 +175,19 @@ describe("r3f-require-frame-delta", () => {
     const result = runRule(
       r3fRequireFrameDelta,
       `import { useFrame } from "@react-three/fiber";
-       useFrame((state) => { mesh.current.position.x += speed * state.delta; });
-       useFrame(({ delta }) => { mesh.current.rotation.y += speed * delta; });`,
+       useFrame((state) => { state.camera.position.x += speed * state.delta; });
+       useFrame(({ scene, delta }) => { scene.rotation.y += speed * delta; });`,
     );
     expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("ignores domain objects that happen to expose transform-shaped properties", () => {
+    const result = runRule(
+      r3fRequireFrameDelta,
+      `import { useFrame } from "@react-three/fiber";
+       const ringBuffer = { position: 0, rotation: { y: 0 }, lerp() {} };
+       useFrame(() => { ringBuffer.position++; ringBuffer.rotation.y += 0.1; ringBuffer.lerp(target, 0.1); });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 });

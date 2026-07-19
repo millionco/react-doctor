@@ -74,9 +74,48 @@ describe("r3f-no-new-in-use-frame", () => {
   it("follows synchronously called callbacks", () => {
     const result = runRule(
       r3fNoNewInUseFrame,
-      `import { useFrame } from "@react-three/fiber"; useFrame(() => { events.map(() => new Event()); });`,
+      `import { useFrame } from "@react-three/fiber"; useFrame(() => { [event].map(() => new Event()); new Map().forEach(() => new Vector3()); });`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not assume methods on unknown receivers invoke callbacks eagerly", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `import { useFrame } from "@react-three/fiber"; useFrame(() => { scheduler.map(() => new Event()); });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("follows proven immediate React callbacks", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `import { startTransition, useTransition } from "react";
+       import { flushSync } from "react-dom";
+       import { useFrame } from "@react-three/fiber";
+       const Scene = () => {
+         const [, beginTransition] = useTransition();
+         useFrame(() => {
+           startTransition(() => new Vector3());
+           beginTransition(() => new Vector3());
+           flushSync(() => new Vector3());
+         });
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("ignores locally shadowed immediate callback names", () => {
+    const result = runRule(
+      r3fNoNewInUseFrame,
+      `import { useFrame } from "@react-three/fiber";
+       const Scene = () => {
+         const startTransition = scheduleLater;
+         const flushSync = scheduleLater;
+         useFrame(() => { startTransition(() => new Vector3()); flushSync(() => new Vector3()); });
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("resolves callbacks wrapped by imported React useCallback", () => {

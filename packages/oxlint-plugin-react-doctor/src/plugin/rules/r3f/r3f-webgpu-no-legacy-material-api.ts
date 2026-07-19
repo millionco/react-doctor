@@ -3,6 +3,7 @@ import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isInsideLocalR3fWebgpuComponent } from "./utils/is-inside-local-r3f-webgpu-component.js";
 import { isInsideR3fWebgpuCanvas } from "./utils/is-inside-r3f-webgpu-canvas.js";
 import { isR3fHostIntrinsic } from "./utils/is-r3f-host-intrinsic.js";
 
@@ -19,10 +20,14 @@ export const r3fWebgpuNoLegacyMaterialApi = defineRule({
   severity: "error",
   recommendation:
     "Use Three.js node materials and TSL for custom shaders rendered by the WebGPU backend",
-  requires: ["r3f:10"],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isR3fHostIntrinsic(node) || !isInsideR3fWebgpuCanvas(node, context)) return;
+      if (
+        !isR3fHostIntrinsic(node) ||
+        (!isInsideR3fWebgpuCanvas(node, context) && !isInsideLocalR3fWebgpuComponent(node, context))
+      ) {
+        return;
+      }
       const elementType = resolveJsxElementType(node);
       if (elementType && LEGACY_SHADER_MATERIAL_HOST_NAMES.has(elementType)) {
         context.report({

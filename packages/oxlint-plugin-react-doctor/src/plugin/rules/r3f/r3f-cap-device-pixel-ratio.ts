@@ -30,6 +30,45 @@ const resolveRawDevicePixelRatio = (
   visitedSymbolIds: Set<number> = new Set(),
 ): EsTreeNode | null => {
   const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "+") {
+    return resolveRawDevicePixelRatio(candidate.argument, context, visitedSymbolIds);
+  }
+  if (isNodeOfType(candidate, "BinaryExpression")) {
+    const rawLeft = resolveRawDevicePixelRatio(candidate.left, context, new Set(visitedSymbolIds));
+    const rawRight = resolveRawDevicePixelRatio(
+      candidate.right,
+      context,
+      new Set(visitedSymbolIds),
+    );
+    if (rawLeft && !rawRight) {
+      const rightOperand = stripParenExpression(candidate.right);
+      if (
+        isNodeOfType(rightOperand, "Literal") &&
+        typeof rightOperand.value === "number" &&
+        Number.isFinite(rightOperand.value) &&
+        (candidate.operator === "+" ||
+          candidate.operator === "-" ||
+          ((candidate.operator === "*" ||
+            candidate.operator === "/" ||
+            candidate.operator === "**") &&
+            rightOperand.value > 0))
+      ) {
+        return rawLeft;
+      }
+    }
+    if (rawRight && !rawLeft) {
+      const leftOperand = stripParenExpression(candidate.left);
+      if (
+        isNodeOfType(leftOperand, "Literal") &&
+        typeof leftOperand.value === "number" &&
+        Number.isFinite(leftOperand.value) &&
+        (candidate.operator === "+" || (candidate.operator === "*" && leftOperand.value > 0))
+      ) {
+        return rawRight;
+      }
+    }
+    return null;
+  }
   if (isNodeOfType(candidate, "ArrayExpression") && candidate.elements.length === 2) {
     const upperBound = candidate.elements[1];
     return upperBound && !isNodeOfType(upperBound, "SpreadElement")
@@ -51,12 +90,22 @@ const resolveRawDevicePixelRatio = (
     symbol?.kind !== "const" ||
     !symbol.initializer ||
     visitedSymbolIds.has(symbol.id) ||
-    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
-    symbol.declarationNode.id !== symbol.bindingIdentifier
+    !isNodeOfType(symbol.declarationNode, "VariableDeclarator")
   ) {
     return null;
   }
   visitedSymbolIds.add(symbol.id);
+  if (getDestructuredBindingPropertyName(symbol.bindingIdentifier) === "devicePixelRatio") {
+    const initializer = stripParenExpression(symbol.initializer);
+    if (
+      isNodeOfType(initializer, "Identifier") &&
+      (initializer.name === "window" || initializer.name === "globalThis") &&
+      context.scopes.isGlobalReference(initializer)
+    ) {
+      return candidate;
+    }
+  }
+  if (symbol.declarationNode.id !== symbol.bindingIdentifier) return null;
   return resolveRawDevicePixelRatio(symbol.initializer, context, visitedSymbolIds);
 };
 
@@ -233,15 +282,17 @@ export const r3fCapDevicePixelRatio = defineRule({
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isR3fCanvas(node, context)) return;
-        const dprAttribute = getAuthoritativeJsxAttribute(node.attributes, "dpr");
-        if (
-          !dprAttribute?.value ||
-          !isNodeOfType(dprAttribute.value, "JSXExpressionContainer") ||
-          isNodeOfType(dprAttribute.value.expression, "JSXEmptyExpression")
-        ) {
-          return;
+        for (const attributeName of ["dpr", "pixelRatio"]) {
+          const dprAttribute = getAuthoritativeJsxAttribute(node.attributes, attributeName);
+          if (
+            !dprAttribute?.value ||
+            !isNodeOfType(dprAttribute.value, "JSXExpressionContainer") ||
+            isNodeOfType(dprAttribute.value.expression, "JSXEmptyExpression")
+          ) {
+            continue;
+          }
+          reportRawDpr(dprAttribute.value.expression);
         }
-        reportRawDpr(dprAttribute.value.expression);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isNodeOfType(node.callee, "MemberExpression")) return;

@@ -26,6 +26,18 @@ describe("r3f-webgpu-no-unregistered-pipeline-pass", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("supports the released-alpha usePostProcessing name", () => {
+    const result = runRule(
+      r3fWebgpuNoUnregisteredPipelinePass,
+      `import { usePostProcessing } from "@react-three/fiber/webgpu";
+       usePostProcessing(
+         ({ passes }) => { passes.color = colorPass; },
+         ({ passes }) => { passes.depth = depthPass; },
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("resolves pipeline callbacks wrapped by TypeScript import-equals React useCallback", () => {
     const result = runRule(
       r3fWebgpuNoUnregisteredPipelinePass,

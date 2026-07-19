@@ -3,10 +3,6 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fNoAllocationInPointerMove } from "./r3f-no-allocation-in-pointer-move.js";
 
 describe("r3f-no-allocation-in-pointer-move", () => {
-  it("requires an R3F pointer-event release", () => {
-    expect(r3fNoAllocationInPointerMove.requires).toEqual(["r3f:3"]);
-  });
-
   it("reports constructors and proven Three.js event clones", () => {
     const result = runRule(
       r3fNoAllocationInPointerMove,
@@ -17,6 +13,17 @@ describe("r3f-no-allocation-in-pointer-move", () => {
          const second = event.point.clone();
          const third = event.object.position.clone();
          consume(first, second, third);
+       }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("reports clones of shared ray, uv, and normal event data", () => {
+    const result = runRule(
+      r3fNoAllocationInPointerMove,
+      `import { Canvas } from "@react-three/fiber";
+       const scene = <mesh onPointerMove={(event) => {
+         consume(event.ray.clone(), event.uv.clone(), event.normal.clone());
        }} />;`,
     );
     expect(result.diagnostics).toHaveLength(3);
@@ -55,7 +62,7 @@ describe("r3f-no-allocation-in-pointer-move", () => {
        import { handler } from "./handler";
        const dom = <div onPointerMove={() => new Thing()} />;
        const imported = <mesh onPointerMove={handler} />;
-       const unrelated = <mesh onPointerMove={() => userValue.clone()} />;`,
+       const unrelated = <mesh onPointerMove={(event) => { userValue.clone(); event.camera.clone(); }} />;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -666,7 +666,9 @@ import { tanstackStartRoutePropertyOrder } from "./rules/tanstack-start/tanstack
 import { tanstackStartServerFnMethodOrder } from "./rules/tanstack-start/tanstack-start-server-fn-method-order.js";
 import { tanstackStartServerFnValidateInput } from "./rules/tanstack-start/tanstack-start-server-fn-validate-input.js";
 import { tenantStaticProxyRisk } from "./rules/security-scan/tenant-static-proxy-risk.js";
+import { threeRequireAnimationMixerCleanup } from "./rules/r3f/three-require-animation-mixer-cleanup.js";
 import { threeRequireControlsCleanup } from "./rules/r3f/three-require-controls-cleanup.js";
+import { threeRequirePostprocessingCleanup } from "./rules/r3f/three-require-postprocessing-cleanup.js";
 import { threeRequireRenderTargetCleanup } from "./rules/r3f/three-require-render-target-cleanup.js";
 import { threeRequireRendererCleanup } from "./rules/r3f/three-require-renderer-cleanup.js";
 import { unsafeJsonInHtml } from "./rules/security-scan/unsafe-json-in-html.js";
@@ -8710,6 +8712,25 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-require-animation-mixer-cleanup",
+    id: "three-require-animation-mixer-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireAnimationMixerCleanup,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(threeRequireAnimationMixerCleanup.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "three",
+          ...(threeRequireAnimationMixerCleanup.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-require-controls-cleanup",
     id: "three-require-controls-cleanup",
     source: "react-doctor",
@@ -8720,7 +8741,26 @@ export const reactDoctorRules = [
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(threeRequireControlsCleanup.tags ?? [])])],
       requires: [
-        ...new Set<Capability>(["react", "r3f", ...(threeRequireControlsCleanup.requires ?? [])]),
+        ...new Set<Capability>(["react", "three", ...(threeRequireControlsCleanup.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-postprocessing-cleanup",
+    id: "three-require-postprocessing-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequirePostprocessingCleanup,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(threeRequirePostprocessingCleanup.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "three",
+          ...(threeRequirePostprocessingCleanup.requires ?? []),
+        ]),
       ],
     },
   },
@@ -8737,7 +8777,7 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>([
           "react",
-          "r3f",
+          "three",
           ...(threeRequireRenderTargetCleanup.requires ?? []),
         ]),
       ],
@@ -8754,7 +8794,7 @@ export const reactDoctorRules = [
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(threeRequireRendererCleanup.tags ?? [])])],
       requires: [
-        ...new Set<Capability>(["react", "r3f", ...(threeRequireRendererCleanup.requires ?? [])]),
+        ...new Set<Capability>(["react", "three", ...(threeRequireRendererCleanup.requires ?? [])]),
       ],
     },
   },

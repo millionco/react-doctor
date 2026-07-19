@@ -162,6 +162,22 @@ const getObjectValuesCallbackSource = (
   return source && !isNodeOfType(source, "SpreadElement") ? source : null;
 };
 
+const getTraverseCallbackSource = (symbol: SymbolDescriptor): EsTreeNode | null => {
+  const callback = symbol.bindingIdentifier.parent;
+  if (
+    !callback ||
+    !isFunctionLike(callback) ||
+    callback.params[0] !== symbol.bindingIdentifier ||
+    !isNodeOfType(callback.parent, "CallExpression") ||
+    callback.parent.arguments[0] !== callback ||
+    !isNodeOfType(callback.parent.callee, "MemberExpression") ||
+    !["traverse", "traverseVisible"].includes(getStaticPropertyName(callback.parent.callee) ?? "")
+  ) {
+    return null;
+  }
+  return callback.parent.callee.object;
+};
+
 const resolveLoaderCacheProvenance = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -224,6 +240,10 @@ const resolveLoaderCacheProvenance = (
   const callbackSource = getObjectValuesCallbackSource(symbol, scopes);
   if (callbackSource) {
     return resolveLoaderCacheProvenance(callbackSource, scopes, visitedSymbolIds);
+  }
+  const traverseSource = getTraverseCallbackSource(symbol);
+  if (traverseSource) {
+    return resolveLoaderCacheProvenance(traverseSource, scopes, visitedSymbolIds);
   }
   if (symbol.kind !== "const" || !symbol.initializer) return null;
   const initializerProvenance = resolveLoaderCacheProvenance(

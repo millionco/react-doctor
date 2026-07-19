@@ -9,12 +9,16 @@ import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { isR3fCallbackStateProperty } from "./utils/is-r3f-callback-state-property.js";
+import { collectR3fHostRefSymbolIds } from "./utils/collect-r3f-host-ref-symbol-ids.js";
+import { isR3fUseThreeStateProperty } from "./utils/is-r3f-use-three-state-property.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
 import { getApiReferenceModuleSource } from "./utils/get-api-reference-module-source.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const TRANSFORM_PROPERTIES = new Set(["position", "rotation", "scale", "quaternion"]);
 const INTERPOLATION_RECEIVER_PROPERTIES = new Set([...TRANSFORM_PROPERTIES, "color"]);
+const TRANSFORMABLE_R3F_STATE_PROPERTIES = ["camera", "scene"];
 const INTERPOLATION_FACTOR_ARGUMENT_BY_METHOD = new Map([
   ["lerp", 1],
   ["lerpColors", 2],
@@ -24,13 +28,60 @@ const INTERPOLATION_FACTOR_ARGUMENT_BY_METHOD = new Map([
   ["slerpQuaternions", 2],
 ]);
 
-const isTransformMember = (expression: EsTreeNode): boolean => {
+const hasR3fTransformProvenance = (
+  expression: EsTreeNode,
+  callback: EsTreeNode,
+  managedRefSymbolIds: ReadonlySet<number>,
+  context: RuleContext,
+): boolean => {
   let current = stripParenExpression(expression);
   while (isNodeOfType(current, "MemberExpression")) {
-    if (TRANSFORM_PROPERTIES.has(getStaticPropertyName(current) ?? "")) return true;
+    if (
+      TRANSFORMABLE_R3F_STATE_PROPERTIES.some((propertyName) =>
+        isR3fCallbackStateProperty(current, callback, propertyName, context.scopes),
+      )
+    ) {
+      return true;
+    }
+    if (
+      TRANSFORMABLE_R3F_STATE_PROPERTIES.some((propertyName) =>
+        isR3fUseThreeStateProperty(current, propertyName, context),
+      )
+    ) {
+      return true;
+    }
+    const refSymbol = resolveReactRefSymbol(current, context.scopes, {
+      includeCreateRef: true,
+      resolveNamedAliases: true,
+    });
+    if (refSymbol && managedRefSymbolIds.has(refSymbol.id)) return true;
     current = stripParenExpression(current.object);
   }
-  return false;
+  return TRANSFORMABLE_R3F_STATE_PROPERTIES.some(
+    (propertyName) =>
+      isR3fCallbackStateProperty(current, callback, propertyName, context.scopes) ||
+      isR3fUseThreeStateProperty(current, propertyName, context),
+  );
+};
+
+const isTransformMember = (
+  expression: EsTreeNode,
+  callback: EsTreeNode,
+  managedRefSymbolIds: ReadonlySet<number>,
+  context: RuleContext,
+): boolean => {
+  let current = stripParenExpression(expression);
+  let hasTransformProperty = false;
+  while (isNodeOfType(current, "MemberExpression")) {
+    if (TRANSFORM_PROPERTIES.has(getStaticPropertyName(current) ?? "")) {
+      hasTransformProperty = true;
+    }
+    current = stripParenExpression(current.object);
+  }
+  return (
+    hasTransformProperty &&
+    hasR3fTransformProvenance(expression, callback, managedRefSymbolIds, context)
+  );
 };
 
 const expressionReferencesDelta = (
@@ -120,20 +171,28 @@ const isThreeMathUtils = (expression: EsTreeNode, context: RuleContext): boolean
 
 const hasInterpolationReceiverProvenance = (
   expression: EsTreeNode,
+  callback: EsTreeNode,
+  managedRefSymbolIds: ReadonlySet<number>,
   context: RuleContext,
 ): boolean => {
   let current = stripParenExpression(expression);
+  let hasInterpolationProperty = false;
   while (isNodeOfType(current, "MemberExpression")) {
     const propertyName = getStaticPropertyName(current);
-    if (
-      (propertyName === "current" && resolveReactRefSymbol(current, context.scopes)) ||
-      INTERPOLATION_RECEIVER_PROPERTIES.has(propertyName ?? "")
-    ) {
-      return true;
+    if (INTERPOLATION_RECEIVER_PROPERTIES.has(propertyName ?? "")) {
+      hasInterpolationProperty = true;
     }
+    const refSymbol = resolveReactRefSymbol(current, context.scopes, {
+      includeCreateRef: true,
+      resolveNamedAliases: true,
+    });
+    if (refSymbol && managedRefSymbolIds.has(refSymbol.id)) return true;
     current = stripParenExpression(current.object);
   }
-  return false;
+  return (
+    hasInterpolationProperty &&
+    hasR3fTransformProvenance(expression, callback, managedRefSymbolIds, context)
+  );
 };
 
 const isReactRefAvailabilityCondition = (
@@ -228,6 +287,8 @@ const isConditionallyExecutedOnlyByReactRefAvailability = (
 
 const getFixedInterpolationFactor = (
   node: EsTreeNodeOfType<"CallExpression">,
+  callback: EsTreeNode,
+  managedRefSymbolIds: ReadonlySet<number>,
   context: RuleContext,
 ): EsTreeNode | null => {
   if (!isNodeOfType(node.callee, "MemberExpression")) return null;
@@ -235,7 +296,10 @@ const getFixedInterpolationFactor = (
   let factorArgumentIndex: number | undefined;
   if (methodName === "lerp" && isThreeMathUtils(node.callee.object, context)) {
     factorArgumentIndex = 2;
-  } else if (methodName && hasInterpolationReceiverProvenance(node.callee.object, context)) {
+  } else if (
+    methodName &&
+    hasInterpolationReceiverProvenance(node.callee.object, callback, managedRefSymbolIds, context)
+  ) {
     factorArgumentIndex = INTERPOLATION_FACTOR_ARGUMENT_BY_METHOD.get(methodName);
   }
   if (factorArgumentIndex === undefined) return null;
@@ -252,57 +316,68 @@ export const r3fRequireFrameDelta = defineRule({
   severity: "warn",
   recommendation:
     "Scale incremental transforms and interpolation by useFrame delta, use delta-aware damping, or assign from absolute time",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const callback = resolveR3fCallback(node, "useFrame", context.scopes);
-      if (!isFunctionLike(callback)) return;
-      walkFunctionExecution(callback, context.scopes, (candidate, isConditionallyExecuted) => {
-        const isBehindReactRefAvailabilityGuard =
-          isConditionallyExecuted &&
-          isConditionallyExecutedOnlyByReactRefAvailability(candidate, callback, context);
-        if (
-          isNodeOfType(candidate, "UpdateExpression") &&
-          isTransformMember(candidate.argument) &&
-          (!isConditionallyExecuted || isBehindReactRefAvailabilityGuard)
-        ) {
-          context.report({
-            node: candidate,
-            message:
-              "This transform changes by a fixed amount per frame, so animation speed depends on refresh rate. Use the useFrame delta argument instead of an update operator",
-          });
-          return;
-        }
-        if (isNodeOfType(candidate, "AssignmentExpression")) {
+  create: (context: RuleContext) => {
+    let managedRefSymbolIds: ReadonlySet<number> = new Set();
+    return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        managedRefSymbolIds = collectR3fHostRefSymbolIds(node, context.scopes);
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const callback = resolveR3fCallback(node, "useFrame", context.scopes);
+        if (!isFunctionLike(callback)) return;
+        walkFunctionExecution(callback, context.scopes, (candidate, isConditionallyExecuted) => {
+          const isBehindReactRefAvailabilityGuard =
+            isConditionallyExecuted &&
+            isConditionallyExecutedOnlyByReactRefAvailability(candidate, callback, context);
           if (
-            (candidate.operator !== "+=" && candidate.operator !== "-=") ||
-            !isTransformMember(candidate.left) ||
-            expressionReferencesDelta(candidate.right, callback, context) ||
+            isNodeOfType(candidate, "UpdateExpression") &&
+            isTransformMember(candidate.argument, callback, managedRefSymbolIds, context) &&
+            (!isConditionallyExecuted || isBehindReactRefAvailabilityGuard)
+          ) {
+            context.report({
+              node: candidate,
+              message:
+                "This transform changes by a fixed amount per frame, so animation speed depends on refresh rate. Use the useFrame delta argument instead of an update operator",
+            });
+            return;
+          }
+          if (isNodeOfType(candidate, "AssignmentExpression")) {
+            if (
+              (candidate.operator !== "+=" && candidate.operator !== "-=") ||
+              !isTransformMember(candidate.left, callback, managedRefSymbolIds, context) ||
+              expressionReferencesDelta(candidate.right, callback, context) ||
+              (isConditionallyExecuted && !isBehindReactRefAvailabilityGuard)
+            ) {
+              return;
+            }
+            context.report({
+              node: candidate,
+              message:
+                "This transform changes by a fixed amount per frame, so animation speed depends on refresh rate. Multiply the increment by the useFrame delta argument",
+            });
+            return;
+          }
+          if (!isNodeOfType(candidate, "CallExpression")) return;
+          const factor = getFixedInterpolationFactor(
+            candidate,
+            callback,
+            managedRefSymbolIds,
+            context,
+          );
+          if (
+            !factor ||
+            expressionReferencesDelta(factor, callback, context) ||
             (isConditionallyExecuted && !isBehindReactRefAvailabilityGuard)
           ) {
             return;
           }
           context.report({
-            node: candidate,
+            node: factor,
             message:
-              "This transform changes by a fixed amount per frame, so animation speed depends on refresh rate. Multiply the increment by the useFrame delta argument",
+              "This fixed interpolation factor converges once per frame, so its speed changes with refresh rate. Derive the factor from useFrame delta or use a delta-aware damping function",
           });
-          return;
-        }
-        if (!isNodeOfType(candidate, "CallExpression")) return;
-        const factor = getFixedInterpolationFactor(candidate, context);
-        if (
-          !factor ||
-          expressionReferencesDelta(factor, callback, context) ||
-          (isConditionallyExecuted && !isBehindReactRefAvailabilityGuard)
-        ) {
-          return;
-        }
-        context.report({
-          node: factor,
-          message:
-            "This fixed interpolation factor converges once per frame, so its speed changes with refresh rate. Derive the factor from useFrame delta or use a delta-aware damping function",
         });
-      });
-    },
-  }),
+      },
+    };
+  },
 });

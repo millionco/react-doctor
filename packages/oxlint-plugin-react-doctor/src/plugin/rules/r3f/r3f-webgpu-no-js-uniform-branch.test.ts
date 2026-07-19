@@ -27,6 +27,64 @@ describe("r3f-webgpu-no-js-uniform-branch", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("supports both released-alpha usePostProcessing callbacks", () => {
+    const result = runRule(
+      r3fWebgpuNoJsUniformBranch,
+      `import { usePostProcessing } from "@react-three/fiber/webgpu";
+       usePostProcessing(
+         ({ uniforms }) => uniforms.enabled.value ? enabled : disabled,
+         ({ uniforms }) => { if (uniforms.quality.value > 1) configure(); },
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("reports branches over immutable uniforms created outside the graph callback", () => {
+    const result = runRule(
+      r3fWebgpuNoJsUniformBranch,
+      `import { uniform as makeUniform } from "three/tsl";
+       import * as WebGPU from "three/webgpu";
+       import { useNodes } from "@react-three/fiber/webgpu";
+       const mode = makeUniform(0);
+       const quality = WebGPU.uniform(1);
+       useNodes(() => {
+         if (mode.value) configureMode();
+         return quality.value > 1 ? high : low;
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("tracks exact immutable aliases of the TSL uniform factory", () => {
+    const result = runRule(
+      r3fWebgpuNoJsUniformBranch,
+      `import { uniform } from "three/tsl";
+       import { useNodes } from "@react-three/fiber/webgpu";
+       const createUniform = uniform;
+       const mode = createUniform(0);
+       useNodes(() => mode.value ? enabled : disabled);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores mutable, shadowed, and non-uniform values outside the graph callback", () => {
+    const result = runRule(
+      r3fWebgpuNoJsUniformBranch,
+      `import { uniform } from "three/tsl";
+       import { useNodes } from "@react-three/fiber/webgpu";
+       let mutableMode = uniform(0);
+       mutableMode = replacement;
+       const plainMode = { value: 1 };
+       const buildNodes = (uniform) => {
+         const shadowedMode = uniform(0);
+         useNodes(() => shadowedMode.value ? enabled : disabled);
+       };
+       useNodes(() => mutableMode.value ? enabled : disabled);
+       useNodes(() => plainMode.value ? enabled : disabled);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("reports short-circuit branches over WebGPU uniform values", () => {
     const result = runRule(
       r3fWebgpuNoJsUniformBranch,

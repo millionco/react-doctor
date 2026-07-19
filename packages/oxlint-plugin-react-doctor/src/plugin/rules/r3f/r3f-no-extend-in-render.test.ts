@@ -3,8 +3,8 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fNoExtendInRender } from "./r3f-no-extend-in-render.js";
 
 describe("r3f-no-extend-in-render", () => {
-  it("requires an R3F version that exports extend", () => {
-    expect(r3fNoExtendInRender.requires).toEqual(["r3f:3"]);
+  it("supports every detected Fiber version", () => {
+    expect(r3fNoExtendInRender.requires).toBeUndefined();
   });
 
   it("reports direct and render-time initializer registrations", () => {

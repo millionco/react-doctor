@@ -14,7 +14,6 @@ export const r3fNoExtendInRender = defineRule({
   severity: "warn",
   recommendation:
     "Call extend at module scope so React renders and Strict Mode replays do not repeatedly mutate R3F's global catalogue",
-  requires: ["r3f:3"],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = stripParenExpression(node.callee);

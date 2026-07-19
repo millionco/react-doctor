@@ -250,7 +250,6 @@ export const r3fRequireInstancedBufferUpdate = defineRule({
   severity: "error",
   recommendation:
     "After setMatrixAt or setColorAt, set the matching instance buffer's needsUpdate flag to true",
-  requires: ["r3f:4"],
   create: (context: RuleContext) => {
     const managedRefSymbolIds = new Set<number>();
     const mutations: InstancedBufferMutation[] = [];

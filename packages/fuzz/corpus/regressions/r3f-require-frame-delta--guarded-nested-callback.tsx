@@ -4,7 +4,7 @@
 import { useFrame } from "@react-three/fiber";
 
 export const GuardedInterpolation = ({ didStart }: { didStart: boolean }) => {
-  useFrame(() => {
+  useFrame(({ camera }) => {
     if (didStart) {
       targets.forEach((target) => camera.position.lerp(target, 0.1));
     }

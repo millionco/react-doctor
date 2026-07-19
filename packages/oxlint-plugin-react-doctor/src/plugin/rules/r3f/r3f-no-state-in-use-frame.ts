@@ -3,6 +3,7 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
+import { hasPossibleStaticPropertyWrite } from "../../utils/has-static-property-write-before.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -20,47 +21,87 @@ interface StateSetterBinding {
   stateSymbolId: number | null;
 }
 
-export const resolveStateSetterBinding = (
-  identifier: EsTreeNode,
+const isStateHookTuple = (
+  expression: EsTreeNode,
   scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number>,
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isR3fReactApiCall(candidate, STATE_HOOKS, scopes, { resolveNamedAliases: true })) {
+    return true;
+  }
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = scopes.symbolFor(candidate);
+  if (
+    symbol?.kind !== "const" ||
+    !symbol.initializer ||
+    visitedSymbolIds.has(symbol.id) ||
+    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+    symbol.declarationNode.id !== symbol.bindingIdentifier ||
+    symbol.references.some((reference) => reference.flag !== "read")
+  ) {
+    return false;
+  }
+  visitedSymbolIds.add(symbol.id);
+  return isStateHookTuple(symbol.initializer, scopes, visitedSymbolIds);
+};
+
+export const resolveStateSetterBinding = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
 ): StateSetterBinding | null => {
-  const visitedSymbolIds = new Set<number>();
-  let symbol = scopes.symbolFor(identifier);
-  while (symbol && !visitedSymbolIds.has(symbol.id)) {
-    visitedSymbolIds.add(symbol.id);
-    const declaration = symbol.declarationNode;
-    if (
-      isNodeOfType(declaration, "VariableDeclarator") &&
-      declaration.init &&
-      isNodeOfType(declaration.id, "ArrayPattern") &&
-      declaration.id.elements[1] === symbol.bindingIdentifier &&
-      isR3fReactApiCall(declaration.init, STATE_HOOKS, scopes, {
-        resolveNamedAliases: true,
-      })
-    ) {
-      const stateIdentifier = declaration.id.elements[0];
-      const stateSymbolId =
-        stateIdentifier &&
-        isNodeOfType(stateIdentifier, "Identifier") &&
-        isR3fReactApiCall(declaration.init, USE_STATE_HOOK, scopes, {
-          resolveNamedAliases: true,
-        })
-          ? (scopes.symbolFor(stateIdentifier)?.id ?? null)
-          : null;
-      return { stateSymbolId };
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "MemberExpression")) {
+    const property = stripParenExpression(candidate.property);
+    if (!candidate.computed || !isNodeOfType(property, "Literal") || property.value !== 1) {
+      return null;
     }
+    const tupleExpression = stripParenExpression(candidate.object);
     if (
-      symbol.kind !== "const" ||
-      !symbol.initializer ||
-      !isNodeOfType(symbol.initializer, "Identifier") ||
-      !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
-      symbol.declarationNode.id !== symbol.bindingIdentifier
+      isNodeOfType(tupleExpression, "Identifier") &&
+      hasPossibleStaticPropertyWrite(tupleExpression, "1", scopes)
     ) {
       return null;
     }
-    symbol = scopes.symbolFor(symbol.initializer);
+    return isStateHookTuple(tupleExpression, scopes, visitedSymbolIds)
+      ? { stateSymbolId: null }
+      : null;
   }
-  return null;
+  if (!isNodeOfType(candidate, "Identifier")) return null;
+  const symbol = scopes.symbolFor(candidate);
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
+  visitedSymbolIds.add(symbol.id);
+  const declaration = symbol.declarationNode;
+  if (
+    isNodeOfType(declaration, "VariableDeclarator") &&
+    declaration.init &&
+    isNodeOfType(declaration.id, "ArrayPattern") &&
+    declaration.id.elements[1] === symbol.bindingIdentifier &&
+    isR3fReactApiCall(declaration.init, STATE_HOOKS, scopes, {
+      resolveNamedAliases: true,
+    })
+  ) {
+    const stateIdentifier = declaration.id.elements[0];
+    const stateSymbolId =
+      stateIdentifier &&
+      isNodeOfType(stateIdentifier, "Identifier") &&
+      isR3fReactApiCall(declaration.init, USE_STATE_HOOK, scopes, {
+        resolveNamedAliases: true,
+      })
+        ? (scopes.symbolFor(stateIdentifier)?.id ?? null)
+        : null;
+    return { stateSymbolId };
+  }
+  if (
+    symbol.kind !== "const" ||
+    !symbol.initializer ||
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    declaration.id !== symbol.bindingIdentifier
+  ) {
+    return null;
+  }
+  return resolveStateSetterBinding(symbol.initializer, scopes, visitedSymbolIds);
 };
 
 const branchGuaranteesBooleanState = (
@@ -113,10 +154,7 @@ const callbackCallsStateSetterMoreThanOnce = (
   walkAst(callback, (candidate) => {
     if (setterCallCount > 1) return false;
     if (candidate !== callback && isFunctionLike(candidate)) return false;
-    if (
-      !isNodeOfType(candidate, "CallExpression") ||
-      !isNodeOfType(candidate.callee, "Identifier")
-    ) {
+    if (!isNodeOfType(candidate, "CallExpression")) {
       return;
     }
     if (resolveStateSetterBinding(candidate.callee, scopes)?.stateSymbolId === stateSymbolId) {
@@ -177,10 +215,7 @@ const branchHasBooleanLatchTransition = (
   walkAst(branch, (candidate) => {
     if (didFindLatch) return false;
     if (candidate !== branch && isFunctionLike(candidate)) return false;
-    if (
-      !isNodeOfType(candidate, "CallExpression") ||
-      !isNodeOfType(candidate.callee, "Identifier")
-    ) {
+    if (!isNodeOfType(candidate, "CallExpression")) {
       return;
     }
     const stateSymbolId = resolveStateSetterBinding(candidate.callee, scopes)?.stateSymbolId;
@@ -369,10 +404,7 @@ export const r3fNoStateInUseFrame = defineRule({
         const callback = resolveR3fCallback(node, "useFrame", context.scopes);
         if (!callback) return;
         walkFunctionExecution(callback, context.scopes, (candidate) => {
-          if (
-            !isNodeOfType(candidate, "CallExpression") ||
-            !isNodeOfType(candidate.callee, "Identifier")
-          ) {
+          if (!isNodeOfType(candidate, "CallExpression")) {
             return;
           }
           if (

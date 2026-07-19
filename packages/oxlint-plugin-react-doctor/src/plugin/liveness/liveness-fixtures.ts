@@ -1744,7 +1744,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import "@react-three/fiber"; import { Vector3 } from "three"; const Scene = () => <mesh onPointerMove={() => new Vector3()} />;',
   },
   "r3f-no-clone-in-use-frame": {
-    code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = () => { const mesh = useRef(null); useFrame(() => mesh.current.position.clone()); };',
+    code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = () => { const mesh = useRef(null); useFrame(() => mesh.current.position.clone()); return <mesh ref={mesh} />; };',
   },
   "r3f-no-dispose-loader-cache": {
     code: 'import { useTexture } from "@react-three/drei"; const Scene = () => { const texture = useTexture(url); texture.dispose(); return null; };',
@@ -1819,7 +1819,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame(() => update(), []);',
   },
   "r3f-require-frame-delta": {
-    code: 'import { useFrame } from "@react-three/fiber"; useFrame(() => { mesh.current.rotation.y += 0.01; });',
+    code: 'import { useFrame } from "@react-three/fiber"; useFrame(({ scene }) => { scene.rotation.y += 0.01; });',
   },
   "r3f-require-global-effect-cleanup": {
     code: 'import { useEffect } from "react"; import { addEffect } from "@react-three/fiber"; const Scene = () => { useEffect(() => { addEffect(update); }, []); return null; };',
@@ -1851,6 +1851,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "three-require-controls-cleanup": {
     code: 'import { useMemo } from "react"; import { OrbitControls } from "three/addons/controls/OrbitControls.js"; import "@react-three/fiber"; const Scene = ({ camera, element }) => { const controls = useMemo(() => new OrbitControls(camera, element), [camera, element]); return <primitive object={controls} />; };',
   },
+  "three-require-animation-mixer-cleanup": {
+    code: 'import { useMemo } from "react"; import { AnimationMixer } from "three"; const Scene = ({ root, clip }) => { const mixer = useMemo(() => new AnimationMixer(root), [root]); mixer.clipAction(clip); return null; };',
+  },
   "r3f-webgpu-no-gl-state": {
     code: 'import { useThree } from "@react-three/fiber/webgpu"; const renderer = useThree((state) => state.gl);',
   },
@@ -1865,6 +1868,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "three-require-renderer-cleanup": {
     code: 'import { useMemo } from "react"; import { WebGLRenderer } from "three"; const Scene = ({ canvas }) => { const renderer = useMemo(() => new WebGLRenderer({ canvas }), [canvas]); renderer.render(scene, camera); return null; };',
+  },
+  "three-require-postprocessing-cleanup": {
+    code: 'import { useMemo } from "react"; import "three"; import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js"; const Scene = ({ renderer }) => { const composer = useMemo(() => new EffectComposer(renderer), [renderer]); composer.render(); return null; };',
   },
   "tanstack-start-no-anchor-element": {
     code: 'const C = () => <a href="/dashboard">Go</a>;',

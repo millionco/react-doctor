@@ -34,6 +34,7 @@ export const r3fNoFreshUseThreeSelector = defineRule({
   id: "r3f-no-fresh-use-three-selector",
   title: "Fresh useThree selector result",
   severity: "warn",
+  requires: ["r3f:6"],
   recommendation:
     "Select one stable store field at a time, or provide an equality function when returning an object or array from useThree",
   create: (context: RuleContext) => ({

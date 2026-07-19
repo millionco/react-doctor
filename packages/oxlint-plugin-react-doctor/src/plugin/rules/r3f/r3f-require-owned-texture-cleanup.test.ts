@@ -81,6 +81,25 @@ describe("r3f-require-owned-texture-cleanup", () => {
     expect(runRule(r3fRequireOwnedTextureCleanup, code).diagnostics).toHaveLength(0);
   });
 
+  it("tracks useRef-owned textures through current and exact aliases", () => {
+    const code = `
+      import { CanvasTexture, DataTexture } from "three";
+      import { useEffect, useRef } from "react";
+      const DirectMissing = ({ canvas }) => {
+        const textureRef = useRef(new CanvasTexture(canvas));
+        return <primitive object={textureRef.current} />;
+      };
+      const LazyComplete = ({ data }) => {
+        const textureRef = useRef(null);
+        if (!textureRef.current) textureRef.current = new DataTexture(data);
+        const texture = textureRef.current;
+        useEffect(() => () => texture.dispose(), []);
+        return <primitive object={texture} />;
+      };
+    `;
+    expect(runRule(r3fRequireOwnedTextureCleanup, code).diagnostics).toHaveLength(1);
+  });
+
   it("recognizes cleanup through a structured state-factory resource path", () => {
     const code = `
       import { CanvasTexture } from "three";
@@ -305,5 +324,37 @@ describe("r3f-require-owned-texture-cleanup", () => {
       };
     `;
     expect(runRule(r3fRequireOwnedTextureCleanup, code).diagnostics).toHaveLength(0);
+  });
+
+  it("keeps ownership when Three.js materials borrow textures", () => {
+    const code = `
+      import { CanvasTexture, MeshBasicMaterial } from "three";
+      import { useMemo, useRef, useState } from "react";
+      const Assigned = ({ canvas }) => {
+        const texture = useMemo(() => new CanvasTexture(canvas), [canvas]);
+        const material = useMemo(() => new MeshBasicMaterial(), []);
+        material.map = texture;
+        return <primitive object={material} />;
+      };
+      const ConstructorOption = ({ canvas }) => {
+        const texture = useMemo(() => new CanvasTexture(canvas), [canvas]);
+        const material = new MeshBasicMaterial({ map: texture });
+        return <primitive object={material} />;
+      };
+      const StateMaterial = ({ canvas }) => {
+        const texture = useMemo(() => new CanvasTexture(canvas), [canvas]);
+        const [material] = useState(() => new MeshBasicMaterial());
+        material.map = texture;
+        return <primitive object={material} />;
+      };
+      const RefMaterial = ({ canvas }) => {
+        const texture = useMemo(() => new CanvasTexture(canvas), [canvas]);
+        const materialRef = useRef(null);
+        if (materialRef.current === null) materialRef.current = new MeshBasicMaterial();
+        materialRef.current.map = texture;
+        return <primitive object={materialRef.current} />;
+      };
+    `;
+    expect(runRule(r3fRequireOwnedTextureCleanup, code).diagnostics).toHaveLength(4);
   });
 });

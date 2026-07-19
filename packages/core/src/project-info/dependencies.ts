@@ -302,7 +302,9 @@ interface DependencyDeclaration {
 interface GetDependencyDeclarationOptions {
   packageJson: PackageJson;
   packageName: string;
-  sections: ReadonlyArray<"dependencies" | "peerDependencies" | "devDependencies">;
+  sections: ReadonlyArray<
+    "dependencies" | "peerDependencies" | "devDependencies" | "optionalDependencies"
+  >;
 }
 
 export const getDependencyDeclaration = ({
@@ -354,6 +356,8 @@ interface ResolveCatalogBackedDependencyVersionOptions {
   rootDirectory: string;
   rootPackageJson: PackageJson;
   packageName: string;
+  sourceDirectory?: string;
+  sourcePackageJson?: PackageJson;
   version: string | null;
 }
 
@@ -361,18 +365,30 @@ export const resolveCatalogBackedDependencyVersion = ({
   rootDirectory,
   rootPackageJson,
   packageName,
+  sourceDirectory = rootDirectory,
+  sourcePackageJson = rootPackageJson,
   version,
 }: ResolveCatalogBackedDependencyVersionOptions): string | null => {
   if (version === null || !isCatalogReference(version)) return version;
 
   const catalogName = extractCatalogName(version);
-  const resolvedLocalVersion = resolveCatalogVersion(
-    rootPackageJson,
+  const resolvedSourceVersion = resolveCatalogVersion(
+    sourcePackageJson,
     packageName,
-    rootDirectory,
+    sourceDirectory,
     catalogName,
   );
-  if (resolvedLocalVersion) return resolvedLocalVersion;
+  if (resolvedSourceVersion) return resolvedSourceVersion;
+
+  if (sourceDirectory !== rootDirectory || sourcePackageJson !== rootPackageJson) {
+    const resolvedRootVersion = resolveCatalogVersion(
+      rootPackageJson,
+      packageName,
+      rootDirectory,
+      catalogName,
+    );
+    if (resolvedRootVersion) return resolvedRootVersion;
+  }
 
   const monorepoRoot = findMonorepoRoot(rootDirectory);
   if (!monorepoRoot) return version;

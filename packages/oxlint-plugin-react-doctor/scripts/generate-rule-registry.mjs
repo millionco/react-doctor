@@ -58,6 +58,14 @@ const BUCKET_TO_REQUIRED_CAPABILITIES = {
   r3f: ["react", "r3f"],
 };
 
+const getRequiredCapabilities = (bucketName, ruleId) => {
+  if (bucketName === "r3f" && ruleId.startsWith("three-")) return ["react", "three"];
+  return (
+    BUCKET_TO_REQUIRED_CAPABILITIES[bucketName] ??
+    (BUCKETS_REQUIRING_REACT.has(bucketName) ? ["react"] : [])
+  );
+};
+
 // Bucket directory → behavioral tags merged onto every rule in that
 // bucket at registry-build time. Lets cross-cutting controls
 // (`severity.tags`, `surfaces.*.excludeTags`,
@@ -273,9 +281,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
         .replaceAll(path.sep, "/")
         .replace(/\.ts$/, ".js");
     const autoTags = BUCKET_TO_AUTO_TAGS[bucket.name] ?? [];
-    const requiredCapabilities =
-      BUCKET_TO_REQUIRED_CAPABILITIES[bucket.name] ??
-      (BUCKETS_REQUIRING_REACT.has(bucket.name) ? ["react"] : []);
+    const requiredCapabilities = getRequiredCapabilities(bucket.name, ruleId);
     const originallyExternal =
       !RULES_NOT_PORTED_FROM_EXTERNAL.has(ruleId) &&
       (BUCKETS_PORTED_FROM_EXTERNAL.has(bucket.name) ||

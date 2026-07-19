@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -9,6 +10,35 @@ import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 
 const THREE_NAMESPACE_MODULES = new Set(["three", "three/webgpu"]);
 
+const containsThreeNamespaceSpread = (
+  expression: EsTreeNode,
+  context: RuleContext,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = context.scopes.symbolFor(candidate);
+    if (
+      symbol?.kind !== "const" ||
+      !symbol.initializer ||
+      visitedSymbolIds.has(symbol.id) ||
+      symbol.references.some((reference) => reference.flag !== "read")
+    ) {
+      return false;
+    }
+    visitedSymbolIds.add(symbol.id);
+    return containsThreeNamespaceSpread(symbol.initializer, context, visitedSymbolIds);
+  }
+  if (!isNodeOfType(candidate, "ObjectExpression")) return false;
+  return candidate.properties.some(
+    (property) =>
+      isNodeOfType(property, "SpreadElement") &&
+      THREE_NAMESPACE_MODULES.has(
+        getModuleNamespaceSource(property.argument, context.scopes) ?? "",
+      ),
+  );
+};
+
 export const r3fNoExtendThreeNamespace = defineRule({
   id: "r3f-no-extend-three-namespace",
   title: "Whole Three.js namespace registered with R3F",
@@ -16,7 +46,6 @@ export const r3fNoExtendThreeNamespace = defineRule({
   severity: "warn",
   recommendation:
     "Pass extend an object containing only the Three.js constructors used by JSX so bundlers can tree-shake the rest of the namespace",
-  requires: ["r3f:3"],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isR3fApiCall(node, "extend", context.scopes)) return;
@@ -28,9 +57,10 @@ export const r3fNoExtendThreeNamespace = defineRule({
         : null;
       if (
         (argumentSymbol && hasSymbolWriteBefore(argumentSymbol, node, context.scopes)) ||
-        !THREE_NAMESPACE_MODULES.has(
+        (!THREE_NAMESPACE_MODULES.has(
           getModuleNamespaceSource(catalogueArgument, context.scopes) ?? "",
-        )
+        ) &&
+          !containsThreeNamespaceSpread(catalogueArgument, context))
       ) {
         return;
       }

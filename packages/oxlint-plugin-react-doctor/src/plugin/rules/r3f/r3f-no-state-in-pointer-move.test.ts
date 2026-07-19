@@ -3,8 +3,8 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fNoStateInPointerMove } from "./r3f-no-state-in-pointer-move.js";
 
 describe("r3f-no-state-in-pointer-move", () => {
-  it("requires an R3F pointer-event release", () => {
-    expect(r3fNoStateInPointerMove.requires).toEqual(["r3f:3"]);
+  it("does not need an explicit R3F version gate", () => {
+    expect(r3fNoStateInPointerMove.requires).toBeUndefined();
   });
 
   it("reports useState and useReducer updates on every pointer movement", () => {
@@ -93,6 +93,34 @@ describe("r3f-no-state-in-pointer-move", () => {
            <mesh onPointerMove={() => setPoint(null)} {...props} />
            <mesh onPointerMove={() => localSetter()} />
          </>;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags tuple-index setters and updates inside flushSync", () => {
+    const result = runRule(
+      r3fNoStateInPointerMove,
+      `import { useState } from "react";
+       import { flushSync } from "react-dom";
+       import "@react-three/fiber";
+       const Scene = () => {
+         const pointState = useState(null);
+         return <mesh onPointerMove={(event) => { pointState[1](event.point); flushSync(() => pointState[1](event.point)); }} />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not trust userland tuple hooks or flushSync names", () => {
+    const result = runRule(
+      r3fNoStateInPointerMove,
+      `import "@react-three/fiber";
+       const useState = () => [null, updateLater];
+       const flushSync = scheduleLater;
+       const Scene = () => {
+         const pointState = useState();
+         return <mesh onPointerMove={() => { pointState[1](point); flushSync(() => pointState[1](point)); }} />;
        };`,
     );
     expect(result.diagnostics).toHaveLength(0);

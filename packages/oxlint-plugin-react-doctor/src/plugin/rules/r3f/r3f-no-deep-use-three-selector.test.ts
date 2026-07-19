@@ -4,7 +4,7 @@ import { r3fNoDeepUseThreeSelector } from "./r3f-no-deep-use-three-selector.js";
 
 describe("r3f-no-deep-use-three-selector", () => {
   it("requires a useThree-capable R3F release", () => {
-    expect(r3fNoDeepUseThreeSelector.requires).toEqual(["r3f:3"]);
+    expect(r3fNoDeepUseThreeSelector.requires).toEqual(["r3f:6"]);
   });
 
   it("reports deep mutable fields through direct and destructured selectors", () => {

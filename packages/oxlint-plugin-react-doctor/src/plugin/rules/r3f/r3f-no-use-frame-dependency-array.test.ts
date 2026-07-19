@@ -3,6 +3,10 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fNoUseFrameDependencyArray } from "./r3f-no-use-frame-dependency-array.js";
 
 describe("r3f-no-use-frame-dependency-array", () => {
+  it("requires the numeric-priority useFrame contract", () => {
+    expect(r3fNoUseFrameDependencyArray.requires).toEqual(["r3f:3"]);
+  });
+
   it.each([
     "@react-three/fiber",
     "@react-three/fiber/native",

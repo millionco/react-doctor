@@ -91,15 +91,25 @@ const MUTATING_VECTOR_ARGUMENT_METHOD_NAMES: ReadonlySet<string> = new Set([
   "localToWorld",
   "worldToLocal",
 ]);
+const SHARED_POINTER_EVENT_VECTOR_NAMES: ReadonlySet<string> = new Set([
+  "normal",
+  "point",
+  "ray",
+  "uv",
+]);
 
-const isEventPointOrDescendant = (
+const isSharedPointerEventVectorOrDescendant = (
   expression: EsTreeNode,
   handler: EsTreeNode,
   context: RuleContext,
 ): boolean => {
   let candidate = stripParenExpression(expression);
   while (true) {
-    if (isR3fCallbackStateProperty(candidate, handler, "point", context.scopes)) return true;
+    for (const propertyName of SHARED_POINTER_EVENT_VECTOR_NAMES) {
+      if (isR3fCallbackStateProperty(candidate, handler, propertyName, context.scopes)) {
+        return true;
+      }
+    }
     if (!isNodeOfType(candidate, "MemberExpression")) return false;
     candidate = stripParenExpression(candidate.object);
   }
@@ -111,10 +121,12 @@ const getMutatedEventPoint = (
   context: RuleContext,
 ): EsTreeNode | null => {
   if (isNodeOfType(candidate, "AssignmentExpression")) {
-    return isEventPointOrDescendant(candidate.left, handler, context) ? candidate.left : null;
+    return isSharedPointerEventVectorOrDescendant(candidate.left, handler, context)
+      ? candidate.left
+      : null;
   }
   if (isNodeOfType(candidate, "UpdateExpression")) {
-    return isEventPointOrDescendant(candidate.argument, handler, context)
+    return isSharedPointerEventVectorOrDescendant(candidate.argument, handler, context)
       ? candidate.argument
       : null;
   }
@@ -125,7 +137,7 @@ const getMutatedEventPoint = (
   if (
     methodName &&
     MUTATING_VECTOR_METHOD_NAMES.has(methodName) &&
-    isEventPointOrDescendant(callee.object, handler, context)
+    isSharedPointerEventVectorOrDescendant(callee.object, handler, context)
   ) {
     return callee.object;
   }
@@ -133,7 +145,7 @@ const getMutatedEventPoint = (
   const pointArgument = candidate.arguments.find(
     (argument) =>
       !isNodeOfType(argument, "SpreadElement") &&
-      isEventPointOrDescendant(argument, handler, context),
+      isSharedPointerEventVectorOrDescendant(argument, handler, context),
   );
   return pointArgument && !isNodeOfType(pointArgument, "SpreadElement") ? pointArgument : null;
 };
@@ -144,8 +156,7 @@ export const r3fNoMutatingPointerEventData = defineRule({
   category: "Correctness",
   severity: "warn",
   recommendation:
-    "Copy event.point into an owned vector before applying local-space transforms or other mutations",
-  requires: ["r3f:3"],
+    "Copy shared pointer-event vectors before applying local-space transforms or other mutations",
   create: (context: RuleContext) => {
     const reportedNodes = new WeakSet<EsTreeNode>();
     let importsReactThreeFiber = false;
@@ -165,7 +176,7 @@ export const r3fNoMutatingPointerEventData = defineRule({
             context.report({
               node: mutatedPoint,
               message:
-                "This mutates event.point, which is shared hit data supplied by R3F. Copy it into an owned vector before changing coordinates",
+                "This mutates pointer-event hit data supplied by R3F. Copy it into an owned vector or ray before changing it",
             });
           });
         }

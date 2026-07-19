@@ -469,6 +469,53 @@ const objectTargetReplacementDisposition = (
   return disposition;
 };
 
+const staticPathPreservesTarget = (
+  candidatePath: readonly string[] | null,
+  targetPath: readonly string[],
+): boolean =>
+  Boolean(
+    candidatePath &&
+    candidatePath.length <= targetPath.length &&
+    candidatePath.every((propertyName, index) => propertyName === targetPath[index]),
+  );
+
+const objectTargetPathReplacementDisposition = (
+  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
+  targetPath: readonly string[],
+  isPartialUpdateRoot: boolean,
+  context: RuleContext,
+): boolean | null => {
+  const propertyName = targetPath[0];
+  if (!propertyName) return true;
+  let disposition: boolean | null = isPartialUpdateRoot ? false : true;
+  for (const property of objectExpression.properties) {
+    if (isNodeOfType(property, "SpreadElement")) {
+      disposition = null;
+      continue;
+    }
+    if (!isNodeOfType(property, "Property")) continue;
+    if (getStaticPropertyKeyName(property) !== propertyName) continue;
+    const propertyValue = stripParenExpression(property.value);
+    if (targetPath.length > 1 && isNodeOfType(propertyValue, "ObjectExpression")) {
+      disposition = objectTargetPathReplacementDisposition(
+        propertyValue,
+        targetPath.slice(1),
+        false,
+        context,
+      );
+      continue;
+    }
+    if (
+      staticPathPreservesTarget(staticPropertyPathForExpression(propertyValue, context), targetPath)
+    ) {
+      disposition = false;
+      continue;
+    }
+    disposition = isProvenFreshReplacementExpression(propertyValue, "", context) ? true : null;
+  }
+  return disposition;
+};
+
 const updateTargetReplacementDisposition = (
   updateExpression: EsTreeNode,
   mutation: MutableStateReferenceMutation,
@@ -476,8 +523,20 @@ const updateTargetReplacementDisposition = (
 ): boolean | null => {
   const targetKey = resolveExpressionKey(mutation.receiver, context);
   const targetPath = staticPropertyPathForExpression(mutation.receiver, context);
-  if (!targetKey || !targetPath) return null;
+  if (!targetPath) return null;
   const candidate = stripParenExpression(updateExpression);
+  if (!targetKey) {
+    if (targetPath.length === 0) return null;
+    if (!isNodeOfType(candidate, "ObjectExpression")) {
+      return staticPathPreservesTarget(
+        staticPropertyPathForExpression(candidate, context),
+        targetPath,
+      )
+        ? false
+        : null;
+    }
+    return objectTargetPathReplacementDisposition(candidate, targetPath, true, context);
+  }
   if (targetPath.length === 0) {
     if (expressionPreservesTarget(candidate, targetKey, mutation.node, context)) return false;
     return isProvenFreshReplacementExpression(candidate, targetKey, context) ? true : null;
@@ -500,21 +559,24 @@ const updateTargetReplacementDisposition = (
   );
 };
 
-const notifierReplacesTarget = (
+const notifierTargetReplacementDisposition = (
   notifierCall: EsTreeNodeOfType<"CallExpression">,
   mutation: MutableStateReferenceMutation,
   context: RuleContext,
-): boolean => {
-  const targetKey = resolveExpressionKey(mutation.receiver, context);
+): boolean | null => {
   const updateArgument = notifierCall.arguments[0];
-  if (!targetKey || !updateArgument || isNodeOfType(updateArgument, "SpreadElement")) return false;
+  if (!updateArgument) return false;
+  if (isNodeOfType(updateArgument, "SpreadElement")) return null;
   const updateFunction = resolveExactLocalFunction(updateArgument, context.scopes);
   const updateExpressions = updateFunction
     ? returnedExpressionsForFunction(updateFunction)
     : [updateArgument];
-  return updateExpressions.some(
-    (expression) => updateTargetReplacementDisposition(expression, mutation, context) === true,
+  const dispositions = updateExpressions.map((expression) =>
+    updateTargetReplacementDisposition(expression, mutation, context),
   );
+  if (dispositions.some((disposition) => disposition === true)) return true;
+  if (dispositions.some((disposition) => disposition === null)) return null;
+  return false;
 };
 
 const analyzeSnapshotContainer = (
@@ -524,6 +586,7 @@ const analyzeSnapshotContainer = (
   storeSymbolIds: ReadonlySet<number>,
   context: RuleContext,
   reportedNodes: WeakSet<EsTreeNode>,
+  returnedUpdateExpressions: readonly EsTreeNode[] = [],
 ): void => {
   if (hasUnsupportedSnapshotControlFlow(statements)) return;
   const state: MutableStateReferenceState = {
@@ -572,11 +635,15 @@ const analyzeSnapshotContainer = (
     const followingNotifiers = notifierCalls.filter(
       (notifier) => notifier.statementIndex >= statementIndex,
     );
-    if (
-      followingNotifiers.some((notifier) =>
-        notifierReplacesTarget(notifier.callExpression, mutation, context),
-      )
-    ) {
+    const replacementDispositions = [
+      ...followingNotifiers.map((notifier) =>
+        notifierTargetReplacementDisposition(notifier.callExpression, mutation, context),
+      ),
+      ...returnedUpdateExpressions.map((expression) =>
+        updateTargetReplacementDisposition(expression, mutation, context),
+      ),
+    ];
+    if (replacementDispositions.some((disposition) => disposition !== false)) {
       continue;
     }
     if (reportedNodes.has(mutation.node)) continue;
@@ -599,6 +666,7 @@ export const zustandNoMutatingState = defineRule({
       ZustandCreatorBinding
     >();
     const functionContainers = new Set<EsTreeNode>();
+    const setUpdaterFunctions = new Set<EsTreeNode>();
     const storeSymbolIds = new Set<number>();
     const reportedNodes = new WeakSet<EsTreeNode>();
     let programNode: EsTreeNodeOfType<"Program"> | null = null;
@@ -651,7 +719,9 @@ export const zustandNoMutatingState = defineRule({
             const updaterArgument = node.arguments[0];
             if (!updaterArgument || isNodeOfType(updaterArgument, "SpreadElement")) return;
             const updaterFunction = resolveExactLocalFunction(updaterArgument, context.scopes);
-            if (updaterFunction) analyzeSetUpdater(updaterFunction, context, reportedNodes);
+            if (!updaterFunction) return;
+            setUpdaterFunctions.add(updaterFunction);
+            analyzeSetUpdater(updaterFunction, context, reportedNodes);
           });
         }
         if (programNode) {
@@ -674,6 +744,9 @@ export const zustandNoMutatingState = defineRule({
             storeSymbolIds,
             context,
             reportedNodes,
+            setUpdaterFunctions.has(functionContainer)
+              ? returnedExpressionsForFunction(functionContainer)
+              : [],
           );
         }
       },

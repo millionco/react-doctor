@@ -158,6 +158,8 @@ Detector contract:
 - Require the paired `set` parameter to be used before treating `get()` mutations without a
   notifier as reactive-state bugs. A creator with an unused `set` parameter can deliberately use
   Zustand as an imperative cache with no subscribers.
+- Treat a surrounding `set` updater's returned value as the notifier for `get()` snapshots read
+  inside that updater, and abstain whenever replacement freshness cannot be proven.
 - Treat clone-before-mutate as valid when the clone is statically proven fresh.
 - Treat mutation inside a creator wrapped by the official `immer` middleware as valid.
 - Follow mutations through simple `if`/`else` branches when every branch rejoins before the

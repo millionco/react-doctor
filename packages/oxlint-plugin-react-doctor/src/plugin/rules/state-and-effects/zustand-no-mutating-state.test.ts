@@ -282,6 +282,49 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("abstains from unproven snapshot replacements", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          updateWithBinding: () => {
+            const items = get().items;
+            items.push("next");
+            const nextItems = [...items];
+            set({ items: nextItems });
+          },
+          updateWithHelper: () => {
+            const items = get().items;
+            items.push("next");
+            set({ items: Array.from(items) });
+          },
+        }));
+      `,
+      0,
+    );
+  });
+
+  it("uses set updater returns as snapshot notifications", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          safe: () => set(() => {
+            const items = get().items;
+            items.push("next");
+            return { items: [...items] };
+          }),
+          unsafe: () => set(() => {
+            const items = get().items;
+            items.push("next");
+            return { items };
+          }),
+        }));
+      `,
+      1,
+    );
+  });
+
   it("matches the replacement property to the mutated snapshot path", () => {
     expectDiagnosticCount(
       `

@@ -505,4 +505,20 @@ describe("Ink rules", () => {
     expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(0);
     expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(0);
   });
+
+  it("does not associate renderer options through statically unreachable branches", () => {
+    const componentBranchCode = `
+      import {render,Text} from "ink";
+      import {Suspense} from "react";
+      const Root=()=> <>{false && <Suspense fallback={null}><Text /></Suspense>}</>;
+      render(<Root/>);
+    `;
+    const renderBranchCode = `
+      import {render,Text} from "ink";
+      import {Suspense} from "react";
+      false && render(<Suspense fallback={null}><Text /></Suspense>);
+    `;
+    expect(runRule(inkSuspenseRequiresConcurrent, componentBranchCode).diagnostics).toHaveLength(0);
+    expect(runRule(inkSuspenseRequiresConcurrent, renderBranchCode).diagnostics).toHaveLength(0);
+  });
 });

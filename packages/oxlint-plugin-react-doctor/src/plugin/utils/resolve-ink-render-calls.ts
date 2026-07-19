@@ -3,6 +3,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
+import { isNodeReachableWithinFunction } from "./is-node-reachable-within-function.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveInkApiName } from "./resolve-ink-api-name.js";
 import type { RuleContext } from "./rule-context.js";
@@ -46,7 +47,8 @@ const canRenderComponent = (
     }
     if (
       !isNodeOfType(descendantNode, "JSXOpeningElement") ||
-      !isNodeOfType(descendantNode.name, "JSXIdentifier")
+      !isNodeOfType(descendantNode.name, "JSXIdentifier") ||
+      !isNodeReachableWithinFunction(descendantNode, context)
     ) {
       return;
     }
@@ -75,7 +77,8 @@ const renderCallCanMountComponent = (
     }
     if (
       !isNodeOfType(descendantNode, "JSXOpeningElement") ||
-      !isNodeOfType(descendantNode.name, "JSXIdentifier")
+      !isNodeOfType(descendantNode.name, "JSXIdentifier") ||
+      !isNodeReachableWithinFunction(descendantNode, context)
     ) {
       return;
     }
@@ -96,7 +99,8 @@ export const collectInkRenderCalls = (
   walkAst(program, (descendantNode) => {
     if (
       !isNodeOfType(descendantNode, "CallExpression") ||
-      resolveInkApiName(descendantNode.callee, context.scopes) !== apiName
+      resolveInkApiName(descendantNode.callee, context.scopes) !== apiName ||
+      !isNodeReachableWithinFunction(descendantNode, context)
     ) {
       return;
     }
@@ -145,6 +149,7 @@ export const resolveInkRenderCallsForNode = (
   renderCalls: ReadonlyArray<InkRenderCall>,
   context: RuleContext,
 ): ReadonlyArray<InkRenderCall> => {
+  if (!isNodeReachableWithinFunction(node, context)) return [];
   const directRenderCalls = renderCalls.filter((renderCall) => {
     const renderedNode = renderCall.node.arguments[0];
     return (

@@ -569,10 +569,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
         ...conditions.map((condition) => `(${condition}&&items)`),
         "[...items]",
       ];
-      const buildBalancedResultExpression = (
-        startIndex: number,
-        endIndex: number,
-      ): string => {
+      const buildBalancedResultExpression = (startIndex: number, endIndex: number): string => {
         if (endIndex - startIndex === 1) {
           return resultExpressions[startIndex] ?? "[...items]";
         }
@@ -588,3 +585,5 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
     const duration = performance.now() - start;
     expect(result.diagnostics).toHaveLength(0);
     expect(duration).toBeLessThan(1_500);
+  });
+});

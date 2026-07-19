@@ -39,12 +39,10 @@ interface ZustandApiBinding {
 }
 
 const ALLOCATING_ARRAY_METHODS = new Set([
-  "concat",
   "filter",
   "flat",
   "flatMap",
   "map",
-  "slice",
   "toReversed",
   "toSorted",
   "toSpliced",
@@ -311,7 +309,11 @@ const resolveSelectorFunction = (
 
   if (!isNodeOfType(candidate, "Identifier")) return null;
   const symbol = scopes.symbolFor(candidate);
-  if (!symbol?.initializer || visitedSymbolIds.has(symbol.id)) return null;
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
+  if (symbol.kind === "function" && isFunctionLike(symbol.declarationNode)) {
+    return symbol.declarationNode;
+  }
+  if (symbol.kind !== "const" || !symbol.initializer) return null;
   visitedSymbolIds.add(symbol.id);
   return resolveSelectorFunction(symbol.initializer, scopes, visitedSymbolIds);
 };

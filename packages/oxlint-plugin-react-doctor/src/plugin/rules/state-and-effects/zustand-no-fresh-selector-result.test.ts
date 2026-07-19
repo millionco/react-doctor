@@ -41,7 +41,7 @@ describe("zustand-no-fresh-selector-result", () => {
         import * as Zustand from "zustand";
         const useBearStore = Zustand.create(() => ({ bears: [] }));
         const lookup = useBearStore((state) => new Map(state.bears.map((bear) => [bear.id, bear])));
-        const ordered = useBearStore((state) => state.bears.slice().sort(compareBears));
+        const ordered = useBearStore((state) => state.bears.filter(isBear).sort(compareBears));
       `,
       2,
     );
@@ -88,6 +88,33 @@ describe("zustand-no-fresh-selector-result", () => {
         const active = useBearStore(selectActive);
       `,
       1,
+    );
+  });
+
+  it("does not follow mutable or parameter-default selector aliases", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useBearStore = create(() => ({ bears: [], label: "" }));
+        let mutableSelector = (state) => ({ bears: state.bears });
+        mutableSelector = (state) => state.bears;
+        const first = useBearStore(mutableSelector);
+        const readWithDefault = (selector = (state) => ({ bears: state.bears })) =>
+          useBearStore(selector);
+      `,
+      0,
+    );
+  });
+
+  it("does not classify string slice and concat results as fresh arrays", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useBearStore = create(() => ({ label: "bears" }));
+        const prefix = useBearStore((state) => state.label.slice(0, 2));
+        const decorated = useBearStore((state) => state.label.concat("!"));
+      `,
+      0,
     );
   });
 

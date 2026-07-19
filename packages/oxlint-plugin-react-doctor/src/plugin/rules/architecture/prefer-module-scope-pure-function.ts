@@ -77,6 +77,11 @@ export const preferModuleScopePureFunction = defineRule({
   tags: ["test-noise"],
   severity: "warn",
   category: "Architecture",
+  // React Compiler caches per-render function allocations itself, so both
+  // halves of the recommendation (avoid the re-allocation, keep identity
+  // stable for memoized children) are already handled on compiled code.
+  // Mirrors the gate on its sibling `prefer-module-scope-static-value`.
+  disabledWhen: ["react-compiler"],
   recommendation:
     "Move the function above the component, at the top of the file. It doesn't use local state, so rebuilding it each update is wasted work.",
   create: (context: RuleContext) => {

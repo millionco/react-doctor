@@ -5,6 +5,45 @@ import { noAdjustStateOnPropChange } from "./no-adjust-state-on-prop-change.js";
 describe("no-adjust-state-on-prop-change — regressions", () => {
   it("ships at warn severity, matching the derived-state family", () => {
     expect(noAdjustStateOnPropChange.severity).toBe("warn");
+    expect(noAdjustStateOnPropChange.recommendation).toContain(
+      "Avoid tracking the previous prop in more state",
+    );
+  });
+
+  it("leaves the exact Brainly guarded prop mirror outside this effect rule", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function RadioGroup({ value }) {
+        const [selectedValue, setSelectedValue] = useState(value ?? null);
+        const [prevValue, setPrevValue] = useState(value);
+        if (value !== prevValue) {
+          setPrevValue(value);
+          setSelectedValue(value ?? null);
+        }
+        return selectedValue;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("leaves a guarded previous-render trend tracker outside this effect rule", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Counter({ count }) {
+        const [previousCount, setPreviousCount] = useState(count);
+        const [trend, setTrend] = useState(null);
+        if (count !== previousCount) {
+          setPreviousCount(count);
+          setTrend(count > previousCount ? "increasing" : "decreasing");
+        }
+        return trend;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("stays silent on constant transition flags with a setTimeout sibling", () => {
@@ -44,6 +83,106 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on synchronous resets beside subscription setup", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Feed({ source }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          source.subscribe(() => refresh());
+          window.addEventListener("focus", refresh);
+          source.events.on("change", refresh);
+        }, [source]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a synchronous reset beside observer registration", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Feed({ source }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          const observer = new ResizeObserver(() => refresh());
+          observer.observe(source);
+        }, [source]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a synchronous reset beside a member-style HTTP request", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Search({ query }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          void axios.get("/search", { params: { query } });
+        }, [query]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports a synchronous reset beside an unrelated get method", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Selection({ itemId, cache }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          cache.get(itemId);
+        }, [itemId, cache]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports when external work only exists in an uninvoked nested function", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Selection({ itemId, source }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          const subscribeLater = () => source.subscribe(refresh);
+        }, [itemId, source]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a nested subscription helper is invoked by the effect", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Selection({ itemId, source }) {
+        const [selection, setSelection] = useState(null);
+        useEffect(() => {
+          setSelection(null);
+          const subscribe = () => source.subscribe(refresh);
+          subscribe();
+        }, [itemId, source]);
+        return selection;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a literal reset beside a timer callback", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
@@ -60,7 +199,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("stays silent on a constant setter with no copied render source", () => {
+  it("reports the published prop-keyed constant reset", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `function List({ items }) {
@@ -71,7 +210,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays silent on an opaque hook result member read", () => {
@@ -258,7 +397,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("stays silent on a module-constant reset with no copied render source", () => {
+  it("reports an immutable module-constant reset with no external work", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `const EMPTY = { items: [] };
@@ -271,10 +410,10 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent on a prop-keyed constant reset inside memo and forwardRef", () => {
+  it("reports a prop-keyed constant reset inside memo and forwardRef", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `const VideoBlock = memo(forwardRef(({ url }, ref) => {
@@ -286,7 +425,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }));`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays silent on a timer-driven two-phase transition", () => {
@@ -426,7 +565,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
-    it("stays silent on a constant reset keyed on a prop dependency", () => {
+    it("reports a constant reset keyed on a prop dependency", () => {
       const result = runRule(
         noAdjustStateOnPropChange,
         `function List({ items }) {
@@ -438,7 +577,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
         }`,
       );
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
     });
 
     it("stays silent on a nested two-phase timer toggle", () => {

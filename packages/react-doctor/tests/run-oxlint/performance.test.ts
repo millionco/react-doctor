@@ -13,8 +13,7 @@ describe("runOxlint", () => {
       project: buildTestProject({
         rootDirectory: BASIC_REACT_DIRECTORY,
         tanstackQueryVersion: "^5.66.0",
-        mobxVersion: null,
-        styledComponentsVersion: null,
+        hasSsrDependency: true,
       }),
     });
   });

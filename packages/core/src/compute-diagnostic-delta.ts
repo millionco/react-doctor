@@ -6,85 +6,181 @@ export interface DiagnosticDelta {
   readonly newDiagnostics: Diagnostic[];
   /** Count of base diagnostics with no head match — resolved by the change. */
   readonly fixedCount: number;
+  /** Pre-existing diagnostics matched after moving to a different file. */
+  readonly crossFileMatchCount: number;
 }
 
 export interface ComputeDiagnosticDeltaInput {
   readonly headDiagnostics: ReadonlyArray<Diagnostic>;
   readonly baseDiagnostics: ReadonlyArray<Diagnostic>;
-  /**
-   * Returns the source text of `filePath:line` in the head / base trees. It
-   * fingerprints a diagnostic by the *content* of its flagged line rather than
-   * the absolute line number, so code that merely shifted down (lines inserted
-   * above it) is matched as pre-existing instead of reported as new. Return
-   * `null` when the line can't be read; the fingerprint then falls back to
-   * `(file, rule)` and diagnostics are matched in order.
-   */
   readonly readHeadLine: (filePath: string, line: number) => string | null;
   readonly readBaseLine: (filePath: string, line: number) => string | null;
+  /** Returns the normalized source range diagnosed in the head tree. */
+  readonly readHeadEvidence?: (diagnostic: Diagnostic) => string | null;
+  /** Returns the normalized source range diagnosed in the base tree. */
+  readonly readBaseEvidence?: (diagnostic: Diagnostic) => string | null;
 }
 
-const fingerprintDiagnostic = (diagnostic: Diagnostic, lineText: string | null): string => {
+interface DiagnosticMatchKeys {
+  readonly stableEvidenceKey: string | null;
+  readonly sameFileStableEvidenceKey: string | null;
+  readonly sameFileFallbackKey: string | null;
+}
+
+interface DiagnosticMatchCandidate extends DiagnosticMatchKeys {
+  readonly diagnosticIndex: number;
+}
+
+const fingerprintText = (text: string): string => createHash("sha256").update(text).digest("hex");
+
+const normalizeEvidence = (evidence: string): string => evidence.replace(/\s+/g, " ").trim();
+
+const getDiagnosticMatchKeys = (
+  diagnostic: Diagnostic,
+  evidence: string | null,
+): DiagnosticMatchKeys => {
   const ruleKey = `${diagnostic.plugin}/${diagnostic.rule}`;
-  const snippet =
-    lineText === null || diagnostic.matchByOccurrence
-      ? ""
-      : createHash("sha1").update(lineText.trim()).digest("hex");
-  return `${diagnostic.filePath}\u0000${ruleKey}\u0000${snippet}`;
+  const messageFingerprint = fingerprintText(`${diagnostic.title ?? ""}\0${diagnostic.message}`);
+  const normalizedEvidence = evidence === null ? "" : normalizeEvidence(evidence);
+  const stableEvidenceKey =
+    normalizedEvidence.length > 0
+      ? `evidence\0${ruleKey}\0${messageFingerprint}\0${fingerprintText(normalizedEvidence)}`
+      : null;
+  return {
+    stableEvidenceKey,
+    sameFileStableEvidenceKey:
+      stableEvidenceKey === null ? null : `${diagnostic.filePath}\0${stableEvidenceKey}`,
+    sameFileFallbackKey:
+      diagnostic.matchByOccurrence || normalizedEvidence.length === 0
+        ? `fallback\0${diagnostic.filePath}\0${ruleKey}\0${messageFingerprint}`
+        : null,
+  };
 };
 
+const addDiagnosticIndex = (
+  buckets: Map<string, number[]>,
+  key: string | null,
+  diagnosticIndex: number,
+): void => {
+  if (key === null) return;
+  const diagnosticIndexes = buckets.get(key) ?? [];
+  diagnosticIndexes.push(diagnosticIndex);
+  buckets.set(key, diagnosticIndexes);
+};
+
+const takeMatchingDiagnosticIndex = (
+  buckets: ReadonlyMap<string, ReadonlyArray<number>>,
+  key: string | null,
+  matchedDiagnosticIndexes: ReadonlySet<number>,
+): number | null => {
+  if (key === null) return null;
+  for (const diagnosticIndex of buckets.get(key) ?? []) {
+    if (!matchedDiagnosticIndexes.has(diagnosticIndex)) return diagnosticIndex;
+  }
+  return null;
+};
+
+const readDiagnosticEvidence = (
+  diagnostic: Diagnostic,
+  readEvidence: ComputeDiagnosticDeltaInput["readHeadEvidence"],
+  readLine: ComputeDiagnosticDeltaInput["readHeadLine"],
+): string | null => readEvidence?.(diagnostic) ?? readLine(diagnostic.filePath, diagnostic.line);
+
+const buildMatchCandidates = (
+  diagnostics: ReadonlyArray<Diagnostic>,
+  readEvidence: ComputeDiagnosticDeltaInput["readHeadEvidence"],
+  readLine: ComputeDiagnosticDeltaInput["readHeadLine"],
+): DiagnosticMatchCandidate[] =>
+  diagnostics.map((diagnostic, diagnosticIndex) => ({
+    diagnosticIndex,
+    ...getDiagnosticMatchKeys(
+      diagnostic,
+      readDiagnosticEvidence(diagnostic, readEvidence, readLine),
+    ),
+  }));
+
 /**
- * Diffs a head scan against a base scan to isolate the diagnostics a change
- * introduced (and count the ones it resolved). Matching is a multiset over a
- * position-independent fingerprint — `(filePath, plugin/rule, hash(flagged
- * line text))` — so inserting lines above an existing issue doesn't make it
- * look new, while a genuinely new occurrence (new line text, or one more of
- * the same) surfaces. Identical repeated findings are matched by count.
- *
- * Diagnostics carrying `matchByOccurrence` (resolved at diagnostic creation:
- * every Accessibility-category finding, plus rules opting in via their
- * `matchByOccurrence` metadata flag) drop the line-text snippet and match by
- * `(filePath, plugin/rule)` occurrence count alone. Their identity is the
- * flagged element, not the line's text, so editing the line (reindentation,
- * prettier reflow, collapsing a multi-line JSX element) doesn't reclassify a
- * pre-existing finding as new — while one MORE occurrence of the same rule in
- * the file still surfaces. Expression-level rules keep the line-text snippet:
- * there the flagged expression IS the finding, so changed text means new +
- * fixed.
- *
- * v1 limitation: the fingerprint keys on the head-relative `filePath`, and base
- * content is read at that same path. A file renamed by the change therefore has
- * no base match, so its pre-existing findings are reported as new. This
- * over-reports (never hides a real issue) and is rare; rename-aware base
- * resolution is a follow-up.
+ * Diffs a head scan against a base scan using a multiset of construct-level
+ * evidence. Stable identities combine plugin/rule, the diagnostic message,
+ * and normalized diagnosed source, so unchanged findings can move across
+ * files while changed constructs or messages remain new. Cardinality is
+ * retained for identical findings. Diagnostics explicitly marked
+ * `matchByOccurrence` may fall back to same-file plugin/rule/message matching
+ * after same-file strict evidence matching. Cross-file evidence matching runs
+ * last so a copy cannot consume a reformatted local occurrence. Unreadable
+ * evidence uses the same conservative fallback rather than matching across
+ * files without proof.
  */
 export const computeDiagnosticDelta = (input: ComputeDiagnosticDeltaInput): DiagnosticDelta => {
-  const unmatchedBaseByFingerprint = new Map<string, number>();
-  for (const diagnostic of input.baseDiagnostics) {
-    const key = fingerprintDiagnostic(
-      diagnostic,
-      input.readBaseLine(diagnostic.filePath, diagnostic.line),
+  const baseCandidates = buildMatchCandidates(
+    input.baseDiagnostics,
+    input.readBaseEvidence,
+    input.readBaseLine,
+  );
+  const headCandidates = buildMatchCandidates(
+    input.headDiagnostics,
+    input.readHeadEvidence,
+    input.readHeadLine,
+  );
+  const baseByStableEvidence = new Map<string, number[]>();
+  const baseBySameFileStableEvidence = new Map<string, number[]>();
+  const baseBySameFileFallback = new Map<string, number[]>();
+  for (const candidate of baseCandidates) {
+    addDiagnosticIndex(
+      baseByStableEvidence,
+      candidate.stableEvidenceKey,
+      candidate.diagnosticIndex,
     );
-    unmatchedBaseByFingerprint.set(key, (unmatchedBaseByFingerprint.get(key) ?? 0) + 1);
+    addDiagnosticIndex(
+      baseBySameFileStableEvidence,
+      candidate.sameFileStableEvidenceKey,
+      candidate.diagnosticIndex,
+    );
+    addDiagnosticIndex(
+      baseBySameFileFallback,
+      candidate.sameFileFallbackKey,
+      candidate.diagnosticIndex,
+    );
   }
 
-  const newDiagnostics: Diagnostic[] = [];
-  for (const diagnostic of input.headDiagnostics) {
-    const key = fingerprintDiagnostic(
-      diagnostic,
-      input.readHeadLine(diagnostic.filePath, diagnostic.line),
-    );
-    const availableMatches = unmatchedBaseByFingerprint.get(key) ?? 0;
-    if (availableMatches > 0) {
-      unmatchedBaseByFingerprint.set(key, availableMatches - 1);
-    } else {
-      newDiagnostics.push(diagnostic);
+  const matchedHeadDiagnosticIndexes = new Set<number>();
+  const matchedBaseDiagnosticIndexes = new Set<number>();
+  const matchCandidates = (
+    baseBuckets: ReadonlyMap<string, ReadonlyArray<number>>,
+    getKey: (candidate: DiagnosticMatchCandidate) => string | null,
+    onMatch?: (headDiagnosticIndex: number, baseDiagnosticIndex: number) => void,
+  ): void => {
+    for (const candidate of headCandidates) {
+      if (matchedHeadDiagnosticIndexes.has(candidate.diagnosticIndex)) continue;
+      const baseDiagnosticIndex = takeMatchingDiagnosticIndex(
+        baseBuckets,
+        getKey(candidate),
+        matchedBaseDiagnosticIndexes,
+      );
+      if (baseDiagnosticIndex === null) continue;
+      matchedHeadDiagnosticIndexes.add(candidate.diagnosticIndex);
+      matchedBaseDiagnosticIndexes.add(baseDiagnosticIndex);
+      onMatch?.(candidate.diagnosticIndex, baseDiagnosticIndex);
     }
-  }
+  };
 
-  let fixedCount = 0;
-  for (const remaining of unmatchedBaseByFingerprint.values()) {
-    fixedCount += remaining;
-  }
+  matchCandidates(baseBySameFileStableEvidence, (candidate) => candidate.sameFileStableEvidenceKey);
+  matchCandidates(baseBySameFileFallback, (candidate) => candidate.sameFileFallbackKey);
+  let crossFileMatchCount = 0;
+  matchCandidates(
+    baseByStableEvidence,
+    (candidate) => candidate.stableEvidenceKey,
+    (head, base) => {
+      if (input.headDiagnostics[head]?.filePath !== input.baseDiagnostics[base]?.filePath) {
+        crossFileMatchCount += 1;
+      }
+    },
+  );
 
-  return { newDiagnostics, fixedCount };
+  const newDiagnostics = input.headDiagnostics.filter(
+    (_diagnostic, diagnosticIndex) => !matchedHeadDiagnosticIndexes.has(diagnosticIndex),
+  );
+  const fixedCount = input.baseDiagnostics.length - matchedBaseDiagnosticIndexes.size;
+
+  return { newDiagnostics, fixedCount, crossFileMatchCount };
 };

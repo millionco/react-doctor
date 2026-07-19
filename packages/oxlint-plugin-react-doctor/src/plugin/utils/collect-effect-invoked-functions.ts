@@ -37,8 +37,9 @@ export const getPromiseChainCallForCallback = (candidate: EsTreeNode): EsTreeNod
 // path (transitively), and promise-chain callbacks rooted at calls made on
 // that path — as opposed to handlers merely registered for a later external
 // event (addEventListener / setInterval) or the returned cleanup function.
-export const collectEffectInvokedFunctions = (
+const collectInvokedFunctions = (
   effectCallback: EsTreeNode,
+  includePromiseCallbacks: boolean,
   scopes?: ScopeAnalysis,
 ): Set<EsTreeNode> => {
   const invokedFunctions = new Set<EsTreeNode>([effectCallback]);
@@ -105,7 +106,7 @@ export const collectEffectInvokedFunctions = (
         return;
       }
 
-      if (isPromiseChainCall(callee)) {
+      if (includePromiseCallbacks && isPromiseChainCall(callee)) {
         for (const callArgument of child.arguments ?? []) {
           enqueue(callArgument);
         }
@@ -120,3 +121,13 @@ export const collectEffectInvokedFunctions = (
 
   return invokedFunctions;
 };
+
+export const collectEffectInvokedFunctions = (
+  effectCallback: EsTreeNode,
+  scopes?: ScopeAnalysis,
+): Set<EsTreeNode> => collectInvokedFunctions(effectCallback, true, scopes);
+
+export const collectSynchronouslyEffectInvokedFunctions = (
+  effectCallback: EsTreeNode,
+  scopes?: ScopeAnalysis,
+): Set<EsTreeNode> => collectInvokedFunctions(effectCallback, false, scopes);

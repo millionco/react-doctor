@@ -104,6 +104,11 @@ describe("#858: subdirectory baseline resolves changed-file paths against the sc
       const headTotal = findings(headOnly);
       expect(headTotal).toBeGreaterThan(0);
 
+      writeFile(
+        path.join(uiDir, "src/unrelated-untracked.tsx"),
+        "export const unrelated = true;\n",
+      );
+
       // The fix: scan-relative paths, as the patched action now emits.
       const fixed = await scanUi([widgetRelative], { ref: baseRef });
       expect(fixed.baselineDelta).toBeDefined();
@@ -114,11 +119,17 @@ describe("#858: subdirectory baseline resolves changed-file paths against the sc
       // ...but pre-existing ones are subtracted, not re-reported as new.
       expect(findings(fixed)).toBeLessThan(headTotal);
 
-      // The bug: repo-relative paths (the pre-fix action output) double the
-      // prefix, so `git show <base>:./UI/src/widget.tsx` misses and the base
-      // count collapses to 0 — the exact signal in #858 (every finding "new").
+      // A repo-relative path still misses the head scan, but the side-aware
+      // plan now notices that the real changed head file was not analyzed and
+      // degrades instead of claiming that every base finding was fixed or new.
       const buggy = await scanUi([path.join("UI", widgetRelative)], { ref: baseRef });
-      expect(buggy.baselineDelta?.baseTotalCount).toBe(0);
+      expect(buggy.baselineDelta).toBeUndefined();
+
+      fs.renameSync(path.join(uiDir, widgetRelative), path.join(uiDir, "src/moved-widget.tsx"));
+      const unstagedRename = await scanUi([widgetRelative], { ref: baseRef });
+      expect(unstagedRename.baselineDelta).toBeDefined();
+      expect(unstagedRename.baselineDelta?.baseTotalCount).toBeGreaterThan(0);
+      expect(unstagedRename.baselineDelta?.fixedCount).toBe(0);
     } finally {
       consoleSpy.mockRestore();
       fs.rmSync(repoDir, { recursive: true, force: true });

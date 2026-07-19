@@ -2,6 +2,12 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noPassLiveStateToParent } from "./no-pass-live-state-to-parent.js";
 
+interface InternxtHelperFixtureOptions {
+  helperDeclaration: string;
+  helperInvocation: string;
+  itemLoader?: string;
+}
+
 // Must-detect anchors distilled from mined real-world bug shapes (the
 // 0.5.7 -> 0.5.8 regression review). Each fixture keeps the context an
 // overbroad FP guard is most likely to key on — useCallback-wrapped parent
@@ -18,7 +24,71 @@ const expectFiresAtLeast = (code: string, minimumDiagnosticCount: number): void 
   }
 };
 
+const expectFiresOnce = (code: string): void => {
+  const result = runRule(noPassLiveStateToParent, code);
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0]?.message).toContain("Pushing state up to a parent");
+};
+
+const makeInternxtHelperFixture = ({
+  helperDeclaration,
+  helperInvocation,
+  itemLoader = "getMoreTrashItems",
+}: InternxtHelperFixtureOptions): string => `
+  export const useTrashPagination = ({ getTrashPaginated, setHasMoreItems, isTrash }) => {
+    const [hasMoreTrashFolders] = useState(true);
+
+    const getMoreTrashFiles = useCallback(async () => {
+      const result = await getTrashPaginated();
+      setHasMoreItems(result && !result.finished);
+    }, [getTrashPaginated, setHasMoreItems]);
+
+    const getMoreTrashItems = useCallback(() => {
+      return hasMoreTrashFolders ? Promise.resolve() : getMoreTrashFiles();
+    }, [hasMoreTrashFolders, getMoreTrashFiles]);
+
+    useEffect(() => {
+      if (!isTrash) return;
+      ${helperDeclaration.replaceAll("ITEM_LOADER", itemLoader)}
+      ${helperInvocation}
+    }, [isTrash, getMoreTrashItems]);
+
+    return { hasMoreTrashFolders };
+  };
+`;
+
 describe("no-pass-live-state-to-parent — must-detect regressions", () => {
+  it("preserves live-state flow through direct React useEffectEvent wrappers", () => {
+    expectFiresAtLeast(
+      `import { useEffect, useEffectEvent, useState } from "react";
+      const Child = ({ onChange }) => {
+        const [value] = useState("");
+        const notify = useEffectEvent(onChange);
+        useEffect(() => {
+          notify(value);
+        }, [value]);
+        return null;
+      };`,
+      1,
+    );
+  });
+
+  it("does not trust a userland useEffectEvent wrapper", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `const useEffectEvent = (callback) => callback;
+      const Child = ({ onChange }) => {
+        const [value] = useState("");
+        const notify = useEffectEvent(onChange);
+        useEffect(() => notify(value), [value]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when a callback parameter is passed through a parent callback", () => {
     const result = runRule(
       noPassLiveStateToParent,
@@ -112,6 +182,61 @@ describe("no-pass-live-state-to-parent — must-detect regressions", () => {
       `,
       1,
     );
+  });
+
+  it.each([
+    {
+      helperDeclaration: "const fetchInitialTrashItems = () => ITEM_LOADER();",
+      helperInvocation: "fetchInitialTrashItems();",
+      name: "local synchronous helper",
+    },
+    {
+      helperDeclaration:
+        "const fetchInitialTrashItems = async () => { try { await ITEM_LOADER(); } catch (error) { errorService.reportError(error); } };",
+      helperInvocation: "void fetchInitialTrashItems();",
+      name: "local async helper invoked with void",
+    },
+    {
+      helperDeclaration: "const fetchInitialTrashItems = async () => { await ITEM_LOADER(); };",
+      helperInvocation: "fetchInitialTrashItems();",
+      name: "local async helper",
+    },
+    {
+      helperDeclaration:
+        "const fetchInitialTrashItems = async () => { await ITEM_LOADER(); }; const loadInitialTrashItems = fetchInitialTrashItems;",
+      helperInvocation: "void loadInitialTrashItems();",
+      name: "immutable local helper alias",
+    },
+  ])("preserves the Internxt live-state verdict through a $name", (fixture) => {
+    expectFiresOnce(makeInternxtHelperFixture(fixture));
+  });
+
+  it("stays silent when the local helper does not reach a parent callback", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      makeInternxtHelperFixture({
+        helperDeclaration: "const fetchInitialTrashItems = async () => { await ITEM_LOADER(); };",
+        helperInvocation: "void fetchInitialTrashItems();",
+        itemLoader: "getTrashPaginated",
+      }),
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not follow a reassigned local helper alias", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      makeInternxtHelperFixture({
+        helperDeclaration:
+          "const fetchInitialTrashItems = async () => { await ITEM_LOADER(); }; let loadInitialTrashItems = fetchInitialTrashItems; loadInitialTrashItems = async () => {};",
+        helperInvocation: "void loadInitialTrashItems();",
+      }),
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("fires on onSubmit receiving live form state while another setter runs inside setTimeout (latitude Form)", () => {

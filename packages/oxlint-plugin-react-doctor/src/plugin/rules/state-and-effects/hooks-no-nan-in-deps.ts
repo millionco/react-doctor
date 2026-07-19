@@ -1,7 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getCalleeName } from "../../utils/get-callee-name.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isGlobalNanValue } from "../../utils/is-global-nan-value.js";
 
@@ -50,9 +49,8 @@ export const hooksNoNanInDeps = defineRule({
     "Remove `NaN` (or `Number.NaN`) from the dependency array. If a value can be NaN at runtime, normalise it (`Number.isNaN(x) ? 0 : x`) before passing it.",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isHookCall(node, HOOKS_WITH_DEP_ARRAY)) return;
-      const calleeName = getCalleeName(node);
-      const depsIndex = calleeName === "useImperativeHandle" ? 2 : 1;
+      if (!isReactHookCall(node, HOOKS_WITH_DEP_ARRAY, context.scopes)) return;
+      const depsIndex = isReactHookCall(node, "useImperativeHandle", context.scopes) ? 2 : 1;
       const depsArgument = node.arguments[depsIndex];
       if (!depsArgument || !isNodeOfType(depsArgument, "ArrayExpression")) return;
       for (const element of depsArgument.elements) {

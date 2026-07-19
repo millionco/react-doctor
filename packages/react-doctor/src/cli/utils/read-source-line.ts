@@ -2,8 +2,8 @@ import { createNodeReadFileLinesSync } from "@react-doctor/core";
 
 /**
  * Builds a cached `(filePath, line) -> source text` reader rooted at
- * `rootDirectory`, used to fingerprint a diagnostic by the content of its
- * flagged line (see `computeDiagnosticDelta`). Wraps core's
+ * `rootDirectory`, used as the fallback when construct-level diagnostic
+ * evidence cannot be read. Wraps core's
  * `createNodeReadFileLinesSync` with per-file memoization + 1-indexed line
  * lookup; unreadable files / out-of-range lines return `null`.
  */

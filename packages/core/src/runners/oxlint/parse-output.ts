@@ -227,7 +227,8 @@ const resolveDiagnosticCategory = (plugin: string, rule: string): string => {
 
 // Whether the finding's identity is the flagged element rather than the
 // flagged line's text, so `computeDiagnosticDelta` matches it by
-// `(file, rule)` occurrence count. Resolved here — the one place that
+// same-file `(rule, message)` occurrence count after strict evidence matching.
+// Resolved here — the one place that
 // already consults rule metadata — so the delta stays a pure function of
 // its `Diagnostic` inputs. Every Accessibility-category finding qualifies
 // (element-level by nature, including adopted third-party a11y rules);

@@ -316,6 +316,17 @@ describe("no-inline-hoc-on-component", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat a dynamic uppercase member key as a component assignment", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `registry[Component] = withTheme((props) => {
+        useTheme();
+        return <div>{props.children}</div>;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a function that only renders JSX in a nested non-returned callback", () => {
     const result = runRule(
       noInlineHocOnComponent,
@@ -329,12 +340,17 @@ describe("no-inline-hoc-on-component", () => {
 
   it.each([
     ["an array map callback", `items.map((item) => <Row key={item.id} item={item} />)`],
+    ["an optional array map callback", `items?.map((item) => <Row key={item.id} item={item} />)`],
     [
       "an array flatMap callback with a block body",
       `items.flatMap((item) => {
         if (!item.visible) return [];
         return [<Row key={item.id} item={item} />];
       })`,
+    ],
+    [
+      "an optional array flatMap callback",
+      `items?.flatMap((item) => [<Row key={item.id} item={item} />])`,
     ],
     [
       "a global Array.from mapper",
@@ -350,6 +366,60 @@ describe("no-inline-hoc-on-component", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags JSX returned through an imported useMemo callback", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `import { useMemo } from "react";
+      const Rows = withTracking(({ items }) => {
+        useRows(items);
+        return useMemo(() => <RowList items={items} />, [items]);
+      });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags JSX returned through a global React.useMemo callback", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Rows = withTracking(({ items }) => {
+        React.useState(items);
+        return React.useMemo(() => <RowList items={items} />, [items]);
+      });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a shadowed useMemo callback as React render output", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const useMemo = (callback) => ({ callback });
+      const Rows = withTracking(({ items }) => {
+        useRows(items);
+        return useMemo(() => <RowList items={items} />, [items]);
+      });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a shadowed React.useMemo callback as React render output", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const React = {
+        useMemo: (callback) => ({ callback }),
+        useState: (value) => value,
+      };
+      const Rows = withTracking(({ items }) => {
+        React.useState(items);
+        return React.useMemo(() => <RowList items={items} />, [items]);
+      });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it.each([

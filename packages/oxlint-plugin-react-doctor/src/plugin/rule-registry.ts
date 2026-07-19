@@ -281,6 +281,7 @@ import { noReactDomDeprecatedApis } from "./rules/architecture/no-react-dom-depr
 import { noReact19DeprecatedApis } from "./rules/architecture/no-react19-deprecated-apis.js";
 import { noRedundantRoles } from "./rules/a11y/no-redundant-roles.js";
 import { noRedundantShouldComponentUpdate } from "./rules/react-builtins/no-redundant-should-component-update.js";
+import { noRefCallbackCleanupBeforeReact19 } from "./rules/correctness/no-ref-callback-cleanup-before-react-19.js";
 import { noRefCurrentInRender } from "./rules/state-and-effects/no-ref-current-in-render.js";
 import { noRenderInRender } from "./rules/architecture/no-render-in-render.js";
 import { noRenderPropChildren } from "./rules/architecture/no-render-prop-children.js";
@@ -3725,6 +3726,17 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noRedundantShouldComponentUpdate.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-ref-callback-cleanup-before-react-19",
+    id: "no-ref-callback-cleanup-before-react-19",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRefCallbackCleanupBeforeReact19,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

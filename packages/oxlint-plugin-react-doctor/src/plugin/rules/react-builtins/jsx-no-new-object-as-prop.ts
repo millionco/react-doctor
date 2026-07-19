@@ -164,7 +164,7 @@ export const jsxNoNewObjectAsProp = defineRule({
         // function, which routinely ignores reference identity (antd's
         // MemoInput, json-edit-react's CollectionNode) — a fresh object
         // cannot break that bailout.
-        if (hasCustomMemoComparator(openingName)) return;
+        if (hasCustomMemoComparator(openingName, context.scopes)) return;
         if (!isInsideFunctionScope(node)) return;
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
         if (ALWAYS_FRESH_OBJECT_PROPS.has(node.name.name)) return;

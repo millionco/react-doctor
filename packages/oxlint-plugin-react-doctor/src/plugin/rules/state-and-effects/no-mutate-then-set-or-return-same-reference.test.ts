@@ -565,8 +565,10 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
         { length: pairCount },
         (_, conditionIndex) => `condition${conditionIndex}`,
       );
-      const sameReferenceResults = `${conditions.map((condition) => `${condition}?items:`).join("")}[...items]`;
-      return `const C=({flag,${conditions.join(",")}})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{if(flag){${mutations}}if(!flag){return ${sameReferenceResults}}return [...items]})}`;
+      const sameReferenceResults = conditions
+        .map((condition) => `if(${condition})return items;`)
+        .join("");
+      return `const C=({flag,${conditions.join(",")}})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{if(flag){${mutations}}if(!flag){${sameReferenceResults}}return [...items]})}`;
     };
     runRule(noMutateThenSetOrReturnSameReference, buildSource(200));
     const start = performance.now();

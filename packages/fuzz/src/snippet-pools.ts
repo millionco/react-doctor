@@ -277,6 +277,7 @@ export const GUARD_SNIPPET_POOL = [
 
 // Library idioms — tanstack, mobx, styled-components, next/dynamic, redux.
 export const LIBRARY_SNIPPET_POOL = [
+  `const fuzzValtioSnapshot = useFuzzValtioSnapshot(fuzzValtioState); const fuzzValtioCount = fuzzValtioState.count;`,
   `const zodSchema = z.object({ value: z.string() }).strict();`,
   `const subscribeStore = useCallback((onStoreChange) => { store.on("change", onStoreChange); return () => store.off("change", onStoreChange); }, [store]); const snapshot = useSyncExternalStore(subscribeStore, getSnapshot);`,
   `const subscribeMediaQuery = useCallback((notify) => { const media = window.matchMedia("(prefers-color-scheme: dark)"); media.addListener(notify); return () => media.removeListener(notify); }, []); const mediaQuerySnapshot = useSyncExternalStore(subscribeMediaQuery, () => window.matchMedia("(prefers-color-scheme: dark)").matches);`,
@@ -662,6 +663,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 
 export const IMPORT_LINE_POOL = [
   `import { compile as compileFuzzMdx } from "@mdx-js/mdx"; const fuzzCompiledMdx = await compileFuzzMdx(tenantContent);`,
+  `import { proxy as createFuzzValtioProxy, useSnapshot as useFuzzValtioSnapshot } from "valtio"; const fuzzValtioState = createFuzzValtioProxy({ count: 0 });`,
   `import fetch from "node-fetch";`,
   `import { motion, MotionConfig, useReducedMotion } from "framer-motion";`,
   `import React from "react";`,

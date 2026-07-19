@@ -49,6 +49,7 @@ const BUCKETS_REQUIRING_REACT = new Set([
   "react-builtins",
   "react-ui",
   "state-and-effects",
+  "valtio",
   "view-transitions",
 ]);
 
@@ -166,6 +167,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   "state-and-effects": "State & Effects",
   "tanstack-query": "TanStack Query",
   "tanstack-start": "TanStack Start",
+  valtio: "State & Effects",
   "view-transitions": "Correctness",
   zod: "Architecture",
 };

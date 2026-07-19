@@ -1369,6 +1369,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "use-lazy-motion": {
     code: 'import { motion } from "framer-motion";\nconst El = () => <motion.div animate={{ opacity: 1 }} />;',
   },
+  "valtio-no-proxy-read-in-render": {
+    code: 'import { useSnapshot } from "valtio";\nexport const Count = ({ state }) => { const snapshot = useSnapshot(state); return <span>{state.count}</span>; };',
+  },
   "void-dom-elements-no-children": {
     code: "const a = <img>hi</img>;",
   },

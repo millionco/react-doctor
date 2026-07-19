@@ -404,6 +404,7 @@ import { unsafeJsonInHtml } from "./rules/security-scan/unsafe-json-in-html.js";
 import { untrustedRedirectFollowing } from "./rules/security-scan/untrusted-redirect-following.js";
 import { urlPrefilledPrivilegedAction } from "./rules/security-scan/url-prefilled-privileged-action.js";
 import { useLazyMotion } from "./rules/bundle-size/use-lazy-motion.js";
+import { valtioNoProxyReadInRender } from "./rules/valtio/valtio-no-proxy-read-in-render.js";
 import { voidDomElementsNoChildren } from "./rules/react-builtins/void-dom-elements-no-children.js";
 import { webhookSignatureRisk } from "./rules/security-scan/webhook-signature-risk.js";
 import { zodV4NoDeprecatedErrorApis } from "./rules/zod/zod-v4-no-deprecated-error-apis.js";
@@ -5102,6 +5103,18 @@ export const reactDoctorRules = [
       ...useLazyMotion,
       framework: "global",
       category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/valtio-no-proxy-read-in-render",
+    id: "valtio-no-proxy-read-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...valtioNoProxyReadInRender,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(valtioNoProxyReadInRender.requires ?? [])])],
     },
   },
   {

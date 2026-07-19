@@ -19,7 +19,9 @@ interface InstalledInkVersionResolution {
 }
 
 const parseVersionToken = (version: string): ParsedPackageVersion | null => {
-  const match = version.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?(-[0-9A-Za-z.-]+)?/);
+  const match = version.match(
+    /^(\d+)(?:\.(\d+))?(?:\.(\d+))?(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/,
+  );
   if (!match) return null;
   return {
     major: Number(match[1]),

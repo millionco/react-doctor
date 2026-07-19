@@ -331,7 +331,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import {useInput} from "ink";const App=()=>{useInput(input=>{if(input.includes("\\n"))paste(input)});return null};',
   },
   "ink-static-is-append-only": {
-    code: 'import {Static} from "ink";const App=({items})=> <Static items={items.filter(Boolean)}/>;',
+    code: 'import {Static} from "ink";const App=({items})=> <Static items={items.toReversed()}/>;',
   },
   "ink-static-requires-key": {
     code: 'import {Static,Text} from "ink";const App=({items})=> <Static items={items}>{item=><Text>{item}</Text>}</Static>;',
@@ -343,7 +343,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import {Text} from "ink";const App=()=> <Text>{process.stdout.columns}</Text>;',
   },
   "ink-use-string-width-for-cursor": {
-    code: 'import {useCursor} from "ink";const App=({label})=>{const cursor=useCursor();cursor.setCursorPosition(label.length,0);return null};',
+    code: 'import {useCursor} from "ink";const App=({label})=>{const cursor=useCursor();cursor.setCursorPosition({x:label.length,y:0});return null};',
   },
   "ink-use-suspend-terminal": {
     code: 'import {useInput} from "ink";import {spawn} from "node:child_process";const App=()=>{useInput(()=>spawn("vim",[],{stdio:"inherit"}));return null};',

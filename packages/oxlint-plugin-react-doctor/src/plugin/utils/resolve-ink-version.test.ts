@@ -68,6 +68,20 @@ describe("Ink version resolution", () => {
       JSON.stringify({ name: "ink", version: "unknown" }),
     );
     expect(isInkVersionAtLeast(sourceFile, "3.0.0")).toBe(false);
+
+    const trailingGarbageFile = createPackageFile("invalid-installed-suffix", "^7.1.0");
+    const trailingGarbagePackageDirectory = path.join(
+      temporaryDirectory,
+      "invalid-installed-suffix",
+      "node_modules",
+      "ink",
+    );
+    fs.mkdirSync(trailingGarbagePackageDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(trailingGarbagePackageDirectory, "package.json"),
+      JSON.stringify({ name: "ink", version: "7.1.0garbage" }),
+    );
+    expect(isInkVersionAtLeast(trailingGarbageFile, "3.0.0")).toBe(false);
   });
 
   it("uses the lowest supported branch of a declared range", () => {

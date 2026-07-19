@@ -23,7 +23,7 @@ export const InkFuzzTarget = ({ items, label, node }) => {
   measureElement(node);
   focusManager.focus("target");
   setRawMode(true);
-  cursor.setCursorPosition(label.length, 0);
+  cursor.setCursorPosition({ x: label.length, y: 0 });
   useInput((input, key) => {
     if (key.ctrl && input === "c") process.exit(0);
     if (input.includes("\n")) paste(input);
@@ -42,7 +42,7 @@ export const InkFuzzTarget = ({ items, label, node }) => {
       <Text aria-role="dialog">
         <Box />
       </Text>
-      <Static items={items.filter(Boolean)}>{(item) => <Text>{item}</Text>}</Static>
+      <Static items={items.toReversed()}>{(item) => <Text>{item}</Text>}</Static>
       <Static items={items} />
       <Text>{process.stdout.columns + frame}</Text>
     </Box>

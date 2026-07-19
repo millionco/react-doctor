@@ -2,8 +2,8 @@ import { MINIMUM_INK_VERSIONS } from "../../constants/ink.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
-import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -73,6 +73,17 @@ const isInsideSuspendTerminal = (node: EsTreeNode, context: RuleContext): boolea
   return false;
 };
 
+const isInsideUseInputHandler = (node: EsTreeNode, context: RuleContext): boolean => {
+  const enclosingFunction = findEnclosingFunction(node);
+  const hookCall = enclosingFunction?.parent;
+  return Boolean(
+    hookCall &&
+    isNodeOfType(hookCall, "CallExpression") &&
+    hookCall.arguments[0] === enclosingFunction &&
+    resolveInkApiName(hookCall.callee, context.scopes) === "useInput",
+  );
+};
+
 export const inkUseSuspendTerminal = defineRule({
   id: "ink-use-suspend-terminal",
   title: "Interactive child process bypasses Ink suspension",
@@ -89,7 +100,7 @@ export const inkUseSuspendTerminal = defineRule({
       ).find(Boolean);
       if (!importedName || !CHILD_PROCESS_METHOD_NAMES.has(importedName)) return;
       if (!node.arguments.some(isInheritedStdio) || isInsideSuspendTerminal(node, context)) return;
-      if (!hasImportFromModules(node, ["ink"])) return;
+      if (!isInsideUseInputHandler(node, context)) return;
       context.report({
         node,
         message: "Suspend Ink before giving an interactive child process control of the terminal.",

@@ -4,7 +4,10 @@ import { collectFunctionReturnStatements } from "../../utils/collect-function-re
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveInkJsxElementName } from "../../utils/resolve-ink-api-name.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
@@ -32,10 +35,11 @@ const hasIncrementExpression = (updaterNode: EsTreeNode): boolean => {
 const isFrameIncrement = (callbackNode: EsTreeNode): boolean => {
   let hasFrameIncrement = false;
   walkAst(callbackNode, (descendantNode) => {
+    if (descendantNode !== callbackNode && /Function/.test(descendantNode.type)) return false;
     if (
       !isNodeOfType(descendantNode, "CallExpression") ||
       !isNodeOfType(descendantNode.callee, "Identifier") ||
-      !/^set(?:Frame|Index|Step|Tick)/.test(descendantNode.callee.name)
+      descendantNode.callee.name !== "setFrame"
     ) {
       return;
     }
@@ -45,6 +49,26 @@ const isFrameIncrement = (callbackNode: EsTreeNode): boolean => {
     }
   });
   return hasFrameIncrement;
+};
+
+const componentRendersInk = (componentNode: EsTreeNode, context: RuleContext): boolean => {
+  let doesRenderInk = false;
+  walkAst(componentNode, (descendantNode) => {
+    if (
+      descendantNode !== componentNode &&
+      (/Function/.test(descendantNode.type) || isNodeOfType(descendantNode, "JSXAttribute"))
+    ) {
+      return false;
+    }
+    if (
+      isNodeOfType(descendantNode, "JSXOpeningElement") &&
+      resolveInkJsxElementName(descendantNode, context.scopes)
+    ) {
+      doesRenderInk = true;
+      return false;
+    }
+  });
+  return doesRenderInk;
 };
 
 export const inkPreferUseAnimation = defineRule({
@@ -57,9 +81,9 @@ export const inkPreferUseAnimation = defineRule({
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "setInterval") return;
-      const effectFunction = node.parent;
-      let ancestorNode: EsTreeNode | null | undefined = effectFunction;
-      let isInsideReactEffect = false;
+      if (!context.scopes.isGlobalReference(node.callee)) return;
+      let ancestorNode: EsTreeNode | null | undefined = node.parent;
+      let effectCall: EsTreeNodeOfType<"CallExpression"> | null = null;
       while (ancestorNode) {
         if (
           isNodeOfType(ancestorNode, "CallExpression") &&
@@ -69,13 +93,15 @@ export const inkPreferUseAnimation = defineRule({
             getImportedNameFromModule(ancestorNode, ancestorNode.callee.name, "react") ?? "",
           )
         ) {
-          isInsideReactEffect = true;
+          effectCall = ancestorNode;
           break;
         }
         ancestorNode = ancestorNode.parent;
       }
       const intervalCallback = node.arguments[0];
-      if (!isInsideReactEffect || !intervalCallback || !isFrameIncrement(intervalCallback)) return;
+      if (!effectCall || !intervalCallback || !isFrameIncrement(intervalCallback)) return;
+      const componentNode = findRenderPhaseComponentOrHook(effectCall, context.scopes);
+      if (!componentNode || !componentRendersInk(componentNode, context)) return;
       context.report({
         node,
         message: "This frame-counter interval is an Ink animation; prefer `useAnimation()`.",

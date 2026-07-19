@@ -3,11 +3,88 @@ import type { BasicBlock } from "../../semantic/control-flow-graph.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { resolveInkApiName } from "../../utils/resolve-ink-api-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
+
+interface InkRenderOutput {
+  expression: EsTreeNode | null;
+  isDefault: boolean;
+}
+
+const resolveInkRenderOutput = (
+  renderCall: EsTreeNodeOfType<"CallExpression">,
+): InkRenderOutput | null => {
+  const optionsNode = renderCall.arguments[1];
+  if (!optionsNode) return { expression: null, isDefault: true };
+  if (!isNodeOfType(optionsNode, "ObjectExpression")) return null;
+
+  let output: InkRenderOutput | null = { expression: null, isDefault: true };
+  for (const propertyNode of optionsNode.properties) {
+    if (isNodeOfType(propertyNode, "SpreadElement")) {
+      output = null;
+      continue;
+    }
+    if (!isNodeOfType(propertyNode, "Property")) continue;
+    const propertyName = getStaticPropertyKeyName(propertyNode, {
+      allowComputedString: true,
+    });
+    if (propertyName === null) {
+      if (propertyNode.computed) output = null;
+      continue;
+    }
+    if (propertyName !== "stdout") continue;
+    output = { expression: propertyNode.value, isDefault: false };
+  }
+  return output;
+};
+
+const isProcessStdoutExpression = (node: EsTreeNode | null, context: RuleContext): boolean =>
+  Boolean(
+    node &&
+    isNodeOfType(node, "MemberExpression") &&
+    getStaticPropertyName(node) === "stdout" &&
+    isProvenGlobalNamespaceReference(node.object, "process", context.scopes),
+  );
+
+const areSameStableOutputBindings = (
+  leftNode: EsTreeNode | null,
+  rightNode: EsTreeNode | null,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(leftNode, "Identifier") || !isNodeOfType(rightNode, "Identifier")) {
+    return false;
+  }
+  const leftSymbol = context.scopes.symbolFor(leftNode);
+  const rightSymbol = context.scopes.symbolFor(rightNode);
+  return Boolean(
+    leftSymbol &&
+    leftSymbol.id === rightSymbol?.id &&
+    leftSymbol.references.every((reference) => reference.flag === "read"),
+  );
+};
+
+const doInkRenderCallsShareOutput = (
+  leftCall: EsTreeNodeOfType<"CallExpression">,
+  rightCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const leftOutput = resolveInkRenderOutput(leftCall);
+  const rightOutput = resolveInkRenderOutput(rightCall);
+  if (!leftOutput || !rightOutput) return false;
+  const leftUsesProcessStdout =
+    leftOutput.isDefault || isProcessStdoutExpression(leftOutput.expression, context);
+  const rightUsesProcessStdout =
+    rightOutput.isDefault || isProcessStdoutExpression(rightOutput.expression, context);
+  if (leftUsesProcessStdout || rightUsesProcessStdout) {
+    return leftUsesProcessStdout && rightUsesProcessStdout;
+  }
+  return areSameStableOutputBindings(leftOutput.expression, rightOutput.expression, context);
+};
 
 const canReachBlock = (sourceBlock: BasicBlock, targetBlock: BasicBlock): boolean => {
   if (sourceBlock === targetBlock) return true;
@@ -79,6 +156,7 @@ export const inkNoRepeatedRender = defineRule({
         if (
           !previousRenderCalls.some(
             (call) =>
+              doInkRenderCallsShareOutput(call, node, context) &&
               canExecuteAfter(call, node, owner, context) &&
               !hasUnmountBetween(owner, call, node, context),
           )

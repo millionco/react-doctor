@@ -5,10 +5,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveInkApiName } from "../../utils/resolve-ink-api-name.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
-const interpretsPastedInput = (handler: EsTreeNode): boolean => {
+const interpretsPastedInput = (handler: EsTreeNode, context: RuleContext): boolean => {
   if (
     (!isNodeOfType(handler, "ArrowFunctionExpression") &&
       !isNodeOfType(handler, "FunctionExpression")) ||
@@ -16,9 +17,11 @@ const interpretsPastedInput = (handler: EsTreeNode): boolean => {
   ) {
     return false;
   }
-  const inputName = handler.params[0].name;
+  const inputSymbolId = context.scopes.symbolFor(handler.params[0])?.id;
+  if (inputSymbolId === undefined) return false;
   let isPasteLogic = false;
   walkAst(handler.body, (descendantNode) => {
+    if (descendantNode !== handler.body && /Function/.test(descendantNode.type)) return false;
     if (isNodeOfType(descendantNode, "CallExpression")) {
       const callee = descendantNode.callee;
       const inputReceiver = isNodeOfType(callee, "MemberExpression")
@@ -28,7 +31,7 @@ const interpretsPastedInput = (handler: EsTreeNode): boolean => {
         isNodeOfType(callee, "MemberExpression") &&
         inputReceiver &&
         isNodeOfType(inputReceiver, "Identifier") &&
-        inputReceiver.name === inputName &&
+        context.scopes.symbolFor(inputReceiver)?.id === inputSymbolId &&
         (getStaticPropertyName(callee) === "includes" ||
           getStaticPropertyName(callee) === "split") &&
         descendantNode.arguments.some(
@@ -43,11 +46,12 @@ const interpretsPastedInput = (handler: EsTreeNode): boolean => {
       [">", ">="].includes(descendantNode.operator) &&
       isNodeOfType(descendantNode.left, "MemberExpression") &&
       isNodeOfType(descendantNode.left.object, "Identifier") &&
-      descendantNode.left.object.name === inputName &&
+      context.scopes.symbolFor(descendantNode.left.object)?.id === inputSymbolId &&
       getStaticPropertyName(descendantNode.left) === "length" &&
       isNodeOfType(descendantNode.right, "Literal") &&
       typeof descendantNode.right.value === "number" &&
-      descendantNode.right.value >= 1
+      ((descendantNode.operator === ">" && descendantNode.right.value >= 1) ||
+        (descendantNode.operator === ">=" && descendantNode.right.value >= 2))
     ) {
       isPasteLogic = true;
     }
@@ -65,7 +69,7 @@ export const inkPreferUsePaste = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (resolveInkApiName(node.callee, context.scopes) !== "useInput") return;
       const handler = node.arguments[0];
-      if (!handler || !interpretsPastedInput(handler)) return;
+      if (!handler || !interpretsPastedInput(handler, context)) return;
       context.report({
         node,
         message: "Use `usePaste()` instead of inferring paste events from `useInput()` chunks.",

@@ -6,7 +6,7 @@ import { getImportedNameFromModule } from "../../utils/find-import-source-for-na
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import {
   collectInkRenderCalls,
-  hasInkRenderBooleanOption,
+  getInkRenderBooleanOption,
   resolveInkRenderCallsForNode,
 } from "../../utils/resolve-ink-render-calls.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -39,8 +39,9 @@ export const inkSuspenseRequiresConcurrent = defineRule({
         );
         if (
           relatedRenderCalls.length === 0 ||
-          relatedRenderCalls.every((renderCall) =>
-            hasInkRenderBooleanOption(renderCall.node, "concurrent", true),
+          !relatedRenderCalls.some(
+            (renderCall) =>
+              getInkRenderBooleanOption(renderCall.node, "concurrent", false) === false,
           )
         ) {
           return;

@@ -6,13 +6,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveInkJsxElementName } from "../../utils/resolve-ink-api-name.js";
 
-const NON_APPEND_COLLECTION_METHODS = new Set([
-  "filter",
-  "reverse",
-  "sort",
-  "toReversed",
-  "toSorted",
-]);
+const NON_APPEND_COLLECTION_METHODS = new Set(["reverse", "sort", "toReversed", "toSorted"]);
 
 export const inkStaticIsAppendOnly = defineRule({
   id: "ink-static-is-append-only",
@@ -34,6 +28,17 @@ export const inkStaticIsAppendOnly = defineRule({
       }
       const methodName = getStaticPropertyName(expression.callee);
       if (!methodName || !NON_APPEND_COLLECTION_METHODS.has(methodName)) return;
+      if (
+        isNodeOfType(expression.callee.object, "ArrayExpression") &&
+        expression.callee.object.elements.every(
+          (elementNode) =>
+            elementNode === null ||
+            isNodeOfType(elementNode, "Literal") ||
+            (isNodeOfType(elementNode, "TemplateLiteral") && elementNode.expressions.length === 0),
+        )
+      ) {
+        return;
+      }
       context.report({
         node: itemsAttribute,
         message: `\`<Static>\` never revises prior output, but \`.${methodName}()\` can reorder or remove it.`,

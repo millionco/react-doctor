@@ -39,6 +39,12 @@ const canRenderComponent = (
   let canReachTarget = false;
   walkAst(componentDefinition, (descendantNode) => {
     if (
+      descendantNode !== componentDefinition &&
+      (/Function/.test(descendantNode.type) || isNodeOfType(descendantNode, "JSXAttribute"))
+    ) {
+      return false;
+    }
+    if (
       !isNodeOfType(descendantNode, "JSXOpeningElement") ||
       !isNodeOfType(descendantNode.name, "JSXIdentifier")
     ) {
@@ -61,6 +67,12 @@ const renderCallCanMountComponent = (
   if (!renderedNode) return false;
   let canMountTarget = false;
   walkAst(renderedNode, (descendantNode) => {
+    if (
+      descendantNode !== renderedNode &&
+      (/Function/.test(descendantNode.type) || isNodeOfType(descendantNode, "JSXAttribute"))
+    ) {
+      return false;
+    }
     if (
       !isNodeOfType(descendantNode, "JSXOpeningElement") ||
       !isNodeOfType(descendantNode.name, "JSXIdentifier")
@@ -96,22 +108,36 @@ export const collectInkRenderCalls = (
   return renderCalls;
 };
 
-export const hasInkRenderBooleanOption = (
+export const getInkRenderBooleanOption = (
   renderCall: EsTreeNodeOfType<"CallExpression">,
   optionName: string,
-  expectedValue: boolean,
-): boolean => {
+  defaultValue: boolean,
+): boolean | null => {
   const optionsNode = renderCall.arguments[1];
-  return Boolean(
-    isNodeOfType(optionsNode, "ObjectExpression") &&
-    optionsNode.properties.some(
-      (propertyNode) =>
-        isNodeOfType(propertyNode, "Property") &&
-        getStaticPropertyKeyName(propertyNode, { allowComputedString: true }) === optionName &&
-        isNodeOfType(propertyNode.value, "Literal") &&
-        propertyNode.value.value === expectedValue,
-    ),
-  );
+  if (!optionsNode) return defaultValue;
+  if (!isNodeOfType(optionsNode, "ObjectExpression")) return null;
+
+  let resolvedValue: boolean | null = defaultValue;
+  for (const propertyNode of optionsNode.properties) {
+    if (isNodeOfType(propertyNode, "SpreadElement")) {
+      resolvedValue = null;
+      continue;
+    }
+    if (!isNodeOfType(propertyNode, "Property")) continue;
+    const propertyName = getStaticPropertyKeyName(propertyNode, {
+      allowComputedString: true,
+    });
+    if (propertyName === null) {
+      if (propertyNode.computed) resolvedValue = null;
+      continue;
+    }
+    if (propertyName !== optionName) continue;
+    resolvedValue =
+      isNodeOfType(propertyNode.value, "Literal") && typeof propertyNode.value.value === "boolean"
+        ? propertyNode.value.value
+        : null;
+  }
+  return resolvedValue;
 };
 
 export const resolveInkRenderCallsForNode = (

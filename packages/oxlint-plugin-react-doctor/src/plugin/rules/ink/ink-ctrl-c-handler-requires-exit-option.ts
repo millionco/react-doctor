@@ -8,7 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveInkApiName } from "../../utils/resolve-ink-api-name.js";
 import {
   collectInkRenderCalls,
-  hasInkRenderBooleanOption,
+  getInkRenderBooleanOption,
   resolveInkRenderCallsForNode,
 } from "../../utils/resolve-ink-render-calls.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -103,8 +103,9 @@ export const inkCtrlCHandlerRequiresExitOption = defineRule({
         );
         if (
           relatedRenderCalls.length === 0 ||
-          relatedRenderCalls.every((renderCall) =>
-            hasInkRenderBooleanOption(renderCall.node, "exitOnCtrlC", false),
+          !relatedRenderCalls.some(
+            (renderCall) =>
+              getInkRenderBooleanOption(renderCall.node, "exitOnCtrlC", true) === true,
           )
         ) {
           return;

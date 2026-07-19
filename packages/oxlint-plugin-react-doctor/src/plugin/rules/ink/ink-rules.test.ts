@@ -89,7 +89,7 @@ const RULE_CASES: ReadonlyArray<InkRuleCase> = [
   {
     name: "append-only Static",
     rule: inkStaticIsAppendOnly,
-    invalid: `import {Static} from "ink"; const App=({items})=> <Static items={items.filter(Boolean)}>{item => null}</Static>;`,
+    invalid: `import {Static} from "ink"; const App=({items})=> <Static items={items.toReversed()}>{item => null}</Static>;`,
     valid: `import {Static} from "ink"; const App=({items})=> <Static items={items}>{item => null}</Static>;`,
   },
   {
@@ -131,8 +131,8 @@ const RULE_CASES: ReadonlyArray<InkRuleCase> = [
   {
     name: "cursor width",
     rule: inkUseStringWidthForCursor,
-    invalid: `import {useCursor} from "ink"; const App=({label})=> { const cursor=useCursor(); cursor.setCursorPosition(label.length, 0); return null; };`,
-    valid: `import {useCursor} from "ink"; import stringWidth from "string-width"; const App=({label})=> { const cursor=useCursor(); cursor.setCursorPosition(stringWidth(label), 0); return null; };`,
+    invalid: `import {useCursor} from "ink"; const App=({label})=> { const cursor=useCursor(); cursor.setCursorPosition({x:label.length,y:0}); return null; };`,
+    valid: `import {useCursor} from "ink"; import stringWidth from "string-width"; const App=({label})=> { const cursor=useCursor(); cursor.setCursorPosition({x:stringWidth(label),y:0}); return null; };`,
   },
   {
     name: "reactive window size",
@@ -211,7 +211,7 @@ describe("Ink rules", () => {
         const cursor=useCursor();
         const manager=useFocusManager();
         (manager as any).focus("name");
-        (cursor!).setCursorPosition(label.length,0);
+        (cursor!).setCursorPosition({x:label.length,y:0});
         useInput(input=>{if((input as any).includes("\\n")) paste(input)});
         return null;
       };
@@ -224,10 +224,11 @@ describe("Ink rules", () => {
   it("recognizes block-bodied frame updater arrows", () => {
     const code = `
       import {useEffect,useState} from "react";
+      import {Text} from "ink";
       const App=()=> {
         const [frame,setFrame]=useState(0);
         useEffect(()=>{setInterval(()=>setFrame(value=>{return value+1}),80)},[]);
-        return frame;
+        return <Text>{frame}</Text>;
       };
     `;
     expect(runRule(inkPreferUseAnimation, code).diagnostics).toHaveLength(1);
@@ -253,9 +254,36 @@ describe("Ink rules", () => {
     expect(runRule(inkNoRepeatedRender, code).diagnostics).toHaveLength(0);
   });
 
+  it("allows separate renderers on different output streams", () => {
+    const validCode = `import {render} from "ink"; const run=(firstOutput,secondOutput)=> { render(null,{stdout:firstOutput}); render(null,{stdout:secondOutput}); };`;
+    const invalidCode = `import {render} from "ink"; const run=(output)=> { render(null,{stdout:output}); render(null,{stdout:output}); };`;
+    const shadowedCode = `import {render} from "ink"; const run=(firstOutput,secondOutput)=> { {const output=firstOutput; render(null,{stdout:output})} {const output=secondOutput; render(null,{stdout:output})} };`;
+    const explicitDefaultCode = `import {render} from "ink"; render(null); render(null,{stdout:process.stdout});`;
+    expect(runRule(inkNoRepeatedRender, validCode).diagnostics).toHaveLength(0);
+    expect(runRule(inkNoRepeatedRender, invalidCode).diagnostics).toHaveLength(1);
+    expect(runRule(inkNoRepeatedRender, shadowedCode).diagnostics).toHaveLength(0);
+    expect(runRule(inkNoRepeatedRender, explicitDefaultCode).diagnostics).toHaveLength(1);
+  });
+
   it("counts Static regions per component", () => {
     const code = `import {Static} from "ink"; const First=()=> <Static items={[]} />; const Second=()=> <Static items={[]} />;`;
     expect(runRule(inkNoMultipleStatic, code).diagnostics).toHaveLength(0);
+  });
+
+  it("allows mutually exclusive Static regions", () => {
+    const separateReturns = `import {Static} from "ink"; const App=({compact})=> compact ? <Static items={[]} /> : <Static items={[]} />;`;
+    const sharedRoot = `import {Static} from "ink"; const App=({compact})=> <>{compact ? <Static items={[]} /> : <Static items={[]} />}</>;`;
+    const logicalBranches = `import {Static} from "ink"; const App=({compact})=> <>{compact && <Static items={[]} />}{!compact && <Static items={[]} />}</>;`;
+    expect(runRule(inkNoMultipleStatic, separateReturns).diagnostics).toHaveLength(0);
+    expect(runRule(inkNoMultipleStatic, sharedRoot).diagnostics).toHaveLength(0);
+    expect(runRule(inkNoMultipleStatic, logicalBranches).diagnostics).toHaveLength(0);
+  });
+
+  it("allows stable derived collections in Static", () => {
+    const filteredCode = `import {Static} from "ink"; const App=()=> <Static items={[1,2,3].filter(Boolean)}>{item=>null}</Static>;`;
+    const sortedCode = `import {Static} from "ink"; const App=()=> <Static items={[3,1,2].toSorted()}>{item=>null}</Static>;`;
+    expect(runRule(inkStaticIsAppendOnly, filteredCode).diagnostics).toHaveLength(0);
+    expect(runRule(inkStaticIsAppendOnly, sortedCode).diagnostics).toHaveLength(0);
   });
 
   it("accepts Ink's complete ARIA role set and rejects unsupported states", () => {
@@ -307,6 +335,119 @@ describe("Ink rules", () => {
     `;
     expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(1);
     expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(1);
+  });
+
+  it("does not associate renderer options through unused nested components or JSX props", () => {
+    const suspenseCode = `
+      import {render,Text} from "ink";
+      import {Suspense} from "react";
+      const Root=()=> { const Unused=()=> <Suspense fallback={null}><Text /></Suspense>; return <Text />; };
+      render(<Root/>);
+    `;
+    const ctrlCCode = `
+      import {render,useInput} from "ink";
+      const Unused=()=> { useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null; };
+      const Root=()=> null;
+      render(<Root unused={<Unused/>}/>);
+    `;
+    expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(0);
+    expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(0);
+  });
+
+  it("fails closed for unresolved renderer options", () => {
+    const suspenseCode = `
+      import {render,Text} from "ink";
+      import {Suspense} from "react";
+      const App=()=> <Suspense fallback={null}><Text /></Suspense>;
+      const options={concurrent:true};
+      render(<App/>,options);
+    `;
+    const ctrlCCode = `
+      import {render,useInput} from "ink";
+      const App=()=> { useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null; };
+      const options={exitOnCtrlC:false};
+      render(<App/>,{...options});
+    `;
+    expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(0);
+    expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(0);
+  });
+
+  it("allows live hooks in components that also have a live renderer", () => {
+    const code = `
+      import {render,renderToString,useInput} from "ink";
+      const App=()=> { useInput(()=>{}); return null; };
+      render(<App/>);
+      renderToString(<App/>);
+    `;
+    expect(runRule(inkNoLiveHooksInRenderToString, code).diagnostics).toHaveLength(0);
+  });
+
+  it("allows supported renderToString hook defaults and externally reusable components", () => {
+    const supportedDefaultsCode = `
+      import {renderToString,useApp,useStdout,useWindowSize} from "ink";
+      const App=()=> { const {stdout}=useStdout(); const {columns}=useWindowSize(); const {exit}=useApp(); return null; };
+      renderToString(<App/>);
+    `;
+    const exportedComponentCode = `
+      import {renderToString,useInput} from "ink";
+      const App=()=> { useInput(()=>{}); return null; };
+      export {App};
+      renderToString(<App/>);
+    `;
+    expect(runRule(inkNoLiveHooksInRenderToString, supportedDefaultsCode).diagnostics).toHaveLength(
+      0,
+    );
+    expect(runRule(inkNoLiveHooksInRenderToString, exportedComponentCode).diagnostics).toHaveLength(
+      0,
+    );
+  });
+
+  it("requires active Ink input ownership before suggesting terminal suspension", () => {
+    const code = `
+      import {Text} from "ink";
+      import {spawn} from "node:child_process";
+      export const launchEditor=()=>spawn("vim",[],{stdio:"inherit"});
+      export const App=()=> <Text>Ready</Text>;
+    `;
+    expect(runRule(inkUseSuspendTerminal, code).diagnostics).toHaveLength(0);
+  });
+
+  it("ignores ordinary input length checks and shadowed nested input", () => {
+    const ordinaryLengthCode = `import {useInput} from "ink"; const App=()=> { useInput(input=>{if(input.length>=1) accept(input)}); return null; };`;
+    const shadowedInputCode = `import {useInput} from "ink"; const App=()=> { useInput(input=>{["a"].some(input=>input.includes("\\n")); consume(input)}); return null; };`;
+    expect(runRule(inkPreferUsePaste, ordinaryLengthCode).diagnostics).toHaveLength(0);
+    expect(runRule(inkPreferUsePaste, shadowedInputCode).diagnostics).toHaveLength(0);
+  });
+
+  it("requires an Ink frame animation before suggesting useAnimation", () => {
+    const domCode = `import {useEffect,useState} from "react"; const Dashboard=()=> { const [frame,setFrame]=useState(0); useEffect(()=>{const timer=setInterval(()=>setFrame(value=>value+1),80); return()=>clearInterval(timer)},[]); return <div>{frame}</div>; };`;
+    const indexCode = `import {Text} from "ink"; import {useEffect,useState} from "react"; const App=()=> { const [index,setIndex]=useState(0); useEffect(()=>{const timer=setInterval(()=>setIndex(value=>value+1),80); return()=>clearInterval(timer)},[]); return <Text>{index}</Text>; };`;
+    const localTimerCode = `import {Text} from "ink"; import {useEffect,useState} from "react"; const App=()=> { const [frame,setFrame]=useState(0); const setInterval=(callback)=>callback(); useEffect(()=>{setInterval(()=>setFrame(value=>value+1))},[]); return <Text>{frame}</Text>; };`;
+    expect(runRule(inkPreferUseAnimation, domCode).diagnostics).toHaveLength(0);
+    expect(runRule(inkPreferUseAnimation, indexCode).diagnostics).toHaveLength(0);
+    expect(runRule(inkPreferUseAnimation, localTimerCode).diagnostics).toHaveLength(0);
+  });
+
+  it("allows process stdout dimensions with an explicit resize subscription", () => {
+    const code = `
+      import {Text} from "ink";
+      import {useEffect,useState} from "react";
+      const App=()=> {
+        const [columns,setColumns]=useState(process.stdout.columns);
+        useEffect(()=> {
+          const update=()=>setColumns(process.stdout.columns);
+          process.stdout.on("resize",update);
+          return()=>process.stdout.off("resize",update);
+        },[]);
+        return <Text>{columns}</Text>;
+      };
+    `;
+    expect(runRule(inkUseReactiveWindowSize, code).diagnostics).toHaveLength(0);
+  });
+
+  it("allows cursor lengths for provably ASCII-only strings", () => {
+    const code = `import {useCursor} from "ink"; const App=()=> { const label="Ready"; const cursor=useCursor(); cursor.setCursorPosition({x:label.length,y:0}); return null; };`;
+    expect(runRule(inkUseStringWidthForCursor, code).diagnostics).toHaveLength(0);
   });
 
   it("requires Ctrl-C operands to share a condition", () => {

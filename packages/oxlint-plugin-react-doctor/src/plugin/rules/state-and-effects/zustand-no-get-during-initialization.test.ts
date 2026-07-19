@@ -52,6 +52,56 @@ describe("zustand-no-get-during-initialization", () => {
     );
   });
 
+  it("reports transparent wrappers around eager get calls", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        interface State { count: number }
+        create<State>()((_set, get) => ({
+          first: (get)().count,
+          second: get!().count,
+          third: (get as () => State)().count,
+        }));
+      `,
+      3,
+    );
+  });
+
+  it("reports the synchronous prelude of async creators", () => {
+    expectDiagnosticCount(
+      `
+        import { create, createStore } from "zustand";
+        create(async (_set, get) => {
+          const count = get().count;
+          await loadCount();
+          return { count };
+        });
+        createStore(async (_set, get) => ({ count: get().count }));
+        create(async (_set, get) => ({ count: await get().count }));
+      `,
+      3,
+    );
+  });
+
+  it("stops async creator analysis at the first suspension", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create(async (_set, get) => {
+          await loadCount();
+          return { count: get().count };
+        });
+        create(async (_set, get) => {
+          for await (const count of loadCounts()) {
+            return { count: get().count };
+          }
+          return { count: 0 };
+        });
+      `,
+      0,
+    );
+  });
+
   it("supports curried factories, aliases, namespaces, and traditional stores", () => {
     expectDiagnosticCount(
       `

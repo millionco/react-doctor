@@ -71,6 +71,12 @@ Interpret exit codes:
 
 For exit code `1`, inspect affected source locations before classifying changes.
 
+Validate comparator changes from the repository root:
+
+```sh
+node --test .agents/skills/run-parity/scripts/compare-parity.test.mjs
+```
+
 ## Report results
 
 Report the pull request URL, commit hashes, compared and skipped project counts, diagnostic totals, added and removed counts, largest rule deltas, and artifact paths.

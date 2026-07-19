@@ -19,8 +19,9 @@ const projectKey = (repository) =>
   JSON.stringify([repository.org, repository.name, repository.ref, repository.rootDir]);
 
 const diagnosticKey = (diagnostic) =>
+  diagnostic.id ??
   JSON.stringify([
-    diagnostic.filePath ?? diagnostic.normalizedFilePath,
+    diagnostic.normalizedFilePath ?? diagnostic.filePath,
     diagnostic.line,
     diagnostic.column,
     diagnostic.plugin,

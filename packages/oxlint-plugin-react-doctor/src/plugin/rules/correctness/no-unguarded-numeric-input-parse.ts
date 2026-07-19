@@ -6,7 +6,7 @@ import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { isDescendantOf } from "../../utils/is-descendant-of.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -170,13 +170,13 @@ const guardProtectsEveryUse = (
     (reference) =>
       reference.flag === "read" &&
       reference.identifier.range[0] > bindingIdentifier.range[1] &&
-      !isDescendantOf(reference.identifier, testExpression),
+      !isAstDescendant(reference.identifier, testExpression),
   );
   if (validWhenTestTruthy) {
     return (
       valueReferences.length > 0 &&
       valueReferences.every((reference) =>
-        isDescendantOf(reference.identifier, guardParent.consequent),
+        isAstDescendant(reference.identifier, guardParent.consequent),
       )
     );
   }

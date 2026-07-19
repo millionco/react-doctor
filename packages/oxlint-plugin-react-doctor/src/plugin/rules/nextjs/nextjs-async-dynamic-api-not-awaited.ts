@@ -24,7 +24,7 @@ import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
-import { isDescendantOf } from "../../utils/is-descendant-of.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isFrameworkRouteOrSpecialFilename } from "../../utils/is-framework-route-or-special-filename.js";
 import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
@@ -1879,7 +1879,7 @@ const createPendingSymbolFlow = (
   const isParameterSource =
     isFunctionLike(owner) &&
     owner.params.some(
-      (parameter) => parameter === sourceExpression || isDescendantOf(sourceExpression, parameter),
+      (parameter) => parameter === sourceExpression || isAstDescendant(sourceExpression, parameter),
     );
   const sourceBlock =
     functionCfg?.blockOf(sourceExpression) ?? (isParameterSource ? functionCfg?.entry : null);
@@ -1994,14 +1994,14 @@ const createPendingSymbolFlow = (
         exitingCatchClearings.some(
           ({ clearingNode, tryStatement }) =>
             getNodeStartIndex(clearingNode) < referenceStart &&
-            !isDescendantOf(referenceIdentifier, tryStatement) &&
+            !isAstDescendant(referenceIdentifier, tryStatement) &&
             context.cfg.isUnconditionalFromEntry(clearingNode),
         )
       ) {
         return true;
       }
       const enclosingClearingStart = Array.from(clearingNodes)
-        .filter((clearingNode) => isDescendantOf(referenceIdentifier, clearingNode))
+        .filter((clearingNode) => isAstDescendant(referenceIdentifier, clearingNode))
         .map(getNodeStartIndex)
         .at(-1);
       const startsInReferenceBlock = clearingStartsByBlock.get(referenceBlock) ?? [];
@@ -2449,7 +2449,7 @@ const getAsyncExecutionPhase = (context: RuleContext, node: EsTreeNode): AsyncEx
     ) {
       return;
     }
-    const isInsideEffect = isDescendantOf(candidate, node);
+    const isInsideEffect = isAstDescendant(candidate, node);
     if (!isInsideEffect && getNodeStartIndex(candidate) >= nodeStart) return;
     hasPossiblePriorSuspension = true;
     if (
@@ -2492,7 +2492,7 @@ const caughtHandlerDefinitelyClearsSymbol = (
   const clearingAssignments = symbol.references.flatMap((reference) => {
     if (reference.flag === "read") return [];
     const assignment = getProvenanceClearingAssignment(context, symbol, reference.identifier);
-    return assignment && isDescendantOf(assignment, handlerBody) ? [assignment] : [];
+    return assignment && isAstDescendant(assignment, handlerBody) ? [assignment] : [];
   });
   const handlerOwner = context.cfg.enclosingFunction(handlerBody);
   return projectGuaranteedClearingNodes(context, clearingAssignments, handlerOwner).some(
@@ -2524,7 +2524,7 @@ const throwEscapesBeforeNode = (throwNode: EsTreeNode, node: EsTreeNode): boolea
   while (current.parent && !isFunctionLike(current.parent)) {
     const parent = current.parent;
     if (isNodeOfType(parent, "TryStatement")) {
-      if (parent.finalizer && isDescendantOf(node, parent.finalizer)) return false;
+      if (parent.finalizer && isAstDescendant(node, parent.finalizer)) return false;
       if (parent.block === current && parent.handler) return false;
     }
     current = parent;

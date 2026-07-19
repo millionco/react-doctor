@@ -4,7 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
-import { isDescendantOf } from "../../utils/is-descendant-of.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNonSourceFilename } from "../../utils/is-non-source-filename.js";
@@ -291,24 +291,25 @@ const directLogicControlsFallback = (
   signalNode: EsTreeNode,
   fallbackConditionRoot: EsTreeNode,
 ): boolean => {
-  if (isDescendantOf(signalNode, fallbackConditionRoot)) return true;
+  if (isAstDescendant(signalNode, fallbackConditionRoot)) return true;
   let ancestor = signalNode.parent ?? null;
   while (ancestor && !isFunctionLike(ancestor)) {
     if (
       isNodeOfType(ancestor, "LogicalExpression") &&
-      isDescendantOf(fallbackConditionRoot, ancestor)
+      isAstDescendant(fallbackConditionRoot, ancestor)
     ) {
       return true;
     }
     if (
       isNodeOfType(ancestor, "ConditionalExpression") &&
-      isDescendantOf(fallbackConditionRoot, ancestor) &&
-      (isDescendantOf(signalNode, ancestor.test) || isDescendantOf(signalNode, ancestor.consequent))
+      isAstDescendant(fallbackConditionRoot, ancestor) &&
+      (isAstDescendant(signalNode, ancestor.test) ||
+        isAstDescendant(signalNode, ancestor.consequent))
     ) {
       return true;
     }
-    if (isNodeOfType(ancestor, "IfStatement") && isDescendantOf(signalNode, ancestor.test)) {
-      if (ancestor.alternate && isDescendantOf(fallbackConditionRoot, ancestor.alternate)) {
+    if (isNodeOfType(ancestor, "IfStatement") && isAstDescendant(signalNode, ancestor.test)) {
+      if (ancestor.alternate && isAstDescendant(fallbackConditionRoot, ancestor.alternate)) {
         return true;
       }
       const block = ancestor.parent;

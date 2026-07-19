@@ -47,7 +47,11 @@ export const inkCtrlCHandlerRequiresExitOption = defineRule({
         }
         const handler = descendantNode.arguments[0];
         if (!handler || !handlesCtrlC(handler)) return;
-        const relatedRenderCalls = resolveInkRenderCallsForNode(descendantNode, renderCalls);
+        const relatedRenderCalls = resolveInkRenderCallsForNode(
+          descendantNode,
+          renderCalls,
+          context,
+        );
         if (
           relatedRenderCalls.length === 0 ||
           relatedRenderCalls.every((renderCall) =>

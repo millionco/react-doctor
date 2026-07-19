@@ -284,4 +284,28 @@ describe("Ink rules", () => {
     expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(1);
     expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(1);
   });
+
+  it("associates renderer options through same-file component wrappers", () => {
+    const suspenseCode = `
+      import {render,Text} from "ink";
+      import {Suspense} from "react";
+      const SafeBoundary=()=> <Suspense fallback={null}><Text>safe</Text></Suspense>;
+      const UnsafeBoundary=()=> <Suspense fallback={null}><Text>unsafe</Text></Suspense>;
+      const SafeRoot=()=> <SafeBoundary/>;
+      const UnsafeRoot=()=> <UnsafeBoundary/>;
+      render(<SafeRoot/>,{concurrent:true});
+      render(<UnsafeRoot/>);
+    `;
+    const ctrlCCode = `
+      import {render,useInput} from "ink";
+      const SafeInput=()=> { useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null; };
+      const UnsafeInput=()=> { useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null; };
+      const SafeRoot=()=> <SafeInput/>;
+      const UnsafeRoot=()=> <UnsafeInput/>;
+      render(<SafeRoot/>,{exitOnCtrlC:false});
+      render(<UnsafeRoot/>);
+    `;
+    expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(1);
+    expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(1);
+  });
 });

@@ -32,7 +32,11 @@ export const inkSuspenseRequiresConcurrent = defineRule({
         ) {
           return;
         }
-        const relatedRenderCalls = resolveInkRenderCallsForNode(descendantNode, renderCalls);
+        const relatedRenderCalls = resolveInkRenderCallsForNode(
+          descendantNode,
+          renderCalls,
+          context,
+        );
         if (
           relatedRenderCalls.length === 0 ||
           relatedRenderCalls.every((renderCall) =>

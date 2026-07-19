@@ -23,6 +23,48 @@ const getRenderedComponentName = (
     : null;
 };
 
+const canRenderComponent = (
+  componentNameNode: EsTreeNodeOfType<"JSXIdentifier">,
+  targetComponentName: string,
+  context: RuleContext,
+  visitedSymbolIds: Set<number>,
+): boolean => {
+  if (componentNameNode.name === targetComponentName) return true;
+  const symbol = context.scopes.symbolFor(componentNameNode);
+  if (!symbol || symbol.kind === "import" || visitedSymbolIds.has(symbol.id)) return false;
+  visitedSymbolIds.add(symbol.id);
+  const componentDefinition = symbol.initializer;
+  if (!componentDefinition) return false;
+
+  let canReachTarget = false;
+  walkAst(componentDefinition, (descendantNode) => {
+    if (
+      !isNodeOfType(descendantNode, "JSXOpeningElement") ||
+      !isNodeOfType(descendantNode.name, "JSXIdentifier")
+    ) {
+      return;
+    }
+    if (canRenderComponent(descendantNode.name, targetComponentName, context, visitedSymbolIds)) {
+      canReachTarget = true;
+      return false;
+    }
+  });
+  return canReachTarget;
+};
+
+const renderCallCanMountComponent = (
+  renderCall: InkRenderCall,
+  targetComponentName: string,
+  context: RuleContext,
+): boolean => {
+  const renderedNode = renderCall.node.arguments[0];
+  return Boolean(
+    isNodeOfType(renderedNode, "JSXElement") &&
+    isNodeOfType(renderedNode.openingElement.name, "JSXIdentifier") &&
+    canRenderComponent(renderedNode.openingElement.name, targetComponentName, context, new Set()),
+  );
+};
+
 export const collectInkRenderCalls = (
   program: EsTreeNode,
   context: RuleContext,
@@ -64,6 +106,7 @@ export const hasInkRenderBooleanOption = (
 export const resolveInkRenderCallsForNode = (
   node: EsTreeNode,
   renderCalls: ReadonlyArray<InkRenderCall>,
+  context: RuleContext,
 ): ReadonlyArray<InkRenderCall> => {
   const directRenderCalls = renderCalls.filter((renderCall) => {
     const renderedNode = renderCall.node.arguments[0];
@@ -81,7 +124,9 @@ export const resolveInkRenderCallsForNode = (
     : null;
   if (componentName) {
     const componentRenderCalls = renderCalls.filter(
-      (renderCall) => renderCall.renderedComponentName === componentName,
+      (renderCall) =>
+        renderCall.renderedComponentName === componentName ||
+        renderCallCanMountComponent(renderCall, componentName, context),
     );
     if (componentRenderCalls.length > 0) return componentRenderCalls;
   }

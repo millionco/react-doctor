@@ -282,6 +282,62 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("uses the bound store setState as a get snapshot notifier", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useStore = create((set, get) => ({
+          safe: () => {
+            const items = get().items;
+            items.push("next");
+            useStore.setState({ items: [...items] });
+          },
+          unsafe: () => {
+            const items = get().items;
+            items.push("next");
+            useStore.setState({ items });
+          },
+        }));
+      `,
+      1,
+    );
+  });
+
+  it("tracks fresh and reused mutable snapshot rebindings", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          safe: () => {
+            let selected = get().items;
+            selected.push("next");
+            selected = [...selected];
+            set({ items: selected });
+          },
+          unknown: () => {
+            let items = get().items;
+            items.push("next");
+            items = cloneItems(items);
+            set({ items });
+          },
+          unsafe: () => {
+            let items = get().items;
+            items.push("next");
+            items = items;
+            set({ items });
+          },
+          wrongProperty: () => {
+            let items = get().items;
+            items.push("next");
+            items = items.slice();
+            set({ archivedItems: items });
+          },
+        }));
+      `,
+      2,
+    );
+  });
+
   it("abstains from unproven snapshot replacements", () => {
     expectDiagnosticCount(
       `

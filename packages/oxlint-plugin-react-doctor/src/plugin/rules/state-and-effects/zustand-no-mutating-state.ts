@@ -2,6 +2,7 @@ import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -386,6 +387,7 @@ const staticPropertyPathForExpression = (
   expression: EsTreeNode,
   context: RuleContext,
   visitedSymbolIds: Set<number> = new Set(),
+  followMutableInitializer = false,
 ): string[] | null => {
   const candidate = stripParenExpression(expression);
   if (isNodeOfType(candidate, "Identifier")) {
@@ -402,16 +404,31 @@ const staticPropertyPathForExpression = (
     ) {
       const propertyName = getStaticPropertyKeyName(bindingProperty);
       const objectPath = variableDeclarator.init
-        ? staticPropertyPathForExpression(variableDeclarator.init, context, visitedSymbolIds)
+        ? staticPropertyPathForExpression(
+            variableDeclarator.init,
+            context,
+            visitedSymbolIds,
+            followMutableInitializer,
+          )
         : null;
       return propertyName && objectPath ? [...objectPath, propertyName] : null;
     }
-    if (symbol.kind !== "const" || !symbol.initializer) return [];
-    return staticPropertyPathForExpression(symbol.initializer, context, visitedSymbolIds);
+    if ((!followMutableInitializer && symbol.kind !== "const") || !symbol.initializer) return [];
+    return staticPropertyPathForExpression(
+      symbol.initializer,
+      context,
+      visitedSymbolIds,
+      followMutableInitializer,
+    );
   }
   if (isNodeOfType(candidate, "MemberExpression")) {
     const propertyName = getStaticPropertyName(candidate);
-    const objectPath = staticPropertyPathForExpression(candidate.object, context, visitedSymbolIds);
+    const objectPath = staticPropertyPathForExpression(
+      candidate.object,
+      context,
+      visitedSymbolIds,
+      followMutableInitializer,
+    );
     return propertyName && objectPath ? [...objectPath, propertyName] : null;
   }
   if (isNodeOfType(candidate, "CallExpression")) return [];
@@ -538,13 +555,109 @@ const objectTargetPathReplacementDisposition = (
   return disposition;
 };
 
+const rootIdentifierForExpression = (
+  expression: EsTreeNode,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  let current = stripParenExpression(expression);
+  while (isNodeOfType(current, "MemberExpression")) {
+    current = stripParenExpression(current.object);
+  }
+  return isNodeOfType(current, "Identifier") ? current : null;
+};
+
+const objectExpressionPublishesSymbolAtPath = (
+  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
+  targetPath: readonly string[],
+  symbolId: number,
+  context: RuleContext,
+): boolean => {
+  const propertyName = targetPath[0];
+  if (!propertyName) return false;
+  for (const property of objectExpression.properties) {
+    if (!isNodeOfType(property, "Property")) continue;
+    if (getStaticPropertyKeyName(property) !== propertyName) continue;
+    const propertyValue = stripParenExpression(property.value);
+    if (targetPath.length > 1) {
+      return (
+        isNodeOfType(propertyValue, "ObjectExpression") &&
+        objectExpressionPublishesSymbolAtPath(propertyValue, targetPath.slice(1), symbolId, context)
+      );
+    }
+    return (
+      isNodeOfType(propertyValue, "Identifier") &&
+      context.scopes.symbolFor(propertyValue)?.id === symbolId
+    );
+  }
+  return false;
+};
+
+const targetRebindReplacementDisposition = (
+  updateExpression: EsTreeNode,
+  mutation: MutableStateReferenceMutation,
+  targetPath: readonly string[],
+  targetKey: string,
+  context: RuleContext,
+): boolean | null | undefined => {
+  const targetIdentifier = rootIdentifierForExpression(mutation.receiver);
+  if (!targetIdentifier) return undefined;
+  const targetSymbol = context.scopes.symbolFor(targetIdentifier);
+  if (!targetSymbol || targetSymbol.kind === "const") return undefined;
+  const candidate = stripParenExpression(updateExpression);
+  const doesPublishTarget =
+    targetPath.length === 0
+      ? isNodeOfType(candidate, "Identifier") &&
+        context.scopes.symbolFor(candidate)?.id === targetSymbol.id
+      : isNodeOfType(candidate, "ObjectExpression") &&
+        objectExpressionPublishesSymbolAtPath(candidate, targetPath, targetSymbol.id, context);
+  if (!doesPublishTarget) return undefined;
+  const mutationStart = getRangeStart(mutation.node);
+  const updateStart = getRangeStart(updateExpression);
+  const mutationFunction = findEnclosingFunction(mutation.node);
+  if (mutationStart === null || updateStart === null) return undefined;
+  let latestAssignment: EsTreeNodeOfType<"AssignmentExpression"> | null = null;
+  let latestAssignmentStart: number | null = null;
+  for (const reference of targetSymbol.references) {
+    if (reference.flag === "read") continue;
+    const assignment = reference.identifier.parent;
+    if (
+      !isNodeOfType(assignment, "AssignmentExpression") ||
+      assignment.operator !== "=" ||
+      assignment.left !== reference.identifier ||
+      findEnclosingFunction(assignment) !== mutationFunction
+    ) {
+      continue;
+    }
+    const assignmentStart = getRangeStart(assignment);
+    if (
+      assignmentStart === null ||
+      assignmentStart <= mutationStart ||
+      assignmentStart >= updateStart ||
+      (latestAssignmentStart !== null && assignmentStart <= latestAssignmentStart)
+    ) {
+      continue;
+    }
+    latestAssignment = assignment;
+    latestAssignmentStart = assignmentStart;
+  }
+  if (!latestAssignment) return undefined;
+  if (expressionKeyPreservesTarget(latestAssignment.right, targetKey, context)) return false;
+  return isProvenFreshReplacementExpression(latestAssignment.right, targetKey, context)
+    ? true
+    : null;
+};
+
 const updateTargetReplacementDisposition = (
   updateExpression: EsTreeNode,
   mutation: MutableStateReferenceMutation,
   context: RuleContext,
 ): boolean | null => {
   const targetKey = resolveExpressionKey(mutation.receiver, context);
-  const targetPath = staticPropertyPathForExpression(mutation.receiver, context);
+  const targetPath = staticPropertyPathForExpression(
+    mutation.receiver,
+    context,
+    new Set<number>(),
+    true,
+  );
   if (!targetPath) return null;
   const candidate = stripParenExpression(updateExpression);
   if (!targetKey) {
@@ -560,7 +673,16 @@ const updateTargetReplacementDisposition = (
     return objectTargetPathReplacementDisposition(candidate, targetPath, true, context);
   }
   if (targetPath.length === 0) {
-    if (expressionPreservesTarget(candidate, targetKey, mutation.node, context)) return false;
+    if (expressionPreservesTarget(candidate, targetKey, mutation.node, context)) {
+      const rebindDisposition = targetRebindReplacementDisposition(
+        candidate,
+        mutation,
+        targetPath,
+        targetKey,
+        context,
+      );
+      return rebindDisposition === undefined ? false : rebindDisposition;
+    }
     return isProvenFreshReplacementExpression(candidate, targetKey, context) ? true : null;
   }
   if (!isNodeOfType(candidate, "ObjectExpression")) {
@@ -570,7 +692,7 @@ const updateTargetReplacementDisposition = (
   const ancestorKey = targetKey.endsWith(ancestorKeySuffix)
     ? targetKey.slice(0, -ancestorKeySuffix.length)
     : targetKey;
-  return objectTargetReplacementDisposition(
+  const disposition = objectTargetReplacementDisposition(
     candidate,
     targetPath,
     targetKey,
@@ -579,6 +701,15 @@ const updateTargetReplacementDisposition = (
     true,
     context,
   );
+  if (disposition !== false) return disposition;
+  const rebindDisposition = targetRebindReplacementDisposition(
+    candidate,
+    mutation,
+    targetPath,
+    targetKey,
+    context,
+  );
+  return rebindDisposition === undefined ? false : rebindDisposition;
 };
 
 const notifierTargetReplacementDisposition = (
@@ -662,7 +793,8 @@ const analyzeSnapshotContainer = (
   statements: readonly EsTreeNode[],
   getSymbolIds: ReadonlySet<number>,
   setSymbolIds: ReadonlySet<number>,
-  storeSymbolIds: ReadonlySet<number>,
+  snapshotStoreSymbolIds: ReadonlySet<number>,
+  notifierStoreSymbolIds: ReadonlySet<number>,
   context: RuleContext,
   reportedNodes: WeakSet<EsTreeNode>,
   returnedUpdateExpressions: readonly EsTreeNode[] = [],
@@ -670,7 +802,7 @@ const analyzeSnapshotContainer = (
   if (hasUnsupportedSnapshotControlFlow(statements)) return;
   const state: MutableStateReferenceState = {
     isAdditionalMutableStateSource: (expression) =>
-      isSnapshotExpression(expression, getSymbolIds, storeSymbolIds, context),
+      isSnapshotExpression(expression, getSymbolIds, snapshotStoreSymbolIds, context),
     mutableStateSourceNames: new Set(),
   };
   const mutations: MutationWithStatementIndex[] = [];
@@ -685,7 +817,12 @@ const analyzeSnapshotContainer = (
         for (const mutation of collectSequentialSnapshotMutations(branchRoot, state)) {
           mutations.push({ branchRoot, mutation, statementIndex });
         }
-        const calls = collectNotifierCalls(branchRoot, setSymbolIds, storeSymbolIds, context);
+        const calls = collectNotifierCalls(
+          branchRoot,
+          setSymbolIds,
+          notifierStoreSymbolIds,
+          context,
+        );
         branchCalls.push(calls);
         for (const callExpression of calls) {
           notifierCalls.push({ branchRoot, callExpression, statementIndex });
@@ -699,7 +836,7 @@ const analyzeSnapshotContainer = (
       for (const callExpression of collectNotifierCalls(
         statement,
         setSymbolIds,
-        storeSymbolIds,
+        notifierStoreSymbolIds,
         context,
       )) {
         notifierCalls.push({ branchRoot: null, callExpression, statementIndex });
@@ -753,6 +890,7 @@ export const zustandNoMutatingState = defineRule({
       ZustandStoreCreator["creatorFunction"],
       ZustandCreatorBinding
     >();
+    const bindingsWithBoundStoreNotifier = new Set<ZustandCreatorBinding>();
     const functionContainers = new Set<EsTreeNode>();
     const updaterFunctionNotifierSymbolIds = new Map<EsTreeNode, Set<number>>();
     const recordUpdaterFunctionNotifier = (
@@ -824,6 +962,7 @@ export const zustandNoMutatingState = defineRule({
             if (!isNodeOfType(node, "CallExpression")) return;
             const storeSymbolId = storeSymbolIdForMethodCall(node, "setState", context);
             if (storeSymbolId === null || !binding.storeSymbolIds.has(storeSymbolId)) return;
+            bindingsWithBoundStoreNotifier.add(binding);
             const updaterArgument = node.arguments[0];
             if (!updaterArgument || isNodeOfType(updaterArgument, "SpreadElement")) return;
             const updaterFunction = resolveExactLocalFunction(updaterArgument, context.scopes);
@@ -835,14 +974,16 @@ export const zustandNoMutatingState = defineRule({
         const analyzeProvenance = (
           getSymbolIds: ReadonlySet<number>,
           setSymbolIds: ReadonlySet<number>,
-          storeSymbolIds: ReadonlySet<number>,
+          snapshotStoreSymbolIds: ReadonlySet<number>,
+          notifierStoreSymbolIds: ReadonlySet<number>,
         ): void => {
           if (programNode) {
             analyzeSnapshotContainer(
               programNode.body,
               getSymbolIds,
               setSymbolIds,
-              storeSymbolIds,
+              snapshotStoreSymbolIds,
+              notifierStoreSymbolIds,
               context,
               reportedNodes,
             );
@@ -856,14 +997,16 @@ export const zustandNoMutatingState = defineRule({
               updaterNotifierSymbolIds &&
               Array.from(updaterNotifierSymbolIds).some(
                 (notifierSymbolId) =>
-                  setSymbolIds.has(notifierSymbolId) || storeSymbolIds.has(notifierSymbolId),
+                  setSymbolIds.has(notifierSymbolId) ||
+                  notifierStoreSymbolIds.has(notifierSymbolId),
               ),
             );
             analyzeSnapshotContainer(
               functionContainer.body.body,
               getSymbolIds,
               setSymbolIds,
-              storeSymbolIds,
+              snapshotStoreSymbolIds,
+              notifierStoreSymbolIds,
               context,
               reportedNodes,
               isUpdaterNotifierForProvenance
@@ -875,13 +1018,18 @@ export const zustandNoMutatingState = defineRule({
         for (const binding of creatorBindings.values()) {
           const getSymbolIds = new Set<number>();
           const setSymbolIds = new Set<number>();
-          if (binding.getSymbol && binding.setSymbol && binding.setSymbol.references.length > 0) {
+          if (
+            binding.getSymbol &&
+            binding.setSymbol &&
+            (binding.setSymbol.references.length > 0 || bindingsWithBoundStoreNotifier.has(binding))
+          ) {
             getSymbolIds.add(binding.getSymbol.id);
           }
           if (binding.setSymbol) setSymbolIds.add(binding.setSymbol.id);
-          analyzeProvenance(getSymbolIds, setSymbolIds, new Set<number>());
+          analyzeProvenance(getSymbolIds, setSymbolIds, new Set<number>(), binding.storeSymbolIds);
           for (const storeSymbolId of binding.storeSymbolIds) {
-            analyzeProvenance(new Set<number>(), new Set<number>(), new Set([storeSymbolId]));
+            const storeSymbolIds = new Set([storeSymbolId]);
+            analyzeProvenance(new Set<number>(), new Set<number>(), storeSymbolIds, storeSymbolIds);
           }
         }
       },

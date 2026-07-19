@@ -34,4 +34,15 @@ export const useFuzzStore = create((set, get) => ({
       set({ items: items.slice() });
     }
   },
+  updateWithRebind: () => {
+    let items = get().items;
+    items.push("next");
+    items = [...items];
+    set({ items });
+  },
+  updateWithBoundSetState: () => {
+    const items = get().items;
+    items.push("next");
+    useFuzzStore.setState({ items: items.slice() });
+  },
 }));

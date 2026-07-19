@@ -133,6 +133,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
     EARLIEST_GATED_VALTIO_MAJOR,
     LATEST_KNOWN_VALTIO_MAJOR,
   );
+  if (project.hasRemotion) capabilities.add("remotion");
   if (project.hasTypeScript) capabilities.add("typescript");
   // Keyed off `preactVersion`, not `framework === "preact"`, so Preact-on-Vite
   // still gets the `preact` bucket.

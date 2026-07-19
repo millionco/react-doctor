@@ -50,6 +50,7 @@ export interface WorkspaceFacts {
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
   hasSsrDependency: boolean;
+  hasRemotionDependency: boolean;
   reanimatedVersion: string | null;
 }
 
@@ -142,6 +143,8 @@ const evaluateManifestFacts = (
   facts.hasReanimatedAwarePackage =
     facts.hasReanimatedAwarePackage || isPackageJsonReanimatedAware(packageJson);
   facts.hasSsrDependency = facts.hasSsrDependency || isPackageJsonSsrAware(packageJson);
+  facts.hasRemotionDependency =
+    facts.hasRemotionDependency || getDependencySpec(packageJson, "remotion") !== null;
 };
 
 interface CollectWorkspaceFactsOptions {
@@ -175,6 +178,7 @@ export const collectWorkspaceFacts = (
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
     hasSsrDependency: false,
+    hasRemotionDependency: false,
     reanimatedVersion: null,
   };
 

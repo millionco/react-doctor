@@ -309,6 +309,15 @@ import { reactInJsxScope } from "./rules/react-builtins/react-in-jsx-scope.js";
 import { reactMarkdownUnsanitizedRawHtml } from "./rules/security/react-markdown-unsanitized-raw-html.js";
 import { reduxUseselectorInlineDerivation } from "./rules/state-and-effects/redux-useselector-inline-derivation.js";
 import { reduxUseselectorReturnsNewCollection } from "./rules/state-and-effects/redux-useselector-returns-new-collection.js";
+import { remotionCalculateMetadataFetchSignal } from "./rules/correctness/remotion-calculate-metadata-fetch-signal.js";
+import { remotionDeterministicRandomness } from "./rules/correctness/remotion-deterministic-randomness.js";
+import { remotionNoCssAnimation } from "./rules/correctness/remotion-no-css-animation.js";
+import { remotionNoCssTransition } from "./rules/correctness/remotion-no-css-transition.js";
+import { remotionNoCssUrlAssets } from "./rules/correctness/remotion-no-css-url-assets.js";
+import { remotionNoModuleScopeDelayRender } from "./rules/correctness/remotion-no-module-scope-delay-render.js";
+import { remotionNoNativeMediaElements } from "./rules/correctness/remotion-no-native-media-elements.js";
+import { remotionNoNextImage } from "./rules/correctness/remotion-no-next-image.js";
+import { remotionStableDelayRenderHandle } from "./rules/correctness/remotion-stable-delay-render-handle.js";
 import { renderingAnimateSvgWrapper } from "./rules/performance/rendering-animate-svg-wrapper.js";
 import { renderingConditionalRender } from "./rules/correctness/rendering-conditional-render.js";
 import { renderingHoistJsx } from "./rules/performance/rendering-hoist-jsx.js";
@@ -3967,6 +3976,105 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(reduxUseselectorReturnsNewCollection.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/remotion-calculate-metadata-fetch-signal",
+    id: "remotion-calculate-metadata-fetch-signal",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...remotionCalculateMetadataFetchSignal,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/remotion-deterministic-randomness",
+    id: "remotion-deterministic-randomness",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...remotionDeterministicRandomness,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/remotion-no-css-animation",
+    id: "remotion-no-css-animation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...remotionNoCssAnimation,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/remotion-no-css-transition",
+    id: "remotion-no-css-transition",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...remotionNoCssTransition,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/remotion-no-css-url-assets",
+    id: "remotion-no-css-url-assets",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...remotionNoCssUrlAssets,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/remotion-no-module-scope-delay-render",
+    id: "remotion-no-module-scope-delay-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...remotionNoModuleScopeDelayRender,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/remotion-no-native-media-elements",
+    id: "remotion-no-native-media-elements",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...remotionNoNativeMediaElements,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/remotion-no-next-image",
+    id: "remotion-no-next-image",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...remotionNoNextImage,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/remotion-stable-delay-render-handle",
+    id: "remotion-stable-delay-render-handle",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...remotionStableDelayRenderHandle,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

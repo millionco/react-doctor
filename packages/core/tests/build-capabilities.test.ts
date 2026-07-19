@@ -20,6 +20,7 @@ const baseProject: ProjectInfo = {
   hasTanStackQuery: false,
   valtioVersion: null,
   valtioMajorVersion: null,
+  hasRemotion: false,
   hasSsrDependency: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
@@ -36,6 +37,20 @@ const baseProject: ProjectInfo = {
 };
 
 describe("buildCapabilities", () => {
+  it("emits the remotion capability without replacing the web framework capability", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+      hasRemotion: true,
+    });
+    expect(capabilities.has("remotion")).toBe(true);
+    expect(capabilities.has("vite")).toBe(true);
+  });
+
+  it("omits the remotion capability when the dependency is absent", () => {
+    expect(buildCapabilities(baseProject).has("remotion")).toBe(false);
+  });
+
   it("emits exactly the expected token set for a fully-featured Next.js project", () => {
     const capabilities = buildCapabilities({
       ...baseProject,

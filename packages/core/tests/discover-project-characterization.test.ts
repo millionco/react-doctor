@@ -79,6 +79,7 @@ describe("discoverProject characterization — workspace fixture matrix", () => 
       hasTanStackQuery: false,
       valtioVersion: null,
       valtioMajorVersion: null,
+      hasRemotion: false,
       hasSsrDependency: false,
       preactVersion: null,
       preactMajorVersion: null,
@@ -139,6 +140,7 @@ describe("discoverProject characterization — workspace fixture matrix", () => 
       hasTanStackQuery: false,
       valtioVersion: null,
       valtioMajorVersion: null,
+      hasRemotion: false,
       hasSsrDependency: false,
       preactVersion: null,
       preactMajorVersion: null,
@@ -180,6 +182,30 @@ describe("discoverProject characterization — workspace fixture matrix", () => 
     expect(projectInfo.zodVersion).toBe(null);
     expect(projectInfo.reactVersion).toBe("^19.0.0");
     expect(projectInfo.framework).toBe("nextjs");
+  });
+
+  it("surfaces a Remotion dependency from a workspace package", () => {
+    const fixtureDirectory = writeFixture("remotion-workspace", [
+      {
+        filePath: "package.json",
+        contents: packageJson({
+          name: "remotion-root",
+          private: true,
+          workspaces: ["apps/*"],
+        }),
+      },
+      {
+        filePath: "apps/video/package.json",
+        contents: packageJson({
+          name: "video",
+          dependencies: { react: "19.1.0", remotion: "4.0.420", vite: "^7.0.0" },
+        }),
+      },
+    ]);
+
+    const projectInfo = discoverProject(fixtureDirectory);
+    expect(projectInfo.hasRemotion).toBe(true);
+    expect(projectInfo.framework).toBe("vite");
   });
 
   it("nx workspace: react + framework detected from an app project", () => {

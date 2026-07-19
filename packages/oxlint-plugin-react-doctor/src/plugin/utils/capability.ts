@@ -29,6 +29,7 @@ export type Capability =
   // ruleset cache key, so even "unknown" is load-bearing).
   | FrameworkToken
   | "react"
+  | "remotion"
   | "pure-preact"
   | "react-native"
   | "server-actions"

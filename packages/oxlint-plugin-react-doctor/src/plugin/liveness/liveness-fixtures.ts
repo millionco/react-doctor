@@ -1078,6 +1078,33 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "rendering-usetransition-loading": {
     code: 'function C() { const [isLoading, setIsLoading] = useState(false); const toggle = () => { setIsLoading(true); }; return <button onClick={toggle}>{isLoading ? "..." : "go"}</button>; }',
   },
+  "remotion-calculate-metadata-fetch-signal": {
+    code: 'import { Composition } from "remotion";\nconst load = async () => ({ props: await fetch("/data") });\nexport const Root = () => <Composition calculateMetadata={load} />;',
+  },
+  "remotion-deterministic-randomness": {
+    code: 'import { useCurrentFrame } from "remotion";\nexport const Scene = () => { useCurrentFrame(); return <div>{Math.random()}</div>; };',
+  },
+  "remotion-no-css-animation": {
+    code: 'import { AbsoluteFill, useCurrentFrame } from "remotion";\nexport const Scene = () => { useCurrentFrame(); return <AbsoluteFill style={{ animation: "fade 1s" }} />; };',
+  },
+  "remotion-no-css-transition": {
+    code: 'import { AbsoluteFill, useCurrentFrame } from "remotion";\nexport const Scene = () => { useCurrentFrame(); return <AbsoluteFill style={{ transition: "opacity 1s" }} />; };',
+  },
+  "remotion-no-css-url-assets": {
+    code: 'import { AbsoluteFill, useCurrentFrame } from "remotion";\nexport const Scene = () => { useCurrentFrame(); return <AbsoluteFill style={{ backgroundImage: "url(/background.png)" }} />; };',
+  },
+  "remotion-no-module-scope-delay-render": {
+    code: 'import { delayRender } from "remotion";\nconst handle = delayRender();',
+  },
+  "remotion-no-native-media-elements": {
+    code: 'import { AbsoluteFill, useCurrentFrame } from "remotion";\nexport const Scene = () => { useCurrentFrame(); return <AbsoluteFill><img src="/image.png" /></AbsoluteFill>; };',
+  },
+  "remotion-no-next-image": {
+    code: 'import { Composition } from "remotion";\nimport Image from "next/image";\nconst Scene = () => <Image src="/image.png" alt="" />;\nexport const Root = () => <Composition component={Scene} />;',
+  },
+  "remotion-stable-delay-render-handle": {
+    code: 'import { delayRender } from "remotion";\nexport const Scene = () => <div>{delayRender()}</div>;',
+  },
   "repository-secret-file": {
     code: "DATABASE_URL=postgres://app_prod:N7v!q2mXfA9z@db.internal.example.com:5432/app\n",
     filePath: ".env",

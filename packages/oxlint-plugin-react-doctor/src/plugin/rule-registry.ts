@@ -426,6 +426,7 @@ import { zodV4NoDeprecatedSchemaApis } from "./rules/zod/zod-v4-no-deprecated-sc
 import { zodV4PreferTopLevelStringFormats } from "./rules/zod/zod-v4-prefer-top-level-string-formats.js";
 import { zustandNoFreshSelectorResult } from "./rules/state-and-effects/zustand-no-fresh-selector-result.js";
 import { zustandNoGetDuringInitialization } from "./rules/state-and-effects/zustand-no-get-during-initialization.js";
+import { zustandNoMutatingState } from "./rules/state-and-effects/zustand-no-mutating-state.js";
 import { zustandNoWholeStoreDestructure } from "./rules/state-and-effects/zustand-no-whole-store-destructure.js";
 
 export const reactDoctorRules = [
@@ -5371,6 +5372,18 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(zustandNoGetDuringInitialization.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/zustand-no-mutating-state",
+    id: "zustand-no-mutating-state",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...zustandNoMutatingState,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(zustandNoMutatingState.requires ?? [])])],
     },
   },
   {

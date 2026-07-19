@@ -100,8 +100,6 @@ describe("issue #1406: disable-next-line suppresses no-ref-current-in-render", (
       ],
     );
     expect(filtered).toHaveLength(1);
-    expect(filtered[0].suppressionHint).toContain(
-      "1 line of code separate it from the diagnostic",
-    );
+    expect(filtered[0].suppressionHint).toContain("1 line of code separate it from the diagnostic");
   });
 });

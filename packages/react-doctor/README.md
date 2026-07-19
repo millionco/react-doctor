@@ -62,25 +62,25 @@ You can suppress individual diagnostics using inline comments:
 ```tsx
 // Suppress one rule on the next line
 // react-doctor-disable-next-line react-doctor/no-ref-current-in-render
-valueRef.current = value
+valueRef.current = value;
 
 // Suppress one rule on the same line
-valueRef.current = value // react-doctor-disable-line react-doctor/no-ref-current-in-render
+valueRef.current = value; // react-doctor-disable-line react-doctor/no-ref-current-in-render
 
 // Suppress multiple rules
 // react-doctor-disable-next-line react-doctor/no-ref-current-in-render, react-doctor/no-derived-state-effect
-valueRef.current = value
+valueRef.current = value;
 
 // Suppress all rules on the next line
 // react-doctor-disable-next-line
-valueRef.current = value
+valueRef.current = value;
 ```
 
 Block comments (`/* */`) and JSX comment syntax (`{/* */}`) also work. You can add an explanation after `--`:
 
 ```tsx
 // react-doctor-disable-next-line react-doctor/no-ref-current-in-render -- intentional for performance
-valueRef.current = value
+valueRef.current = value;
 ```
 
 `eslint-disable` and `oxlint-disable` comments are also respected.

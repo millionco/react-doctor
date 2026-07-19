@@ -418,6 +418,26 @@ describe("buildCapabilities", () => {
     expect(capabilities.has("zustand:1")).toBe(false);
   });
 
+  it("enables fresh-selector diagnostics only for Zustand v5", () => {
+    const versionFour = buildCapabilities({
+      ...baseProject,
+      zustandVersion: "^4.5.7",
+      zustandMajorVersion: 4,
+    });
+    const versionFive = buildCapabilities({
+      ...baseProject,
+      zustandVersion: "^5.0.8",
+      zustandMajorVersion: 5,
+    });
+
+    expect(shouldEnableRule(["zustand", "zustand:5"], undefined, versionFour, new Set())).toBe(
+      false,
+    );
+    expect(shouldEnableRule(["zustand", "zustand:5"], undefined, versionFive, new Set())).toBe(
+      true,
+    );
+  });
+
   it("emits `nextjs:15` capability for Next.js 15+ projects", () => {
     const capabilities = buildCapabilities({
       ...baseProject,

@@ -67,17 +67,20 @@ describe("r3f-no-mutate-loader-cache", () => {
     const code = `
       import { useGLTF } from "@react-three/drei";
       import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
+      import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
       const model = useGLTF(url);
       const clone = model.scene.clone();
       const skeletonClone = SkeletonUtils.clone(model.scene);
+      const addonsClone = cloneSkeleton(model.scene);
       clone.geometry.center();
       clone.children[0].geometry.translate(1, 0, 0);
       skeletonClone.material.applyMatrix4(matrix);
+      addonsClone.children[0].geometry.center();
       clone.position.set(1, 2, 3);
       clone.rotation.x = 1;
       clone.scale.setScalar(2);
     `;
-    expect(runRule(r3fNoMutateLoaderCache, code).diagnostics).toHaveLength(3);
+    expect(runRule(r3fNoMutateLoaderCache, code).diagnostics).toHaveLength(4);
   });
 
   it("tracks shared texture slots but not owned values on material clones", () => {

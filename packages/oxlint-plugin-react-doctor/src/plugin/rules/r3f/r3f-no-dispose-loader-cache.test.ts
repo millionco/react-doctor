@@ -49,14 +49,18 @@ describe("r3f-no-dispose-loader-cache", () => {
   it("preserves shallow-clone provenance only for shared resource descendants", () => {
     const code = `
       import { useGLTF } from "@react-three/drei";
+      import * as SkeletonUtils from "three/addons/utils/SkeletonUtils";
       const model = useGLTF(url);
       const clone = model.scene.clone();
+      const skeletonClone = SkeletonUtils.clone(model.scene);
       clone.geometry.dispose();
       clone.children[0].material.dispose();
+      skeletonClone.children[0].material.dispose();
       clone.dispose();
+      skeletonClone.dispose();
       clone.position.dispose();
     `;
-    expect(runRule(r3fNoDisposeLoaderCache, code).diagnostics).toHaveLength(2);
+    expect(runRule(r3fNoDisposeLoaderCache, code).diagnostics).toHaveLength(3);
   });
 
   it("preserves cached texture-slot provenance through a shallow material clone", () => {

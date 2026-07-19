@@ -50,6 +50,8 @@ const SHALLOW_MATERIAL_CLONE_SHARED_TEXTURE_PROPERTY_NAMES = new Set([
 ]);
 const SKELETON_UTILS_MODULE_SOURCES = new Set([
   "three-stdlib",
+  "three/addons/utils/SkeletonUtils",
+  "three/addons/utils/SkeletonUtils.js",
   "three/examples/jsm/utils/SkeletonUtils",
   "three/examples/jsm/utils/SkeletonUtils.js",
 ]);

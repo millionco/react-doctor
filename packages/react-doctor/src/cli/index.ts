@@ -14,6 +14,7 @@ import {
   rulesSetAction,
   rulesUnignoreTagAction,
 } from "./commands/rules.js";
+import { triageAction } from "./commands/triage.js";
 import { versionAction } from "./commands/version.js";
 import { whyAction } from "./commands/why.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
@@ -78,6 +79,7 @@ ${formatExampleLines([
   ["react-doctor --blocking warning", "fail CI on warnings too (default: error)"],
   ["react-doctor --json > report.json", "write a machine-readable report"],
   ["react-doctor why src/App.tsx:42", "explain why a rule fired there"],
+  ["react-doctor triage", "walk rules one by one and copy focused fix prompts"],
   ["react-doctor ci install", "scan every pull request in CI"],
   ["react-doctor install", "set up the agent skill and git hook"],
 ])}
@@ -233,6 +235,75 @@ const program = new Command()
   .addHelpText("after", renderRootHelpEpilog);
 
 program.action(inspectAction);
+
+program
+  .command("triage")
+  .description("Walk React Doctor rules one by one and copy focused fix prompts")
+  .argument("[directory]", "project directory to scan", ".")
+  .option("--lint", "enable linting")
+  .option("--no-lint", "skip linting")
+  .option("--dead-code", "enable dead-code analysis (default)")
+  .option(
+    "--no-dead-code",
+    "skip dead-code analysis (unused files / exports / dependencies, circular imports)",
+  )
+  .option(
+    "--output-dir <dir>",
+    "directory for triage diagnostics and state (default: .react-doctor/triage)",
+  )
+  .option(
+    "--no-parallel",
+    "lint serially with one worker (default: parallel across CPU cores; set the worker count with REACT_DOCTOR_PARALLEL)",
+  )
+  .option(
+    "--project <name>",
+    "select projects: workspace names or directory paths (comma-separated for multiple); default selects every workspace project",
+  )
+  .option(
+    "--scope <value>",
+    "how much to scan/report: full (default), files, changed (only new issues vs base), or lines (only changed lines)",
+  )
+  .option("--base <ref>", "base git ref for files/changed/lines scope (auto-detected when omitted)")
+  .addOption(
+    new Option(
+      "--diff [base]",
+      "[deprecated] alias for --scope changed (pass `false` to force a full scan)",
+    ).hideHelp(),
+  )
+  .addOption(
+    new Option(
+      "--changed-files-from <file>",
+      "scan source files listed in a newline-delimited changed-files file",
+    ).hideHelp(),
+  )
+  .option("--no-score", "skip the score API, the share URL, and crash reporting")
+  .addOption(
+    new Option(
+      "--category <category>",
+      "only show diagnostics in a category (repeatable; e.g. Security)",
+    ).argParser(collectCategoryOption),
+  )
+  .option(
+    "--no-telemetry",
+    "alias for --no-score (skip the score API, share URL, and crash reporting)",
+  )
+  .option("--staged", "scan only staged (git index) files for pre-commit hooks")
+  .option(
+    "--blocking <level>",
+    "severity that fails CI: error (default), warning, or none (advisory)",
+  )
+  .addOption(
+    new Option("--fail-on <level>", "[deprecated] alias for --blocking <level>").hideHelp(),
+  )
+  .option(
+    "--no-respect-inline-disables",
+    "audit mode: neutralize inline lint suppressions before scanning",
+  )
+  .option("--warnings", "show warning-severity diagnostics (default)")
+  .option("--no-warnings", "hide warning-severity diagnostics (errors only)")
+  .option("--color", "force colored output")
+  .option("--no-color", "disable colored output (also honors NO_COLOR)")
+  .action(triageAction);
 
 program
   .command("why <location>")

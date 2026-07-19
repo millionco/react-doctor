@@ -40,7 +40,7 @@ jobs:
           max_attempts=4
           attempt=1
           while [ "$attempt" -le "$max_attempts" ]; do
-            if pnpm dlx pkg-pr-new publish \
+            if pnpm dlx pkg-pr-new publish --pnpm \
               ./packages/react-doctor \
               ./packages/oxlint-plugin-react-doctor \
               ./packages/eslint-plugin-react-doctor; then

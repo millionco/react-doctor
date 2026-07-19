@@ -105,6 +105,11 @@ export const GH_PR_LIST_MAX = 100;
 // compact, passable CLI argument.
 export const HANDOFF_MAX_FILES_PER_RULE = 3;
 
+export const TRIAGE_STATE_SCHEMA_VERSION = 1;
+export const TRIAGE_STATE_JSON_INDENT_SPACES = 2;
+export const TRIAGE_PROMPT_MAX_INLINE_SITES = 30;
+export const TRIAGE_DISPLAY_MAX_FILES = 8;
+
 // Social proof for the "Add to CI" pitch (shown in the post-scan handoff
 // prompt and embedded in the agent-handoff prompt).
 export const CI_TRUST_COMPANIES = "PayPal, Rippling, and Alibaba";
@@ -243,6 +248,7 @@ export const METRIC = {
   scoreUnavailable: "score.unavailable",
   oxlintWorkers: "oxlint.workers",
   agentHandoff: "agent.handoff",
+  triage: "triage.session",
   agentInstallHintShown: "agent.install_hint_shown",
   installCompleted: "install.completed",
   installAgent: "install.agent",

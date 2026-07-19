@@ -6,7 +6,7 @@ import { formatRuleSummary } from "./render-diagnostics.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const ruleDumpFileName = (ruleKey: string): string => ruleKey.replace(/\//g, "--") + ".txt";
+export const ruleDumpFileName = (ruleKey: string): string => ruleKey.replace(/\//g, "--") + ".txt";
 
 // Derives the rule dump files a previous run wrote into this directory from
 // the diagnostics.json it left behind. An absent, unreadable, or foreign

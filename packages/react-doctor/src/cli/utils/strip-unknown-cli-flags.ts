@@ -67,6 +67,38 @@ const INSTALL_FLAG_SPEC: CliFlagSpec = {
   shortOptionsWithRequiredValues: new Set(["-c"]),
 };
 
+const TRIAGE_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set([
+    "--color",
+    "--dead-code",
+    "--help",
+    "--lint",
+    "--no-color",
+    "--no-dead-code",
+    "--no-lint",
+    "--no-parallel",
+    "--no-respect-inline-disables",
+    "--no-score",
+    "--no-telemetry",
+    "--no-warnings",
+    "--staged",
+    "--warnings",
+  ]),
+  longOptionsWithRequiredValues: new Set([
+    "--base",
+    "--blocking",
+    "--category",
+    "--changed-files-from",
+    "--fail-on",
+    "--output-dir",
+    "--project",
+    "--scope",
+  ]),
+  longOptionsWithOptionalValues: new Set(["--diff"]),
+  shortOptionsWithoutValues: new Set(["-h"]),
+  shortOptionsWithRequiredValues: new Set(),
+};
+
 const VERSION_FLAG_SPEC: CliFlagSpec = {
   longOptionsWithoutValues: new Set(["--color", "--help", "--no-color"]),
   longOptionsWithRequiredValues: new Set(),
@@ -131,6 +163,7 @@ const WHY_FLAG_SPEC: CliFlagSpec = {
 const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
   ["install", INSTALL_FLAG_SPEC],
   ["setup", INSTALL_FLAG_SPEC],
+  ["triage", TRIAGE_FLAG_SPEC],
   ["version", VERSION_FLAG_SPEC],
   ["rules", RULES_FLAG_SPEC],
   ["ci", CI_FLAG_SPEC],

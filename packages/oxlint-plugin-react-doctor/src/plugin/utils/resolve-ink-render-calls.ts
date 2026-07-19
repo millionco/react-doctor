@@ -13,6 +13,10 @@ interface InkRenderCall {
   renderedComponentName: string | null;
 }
 
+interface ResolveInkRenderCallsOptions {
+  allowSingleRenderFallback?: boolean;
+}
+
 const getRenderedComponentName = (
   renderCall: EsTreeNodeOfType<"CallExpression">,
 ): string | null => {
@@ -58,22 +62,33 @@ const renderCallCanMountComponent = (
   context: RuleContext,
 ): boolean => {
   const renderedNode = renderCall.node.arguments[0];
-  return Boolean(
-    isNodeOfType(renderedNode, "JSXElement") &&
-    isNodeOfType(renderedNode.openingElement.name, "JSXIdentifier") &&
-    canRenderComponent(renderedNode.openingElement.name, targetComponentName, context, new Set()),
-  );
+  if (!renderedNode) return false;
+  let canMountTarget = false;
+  walkAst(renderedNode, (descendantNode) => {
+    if (
+      !isNodeOfType(descendantNode, "JSXOpeningElement") ||
+      !isNodeOfType(descendantNode.name, "JSXIdentifier")
+    ) {
+      return;
+    }
+    if (canRenderComponent(descendantNode.name, targetComponentName, context, new Set())) {
+      canMountTarget = true;
+      return false;
+    }
+  });
+  return canMountTarget;
 };
 
 export const collectInkRenderCalls = (
   program: EsTreeNode,
   context: RuleContext,
+  apiName: "render" | "renderToString" = "render",
 ): ReadonlyArray<InkRenderCall> => {
   const renderCalls: InkRenderCall[] = [];
   walkAst(program, (descendantNode) => {
     if (
       !isNodeOfType(descendantNode, "CallExpression") ||
-      resolveInkApiName(descendantNode.callee, context.scopes) !== "render"
+      resolveInkApiName(descendantNode.callee, context.scopes) !== apiName
     ) {
       return;
     }
@@ -107,6 +122,7 @@ export const resolveInkRenderCallsForNode = (
   node: EsTreeNode,
   renderCalls: ReadonlyArray<InkRenderCall>,
   context: RuleContext,
+  options: ResolveInkRenderCallsOptions = {},
 ): ReadonlyArray<InkRenderCall> => {
   const directRenderCalls = renderCalls.filter((renderCall) => {
     const renderedNode = renderCall.node.arguments[0];
@@ -131,5 +147,5 @@ export const resolveInkRenderCallsForNode = (
     if (componentRenderCalls.length > 0) return componentRenderCalls;
   }
 
-  return renderCalls.length === 1 ? renderCalls : [];
+  return options.allowSingleRenderFallback !== false && renderCalls.length === 1 ? renderCalls : [];
 };

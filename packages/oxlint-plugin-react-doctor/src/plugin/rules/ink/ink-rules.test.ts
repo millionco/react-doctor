@@ -308,4 +308,42 @@ describe("Ink rules", () => {
     expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(1);
     expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(1);
   });
+
+  it("requires Ctrl-C operands to share a condition", () => {
+    const code = `
+      import {render,useInput} from "ink";
+      const App=()=> {
+        useInput((input,key)=>{if(key.ctrl) toggle(); if(input==="c") work()});
+        return null;
+      };
+      render(<App/>);
+    `;
+    expect(runRule(inkCtrlCHandlerRequiresExitOption, code).diagnostics).toHaveLength(0);
+  });
+
+  it("follows renderToString through same-file component wrappers", () => {
+    const invalidCode = `
+      import {renderToString,useInput} from "ink";
+      const Live=()=> {useInput(()=>{}); return null};
+      const Root=()=> <Live/>;
+      renderToString(<Root/>);
+    `;
+    const validCode = `
+      import {renderToString,useInput} from "ink";
+      const Unmounted=()=> {useInput(()=>{}); return null};
+      const Root=()=> null;
+      renderToString(<Root/>);
+    `;
+    expect(runRule(inkNoLiveHooksInRenderToString, invalidCode).diagnostics).toHaveLength(1);
+    expect(runRule(inkNoLiveHooksInRenderToString, validCode).diagnostics).toHaveLength(0);
+  });
+
+  it("follows renderToString through direct fragment children", () => {
+    const code = `
+      import {renderToString,useInput,Box} from "ink";
+      const Live=()=> {useInput(()=>{}); return null};
+      renderToString(<><Box><Live/></Box></>);
+    `;
+    expect(runRule(inkNoLiveHooksInRenderToString, code).diagnostics).toHaveLength(1);
+  });
 });

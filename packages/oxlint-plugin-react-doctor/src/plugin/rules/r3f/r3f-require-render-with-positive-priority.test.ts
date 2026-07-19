@@ -19,6 +19,44 @@ describe("r3f-require-render-with-positive-priority", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("accepts explicit null callbacks that intentionally freeze rendering", () => {
+    const result = runRule(
+      r3fRequireRenderWithPositivePriority,
+      `
+        import { useFrame } from "@react-three/fiber";
+        const freezeFrame = () => null;
+        const Freeze = () => {
+          useFrame(() => null, 1000);
+          useFrame(freezeFrame, 2);
+          useFrame(() => (null as null), 3);
+          useFrame(function freezeFrameWithBlock() { return null; }, 4);
+          return null;
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports callbacks with work even when they return null", () => {
+    const result = runRule(
+      r3fRequireRenderWithPositivePriority,
+      `
+        import { useFrame } from "@react-three/fiber";
+        const Scene = ({ state }) => {
+          useFrame(() => { state.value++; return null; }, 1);
+          useFrame(() => { update(); return null; }, 2);
+          useFrame(() => (update(), null), 3);
+          useFrame(() => true, 4);
+          useFrame(() => undefined, 5);
+          useFrame(async () => null, 6);
+          useFrame(() => {}, 7);
+          return null;
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(7);
+  });
+
   it("supports namespace calls and local callback aliases", () => {
     const result = runRule(
       r3fRequireRenderWithPositivePriority,

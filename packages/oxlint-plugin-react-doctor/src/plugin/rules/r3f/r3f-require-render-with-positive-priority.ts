@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -97,6 +98,19 @@ const isProvenNonRendererRenderCall = (
   return Boolean(moduleSource && NON_RENDERER_RENDER_MODULES.has(moduleSource));
 };
 
+const isExplicitNullNoopCallback = (callback: EsTreeNode): boolean => {
+  if (!isFunctionLike(callback) || callback.async || callback.generator) return false;
+  const body = stripParenExpression(callback.body);
+  if (!isNodeOfType(body, "BlockStatement")) {
+    return isNodeOfType(body, "Literal") && body.value === null;
+  }
+  if (body.body.length !== 1) return false;
+  const statement = body.body[0];
+  if (!isNodeOfType(statement, "ReturnStatement") || !statement.argument) return false;
+  const returnedExpression = stripParenExpression(statement.argument);
+  return isNodeOfType(returnedExpression, "Literal") && returnedExpression.value === null;
+};
+
 const callbackHasRenderSink = (callback: EsTreeNode, context: RuleContext): boolean => {
   let hasRenderSink = false;
   walkFunctionExecution(callback, context.scopes, (candidate) => {
@@ -143,6 +157,7 @@ export const r3fRequireRenderWithPositivePriority = defineRule({
           moduleSubscriptions.hasUnresolvedCallback = true;
           return;
         }
+        if (isExplicitNullNoopCallback(callback)) return;
         moduleSubscriptions.calls.push(node);
         if (callbackHasRenderSink(callback, context)) moduleSubscriptions.hasRenderSink = true;
       },

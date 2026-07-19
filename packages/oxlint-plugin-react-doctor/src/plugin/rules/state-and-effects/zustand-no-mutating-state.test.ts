@@ -662,6 +662,27 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("reports nested child reuse through an intermediate snapshot alias", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          unsafe: () => {
+            const nested = get().nested;
+            nested.items.push("next");
+            set({ nested: { ...nested } });
+          },
+          safe: () => {
+            const nested = get().nested;
+            nested.items.push("next");
+            set({ nested: { ...nested, items: [...nested.items] } });
+          },
+        }));
+      `,
+      1,
+    );
+  });
+
   it("matches the replacement property to the mutated snapshot path", () => {
     expectDiagnosticCount(
       `

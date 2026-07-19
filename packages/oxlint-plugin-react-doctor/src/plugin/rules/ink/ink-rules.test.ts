@@ -183,6 +183,11 @@ describe("Ink rules", () => {
     expect(runRule(inkNoMeasureElementInRender, code).diagnostics).toHaveLength(0);
   });
 
+  it("stops at local JSX wrappers whose rendered host is unknown", () => {
+    const code = `import {Box,Text} from "ink"; const Wrapper=({children}) => <Text>{children}</Text>; const App=()=> <Box><Wrapper>hello</Wrapper></Box>;`;
+    expect(runRule(inkNoRawText, code).diagnostics).toHaveLength(0);
+  });
+
   it("ignores imported names shadowed by local bindings", () => {
     const renderCode = `import {render} from "ink"; const run=(render)=>{render(null);render(null)};`;
     const jsxCode = `import {Box} from "ink"; const App=(Box)=> <Box>hello</Box>;`;

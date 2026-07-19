@@ -54,7 +54,7 @@ export const inkCtrlCHandlerRequiresExitOption = defineRule({
   id: "ink-ctrl-c-handler-requires-exit-option",
   title: "Ctrl-C handler is unreachable",
   severity: "error",
-  minimumInkVersion: MINIMUM_INK_VERSIONS.modernHooks,
+  minimumInkVersion: MINIMUM_INK_VERSIONS.base,
   recommendation:
     "Pass `{exitOnCtrlC: false}` to `render()` before handling Ctrl-C with `useInput`.",
   create: (context) => ({

@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { inkNoRawText } from "../rules/ink/ink-no-raw-text.js";
+import { inkCtrlCHandlerRequiresExitOption } from "../rules/ink/ink-ctrl-c-handler-requires-exit-option.js";
 import { runRule } from "../../test-utils/run-rule.js";
 import { resetManifestCaches } from "./read-nearest-package-manifest.js";
 import { isInkVersionAtLeast } from "./resolve-ink-version.js";
@@ -87,5 +88,12 @@ describe("Ink version resolution", () => {
     const code = `import {Box} from "ink"; const App=()=> <Box>hello</Box>;`;
     expect(runRule(wrappedRule, code, { filename: modernFile }).diagnostics).toHaveLength(1);
     expect(runRule(wrappedRule, code, { filename: legacyFile }).diagnostics).toHaveLength(0);
+  });
+
+  it("enables the Ctrl-C rule for Ink 3", () => {
+    const sourceFile = createPackageFile("ctrl-c-ink-3", "3.0.0");
+    const wrappedRule = wrapInkRule(inkCtrlCHandlerRequiresExitOption);
+    const code = `import {render,useInput} from "ink"; const App=()=>{useInput((input,key)=>{if(key.ctrl&&input==="c") work()});return null};render(<App/>);`;
+    expect(runRule(wrappedRule, code, { filename: sourceFile }).diagnostics).toHaveLength(1);
   });
 });

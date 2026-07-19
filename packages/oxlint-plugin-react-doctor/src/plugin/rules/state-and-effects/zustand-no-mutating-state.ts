@@ -56,6 +56,11 @@ const UNSUPPORTED_CONTROL_FLOW_TYPES = new Set([
   "WithStatement",
 ]);
 
+const UNSUPPORTED_SNAPSHOT_EXPRESSION_CONTROL_FLOW_TYPES = new Set([
+  "ConditionalExpression",
+  "LogicalExpression",
+]);
+
 interface ZustandCreatorBinding {
   creatorFunction: ZustandStoreCreator["creatorFunction"];
   getSymbol: SymbolDescriptor | null;
@@ -324,8 +329,20 @@ const hasUnsupportedSnapshotStatement = (statement: EsTreeNode): boolean => {
   return branchStatements.some(hasUnsupportedSnapshotStatement);
 };
 
-const hasUnsupportedSnapshotControlFlow = (statements: readonly EsTreeNode[]): boolean =>
-  statements.some(hasUnsupportedSnapshotStatement);
+const hasUnsupportedSnapshotControlFlow = (statements: readonly EsTreeNode[]): boolean => {
+  if (statements.some(hasUnsupportedSnapshotStatement)) return true;
+  let didFindUnsupportedExpressionControlFlow = false;
+  for (const statement of statements) {
+    walkAst(statement, (node: EsTreeNode) => {
+      if (node !== statement && isFunctionLike(node)) return false;
+      if (UNSUPPORTED_SNAPSHOT_EXPRESSION_CONTROL_FLOW_TYPES.has(node.type)) {
+        didFindUnsupportedExpressionControlFlow = true;
+        return false;
+      }
+    });
+  }
+  return didFindUnsupportedExpressionControlFlow;
+};
 
 const analyzeSetUpdater = (
   updaterFunction: EsTreeNode,

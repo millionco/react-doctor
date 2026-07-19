@@ -434,6 +434,22 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("fails closed for expression-level conditional notifiers", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          update: (shouldNotify) => {
+            const items = get().items;
+            items.push("next");
+            shouldNotify && set({ items: [...items] });
+          },
+        }));
+      `,
+      0,
+    );
+  });
+
   it("abstains from unproven snapshot replacements", () => {
     expectDiagnosticCount(
       `

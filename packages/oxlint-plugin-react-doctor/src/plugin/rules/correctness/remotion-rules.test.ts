@@ -298,6 +298,27 @@ describe("remotion-no-native-media-elements", () => {
     }
   });
 
+  it("retries composition ownership after an earlier file cannot build the index", () => {
+    const sceneSource = `export const Scene = () => <img src="a.png"/>;`;
+    const rootDirectory = createRemotionProjectFixture({
+      "scene.tsx": sceneSource,
+      "root.tsx": `import {Composition} from 'remotion'; import {Scene} from './scene'; export const Root = () => <Composition component={Scene}/>;`,
+    });
+    const settings = { "react-doctor": { rootDirectory } };
+    try {
+      expectDiagnosticCount(remotionNoNativeMediaElements, sceneSource, 0, {
+        filename: path.join(rootDirectory, "..", "outside-scene.tsx"),
+        settings,
+      });
+      expectDiagnosticCount(remotionNoNativeMediaElements, sceneSource, 1, {
+        filename: path.join(rootDirectory, "scene.tsx"),
+        settings,
+      });
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("does not treat an ordinary imported component as a composition", () => {
     const sceneSource = `export const Scene = () => <img src="a.png"/>;`;
     const rootDirectory = createRemotionProjectFixture({

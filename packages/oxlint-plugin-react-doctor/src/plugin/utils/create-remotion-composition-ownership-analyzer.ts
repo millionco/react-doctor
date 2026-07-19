@@ -19,9 +19,14 @@ import type { RuleContext } from "./rule-context.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
-const registeredCompositionFunctionKeysBySettings = new WeakMap<
+interface RegisteredCompositionFunctionCache {
+  readonly failedFilenames: Set<string>;
+  registeredFunctionKeys?: ReadonlySet<string>;
+}
+
+const registeredCompositionFunctionCacheBySettings = new WeakMap<
   object,
-  ReadonlySet<string> | null
+  RegisteredCompositionFunctionCache
 >();
 
 const getFunctionExportKeys = (
@@ -148,12 +153,26 @@ export const createRemotionCompositionOwnershipAnalyzer = (
       functionNode,
     );
     if (currentFunctionKeys.length === 0) return false;
-    let registeredFunctionKeys = registeredCompositionFunctionKeysBySettings.get(settings);
-    if (registeredFunctionKeys === undefined) {
-      registeredFunctionKeys = collectRegisteredCompositionFunctionKeys(context, currentProgram);
-      registeredCompositionFunctionKeysBySettings.set(settings, registeredFunctionKeys);
+    let cache = registeredCompositionFunctionCacheBySettings.get(settings);
+    if (!cache) {
+      cache = { failedFilenames: new Set() };
+      registeredCompositionFunctionCacheBySettings.set(settings, cache);
     }
-    if (!registeredFunctionKeys) return false;
+    let registeredFunctionKeys = cache.registeredFunctionKeys;
+    if (!registeredFunctionKeys) {
+      const filename = normalizeFilename(context.filename);
+      if (cache.failedFilenames.has(filename)) return false;
+      const collectedFunctionKeys = collectRegisteredCompositionFunctionKeys(
+        context,
+        currentProgram,
+      );
+      if (!collectedFunctionKeys) {
+        cache.failedFilenames.add(filename);
+        return false;
+      }
+      registeredFunctionKeys = collectedFunctionKeys;
+      cache.registeredFunctionKeys = collectedFunctionKeys;
+    }
     return currentFunctionKeys.some((functionKey) => registeredFunctionKeys.has(functionKey));
   };
 };

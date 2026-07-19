@@ -1433,4 +1433,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "zod-v4-prefer-top-level-string-formats": {
     code: '\n      import { z } from "zod";\n      const schema = z.string().email();\n    ',
   },
+  "zustand-no-whole-store-destructure": {
+    code: '\n      import { create } from "zustand";\n      const useBearStore = create(() => ({ bears: 0 }));\n      export const BearCounter = () => {\n        const { bears } = useBearStore();\n        return <span>{bears}</span>;\n      };\n    ',
+  },
 };

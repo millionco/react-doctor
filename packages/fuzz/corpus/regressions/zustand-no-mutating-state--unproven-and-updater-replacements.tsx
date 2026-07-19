@@ -25,4 +25,13 @@ export const useFuzzStore = create((set, get) => ({
       set({ items: [...items] });
     }
   },
+  updateBeforeBranch: (enabled: boolean) => {
+    const items = get().items;
+    items.push("next");
+    if (enabled) {
+      set({ items: [...items] });
+    } else {
+      set({ items: items.slice() });
+    }
+  },
 }));

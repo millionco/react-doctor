@@ -116,6 +116,7 @@ interface AsyncExecutionPhase {
 
 interface DirectInvocationSiteOptions {
   includeCallbackExecutionSites: boolean;
+  requireGuaranteedCallbackExecution?: boolean;
 }
 
 interface ProjectedClearingSitesInput {
@@ -1134,8 +1135,17 @@ const expressionMayRetainOfficialPendingValue = (
         }
         const source = findSource(sourceExpression);
         if (!source) continue;
+        const sourceOwner = context.cfg.enclosingFunction(sourceExpression);
+        const hasCaughtInvocation = Boolean(
+          sourceOwner &&
+          isFunctionLike(sourceOwner) &&
+          getDirectInvocationSites(context, sourceOwner).some((invocationSite) =>
+            Boolean(findCaughtTryStatement(invocationSite)),
+          ),
+        );
         if (
-          context.cfg.enclosingFunction(sourceExpression) !== candidateOwner &&
+          sourceOwner !== candidateOwner &&
+          !hasCaughtInvocation &&
           createPendingSymbolFlow(context, symbol, sourceExpression).isClearedAtExit
         ) {
           continue;
@@ -1774,6 +1784,12 @@ const createPendingSymbolFlow = (
   const sourceStart = getNodeStartIndex(sourceExpression);
   if (sourceStart < 0) return { isClearedAtExit: false, isClearedBefore: () => false };
 
+  const projectedClearingNodes = new Set<EsTreeNode>(
+    additionalClearingNodes.filter(
+      (clearingNode) =>
+        isNodeOfType(clearingNode, "CallExpression") || isNodeOfType(clearingNode, "NewExpression"),
+    ),
+  );
   const clearingAssignmentSet = new Set<EsTreeNode>(additionalClearingNodes);
   for (const reference of symbol.references) {
     if (context.cfg.enclosingFunction(reference.identifier) !== owner) continue;
@@ -1845,7 +1861,13 @@ const createPendingSymbolFlow = (
     clearingStartsByBlock.set(clearingBlock, starts);
 
     const caughtTryStatement = findCaughtTryStatement(clearingNode);
-    if (!caughtTryStatement || !isNodeOfType(caughtTryStatement, "TryStatement")) continue;
+    if (
+      projectedClearingNodes.has(clearingNode) ||
+      !caughtTryStatement ||
+      !isNodeOfType(caughtTryStatement, "TryStatement")
+    ) {
+      continue;
+    }
     const catchBlock = functionCfg.blockOf(caughtTryStatement.handler?.body ?? caughtTryStatement);
     if (catchBlock) {
       for (const predecessor of catchBlock.predecessors) {
@@ -1964,6 +1986,17 @@ const getDirectInvocationSites = (
   functionNode: EsTreeNode,
   options: DirectInvocationSiteOptions = { includeCallbackExecutionSites: true },
 ): EsTreeNode[] => {
+  const callbackExecutionMatches = (invocationSite: EsTreeNode): boolean => {
+    if (isNodeOfType(invocationSite, "NewExpression")) return true;
+    if (!isNodeOfType(invocationSite, "CallExpression")) return false;
+    const callee = stripParenExpression(invocationSite.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return false;
+    const receiver = stripParenExpression(callee.object);
+    if (isNodeOfType(receiver, "ArrayExpression")) {
+      return receiver.elements.some((element) => Boolean(element));
+    }
+    return !options.requireGuaranteedCallbackExecution;
+  };
   const functionRoot = findTransparentExpressionRoot(functionNode);
   const directParent = functionRoot.parent;
   if (
@@ -1976,6 +2009,7 @@ const getDirectInvocationSites = (
   if (
     options.includeCallbackExecutionSites &&
     directParent &&
+    callbackExecutionMatches(directParent) &&
     executesDuringRender(functionRoot, context.scopes, {
       requireProvenSynchronousCallbackReceiver: true,
     })
@@ -2021,6 +2055,7 @@ const getDirectInvocationSites = (
       if (
         options.includeCallbackExecutionSites &&
         parent &&
+        callbackExecutionMatches(parent) &&
         (isNodeOfType(parent, "CallExpression") || isNodeOfType(parent, "NewExpression")) &&
         executesDuringRender(referenceRoot, context.scopes, {
           requireProvenSynchronousCallbackReceiver: true,
@@ -2065,6 +2100,26 @@ const invocationWaitsForCompletion = (invocationSite: EsTreeNode): boolean => {
   );
 };
 
+const getStaticallySelectedExecutionRoot = (context: RuleContext, node: EsTreeNode): EsTreeNode => {
+  let current = node;
+  let selectedRoot = node;
+  while (current.parent && !isFunctionLike(current.parent)) {
+    const parent = current.parent;
+    if (isNodeOfType(parent, "IfStatement") && parent.test !== current) {
+      const testValue = getStaticLogicalValue(context, parent.test);
+      const isSelectedBranch = Boolean(
+        testValue &&
+        ((parent.consequent === current && testValue.isTruthy) ||
+          (parent.alternate === current && !testValue.isTruthy)),
+      );
+      if (!isSelectedBranch) break;
+      selectedRoot = parent;
+    }
+    current = parent;
+  }
+  return selectedRoot;
+};
+
 const getAsyncExecutionPhase = (context: RuleContext, node: EsTreeNode): AsyncExecutionPhase => {
   const owner = context.cfg.enclosingFunction(node);
   if (!owner || !isFunctionLike(owner) || !owner.async) {
@@ -2076,10 +2131,19 @@ const getAsyncExecutionPhase = (context: RuleContext, node: EsTreeNode): AsyncEx
   walkAst(owner, (candidate) => {
     if (candidate !== owner && isFunctionLike(candidate)) return false;
     if (!isNodeOfType(candidate, "AwaitExpression")) return;
+    if (
+      !isNodeReachableWithinFunction(candidate, context) ||
+      expressionIsStaticallySkipped(context, candidate)
+    ) {
+      return;
+    }
     const isInsideEffect = isDescendantOf(candidate, node);
     if (!isInsideEffect && getNodeStartIndex(candidate) >= nodeStart) return;
     hasPossiblePriorSuspension = true;
-    if (isInsideEffect || nodeDominatesNode(candidate, node, context)) {
+    if (
+      isInsideEffect ||
+      nodeDominatesNode(getStaticallySelectedExecutionRoot(context, candidate), node, context)
+    ) {
       hasGuaranteedPriorSuspension = true;
     }
   });
@@ -2087,6 +2151,25 @@ const getAsyncExecutionPhase = (context: RuleContext, node: EsTreeNode): AsyncEx
     mayExecuteBeforeSuspension: !hasGuaranteedPriorSuspension,
     mustExecuteBeforeSuspension: !hasPossiblePriorSuspension,
   };
+};
+
+const hasReachableThrowBeforeNode = (context: RuleContext, node: EsTreeNode): boolean => {
+  const owner = context.cfg.enclosingFunction(node);
+  if (!owner) return false;
+  const nodeStart = getNodeStartIndex(node);
+  let hasPriorThrow = false;
+  walkAst(owner, (candidate) => {
+    if (candidate !== owner && isFunctionLike(candidate)) return false;
+    if (
+      isNodeOfType(candidate, "ThrowStatement") &&
+      getNodeStartIndex(candidate) < nodeStart &&
+      isNodeReachableWithinFunction(candidate, context) &&
+      !expressionIsStaticallySkipped(context, candidate)
+    ) {
+      hasPriorThrow = true;
+    }
+  });
+  return hasPriorThrow;
 };
 
 const getExecutionSitesInOwner = (
@@ -2103,7 +2186,8 @@ const getExecutionSitesInOwner = (
     !isFunctionLike(nodeOwner) ||
     visitedFunctionNodes.has(nodeOwner) ||
     !isNodeReachableWithinFunction(node, context) ||
-    (options.requiresGuaranteedExecution && !context.cfg.isUnconditionalFromEntry(node))
+    (options.requiresGuaranteedExecution &&
+      (!context.cfg.isUnconditionalFromEntry(node) || hasReachableThrowBeforeNode(context, node)))
   ) {
     return [];
   }
@@ -2111,7 +2195,8 @@ const getExecutionSitesInOwner = (
   nextVisitedFunctionNodes.add(nodeOwner);
   const executionPhase = getAsyncExecutionPhase(context, node);
   return getDirectInvocationSites(context, nodeOwner, {
-    includeCallbackExecutionSites: false,
+    includeCallbackExecutionSites: true,
+    requireGuaranteedCallbackExecution: options.requiresGuaranteedExecution,
   }).flatMap((invocationSite) => {
     if (
       !invocationWaitsForCompletion(invocationSite) &&
@@ -2166,7 +2251,8 @@ const getRetainedSourceExecutionSites = (
   nextVisitedFunctionNodes.add(nodeOwner);
   const executionPhase = getAsyncExecutionPhase(context, node);
   return getDirectInvocationSites(context, nodeOwner, {
-    includeCallbackExecutionSites: false,
+    includeCallbackExecutionSites: true,
+    requireGuaranteedCallbackExecution: false,
   }).flatMap((invocationSite) => {
     if (
       !invocationWaitsForCompletion(invocationSite) &&

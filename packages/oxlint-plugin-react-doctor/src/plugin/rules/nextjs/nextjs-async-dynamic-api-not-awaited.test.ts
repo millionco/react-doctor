@@ -1900,6 +1900,11 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const taint = () => { return; pending = cookies(); }; taint(); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const taint = async () => { await 0; pending = cookies(); }; taint(); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const taint = () => { pending = cookies(); }; if (false) taint(); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const clear = async () => { if (false) await 0; pending = {}; }; clear(); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const taint = async () => { if (true) await 0; pending = cookies(); }; taint(); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const clear = () => { pending = {}; throw new Error(); }; try { clear(); } catch {} props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0].map(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); new Promise(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
   ])("ignores unreachable taint and honors invoked clearing %#", (code) => {
     expectDiagnosticCount(code, 0, "app/[slug]/page.tsx");
   });
@@ -1912,7 +1917,10 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const taint = async () => { pending = cookies(); await 0; }; taint(); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default async function Page(props) { let pending = {}; const taint = async () => { await 0; pending = cookies(); }; await taint(); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props, shouldWait) { let pending = {}; const taint = async () => { if (shouldWait) await 0; pending = cookies(); }; taint(); props.params = pending; return props.params.slug; }`,
-  ])("retains reachable aliases and invoked taint", (code) => {
+    `import { cookies } from "next/headers"; export default function Page(props, shouldThrow) { let pending = {}; const update = () => { pending = cookies(); if (shouldThrow) throw new Error(); pending = {}; }; try { update(); } catch {} props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; [0].map(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; new Promise(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+  ])("retains reachable aliases and invoked taint %#", (code) => {
     expectDiagnosticCount(code, 1, "app/[slug]/page.tsx");
   });
 

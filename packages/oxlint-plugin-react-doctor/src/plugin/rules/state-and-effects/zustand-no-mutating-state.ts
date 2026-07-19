@@ -495,6 +495,7 @@ const objectTargetReplacementDisposition = (
   mutationNode: EsTreeNode,
   isPartialUpdateRoot: boolean,
   context: RuleContext,
+  ancestorPath: readonly string[] = [],
 ): boolean | null => {
   const propertyName = targetPath[0];
   if (!propertyName) return true;
@@ -502,7 +503,11 @@ const objectTargetReplacementDisposition = (
   for (const property of objectExpression.properties) {
     if (isNodeOfType(property, "SpreadElement")) {
       const spreadKey = resolveExpressionKey(property.argument, context);
-      disposition = spreadKey === ancestorKey ? false : null;
+      const spreadPath = staticPropertyPathForExpression(property.argument, context);
+      disposition =
+        spreadKey === ancestorKey || staticPathPreservesTarget(spreadPath, ancestorPath)
+          ? false
+          : null;
       continue;
     }
     if (!isNodeOfType(property, "Property")) continue;
@@ -527,6 +532,7 @@ const objectTargetReplacementDisposition = (
         mutationNode,
         false,
         context,
+        [...ancestorPath, propertyName],
       );
     } else if (expressionKeyPreservesTarget(propertyValue, targetKey, context)) {
       disposition = false;

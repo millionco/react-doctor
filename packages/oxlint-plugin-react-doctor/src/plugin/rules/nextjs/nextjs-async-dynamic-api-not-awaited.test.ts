@@ -1662,6 +1662,10 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
       filename: "app/blog/[slug]/opengraph-image.tsx",
     },
     {
+      code: `export default function Image({ id }) { return "value" in id; }`,
+      filename: "app/blog/[slug]/opengraph-image.tsx",
+    },
+    {
       code: `export default function Image({ id }) { return parseInt(id, 10); }`,
       filename: "app/blog/[slug]/opengraph-image.tsx",
     },

@@ -3196,7 +3196,11 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
       reportDirectSynchronousConsumption(context, node.argument);
     },
     BinaryExpression(node: EsTreeNodeOfType<"BinaryExpression">) {
-      if (node.operator === "in") reportDirectSynchronousConsumption(context, node.right);
+      if (node.operator === "in") {
+        reportDirectSynchronousConsumption(context, node.right);
+        reportOfficialDirectValueConsumption(context, node.left);
+        return;
+      }
       reportOfficialDirectValueConsumption(context, node.left);
       reportOfficialDirectValueConsumption(context, node.right);
     },

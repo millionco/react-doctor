@@ -285,6 +285,72 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { createHash } from "node:crypto";\n\nexport const hashPassword = (password: string) =>\n  createHash("md5").update(password).digest("hex");\n',
     filePath: "src/server/auth.ts",
   },
+  "ink-ctrl-c-handler-requires-exit-option": {
+    code: 'import {render,useInput} from "ink";const App=()=>{useInput((input,key)=>{if(key.ctrl&&input==="c")work()});return null};render(<App/>);',
+  },
+  "ink-newline-inside-text": {
+    code: 'import {Box,Newline} from "ink";const App=()=> <Box><Newline/></Box>;',
+  },
+  "ink-no-bare-process-exit": {
+    code: 'import {useInput} from "ink";const App=()=>{useInput(()=>process.exit(0));return null};',
+  },
+  "ink-no-direct-raw-mode": {
+    code: 'import {useStdin} from "ink";const App=()=>{const {setRawMode}=useStdin();setRawMode(true);return null};',
+  },
+  "ink-no-dom-host-elements": {
+    code: 'import {Box} from "ink";const App=()=> <Box><div/></Box>;',
+  },
+  "ink-no-dom-router": {
+    code: 'import {Box} from "ink";import {Link} from "react-router-dom";const App=()=> <Box><Link to="/"/></Box>;',
+  },
+  "ink-no-focus-in-render": {
+    code: 'import {useFocusManager} from "ink";const App=()=>{const manager=useFocusManager();manager.focus("name");return null};',
+  },
+  "ink-no-layout-inside-text": {
+    code: 'import {Box,Text} from "ink";const App=()=> <Text><Box/></Text>;',
+  },
+  "ink-no-live-hooks-in-render-to-string": {
+    code: 'import {renderToString,useInput} from "ink";const App=()=>{useInput(()=>{});return null};renderToString(<App/>);',
+  },
+  "ink-no-measure-element-in-render": {
+    code: 'import {measureElement} from "ink";const App=({node})=>{measureElement(node);return null};',
+  },
+  "ink-no-multiple-static": {
+    code: 'import {Static} from "ink";const App=()=> <><Static items={[]}/><Static items={[]}/></>;',
+  },
+  "ink-no-raw-text": {
+    code: 'import {Box} from "ink";const App=()=> <Box>hello</Box>;',
+  },
+  "ink-no-repeated-render": {
+    code: 'import {render} from "ink";render(null);render(null);',
+  },
+  "ink-prefer-use-animation": {
+    code: 'import {useEffect,useState} from "react";import {Text} from "ink";const App=()=>{const [frame,setFrame]=useState(0);useEffect(()=>{const timer=setInterval(()=>setFrame(value=>value+1),80);return()=>clearInterval(timer)},[]);return <Text>{frame}</Text>};',
+  },
+  "ink-prefer-use-paste": {
+    code: 'import {useInput} from "ink";const App=()=>{useInput(input=>{if(input.includes("\\n"))paste(input)});return null};',
+  },
+  "ink-static-is-append-only": {
+    code: 'import {Static} from "ink";const App=({items})=> <Static items={items.filter(Boolean)}/>;',
+  },
+  "ink-static-requires-key": {
+    code: 'import {Static,Text} from "ink";const App=({items})=> <Static items={items}>{item=><Text>{item}</Text>}</Static>;',
+  },
+  "ink-suspense-requires-concurrent": {
+    code: 'import {render,Text} from "ink";import {Suspense} from "react";render(<Suspense fallback={null}><Text/></Suspense>);',
+  },
+  "ink-use-reactive-window-size": {
+    code: 'import {Text} from "ink";const App=()=> <Text>{process.stdout.columns}</Text>;',
+  },
+  "ink-use-string-width-for-cursor": {
+    code: 'import {useCursor} from "ink";const App=({label})=>{const cursor=useCursor();cursor.setCursorPosition(label.length,0);return null};',
+  },
+  "ink-use-suspend-terminal": {
+    code: 'import {useInput} from "ink";import {spawn} from "node:child_process";const App=()=>{useInput(()=>spawn("vim",[],{stdio:"inherit"}));return null};',
+  },
+  "ink-valid-aria-semantics": {
+    code: 'import {Text} from "ink";const App=()=> <Text aria-role="dialog">open</Text>;',
+  },
   "insecure-session-cookie": {
     code: 'res.cookie("session_token", token, { httpOnly: false, secure: false });\n',
     filePath: "src/server/session.ts",

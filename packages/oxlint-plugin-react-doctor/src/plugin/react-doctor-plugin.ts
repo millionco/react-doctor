@@ -2,6 +2,7 @@ import { ruleRegistry } from "./rule-registry.js";
 import type { Rule } from "./utils/rule.js";
 import type { HostRule } from "./utils/rule-plugin.js";
 import type { RulePlugin } from "./utils/rule-plugin.js";
+import { wrapInkRule } from "./utils/wrap-ink-rule.js";
 import { wrapNextjsRule } from "./utils/wrap-nextjs-rule.js";
 import { wrapReactNativeRule } from "./utils/wrap-react-native-rule.js";
 import { wrapWithSemanticContext } from "./utils/wrap-with-semantic-context.js";
@@ -19,6 +20,7 @@ import { wrapWithSemanticContext } from "./utils/wrap-with-semantic-context.js";
 // build on first `context.scopes` / `context.cfg` access and are memoized
 // per Program, so rules that never read them pay only the root capture.
 const applyFrameworkGate = (rule: Rule): Rule => {
+  if (rule.minimumInkVersion) return wrapInkRule(rule);
   if (rule.framework === "react-native") return wrapReactNativeRule(rule);
   if (rule.framework === "nextjs") return wrapNextjsRule(rule);
   return rule;

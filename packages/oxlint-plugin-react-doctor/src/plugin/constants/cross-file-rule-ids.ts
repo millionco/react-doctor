@@ -1,3 +1,5 @@
+import { INK_RULE_IDS } from "./ink.js";
+
 // Rules whose verdict for a file can depend on the content of OTHER files at
 // lint time. The per-file lint cache (`@react-doctor/core`'s `file-lint-cache`)
 // keys cached diagnostics on a single file's own content, so it would serve
@@ -34,6 +36,7 @@
 // also forces every rule here into the bounded/unbounded classification in
 // `cross-file-dependencies.ts`.
 export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
+  ...INK_RULE_IDS,
   "client-passive-event-listeners",
   "exhaustive-deps",
   "no-barrel-import",

@@ -90,6 +90,28 @@ import { iframeMissingSandbox } from "./rules/react-builtins/iframe-missing-sand
 import { iframeTitleUnique } from "./rules/a11y/iframe-title-unique.js";
 import { imgRedundantAlt } from "./rules/a11y/img-redundant-alt.js";
 import { importMetadataExecutionRisk } from "./rules/security-scan/import-metadata-execution-risk.js";
+import { inkCtrlCHandlerRequiresExitOption } from "./rules/ink/ink-ctrl-c-handler-requires-exit-option.js";
+import { inkNewlineInsideText } from "./rules/ink/ink-newline-inside-text.js";
+import { inkNoBareProcessExit } from "./rules/ink/ink-no-bare-process-exit.js";
+import { inkNoDirectRawMode } from "./rules/ink/ink-no-direct-raw-mode.js";
+import { inkNoDomHostElements } from "./rules/ink/ink-no-dom-host-elements.js";
+import { inkNoDomRouter } from "./rules/ink/ink-no-dom-router.js";
+import { inkNoFocusInRender } from "./rules/ink/ink-no-focus-in-render.js";
+import { inkNoLayoutInsideText } from "./rules/ink/ink-no-layout-inside-text.js";
+import { inkNoLiveHooksInRenderToString } from "./rules/ink/ink-no-live-hooks-in-render-to-string.js";
+import { inkNoMeasureElementInRender } from "./rules/ink/ink-no-measure-element-in-render.js";
+import { inkNoMultipleStatic } from "./rules/ink/ink-no-multiple-static.js";
+import { inkNoRawText } from "./rules/ink/ink-no-raw-text.js";
+import { inkNoRepeatedRender } from "./rules/ink/ink-no-repeated-render.js";
+import { inkPreferUseAnimation } from "./rules/ink/ink-prefer-use-animation.js";
+import { inkPreferUsePaste } from "./rules/ink/ink-prefer-use-paste.js";
+import { inkStaticIsAppendOnly } from "./rules/ink/ink-static-is-append-only.js";
+import { inkStaticRequiresKey } from "./rules/ink/ink-static-requires-key.js";
+import { inkSuspenseRequiresConcurrent } from "./rules/ink/ink-suspense-requires-concurrent.js";
+import { inkUseReactiveWindowSize } from "./rules/ink/ink-use-reactive-window-size.js";
+import { inkUseStringWidthForCursor } from "./rules/ink/ink-use-string-width-for-cursor.js";
+import { inkUseSuspendTerminal } from "./rules/ink/ink-use-suspend-terminal.js";
+import { inkValidAriaSemantics } from "./rules/ink/ink-valid-aria-semantics.js";
 import { insecureCryptoRisk } from "./rules/security-scan/insecure-crypto-risk.js";
 import { insecureSessionCookie } from "./rules/security-scan/insecure-session-cookie.js";
 import { interactiveSupportsFocus } from "./rules/a11y/interactive-supports-focus.js";
@@ -1619,6 +1641,270 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       tags: [...new Set(["security-scan", ...(importMetadataExecutionRisk.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-ctrl-c-handler-requires-exit-option",
+    id: "ink-ctrl-c-handler-requires-exit-option",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkCtrlCHandlerRequiresExitOption,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkCtrlCHandlerRequiresExitOption.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-newline-inside-text",
+    id: "ink-newline-inside-text",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNewlineInsideText,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNewlineInsideText.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-no-bare-process-exit",
+    id: "ink-no-bare-process-exit",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNoBareProcessExit,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNoBareProcessExit.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-no-direct-raw-mode",
+    id: "ink-no-direct-raw-mode",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNoDirectRawMode,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNoDirectRawMode.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-no-dom-host-elements",
+    id: "ink-no-dom-host-elements",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNoDomHostElements,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNoDomHostElements.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-no-dom-router",
+    id: "ink-no-dom-router",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNoDomRouter,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNoDomRouter.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-no-focus-in-render",
+    id: "ink-no-focus-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNoFocusInRender,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNoFocusInRender.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-no-layout-inside-text",
+    id: "ink-no-layout-inside-text",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNoLayoutInsideText,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNoLayoutInsideText.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-no-live-hooks-in-render-to-string",
+    id: "ink-no-live-hooks-in-render-to-string",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNoLiveHooksInRenderToString,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNoLiveHooksInRenderToString.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-no-measure-element-in-render",
+    id: "ink-no-measure-element-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNoMeasureElementInRender,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNoMeasureElementInRender.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-no-multiple-static",
+    id: "ink-no-multiple-static",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNoMultipleStatic,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNoMultipleStatic.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-no-raw-text",
+    id: "ink-no-raw-text",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNoRawText,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNoRawText.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-no-repeated-render",
+    id: "ink-no-repeated-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkNoRepeatedRender,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkNoRepeatedRender.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-prefer-use-animation",
+    id: "ink-prefer-use-animation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkPreferUseAnimation,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["ink", ...(inkPreferUseAnimation.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-prefer-use-paste",
+    id: "ink-prefer-use-paste",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkPreferUsePaste,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkPreferUsePaste.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-static-is-append-only",
+    id: "ink-static-is-append-only",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkStaticIsAppendOnly,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkStaticIsAppendOnly.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-static-requires-key",
+    id: "ink-static-requires-key",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkStaticRequiresKey,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkStaticRequiresKey.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-suspense-requires-concurrent",
+    id: "ink-suspense-requires-concurrent",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkSuspenseRequiresConcurrent,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkSuspenseRequiresConcurrent.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-use-reactive-window-size",
+    id: "ink-use-reactive-window-size",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkUseReactiveWindowSize,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkUseReactiveWindowSize.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-use-string-width-for-cursor",
+    id: "ink-use-string-width-for-cursor",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkUseStringWidthForCursor,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkUseStringWidthForCursor.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-use-suspend-terminal",
+    id: "ink-use-suspend-terminal",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkUseSuspendTerminal,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["ink", ...(inkUseSuspendTerminal.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/ink-valid-aria-semantics",
+    id: "ink-valid-aria-semantics",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...inkValidAriaSemantics,
+      framework: "global",
+      category: "Accessibility",
+      tags: [...new Set(["ink", ...(inkValidAriaSemantics.tags ?? [])])],
     },
   },
   {

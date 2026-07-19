@@ -62,6 +62,7 @@ const BUCKETS_REQUIRING_REACT = new Set([
 // inherit a bucket tag and carry its own.
 const BUCKET_TO_AUTO_TAGS = {
   design: ["design"],
+  ink: ["ink"],
   "react-native": ["react-native"],
   "security-scan": ["security-scan"],
   server: ["server-action"],
@@ -175,6 +176,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   client: "Performance",
   correctness: "Correctness",
   design: "Architecture",
+  ink: "Correctness",
   "js-performance": "Performance",
   jotai: "State & Effects",
   mobx: "State & Effects",

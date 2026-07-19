@@ -28,6 +28,7 @@ export interface PackageManifest {
   optionalDependencies?: Record<string, unknown>;
   scripts?: Record<string, unknown>;
   source?: unknown;
+  version?: unknown;
   // Metro's resolution key — libraries that ship an RN-only entry
   // point declare this field at the manifest root (string path) so
   // Metro picks it over `main` / `module`. Treated as a strong

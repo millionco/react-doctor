@@ -7,6 +7,7 @@ import {
   PAGE_OR_LAYOUT_FILE_PATTERN,
 } from "./constants/nextjs.js";
 import { CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH } from "./constants/thresholds.js";
+import { INK_RULE_IDS } from "./constants/ink.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
@@ -16,6 +17,7 @@ import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
 import { isBarrelIndexModule } from "./utils/is-barrel-index-module.js";
 import { isLegacyArchReactNativeFile } from "./utils/is-legacy-arch-react-native-file.js";
+import { resolveInkVersion } from "./utils/resolve-ink-version.js";
 import { isNodeOfType } from "./utils/is-node-of-type.js";
 import { isReactApiCall } from "./utils/is-react-api-call.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
@@ -443,8 +445,16 @@ const collectLegacyArchDependencies: CrossFileDependencyCollector = ({ absoluteF
   isLegacyArchReactNativeFile(absoluteFilePath);
 };
 
+const collectInkVersionDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
+  resolveInkVersion(absoluteFilePath);
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
+    ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
+      ruleId,
+      collectInkVersionDependencies,
+    ]),
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],

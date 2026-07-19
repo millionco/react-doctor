@@ -124,7 +124,10 @@ const detectCrossFileRuleIds = (): Set<string> => {
     // Scan rules run via core's check-security-scan, never the oxlint config,
     // so they're irrelevant to the lint cache even if they read other files.
     if (/\bscan:\s*(?:\(|async)/.test(stripCommentsAndStrings(source))) continue;
-    if (reachesCrossFilePrimitive(path.resolve(ruleFile))) detected.add(ruleId);
+    const usesInkVersionGate = /\bminimumInkVersion\s*:/.test(stripCommentsAndStrings(source));
+    if (usesInkVersionGate || reachesCrossFilePrimitive(path.resolve(ruleFile))) {
+      detected.add(ruleId);
+    }
   }
   return detected;
 };
@@ -140,6 +143,28 @@ describe("CROSS_FILE_RULE_IDS", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
       "client-passive-event-listeners",
       "exhaustive-deps",
+      "ink-ctrl-c-handler-requires-exit-option",
+      "ink-newline-inside-text",
+      "ink-no-bare-process-exit",
+      "ink-no-direct-raw-mode",
+      "ink-no-dom-host-elements",
+      "ink-no-dom-router",
+      "ink-no-focus-in-render",
+      "ink-no-layout-inside-text",
+      "ink-no-live-hooks-in-render-to-string",
+      "ink-no-measure-element-in-render",
+      "ink-no-multiple-static",
+      "ink-no-raw-text",
+      "ink-no-repeated-render",
+      "ink-prefer-use-animation",
+      "ink-prefer-use-paste",
+      "ink-static-is-append-only",
+      "ink-static-requires-key",
+      "ink-suspense-requires-concurrent",
+      "ink-use-reactive-window-size",
+      "ink-use-string-width-for-cursor",
+      "ink-use-suspend-terminal",
+      "ink-valid-aria-semantics",
       "nextjs-async-dynamic-api-not-awaited",
       "nextjs-missing-metadata",
       "nextjs-no-img-element",

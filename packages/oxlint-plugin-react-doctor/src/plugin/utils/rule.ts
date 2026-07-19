@@ -50,6 +50,7 @@ export interface Rule {
   // for the rule to be enabled. Omit for rules that always apply once
   // their framework gate is met.
   requires?: ReadonlyArray<Capability>;
+  minimumInkVersion?: string;
   // Inverse of `requires`: list of capability tokens whose presence
   // DISABLES the rule. Used for rules that become irrelevant when a
   // project ships with React Compiler (auto-memoization makes the four

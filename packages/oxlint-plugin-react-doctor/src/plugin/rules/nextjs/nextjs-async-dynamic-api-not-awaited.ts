@@ -253,7 +253,7 @@ const isNextHeadersDynamicCall = (
   }
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const namespaceObject = stripParenExpression(callee.object);
-  const memberName = getStaticPropertyName(callee);
+  const memberName = getResolvedStaticPropertyName(context, callee);
   if (
     !isNodeOfType(namespaceObject, "Identifier") ||
     memberName === null ||

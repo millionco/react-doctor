@@ -42,6 +42,15 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     },
   );
 
+  it("reports namespace access through a const property alias", () => {
+    expectDiagnosticCount(
+      `import * as nextHeaders from "next/headers";
+       const apiName = "cookies";
+       export const read = () => nextHeaders[apiName]().get("session");`,
+      1,
+    );
+  });
+
   it("reports optional member access", () => {
     expectDiagnosticCount(
       `import { cookies } from "next/headers";

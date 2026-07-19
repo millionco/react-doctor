@@ -530,6 +530,17 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags an earlier conflicting condition before an equivalent fallback pair", () => {
+    const result = runStyledRule(
+      "const Modal = styled.div`\n" +
+        '  height: ${(properties) => (properties.compact ? "50vh" : "auto")} !important;\n' +
+        '  height: ${(properties) => (properties.full ? "100vh" : "auto")};\n' +
+        '  height: ${(properties) => (properties.full ? "100dvh" : "auto")} !important;\n' +
+        "`;",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags duplicates with different conditions", () => {
     const result = runStyledRule(
       "const Button = styled.button`\n" +

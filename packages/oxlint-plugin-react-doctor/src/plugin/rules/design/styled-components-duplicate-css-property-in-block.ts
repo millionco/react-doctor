@@ -837,7 +837,7 @@ export const styledComponentsDuplicateCssPropertyInBlock = defineRule({
                   ),
               );
             if (hasDifferentTests) return true;
-            return false;
+            continue;
           }
           return false;
         });

@@ -243,6 +243,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "hook-import-rename-loses-use-prefix": {
     code: 'import { useEffect as runEffect } from "react";\nconst App = () => { runEffect(() => {}, []); return null; };',
   },
+  "jsx-numeric-and-leaked-render": {
+    code: "const C = ({ count }) => <div>{(count - 1) && <More />}</div>;",
+  },
   "hook-use-state": {
     code: "\n            import React from 'react';\n            export default function useColor() {\n                const color = React.useState();\n                return color;\n            }",
     forceJsx: true,
@@ -455,6 +458,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "nextjs-async-client-component": {
     code: '"use client";\nexport default async function Profile() {\n  const data = await loadProfile();\n  return <div>{data.name}</div>;\n}',
+  },
+  "nextjs-async-dynamic-api-not-awaited": {
+    code: 'import { headers } from "next/headers";\nexport const read = () => headers().get("x-request-id");',
+    filePath: "app/page.tsx",
   },
   "nextjs-error-boundary-missing-use-client": {
     code: "export default function ErrorBoundary({ error, reset }) {\n  return <div>{error.message}</div>;\n}",
@@ -685,11 +692,20 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-fetch-in-effect": {
     code: '\n      const Widget = () => {\n        useEffect(() => {\n          fetch("/api/data")\n            .then((response) => response.json())\n            .then(setData);\n        }, []);\n        return null;\n      };\n    ',
   },
+  "no-fetch-response-used-without-status-check": {
+    code: "function warmCache(url) {\n  fetch(url).then((response) => response.blob());\n}",
+  },
+  "no-fill-map-element-as-key": {
+    code: "const Rows = () => Array(3).fill('a').map((letter) => <Row key={letter} />);",
+  },
   "no-find-dom-node": {
     code: 'import { findDOMNode } from "react-dom"; export const f = (node) => findDOMNode(node);',
   },
   "no-flush-sync": {
     code: 'import { flushSync } from "react-dom";\nfunction C() {\n  const onClick = () => {\n    flushSync(() => {\n      setCount((count) => count + 1);\n    });\n  };\n  return <button onClick={onClick}>go</button>;\n}',
+  },
+  "no-floating-then-in-jsx-handler": {
+    code: "const el = <input onChange={() => api.update(x).then(refetch)} />;",
   },
   "no-full-lodash-import": {
     code: '\n      import _ from "lodash";\n      export const chunked = _.chunk([1, 2, 3], 2);\n    ',
@@ -715,6 +731,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-img-lazy-with-high-fetchpriority": {
     code: 'const Hero = () => <img src="/a.png" loading="lazy" fetchPriority="high" />;',
+  },
+  "no-impure-call-at-module-scope": {
+    code: "const RENDERED = Date.now();",
   },
   "no-indeterminate-attribute": {
     code: 'const Checkbox = () => <input type="checkbox" indeterminate />;',
@@ -810,6 +829,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-mutate-queried-dom-node-in-component": {
     code: "function Row({ order }) {\n        document.getElementById('row-1').style.zIndex = '1';\n        return <div id=\"row-1\" style={{ zIndex: order }} />;\n      }",
   },
+  "no-mutating-array-method-on-prop-or-hook-result": {
+    code: "function List({ items }) {\n  items.splice(0, 1);\n  return null;\n}",
+  },
   "no-mutating-reducer-state": {
     code: '\n      import { useReducer } from "react";\n\n      function reducer(state, action) {\n        state.age = state.age + 1;\n        return state;\n      }\n\n      useReducer(reducer, { age: 0 });\n    ',
   },
@@ -825,6 +847,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-non-literal-selector-query-without-try-catch": {
     code: "element.matches(location.hash);",
+  },
+  "no-nondeterministic-id-value-in-render-body": {
+    code: 'import { uniqueId } from "lodash";\nconst useBundleChartData = () => {\n  const chartId = useMemo(() => uniqueId(), []);\n  return { chartId };\n};',
   },
   "no-noninteractive-element-interactions": {
     code: "<li onClick={() => {}}>x</li>",
@@ -1041,6 +1066,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-whole-object-dep-with-member-reads": {
     code: 'import { useMemo } from "react";function FullName(props){return useMemo(()=>props.first,[props])}',
+  },
+  "no-whole-object-default-losing-per-key-defaults": {
+    code: "function f({ a, b } = { a: 1 } as Options) {}",
   },
   "no-wide-letter-spacing": {
     code: "\n      const Body = () => (\n        <p style={{ letterSpacing: 2 }}>Some long paragraph of body copy.</p>\n      );\n    ",
@@ -1418,6 +1446,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "styled-components-duplicate-css-property-in-block": {
     code: 'import { css } from "styled-components"; const shared = css`opacity: ${p => p.$a ? 1 : 0}; opacity: ${p => p.$b ? 1 : 0.5};`;',
   },
+  "styled-components-non-transient-custom-prop-on-intrinsic-element": {
+    code: "const D = styled.div<{ selected: boolean }>`color: red;`;",
+  },
   "supabase-client-owned-authz-field": {
     code: 'export const createTeam = async (name: string) => {\n  await supabase.from("teams").insert({ name, ownerId: currentUser.id, role: "admin" });\n};',
     filePath: "src/lib/create-team.ts",
@@ -1513,6 +1544,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "webhook-signature-risk": {
     code: "export async function POST(request: Request) {\n  const event = await request.json();\n  await applyEvent(event);\n  return Response.json({ ok: true });\n}\n",
     filePath: "src/app/api/webhooks/github/route.ts",
+  },
+  "window-open-without-noopener": {
+    code: "window.open(url);",
   },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',

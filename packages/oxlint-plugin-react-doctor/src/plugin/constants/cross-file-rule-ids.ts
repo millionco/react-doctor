@@ -58,6 +58,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "only-export-components",
   "no-unguarded-browser-global-at-module-scope",
   "no-unguarded-browser-global-in-render-or-hook-init",
+  "window-open-without-noopener",
   "prefer-dynamic-import",
   "rendering-hydration-mismatch-time",
   "rerender-memo-with-default-value",

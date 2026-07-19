@@ -3,6 +3,10 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fNoExtendThreeNamespace } from "./r3f-no-extend-three-namespace.js";
 
 describe("r3f-no-extend-three-namespace", () => {
+  it("requires an R3F version that exports extend", () => {
+    expect(r3fNoExtendThreeNamespace.requires).toEqual(["r3f:3"]);
+  });
+
   it("reports Three.js and WebGPU namespace registration", () => {
     const result = runRule(
       r3fNoExtendThreeNamespace,

@@ -60,6 +60,72 @@ describe("rn-detox-missing-await", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a done-callback test completed from a fulfillment handler", () => {
+    const result = runRule(
+      rnDetoxMissingAwait,
+      `it("handles callbacks", (done) => {
+        expect(element(by.text("Welcome"))).toBeVisible().then(() => {
+          setTimeout(() => done(), 1000);
+        });
+      });`,
+      e2eFile,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a done callback passed directly to setTimeout", () => {
+    const result = runRule(
+      rnDetoxMissingAwait,
+      `it("handles callbacks", (done) => {
+        expect(element(by.text("Welcome"))).toBeVisible().then(() => {
+          setTimeout(done, 1000);
+        });
+      });`,
+      e2eFile,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags when the fulfillment handler calls a shadowed callback", () => {
+    const result = runRule(
+      rnDetoxMissingAwait,
+      `it("does not complete", (done) => {
+        expect(element(by.text("Welcome"))).toBeVisible().then((done) => done());
+      });`,
+      e2eFile,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires the actual done callback on every fulfillment path", () => {
+    const invalidSources = [
+      `it("conditional", (done) => {
+        expect(element(by.text("Welcome"))).toBeVisible().then(() => {
+          if (false) done();
+        });
+      });`,
+      `it("deferred", (done) => {
+        expect(element(by.text("Welcome"))).toBeVisible().then(() => () => done());
+      });`,
+      `it("second parameter", (value, done) => {
+        expect(element(by.text("Welcome"))).toBeVisible().then(() => done());
+      });`,
+      `it("continued after done", (done) => {
+        expect(element(by.text("Welcome")))
+          .toBeVisible()
+          .then(done)
+          .then(() => element(by.id("dismiss")).tap());
+      });`,
+      `it("finalized after done", (done) => {
+        expect(element(by.text("Welcome"))).toBeVisible().then(done).finally(cleanup);
+      });`,
+    ];
+    for (const source of invalidSources) {
+      expect(runRule(rnDetoxMissingAwait, source, e2eFile).diagnostics).toHaveLength(1);
+    }
+  });
+
   it("flags an action followed only by finally", () => {
     const result = runRule(
       rnDetoxMissingAwait,

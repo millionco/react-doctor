@@ -94,6 +94,16 @@ const hasArrayCallbackFirstArgument = (
   return !(initializer && isNodeOfType(initializer, "ObjectExpression"));
 };
 
+const hasInlineArrayCallbackFirstArgument = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
+  const firstArgument = node.arguments?.[0];
+  if (!firstArgument) return false;
+  const callback = stripParenExpression(firstArgument as EsTreeNode);
+  return (
+    isNodeOfType(callback, "ArrowFunctionExpression") ||
+    isNodeOfType(callback, "FunctionExpression")
+  );
+};
+
 // `_.chain(users).filter(...).find(cb)` returns a LodashWrapper (unwrapped
 // later by `.value()`), never `undefined` — a `.find` whose receiver chain
 // roots in a `chain(...)` call is not Array.prototype.find.
@@ -148,18 +158,29 @@ const isArrayFindCall = (
   if (isNodeOfType(receiver, "Identifier") && PASCAL_CASE_IDENTIFIER_PATTERN.test(receiver.name)) {
     return false;
   }
+  let resolvedReceiver = receiver;
   if (isNodeOfType(receiver, "Identifier")) {
     const visitedSymbolIds = new Set<number>();
-    let currentReceiver: EsTreeNode = receiver;
-    while (isNodeOfType(currentReceiver, "Identifier")) {
-      const symbol = context.scopes.symbolFor(currentReceiver);
+    while (isNodeOfType(resolvedReceiver, "Identifier")) {
+      const symbol = context.scopes.symbolFor(resolvedReceiver);
       if (!symbol || visitedSymbolIds.has(symbol.id) || !symbol.initializer) break;
       visitedSymbolIds.add(symbol.id);
-      currentReceiver = stripParenExpression(symbol.initializer);
+      resolvedReceiver = stripParenExpression(symbol.initializer);
     }
-    if (isNodeOfType(currentReceiver, "ObjectExpression")) return false;
+    if (isNodeOfType(resolvedReceiver, "ObjectExpression")) return false;
   }
   if (receiverChainContainsChainCall(receiver)) return false;
+  const resultMember = node.parent;
+  if (
+    isNodeOfType(resultMember, "MemberExpression") &&
+    getStaticPropertyName(resultMember) === "exec" &&
+    isNodeOfType(resultMember.parent, "CallExpression") &&
+    resultMember.parent.callee === resultMember &&
+    !isNodeOfType(resolvedReceiver, "ArrayExpression") &&
+    !hasInlineArrayCallbackFirstArgument(node)
+  ) {
+    return false;
+  }
   return hasArrayCallbackFirstArgument(node, context);
 };
 

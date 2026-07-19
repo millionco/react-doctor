@@ -278,6 +278,79 @@ describe("mobx-reaction-disposer-discarded", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag disposers collected by a stored map result", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import { reaction } from "mobx";
+      const useReactions = (names) => {
+        const disposers = names.map((name) => reaction(
+          () => store[name],
+          (value) => persist(name, value),
+        ));
+        return () => {
+          for (const disposer of disposers) disposer();
+        };
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags disposers collected by a discarded map result", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import { reaction } from "mobx";
+      const startReactions = (names) => {
+        names.map((name) => reaction(
+          () => store[name],
+          (value) => persist(name, value),
+        ));
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags map results whose destructuring discards some or all disposers", () => {
+    const sources = [
+      `import { reaction } from "mobx";
+       const startReactions = (names) => {
+         const { length } = names.map((name) => reaction(() => store[name], persist));
+         return length;
+       };`,
+      `import { reaction } from "mobx";
+       const startReactions = (names) => {
+         const [firstDisposer] = names.map((name) => reaction(() => store[name], persist));
+         return () => firstDisposer();
+       };`,
+      `import { reaction } from "mobx";
+       let firstDisposer;
+       const startReactions = (names) => {
+         [firstDisposer] = names.map((name) => reaction(() => store[name], persist));
+       };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(mobxReactionDisposerDiscarded, source).diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("flags disposer arrays consumed only for their length or truthiness", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import { reaction } from "mobx";
+      const startReactions = (names) => {
+        const count = names.map((name) => reaction(() => store[name], persist)).length;
+        Boolean(names.map((name) => reaction(() => store[name], persist)));
+        return count;
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("does not flag a bare when() call (auto-disposes after firing once)", () => {
     const result = runRule(
       mobxReactionDisposerDiscarded,

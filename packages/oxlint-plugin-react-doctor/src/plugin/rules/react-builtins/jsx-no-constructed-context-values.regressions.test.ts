@@ -167,12 +167,38 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("does not assume a bare imported context-shaped name is a React 19 provider", () => {
+  it("does not infer an imported context from a matching module basename", () => {
     const result = runRule(
       jsxNoConstructedContextValues,
       `import { ThemeContext } from "./theme-context";
        function App() {
          return <ThemeContext value={{ theme: "dark" }} />;
+       }`,
+      { filename: "fixture.jsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not infer an imported context when its module name does not match", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `import { ThemeContext } from "./theme-card";
+       function App() {
+         return <ThemeContext value={{ theme: "dark" }} />;
+       }`,
+      { filename: "fixture.jsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not infer a default-imported context from a matching module basename", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `import GameContext from "./GameContext";
+       function GameProvider() {
+         return <GameContext value={{ score: 1 }} />;
        }`,
       { filename: "fixture.jsx" },
     );
@@ -333,6 +359,82 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
       }
     `,
       { filename: "fixture.jsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a local context whose type name and displayName share its identifier", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `import * as React from "react";
+       const TimeSliderContext = React.createContext<TimeSliderContext>({ value: null });
+       interface TimeSliderContext { value: string | null }
+       TimeSliderContext.displayName = "TimeSliderContext";
+       function Slider() {
+         return <TimeSliderContext.Provider value={{ value: "ready" }} />;
+       }`,
+      { filename: "fixture.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not infer context ownership from a destructured dynamic import", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `async function loadApp() {
+         const { DataContext } = await import("@runtime");
+         return function RootApp() {
+           return <DataContext.Provider value={{ data: "ready" }} />;
+         };
+       }`,
+      { filename: "fixture.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not infer Provider ownership from an arbitrary context-shaped local", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `const FakeContext = loadWidget();
+       function App() {
+         return <FakeContext.Provider value={{ mode: "dark" }} />;
+       }`,
+      { filename: "fixture.tsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat an entire dynamically imported module as a context", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `async function loadApp() {
+         const DataContext = await import("@runtime");
+         return function RootApp() {
+           return <DataContext.Provider value={{ data: "ready" }} />;
+         };
+       }`,
+      { filename: "fixture.tsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not reuse a proven context binding through a nested same-name shadow", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function App() {
+         const ThemeContext = loadWidget();
+         return <ThemeContext.Provider value={{ mode: "dark" }} />;
+       }`,
+      { filename: "fixture.tsx" },
     );
 
     expect(result.diagnostics).toEqual([]);

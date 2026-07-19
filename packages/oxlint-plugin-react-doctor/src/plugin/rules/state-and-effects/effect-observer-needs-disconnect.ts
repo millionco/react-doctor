@@ -4,6 +4,7 @@ import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cl
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -19,6 +20,17 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
 
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "self"]);
+const COLLECTION_MUTATION_METHOD_NAMES = new Set([
+  "clear",
+  "delete",
+  "pop",
+  "push",
+  "set",
+  "shift",
+  "sort",
+  "splice",
+  "unshift",
+]);
 
 interface TrackedObserver {
   construction: EsTreeNodeOfType<"NewExpression">;
@@ -30,6 +42,7 @@ interface TrackedObserver {
   didReleaseAllViaCallbackParameter: boolean;
   callbackReleasedTargetKeys: Set<string>;
   didEscape: boolean;
+  observedIterationTargetKeys: Set<string>;
   observedTargetKeys: Set<string>;
 }
 
@@ -38,6 +51,189 @@ interface CallbackObserverRelease {
   didReleaseObservedEntries: boolean;
   releasedTargetKeys: Set<string>;
 }
+
+const symbolHasCollectionMutation = (
+  symbol: NonNullable<ReturnType<RuleContext["scopes"]["symbolFor"]>>,
+): boolean =>
+  symbol.references.some((reference) => {
+    if (reference.flag !== "read") return true;
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const member = referenceRoot.parent;
+    if (!isNodeOfType(member, "MemberExpression") || member.object !== referenceRoot) {
+      return false;
+    }
+    if (isNodeOfType(member.parent, "AssignmentExpression") && member.parent.left === member) {
+      return true;
+    }
+    return Boolean(
+      isNodeOfType(member.parent, "CallExpression") &&
+      member.parent.callee === member &&
+      COLLECTION_MUTATION_METHOD_NAMES.has(getStaticPropertyName(member) ?? ""),
+    );
+  });
+
+const resolveStableCollectionIdentifier = (
+  collection: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  let current = collection;
+  const visitedSymbolIds = new Set<number>();
+  while (true) {
+    const symbol = context.scopes.symbolFor(current);
+    if (!symbol || visitedSymbolIds.has(symbol.id) || symbolHasCollectionMutation(symbol)) {
+      return null;
+    }
+    visitedSymbolIds.add(symbol.id);
+    const initializer = getDirectUnreassignedInitializer(symbol);
+    if (!initializer) return current;
+    const resolvedInitializer = stripParenExpression(initializer);
+    if (!isNodeOfType(resolvedInitializer, "Identifier")) return current;
+    current = resolvedInitializer;
+  }
+};
+
+const isIteratorCallUnconditional = (iteratorCall: EsTreeNode): boolean => {
+  const ownerFunction = findEnclosingFunction(iteratorCall);
+  if (!ownerFunction) return false;
+  let ancestor = iteratorCall.parent ?? null;
+  while (ancestor && ancestor !== ownerFunction) {
+    if (
+      isNodeOfType(ancestor, "ConditionalExpression") ||
+      isNodeOfType(ancestor, "IfStatement") ||
+      isNodeOfType(ancestor, "LogicalExpression") ||
+      isNodeOfType(ancestor, "SwitchStatement") ||
+      isNodeOfType(ancestor, "ForStatement") ||
+      isNodeOfType(ancestor, "ForInStatement") ||
+      isNodeOfType(ancestor, "ForOfStatement") ||
+      isNodeOfType(ancestor, "WhileStatement") ||
+      isNodeOfType(ancestor, "DoWhileStatement")
+    ) {
+      return false;
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return ancestor === ownerFunction;
+};
+
+const serializeForEachTarget = (
+  methodCall: EsTreeNodeOfType<"CallExpression">,
+  targetArgument: EsTreeNode,
+  context: RuleContext,
+): string | null => {
+  const iteratorCallback = findEnclosingFunction(methodCall);
+  if (!iteratorCallback || !isFunctionLike(iteratorCallback)) return null;
+  const callbackRoot = findTransparentExpressionRoot(iteratorCallback);
+  const iteratorCall = callbackRoot.parent;
+  if (
+    !isNodeOfType(iteratorCall, "CallExpression") ||
+    !iteratorCall.arguments.some((argument) => argument === callbackRoot)
+  ) {
+    return null;
+  }
+  const iteratorCallee = stripParenExpression(iteratorCall.callee);
+  if (
+    !isNodeOfType(iteratorCallee, "MemberExpression") ||
+    getStaticPropertyName(iteratorCallee) !== "forEach"
+  ) {
+    return null;
+  }
+  if (iteratorCallback.async || !isIteratorCallUnconditional(iteratorCall)) return null;
+  const collection = stripParenExpression(iteratorCallee.object);
+  if (!isNodeOfType(collection, "Identifier")) return null;
+  const stableCollection = resolveStableCollectionIdentifier(collection, context);
+  if (!stableCollection) return null;
+  const collectionKey = serializeReferenceKey({
+    node: stableCollection,
+    scopes: context.scopes,
+  });
+  if (!collectionKey) return null;
+
+  const visitedSymbolIds = new Set<number>();
+  const serializeExpression = (rawExpression: EsTreeNode): string | null => {
+    const expression = stripParenExpression(rawExpression);
+    if (isNodeOfType(expression, "Identifier")) {
+      const symbol = context.scopes.symbolFor(expression);
+      if (!symbol || symbol.references.some((reference) => reference.flag !== "read")) return null;
+      const parameterIndex = iteratorCallback.params.findIndex(
+        (parameter: EsTreeNode) =>
+          context.scopes.symbolFor(parameter)?.bindingIdentifier === symbol?.bindingIdentifier,
+      );
+      if (parameterIndex >= 0) return `$${parameterIndex}`;
+      const initializer = getDirectUnreassignedInitializer(symbol);
+      if (
+        initializer &&
+        !visitedSymbolIds.has(symbol.id) &&
+        findEnclosingFunction(symbol.declarationNode) === iteratorCallback
+      ) {
+        visitedSymbolIds.add(symbol.id);
+        return serializeExpression(initializer);
+      }
+      return serializeReferenceKey({ node: expression, scopes: context.scopes });
+    }
+    if (isNodeOfType(expression, "Literal")) return JSON.stringify(expression.value);
+    if (isNodeOfType(expression, "MemberExpression")) {
+      const receiver = serializeExpression(expression.object as EsTreeNode);
+      const propertyName = getStaticPropertyName(expression);
+      return receiver && propertyName ? `${receiver}.${propertyName}` : null;
+    }
+    if (isNodeOfType(expression, "CallExpression")) {
+      const callee = stripParenExpression(expression.callee);
+      if (
+        !isNodeOfType(callee, "MemberExpression") ||
+        getStaticPropertyName(callee) !== "getElementById"
+      ) {
+        return null;
+      }
+      const receiver = stripParenExpression(callee.object);
+      if (
+        !isNodeOfType(receiver, "Identifier") ||
+        receiver.name !== "document" ||
+        !context.scopes.isGlobalReference(receiver)
+      ) {
+        return null;
+      }
+      const argumentKeys = expression.arguments.map((argument) =>
+        isNodeOfType(argument as EsTreeNode, "SpreadElement")
+          ? null
+          : serializeExpression(argument as EsTreeNode),
+      );
+      return argumentKeys.every((argumentKey) => argumentKey !== null)
+        ? `document.getElementById(${argumentKeys.join(",")})`
+        : null;
+    }
+    return null;
+  };
+
+  const targetKey = serializeExpression(targetArgument);
+  if (!targetKey) return null;
+  visitedSymbolIds.clear();
+  const guardKeys: string[] = [];
+  let child: EsTreeNode = methodCall;
+  let ancestor = methodCall.parent ?? null;
+  while (ancestor && ancestor !== iteratorCallback) {
+    if (isNodeOfType(ancestor, "IfStatement")) {
+      const branchPolarity = ancestor.consequent === child ? "truthy" : "falsy";
+      const guardKey = serializeExpression(ancestor.test);
+      if (!guardKey) return null;
+      guardKeys.push(`${branchPolarity}:${guardKey}`);
+    } else if (
+      isNodeOfType(ancestor, "ConditionalExpression") ||
+      isNodeOfType(ancestor, "LogicalExpression") ||
+      isNodeOfType(ancestor, "SwitchStatement") ||
+      isNodeOfType(ancestor, "ForStatement") ||
+      isNodeOfType(ancestor, "ForInStatement") ||
+      isNodeOfType(ancestor, "ForOfStatement") ||
+      isNodeOfType(ancestor, "WhileStatement") ||
+      isNodeOfType(ancestor, "DoWhileStatement")
+    ) {
+      return null;
+    }
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  if (ancestor !== iteratorCallback) return null;
+  return `${collectionKey}:${guardKeys.join("&")}:${targetKey}`;
+};
 
 const recordObserverUsage = (
   identifier: EsTreeNodeOfType<"Identifier">,
@@ -76,25 +272,35 @@ const recordObserverUsage = (
       tracked.didObserve = true;
       tracked.didReleaseAll = false;
       const targetArgument = methodCall.arguments?.[0];
+      const iterationTargetKey = targetArgument
+        ? serializeForEachTarget(methodCall, targetArgument as EsTreeNode, context)
+        : null;
       const targetKey = targetArgument
         ? serializeReferenceKey({ node: targetArgument, scopes: context.scopes })
         : null;
-      if (targetKey) tracked.observedTargetKeys.add(targetKey);
+      if (iterationTargetKey) tracked.observedIterationTargetKeys.add(iterationTargetKey);
+      else if (targetKey) tracked.observedTargetKeys.add(targetKey);
       else tracked.didObserveUnknownTarget = true;
       return;
     }
     if (accessedMethodName === "disconnect" && tracked.didObserve) {
       tracked.didReleaseAll = true;
       tracked.didObserveUnknownTarget = false;
+      tracked.observedIterationTargetKeys.clear();
       tracked.observedTargetKeys.clear();
       return;
     }
     if (accessedMethodName === "unobserve" && tracked.didObserve) {
       const targetArgument = methodCall.arguments?.[0];
+      const iterationTargetKey = targetArgument
+        ? serializeForEachTarget(methodCall, targetArgument as EsTreeNode, context)
+        : null;
       const targetKey = targetArgument
         ? serializeReferenceKey({ node: targetArgument, scopes: context.scopes })
         : null;
-      if (targetKey && tracked.observedTargetKeys.has(targetKey)) {
+      if (iterationTargetKey && tracked.observedIterationTargetKeys.has(iterationTargetKey)) {
+        tracked.observedIterationTargetKeys.delete(iterationTargetKey);
+      } else if (targetKey && tracked.observedTargetKeys.has(targetKey)) {
         tracked.observedTargetKeys.delete(targetKey);
       }
     }
@@ -366,6 +572,7 @@ export const effectObserverNeedsDisconnect = defineRule({
             callbackRelease.didReleaseAll || callbackRelease.didReleaseObservedEntries,
           callbackReleasedTargetKeys: callbackRelease.releasedTargetKeys,
           didEscape: false,
+          observedIterationTargetKeys: new Set(),
           observedTargetKeys: new Set(),
         });
       });
@@ -429,10 +636,13 @@ export const effectObserverNeedsDisconnect = defineRule({
         ) {
           tracked.didReleaseAll = true;
           tracked.didObserveUnknownTarget = false;
+          tracked.observedIterationTargetKeys.clear();
           tracked.observedTargetKeys.clear();
         }
         const didReleaseEveryActiveTarget =
-          !tracked.didObserveUnknownTarget && tracked.observedTargetKeys.size === 0;
+          !tracked.didObserveUnknownTarget &&
+          tracked.observedIterationTargetKeys.size === 0 &&
+          tracked.observedTargetKeys.size === 0;
         if (
           !tracked.didObserve ||
           tracked.didReleaseAll ||

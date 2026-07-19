@@ -156,6 +156,127 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag matching forEach acquisition and cleanup recipes", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `const useActiveItem = (itemIds) => { useEffect(() => {
+        const observer = new IntersectionObserver(handleEntries);
+        itemIds.forEach((itemId) => {
+          const element = document.getElementById(itemId);
+          if (element) observer.observe(element);
+        });
+        return () => {
+          itemIds.forEach((itemId) => {
+            const element = document.getElementById(itemId);
+            if (element) observer.unobserve(element);
+          });
+        };
+      }, [itemIds]); };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a forEach cleanup that derives a different target", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+        const observer = new IntersectionObserver(handleEntries);
+        itemIds.forEach((itemId) => observer.observe(document.getElementById(itemId)));
+        return () => {
+          itemIds.forEach((itemId) => observer.unobserve(document.querySelector(itemId)));
+        };
+      }, [itemIds]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not equate mismatched guards, mutated collections, or opaque target calls", () => {
+    const sources = [
+      `useEffect(() => {
+        const observer = new IntersectionObserver(handleEntries);
+        items.forEach((item) => { if (item.active) observer.observe(item); });
+        return () => items.forEach((item) => { if (!item.active) observer.unobserve(item); });
+      }, [items]);`,
+      `useEffect(() => {
+        const observer = new IntersectionObserver(handleEntries);
+        items.forEach((item) => observer.observe(item));
+        items.length = 0;
+        return () => items.forEach((item) => observer.unobserve(item));
+      }, [items]);`,
+      `useEffect(() => {
+        const observer = new IntersectionObserver(handleEntries);
+        items.forEach((item) => observer.observe(getNode(item)));
+        return () => items.forEach((item) => observer.unobserve(getNode(item)));
+      }, [items]);`,
+    ];
+    for (const source of sources) {
+      expect(runRule(effectObserverNeedsDisconnect, source).diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("does not equate conditional, asynchronous, or mutation-sensitive iteration recipes", () => {
+    const sources = [
+      `const useItems = (items, enabled) => { useEffect(() => {
+        const observer = new IntersectionObserver(handleEntries);
+        items.forEach((item) => observer.observe(item));
+        return () => {
+          if (enabled) items.forEach((item) => observer.unobserve(item));
+        };
+      }, [items, enabled]); };`,
+      `const useItems = (items) => { useEffect(() => {
+        const observer = new IntersectionObserver(handleEntries);
+        let enabled = true;
+        items.forEach((item) => { if (enabled) observer.observe(item); });
+        enabled = false;
+        return () => items.forEach((item) => {
+          if (enabled) observer.unobserve(item);
+        });
+      }, [items]); };`,
+      `const useItems = (items, replacement) => { useEffect(() => {
+        const observer = new IntersectionObserver(handleEntries);
+        items.forEach((item) => {
+          let target = item;
+          target = replacement;
+          observer.observe(target);
+        });
+        return () => items.forEach((item) => observer.unobserve(item));
+      }, [items, replacement]); };`,
+      `const useItems = (items, replacement) => { useEffect(() => {
+        const observer = new IntersectionObserver(handleEntries);
+        items.forEach((item) => {
+          item = replacement;
+          observer.observe(item);
+        });
+        return () => items.forEach((item) => observer.unobserve(item));
+      }, [items, replacement]); };`,
+      `const useItems = (items) => { useEffect(() => {
+        const observer = new IntersectionObserver(handleEntries);
+        items.forEach(async (item) => {
+          await ready();
+          observer.observe(item);
+        });
+        return () => items.forEach((item) => observer.unobserve(item));
+      }, [items]); };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(effectObserverNeedsDisconnect, source).diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("equates an unreassigned collection alias with its source collection", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `const useItems = (items) => { useEffect(() => {
+        const observer = new IntersectionObserver(handleEntries);
+        const targets = items;
+        targets.forEach((item) => observer.observe(item));
+        return () => items.forEach((item) => observer.unobserve(item));
+      }, [items]); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags observing again after an earlier disconnect or unobserve", () => {
     const disconnectResult = runRule(
       effectObserverNeedsDisconnect,

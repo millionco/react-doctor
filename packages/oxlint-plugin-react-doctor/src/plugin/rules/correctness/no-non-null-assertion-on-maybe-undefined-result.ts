@@ -1068,6 +1068,164 @@ const isEnsureThenFind = (
   return false;
 };
 
+const isDefinitelyNonNullishMapValue = (value: EsTreeNode | undefined): boolean => {
+  if (!value) return false;
+  const expression = stripParenExpression(value);
+  if (isNodeOfType(expression, "Literal")) return expression.value !== null;
+  if (
+    isNodeOfType(expression, "ObjectExpression") ||
+    isNodeOfType(expression, "ArrayExpression") ||
+    isNodeOfType(expression, "ArrowFunctionExpression") ||
+    isNodeOfType(expression, "FunctionExpression") ||
+    isNodeOfType(expression, "ClassExpression") ||
+    isNodeOfType(expression, "NewExpression") ||
+    isNodeOfType(expression, "TemplateLiteral")
+  ) {
+    return true;
+  }
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    return (
+      isDefinitelyNonNullishMapValue(expression.consequent) &&
+      isDefinitelyNonNullishMapValue(expression.alternate)
+    );
+  }
+  return false;
+};
+
+const unwrapFalseBooleanGuard = (test: EsTreeNode): EsTreeNode | null => {
+  const expression = stripParenExpression(test);
+  if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "||") {
+    return (
+      unwrapFalseBooleanGuard(expression.left as EsTreeNode) ??
+      unwrapFalseBooleanGuard(expression.right as EsTreeNode)
+    );
+  }
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+    return stripParenExpression(expression.argument);
+  }
+  if (!isNodeOfType(expression, "BinaryExpression")) return null;
+  const operandPairs: Array<[EsTreeNode, EsTreeNode]> = [
+    [expression.left as EsTreeNode, expression.right as EsTreeNode],
+    [expression.right as EsTreeNode, expression.left as EsTreeNode],
+  ];
+  for (const [candidateGuard, candidateBoolean] of operandPairs) {
+    const booleanValue = stripParenExpression(candidateBoolean);
+    if (!isNodeOfType(booleanValue, "Literal") || typeof booleanValue.value !== "boolean") continue;
+    const comparisonProvesFalse =
+      ((expression.operator === "===" || expression.operator === "==") &&
+        booleanValue.value === false) ||
+      ((expression.operator === "!==" || expression.operator === "!=") &&
+        booleanValue.value === true);
+    if (comparisonProvesFalse) return stripParenExpression(candidateGuard);
+  }
+  return null;
+};
+
+const isEnsureThenMapGet = (
+  assertion: EsTreeNode,
+  receiver: EsTreeNodeOfType<"Identifier">,
+  lookupKey: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const stableLookupKey = stripParenExpression(lookupKey);
+  if (!isNodeOfType(stableLookupKey, "Identifier") && !isNodeOfType(stableLookupKey, "Literal")) {
+    return false;
+  }
+  const receiverSymbol = context.scopes.symbolFor(receiver);
+  if (!receiverSymbol) return false;
+  const receiverMatches = (candidate: EsTreeNode): boolean => {
+    const target = stripParenExpression(candidate);
+    return (
+      isNodeOfType(target, "Identifier") &&
+      context.scopes.symbolFor(target)?.id === receiverSymbol.id
+    );
+  };
+  const lookupKeyExpression = stripParenExpression(lookupKey);
+  const lookupKeySymbol = isNodeOfType(lookupKeyExpression, "Identifier")
+    ? context.scopes.symbolFor(lookupKeyExpression)
+    : null;
+
+  let child = assertion;
+  let ancestor = assertion.parent ?? null;
+  while (ancestor && !isFunctionLike(ancestor)) {
+    if (isNodeOfType(ancestor, "BlockStatement")) {
+      const childIndex = ancestor.body.findIndex((statement) => statement === child);
+      for (const statement of ancestor.body.slice(0, childIndex)) {
+        if (!isNodeOfType(statement, "IfStatement") || statement.alternate) continue;
+        const missingKeyTest = unwrapFalseBooleanGuard(statement.test);
+        if (
+          !missingKeyTest ||
+          !isNodeOfType(missingKeyTest, "CallExpression") ||
+          !isNodeOfType(missingKeyTest.callee, "MemberExpression") ||
+          getStaticPropertyName(missingKeyTest.callee) !== "has" ||
+          !receiverMatches(missingKeyTest.callee.object) ||
+          !areNodesLooselyEqual(missingKeyTest.arguments[0], lookupKey)
+        ) {
+          continue;
+        }
+
+        const populationCalls: EsTreeNodeOfType<"CallExpression">[] = [];
+        walkAst(statement.consequent, (candidate) => {
+          if (isFunctionLike(candidate)) return false;
+          if (populationCalls.length > 0 || !isNodeOfType(candidate, "CallExpression")) return;
+          if (!isNodeOfType(candidate.callee, "MemberExpression")) return;
+          if (
+            getStaticPropertyName(candidate.callee) === "set" &&
+            receiverMatches(candidate.callee.object) &&
+            areNodesLooselyEqual(candidate.arguments[0], lookupKey) &&
+            isDefinitelyNonNullishMapValue(candidate.arguments[1]) &&
+            isUnconditionallyBefore(candidate, assertion, statement.consequent)
+          ) {
+            populationCalls.push(candidate);
+          }
+        });
+        const populationCall = populationCalls[0];
+        if (!populationCall) continue;
+        const populationCallStart = populationCall.range[0];
+
+        const didWriteLookupKey = Boolean(
+          lookupKeySymbol?.references.some(
+            (reference) =>
+              reference.flag !== "read" &&
+              reference.identifier.range[0] > populationCallStart &&
+              reference.identifier.range[0] < assertion.range[0],
+          ),
+        );
+        if (didWriteLookupKey) continue;
+
+        const didWriteReceiver = receiverSymbol.references.some(
+          (reference) =>
+            reference.flag !== "read" &&
+            reference.identifier.range[0] > populationCallStart &&
+            reference.identifier.range[0] < assertion.range[0],
+        );
+        if (didWriteReceiver) continue;
+
+        const wasEntryInvalidated = indexedRelevantCalls(ancestor).some((laterCall) => {
+          if (
+            laterCall.range[0] <= populationCallStart ||
+            laterCall.range[0] >= assertion.range[0] ||
+            !isNodeOfType(laterCall.callee, "MemberExpression") ||
+            !receiverMatches(laterCall.callee.object)
+          ) {
+            return false;
+          }
+          const laterMethodName = getStaticPropertyName(laterCall.callee);
+          return (
+            laterMethodName === "clear" ||
+            (laterMethodName === "delete" &&
+              areNodesLooselyEqual(laterCall.arguments[0], lookupKey))
+          );
+        });
+        if (!wasEntryInvalidated) return true;
+      }
+    }
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
 const getPropertyName = (memberExpression: EsTreeNodeOfType<"MemberExpression">): string | null =>
   getStaticPropertyName(memberExpression);
 
@@ -1295,7 +1453,8 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
           const receiver = stripParenExpression(callee.object as EsTreeNode);
           if (!isNodeOfType(receiver, "Identifier")) return;
           if (!scopeDeclaresEmptyMap(receiver, context)) return;
-          if (scopeProvesKeyPresence(node as EsTreeNode, receiver, key, context)) return;
+          if (scopeProvesKeyPresence(node, receiver, key, context)) return;
+          if (isEnsureThenMapGet(node, receiver, key, context)) return;
         }
 
         context.report({ node, message });

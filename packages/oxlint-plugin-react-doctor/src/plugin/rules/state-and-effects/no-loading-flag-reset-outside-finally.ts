@@ -1,5 +1,13 @@
-import { defineRule } from "../../utils/define-rule.js";
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
+import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import {
   chainCarriesRejectionHandler,
   isInsideNonRethrowingTry,
@@ -8,23 +16,20 @@ import {
   isPromiseResolveCall,
   subtreeContainsThrow,
 } from "../../utils/is-never-rejecting-expression.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
-import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
-import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import type { ResolvedCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
+import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { subtreeCanThrowSynchronously } from "../../utils/subtree-can-throw-synchronously.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
-import type { RuleContext } from "../../utils/rule-context.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 const MESSAGE =
   "This resets a loading/busy flag only on the success path: if the awaited call rejects the reset never runs and the flag stays stuck truthy (a spinner that never stops, a button disabled forever). Move the reset into a `finally` block, or mirror it on every catch, so it clears on rejection too.";
@@ -51,6 +56,7 @@ const isTestFileFilename = (rawFilename: string | undefined): boolean => {
 const LOADING_FLAG_SETTER_PATTERN =
   /(loading|busy|submitting|saving|pending|fetching|processing|uploading|spinner|disabl|refreshing|updating|inflight|working|posting|sending|deleting)/i;
 const STATE_HOOK_NAMES = new Set(["useState", "useReducer"]);
+const USE_REF_HOOK_NAMES = new Set(["useRef"]);
 const getNodeStart = (node: EsTreeNode): number | null => {
   const start = (node as { start?: unknown }).start;
   return typeof start === "number" ? start : null;
@@ -1052,6 +1058,162 @@ const getExceptionalResetProtection = (
   return { protectingTry: null, isUnconditional: false };
 };
 
+const isInitiallyActiveLifecycleGuard = (guard: EsTreeNode, context: RuleContext): boolean => {
+  const expression = stripParenExpression(guard);
+  if (isNodeOfType(expression, "Identifier")) {
+    const binding = findVariableInitializer(expression, expression.name);
+    const initializer = binding?.initializer ? stripParenExpression(binding.initializer) : null;
+    return Boolean(
+      initializer && isNodeOfType(initializer, "Literal") && initializer.value === true,
+    );
+  }
+  if (
+    !isNodeOfType(expression, "MemberExpression") ||
+    getStaticPropertyName(expression) !== "current"
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(expression.object);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const binding = findVariableInitializer(receiver, receiver.name);
+  const initializer = binding?.initializer ? stripParenExpression(binding.initializer) : null;
+  const initialValue =
+    initializer && isNodeOfType(initializer, "CallExpression") ? initializer.arguments[0] : null;
+  return Boolean(
+    initializer &&
+    isNodeOfType(initializer, "CallExpression") &&
+    isReactApiCall(initializer, USE_REF_HOOK_NAMES, context.scopes, {
+      allowGlobalReactNamespace: true,
+      allowUnboundBareCalls: true,
+    }) &&
+    initialValue &&
+    isNodeOfType(initialValue, "Literal") &&
+    initialValue.value === true,
+  );
+};
+
+const isInsideTryFinalizer = (
+  node: EsTreeNode,
+  tryStatement: EsTreeNodeOfType<"TryStatement">,
+): boolean => {
+  let cursor: EsTreeNode | null | undefined = node;
+  while (cursor && cursor !== tryStatement) {
+    if (cursor === tryStatement.finalizer) return true;
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
+const hasLifecycleGuardWriteOutsideCleanup = (
+  effectCallback: EsTreeNode,
+  guardKey: string,
+  acceptedCleanupAssignments: ReadonlySet<EsTreeNode>,
+  context: RuleContext,
+): boolean => {
+  let didFindOtherWrite = false;
+  walkAst(effectCallback, (candidate) => {
+    if (didFindOtherWrite) return false;
+    if (isNodeOfType(candidate, "AssignmentExpression")) {
+      if (
+        serializeReferenceKey({ node: candidate.left, scopes: context.scopes }) === guardKey &&
+        !acceptedCleanupAssignments.has(candidate)
+      ) {
+        didFindOtherWrite = true;
+        return false;
+      }
+      return;
+    }
+    if (
+      (isNodeOfType(candidate, "UpdateExpression") ||
+        (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "delete")) &&
+      serializeReferenceKey({ node: candidate.argument, scopes: context.scopes }) === guardKey
+    ) {
+      didFindOtherWrite = true;
+      return false;
+    }
+  });
+  return didFindOtherWrite;
+};
+
+const isResetGuardedByCleanupBackedLifecycle = (
+  resetNode: EsTreeNode,
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  let child = resetNode;
+  let cursor: EsTreeNode | null | undefined = resetNode.parent;
+  let guardKey: string | null = null;
+  let guardExpression: EsTreeNode | null = null;
+  while (cursor && cursor !== functionNode) {
+    if (
+      isNodeOfType(cursor, "IfStatement") &&
+      cursor.consequent === child &&
+      cursor.alternate === null
+    ) {
+      guardExpression = cursor.test;
+      guardKey = serializeReferenceKey({ node: cursor.test, scopes: context.scopes });
+      break;
+    }
+    child = cursor;
+    cursor = cursor.parent ?? null;
+  }
+  if (!guardKey || !guardExpression || !isInitiallyActiveLifecycleGuard(guardExpression, context)) {
+    return false;
+  }
+
+  cursor = functionNode.parent;
+  while (cursor) {
+    if (isFunctionLike(cursor)) {
+      const callbackRoot = findTransparentExpressionRoot(cursor);
+      const callbackCall = callbackRoot.parent;
+      const isEffectCallback = Boolean(
+        callbackCall &&
+        isNodeOfType(callbackCall, "CallExpression") &&
+        callbackCall.arguments[0] === callbackRoot &&
+        isReactApiCall(callbackCall, EFFECT_HOOK_NAMES, context.scopes, {
+          allowGlobalReactNamespace: true,
+          allowUnboundBareCalls: true,
+        }),
+      );
+      if (isEffectCallback) {
+        const acceptedCleanupAssignments = new Set<EsTreeNode>();
+        for (const cleanupFunction of collectReturnedCleanupFunctions(cursor, context.scopes)) {
+          walkOwnFunctionScope(cleanupFunction, (cleanupNode) => {
+            const assignedValue = isNodeOfType(cleanupNode, "AssignmentExpression")
+              ? stripParenExpression(cleanupNode.right)
+              : null;
+            if (
+              !isNodeOfType(cleanupNode, "AssignmentExpression") ||
+              cleanupNode.operator !== "=" ||
+              !isNodeOfType(assignedValue, "Literal") ||
+              assignedValue.value !== false ||
+              serializeReferenceKey({ node: cleanupNode.left, scopes: context.scopes }) !==
+                guardKey ||
+              !isUnconditionallyExecutedWithinFunction(cleanupNode, cleanupFunction, context)
+            ) {
+              return;
+            }
+            acceptedCleanupAssignments.add(cleanupNode);
+          });
+        }
+        if (
+          acceptedCleanupAssignments.size > 0 &&
+          !hasLifecycleGuardWriteOutsideCleanup(
+            cursor,
+            guardKey,
+            acceptedCleanupAssignments,
+            context,
+          )
+        ) {
+          return true;
+        }
+      }
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
 const isAwaitInsideProtectedTry = (
   awaitNode: EsTreeNode,
   tryStatement: EsTreeNodeOfType<"TryStatement">,
@@ -1193,7 +1355,11 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
         !call.value &&
         call.context !== "plain" &&
         !call.isUnconditional &&
-        call.protectingTry !== null,
+        call.protectingTry !== null &&
+        !(
+          isInsideTryFinalizer(call.node, call.protectingTry) &&
+          isResetGuardedByCleanupBackedLifecycle(call.node, functionNode, context)
+        ),
     );
     for (const reset of conditionalExceptionalResets) {
       const catchHandler = reset.protectingTry?.handler;

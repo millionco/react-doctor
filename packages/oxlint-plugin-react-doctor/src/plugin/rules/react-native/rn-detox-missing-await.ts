@@ -1,14 +1,17 @@
 import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
-import { normalizeFilename } from "../../utils/normalize-filename.js";
-import type { RuleContext } from "../../utils/rule-context.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const EMPTY_VISITORS: RuleVisitors = {};
 
@@ -43,6 +46,8 @@ const DETOX_ELEMENT_ACTIONS = new Set<string>([
   "performAccessibilityAction",
   "adjustSliderToPosition",
 ]);
+
+const TEST_CALL_NAMES = new Set(["it", "specify", "test"]);
 
 interface ChainRoot {
   readonly calleeName: string;
@@ -117,6 +122,104 @@ const isCallableHandler = (argument: EsTreeNode | undefined): boolean => {
   );
 };
 
+const testCallName = (callee: EsTreeNode): string | null => {
+  const expression = stripParenExpression(callee);
+  if (isNodeOfType(expression, "Identifier")) return expression.name;
+  if (!isNodeOfType(expression, "MemberExpression")) return null;
+  const receiver = stripParenExpression(expression.object as EsTreeNode);
+  return isNodeOfType(receiver, "Identifier") ? receiver.name : null;
+};
+
+const isCallToBinding = (
+  expression: EsTreeNode,
+  bindingIdentifier: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const call = stripParenExpression(expression);
+  if (!isNodeOfType(call, "CallExpression")) return false;
+  const callee = stripParenExpression(call.callee);
+  return (
+    isNodeOfType(callee, "Identifier") &&
+    context.scopes.symbolFor(callee)?.bindingIdentifier === bindingIdentifier
+  );
+};
+
+const handlerSchedulesDone = (
+  handlerNode: EsTreeNode,
+  bindingIdentifier: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const handler = stripParenExpression(handlerNode);
+  if (!isFunctionLike(handler)) return false;
+  let completionExpression: EsTreeNode | null = null;
+  if (isNodeOfType(handler.body, "BlockStatement")) {
+    const onlyStatement = handler.body.body.length === 1 ? handler.body.body[0] : null;
+    if (isNodeOfType(onlyStatement, "ExpressionStatement")) {
+      completionExpression = onlyStatement.expression;
+    } else if (isNodeOfType(onlyStatement, "ReturnStatement")) {
+      completionExpression = onlyStatement.argument;
+    }
+  } else {
+    completionExpression = handler.body;
+  }
+  if (!completionExpression) return false;
+  if (isCallToBinding(completionExpression, bindingIdentifier, context)) return true;
+  const timerCall = stripParenExpression(completionExpression);
+  if (!isNodeOfType(timerCall, "CallExpression")) return false;
+  const timerCallee = stripParenExpression(timerCall.callee);
+  if (
+    !isNodeOfType(timerCallee, "Identifier") ||
+    timerCallee.name !== "setTimeout" ||
+    !context.scopes.isGlobalReference(timerCallee)
+  ) {
+    return false;
+  }
+  const timerHandler = timerCall.arguments[0];
+  if (!timerHandler || isNodeOfType(timerHandler, "SpreadElement")) return false;
+  const unwrappedTimerHandler = stripParenExpression(timerHandler);
+  if (
+    isNodeOfType(unwrappedTimerHandler, "Identifier") &&
+    context.scopes.symbolFor(unwrappedTimerHandler)?.bindingIdentifier === bindingIdentifier
+  ) {
+    return true;
+  }
+  return handlerSchedulesDone(timerHandler, bindingIdentifier, context);
+};
+
+const isCompletedByDoneCallback = (
+  chainExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const testCallback = findEnclosingFunction(chainExpression);
+  if (!testCallback || !isFunctionLike(testCallback)) return false;
+  const callbackRoot = findTransparentExpressionRoot(testCallback);
+  const testCall = callbackRoot.parent;
+  if (
+    !isNodeOfType(testCall, "CallExpression") ||
+    !testCall.arguments.some((argument) => argument === callbackRoot) ||
+    !TEST_CALL_NAMES.has(testCallName(testCall.callee as EsTreeNode) ?? "")
+  ) {
+    return false;
+  }
+  if (testCallback.params.length !== 1) return false;
+  const doneParameter = testCallback.params[0];
+  if (!doneParameter || !isNodeOfType(doneParameter, "Identifier")) return false;
+  const doneBindingIdentifier = context.scopes.symbolFor(doneParameter)?.bindingIdentifier;
+  if (!doneBindingIdentifier) return false;
+
+  if (getTerminalMethodName(chainExpression) !== "then") return false;
+  const fulfillmentHandler = chainExpression.arguments[0] as EsTreeNode | undefined;
+  if (!fulfillmentHandler) return false;
+  const handler = stripParenExpression(fulfillmentHandler);
+  const handlerBindingIdentifier = isNodeOfType(handler, "Identifier")
+    ? context.scopes.symbolFor(handler)?.bindingIdentifier
+    : null;
+  if (handlerBindingIdentifier === doneBindingIdentifier) {
+    return true;
+  }
+  return handlerSchedulesDone(handler, doneBindingIdentifier, context);
+};
+
 const getDetoxOperationMethodName = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
 ): string | null => {
@@ -166,6 +269,7 @@ export const rnDetoxMissingAwait = defineRule({
             ? stripParenExpression(node.expression.argument)
             : node.expression;
         if (!isNodeOfType(expression, "CallExpression")) return;
+        if (isCompletedByDoneCallback(expression, context)) return;
         const terminalMethod = getDetoxOperationMethodName(expression);
         // A bare `element(by.id('x'))` (callee is the `element` identifier,
         // no terminal method) only builds a matcher — nothing to await.

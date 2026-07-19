@@ -100,6 +100,22 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when a then callback consumes the response in a successful ternary branch", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `fetch("/api/init").then((response) => response.ok ? response.json() : null);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a then callback whose status ternary does not guard the consumed branch", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `fetch("/api/init").then((response) => flag ? response.ok : response.json());`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags when the status is read only after the body is consumed", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,

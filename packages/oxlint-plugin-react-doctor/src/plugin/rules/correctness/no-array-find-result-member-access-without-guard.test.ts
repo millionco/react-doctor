@@ -125,6 +125,41 @@ describe("no-array-find-result-member-access-without-guard", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag an ORM find query terminated by exec", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `const query = findModel(itemsType).find(criteria).exec(callback);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags exec access on a possibly missing array element", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `[{ exec() {} }].find((command) => command.ready).exec();
+       const commands = [{ exec() {} }];
+       commands.find(isReady).exec();`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags array-shaped find access on an opaque call result", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `const name = getUsers().find((user) => user.active).name;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags find after a proven array-producing call", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `const label = items.filter((item) => item.visible).find((item) => item.id === id).label;
+       const name = Array.from(users).find((user) => user.id === id).name;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("does not flag a non-null-asserted result (owned by the no-non-null rule)", () => {
     const result = runRule(
       noArrayFindResultMemberAccessWithoutGuard,

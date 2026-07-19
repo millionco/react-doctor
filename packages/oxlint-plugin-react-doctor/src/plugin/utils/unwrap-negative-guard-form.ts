@@ -9,6 +9,12 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 // guard expression, or null when the test is not a recognized negative form.
 export const unwrapNegativeGuardForm = (test: EsTreeNode): EsTreeNode | null => {
   const expression = stripParenExpression(test);
+  if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "||") {
+    return (
+      unwrapNegativeGuardForm(expression.left as EsTreeNode) ??
+      unwrapNegativeGuardForm(expression.right as EsTreeNode)
+    );
+  }
   if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
     return stripParenExpression(expression.argument);
   }

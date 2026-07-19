@@ -137,6 +137,157 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when an effect cleanup lifecycle guard wraps a reset in finally", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useEffect, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         useEffect(() => {
+           let isMounted = true;
+           const load = async () => {
+             setIsLoading(true);
+             try { await fetchFeed(); }
+             finally { if (isMounted) setIsLoading(false); }
+           };
+           load();
+           return () => { isMounted = false; };
+         }, []);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a cleanup-backed mounted ref guard in finally", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mountedRef = useRef(true);
+         useEffect(() => {
+           const load = async () => {
+             setIsLoading(true);
+             try { await fetchFeed(); }
+             finally { if (mountedRef.current) setIsLoading(false); }
+           };
+           load();
+           return () => { mountedRef.current = false; };
+         }, []);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a conditional finally reset without a matching effect cleanup guard", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const load = async () => {
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally { if (shouldReset) setIsLoading(false); }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a shadowed useEffect as lifecycle cleanup proof", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+       const useEffect = (callback) => callback();
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         useEffect(() => {
+           let isMounted = true;
+           const load = async () => {
+             setIsLoading(true);
+             try { await fetchFeed(); }
+             finally { if (isMounted) setIsLoading(false); }
+           };
+           return () => { isMounted = false; };
+         });
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires a lifecycle guard to start active and wrap a finalizer reset", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useEffect, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         useEffect(() => {
+           let firstMounted = false;
+           const firstLoad = async () => {
+             setIsLoading(true);
+             try { await fetchFeed(); }
+             finally { if (firstMounted) setIsLoading(false); }
+           };
+           const secondLoad = async () => {
+             let secondMounted = true;
+             setIsLoading(true);
+             try { await fetchFeed(); }
+             catch (error) {
+               if (secondMounted) setIsLoading(false);
+               throw error;
+             }
+           };
+           firstLoad();
+           secondLoad();
+           return () => {
+             firstMounted = false;
+             secondMounted = false;
+           };
+         }, []);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not trust lifecycle guards written outside the returned cleanup", () => {
+    const sources = [
+      `import { useEffect, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         useEffect(() => {
+           let isMounted = true;
+           isMounted = false;
+           const load = async () => {
+             setIsLoading(true);
+             try { await fetchFeed(); }
+             finally { if (isMounted) setIsLoading(false); }
+           };
+           load();
+           return () => { isMounted = false; };
+         }, []);
+       };`,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mountedRef = useRef(true);
+         useEffect(() => {
+           mountedRef.current = false;
+           const load = async () => {
+             setIsLoading(true);
+             try { await fetchFeed(); }
+             finally { if (mountedRef.current) setIsLoading(false); }
+           };
+           load();
+           return () => { mountedRef.current = false; };
+         }, []);
+       };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(1);
+    }
+  });
+
   it("stays quiet for a non-loading boolean toggle", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,

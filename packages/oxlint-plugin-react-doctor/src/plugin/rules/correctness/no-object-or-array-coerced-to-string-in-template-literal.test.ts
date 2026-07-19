@@ -12,12 +12,12 @@ describe("no-object-or-array-coerced-to-string-in-template-literal", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags interpolating an identifier bound to an array literal", () => {
+  it("does not flag interpolating an identifier bound to an array literal", () => {
     const result = runRule(
       noObjectOrArrayCoercedToStringInTemplateLiteral,
       "function f() { const sizes = [1, 2, 3]; return `sizes: ${sizes}`; }",
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags a useRef object interpolated bare", () => {
@@ -28,12 +28,12 @@ describe("no-object-or-array-coerced-to-string-in-template-literal", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a useState value whose initializer is an array literal", () => {
+  it("does not flag a useState value whose initializer is an array literal", () => {
     const result = runRule(
       noObjectOrArrayCoercedToStringInTemplateLiteral,
       "function C() { const [items] = useState([]); return `items: ${items}`; }",
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags string + concatenation of an object literal", () => {
@@ -117,12 +117,42 @@ describe("no-object-or-array-coerced-to-string-in-template-literal", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a bare array literal interpolated directly", () => {
+  it("does not flag a bare array literal interpolated directly", () => {
     const result = runRule(
       noObjectOrArrayCoercedToStringInTemplateLiteral,
       "function f() { return `pair: ${[1, 2]}`; }",
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags arrays whose default coercion loses object or nested-array structure", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      'const users = [{ name: "Ada" }];\n' +
+        'const rows = [["Ada", "admin"], ["Grace", "owner"]];\n' +
+        "const labels = [`users: ${users}`, `rows: ${rows}`];",
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags statically lossy arrays introduced through literal spreads", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      `const objectRows = [{ id: 1 }];
+       const labels = [
+         \`direct: \${[...[{ id: 1 }]]}\`,
+         \`bound: \${[...objectRows]}\`,
+       ];`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not flag flat arrays introduced through literal spreads", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      `const values = [1, 2]; const label = \`values: \${[...values]}\`;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag an array interpolated into a styled-components tagged template", () => {
@@ -198,12 +228,28 @@ describe("no-object-or-array-coerced-to-string-in-template-literal", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("still flags a bare interpolated array outside functional syntax", () => {
+  it("does not flag a bare interpolated array outside functional syntax", () => {
     const result = runRule(
       noObjectOrArrayCoercedToStringInTemplateLiteral,
       "const items = [1, 2, 3];\nconst label = `items: ${items}`;",
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag intentional D3 coordinate serialization", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      `const transform = (point) => \`translate(\${[point.x, point.y]})\`;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag intentional CSV header serialization", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      `const firstRow = ["time", "status", "logs"]; const csv = \`\${firstRow}\\r\\n\${body}\`;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("stays quiet in test files (URL-expectation interpolation)", () => {
@@ -245,20 +291,20 @@ describe("no-object-or-array-coerced-to-string-in-template-literal", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags object and array coercion with non-string addition operands", () => {
+  it("only flags object coercion with non-string addition operands", () => {
     const result = runRule(
       noObjectOrArrayCoercedToStringInTemplateLiteral,
       `const objectValue = 1 + { answer: 42 }; const arrayValue = [1, 2] + 3;`,
     );
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not treat arbitrary function-looking template text as an intentional array join", () => {
+  it("does not flag array serialization in arbitrary function-looking text", () => {
     const result = runRule(
       noObjectOrArrayCoercedToStringInTemplateLiteral,
       `const items = ["a", "b"]; const text = \`warning(\${items})\`;`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag an object literal with a computed static toString method", () => {

@@ -4,9 +4,9 @@ import { findGuardingTryStatement } from "../../utils/find-guarding-try-statemen
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { chainCarriesRejectionHandler } from "../../utils/is-never-rejecting-expression.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
-import { chainCarriesRejectionHandler } from "../../utils/is-never-rejecting-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -20,6 +20,14 @@ const REJECTING_PROMISE_COMBINATOR_NAMES = new Set(["all", "race", "any"]);
 const MAX_INITIATOR_RESOLUTION_DEPTH = 3;
 const STATE_DISPATCHER_HOOK_NAMES = new Set(["useState", "useReducer"]);
 const REF_HOOK_NAMES = new Set(["useRef"]);
+const NON_REJECTING_CONSOLE_METHOD_NAMES = new Set([
+  "debug",
+  "error",
+  "info",
+  "log",
+  "trace",
+  "warn",
+]);
 
 const MESSAGE =
   "This promise chain runs in an effect, ends in a `.then` that sets state or mutates a ref, and has no `.catch` or enclosing try/catch, so a rejection leaves the state unset and surfaces as an unhandled rejection. Add a `.catch` handler on the chain (`.finally` does not count).";
@@ -42,10 +50,43 @@ interface ResolvedInitiator {
   initiator: EsTreeNode;
   hasUpstreamRejectionHandling: boolean;
 }
+const isKnownNonRejectingConciseHandler = (
+  argument: EsTreeNode | undefined,
+  context: RuleContext,
+): boolean => {
+  if (!argument) return false;
+  const handler = stripParenExpression(argument);
+  if (
+    !isNodeOfType(handler, "ArrowFunctionExpression") ||
+    isNodeOfType(handler.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  const body = stripParenExpression(handler.body);
+  if (!isNodeOfType(body, "CallExpression")) return false;
+  const callee = stripParenExpression(body.callee);
+  if (
+    isNodeOfType(callee, "Identifier") &&
+    isReactHookResultReference(callee, STATE_DISPATCHER_HOOK_NAMES, 1, context.scopes)
+  ) {
+    const symbol = context.scopes.symbolFor(callee);
+    return Boolean(symbol?.references.every((reference) => reference.flag === "read"));
+  }
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object);
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "console" &&
+    context.scopes.isGlobalReference(receiver) &&
+    NON_REJECTING_CONSOLE_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")
+  );
+};
+
 const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): PromiseChainWalk => {
   let cursor = stripParenExpression(chainExpression);
-  const hasCatch = chainCarriesRejectionHandler(chainExpression, context.scopes);
-  const hasRejectionHandlerArgument = false;
+  let hasCatch = false;
+  let hasRejectionHandlerArgument = false;
+  let didReachTerminalThen = false;
   let sawThen = false;
   let hasDirectSetterThenCallback = false;
   const thenCallbacks: FunctionLikeNode[] = [];
@@ -56,7 +97,23 @@ const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): Pr
     PROMISE_METHOD_NAMES.has(getStaticPropertyName(cursor.callee) ?? "")
   ) {
     const methodName = getStaticPropertyName(cursor.callee);
+    if (
+      !didReachTerminalThen &&
+      methodName === "catch" &&
+      (chainCarriesRejectionHandler(cursor, context.scopes) ||
+        isKnownNonRejectingConciseHandler(cursor.arguments[0] as EsTreeNode | undefined, context))
+    ) {
+      hasCatch = true;
+    }
     if (methodName === "then") {
+      if (
+        !didReachTerminalThen &&
+        (chainCarriesRejectionHandler(cursor, context.scopes) ||
+          isKnownNonRejectingConciseHandler(cursor.arguments[1] as EsTreeNode | undefined, context))
+      ) {
+        hasRejectionHandlerArgument = true;
+      }
+      didReachTerminalThen = true;
       sawThen = true;
       const callbackArgument = cursor.arguments[0];
       const callback = callbackArgument ? stripParenExpression(callbackArgument) : null;
@@ -265,12 +322,9 @@ const referenceHasRejectionHandler = (reference: EsTreeNode, context: RuleContex
     return false;
   }
   const call = member.parent;
-  return Boolean(
-    call &&
-    isNodeOfType(call, "CallExpression") &&
-    call.callee === member &&
-    chainCarriesRejectionHandler(call, context.scopes),
-  );
+  if (!call || !isNodeOfType(call, "CallExpression") || call.callee !== member) return false;
+  const chainWalk = walkPromiseChain(call, context);
+  return chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument;
 };
 const bindingHasRejectionHandler = (binding: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(binding, "Identifier")) return false;

@@ -29,7 +29,13 @@ const isKnownContextIdentifier = (
   if (!isNodeOfType(identifier, "JSXIdentifier")) return false;
   if (allowContextNamedImport && isContextNamedImport(identifier, scopes)) return true;
   const symbol = scopes.symbolFor(identifier);
-  return Boolean(symbol && contextBindings.has(symbol.id));
+  if (!symbol) return false;
+  return (
+    contextBindings.has(symbol.id) ||
+    symbol.scope.symbols.some(
+      (candidate) => candidate.name === identifier.name && contextBindings.has(candidate.id),
+    )
+  );
 };
 
 export const isContextProviderJsxName = (

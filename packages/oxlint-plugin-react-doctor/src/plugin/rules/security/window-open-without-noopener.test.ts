@@ -136,6 +136,32 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a URL produced by the browser chrome extension runtime", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `window.open(chrome.runtime.getURL("options.html"));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a shadowed chrome runtime URL producer", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const chrome = { runtime: { getURL: (path) => externalUrl + path } };
+       window.open(chrome.runtime.getURL("options.html"));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a reassigned chrome runtime URL producer", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `chrome.runtime.getURL = (path) => externalUrl + path;
+       window.open(chrome.runtime.getURL("options.html"));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a template with a fixed trusted origin and path-only interpolation", () => {
     const result = runRule(
       windowOpenWithoutNoopener,

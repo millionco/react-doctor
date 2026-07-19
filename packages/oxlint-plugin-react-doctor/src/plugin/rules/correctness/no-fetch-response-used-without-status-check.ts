@@ -545,6 +545,12 @@ const reportUnguarded = ({
     while (current.parent) {
       const parent = current.parent;
       if (
+        (isNodeOfType(parent, "ConditionalExpression") && parent.test === current) ||
+        (isNodeOfType(parent, "LogicalExpression") && parent.left === current)
+      ) {
+        return true;
+      }
+      if (
         (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") ||
         isNodeOfType(parent, "BinaryExpression") ||
         isNodeOfType(parent, "LogicalExpression") ||

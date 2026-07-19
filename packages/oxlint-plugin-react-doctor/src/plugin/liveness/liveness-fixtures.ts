@@ -879,7 +879,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'const T = () => <button style={{ outline: "none" }}>Save</button>;',
   },
   "no-object-or-array-coerced-to-string-in-template-literal": {
-    code: "function formatPair() { return `pair: ${[1, 2]}`; }",
+    code: "function formatMetadata() { return `metadata: ${{ id: 1 }}`; }",
   },
   "no-pass-data-to-parent": {
     code: "const Child = (props) => {\n          const fetchedData = useSomeAPI();\n          useEffect(() => {\n            props.onLoaded(fetchedData);\n          }, [props, fetchedData]);\n          return null;\n        };",

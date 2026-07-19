@@ -177,6 +177,50 @@ describe("no-promise-then-side-effect-in-effect-without-catch", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a terminal catch whose concise handler sets error state", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const [, setInfo] = useState(null); const [, setError] = useState(null);
+      useEffect(() => {
+        fetch(src).then((response) => response.json()).then(setInfo).catch((error) => setError(error));
+      }, [src]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a terminal catch whose concise handler logs the error", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const [, setInfo] = useState(null);
+      useEffect(() => { fetch(src).then(setInfo).catch((error) => console.error(error)); }, [src]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust unknown console methods or a reassigned state dispatcher", () => {
+    const sources = [
+      `const [, setInfo] = useState(null);
+       useEffect(() => {
+         fetch(src).then(setInfo).catch((error) => console.missing(error));
+       }, [src]);`,
+      `const [, setInfo] = useState(null);
+       useEffect(() => {
+         fetch(src).then(setInfo).catch((error) => console[method](error));
+       }, [src, method]);`,
+      `let [, setError] = useState(null);
+       const [, setInfo] = useState(null);
+       setError = () => { throw new Error("failed"); };
+       useEffect(() => {
+         fetch(src).then(setInfo).catch((error) => setError(error));
+       }, [src]);`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
+        1,
+      );
+    }
+  });
+
   it("does not flag a catch handler that returns a fulfilled promise", () => {
     const result = runRule(
       noPromiseThenSideEffectInEffectWithoutCatch,

@@ -2361,6 +2361,26 @@ const isCreateObjectUrlCall = (node: EsTreeNode): boolean =>
     ),
   );
 
+const isChromeExtensionRuntimeUrlCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = stripParenExpression(node.callee as EsTreeNode);
+  if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "getURL") {
+    return false;
+  }
+  const runtimeMember = stripParenExpression(callee.object as EsTreeNode);
+  if (
+    !isNodeOfType(runtimeMember, "MemberExpression") ||
+    getStaticPropertyName(runtimeMember) !== "runtime"
+  ) {
+    return false;
+  }
+  return Boolean(
+    currentScopes &&
+    isProvenGlobalNamespaceReference(runtimeMember.object, "chrome", currentScopes) &&
+    globalNamespaceBindingIsUnmodifiedBefore("chrome", node),
+  );
+};
+
 const URL_ORIGIN_PROPERTY_NAMES = [
   "href",
   "host",
@@ -2707,6 +2727,7 @@ const isTrustedDestination = (
     return isTrustedConcatPrefix(leftmostConcatOperand(urlArgument));
   }
   if (isCreateObjectUrlCall(urlArgument)) return true;
+  if (isChromeExtensionRuntimeUrlCall(urlArgument)) return true;
   // `shareUrl.toString()` / `shareUrl.href` where shareUrl is a const
   // `new URL('<trusted>')` builder — searchParams mutation cannot change
   // the origin.

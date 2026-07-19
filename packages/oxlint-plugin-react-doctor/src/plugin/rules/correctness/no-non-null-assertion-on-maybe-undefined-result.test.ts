@@ -81,6 +81,174 @@ describe("no-non-null-assertion-on-maybe-undefined-result", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag map.get after a missing key is populated", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const group = (items, key) => {
+        const groups = new Map();
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(...items);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag map.get after a block populates a missing key", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const group = (items, key) => {
+        const groups = new Map();
+        if (!groups.has(key)) {
+          groups.set(key, []);
+        }
+        groups.get(key)!.push(...items);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags map.get when missing-key population is not guaranteed", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const group = (items, key, shouldPopulate) => {
+        const groups = new Map();
+        if (!groups.has(key)) {
+          if (shouldPopulate) groups.set(key, []);
+        }
+        groups.get(key)!.push(...items);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags map.get when a has comparison cannot enter the population branch", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const readValue = (key) => {
+        const values = new Map();
+        if (values.has(key) === null) values.set(key, []);
+        return values.get(key)!.length;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still accepts explicit false boolean forms of the missing-key guard", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const readValue = (key) => {
+        const values = new Map();
+        if (values.has(key) === false) values.set(key, []);
+        return values.get(key)!.length;
+      };
+      const readOtherValue = (key) => {
+        const values = new Map();
+        if (values.has(key) !== true) values.set(key, []);
+        return values.get(key)!.length;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags map.get when the populated map binding is replaced", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const readValue = (key) => {
+        let values = new Map();
+        if (!values.has(key)) values.set(key, []);
+        values = new Map();
+        return values.get(key)!.length;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags map.get when missing-key population only appears in a nested function", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const readValue = (key) => {
+        const values = new Map();
+        if (!values.has(key)) {
+          const populate = () => values.set(key, "ready");
+          schedule(populate);
+        }
+        return values.get(key)!.length;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires a stable key and definitely present populated value", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const readValues = (obj, nextKey) => {
+        const first = new Map();
+        if (!first.has(nextKey)) first.set(nextKey, undefined);
+        first.get(nextKey)!.length;
+
+        const second = new Map();
+        if (!second.has(getKey())) second.set(getKey(), []);
+        second.get(getKey())!.length;
+
+        const third = new Map();
+        if (!third.has(obj.key)) third.set(obj.key, []);
+        obj.key = nextKey;
+        third.get(obj.key)!.length;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("flags map.get when the proven key changes before lookup", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const group = (items, initialKey, nextKey) => {
+        const groups = new Map();
+        let key = initialKey;
+        if (!groups.has(key)) groups.set(key, []);
+        key = nextKey;
+        groups.get(key)!.push(...items);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags map.get when the proven entry is deleted before lookup", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const group = (items, key) => {
+        const groups = new Map();
+        if (!groups.has(key)) groups.set(key, []);
+        groups.delete(key);
+        groups.get(key)!.push(...items);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags map.get when the key is changed or deleted after population inside the branch", () => {
+    const result = runRule(
+      noNonNullAssertionOnMaybeUndefinedResult,
+      `const group = (items, initialKey, nextKey) => {
+        const first = new Map();
+        let firstKey = initialKey;
+        if (!first.has(firstKey)) {
+          first.set(firstKey, []);
+          firstKey = nextKey;
+        }
+        first.get(firstKey)!.push(...items);
+
+        const second = new Map();
+        if (!second.has(initialKey)) {
+          second.set(initialKey, []);
+          second.delete(initialKey);
+        }
+        second.get(initialKey)!.push(...items);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("does not flag this.map.get(key)! guarded by this.map.has/set in the same method", () => {
     const result = runRule(
       noNonNullAssertionOnMaybeUndefinedResult,

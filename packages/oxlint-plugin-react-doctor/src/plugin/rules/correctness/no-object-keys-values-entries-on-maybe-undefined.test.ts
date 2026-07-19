@@ -118,6 +118,39 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag after a disjunctive early-return guard", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `function appendQuery(query?: Record<string, string>) {
+        if (!query || !Object.keys(query).length) return "";
+        return Object.entries(query).map(([key, value]) => key + value).join("&");
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag after a typeof and null disjunctive early-return guard", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `function entries(alias?: Record<string, string>) {
+        if (!alias || typeof alias !== "object" || alias === null) return [];
+        return Object.entries(alias);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags after a conjunction that can exit while the value is present", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `function entries(alias?: Record<string, string>, skip?: boolean) {
+        if (!alias && skip) return [];
+        return Object.entries(alias);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a `&&` short-circuit guard", () => {
     const result = runRule(
       noObjectKeysValuesEntriesOnMaybeUndefined,

@@ -30,6 +30,38 @@ const LEAKING_MOBX_SUBSCRIPTIONS = new Set(["reaction", "autorun"]);
 const OPTIONS_ARGUMENT_INDEX: Record<string, number> = { autorun: 1, reaction: 2 };
 const DISPOSER_VALUE_COERCION_NAMES = new Set(["Boolean", "Number", "String"]);
 
+const isStoredThroughMapCallback = (call: EsTreeNode): boolean => {
+  const callRoot = findTransparentExpressionRoot(call);
+  const callback = callRoot.parent;
+  if (!isNodeOfType(callback, "ArrowFunctionExpression") || callback.body !== callRoot) {
+    return false;
+  }
+  const callbackRoot = findTransparentExpressionRoot(callback);
+  const mapCall = callbackRoot.parent;
+  if (
+    !isNodeOfType(mapCall, "CallExpression") ||
+    !mapCall.arguments.some((argument) => argument === callbackRoot)
+  ) {
+    return false;
+  }
+  const callee = stripParenExpression(mapCall.callee);
+  if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "map") {
+    return false;
+  }
+  const mapResultRoot = findTransparentExpressionRoot(mapCall);
+  const resultOwner = mapResultRoot.parent;
+  return Boolean(
+    (isNodeOfType(resultOwner, "VariableDeclarator") &&
+      resultOwner.init === mapResultRoot &&
+      isNodeOfType(resultOwner.id, "Identifier")) ||
+    (isNodeOfType(resultOwner, "AssignmentExpression") &&
+      resultOwner.operator === "=" &&
+      resultOwner.right === mapResultRoot &&
+      (isNodeOfType(resultOwner.left, "Identifier") ||
+        isNodeOfType(resultOwner.left, "MemberExpression"))),
+  );
+};
+
 const resolveLeakingSubscriptionName = (
   node: EsTreeNodeOfType<"CallExpression">,
 ): string | null => {
@@ -230,6 +262,7 @@ const mayCarryAbortSignal = (
 };
 
 const isDisposerOwnershipDiscarded = (call: EsTreeNode): boolean => {
+  if (isStoredThroughMapCallback(call)) return false;
   if (isResultDiscardedCall(call)) return true;
   const expressionRoot = findTransparentExpressionRoot(call);
   const parent = expressionRoot.parent;

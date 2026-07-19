@@ -942,12 +942,6 @@
     "rootDir": "packages/@mantinex/mantine-logo"
   },
   {
-    "org": "dailydotdev",
-    "name": "apps",
-    "ref": "HEAD",
-    "rootDir": "."
-  },
-  {
     "org": "arikchakma",
     "name": "maily.to",
     "ref": "65d99f59471c098d90798a486298eb9d5f479bb8",
@@ -4161,12 +4155,6 @@
     "org": "jaredpalmer",
     "name": "react-fns",
     "ref": "HEAD",
-    "rootDir": "."
-  },
-  {
-    "org": "mattermost",
-    "name": "mattermost-mobile",
-    "ref": "62916892f369e4d809a3d449743da5b9f096903c",
     "rootDir": "."
   },
   {

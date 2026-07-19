@@ -23,6 +23,7 @@ interface FreshSelectorResult {
 
 interface ZustandBoundStore {
   readonly hasDefaultEquality: boolean;
+  readonly supportsEqualityArgument: boolean;
 }
 
 interface ZustandSelectorCall {
@@ -204,20 +205,26 @@ const resolveZustandStoreCreation = (
   if (!isNodeOfType(candidate, "CallExpression")) return null;
 
   const directFactory = resolveZustandApiBinding(candidate.callee, scopes);
-  if (directFactory?.apiName === "create") return { hasDefaultEquality: false };
+  if (directFactory?.apiName === "create") {
+    return { hasDefaultEquality: false, supportsEqualityArgument: false };
+  }
   if (directFactory?.apiName === "createWithEqualityFn") {
     return {
       hasDefaultEquality: hasExplicitEqualityArgument(candidate.arguments, 1, scopes),
+      supportsEqualityArgument: true,
     };
   }
 
   const curriedFactoryCall = stripParenExpression(candidate.callee);
   if (!isNodeOfType(curriedFactoryCall, "CallExpression")) return null;
   const curriedFactory = resolveZustandApiBinding(curriedFactoryCall.callee, scopes);
-  if (curriedFactory?.apiName === "create") return { hasDefaultEquality: false };
+  if (curriedFactory?.apiName === "create") {
+    return { hasDefaultEquality: false, supportsEqualityArgument: false };
+  }
   if (curriedFactory?.apiName === "createWithEqualityFn") {
     return {
       hasDefaultEquality: hasExplicitEqualityArgument(candidate.arguments, 1, scopes),
+      supportsEqualityArgument: true,
     };
   }
   return null;
@@ -254,7 +261,12 @@ const getZustandSelectorCall = (
   if (apiBinding?.apiName === "useStore" || apiBinding?.apiName === "useStoreWithEqualityFn") {
     const selector = callExpression.arguments[1];
     if (!selector || isNodeOfType(selector, "SpreadElement")) return null;
-    if (hasExplicitEqualityArgument(callExpression.arguments, 2, scopes)) return null;
+    if (
+      apiBinding.apiName === "useStoreWithEqualityFn" &&
+      hasExplicitEqualityArgument(callExpression.arguments, 2, scopes)
+    ) {
+      return null;
+    }
     return { selector };
   }
 
@@ -263,7 +275,8 @@ const getZustandSelectorCall = (
   if (!boundStore || !selector || isNodeOfType(selector, "SpreadElement")) return null;
   if (
     boundStore.hasDefaultEquality ||
-    hasExplicitEqualityArgument(callExpression.arguments, 1, scopes)
+    (boundStore.supportsEqualityArgument &&
+      hasExplicitEqualityArgument(callExpression.arguments, 1, scopes))
   ) {
     return null;
   }

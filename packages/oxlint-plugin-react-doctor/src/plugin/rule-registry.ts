@@ -536,6 +536,7 @@ import { r3fNoUseFrameDependencyArray } from "./rules/r3f/r3f-no-use-frame-depen
 import { r3fPreferUseLoader } from "./rules/r3f/r3f-prefer-use-loader.js";
 import { r3fRequireFrameDelta } from "./rules/r3f/r3f-require-frame-delta.js";
 import { r3fRequireGlobalEffectCleanup } from "./rules/r3f/r3f-require-global-effect-cleanup.js";
+import { r3fRequireInstancedBufferUpdate } from "./rules/r3f/r3f-require-instanced-buffer-update.js";
 import { r3fRequireOwnedTextureCleanup } from "./rules/r3f/r3f-require-owned-texture-cleanup.js";
 import { r3fRequireProjectionMatrixUpdate } from "./rules/r3f/r3f-require-projection-matrix-update.js";
 import { r3fRequireRenderWithPositivePriority } from "./rules/r3f/r3f-require-render-with-positive-priority.js";
@@ -7070,6 +7071,25 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fRequireGlobalEffectCleanup.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fRequireGlobalEffectCleanup.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-instanced-buffer-update",
+    id: "r3f-require-instanced-buffer-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireInstancedBufferUpdate,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireInstancedBufferUpdate.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fRequireInstancedBufferUpdate.requires ?? []),
+        ]),
       ],
     },
   },

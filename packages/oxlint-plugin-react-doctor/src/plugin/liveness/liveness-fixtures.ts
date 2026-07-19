@@ -1806,6 +1806,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-require-global-effect-cleanup": {
     code: 'import { useEffect } from "react"; import { addEffect } from "@react-three/fiber"; const Scene = () => { useEffect(() => { addEffect(update); }, []); return null; };',
   },
+  "r3f-require-instanced-buffer-update": {
+    code: 'import "@react-three/fiber"; import { useRef } from "react"; const Scene = () => { const meshRef = useRef(null); const update = () => { meshRef.current.setMatrixAt(0, matrix); }; return <instancedMesh ref={meshRef} />; };',
+  },
   "r3f-require-owned-texture-cleanup": {
     code: 'import { useMemo } from "react"; import { CanvasTexture } from "three"; const Scene = ({ canvas }) => { const texture = useMemo(() => new CanvasTexture(canvas), [canvas]); return <meshStandardMaterial map={texture} />; };',
   },

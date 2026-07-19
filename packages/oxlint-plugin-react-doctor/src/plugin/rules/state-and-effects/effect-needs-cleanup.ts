@@ -58,6 +58,7 @@ import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capt
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import { isSynchronousIteratorCallback } from "../../utils/is-synchronous-iterator-callback.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
@@ -1207,41 +1208,6 @@ const getListenerAbortControllerKey = (
     return signalKey?.endsWith(".signal") ? signalKey.slice(0, -".signal".length) : null;
   }
   return null;
-};
-
-const SYNCHRONOUS_ITERATOR_METHOD_NAMES: ReadonlySet<string> = new Set([
-  "every",
-  "filter",
-  "flatMap",
-  "forEach",
-  "map",
-  "reduce",
-  "reduceRight",
-  "some",
-]);
-
-const isSynchronousIteratorCallback = (functionNode: EsTreeNode): boolean => {
-  const callNode = functionNode.parent;
-  if (!isNodeOfType(callNode, "CallExpression")) return false;
-  const callee = stripParenExpression(callNode.callee);
-  if (
-    !isNodeOfType(callee, "MemberExpression") ||
-    callee.computed ||
-    !isNodeOfType(callee.property, "Identifier")
-  ) {
-    return false;
-  }
-  if (
-    isNodeOfType(callee.object, "Identifier") &&
-    callee.object.name === "Array" &&
-    callee.property.name === "from"
-  ) {
-    return callNode.arguments?.[1] === functionNode;
-  }
-  return (
-    SYNCHRONOUS_ITERATOR_METHOD_NAMES.has(callee.property.name) &&
-    callNode.arguments?.[0] === functionNode
-  );
 };
 
 const findEnclosingForEachCall = (node: EsTreeNode): EsTreeNodeOfType<"CallExpression"> | null => {

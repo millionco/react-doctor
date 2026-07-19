@@ -81,10 +81,52 @@ Foundation capabilities:
 - `mobx:4`, `mobx:5`, and `mobx:6` from a direct `mobx` dependency only.
 - Separate unversioned capabilities for `mobx-react`, `mobx-react-lite`, `mobx-state-tree`, and
   `mobx-react-observer` when a rule depends on that package.
+- `mobx-react-binding` when `mobx-react` or `mobx-react-lite` supplies the runtime React observer
+  integration. This is the explicit any-of gate for rules that support both official React
+  bindings; `Rule.requires` itself intentionally has all-of semantics. The
+  `mobx-react-observer` transform remains a separate escape-hatch capability because it does not
+  export the runtime APIs those rules inspect.
 
 Mixed workspace ranges should select the oldest supported declared MobX major. Unparseable ranges,
 missing direct core dependencies, and future majors should receive only `mobx`, causing
 major-sensitive rules to skip.
+
+The latest official release checked during this audit is
+[`mobx@6.16.1`](https://github.com/mobxjs/mobx/releases/tag/mobx%406.16.1). Every researched rule is
+encoded in `MOBX_RULE_GATES`; a registered `mobx-*` rule must reuse the matching `requires` and
+`disabledWhen` values exactly. The registry test rejects a MobX rule that has no contract entry or
+weakens its gate. A bare `mobx` capability is never sufficient to enable one of these rules:
+`mobx:4` is the supported-version floor and also proves a direct MobX core dependency.
+
+| Rule                                             | Required capabilities                          | Disabled when         |
+| ------------------------------------------------ | ---------------------------------------------- | --------------------- |
+| `mobx-reaction-disposer-discarded`               | `mobx:4`                                       | —                     |
+| `mobx-no-make-auto-observable-in-inheritance`    | `mobx:6`                                       | —                     |
+| `mobx-no-computed-side-effects`                  | `mobx:4`                                       | —                     |
+| `mobx-async-action-requires-action`              | `mobx:4`                                       | —                     |
+| `mobx-no-observer-wrapped-memo`                  | `mobx:4`, `mobx-react-binding`, `react`        | —                     |
+| `mobx-make-observable-unconditional`             | `mobx:6`                                       | —                     |
+| `mobx-legacy-decorator-needs-make-observable`    | `mobx:6`                                       | —                     |
+| `mobx-initialize-before-make-auto-observable`    | `mobx:6`                                       | —                     |
+| `mobx-observable-read-needs-observer`            | `mobx:4`, `mobx-react-binding`, `react`        | `mobx-react-observer` |
+| `mobx-observer-before-inject`                    | `mobx:4`, `mobx-react`, `react`                | —                     |
+| `mobx-reaction-requires-observable`              | `mobx:4`                                       | —                     |
+| `mobx-no-invalid-observable-override`            | `mobx:6`                                       | —                     |
+| `mobx-no-observable-prop-to-untracked-child`     | `mobx:4`, `mobx-react-binding`, `react`        | —                     |
+| `mobx-no-stale-observable-snapshot-after-await`  | `mobx:4`                                       | —                     |
+| `mobx-no-reaction-comparison-value-mutation`     | `mobx:4`                                       | —                     |
+| `mobx-observer-class-no-should-component-update` | `mobx:4`, `mobx-react`, `react`                | —                     |
+| `mobx-enable-static-rendering-for-ssr`           | `mobx:4`, `mobx-react-binding`, `react`, `ssr` | —                     |
+| `mobx-no-rest-destructure-observable`            | `mobx:4`, `mobx-react-binding`, `react`        | —                     |
+| `mobx-computed-depends-on-non-observable`        | `mobx:4`                                       | —                     |
+| `mobx-no-keepalive-computed-without-disposal`    | `mobx:4`                                       | —                     |
+
+`makeObservable`, `makeAutoObservable`, `override`, and the MobX 6 legacy-decorator migration
+contract are gated on `mobx:6`. React rules require both React itself and the package family that
+exports the API they inspect. `inject` and class-component rules require `mobx-react` specifically;
+rules supporting either official observer package use `mobx-react-binding`. The SSR rule additionally
+requires an SSR-capable project, and the missing-observer rule turns off when the observer compiler
+transform is installed.
 
 ### Exact import resolution
 

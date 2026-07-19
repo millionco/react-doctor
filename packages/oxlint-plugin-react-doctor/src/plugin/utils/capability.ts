@@ -43,6 +43,7 @@ export type Capability =
   | "mobx"
   | "mobx-react"
   | "mobx-react-lite"
+  | "mobx-react-binding"
   | "mobx-state-tree"
   | "mobx-react-observer"
   | "typescript"

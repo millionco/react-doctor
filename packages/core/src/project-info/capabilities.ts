@@ -135,6 +135,9 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   }
   if (project.hasMobxReact === true) capabilities.add("mobx-react");
   if (project.hasMobxReactLite === true) capabilities.add("mobx-react-lite");
+  if (project.hasMobxReact === true || project.hasMobxReactLite === true) {
+    capabilities.add("mobx-react-binding");
+  }
   if (project.hasMobxStateTree === true) capabilities.add("mobx-state-tree");
   if (project.hasMobxReactObserver === true) capabilities.add("mobx-react-observer");
   if (

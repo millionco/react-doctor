@@ -16,6 +16,11 @@ describe("r3f-no-deep-use-three-selector", () => {
        const elapsed = useThree((state) => { const clock = state.clock; return clock.elapsedTime; });`,
     );
     expect(result.diagnostics).toHaveLength(3);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+      "This selector reads the mutable zoom field from camera, but deep Three.js mutations do not update the R3F store. Select camera itself and read zoom at the point of use",
+      "This selector reads the mutable x field from camera, but deep Three.js mutations do not update the R3F store. Select camera itself and read x at the point of use",
+      "This selector reads the mutable elapsedTime field from clock, but deep Three.js mutations do not update the R3F store. Select clock itself and read elapsedTime at the point of use",
+    ]);
   });
 
   it("resolves aliases, namespace APIs, and useCallback selectors", () => {

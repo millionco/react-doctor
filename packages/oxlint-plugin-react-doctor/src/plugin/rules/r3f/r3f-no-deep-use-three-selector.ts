@@ -52,23 +52,31 @@ const MUTABLE_SCALAR_PROPERTY_NAMES: ReadonlySet<string> = new Set([
   "zoom",
 ]);
 
+interface DeepMutableStateProperty {
+  mutablePropertyName: string;
+  rootPropertyName: string;
+}
+
+interface DeepSelectorReturn extends DeepMutableStateProperty {
+  node: EsTreeNode;
+}
+
 const getDeepMutableStateProperty = (
   expression: EsTreeNode,
   selector: EsTreeNode,
   scopes: ScopeAnalysis,
-): string | null => {
+): DeepMutableStateProperty | null => {
   let candidate = stripParenExpression(expression);
-  if (
-    !isNodeOfType(candidate, "MemberExpression") ||
-    !MUTABLE_SCALAR_PROPERTY_NAMES.has(getStaticPropertyName(candidate) ?? "")
-  ) {
+  if (!isNodeOfType(candidate, "MemberExpression")) return null;
+  const mutablePropertyName = getStaticPropertyName(candidate);
+  if (!mutablePropertyName || !MUTABLE_SCALAR_PROPERTY_NAMES.has(mutablePropertyName)) {
     return null;
   }
   candidate = stripParenExpression(candidate.object);
   while (true) {
-    for (const propertyName of MUTABLE_ROOT_STATE_PROPERTIES) {
-      if (isR3fCallbackStateProperty(candidate, selector, propertyName, scopes)) {
-        return propertyName;
+    for (const rootPropertyName of MUTABLE_ROOT_STATE_PROPERTIES) {
+      if (isR3fCallbackStateProperty(candidate, selector, rootPropertyName, scopes)) {
+        return { mutablePropertyName, rootPropertyName };
       }
     }
     if (!isNodeOfType(candidate, "MemberExpression")) return null;
@@ -79,18 +87,26 @@ const getDeepMutableStateProperty = (
 const findDeepSelectorReturns = (
   selector: EsTreeNode,
   context: RuleContext,
-): ReadonlyArray<{ node: EsTreeNode; propertyName: string }> => {
+): ReadonlyArray<DeepSelectorReturn> => {
   if (!isFunctionLike(selector)) return [];
   if (!isNodeOfType(selector.body, "BlockStatement")) {
-    const propertyName = getDeepMutableStateProperty(selector.body, selector, context.scopes);
-    return propertyName ? [{ node: selector.body, propertyName }] : [];
+    const mutableStateProperty = getDeepMutableStateProperty(
+      selector.body,
+      selector,
+      context.scopes,
+    );
+    return mutableStateProperty ? [{ node: selector.body, ...mutableStateProperty }] : [];
   }
-  const returns: Array<{ node: EsTreeNode; propertyName: string }> = [];
+  const returns: Array<DeepSelectorReturn> = [];
   walkAst(selector.body, (candidate) => {
     if (candidate !== selector.body && isFunctionLike(candidate)) return false;
     if (!isNodeOfType(candidate, "ReturnStatement") || !candidate.argument) return;
-    const propertyName = getDeepMutableStateProperty(candidate.argument, selector, context.scopes);
-    if (propertyName) returns.push({ node: candidate.argument, propertyName });
+    const mutableStateProperty = getDeepMutableStateProperty(
+      candidate.argument,
+      selector,
+      context.scopes,
+    );
+    if (mutableStateProperty) returns.push({ node: candidate.argument, ...mutableStateProperty });
   });
   return returns;
 };
@@ -112,7 +128,7 @@ export const r3fNoDeepUseThreeSelector = defineRule({
       for (const returnedValue of findDeepSelectorReturns(selector, context)) {
         context.report({
           node: returnedValue.node,
-          message: `This selector reads a mutable ${returnedValue.propertyName} field, but deep Three.js mutations do not update the R3F store. Select ${returnedValue.propertyName} itself and read the field at the point of use`,
+          message: `This selector reads the mutable ${returnedValue.mutablePropertyName} field from ${returnedValue.rootPropertyName}, but deep Three.js mutations do not update the R3F store. Select ${returnedValue.rootPropertyName} itself and read ${returnedValue.mutablePropertyName} at the point of use`,
         });
       }
     },

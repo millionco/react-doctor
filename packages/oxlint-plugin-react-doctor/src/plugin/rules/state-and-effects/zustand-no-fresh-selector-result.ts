@@ -5,12 +5,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import {
   getImportedNameFromModule,
   isDefaultImportFromModule,
-  isImportedFromModule,
   isNamespaceImportFromModule,
 } from "../../utils/find-import-source-for-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { resolveFreshRenderValue } from "../../utils/resolve-fresh-render-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -90,7 +90,8 @@ const isNullishEqualityArgument = (argument: EsTreeNode, scopes: ScopeAnalysis):
     (isNodeOfType(candidate, "Identifier") &&
       candidate.name === "undefined" &&
       scopes.isGlobalReference(candidate)) ||
-    (isNodeOfType(candidate, "Literal") && candidate.value === null)
+    (isNodeOfType(candidate, "Literal") && candidate.value === null) ||
+    (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "void")
   );
 };
 
@@ -283,28 +284,6 @@ const getZustandSelectorCall = (
   return { selector };
 };
 
-const isReactUseCallbackCall = (
-  callExpression: EsTreeNodeOfType<"CallExpression">,
-  scopes: ScopeAnalysis,
-): boolean => {
-  const callee = stripParenExpression(callExpression.callee);
-  if (isNodeOfType(callee, "Identifier")) {
-    return (
-      scopes.symbolFor(callee)?.kind === "import" &&
-      isImportedFromModule(callee, callee.name, "react") &&
-      getImportedNameFromModule(callee, callee.name, "react") === "useCallback"
-    );
-  }
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  const namespaceIdentifier = stripParenExpression(callee.object);
-  return (
-    isNodeOfType(namespaceIdentifier, "Identifier") &&
-    scopes.symbolFor(namespaceIdentifier)?.kind === "import" &&
-    isNamespaceImportFromModule(namespaceIdentifier, namespaceIdentifier.name, "react") &&
-    getStaticPropertyName(callee) === "useCallback"
-  );
-};
-
 const isUseShallowCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
@@ -320,7 +299,14 @@ const resolveSelectorFunction = (
 
   if (isNodeOfType(candidate, "CallExpression")) {
     if (isUseShallowCall(candidate, scopes)) return null;
-    if (!isReactUseCallbackCall(candidate, scopes)) return null;
+    if (
+      !isReactApiCall(candidate, "useCallback", scopes, {
+        allowGlobalReactNamespace: true,
+        resolveNamedAliases: true,
+      })
+    ) {
+      return null;
+    }
     const callback = candidate.arguments[0];
     if (!callback || isNodeOfType(callback, "SpreadElement")) return null;
     return resolveSelectorFunction(callback, scopes, visitedSymbolIds);
@@ -401,6 +387,9 @@ const resolveFreshSelectorResult = (
     );
   }
   if (isNodeOfType(candidate, "LogicalExpression")) {
+    if (candidate.operator === "&&") {
+      return resolveFreshSelectorResult(candidate.right, scopes, visitedSymbolIds);
+    }
     return (
       resolveFreshSelectorResult(candidate.left, scopes, new Set(visitedSymbolIds)) ??
       resolveFreshSelectorResult(candidate.right, scopes, new Set(visitedSymbolIds))

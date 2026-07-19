@@ -175,7 +175,6 @@ export const STATE_SNIPPET_POOL = [
   `const [copied, setCopied] = useState(false);`,
   `const [cache] = useState(new Map());`,
   `const [snapshot] = useState(new Date());`,
-  `const [fuzzEagerClient] = useState(new AbortController());`,
   `const id = useId();`,
   `const deferredValue = useDeferredValue(state);`,
   `const [isPending, startTransition] = useTransition();`,
@@ -349,9 +348,6 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `let moduleMutableState = 0;`,
   `const ThemeContext = React.createContext({ mode: "light" });`,
   `const ItemsContext = React.createContext(null);`,
-  `import { FuzzImportedContext } from "./fuzz-context"; export const FuzzImportedContextConsumer = () => { const value = {}; return <FuzzImportedContext value={value} />; };`,
-  `var FuzzRedeclaredContext = React.createContext(null); var FuzzRedeclaredContext = FuzzImportedContext; export const FuzzRedeclaredContextConsumer = () => <FuzzRedeclaredContext value={{ mode: "dark" }} />;`,
-  `export const FuzzNamedContextCallback = ({ theme, children }) => React.useMemo(function BuildFuzzContext() { const value = { theme }; return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>; }, [theme, children]);`,
   `export const DynamicChart = dynamic(() => import("./chart"), { ssr: false });`,
   `const canUseDOM = typeof window !== "undefined";`,
   `const isServer = typeof window === "undefined";`,
@@ -384,20 +380,6 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
-  `import { headers } from "next/headers";
-export const readFuzzRequestId = () => headers().get("x-request-id");`,
-  `import { cookies as readFuzzCookies } from "next/headers";
-export const readFuzzFallbackCookie = () => {
-  const cookieStore = { get: (name) => name } || readFuzzCookies();
-  return cookieStore.get("session");
-};`,
-  `import { cookies as readFuzzCallbackCookies } from "next/headers";
-export const readFuzzCallbackCookie = async () => {
-  let pendingCookies = readFuzzCallbackCookies();
-  const sessions = [0].map(() => pendingCookies.get("session"));
-  pendingCookies = await pendingCookies;
-  return sessions[0];
-};`,
   `#!/usr/bin/env node\u2028export const FUZZ_DATABASE_URL = process.env.DATABASE_URL;`,
   `#!/usr/bin/env node process.env.DATABASE_URL\u2029export const FuzzGeneratedDatabaseClient = {};`,
   `"use server";

@@ -18,10 +18,6 @@ export interface ProjectInfo {
   hasReactCompiler: boolean;
   hasReactCompilerLintPlugin?: boolean;
   hasTanStackQuery: boolean;
-  hasI18nLibrary?: boolean;
-  tanstackQueryVersion?: string | null;
-  mobxVersion?: string | null;
-  styledComponentsVersion?: string | null;
   /**
    * `true` when the project or a workspace declares a Vite-based SSR runtime
    * such as React Router's Node adapter, Vike, or vite-plugin-ssr.

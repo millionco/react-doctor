@@ -9,7 +9,6 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 
 interface StaticPropertyKeyTestCase {
-  expectedComputedNumeric: string | null;
   expectedComputedString: string | null;
   expectedNumericLiteral: string | null;
   name: string;
@@ -50,27 +49,23 @@ describe("getStaticPropertyKeyName", () => {
   const testCases: StaticPropertyKeyTestCase[] = [
     {
       name: "default options",
-      expectedComputedNumeric: null,
       expectedComputedString: null,
       expectedNumericLiteral: null,
     },
     {
       name: "computed strings enabled",
-      expectedComputedNumeric: null,
       options: { allowComputedString: true },
       expectedComputedString: "computed",
       expectedNumericLiteral: null,
     },
     {
       name: "non-string stringification enabled",
-      expectedComputedNumeric: null,
       options: { stringifyNonStringLiterals: true },
       expectedComputedString: null,
       expectedNumericLiteral: "42",
     },
     {
       name: "all options enabled",
-      expectedComputedNumeric: "43",
       options: {
         allowComputedString: true,
         stringifyNonStringLiterals: true,
@@ -95,9 +90,7 @@ describe("getStaticPropertyKeyName", () => {
       expect(getStaticPropertyKeyName(requireProperty(properties, 3), testCase.options)).toBe(
         testCase.expectedNumericLiteral,
       );
-      expect(getStaticPropertyKeyName(requireProperty(properties, 4), testCase.options)).toBe(
-        testCase.expectedComputedNumeric,
-      );
+      expect(getStaticPropertyKeyName(requireProperty(properties, 4), testCase.options)).toBe(null);
     });
   }
 
@@ -129,7 +122,6 @@ describe("getStaticPropertyKeyName", () => {
       object["computed"];
       object[\`templated\`];
       object[\`dynamic-\${suffix}\`];
-      object[1];
     `);
     expect(parsed.errors).toEqual([]);
     const members: EsTreeNode[] = [];
@@ -141,25 +133,5 @@ describe("getStaticPropertyKeyName", () => {
     expect(getStaticPropertyKeyName(members[1]!, { allowComputedString: true })).toBe("computed");
     expect(getStaticPropertyKeyName(members[2]!, { allowComputedString: true })).toBe("templated");
     expect(getStaticPropertyKeyName(members[3]!, { allowComputedString: true })).toBe(null);
-    expect(
-      getStaticPropertyKeyName(members[4]!, {
-        allowComputedString: true,
-        stringifyNonStringLiterals: true,
-      }),
-    ).toBe("1");
-  });
-
-  it("reads static class property definition keys", () => {
-    const parsed = parseFixture(`class Example { plain = 1; ["computed"] = 2; }`);
-    expect(parsed.errors).toEqual([]);
-    const properties: EsTreeNode[] = [];
-    walkAst(parsed.program, (node: EsTreeNode) => {
-      if (isNodeOfType(node, "PropertyDefinition")) properties.push(node);
-    });
-    expect(getStaticPropertyKeyName(properties[0]!)).toBe("plain");
-    expect(getStaticPropertyKeyName(properties[1]!)).toBe(null);
-    expect(getStaticPropertyKeyName(properties[1]!, { allowComputedString: true })).toBe(
-      "computed",
-    );
   });
 });

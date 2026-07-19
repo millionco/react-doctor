@@ -1,14 +1,13 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { fuzzRule, fuzzRuleWithStats } from "../src/fuzz-rule.js";
+import { fuzzRule } from "../src/fuzz-rule.js";
 import { generateStructuredFuzzProgram } from "../src/generate-fuzz-program.js";
 import { loadFuzzCorpus } from "../src/load-fuzz-corpus.js";
 import { createSeededRandom } from "../src/seeded-random.js";
 import { buildAstEquivalentFuzzVariants } from "../src/ast-equivalent-fuzz-variants.js";
 import { buildVerdictPreservingVariants } from "../src/verdict-preserving-variants.js";
 import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
-import { isNodeOfType } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-node-of-type.js";
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
 
 const NOOP_RULE: Rule = { id: "fuzz-smoke-noop", severity: "warn", create: () => ({}) };
@@ -65,29 +64,6 @@ describe("fuzz harness oracles", () => {
     };
     const findings = fuzzRule("fuzz-smoke-crash", crashingRule, { iterations: 10, seed: 1 });
     expect(findings.some((finding) => finding.kind === "crash")).toBe(true);
-  });
-
-  it("runs a priority corpus seed before randomized programs", () => {
-    const priorityRule: Rule = {
-      id: "fuzz-smoke-priority-corpus",
-      severity: "warn",
-      create: (context) => ({
-        Identifier: (node) => {
-          if (isNodeOfType(node, "Identifier") && node.name === "reactDoctorPriorityTarget") {
-            context.report({ message: "priority target", node });
-          }
-        },
-      }),
-    };
-    const result = fuzzRuleWithStats("fuzz-smoke-priority-corpus", priorityRule, {
-      iterations: 1,
-      seed: 1,
-      priorityCorpusEntry: {
-        code: "const reactDoctorPriorityTarget = true;",
-        relativePath: "priority.tsx",
-      },
-    });
-    expect(result.stats.firedProgramCount).toBeGreaterThan(0);
   });
 
   // Every verdict-preserving rewrite must itself parse — a variant that

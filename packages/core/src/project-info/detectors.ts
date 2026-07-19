@@ -212,10 +212,10 @@ const FALLBACK_TSCONFIG_FILENAMES = ["tsconfig.app.json", "tsconfig.build.json"]
 const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   next: "nextjs",
   "@tanstack/react-start": "tanstack-start",
-  "@remix-run/react": "remix",
-  gatsby: "gatsby",
   vite: "vite",
   "react-scripts": "cra",
+  "@remix-run/react": "remix",
+  gatsby: "gatsby",
   expo: "expo",
   "react-native": "react-native",
 };

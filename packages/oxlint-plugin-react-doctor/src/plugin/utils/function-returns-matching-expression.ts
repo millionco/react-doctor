@@ -7,7 +7,6 @@ import type {
 import type { EsTreeNode } from "./es-tree-node.js";
 import { collectFunctionReturnStatements } from "./collect-function-return-statements.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
-import { getAssignedExpressionForWrite } from "./get-assigned-expression-for-write.js";
 import { getRangeStart } from "./get-range-start.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -33,6 +32,21 @@ const collectReturnedExpressions = (functionNode: EsTreeNode): EsTreeNode[] => {
   return collectFunctionReturnStatements(functionNode).flatMap((returnStatement) =>
     returnStatement.argument ? [returnStatement.argument] : [],
   );
+};
+
+const getAssignedExpressionForWrite = (writeIdentifier: EsTreeNode): EsTreeNode | null => {
+  let assignmentTarget = writeIdentifier;
+  let parent = assignmentTarget.parent;
+  while (parent && stripParenExpression(parent) === writeIdentifier) {
+    assignmentTarget = parent;
+    parent = assignmentTarget.parent;
+  }
+  return parent &&
+    isNodeOfType(parent, "AssignmentExpression") &&
+    parent.operator === "=" &&
+    parent.left === assignmentTarget
+    ? parent.right
+    : null;
 };
 
 const isConditionalWithinBlock = (

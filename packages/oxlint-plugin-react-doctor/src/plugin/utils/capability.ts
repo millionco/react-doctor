@@ -36,7 +36,6 @@ export type Capability =
   | "client-only"
   | "nextjs:static-export"
   | "nextjs:15"
-  | "nextjs:16"
   | "tailwind"
   | "tailwind:3.4"
   | "zod"
@@ -44,10 +43,6 @@ export type Capability =
   | "typescript"
   | "react-compiler"
   | "tanstack-query"
-  | "i18n"
-  | "mobx"
-  | "styled-components"
-  | "styled-components:6"
   | "pre-es2023"
   // Major-version ladders (`react:17`…) plus minor-versioned gates like
   // `react:19.2` — both parse as numeric template members. Bounds live in

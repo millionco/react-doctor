@@ -14,6 +14,7 @@ import {
   extractDependencyInfo,
   getDependencyDeclaration,
   getPreactVersion,
+  hasTanStackQuery,
   isCatalogReference,
   REACT_SECTIONS,
   resolveCatalogBackedDependencyVersion,
@@ -29,7 +30,6 @@ import {
 } from "./collect-project-facts.js";
 import { resolveInstalledReactVersion } from "./resolve-installed-react-version.js";
 import { readPackageJson } from "./package-json.js";
-import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
 import {
   getLowestDependencyMajor,
   parseReactMajor,
@@ -100,10 +100,6 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     hasReactCompiler: false,
     hasReactCompilerLintPlugin: false,
     hasTanStackQuery: false,
-    hasI18nLibrary: false,
-    tanstackQueryVersion: null,
-    mobxVersion: null,
-    styledComponentsVersion: null,
     hasSsrDependency: false,
     preactVersion: null,
     preactMajorVersion: null,
@@ -269,8 +265,6 @@ export const discoverProject = (directory: string): ProjectInfo => {
         })
       : null;
   const preactVersion = getPreactVersion(packageJson);
-  const tanstackQueryVersion =
-    getTanStackQueryVersion(packageJson) ?? workspaceFacts.tanstackQueryVersion;
   const isPreES2023Target = hasTypeScript && detectPreES2023Target(directory);
 
   const projectInfo: ProjectInfo = {
@@ -285,11 +279,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),
     hasReactCompilerLintPlugin: detectReactCompilerLintPlugin(directory, packageJson),
-    hasTanStackQuery: tanstackQueryVersion !== null,
-    hasI18nLibrary: workspaceFacts.hasI18nLibrary,
-    tanstackQueryVersion,
-    mobxVersion: workspaceFacts.mobxVersion,
-    styledComponentsVersion: workspaceFacts.styledComponentsVersion,
+    hasTanStackQuery: hasTanStackQuery(packageJson),
     hasSsrDependency: workspaceFacts.hasSsrDependency,
     preactVersion,
     preactMajorVersion: parseReactMajor(preactVersion),

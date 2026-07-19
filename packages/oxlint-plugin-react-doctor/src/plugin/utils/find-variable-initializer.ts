@@ -23,10 +23,6 @@ interface BindingInfo {
   scopeOwner: EsTreeNode;
 }
 
-export interface FindVariableInitializerOptions {
-  preferInitializerBeforeReference?: boolean;
-}
-
 const FUNCTION_LIKE_TYPES = new Set<string>([
   "FunctionDeclaration",
   "FunctionExpression",
@@ -281,7 +277,6 @@ const getBindingIndex = (referenceNode: EsTreeNode): Map<string, BindingInfo[]> 
 export const findVariableInitializer = (
   referenceNode: EsTreeNode,
   bindingName: string,
-  options: FindVariableInitializerOptions = {},
 ): BindingInfo | null => {
   const index = getBindingIndex(referenceNode);
   if (!index) return null;
@@ -302,26 +297,6 @@ export const findVariableInitializer = (
     if (!referenceAncestors.has(candidate.scopeOwner)) continue;
     if (best === null) {
       best = candidate;
-      continue;
-    }
-    if (candidate.scopeOwner === best.scopeOwner) {
-      if (options.preferInitializerBeforeReference) {
-        const isCandidateAvailable = Boolean(
-          candidate.initializer &&
-          (isNodeOfType(candidate.initializer, "FunctionDeclaration") ||
-            candidate.bindingIdentifier.range[0] < referenceNode.range[0]),
-        );
-        const isBestAvailable = Boolean(
-          best.initializer &&
-          (isNodeOfType(best.initializer, "FunctionDeclaration") ||
-            best.bindingIdentifier.range[0] < referenceNode.range[0]),
-        );
-        if (isCandidateAvailable !== isBestAvailable) {
-          if (isCandidateAvailable) best = candidate;
-          continue;
-        }
-      }
-      if (candidate.initializer !== null || best.initializer === null) best = candidate;
       continue;
     }
     // `candidate.scopeOwner` deeper than `best.scopeOwner` means

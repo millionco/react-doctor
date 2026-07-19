@@ -54,38 +54,6 @@ describe("no-create-context-in-render", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags createContext through a non-canonical namespace import of a context module", () => {
-    const result = runRule(
-      noCreateContextInRender,
-      `
-      import * as Tracked from "react-tracked";
-
-      function App() {
-        const Ctx = Tracked.createContext(null);
-        return null;
-      }
-    `,
-    );
-
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
-  it("flags createContext through a non-canonical default import of react", () => {
-    const result = runRule(
-      noCreateContextInRender,
-      `
-      import MyReact from "react";
-
-      function App() {
-        const Ctx = MyReact.createContext(null);
-        return null;
-      }
-    `,
-    );
-
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
   it("flags createContext inside a custom hook", () => {
     const result = runRule(
       noCreateContextInRender,

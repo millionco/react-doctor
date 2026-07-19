@@ -68,25 +68,6 @@ const UseQueryForMutation = () => {
   return <div />;
 };
 
-const FloatingMutation = () => {
-  const mutation = useMutation({
-    mutationFn: (value: string) => Promise.resolve(value),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["floating"] }),
-  });
-  return <button onClick={() => mutation.mutateAsync("save")}>Save</button>;
-};
-
-const MutationAsRead = ({ userId }: { userId: string }) => {
-  const { mutateAsync: fetchUser, data } = useMutation({
-    mutationFn: (id: string) => Promise.resolve({ id, name: "Ada" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] }),
-  });
-  useEffect(() => {
-    fetchUser(userId);
-  }, [fetchUser, userId]);
-  return <div>{data?.name}</div>;
-};
-
 export {
   UnstableQueryClient,
   RestDestructuring,
@@ -95,6 +76,4 @@ export {
   MutationMissingInvalidation,
   MutationWithSetQueryData,
   UseQueryForMutation,
-  FloatingMutation,
-  MutationAsRead,
 };

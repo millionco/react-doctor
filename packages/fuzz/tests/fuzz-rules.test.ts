@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { analyzeReducedMotionSource } from "../../core/src/check-reduced-motion.js";
 import { reactDoctorRules } from "../../oxlint-plugin-react-doctor/src/plugin/rule-registry.js";
-import { livenessFixtures } from "../../oxlint-plugin-react-doctor/src/plugin/liveness/liveness-fixtures.js";
 import { defineRule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/define-rule.js";
 import { fuzzRuleWithStats } from "../src/fuzz-rule.js";
 import type { FuzzFinding } from "../src/fuzz-rule.js";
@@ -147,22 +146,11 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
     it(
       `survives fuzzing: ${entry.id}`,
       () => {
-        const livenessFixture = livenessFixtures[entry.id];
-        const priorityCorpusEntry =
-          livenessFixture &&
-          livenessFixture.settings === undefined &&
-          livenessFixture.isGeneratedBundle === undefined
-            ? {
-                code: livenessFixture.code,
-                relativePath: livenessFixture.filePath ?? "fixture.tsx",
-              }
-            : undefined;
         const { findings, stats } = fuzzRuleWithStats(entry.id, entry.rule, {
           iterations,
           seed,
           checkInvariants: shouldCheckInvariants,
           corpus,
-          priorityCorpusEntry,
         });
         if (shouldPrintStats) {
           console.info(

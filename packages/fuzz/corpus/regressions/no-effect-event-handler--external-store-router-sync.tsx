@@ -1,8 +1,4 @@
-// rule: no-effect-event-handler
-// weakness: library-idiom
-// source: PR #1000 fuzz validation
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { useDirectoryStore } from "./store";
 
 interface DirectoryProviderProps {
@@ -22,6 +18,14 @@ export const DirectoryProvider = (props: DirectoryProviderProps) => {
     if (!next || next === props.directory) return;
     navigate(encodeDirectory(next), { replace: true });
   }, [props.draftId, props.directory, nextDirectory, navigate]);
+
+  return null;
+};
+
+export const NotificationRelay = (props: { didSubmit: boolean }) => {
+  useEffect(() => {
+    if (props.didSubmit) toast("Submitted");
+  }, [props.didSubmit]);
 
   return null;
 };

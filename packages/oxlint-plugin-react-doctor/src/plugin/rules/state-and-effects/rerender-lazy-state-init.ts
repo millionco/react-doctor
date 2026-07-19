@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { isTrivialBuiltInConstruction } from "../../utils/is-trivial-built-in-construction.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -42,6 +43,7 @@ const EAGER_CALL_RESOLUTION_DEPTH_LIMIT = 4;
 //   - `expensiveFn(raw) ?? []` / `expensiveFn(raw) || []` — the left of
 //     a logical expression always evaluates;
 //   - `[...expensiveFn(raw)]` — a spread eagerly iterates the call;
+//   - `new HeavyModel(config)` — a constructor is a call by another name;
 //   - `computeLayout(width).sections` — the member read forces the call.
 // Right-hand logical operands and plain array elements are left alone:
 // the former is conditionally evaluated, the latter overlaps common
@@ -49,13 +51,17 @@ const EAGER_CALL_RESOLUTION_DEPTH_LIMIT = 4;
 const findEagerInitializerCall = (
   expression: EsTreeNode,
   depth = 0,
-): EsTreeNodeOfType<"CallExpression"> | null => {
+): EsTreeNodeOfType<"CallExpression"> | EsTreeNodeOfType<"NewExpression"> | null => {
   if (depth > EAGER_CALL_RESOLUTION_DEPTH_LIMIT) return null;
   // TS wrappers (`makeRows(raw) as Rows`, `buildModel(config)!`) and
   // optional chains are transparent — the call still runs every render.
   const innerExpression = stripParenExpression(expression);
-  if (isNodeOfType(innerExpression, "CallExpression")) return innerExpression;
-  if (isNodeOfType(innerExpression, "NewExpression")) return null;
+  if (
+    isNodeOfType(innerExpression, "CallExpression") ||
+    isNodeOfType(innerExpression, "NewExpression")
+  ) {
+    return innerExpression;
+  }
   if (isNodeOfType(innerExpression, "LogicalExpression")) {
     return findEagerInitializerCall(innerExpression.left as EsTreeNode, depth + 1);
   }
@@ -85,6 +91,7 @@ export const rerenderLazyStateInit = defineRule({
       if (!isReactHookCall(node, "useState", context.scopes) || !node.arguments?.length) return;
       const initializer = findEagerInitializerCall(node.arguments[0] as EsTreeNode);
       if (!initializer) return;
+      const isConstructor = isNodeOfType(initializer, "NewExpression");
 
       const callee = initializer.callee;
       const memberPropertyName =
@@ -97,6 +104,7 @@ export const rerenderLazyStateInit = defineRule({
       const calleeName = calleeIsIdentifier ? callee.name : (memberPropertyName ?? "fn");
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
+      if (isTrivialBuiltInConstruction(initializer)) return;
       if (
         memberPropertyName &&
         (initializer.arguments ?? []).length === 0 &&
@@ -113,7 +121,7 @@ export const rerenderLazyStateInit = defineRule({
       // sibling `rerender-lazy-ref-init`.
       if (isReactHookName(calleeName)) return;
 
-      const callDescription = `${calleeName}()`;
+      const callDescription = isConstructor ? `new ${calleeName}()` : `${calleeName}()`;
       context.report({
         node: initializer,
         message: `useState(${callDescription}) re-runs ${callDescription} on every render & throws the result away.`,

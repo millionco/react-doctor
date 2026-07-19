@@ -135,18 +135,6 @@ const hasInternalControlFlow = (node: EsTreeNode): boolean => {
   }
 };
 
-const getStaticBooleanValue = (expression: EsTreeNode): boolean | null => {
-  if (isNodeOfType(expression, "Literal")) return Boolean(expression.value);
-  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
-    const argumentValue = getStaticBooleanValue(expression.argument);
-    return argumentValue === null ? null : !argumentValue;
-  }
-  return null;
-};
-
-const isStaticallyTrueLoopTest = (test: EsTreeNode | null): boolean =>
-  test === null || getStaticBooleanValue(test) === true;
-
 const findLabel = (
   builder: CfgBuilder,
   name: string | null,
@@ -292,7 +280,6 @@ const buildStatement = (
 
   if (isNodeOfType(statement, "WhileStatement") || isNodeOfType(statement, "DoWhileStatement")) {
     const isDoWhile = isNodeOfType(statement, "DoWhileStatement");
-    const hasStaticallyTrueTest = isStaticallyTrueLoopTest(statement.test);
     mapDescendantsToBlock(builder, statement.test as EsTreeNode, current);
     const header = createBlock(builder);
     const body = createBlock(builder);
@@ -302,8 +289,8 @@ const buildStatement = (
       addEdge(current, body, "uncond");
     } else {
       addEdge(current, header, "uncond");
-      addEdge(header, body, hasStaticallyTrueTest ? "uncond" : "cond");
-      if (!hasStaticallyTrueTest) addEdge(header, merge, "cond");
+      addEdge(header, body, "cond");
+      addEdge(header, merge, "cond");
     }
     builder.loopStack.push({ header, merge, label: null });
     const bodyEnd = buildStatement(builder, statement.body as EsTreeNode, body);
@@ -311,8 +298,8 @@ const buildStatement = (
     if (isDoWhile) {
       // After body, test is evaluated → loop back or merge.
       addEdge(bodyEnd, header, "uncond");
-      addEdge(header, body, hasStaticallyTrueTest ? "uncond" : "cond");
-      if (!hasStaticallyTrueTest) addEdge(header, merge, "cond");
+      addEdge(header, body, "cond");
+      addEdge(header, merge, "cond");
     } else {
       addEdge(bodyEnd, header, "uncond");
     }
@@ -325,10 +312,9 @@ const buildStatement = (
     const header = createBlock(builder);
     const body = createBlock(builder);
     const merge = createBlock(builder);
-    const hasStaticallyTrueTest = isStaticallyTrueLoopTest(statement.test ?? null);
     addEdge(current, header, "uncond");
-    addEdge(header, body, hasStaticallyTrueTest ? "uncond" : "cond");
-    if (!hasStaticallyTrueTest) addEdge(header, merge, "cond");
+    addEdge(header, body, "cond");
+    addEdge(header, merge, "cond");
     builder.loopStack.push({ header, merge, label: null });
     const bodyEnd = buildStatement(builder, statement.body as EsTreeNode, body);
     builder.loopStack.pop();

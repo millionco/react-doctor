@@ -11,14 +11,6 @@ describe("tanstack-query/query-no-rest-destructuring — regressions", () => {
     expect(diagnostics).toHaveLength(0);
   });
 
-  it("stays silent on rest destructuring a mutation result", () => {
-    const { diagnostics } = runRule(
-      queryNoRestDestructuring,
-      `import { useMutation } from "@tanstack/react-query"; const { mutate, ...mutationState } = useMutation({ mutationFn: save });`,
-    );
-    expect(diagnostics).toHaveLength(0);
-  });
-
   it("still flags a TanStack `useQuery` rest-destructure", () => {
     const { diagnostics } = runRule(
       queryNoRestDestructuring,

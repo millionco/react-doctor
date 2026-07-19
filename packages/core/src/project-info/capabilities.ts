@@ -6,12 +6,7 @@ import {
   LATEST_KNOWN_PREACT_MAJOR,
   LATEST_KNOWN_REACT_MAJOR,
 } from "../constants.js";
-import {
-  getLowestDependencyMajor,
-  isMajorMinorAtLeast,
-  parseReactMajorMinor,
-  parseTailwindMajorMinor,
-} from "./version.js";
+import { isMajorMinorAtLeast, parseReactMajorMinor, parseTailwindMajorMinor } from "./version.js";
 
 // SPA / mobile frameworks with no server-side form handler at all —
 // `preventDefault()` on `<form onSubmit>` is the canonical pattern there,
@@ -98,9 +93,6 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   if (project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 15) {
     capabilities.add("nextjs:15");
   }
-  if (project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 16) {
-    capabilities.add("nextjs:16");
-  }
   addMajorLadder(
     capabilities,
     "react",
@@ -130,18 +122,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   if (project.zodMajorVersion !== null && project.zodMajorVersion >= 4) capabilities.add("zod:4");
   if (project.isPreES2023Target) capabilities.add("pre-es2023");
   if (project.hasReactCompiler) capabilities.add("react-compiler");
-  if (Boolean(project.hasTanStackQuery) || Boolean(project.tanstackQueryVersion)) {
-    capabilities.add("tanstack-query");
-  }
-  if (project.mobxVersion) capabilities.add("mobx");
-  if (project.styledComponentsVersion) {
-    capabilities.add("styled-components");
-    const styledComponentsMajor = getLowestDependencyMajor(project.styledComponentsVersion);
-    if (styledComponentsMajor !== null && styledComponentsMajor >= 6) {
-      capabilities.add("styled-components:6");
-    }
-  }
-  if (project.hasI18nLibrary) capabilities.add("i18n");
+  if (project.hasTanStackQuery) capabilities.add("tanstack-query");
   if (project.hasTypeScript) capabilities.add("typescript");
   // Keyed off `preactVersion`, not `framework === "preact"`, so Preact-on-Vite
   // still gets the `preact` bucket.

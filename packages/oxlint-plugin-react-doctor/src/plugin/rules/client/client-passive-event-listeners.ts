@@ -14,7 +14,6 @@ import {
 } from "../../utils/is-proven-browser-api-receiver.js";
 import { isGeneratedDocsArchiveFilename } from "../../utils/is-generated-docs-archive-filename.js";
 import { isProvenPureImportedPredicateCall } from "../../utils/is-proven-pure-imported-predicate-call.js";
-import { isProvenPromiseExpression } from "../../utils/is-proven-promise-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -30,6 +29,14 @@ const DEFERRED_CALLBACK_API_NAMES = new Set([
   "setImmediate",
   "setInterval",
   "setTimeout",
+]);
+const PROMISE_FACTORY_METHOD_NAMES = new Set([
+  "all",
+  "allSettled",
+  "any",
+  "race",
+  "reject",
+  "resolve",
 ]);
 const PROMISE_DEFERRED_METHOD_NAMES = new Set(["catch", "finally", "then"]);
 const EMPTY_VISITORS: RuleVisitors = {};
@@ -184,6 +191,62 @@ const handlerMayExposeEvent = (handler: EsTreeNode | undefined, context: RuleCon
   }
   const visitedParameterIndexesByFunction = new Map<EsTreeNode, Set<number>>();
 
+  const isAsyncFunctionReference = (
+    rawExpression: EsTreeNode,
+    visitedSymbolIds: Set<number>,
+  ): boolean => {
+    const expression = stripParenExpression(rawExpression);
+    if (isFunctionLike(expression)) return expression.async;
+    if (!isNodeOfType(expression, "Identifier")) return false;
+    const symbol = context.scopes.symbolFor(expression);
+    if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+    const candidate = symbol.initializer ?? symbol.declarationNode;
+    if (!candidate) return false;
+    const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+    nextVisitedSymbolIds.add(symbol.id);
+    return isAsyncFunctionReference(candidate, nextVisitedSymbolIds);
+  };
+
+  const isProvenPromiseExpression = (
+    rawExpression: EsTreeNode,
+    visitedSymbolIds: Set<number> = new Set(),
+  ): boolean => {
+    const expression = stripParenExpression(rawExpression);
+    if (isNodeOfType(expression, "Identifier")) {
+      const symbol = context.scopes.symbolFor(expression);
+      if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+      const initializer = symbol.initializer;
+      if (!initializer) return false;
+      const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+      nextVisitedSymbolIds.add(symbol.id);
+      return isProvenPromiseExpression(initializer, nextVisitedSymbolIds);
+    }
+    if (isNodeOfType(expression, "NewExpression")) {
+      const callee = stripParenExpression(expression.callee);
+      return (
+        isNodeOfType(callee, "Identifier") &&
+        callee.name === "Promise" &&
+        context.scopes.isGlobalReference(callee)
+      );
+    }
+    if (!isNodeOfType(expression, "CallExpression")) return false;
+    const callee = stripParenExpression(expression.callee);
+    if (isNodeOfType(callee, "Identifier")) {
+      return isAsyncFunctionReference(callee, visitedSymbolIds);
+    }
+    if (!isNodeOfType(callee, "MemberExpression")) return false;
+    const calleeObject = stripParenExpression(callee.object);
+    if (PROMISE_DEFERRED_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")) {
+      return isProvenPromiseExpression(callee.object, visitedSymbolIds);
+    }
+    return (
+      PROMISE_FACTORY_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") &&
+      isNodeOfType(calleeObject, "Identifier") &&
+      calleeObject.name === "Promise" &&
+      context.scopes.isGlobalReference(calleeObject)
+    );
+  };
+
   const isProvenDeferredCallbackCallee = (
     rawCallee: EsTreeNode,
     visitedSymbolIds: Set<number> = new Set(),
@@ -243,7 +306,7 @@ const handlerMayExposeEvent = (handler: EsTreeNode | undefined, context: RuleCon
     const methodName = getStaticPropertyName(callee);
     if (
       PROMISE_DEFERRED_METHOD_NAMES.has(methodName ?? "") &&
-      isProvenPromiseExpression(callee.object, context.scopes)
+      isProvenPromiseExpression(callee.object)
     ) {
       return false;
     }

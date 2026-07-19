@@ -670,12 +670,6 @@ export const SIDECAR_LINT_CACHE_FILENAME = "sidecar-lint-cache.json";
 // fallback when a project has no `node_modules` to host `.cache/react-doctor`.
 export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 
-// Length (chars) of the rule-plugin entry-content hash folded into the
-// per-file lint cache's ruleset hash, so a rebuilt dev plugin (same version,
-// different rule behavior) busts the cache instead of replaying stale
-// diagnostics.
-export const PLUGIN_FINGERPRINT_LENGTH_CHARS = 16;
-
 // This package's own version, inlined at build time (`vite.config.ts` `env`)
 // the same way the CLI inlines `VERSION`; running from source (tests, dev)
 // falls back to "0.0.0". Cache keys include it because cached diagnostics

@@ -58,7 +58,6 @@ export interface FuzzRuleOptions {
   slowThresholdMs?: number;
   checkInvariants?: boolean;
   corpus?: ReadonlyArray<FuzzCorpusEntry>;
-  priorityCorpusEntry?: FuzzCorpusEntry;
 }
 
 interface RunOutcome {
@@ -181,34 +180,6 @@ export const fuzzRuleWithStats = (
     }
     return outcome;
   };
-
-  const priorityCorpusEntry = options.priorityCorpusEntry;
-  if (priorityCorpusEntry) {
-    const priorityRandom = createSeededRandom(baseSeed);
-    const priorityOutcome = checkProgram(
-      priorityCorpusEntry.code,
-      priorityCorpusEntry.relativePath,
-      baseSeed,
-      0,
-      "priority corpus seed",
-    );
-    if (
-      priorityOutcome &&
-      priorityOutcome.crashDetail === undefined &&
-      (priorityOutcome.diagnosticSignature?.length ?? 0) > 0
-    ) {
-      for (let descendant = 0; descendant < EXPLOIT_DESCENDANT_COUNT; descendant += 1) {
-        const descendantCode = mutateFuzzProgram(priorityCorpusEntry.code, priorityRandom, 1);
-        checkProgram(
-          descendantCode,
-          priorityCorpusEntry.relativePath,
-          baseSeed,
-          0,
-          `priority corpus descendant ${descendant}`,
-        );
-      }
-    }
-  }
 
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     const iterationSeed = (baseSeed * 1_000_003 + iteration) >>> 0;

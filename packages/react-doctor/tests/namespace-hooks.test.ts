@@ -32,7 +32,7 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
       rootDirectory: BASIC_REACT_DIRECTORY,
       project: buildTestProject({
         rootDirectory: BASIC_REACT_DIRECTORY,
-        tanstackQueryVersion: "^5.66.0",
+        hasTanStackQuery: true,
         hasSsrDependency: true,
       }),
     });

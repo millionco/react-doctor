@@ -62,12 +62,9 @@ describe("no-array-index-as-key (test-harness smoke test)", () => {
       const code = `
 import { Text } from "ink";
 interface MatchedNameProps {
+  readonly name: string;
   readonly matchedIndices: ReadonlyArray<number>;
   readonly isSelected: boolean;
-}
-interface MatchedNameProps {
-  readonly name: string;
-  readonly accessibilityLabel?: string;
 }
 const MatchedName = ({ name, matchedIndices, isSelected }: MatchedNameProps) => {
   const matched = new Set(matchedIndices);

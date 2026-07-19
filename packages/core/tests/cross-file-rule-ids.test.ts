@@ -40,7 +40,6 @@ const CROSS_FILE_PRIMITIVE_FILES = [
   "utils/does-module-export-name.ts",
   "utils/has-ancestor-layout-matching.ts",
   "utils/resolve-cross-file-function-export.ts",
-  "utils/resolve-cross-file-export.ts",
   "utils/resolve-relative-import-path.ts",
   "utils/resolve-module-path.ts",
   "utils/resolve-barrel-export-file-path.ts",
@@ -139,7 +138,6 @@ describe("CROSS_FILE_RULE_IDS", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
       "client-passive-event-listeners",
       "exhaustive-deps",
-      "nextjs-async-dynamic-api-not-awaited",
       "nextjs-missing-metadata",
       "nextjs-no-img-element",
       "nextjs-no-use-search-params-without-suspense",
@@ -155,11 +153,9 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-hydration-branch-on-browser-global",
       "no-indeterminate-attribute",
       "no-initialize-state",
-      "no-loading-flag-reset-outside-finally",
       "no-locale-format-in-render",
       "no-match-media-in-state-initializer",
       "no-mutating-reducer-state",
-      "no-unguarded-browser-global-at-module-scope",
       "no-unguarded-browser-global-in-render-or-hook-init",
       "only-export-components",
       "prefer-dynamic-import",
@@ -169,7 +165,6 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "rn-no-raw-text",
       "rn-prefer-expo-image",
       "rn-style-prefer-boxshadow",
-      "window-open-without-noopener",
     ]);
   });
 

@@ -24,16 +24,6 @@ export const isResultDiscardedCall = (callExpression: EsTreeNode): boolean => {
       parent = node.parent;
       continue;
     }
-    if (
-      isNodeOfType(parent, "TSAsExpression") ||
-      isNodeOfType(parent, "TSSatisfiesExpression") ||
-      isNodeOfType(parent, "TSTypeAssertion") ||
-      isNodeOfType(parent, "TSNonNullExpression")
-    ) {
-      node = parent;
-      parent = node.parent;
-      continue;
-    }
     if (isNodeOfType(parent, "LogicalExpression") && parent.right === node) {
       node = parent;
       parent = node.parent;

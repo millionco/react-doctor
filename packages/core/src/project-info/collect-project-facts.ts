@@ -16,11 +16,7 @@ import { frameworkMergeRank } from "./detectors.js";
 import { isPackageJsonReactNativeAware, isPackageJsonReanimatedAware } from "./rn-metadata.js";
 import { isPackageJsonSsrAware } from "./ssr-metadata.js";
 import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./workspaces.js";
-import { getLowestDependencyMajor, parseReactMajor } from "./version.js";
-import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
-import { getMobxVersion } from "./get-mobx-version.js";
-import { getStyledComponentsVersion } from "./get-styled-components-version.js";
-import { hasI18nDependency } from "./has-i18n-dependency.js";
+import { parseReactMajor } from "./version.js";
 
 const REANIMATED_DEPENDENCY_NAME = "react-native-reanimated";
 
@@ -49,11 +45,7 @@ export interface WorkspaceFacts {
   expo: DependencyFact;
   next: DependencyFact;
   shopifyFlashList: DependencyFact;
-  tanstackQueryVersion: string | null;
-  mobxVersion: string | null;
-  styledComponentsVersion: string | null;
   // Any-of predicates over the scan root + every workspace manifest.
-  hasI18nLibrary: boolean;
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
   hasSsrDependency: boolean;
@@ -119,20 +111,6 @@ const shouldReplaceReactVersion = (currentVersion: string | null, nextVersion: s
   return nextMajor < currentMajor;
 };
 
-const shouldReplaceStyledComponentsVersion = (
-  currentVersion: string | null,
-  nextVersion: string,
-): boolean => {
-  if (!currentVersion) return true;
-
-  const currentMajor = getLowestDependencyMajor(currentVersion);
-  const nextMajor = getLowestDependencyMajor(nextVersion);
-
-  if (currentMajor === null) return false;
-  if (nextMajor === null) return true;
-  return nextMajor < currentMajor;
-};
-
 const evaluateManifestFacts = (
   facts: WorkspaceFacts,
   packageJson: PackageJson,
@@ -154,16 +132,6 @@ const evaluateManifestFacts = (
     const spec = getDependencySpec(packageJson, REANIMATED_DEPENDENCY_NAME);
     if (spec !== null) facts.reanimatedVersion = spec;
   }
-  facts.tanstackQueryVersion ??= getTanStackQueryVersion(packageJson);
-  facts.mobxVersion ??= getMobxVersion(packageJson);
-  const styledComponentsVersion = getStyledComponentsVersion(packageJson);
-  if (
-    styledComponentsVersion &&
-    shouldReplaceStyledComponentsVersion(facts.styledComponentsVersion, styledComponentsVersion)
-  ) {
-    facts.styledComponentsVersion = styledComponentsVersion;
-  }
-  facts.hasI18nLibrary = facts.hasI18nLibrary || hasI18nDependency(packageJson);
   facts.hasReactNativeAwarePackage =
     facts.hasReactNativeAwarePackage || isPackageJsonReactNativeAware(packageJson);
   facts.hasReanimatedAwarePackage =
@@ -198,10 +166,6 @@ export const collectWorkspaceFacts = (
     expo: { version: null, sourceDirectory: null },
     next: { version: null, sourceDirectory: null },
     shopifyFlashList: { version: null, sourceDirectory: null },
-    tanstackQueryVersion: null,
-    mobxVersion: null,
-    styledComponentsVersion: null,
-    hasI18nLibrary: false,
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
     hasSsrDependency: false,

@@ -1,6 +1,5 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import { findVisibleSymbol } from "./find-visible-symbol.js";
 import { getImportedName } from "./get-imported-name.js";
 import { isImportedFromReact } from "./is-react-api-call.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -11,6 +10,20 @@ const REACT_COMPONENT_TYPE_NAMES: ReadonlySet<string> = new Set([
   "FC",
   "FunctionComponent",
 ]);
+
+const findVisibleSymbol = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor | null => {
+  if (!isNodeOfType(identifier, "Identifier")) return null;
+  let scope = scopes.scopeFor(identifier);
+  while (true) {
+    const symbol = scope.symbolsByName.get(identifier.name);
+    if (symbol) return symbol;
+    if (!scope.parent) return null;
+    scope = scope.parent;
+  }
+};
 
 const isReactNamespaceType = (identifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const symbol = findVisibleSymbol(identifier, scopes);

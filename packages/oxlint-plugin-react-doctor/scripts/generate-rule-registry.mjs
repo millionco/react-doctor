@@ -95,7 +95,6 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "no-create-ref-in-function-component",
   "no-call-component-as-function",
   "no-string-false-on-boolean-attribute",
-  "hook-import-rename-loses-use-prefix",
 ]);
 
 // Rule ids whose source files are kept on disk but intentionally NOT

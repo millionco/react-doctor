@@ -29,6 +29,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isFrameworkRouteOrSpecialFilename } from "../../utils/is-framework-route-or-special-filename.js";
 import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import { isNextjsMetadataImageRouteFilename } from "../../utils/is-nextjs-metadata-image-route-filename.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
@@ -102,6 +103,26 @@ interface ExitingCatchClearing {
 interface ConditionalClearingBranches {
   hasAlternate: boolean;
   hasConsequent: boolean;
+}
+
+interface ExecutionProjectionOptions {
+  requiresGuaranteedExecution: boolean;
+}
+
+interface AsyncExecutionPhase {
+  mayExecuteBeforeSuspension: boolean;
+  mustExecuteBeforeSuspension: boolean;
+}
+
+interface DirectInvocationSiteOptions {
+  includeCallbackExecutionSites: boolean;
+}
+
+interface ProjectedClearingSitesInput {
+  afterStart: number;
+  context: RuleContext;
+  symbol: SymbolDescriptor;
+  targetOwner: EsTreeNode | null;
 }
 
 const resolvesToImportBinding = (context: RuleContext, identifier: EsTreeNode): boolean =>
@@ -595,7 +616,6 @@ const collectOfficialPropertyClearingNodes = (
   if (!owner) return [];
   const clearingNodes: EsTreeNode[] = [];
   walkAst(owner, (node) => {
-    if (node !== owner && isFunctionLike(node)) return false;
     if (isNodeOfType(node, "AssignmentExpression")) {
       if (
         node.operator === "="
@@ -604,7 +624,11 @@ const collectOfficialPropertyClearingNodes = (
             node.operator !== "??=" &&
             memberExpressionMatchesOfficialProperty(context, node.left, source.symbol, propertyName)
       ) {
-        clearingNodes.push(node);
+        clearingNodes.push(
+          ...getExecutionSitesInOwner(context, node, owner, {
+            requiresGuaranteedExecution: true,
+          }),
+        );
       }
       return;
     }
@@ -612,10 +636,51 @@ const collectOfficialPropertyClearingNodes = (
       isNodeOfType(node, "UpdateExpression") &&
       memberExpressionMatchesOfficialProperty(context, node.argument, source.symbol, propertyName)
     ) {
-      clearingNodes.push(node);
+      clearingNodes.push(
+        ...getExecutionSitesInOwner(context, node, owner, {
+          requiresGuaranteedExecution: true,
+        }),
+      );
     }
   });
   return clearingNodes;
+};
+
+const officialPropertyIsClearedBeforeReferenceInOwner = (
+  context: RuleContext,
+  source: OfficialPropsObjectSource,
+  propertyName: string,
+  reference: EsTreeNode,
+): boolean => {
+  const referenceOwner = context.cfg.enclosingFunction(reference);
+  if (
+    !referenceOwner ||
+    referenceOwner === context.cfg.enclosingFunction(source.sourceExpression)
+  ) {
+    return false;
+  }
+  let isCleared = false;
+  walkAst(referenceOwner, (node) => {
+    if (node !== referenceOwner && isFunctionLike(node)) return false;
+    if (
+      isNodeOfType(node, "AssignmentExpression") &&
+      (node.operator === "="
+        ? assignmentUnwrapsOfficialProperty(context, node, source.symbol, propertyName)
+        : node.operator !== "||=" &&
+          node.operator !== "??=" &&
+          memberExpressionMatchesOfficialProperty(
+            context,
+            node.left,
+            source.symbol,
+            propertyName,
+          )) &&
+      isNodeReachableWithinFunction(node, context) &&
+      nodeDominatesNode(node, reference, context)
+    ) {
+      isCleared = true;
+    }
+  });
+  return isCleared;
 };
 
 const findOfficialAsyncRequestPropReference = (
@@ -638,6 +703,7 @@ const findOfficialAsyncRequestPropReference = (
       !propsSource ||
       propertyName === null ||
       !propsSource.contract.propertyNames.has(propertyName) ||
+      officialPropertyIsClearedBeforeReferenceInOwner(context, propsSource, propertyName, node) ||
       createPendingSymbolFlow(
         context,
         propsSource.symbol,
@@ -836,7 +902,11 @@ const getStaticSymbolValueBefore = (
     : null;
 };
 
-const expressionIsStaticallySkipped = (context: RuleContext, expression: EsTreeNode): boolean => {
+const expressionIsStaticallySkipped = (
+  context: RuleContext,
+  expression: EsTreeNode,
+  logicalAssignmentReference: EsTreeNode | null = null,
+): boolean => {
   let current = expression;
   while (current.parent) {
     const parent = current.parent;
@@ -869,7 +939,7 @@ const expressionIsStaticallySkipped = (context: RuleContext, expression: EsTreeN
     ) {
       const target = stripParenExpression(parent.left);
       const leftValue = isNodeOfType(target, "Identifier")
-        ? getStaticSymbolValueBefore(context, target, parent)
+        ? getStaticSymbolValueBefore(context, target, logicalAssignmentReference ?? parent)
         : null;
       if (
         leftValue &&
@@ -1056,7 +1126,12 @@ const expressionMayRetainOfficialPendingValue = (
       }
       const candidateOwner = context.cfg.enclosingFunction(nestedCandidate);
       for (const sourceExpression of candidateSources) {
-        if (expressionIsStaticallySkipped(context, sourceExpression)) continue;
+        if (
+          context.cfg.enclosingFunction(sourceExpression) === candidateOwner &&
+          expressionIsStaticallySkipped(context, sourceExpression)
+        ) {
+          continue;
+        }
         const source = findSource(sourceExpression);
         if (!source) continue;
         if (
@@ -1065,8 +1140,9 @@ const expressionMayRetainOfficialPendingValue = (
         ) {
           continue;
         }
-        const sourceExecutionSites = getExecutionSitesInOwner(
+        const sourceExecutionSites = getRetainedSourceExecutionSites(
           context,
+          symbol,
           sourceExpression,
           candidateOwner,
         );
@@ -1074,21 +1150,15 @@ const expressionMayRetainOfficialPendingValue = (
           const sourceExecutionStart = getNodeStartIndex(sourceExecutionSite);
           if (
             sourceExecutionStart >= candidateStart ||
-            expressionIsStaticallySkipped(context, sourceExecutionSite)
+            expressionIsStaticallySkipped(context, sourceExpression, sourceExecutionSite)
           ) {
             continue;
           }
-          const clearingExecutionSites = symbol.references.flatMap((reference) => {
-            const assignment = getProvenanceClearingAssignment(
-              context,
-              symbol,
-              reference.identifier,
-            );
-            if (!assignment) return [];
-            return getExecutionSitesInOwner(context, assignment, candidateOwner).filter(
-              (clearingExecutionSite) =>
-                getNodeStartIndex(clearingExecutionSite) > sourceExecutionStart,
-            );
+          const clearingExecutionSites = getProjectedProvenanceClearingSites({
+            afterStart: sourceExecutionStart,
+            context,
+            symbol,
+            targetOwner: candidateOwner,
           });
           if (
             !createPendingSymbolFlow(
@@ -1107,6 +1177,57 @@ const expressionMayRetainOfficialPendingValue = (
       return null;
     });
   return Boolean(findSource(expression));
+};
+
+const symbolMayHoldOfficialPendingValueBefore = (
+  context: RuleContext,
+  symbol: SymbolDescriptor,
+  reference: EsTreeNode,
+): boolean => {
+  const referenceOwner = context.cfg.enclosingFunction(reference);
+  const referenceStart = getNodeStartIndex(reference);
+  const candidateSources: EsTreeNode[] = symbol.initializer ? [symbol.initializer] : [];
+  for (const symbolReference of symbol.references) {
+    if (symbolReference.flag === "read") continue;
+    const assignment = findPatternAssignmentForIdentifier(symbolReference.identifier);
+    if (!assignment || assignment.operator !== "=") continue;
+    const assignedValue = findPatternAssignedValue(
+      context,
+      assignment.left,
+      assignment.right,
+      symbol,
+    );
+    if (assignedValue?.expression) candidateSources.push(assignedValue.expression);
+  }
+  return candidateSources.some(
+    (sourceExpression) =>
+      context.cfg.enclosingFunction(sourceExpression) === referenceOwner &&
+      getNodeStartIndex(sourceExpression) < referenceStart &&
+      !expressionIsStaticallySkipped(context, sourceExpression) &&
+      expressionMayRetainOfficialPendingValue(context, sourceExpression) &&
+      !createPendingSymbolFlow(context, symbol, sourceExpression).isClearedBefore(reference),
+  );
+};
+
+const capturedSymbolMayBePendingAtInvocation = (
+  context: RuleContext,
+  identifier: EsTreeNode,
+): boolean => {
+  const symbol = context.scopes.symbolFor(identifier);
+  const referenceOwner = context.cfg.enclosingFunction(identifier);
+  if (
+    !symbol ||
+    !referenceOwner ||
+    !isFunctionLike(referenceOwner) ||
+    context.cfg.enclosingFunction(symbol.bindingIdentifier) === referenceOwner
+  ) {
+    return false;
+  }
+  return getDirectInvocationSites(context, referenceOwner, {
+    includeCallbackExecutionSites: false,
+  }).some((invocationSite) =>
+    symbolMayHoldOfficialPendingValueBefore(context, symbol, invocationSite),
+  );
 };
 
 const findPendingDynamicApiSource = (
@@ -1794,8 +1915,15 @@ const createPendingSymbolFlow = (
     }
   }
 
+  const normalExitPredecessors = functionCfg.exit.predecessors.filter(
+    (predecessor) => predecessor.kind !== "throw",
+  );
   return {
-    isClearedAtExit: Boolean(incomingClearedByBlock.get(functionCfg.exit)),
+    isClearedAtExit:
+      normalExitPredecessors.length > 0 &&
+      normalExitPredecessors.every((predecessor) =>
+        Boolean(outgoingClearedByBlock.get(predecessor.from)),
+      ),
     isClearedBefore: (referenceIdentifier) => {
       if (context.cfg.enclosingFunction(referenceIdentifier) !== owner) return false;
       const referenceStart = getNodeStartIndex(referenceIdentifier);
@@ -1829,7 +1957,11 @@ const createPendingSymbolFlow = (
   };
 };
 
-const getDirectInvocationSites = (context: RuleContext, functionNode: EsTreeNode): EsTreeNode[] => {
+const getDirectInvocationSites = (
+  context: RuleContext,
+  functionNode: EsTreeNode,
+  options: DirectInvocationSiteOptions = { includeCallbackExecutionSites: true },
+): EsTreeNode[] => {
   const functionRoot = findTransparentExpressionRoot(functionNode);
   const directParent = functionRoot.parent;
   if (
@@ -1840,6 +1972,7 @@ const getDirectInvocationSites = (context: RuleContext, functionNode: EsTreeNode
     return [directParent];
   }
   if (
+    options.includeCallbackExecutionSites &&
     directParent &&
     executesDuringRender(functionRoot, context.scopes, {
       requireProvenSynchronousCallbackReceiver: true,
@@ -1884,6 +2017,7 @@ const getDirectInvocationSites = (context: RuleContext, functionNode: EsTreeNode
         continue;
       }
       if (
+        options.includeCallbackExecutionSites &&
         parent &&
         (isNodeOfType(parent, "CallExpression") || isNodeOfType(parent, "NewExpression")) &&
         executesDuringRender(referenceRoot, context.scopes, {
@@ -1921,20 +2055,148 @@ const getDirectInvocationSites = (context: RuleContext, functionNode: EsTreeNode
   return invocationSites;
 };
 
+const invocationWaitsForCompletion = (invocationSite: EsTreeNode): boolean => {
+  const invocationRoot = findTransparentExpressionRoot(invocationSite);
+  const parent = invocationRoot.parent;
+  return Boolean(
+    parent && isNodeOfType(parent, "AwaitExpression") && parent.argument === invocationRoot,
+  );
+};
+
+const getAsyncExecutionPhase = (context: RuleContext, node: EsTreeNode): AsyncExecutionPhase => {
+  const owner = context.cfg.enclosingFunction(node);
+  if (!owner || !isFunctionLike(owner) || !owner.async) {
+    return { mayExecuteBeforeSuspension: true, mustExecuteBeforeSuspension: true };
+  }
+  const nodeStart = getNodeStartIndex(node);
+  let hasPossiblePriorSuspension = false;
+  let hasGuaranteedPriorSuspension = false;
+  walkAst(owner, (candidate) => {
+    if (candidate !== owner && isFunctionLike(candidate)) return false;
+    if (!isNodeOfType(candidate, "AwaitExpression")) return;
+    const isInsideEffect = isDescendantOf(candidate, node);
+    if (!isInsideEffect && getNodeStartIndex(candidate) >= nodeStart) return;
+    hasPossiblePriorSuspension = true;
+    if (isInsideEffect || nodeDominatesNode(candidate, node, context)) {
+      hasGuaranteedPriorSuspension = true;
+    }
+  });
+  return {
+    mayExecuteBeforeSuspension: !hasGuaranteedPriorSuspension,
+    mustExecuteBeforeSuspension: !hasPossiblePriorSuspension,
+  };
+};
+
 const getExecutionSitesInOwner = (
   context: RuleContext,
+  node: EsTreeNode,
+  targetOwner: EsTreeNode | null,
+  options: ExecutionProjectionOptions,
+  visitedFunctionNodes: ReadonlySet<EsTreeNode> = new Set(),
+): EsTreeNode[] => {
+  const nodeOwner = context.cfg.enclosingFunction(node);
+  if (nodeOwner === targetOwner) return [node];
+  if (
+    !nodeOwner ||
+    !isFunctionLike(nodeOwner) ||
+    visitedFunctionNodes.has(nodeOwner) ||
+    !isNodeReachableWithinFunction(node, context) ||
+    (options.requiresGuaranteedExecution && !context.cfg.isUnconditionalFromEntry(node))
+  ) {
+    return [];
+  }
+  const nextVisitedFunctionNodes = new Set(visitedFunctionNodes);
+  nextVisitedFunctionNodes.add(nodeOwner);
+  const executionPhase = getAsyncExecutionPhase(context, node);
+  return getDirectInvocationSites(context, nodeOwner, {
+    includeCallbackExecutionSites: false,
+  }).flatMap((invocationSite) => {
+    if (
+      !invocationWaitsForCompletion(invocationSite) &&
+      (options.requiresGuaranteedExecution
+        ? !executionPhase.mustExecuteBeforeSuspension
+        : !executionPhase.mayExecuteBeforeSuspension)
+    ) {
+      return [];
+    }
+    return getExecutionSitesInOwner(
+      context,
+      invocationSite,
+      targetOwner,
+      options,
+      nextVisitedFunctionNodes,
+    );
+  });
+};
+
+const getProjectedProvenanceClearingSites = ({
+  afterStart,
+  context,
+  symbol,
+  targetOwner,
+}: ProjectedClearingSitesInput): EsTreeNode[] =>
+  symbol.references.flatMap((reference) => {
+    const assignment = getProvenanceClearingAssignment(context, symbol, reference.identifier);
+    if (!assignment) return [];
+    return getExecutionSitesInOwner(context, assignment, targetOwner, {
+      requiresGuaranteedExecution: true,
+    }).filter((clearingExecutionSite) => getNodeStartIndex(clearingExecutionSite) > afterStart);
+  });
+
+const getRetainedSourceExecutionSites = (
+  context: RuleContext,
+  symbol: SymbolDescriptor,
   node: EsTreeNode,
   targetOwner: EsTreeNode | null,
   visitedFunctionNodes: ReadonlySet<EsTreeNode> = new Set(),
 ): EsTreeNode[] => {
   const nodeOwner = context.cfg.enclosingFunction(node);
   if (nodeOwner === targetOwner) return [node];
-  if (!nodeOwner || !isFunctionLike(nodeOwner) || visitedFunctionNodes.has(nodeOwner)) return [];
+  if (
+    !nodeOwner ||
+    !isFunctionLike(nodeOwner) ||
+    visitedFunctionNodes.has(nodeOwner) ||
+    !isNodeReachableWithinFunction(node, context)
+  ) {
+    return [];
+  }
   const nextVisitedFunctionNodes = new Set(visitedFunctionNodes);
   nextVisitedFunctionNodes.add(nodeOwner);
-  return getDirectInvocationSites(context, nodeOwner).flatMap((invocationSite) =>
-    getExecutionSitesInOwner(context, invocationSite, targetOwner, nextVisitedFunctionNodes),
-  );
+  const executionPhase = getAsyncExecutionPhase(context, node);
+  return getDirectInvocationSites(context, nodeOwner, {
+    includeCallbackExecutionSites: false,
+  }).flatMap((invocationSite) => {
+    if (
+      !invocationWaitsForCompletion(invocationSite) &&
+      !executionPhase.mayExecuteBeforeSuspension
+    ) {
+      return [];
+    }
+    const invocationOwner = context.cfg.enclosingFunction(invocationSite);
+    if (!invocationOwner) return [];
+    if (invocationOwner !== targetOwner) {
+      const invocationStart = getNodeStartIndex(invocationSite);
+      const clearingExecutionSites = getProjectedProvenanceClearingSites({
+        afterStart: invocationStart,
+        context,
+        symbol,
+        targetOwner: invocationOwner,
+      });
+      if (
+        createPendingSymbolFlow(context, symbol, invocationSite, clearingExecutionSites)
+          .isClearedAtExit
+      ) {
+        return [];
+      }
+    }
+    return getRetainedSourceExecutionSites(
+      context,
+      symbol,
+      invocationSite,
+      targetOwner,
+      nextVisitedFunctionNodes,
+    );
+  });
 };
 
 const symbolHasSynchronousAccess = (
@@ -1957,8 +2219,19 @@ const symbolHasSynchronousAccess = (
         reference.flag !== "read" ||
         Boolean(findPatternAssignmentForIdentifier(reference.identifier)),
     );
-    const flow = createPendingSymbolFlow(context, candidate.symbol, candidate.sourceExpression);
     const sourceStart = getNodeStartIndex(candidate.sourceExpression);
+    const projectedClearingSites = getProjectedProvenanceClearingSites({
+      afterStart: sourceStart,
+      context,
+      symbol: candidate.symbol,
+      targetOwner: owner,
+    });
+    const flow = createPendingSymbolFlow(
+      context,
+      candidate.symbol,
+      candidate.sourceExpression,
+      projectedClearingSites,
+    );
 
     for (const reference of candidate.symbol.references) {
       if (reference.flag === "write" || findPatternAssignmentForIdentifier(reference.identifier)) {
@@ -2014,10 +2287,29 @@ const reportAssignedPendingExpression = (
   expression: EsTreeNode,
   identifier: EsTreeNode,
 ): void => {
+  const symbol = context.scopes.symbolFor(identifier);
+  if (!symbol) return;
+  const expressionOwner = context.cfg.enclosingFunction(expression);
+  const bindingOwner = context.cfg.enclosingFunction(symbol.bindingIdentifier);
+  if (expressionOwner === bindingOwner) {
+    if (expressionIsStaticallySkipped(context, expression)) return;
+  } else {
+    if (!expressionOwner || !isFunctionLike(expressionOwner)) return;
+    const invocationSites = getDirectInvocationSites(context, expressionOwner, {
+      includeCallbackExecutionSites: false,
+    });
+    if (
+      invocationSites.length === 0 ||
+      invocationSites.every((invocationSite) =>
+        expressionIsStaticallySkipped(context, expression, invocationSite),
+      )
+    ) {
+      return;
+    }
+  }
   const source = findPendingDynamicApiSource(context, expression);
   if (!source) return;
-  const symbol = context.scopes.symbolFor(identifier);
-  if (!symbol || !symbolHasSynchronousAccess(context, symbol, expression)) return;
+  if (!symbolHasSynchronousAccess(context, symbol, expression)) return;
   context.report({ node: source, message: MESSAGE });
 };
 
@@ -2214,7 +2506,10 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
       const assignmentTarget = stripParenExpression(node.left);
       if (!isNodeOfType(assignmentTarget, "Identifier")) return;
       if (node.operator === "&&=" || node.operator === "||=" || node.operator === "??=") {
-        if (expressionMayRetainOfficialPendingValue(context, assignmentTarget)) {
+        if (
+          expressionMayRetainOfficialPendingValue(context, assignmentTarget) ||
+          capturedSymbolMayBePendingAtInvocation(context, assignmentTarget)
+        ) {
           context.report({ node: assignmentTarget, message: MESSAGE });
         }
       }

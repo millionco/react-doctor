@@ -510,15 +510,20 @@ import { queryNoRestDestructuring } from "./rules/tanstack-query/query-no-rest-d
 import { queryNoUseQueryForMutation } from "./rules/tanstack-query/query-no-use-query-for-mutation.js";
 import { queryNoVoidQueryFn } from "./rules/tanstack-query/query-no-void-query-fn.js";
 import { queryStableQueryClient } from "./rules/tanstack-query/query-stable-query-client.js";
+import { r3fCapDevicePixelRatio } from "./rules/r3f/r3f-cap-device-pixel-ratio.js";
+import { r3fLimitShadowedPointLights } from "./rules/r3f/r3f-limit-shadowed-point-lights.js";
 import { r3fNoAdvancingClockInUseFrame } from "./rules/r3f/r3f-no-advancing-clock-in-use-frame.js";
 import { r3fNoAsyncUseFrame } from "./rules/r3f/r3f-no-async-use-frame.js";
 import { r3fNoCloneInUseFrame } from "./rules/r3f/r3f-no-clone-in-use-frame.js";
+import { r3fNoDisposeLoaderCache } from "./rules/r3f/r3f-no-dispose-loader-cache.js";
 import { r3fNoDuplicatePrimitiveObject } from "./rules/r3f/r3f-no-duplicate-primitive-object.js";
 import { r3fNoFreshPortalContainer } from "./rules/r3f/r3f-no-fresh-portal-container.js";
 import { r3fNoFreshUseThreeSelector } from "./rules/r3f/r3f-no-fresh-use-three-selector.js";
+import { r3fNoImperativeAttachOfManagedRef } from "./rules/r3f/r3f-no-imperative-attach-of-managed-ref.js";
 import { r3fNoInlinePrimitiveObject } from "./rules/r3f/r3f-no-inline-primitive-object.js";
 import { r3fNoInlineResourceProp } from "./rules/r3f/r3f-no-inline-resource-prop.js";
 import { r3fNoInternalImports } from "./rules/r3f/r3f-no-internal-imports.js";
+import { r3fNoMutateLoaderCache } from "./rules/r3f/r3f-no-mutate-loader-cache.js";
 import { r3fNoNewInUseFrame } from "./rules/r3f/r3f-no-new-in-use-frame.js";
 import { r3fNoNullLoaderInput } from "./rules/r3f/r3f-no-null-loader-input.js";
 import { r3fNoObjectPointerCapture } from "./rules/r3f/r3f-no-object-pointer-capture.js";
@@ -526,8 +531,12 @@ import { r3fNoStateInUseFrame } from "./rules/r3f/r3f-no-state-in-use-frame.js";
 import { r3fNoSyncReadbackInUseFrame } from "./rules/r3f/r3f-no-sync-readback-in-use-frame.js";
 import { r3fNoUnstableArgs } from "./rules/r3f/r3f-no-unstable-args.js";
 import { r3fNoUseFrameDependencyArray } from "./rules/r3f/r3f-no-use-frame-dependency-array.js";
+import { r3fPreferUseLoader } from "./rules/r3f/r3f-prefer-use-loader.js";
 import { r3fRequireFrameDelta } from "./rules/r3f/r3f-require-frame-delta.js";
 import { r3fRequireGlobalEffectCleanup } from "./rules/r3f/r3f-require-global-effect-cleanup.js";
+import { r3fRequireOwnedTextureCleanup } from "./rules/r3f/r3f-require-owned-texture-cleanup.js";
+import { r3fRequireRenderWithPositivePriority } from "./rules/r3f/r3f-require-render-with-positive-priority.js";
+import { r3fRequireRootUnmount } from "./rules/r3f/r3f-require-root-unmount.js";
 import { r3fWebgpuCanvasPropCompatibility } from "./rules/r3f/r3f-webgpu-canvas-prop-compatibility.js";
 import { r3fWebgpuNoGlState } from "./rules/r3f/r3f-webgpu-no-gl-state.js";
 import { r3fWebgpuNoJsUniformBranch } from "./rules/r3f/r3f-webgpu-no-js-uniform-branch.js";
@@ -645,6 +654,8 @@ import { tanstackStartRoutePropertyOrder } from "./rules/tanstack-start/tanstack
 import { tanstackStartServerFnMethodOrder } from "./rules/tanstack-start/tanstack-start-server-fn-method-order.js";
 import { tanstackStartServerFnValidateInput } from "./rules/tanstack-start/tanstack-start-server-fn-validate-input.js";
 import { tenantStaticProxyRisk } from "./rules/security-scan/tenant-static-proxy-risk.js";
+import { threeRequireRenderTargetCleanup } from "./rules/r3f/three-require-render-target-cleanup.js";
+import { threeRequireRendererCleanup } from "./rules/r3f/three-require-renderer-cleanup.js";
 import { unsafeJsonInHtml } from "./rules/security-scan/unsafe-json-in-html.js";
 import { untrustedRedirectFollowing } from "./rules/security-scan/untrusted-redirect-following.js";
 import { urlPrefilledPrivilegedAction } from "./rules/security-scan/url-prefilled-privileged-action.js";
@@ -6676,6 +6687,36 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-cap-device-pixel-ratio",
+    id: "r3f-cap-device-pixel-ratio",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fCapDevicePixelRatio,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fCapDevicePixelRatio.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fCapDevicePixelRatio.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-limit-shadowed-point-lights",
+    id: "r3f-limit-shadowed-point-lights",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fLimitShadowedPointLights,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fLimitShadowedPointLights.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fLimitShadowedPointLights.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/r3f-no-advancing-clock-in-use-frame",
     id: "r3f-no-advancing-clock-in-use-frame",
     source: "react-doctor",
@@ -6715,6 +6756,21 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fNoCloneInUseFrame.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fNoCloneInUseFrame.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-dispose-loader-cache",
+    id: "r3f-no-dispose-loader-cache",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoDisposeLoaderCache,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoDisposeLoaderCache.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoDisposeLoaderCache.requires ?? [])]),
       ],
     },
   },
@@ -6764,6 +6820,25 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-no-imperative-attach-of-managed-ref",
+    id: "r3f-no-imperative-attach-of-managed-ref",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoImperativeAttachOfManagedRef,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoImperativeAttachOfManagedRef.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fNoImperativeAttachOfManagedRef.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/r3f-no-inline-primitive-object",
     id: "r3f-no-inline-primitive-object",
     source: "react-doctor",
@@ -6805,6 +6880,21 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fNoInternalImports.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fNoInternalImports.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-mutate-loader-cache",
+    id: "r3f-no-mutate-loader-cache",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoMutateLoaderCache,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoMutateLoaderCache.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoMutateLoaderCache.requires ?? [])]),
       ],
     },
   },
@@ -6910,6 +7000,19 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-prefer-use-loader",
+    id: "r3f-prefer-use-loader",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fPreferUseLoader,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fPreferUseLoader.tags ?? [])])],
+      requires: [...new Set<Capability>(["react", "r3f", ...(r3fPreferUseLoader.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/r3f-require-frame-delta",
     id: "r3f-require-frame-delta",
     source: "react-doctor",
@@ -6936,6 +7039,55 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fRequireGlobalEffectCleanup.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fRequireGlobalEffectCleanup.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-owned-texture-cleanup",
+    id: "r3f-require-owned-texture-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireOwnedTextureCleanup,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireOwnedTextureCleanup.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireOwnedTextureCleanup.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-render-with-positive-priority",
+    id: "r3f-require-render-with-positive-priority",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireRenderWithPositivePriority,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireRenderWithPositivePriority.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fRequireRenderWithPositivePriority.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-root-unmount",
+    id: "r3f-require-root-unmount",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireRootUnmount,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireRootUnmount.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireRootUnmount.requires ?? [])]),
       ],
     },
   },
@@ -8352,6 +8504,40 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       tags: [...new Set(["security-scan", ...(tenantStaticProxyRisk.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-require-render-target-cleanup",
+    id: "three-require-render-target-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireRenderTargetCleanup,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(threeRequireRenderTargetCleanup.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(threeRequireRenderTargetCleanup.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-renderer-cleanup",
+    id: "three-require-renderer-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireRendererCleanup,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(threeRequireRendererCleanup.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(threeRequireRendererCleanup.requires ?? [])]),
+      ],
     },
   },
   {

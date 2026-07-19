@@ -1,0 +1,1 @@
+export const MAX_SHADOWED_POINT_LIGHT_COUNT = 2;

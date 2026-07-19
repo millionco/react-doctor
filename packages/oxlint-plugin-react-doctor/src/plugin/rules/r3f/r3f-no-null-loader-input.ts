@@ -6,17 +6,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isApiCallFromModules } from "./utils/is-api-call-from-modules.js";
+import { DREI_CACHED_LOADER_HOOK_NAMES, DREI_PUBLIC_MODULES } from "./utils/drei-public-modules.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
-
-const DREI_PUBLIC_MODULES = new Set(["@react-three/drei", "@react-three/drei/native"]);
-const DREI_LOADER_HOOK_NAMES = [
-  "useCubeTexture",
-  "useFBX",
-  "useFont",
-  "useGLTF",
-  "useKTX2",
-  "useTexture",
-];
 
 const isDirectNullishExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const candidate = stripParenExpression(expression);
@@ -204,7 +195,7 @@ const getLoaderInput = (node: EsTreeNode, context: RuleContext): EsTreeNode | nu
     const input = node.arguments[1];
     return input && !isNodeOfType(input, "SpreadElement") ? input : null;
   }
-  for (const hookName of DREI_LOADER_HOOK_NAMES) {
+  for (const hookName of DREI_CACHED_LOADER_HOOK_NAMES) {
     if (!isApiCallFromModules(node, hookName, DREI_PUBLIC_MODULES, context.scopes)) continue;
     const input = node.arguments[0];
     return input && !isNodeOfType(input, "SpreadElement") ? input : null;

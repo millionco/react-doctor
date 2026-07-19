@@ -94,12 +94,30 @@ describe("buildCapabilities", () => {
   });
 
   it("emits the R3F major ladder only for detected Fiber versions", () => {
+    const r3fTwo = buildCapabilities({
+      ...baseProject,
+      hasReactThreeFiber: true,
+      reactThreeFiberVersion: "^2.0.0",
+      reactThreeFiberMajorVersion: 2,
+    });
+    expect(r3fTwo.has("r3f")).toBe(true);
+    expect(r3fTwo.has("r3f:3")).toBe(false);
+
+    const r3fThree = buildCapabilities({
+      ...baseProject,
+      hasReactThreeFiber: true,
+      reactThreeFiberVersion: "^3.0.0",
+      reactThreeFiberMajorVersion: 3,
+    });
+    expect(r3fThree.has("r3f:3")).toBe(true);
+
     const r3fNine = buildCapabilities({
       ...baseProject,
       hasReactThreeFiber: true,
       reactThreeFiberVersion: "^9.6.1",
       reactThreeFiberMajorVersion: 9,
     });
+    expect(r3fNine.has("r3f:3")).toBe(true);
     expect(r3fNine.has("r3f:8")).toBe(true);
     expect(r3fNine.has("r3f:9")).toBe(true);
     expect(r3fNine.has("r3f:10")).toBe(false);

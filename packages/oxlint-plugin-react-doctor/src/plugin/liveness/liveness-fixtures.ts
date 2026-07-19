@@ -1731,11 +1731,20 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-no-advancing-clock-in-use-frame": {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame((state) => state.clock.getDelta());',
   },
+  "r3f-cap-device-pixel-ratio": {
+    code: 'import { Canvas } from "@react-three/fiber"; const Scene = () => <Canvas dpr={window.devicePixelRatio} />;',
+  },
+  "r3f-limit-shadowed-point-lights": {
+    code: 'import "@react-three/fiber"; const Scene = () => <><pointLight castShadow /><pointLight castShadow /><pointLight castShadow /></>;',
+  },
   "r3f-no-async-use-frame": {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame(async () => load());',
   },
   "r3f-no-clone-in-use-frame": {
     code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = () => { const mesh = useRef(null); useFrame(() => mesh.current.position.clone()); };',
+  },
+  "r3f-no-dispose-loader-cache": {
+    code: 'import { useTexture } from "@react-three/drei"; const Scene = () => { const texture = useTexture(url); texture.dispose(); return null; };',
   },
   "r3f-no-duplicate-primitive-object": {
     code: 'import "@react-three/fiber"; const Scene = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;',
@@ -1755,6 +1764,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-no-internal-imports": {
     code: 'import internal from "@react-three/fiber/dist/internal";',
   },
+  "r3f-no-imperative-attach-of-managed-ref": {
+    code: 'import { useRef } from "react"; import "@react-three/fiber"; import { Scene as ThreeScene } from "three"; const Scene = () => { const group = useRef(null); const scene = new ThreeScene(); scene.add(group.current); return <group ref={group} />; };',
+  },
+  "r3f-no-mutate-loader-cache": {
+    code: 'import { useGLTF } from "@react-three/drei"; const Scene = () => { const { nodes } = useGLTF(url); nodes.Mesh.geometry.center(); return null; };',
+  },
   "r3f-no-new-in-use-frame": {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame(() => new Vector3());',
   },
@@ -1763,6 +1778,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "r3f-no-null-loader-input": {
     code: 'import { useLoader } from "@react-three/fiber"; const Scene = () => { useLoader(TextureLoader, null); return null; };',
+  },
+  "r3f-prefer-use-loader": {
+    code: 'import "@react-three/fiber"; import { useEffect } from "react"; import { TextureLoader } from "three"; const Scene = ({ url }) => { useEffect(() => { new TextureLoader().load(url, setTexture); }, [url]); return <mesh />; };',
   },
   "r3f-no-state-in-use-frame": {
     code: 'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [count, setCount] = useState(0); useFrame(() => setCount(count + 1)); };',
@@ -1782,6 +1800,15 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-require-global-effect-cleanup": {
     code: 'import { useEffect } from "react"; import { addEffect } from "@react-three/fiber"; const Scene = () => { useEffect(() => { addEffect(update); }, []); return null; };',
   },
+  "r3f-require-owned-texture-cleanup": {
+    code: 'import { useMemo } from "react"; import { CanvasTexture } from "three"; const Scene = ({ canvas }) => { const texture = useMemo(() => new CanvasTexture(canvas), [canvas]); return <meshStandardMaterial map={texture} />; };',
+  },
+  "r3f-require-render-with-positive-priority": {
+    code: 'import { useFrame } from "@react-three/fiber"; const Scene = () => { useFrame(() => update(), 1); return null; };',
+  },
+  "r3f-require-root-unmount": {
+    code: 'import { createRoot } from "@react-three/fiber"; const Scene = ({ canvas }) => { const root = createRoot(canvas); root.render(<mesh />); return null; };',
+  },
   "r3f-webgpu-canvas-prop-compatibility": {
     code: 'import { Canvas } from "@react-three/fiber/webgpu"; const Scene = () => <Canvas gl={{ antialias: true }} />;',
   },
@@ -1793,6 +1820,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "r3f-webgpu-no-unregistered-pipeline-pass": {
     code: 'import { useRenderPipeline } from "@react-three/fiber/webgpu"; useRenderPipeline(({ passes }) => { passes.custom = customPass; });',
+  },
+  "three-require-render-target-cleanup": {
+    code: 'import { useMemo } from "react"; import { WebGLRenderTarget } from "three"; const Scene = () => { const target = useMemo(() => new WebGLRenderTarget(1, 1), []); target.width; return null; };',
+  },
+  "three-require-renderer-cleanup": {
+    code: 'import { useMemo } from "react"; import { WebGLRenderer } from "three"; const Scene = ({ canvas }) => { const renderer = useMemo(() => new WebGLRenderer({ canvas }), [canvas]); renderer.render(scene, camera); return null; };',
   },
   "tanstack-start-no-anchor-element": {
     code: 'const C = () => <a href="/dashboard">Go</a>;',

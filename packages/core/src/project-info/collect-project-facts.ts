@@ -41,6 +41,7 @@ const REACT_THREE_FIBER_DEPENDENCY_NAMES = ["@react-three/fiber", "react-three-f
 const REACT_THREE_DEPENDENCY_NAMES = [
   ...REACT_THREE_FIBER_DEPENDENCY_NAMES,
   "@react-three/drei",
+  "three",
 ] as const;
 
 // A dependency's declared spec plus the directory whose manifest supplied

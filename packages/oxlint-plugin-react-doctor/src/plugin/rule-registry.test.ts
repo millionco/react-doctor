@@ -139,6 +139,7 @@ describe("rule registry", () => {
     for (const ruleId of webgpuRuleIds) {
       expect(ruleRegistry[ruleId]?.requires, `${ruleId} should require R3F 10`).toContain("r3f:10");
     }
+    expect(ruleRegistry["r3f-prefer-use-loader"]?.requires).toContain("r3f:3");
     expect(ruleRegistry["r3f-no-advancing-clock-in-use-frame"]?.disabledWhen).toContain("r3f:10");
   });
 

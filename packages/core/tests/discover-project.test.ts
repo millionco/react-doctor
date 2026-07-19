@@ -1924,6 +1924,23 @@ describe("discoverProject — React Three Fiber", () => {
     expect(projectInfo.reactThreeFiberMajorVersion).toBeNull();
   });
 
+  it("detects plain Three.js without inventing a Fiber version", () => {
+    const projectDirectory = path.join(tempDirectory, "plain-three-project");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "scene",
+        dependencies: { react: "^19.0.0", three: "^0.180.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactThreeFiber).toBe(true);
+    expect(projectInfo.reactThreeFiberVersion).toBeNull();
+    expect(projectInfo.reactThreeFiberMajorVersion).toBeNull();
+  });
+
   it("detects the legacy CommonJS-era package name and version", () => {
     const projectDirectory = path.join(tempDirectory, "legacy-r3f-project");
     fs.mkdirSync(projectDirectory, { recursive: true });

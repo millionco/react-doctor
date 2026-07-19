@@ -381,7 +381,7 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not infer context ownership from a destructured dynamic import", () => {
+  it("flags a legacy Provider from a destructured dynamic context import", () => {
     const result = runRule(
       jsxNoConstructedContextValues,
       `async function loadApp() {
@@ -394,7 +394,64 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
     );
 
     expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a renamed context binding from a destructured dynamic import", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `async function loadApp() {
+         const { runtimeContext: DataContext } = await import("@runtime");
+         return function RootApp() {
+           return <DataContext.Provider value={{ data: "ready" }} />;
+         };
+       }`,
+      { filename: "fixture.tsx" },
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat an unawaited dynamic import promise as a context module", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `function loadApp() {
+         const { DataContext } = import("@runtime");
+         return function RootApp() {
+           return <DataContext.Provider value={{ data: "ready" }} />;
+         };
+       }`,
+      { filename: "fixture.tsx" },
+    );
+
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("supports unreassigned let bindings but rejects reassignment", () => {
+    const stableResult = runRule(
+      jsxNoConstructedContextValues,
+      `async function loadApp() {
+         let { DataContext } = await import("@runtime");
+         return function RootApp() {
+           return <DataContext.Provider value={{ data: "ready" }} />;
+         };
+       }`,
+      { filename: "fixture.tsx" },
+    );
+    const reassignedResult = runRule(
+      jsxNoConstructedContextValues,
+      `async function loadApp() {
+         let { DataContext } = await import("@runtime");
+         DataContext = Widget;
+         return function RootApp() {
+           return <DataContext.Provider value={{ data: "ready" }} />;
+         };
+       }`,
+      { filename: "fixture.tsx" },
+    );
+
+    expect(stableResult.diagnostics).toHaveLength(1);
+    expect(reassignedResult.diagnostics).toEqual([]);
   });
 
   it("does not infer Provider ownership from an arbitrary context-shaped local", () => {

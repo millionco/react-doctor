@@ -266,6 +266,7 @@ export const valtioNoSnapshotInCallback = defineRule({
   id: "valtio-no-snapshot-in-callback",
   title: "Valtio snapshot read in a callback",
   severity: "warn",
+  requires: ["valtio"],
   recommendation:
     "Read from the original Valtio proxy inside callbacks. `useSnapshot()` results are for render reads; callback reads can become tracked render dependencies and cause extra re-renders.",
   create: (context: RuleContext) => ({

@@ -6,6 +6,10 @@ const getDiagnosticCount = (code: string): number =>
   runRule(valtioNoSnapshotInCallback, code).diagnostics.length;
 
 describe("valtio-no-snapshot-in-callback", () => {
+  it("uses the unversioned Valtio capability because useSnapshot callback semantics span majors", () => {
+    expect(valtioNoSnapshotInCallback.requires).toEqual(["valtio"]);
+  });
+
   it("reports a snapshot member read in an inline JSX event handler", () => {
     expect(
       getDiagnosticCount(`

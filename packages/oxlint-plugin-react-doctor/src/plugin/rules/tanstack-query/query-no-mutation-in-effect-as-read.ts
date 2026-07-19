@@ -648,6 +648,9 @@ const testPositivelyMatchesStatusTarget = (
   context: RuleContext,
 ): boolean => {
   const candidate = stripParenExpression(test);
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
+    return testNegativelyMatchesStatusTarget(candidate.argument, target, context);
+  }
   if (expressionMatchesStatusTarget(candidate, target, context)) {
     return target.sourcePropertyName === "isSuccess";
   }
@@ -676,10 +679,7 @@ const testNegativelyMatchesStatusTarget = (
 ): boolean => {
   const candidate = stripParenExpression(test);
   if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
-    return (
-      target.sourcePropertyName === "isSuccess" &&
-      expressionMatchesStatusTarget(candidate.argument, target, context)
-    );
+    return testPositivelyMatchesStatusTarget(candidate.argument, target, context);
   }
   if (!isNodeOfType(candidate, "BinaryExpression")) return false;
   const leftMatches = expressionMatchesStatusTarget(candidate.left, target, context);

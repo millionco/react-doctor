@@ -712,6 +712,24 @@ describe("query-no-mutation-in-effect-as-read", () => {
   });
 
   it.each([
+    ["status", `!((status as string) !== ("success" as const))`],
+    ["data", `!((data as User | undefined) === undefined)`],
+  ])(
+    "accepts a negated %s comparison as a dominating early exit",
+    (_guardName, guardExpression) => {
+      const result = runMutationReadRule(
+        `const { mutateAsync: fetchUser, data, status } = useMutation(options);
+       useEffect(() => {
+         if (${guardExpression}) return;
+         fetchUser(params);
+       }, [data, params, status]);
+       const user = data?.user;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
+  it.each([
     ["isSuccess", `(isSuccess as boolean) === (false as const)`],
     ["status", `(status as string) === ("pending" as const)`],
   ])("does not accept a mismatched wrapped %s status guard", (_guardName, guardExpression) => {
@@ -734,6 +752,8 @@ describe("query-no-mutation-in-effect-as-read", () => {
     ["strict status inequality", `(status as string) !== ("success" as const)`],
     ["loose nullish data equality", `(data as User | null | undefined) == null`],
     ["strict undefined data equality", `(data as User | undefined) === undefined`],
+    ["negated successful status equality", `!((status as string) === ("success" as const))`],
+    ["negated present data inequality", `!((data as User | undefined) !== undefined)`],
   ])("accepts an enclosing %s branch", (_guardName, guardExpression) => {
     const result = runMutationReadRule(
       `const { mutateAsync: fetchUser, data, isSuccess, status } = useMutation(options);

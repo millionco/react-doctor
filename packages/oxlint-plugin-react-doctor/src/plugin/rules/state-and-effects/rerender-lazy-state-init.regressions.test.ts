@@ -117,7 +117,7 @@ describe("rerender-lazy-state-init — regressions", () => {
       expect(result.diagnostics).toHaveLength(1);
     });
 
-    it("flags a constructor initializer", () => {
+    it("leaves constructor initializers to no-eager-new-in-use-state-initializer", () => {
       const result = runRule(
         rerenderLazyStateInit,
         `function Table({ config }) {
@@ -126,7 +126,7 @@ describe("rerender-lazy-state-init — regressions", () => {
         }`,
       );
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics).toEqual([]);
     });
 
     it("flags a member read off an expensive call", () => {
@@ -207,8 +207,8 @@ describe("rerender-lazy-state-init — regressions", () => {
     });
   });
 
-  describe("fuzz sweep: trivial-constructor exemption is zero-argument + identifier-callee only", () => {
-    it("flags a trivial-name construction with runtime arguments", () => {
+  describe("constructor ownership", () => {
+    it("leaves a trivial-name construction with runtime arguments to the constructor rule", () => {
       const result = runRule(
         rerenderLazyStateInit,
         `function C() {
@@ -217,10 +217,10 @@ describe("rerender-lazy-state-init — regressions", () => {
         }`,
       );
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics).toEqual([]);
     });
 
-    it("flags `new Date(timestamp)` while `new Date()` stays exempt", () => {
+    it("leaves both argument-taking and empty constructors to the constructor rule", () => {
       const withArgument = runRule(
         rerenderLazyStateInit,
         `function C({ timestamp }) {
@@ -235,11 +235,11 @@ describe("rerender-lazy-state-init — regressions", () => {
           return null;
         }`,
       );
-      expect(withArgument.diagnostics).toHaveLength(1);
+      expect(withArgument.diagnostics).toEqual([]);
       expect(zeroArgument.diagnostics).toEqual([]);
     });
 
-    it("flags a member-expression callee even when the property matches a trivial name", () => {
+    it("leaves member-expression constructors to the constructor rule", () => {
       const result = runRule(
         rerenderLazyStateInit,
         `function C() {
@@ -248,7 +248,7 @@ describe("rerender-lazy-state-init — regressions", () => {
         }`,
       );
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics).toEqual([]);
     });
 
     it("stays silent when only TYPE arguments are passed", () => {

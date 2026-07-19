@@ -79,6 +79,16 @@ describe("runOxlint", () => {
         severity: "warning",
         category: "Bugs",
       },
+      "query-floating-mutate-async": {
+        fixture: "src/query-issues.tsx",
+        ruleSource: "rules/tanstack-query.ts",
+        category: "Bugs",
+      },
+      "query-no-mutation-in-effect-as-read": {
+        fixture: "src/query-issues.tsx",
+        ruleSource: "rules/tanstack-query.ts",
+        category: "Bugs",
+      },
       "query-no-rest-destructuring": {
         fixture: "src/query-issues.tsx",
         ruleSource: "rules/tanstack-query.ts",

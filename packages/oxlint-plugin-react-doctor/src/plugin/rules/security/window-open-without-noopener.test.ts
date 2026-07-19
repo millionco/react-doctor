@@ -3102,6 +3102,17 @@ window.open(deltaPage, '_blank');
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not assume custom createElement handlers discard callback returns", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const Consumer = ({ onClick }) => onClick();
+       const App = () => React.createElement(Consumer, {
+         onClick: () => window.open(userControlledUrl),
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not assume a replaced array forEach method discards callback returns", () => {
     const result = runRule(
       windowOpenWithoutNoopener,

@@ -3106,9 +3106,16 @@ const isArrowReturnDiscarded = (arrow: EsTreeNode): boolean => {
       createElementCall && isNodeOfType(createElementCall, "CallExpression")
         ? stripParenExpression(createElementCall.callee as EsTreeNode)
         : null;
-    const isProvenCreateElementCall = Boolean(
+    const elementType =
+      createElementCall && isNodeOfType(createElementCall, "CallExpression")
+        ? createElementCall.arguments?.[0]
+        : null;
+    const isProvenIntrinsicCreateElementCall = Boolean(
       createElementCall &&
       isNodeOfType(createElementCall, "CallExpression") &&
+      elementType &&
+      isNodeOfType(elementType, "Literal") &&
+      typeof elementType.value === "string" &&
       currentScopes &&
       (isReactApiCall(createElementCall, "createElement", currentScopes) ||
         (createElementCallee &&
@@ -3124,7 +3131,7 @@ const isArrowReturnDiscarded = (arrow: EsTreeNode): boolean => {
       createElementCall &&
       isNodeOfType(createElementCall, "CallExpression") &&
       createElementCall.arguments?.[1] === propsObject &&
-      isProvenCreateElementCall,
+      isProvenIntrinsicCreateElementCall,
     );
   }
   const directCalls = collectDirectLocalFunctionCalls(arrow);
